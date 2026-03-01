@@ -2,12 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/coalescepath"
 	t "github.com/vormadev/vorma/lab/cliutil"
+	"github.com/vormadev/vorma/lab/coalescecmd"
 	"github.com/vormadev/vorma/lab/parseutil"
 	"golang.org/x/term"
 )
@@ -44,9 +47,26 @@ func main() {
 		t.Exit("release command does not take arguments", nil)
 	}
 
-	releaseErr := runUnifiedReleaseProcess()
-	if releaseErr != nil {
-		t.Exit(releaseErr.message, releaseErr.err)
+	coalesceError := coalescecmd.Run(coalescecmd.Options{
+		Key:                    coalescepath.ReleaseCommandKey,
+		FailIfRunning:          []string{coalescepath.ReleaseCommandKey},
+		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
+		Func: func() error {
+			releaseErr := runUnifiedReleaseProcess()
+			if releaseErr == nil {
+				return nil
+			}
+			if releaseErr.err != nil {
+				return fmt.Errorf("%s: %w", releaseErr.message, releaseErr.err)
+			}
+			return errors.New(releaseErr.message)
+		},
+	})
+	if coalesceError != nil {
+		if errors.Is(coalesceError, coalescecmd.ErrAlreadyRunning) {
+			t.Exit("another release process is already running", nil)
+		}
+		t.Exit("release failed", coalesceError)
 	}
 }
 

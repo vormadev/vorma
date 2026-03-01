@@ -1,7 +1,0 @@
-{
-	"ignorePatterns": [
-		"npm_dist",
-		"internal/site/frontend/src/vorma.gen",
-		"vormaclient/create/dist"
-	]
-}

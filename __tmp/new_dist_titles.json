@@ -1,0 +1,574 @@
+[
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"resolves loader paths from compiled internal exports"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links resolve hrefs through compiled dist runtime"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links resolve hrefs through compiled dist runtime"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links resolve hrefs through compiled dist runtime"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react/preact/solid typed addClientLoader helpers register client loaders"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"makeTypedAddClientLoader keeps the latest registration for duplicate patterns"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react/preact/solid links strip navigation-only props from rendered anchors"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet covers fallback, empty, custom/default error, and child-error branches"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"sets active error boundary from server error index and error export key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"replaces active error boundary when later navigations report a new boundary"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet covers fallback, empty, custom/default error, and child-error branches"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet covers fallback, empty, custom/default error, and child-error branches"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet initializes listeners once across remounts"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet initializes listeners once across remounts"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet initializes listeners once across remounts"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet defaults idx to 0 when idx is omitted"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet defaults idx to 0 when idx is omitted"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet defaults idx to 0 when idx is omitted"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react idx>0 outlet does not initialize root listeners"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact idx>0 outlet does not initialize root listeners"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid idx>0 outlet does not initialize root listeners"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react useLocation only updates on location events, not route events"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact location signal only updates on location events, not route events"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid location signal only updates on location events, not route events"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed loader/client-loader/router selectors update on route changes and ignore location events"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed loader/client-loader/router selectors update on route changes and ignore location events"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed loader/client-loader/router selectors update on route changes and ignore location events"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed pattern-based selectors stay fresh across route index changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed pattern-based selectors stay fresh across route index changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed pattern-based selectors stay fresh across route index changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react route-props hooks keep owner-consistent values on every transition tick"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact route-props hooks keep owner-consistent values on every transition tick"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid route-props hooks keep owner-consistent values on every transition tick"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react global selectors keep snapshot-coherent values on every transition tick"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact global selectors keep snapshot-coherent values on every transition tick"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid global selectors keep snapshot-coherent values on every transition tick"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react nested route-props loader data follows route-key remounts when component identity is reused"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact nested route-props loader data follows route-key remounts when component identity is reused"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid nested route-props loader data follows route-key remounts when component identity is reused"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react route-props ownership remains correct after a render-abort before commit"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet stays stable on data-only route updates while data hooks stay fresh"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet stays stable on data-only route updates while data signals stay fresh"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet stays stable on data-only route updates while data signals stay fresh"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cross-adapter route-props transition traces are parity-consistent"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cross-adapter global selector transition traces are parity-consistent"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cross-adapter nested route remount behavior is parity-consistent"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cross-adapter data-only updates preserve stable component mounts"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet preserves child instance until child module identity changes and ignores location-only updates"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet uses the freshest child component when route updates keep the same child key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react root outlet uses the freshest root component when route updates keep the same root key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react keeps parent instance and local parent input state when only child route changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react remounts child when child export key changes even if import URL stays the same"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet preserves child instance until child module identity changes and ignores location-only updates"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet uses the freshest child component when route updates keep the same child key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact root outlet uses the freshest root component when route updates keep the same root key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact keeps parent instance and local parent input state when only child route changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact remounts child when child export key changes even if import URL stays the same"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid remounts child when child export key changes even if import URL stays the same"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid keeps parent instance and local parent input state when only child route changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet preserves child instance until child module identity changes and ignores location-only updates"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet uses the freshest child component when route updates keep the same child key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid root outlet uses the freshest root component when route updates keep the same root key"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"loads route modules through publicPathPrefix and resolves export-key-selected components"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preserves active error boundary rendering across hash-only navigations"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links run intent prefetch after delay without committing navigation"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react links create prefetch behavior only for eligible internal http targets"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react links do not prefetch when target href is the current page"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react links retry prefetch after a current-page no-op once location changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"deduplicates same-data prefetches when only hash differs"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"deduplicates identical prefetches for the same href"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"aborts a hash-deduped shared prefetch when stop is called from either handler"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"aborts idle prefetch entries via same-data-target alias lookup"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cancels pending prefetch timer on hash-only click"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cancels pending prefetch timer on same-document hash removal click"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cancels pending prefetch timer on same-document no-op hash click"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"prevents default on same-document no-op prefetch clicks without hash"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cancels pending prefetch timer on encoding-equivalent hash click"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"runs beforeBegin callback before prefetch starts"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"recovers from beforeBegin prefetch callback failures and allows retry"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"reuses completed prefetch response on click without refetching"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"warms internal prefetch artifacts without committing page mutations"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"applies prefetched css only after navigation commit"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"does not prime prefetch module/css artifacts when response build id differs"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cancels pending prefetch timeout when stop is called"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"does not leak orphan timers when start is called multiple times before stop"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"clears pending prefetch timer even when timer id is zero"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"aborts in-flight prefetch when stop is called"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"does not abort upgraded navigation when prefetch handlers stop"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"upgrades same-data prefetch to navigation even when only hash differs"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"does not leak unhandled rejections when pure prefetch resolves to redirect"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"rejects serverDataPromise with AbortError for failed prefetch responses"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"supports click while prefetch is in-flight and runs render callbacks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"runs beforeBegin on direct click when no prefetch has started yet"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"drops completed prefetch cache when stop is called so later prefetches refetch"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"prefetch-only link intent does not emit loading status transitions"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links cancel pending intent prefetch on blur and allow a later fresh prefetch"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links keep pending intent prefetch timers active on pointerleave while touch modality is active"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links do not abort in-flight intent prefetch on pointerleave while touch modality is active"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links abort in-flight intent prefetch on pointerleave after switching back to fine pointer modality"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links drop stale settled prefetch work without unhandled rejections"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links cancel pending intent prefetch on blur and allow a later fresh prefetch"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links run intent prefetch after delay without committing navigation"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links with prefetch=none do not start prefetch work"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links with prefetch=none do not start prefetch work"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links with prefetch=none do not start prefetch work"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links run intent prefetch after delay without committing navigation"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links cancel pending intent prefetch on blur and allow a later fresh prefetch"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links do not intercept modified clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links prevent default and navigate for eligible internal clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links honor consumer onClick preventDefault and skip navigation"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links do not intercept non-primary button clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links handle text-node click targets inside internal anchors"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links handle hash-only same-document clicks without fetch"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links handle same-document hash-removal clicks without fetch"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links do not fetch for same-document no-op hash clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links prevent default and do not fetch for same-document no-op links without hash"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links do not fetch for same-document encoding-equivalent hash clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links do not intercept target=_blank clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links do not intercept modified clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links do not intercept modified clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links do not intercept target=_blank clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links do not intercept target=_blank clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preact typed links call beforeBegin on normal internal clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react typed links call beforeBegin on normal internal clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"solid typed links call beforeBegin on normal internal clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react links mark external hrefs and do not prevent default for external clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react links do not save scroll state for modifier-key same-document hash clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"react links do not treat cross-origin hash links as same-document hash changes"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"updates build ID before following redirects triggered by link clicks"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"cleans up stale link navigation outcomes when a newer navigation supersedes the click"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"does not leak unhandled rejections and clears navigating state when link fetch fails"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"rejects client-loader serverDataPromise with AbortError when scoped data is aborted before prefetch settles"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"contains client-loader failures without leaking unhandled rejections"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"ignores stale late navigation outcomes with client-loader failures after a newer navigation wins"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preserves authority across mixed prefetch, navigate, submit, and revalidate flows"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"aborts stale prefetch and revalidation work when a new user navigation starts"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"clearAll aborts in-flight prefetch and revalidation work, then returns idle"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"clearAll prevents late side effects from prefetches whose fetch ignores abort"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"preserves last-navigation authority across a seeded mixed operation sequence"
+	],
+	[
+		"typescript/vorma/black_box_tests/dist/index.test.ts",
+		"surfaces explicit terminal outcomes for settled submit operations"
+	]
+]

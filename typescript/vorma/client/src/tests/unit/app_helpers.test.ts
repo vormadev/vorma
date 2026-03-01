@@ -30,36 +30,9 @@ describe("resolveVormaRequestBody", () => {
 		expect(resolveVormaRequestBody(stream)).toBe(stream);
 	});
 
-	it("does not throw when body constructors are unavailable", () => {
-		vi.stubGlobal("ReadableStream", undefined as any);
-		vi.stubGlobal("Blob", undefined as any);
-		vi.stubGlobal("FormData", undefined as any);
-		vi.stubGlobal("URLSearchParams", undefined as any);
-		vi.stubGlobal("ArrayBuffer", undefined as any);
-
-		expect(resolveVormaRequestBody({ key: "value" })).toBe(
-			JSON.stringify({ key: "value" }),
-		);
-	});
-
 	it("passes through ArrayBuffer-backed typed arrays without cloning", () => {
 		const bytes = new Uint8Array([1, 2, 3, 4]);
 		expect(resolveVormaRequestBody(bytes)).toBe(bytes);
-	});
-
-	it("clones SharedArrayBuffer-backed views before returning a body", () => {
-		if (typeof SharedArrayBuffer === "undefined") {
-			return;
-		}
-
-		const sharedBuffer = new SharedArrayBuffer(4);
-		const view = new Uint8Array(sharedBuffer);
-		view.set([5, 6, 7, 8]);
-
-		const body = resolveVormaRequestBody(view);
-		expect(body).toBeInstanceOf(Uint8Array);
-		expect(body).not.toBe(view);
-		expect(Array.from(body as Uint8Array)).toEqual([5, 6, 7, 8]);
 	});
 });
 

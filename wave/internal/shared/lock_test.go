@@ -1,9 +1,9 @@
 package shared_test
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -59,9 +59,13 @@ func TestDevLock_AcquireRecoversStaleLockFile(t *testing.T) {
 	staticDir := t.TempDir()
 	lock := shared.NewDevLock(staticDir)
 
-	if err := os.WriteFile(lock.Path(), []byte("99999999"), 0o644); err != nil {
-		t.Fatalf("failed writing stale lock file: %v", err)
-	}
+	writeLeaseRecordForDevLockTest(
+		t,
+		lock.Path(),
+		"stale-owner",
+		os.Getpid(),
+		time.Now().UTC().Add(-10*time.Second),
+	)
 
 	if err := lock.Acquire(); err != nil {
 		t.Fatalf("expected stale lock recovery to acquire lock, got: %v", err)
@@ -72,8 +76,15 @@ func TestDevLock_AcquireRecoversStaleLockFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed reading lock file after acquire: %v", err)
 	}
-	if got := string(lockData); got != strconv.Itoa(os.Getpid()) {
-		t.Fatalf("lock file PID = %q, want %q", got, strconv.Itoa(os.Getpid()))
+
+	var leaseRecord struct {
+		PID int `json:"pid"`
+	}
+	if decodeError := json.Unmarshal(lockData, &leaseRecord); decodeError != nil {
+		t.Fatalf("failed decoding lock file json: %v", decodeError)
+	}
+	if leaseRecord.PID != os.Getpid() {
+		t.Fatalf("lock file pid = %d, want %d", leaseRecord.PID, os.Getpid())
 	}
 }
 
@@ -181,4 +192,32 @@ func TestDevLock_AtomicCreateAllowsOnlyOneConcurrentAcquire(t *testing.T) {
 
 	close(releaseChannel)
 	waitGroup.Wait()
+}
+
+func writeLeaseRecordForDevLockTest(
+	t *testing.T,
+	lockFilePath string,
+	ownerID string,
+	pid int,
+	heartbeatAt time.Time,
+) {
+	t.Helper()
+	leaseRecordBytes, encodeError := json.Marshal(struct {
+		Version               int    `json:"version"`
+		OwnerID               string `json:"ownerID"`
+		PID                   int    `json:"pid"`
+		LastHeartbeatUnixNano int64  `json:"lastHeartbeatUnixNano"`
+	}{
+		Version:               1,
+		OwnerID:               ownerID,
+		PID:                   pid,
+		LastHeartbeatUnixNano: heartbeatAt.UTC().UnixNano(),
+	})
+	if encodeError != nil {
+		t.Fatalf("encode lease record: %v", encodeError)
+	}
+	leaseRecordBytes = append(leaseRecordBytes, '\n')
+	if writeError := os.WriteFile(lockFilePath, leaseRecordBytes, 0o644); writeError != nil {
+		t.Fatalf("write lease record: %v", writeError)
+	}
 }

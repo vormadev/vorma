@@ -219,10 +219,10 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if !containsString(oldData.Deps, "vorma_out/client-dep-old.js") {
+	if !containsString(oldData.Deps, "/vorma_out/client-dep-old.js") {
 		t.Fatalf("old deps missing old client dep: %#v", oldData.Deps)
 	}
-	if !containsString(oldData.CSSBundles, "vorma_out/client-entry-old.css") {
+	if !containsString(oldData.CSSBundles, "/vorma_out/client-entry-old.css") {
 		t.Fatalf(
 			"old css bundles missing old client-entry css: %#v",
 			oldData.CSSBundles,
@@ -271,22 +271,22 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("decode new route data: %v", err)
 	}
 
-	if !containsString(newData.Deps, "vorma_out/client-dep-new.js") {
+	if !containsString(newData.Deps, "/vorma_out/client-dep-new.js") {
 		t.Fatalf("new deps missing new client dep: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "vorma_out/client-dep-old.js") {
+	if containsString(newData.Deps, "/vorma_out/client-dep-old.js") {
 		t.Fatalf(
 			"new deps should not include old client dep: %#v",
 			newData.Deps,
 		)
 	}
-	if !containsString(newData.CSSBundles, "vorma_out/client-entry-new.css") {
+	if !containsString(newData.CSSBundles, "/vorma_out/client-entry-new.css") {
 		t.Fatalf(
 			"new css bundles missing new client-entry css: %#v",
 			newData.CSSBundles,
 		)
 	}
-	if containsString(newData.CSSBundles, "vorma_out/client-entry-old.css") {
+	if containsString(newData.CSSBundles, "/vorma_out/client-entry-old.css") {
 		t.Fatalf(
 			"new css bundles should not include old client-entry css: %#v",
 			newData.CSSBundles,
@@ -360,10 +360,10 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if !containsString(oldData.Deps, "vorma_out/client-dep-old.js") {
+	if !containsString(oldData.Deps, "/vorma_out/client-dep-old.js") {
 		t.Fatalf("old deps missing old client dep: %#v", oldData.Deps)
 	}
-	if !containsString(oldData.CSSBundles, "vorma_out/client-entry-old.css") {
+	if !containsString(oldData.CSSBundles, "/vorma_out/client-entry-old.css") {
 		t.Fatalf(
 			"old css bundles missing old client-entry css: %#v",
 			oldData.CSSBundles,
@@ -412,13 +412,13 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
-	if containsString(newData.Deps, "vorma_out/client-dep-old.js") {
+	if containsString(newData.Deps, "/vorma_out/client-dep-old.js") {
 		t.Fatalf(
 			"new deps should not include old client dep: %#v",
 			newData.Deps,
 		)
 	}
-	if containsString(newData.CSSBundles, "vorma_out/client-entry-old.css") {
+	if containsString(newData.CSSBundles, "/vorma_out/client-entry-old.css") {
 		t.Fatalf(
 			"new css bundles should not include old client-entry css: %#v",
 			newData.CSSBundles,
@@ -949,7 +949,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, "vorma_out/chunk-old.js") {
+	if !containsString(oldData.Deps, "/vorma_out/chunk-old.js") {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -987,10 +987,10 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, "vorma_out/chunk-new.js") {
+	if !containsString(newData.Deps, "/vorma_out/chunk-new.js") {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "vorma_out/chunk-old.js") {
+	if containsString(newData.Deps, "/vorma_out/chunk-old.js") {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
 }
@@ -1064,7 +1064,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, "vorma_out/chunk-old.js") {
+	if !containsString(oldData.Deps, "/vorma_out/chunk-old.js") {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -1109,10 +1109,10 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, "vorma_out/chunk-new.js") {
+	if !containsString(newData.Deps, "/vorma_out/chunk-new.js") {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "vorma_out/chunk-old.js") {
+	if containsString(newData.Deps, "/vorma_out/chunk-old.js") {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
 }
@@ -1404,7 +1404,7 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.Deps, []string{"vorma_out/client-shared.js", "vorma_out/chunk-old.js"}; !slicesEqual(
+	if got, want := routeData.Deps, []string{"/vorma_out/client-shared.js", "/vorma_out/chunk-old.js"}; !slicesEqual(
 		got,
 		want,
 	) {
@@ -1412,19 +1412,19 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	}
 
 	wantCSSBundles := []string{
-		"vorma_out/client-old.css",
-		"vorma_out/chunk-old.css",
+		"/vorma_out/client-old.css",
+		"/vorma_out/chunk-old.css",
 	}
 	if got := routeData.CSSBundles; !slicesEqual(got, wantCSSBundles) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, wantCSSBundles)
 	}
-	if containsString(routeData.CSSBundles, "vorma_out/client-new.css") {
+	if containsString(routeData.CSSBundles, "/vorma_out/client-new.css") {
 		t.Fatalf(
 			"CSSBundles should not include new-build client CSS: %#v",
 			routeData.CSSBundles,
 		)
 	}
-	if containsString(routeData.CSSBundles, "vorma_out/chunk-new.css") {
+	if containsString(routeData.CSSBundles, "/vorma_out/chunk-new.css") {
 		t.Fatalf(
 			"CSSBundles should not include new-build route CSS: %#v",
 			routeData.CSSBundles,

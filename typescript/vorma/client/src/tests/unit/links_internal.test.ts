@@ -10,7 +10,10 @@ function createClickEvent(props: {
 	href: string;
 	target?: string;
 	ctrlKey?: boolean;
-}): { event: MouseEvent; anchor: HTMLAnchorElement } {
+}): {
+	event: MouseEvent;
+	anchor: HTMLAnchorElement;
+} {
 	const event = new MouseEvent("click", {
 		bubbles: true,
 		cancelable: true,

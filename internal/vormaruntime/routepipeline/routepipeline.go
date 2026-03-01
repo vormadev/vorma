@@ -64,16 +64,16 @@ type RouteDataCore struct {
 // RouteDataFinal is the final structure serialized to JSON for the client.
 type RouteDataFinal struct {
 	*RouteDataCore
-	Title      *htmlutil.Element   `json:"title,omitempty"`
-	Meta       []*htmlutil.Element `json:"metaHeadEls,omitempty"`
-	Rest       []*htmlutil.Element `json:"restHeadEls,omitempty"`
-	CSSBundles []string            `json:"cssBundles,omitempty"`
-	ViteDevURL string              `json:"viteDevURL,omitempty"`
+	Title       *htmlutil.Element   `json:"title,omitempty"`
+	MetaHeadEls []*htmlutil.Element `json:"metaHeadEls,omitempty"`
+	RestHeadEls []*htmlutil.Element `json:"restHeadEls,omitempty"`
+	CSSBundles  []string            `json:"cssBundles,omitempty"`
 }
 
 // RouteAssets contains resolved CSS bundles and head elements.
 type RouteAssets struct {
 	SortedAndPreEscapedHeadEls *headels.SortedAndPreEscapedHeadEls
+	Deps                       []string
 	CSSBundles                 []string
 	ViteDevURL                 string
 }
@@ -109,14 +109,62 @@ func WriteTerminalLoadersResponse(
 // shape returned by loaders endpoints.
 func BuildRouteDataFinal(
 	routeResult *RouteResult,
+	publicPathPrefix string,
 ) *RouteDataFinal {
+	resolvedImportURLs := cloneStringSlice(routeResult.Core.ImportURLs)
+	if !routeResult.IsDev {
+		resolvedImportURLs = resolveClientAssetPaths(
+			publicPathPrefix,
+			routeResult.Core.ImportURLs,
+		)
+	}
+
+	resolvedDeps := resolveClientAssetPaths(
+		publicPathPrefix,
+		routeResult.Core.Deps,
+	)
+	resolvedCSSBundles := resolveClientAssetPaths(
+		publicPathPrefix,
+		routeResult.CSSBundles,
+	)
+	var title *htmlutil.Element
+	var metaHeadEls []*htmlutil.Element
+	var restHeadEls []*htmlutil.Element
+	if routeResult.Assets != nil {
+		title = routeResult.Assets.SortedAndPreEscapedHeadEls.Title
+		metaHeadEls = routeResult.Assets.SortedAndPreEscapedHeadEls.Meta
+		restHeadEls = routeResult.Assets.SortedAndPreEscapedHeadEls.Rest
+		resolvedDeps = cloneStringSlice(routeResult.Assets.Deps)
+		resolvedCSSBundles = cloneStringSlice(routeResult.Assets.CSSBundles)
+	}
+
+	normalizedParams := routeResult.Core.Params
+	if normalizedParams == nil {
+		normalizedParams = mux.Params{}
+	}
+	normalizedSplatValues := routeResult.Core.SplatValues
+	if normalizedSplatValues == nil {
+		normalizedSplatValues = []string{}
+	}
+
 	return &RouteDataFinal{
-		RouteDataCore: routeResult.Core,
-		Title:         routeResult.Assets.SortedAndPreEscapedHeadEls.Title,
-		Meta:          routeResult.Assets.SortedAndPreEscapedHeadEls.Meta,
-		Rest:          routeResult.Assets.SortedAndPreEscapedHeadEls.Rest,
-		CSSBundles:    routeResult.Assets.CSSBundles,
-		ViteDevURL:    routeResult.Assets.ViteDevURL,
+		RouteDataCore: &RouteDataCore{
+			OutermostServerError:    routeResult.Core.OutermostServerError,
+			OutermostServerErrorIdx: routeResult.Core.OutermostServerErrorIdx,
+			ErrorExportKeys:         cloneStringSlice(routeResult.Core.ErrorExportKeys),
+			MatchedPatterns:         cloneStringSlice(routeResult.Core.MatchedPatterns),
+			LoadersData:             cloneAnySlice(routeResult.Core.LoadersData),
+			ImportURLs:              resolvedImportURLs,
+			ExportKeys:              cloneStringSlice(routeResult.Core.ExportKeys),
+			HasRootData:             routeResult.Core.HasRootData,
+			Params:                  normalizedParams,
+			SplatValues:             normalizedSplatValues,
+			Deps:                    resolvedDeps,
+		},
+		Title:       title,
+		MetaHeadEls: metaHeadEls,
+		RestHeadEls: restHeadEls,
+		CSSBundles:  resolvedCSSBundles,
 	}
 }
 
@@ -637,7 +685,14 @@ func BuildRouteAssets(input BuildRouteAssetsInput) (*RouteAssets, error) {
 		return nil, fmt.Errorf("head elements sorting callback is nil")
 	}
 
-	cssBundles := input.RouteResult.CSSBundles
+	resolvedDeps := resolveClientAssetPaths(
+		input.PublicPathPrefix,
+		input.RouteResult.Core.Deps,
+	)
+	resolvedCSSBundles := resolveClientAssetPaths(
+		input.PublicPathPrefix,
+		input.RouteResult.CSSBundles,
+	)
 	combinedHeadEls := combineDefaultAndRouteHeadElements(
 		input.DefaultHeadElements,
 		input.RouteResult.HeadElements,
@@ -646,16 +701,16 @@ func BuildRouteAssets(input BuildRouteAssetsInput) (*RouteAssets, error) {
 	if shouldAppendProductionAssetLinks(input.RouteResult.IsDev, input.IsJSON) {
 		combinedHeadEls = appendProductionAssetLinks(
 			combinedHeadEls,
-			input.PublicPathPrefix,
-			input.RouteResult.Core.Deps,
-			cssBundles,
+			resolvedDeps,
+			resolvedCSSBundles,
 		)
 	}
 
 	headEls := input.ToSortedAndPreEscapedHeadElsFn(combinedHeadEls)
 	return &RouteAssets{
 		SortedAndPreEscapedHeadEls: headEls,
-		CSSBundles:                 cssBundles,
+		Deps:                       resolvedDeps,
+		CSSBundles:                 resolvedCSSBundles,
 		ViteDevURL: GetViteDevURLForMode(
 			input.RouteResult.IsDev,
 		),
@@ -682,7 +737,6 @@ func shouldAppendProductionAssetLinks(isDev bool, isJSON bool) bool {
 
 func appendProductionAssetLinks(
 	headElements []*htmlutil.Element,
-	publicPathPrefix string,
 	deps []string,
 	cssBundles []string,
 ) []*htmlutil.Element {
@@ -695,7 +749,7 @@ func appendProductionAssetLinks(
 			Tag: "link",
 			AttributesKnownSafe: map[string]string{
 				"rel":  "modulepreload",
-				"href": publicPathPrefix + dep,
+				"href": dep,
 			},
 			SelfClosing: true,
 		})
@@ -706,7 +760,7 @@ func appendProductionAssetLinks(
 			Tag: "link",
 			AttributesKnownSafe: map[string]string{
 				"rel":  "stylesheet",
-				"href": publicPathPrefix + cssBundle,
+				"href": cssBundle,
 			},
 			Attributes: map[string]string{
 				"data-vorma-css-bundle": cssBundle,
@@ -787,4 +841,59 @@ func GetCSSBundles(
 	}
 
 	return cssBundles
+}
+
+func resolveClientAssetPaths(
+	publicPathPrefix string,
+	assetPaths []string,
+) []string {
+	if assetPaths == nil {
+		return nil
+	}
+	resolvedAssetPaths := make([]string, 0, len(assetPaths))
+	for _, assetPath := range assetPaths {
+		resolvedAssetPaths = append(
+			resolvedAssetPaths,
+			resolveClientAssetPath(publicPathPrefix, assetPath),
+		)
+	}
+	return resolvedAssetPaths
+}
+
+func resolveClientAssetPath(
+	publicPathPrefix string,
+	assetPath string,
+) string {
+	trimmedAssetPath := strings.TrimSpace(assetPath)
+	if trimmedAssetPath == "" {
+		return ""
+	}
+	trimmedAssetPath = strings.TrimPrefix(trimmedAssetPath, "/")
+
+	trimmedPublicPathPrefix := strings.TrimSpace(publicPathPrefix)
+	switch trimmedPublicPathPrefix {
+	case "", "/":
+		return "/" + trimmedAssetPath
+	}
+
+	trimmedPublicPathPrefix = "/" + strings.Trim(trimmedPublicPathPrefix, "/")
+	return trimmedPublicPathPrefix + "/" + trimmedAssetPath
+}
+
+func cloneStringSlice(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
+}
+
+func cloneAnySlice(values []any) []any {
+	if values == nil {
+		return nil
+	}
+	out := make([]any, len(values))
+	copy(out, values)
+	return out
 }

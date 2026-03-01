@@ -39,6 +39,10 @@
 			"import": "./npm_dist/typescript/vorma/client/buildtime.js",
 			"types": "./npm_dist/typescript/vorma/client/buildtime.d.ts"
 		},
+		"./testing": {
+			"import": "./npm_dist/typescript/vorma/client/testing.js",
+			"types": "./npm_dist/typescript/vorma/client/testing.d.ts"
+		},
 		"./react": {
 			"import": "./npm_dist/typescript/vorma/ui-adapters/react/index.js",
 			"types": "./npm_dist/typescript/vorma/ui-adapters/react/index.d.ts"
@@ -95,6 +99,10 @@
 			"import": "./npm_dist/typescript/kit/matcher/find_nested_matches.js",
 			"types": "./npm_dist/typescript/kit/matcher/find_nested_matches.d.ts"
 		},
+		"./kit/matcher/utils": {
+			"import": "./npm_dist/typescript/kit/matcher/utils.js",
+			"types": "./npm_dist/typescript/kit/matcher/utils.d.ts"
+		},
 		"./kit/theme": {
 			"import": "./npm_dist/typescript/kit/theme/theme.js",
 			"types": "./npm_dist/typescript/kit/theme/theme.d.ts"
@@ -130,19 +138,15 @@
 		"esbuild-plugin-solid": "^0.6.0",
 		"history": "5.3.0",
 		"jsdom": "^26.1.0",
+		"oxfmt": "^0.35.0",
 		"oxlint": "^1.50.0",
+		"oxlint-tsgolint": "^0.15.0",
 		"preact": "^10.28.4",
-		"prettier": "^3.8.1",
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",
 		"solid-js": "^1.9.11",
 		"typescript": "^5.9.3",
 		"vite": "npm:rolldown-vite@latest",
 		"vitest": "^4.0.18"
-	},
-	"prettier": {
-		"useTabs": true,
-		"tabWidth": 4,
-		"proseWrap": "always"
 	}
 }

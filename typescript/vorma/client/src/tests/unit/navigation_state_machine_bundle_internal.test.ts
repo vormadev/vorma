@@ -1,9 +1,9 @@
-// @vitest-environment node
-import { build } from "esbuild";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+// @vitest-environment node
+import { build } from "esbuild";
 import { describe, expect, it } from "vitest";
 
 const DEBUG_ONLY_TOKENS = [

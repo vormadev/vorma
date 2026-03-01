@@ -18,11 +18,15 @@ import (
 	"sync"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
+	"github.com/vormadev/vorma/internal/coalescepath"
 	"github.com/vormadev/vorma/kit/executil"
+	"github.com/vormadev/vorma/lab/coalescecmd"
 	"golang.org/x/sync/errgroup"
 )
 
-const buildCacheVersion = 2
+const (
+	buildCacheVersion = 2
+)
 
 var targetDir = "./npm_dist"
 var buildCachePath = "./npm_dist/.buildts_cache.json"
@@ -46,8 +50,22 @@ var buildOutputPaths = []string{
 var tscRunMutex sync.Mutex
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatalf("failed to build TypeScript packages: %v", err)
+	coalesceError := coalescecmd.Run(coalescecmd.Options{
+		Key:                    coalescepath.BuildTSCommandKey,
+		FailIfRunning:          coalescepath.BuildTSFailIfRunningKeys,
+		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
+		Func: func() error {
+			if err := run(); err != nil {
+				return fmt.Errorf(
+					"failed to build TypeScript packages: %w",
+					err,
+				)
+			}
+			return nil
+		},
+	})
+	if coalesceError != nil {
+		log.Fatalf("%v", coalesceError)
 	}
 }
 
@@ -260,6 +278,7 @@ func buildKit() error {
 			"./typescript/kit/matcher/register.ts",
 			"./typescript/kit/matcher/find_best_match.ts",
 			"./typescript/kit/matcher/find_nested_matches.ts",
+			"./typescript/kit/matcher/utils.ts",
 			"./typescript/kit/theme/theme.ts",
 			"./typescript/kit/url/url.ts",
 		},
@@ -289,6 +308,7 @@ func buildClient() error {
 			"./typescript/vorma/client/index.ts",
 			"./typescript/vorma/client/internal.ts",
 			"./typescript/vorma/client/buildtime.ts",
+			"./typescript/vorma/client/testing.ts",
 		},
 		External: []string{
 			"vorma",

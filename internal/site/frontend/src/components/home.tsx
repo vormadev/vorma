@@ -33,15 +33,15 @@ export function Home(_props: RouteProps<"/_index">) {
 
 	return (
 		<>
-			<div class="flex flex-col gap-2 sm:gap-1 mt-4">
+			<div class="mt-4 flex flex-col gap-2 sm:gap-1">
 				<h2 class="big-heading">
 					The Golang metaframework, powered by Vite.
 				</h2>
 			</div>
 
-			<div class="flex gap-3 flex-wrap mb-6">
+			<div class="mb-6 flex flex-wrap gap-3">
 				<a
-					class="font-medium bg-(--fg) py-0.5 px-1.5 text-(--bg) text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
 					href="https://github.com/vormadev/vorma"
 					target="_blank"
 					rel="noreferrer"
@@ -50,7 +50,7 @@ export function Home(_props: RouteProps<"/_index">) {
 				</a>
 
 				<a
-					class="font-medium bg-(--fg) py-0.5 px-1.5 text-(--bg) text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
 					href="https://pkg.go.dev/github.com/vormadev/vorma"
 					target="_blank"
 					rel="noreferrer"
@@ -59,16 +59,16 @@ export function Home(_props: RouteProps<"/_index">) {
 				</a>
 
 				<a
-					class="font-medium bg-(--fg) py-0.5 px-1.5 text-(--bg) text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
-					href="https://www.npmjs.com/package/vorma"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
+					href="https://npmx.dev/package/vorma"
 					target="_blank"
 					rel="noreferrer"
 				>
-					📦 npmjs.com
+					📦 npmx.dev
 				</a>
 
 				<a
-					class="font-medium bg-(--fg) py-0.5 px-1.5 text-(--bg) text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
 					href="https://x.com/vormadev"
 					target="_blank"
 					rel="noreferrer"

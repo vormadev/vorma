@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { findNestedMatches } from "./find_nested_matches.ts";
-import {
-	createPatternRegistry,
-	registerPattern,
-} from "./register.ts";
+import { createPatternRegistry, registerPattern } from "./register.ts";
 
 describe("TestFindAllMatchesAdditionalScenarios", () => {
 	const testCases = [

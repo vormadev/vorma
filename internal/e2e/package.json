@@ -2,15 +2,15 @@
 	"name": "vorma-wave-e2e",
 	"private": true,
 	"type": "module",
-	"devDependencies": {
-		"@playwright/test": "^1.58.2",
-		"@types/node": "^22.19.11",
-		"typescript": "^5.9.3"
-	},
 	"scripts": {
 		"test": "playwright test --config ./playwright.config.ts",
 		"test:dev": "VORMA_E2E_MODE=dev playwright test --config ./playwright.config.ts",
 		"test:prod": "VORMA_E2E_MODE=prod playwright test --config ./playwright.config.ts",
 		"install-browsers": "playwright install chromium"
+	},
+	"devDependencies": {
+		"@playwright/test": "^1.58.2",
+		"@types/node": "^22.19.11",
+		"typescript": "^5.9.3"
 	}
 }

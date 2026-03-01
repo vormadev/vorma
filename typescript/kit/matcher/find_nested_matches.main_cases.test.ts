@@ -1,6 +1,4 @@
 import { describe, it } from "vitest";
-import { findNestedMatches } from "./find_nested_matches.ts";
-import { createPatternRegistry, registerPattern } from "./register.ts";
 import {
 	NestedPatterns,
 	NestedScenarios,
@@ -9,6 +7,8 @@ import {
 	equalSplat,
 	modifyPatternsToOpts,
 } from "./find_nested_matches.test.helpers.ts";
+import { findNestedMatches } from "./find_nested_matches.ts";
+import { createPatternRegistry, registerPattern } from "./register.ts";
 
 describe("TestFindAllMatches", () => {
 	for (const opts of differentOptsToTest) {

@@ -429,6 +429,9 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 	core := &RouteDataCore{
 		MatchedPatterns: []string{"/docs"},
 		LoadersData:     []any{"data"},
+		ImportURLs:      []string{"vorma_out/routes/docs.js"},
+		ExportKeys:      []string{"default"},
+		Deps:            []string{"vorma_out/chunk-layout.js"},
 	}
 	titleEl := &htmlutil.Element{Tag: "title", TextContent: "Docs"}
 	metaEl := &htmlutil.Element{
@@ -450,41 +453,54 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 			Meta:  []*htmlutil.Element{metaEl},
 			Rest:  []*htmlutil.Element{restEl},
 		},
-		CSSBundles: []string{"/docs.css"},
-		ViteDevURL: "http://localhost:5173",
+		Deps:       []string{"/public/vorma_out/chunk-layout.js"},
+		CSSBundles: []string{"/public/vorma_out/docs.css"},
 	}
 
-	routeData := BuildRouteDataFinal(&RouteResult{
-		Core:   core,
-		Assets: assets,
-	})
+	routeData := BuildRouteDataFinal(
+		&RouteResult{
+			Core:   core,
+			Assets: assets,
+			IsDev:  false,
+		},
+		"/public/",
+	)
 
-	if routeData.RouteDataCore != core {
-		t.Fatal("route data core should point to planned route core")
+	if routeData.RouteDataCore == core {
+		t.Fatal("route data core should be normalized copy, not original pointer")
 	}
 	if routeData.Title != titleEl {
 		t.Fatal("title should be mapped from route assets")
 	}
-	if got, want := routeData.Meta, []*htmlutil.Element{metaEl}; !reflect.DeepEqual(
+	if got, want := routeData.MetaHeadEls, []*htmlutil.Element{metaEl}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
-		t.Fatalf("Meta = %#v, want %#v", got, want)
+		t.Fatalf("MetaHeadEls = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.Rest, []*htmlutil.Element{restEl}; !reflect.DeepEqual(
+	if got, want := routeData.RestHeadEls, []*htmlutil.Element{restEl}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
-		t.Fatalf("Rest = %#v, want %#v", got, want)
+		t.Fatalf("RestHeadEls = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.CSSBundles, []string{"/docs.css"}; !reflect.DeepEqual(
+	if got, want := routeData.RouteDataCore.ImportURLs, []string{"/public/vorma_out/routes/docs.js"}; !reflect.DeepEqual(
+		got,
+		want,
+	) {
+		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
+	}
+	if got, want := routeData.RouteDataCore.Deps, []string{"/public/vorma_out/chunk-layout.js"}; !reflect.DeepEqual(
+		got,
+		want,
+	) {
+		t.Fatalf("Deps = %#v, want %#v", got, want)
+	}
+	if got, want := routeData.CSSBundles, []string{"/public/vorma_out/docs.css"}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
-	}
-	if got, want := routeData.ViteDevURL, "http://localhost:5173"; got != want {
-		t.Fatalf("ViteDevURL = %q, want %q", got, want)
 	}
 }
 
@@ -534,6 +550,12 @@ func TestWriteLoadersJSONResponse(t *testing.T) {
 		if _, exists := output["matchedPatterns"]; !exists {
 			t.Fatalf(
 				"expected matchedPatterns in JSON payload, got %#v",
+				output,
+			)
+		}
+		if _, exists := output["viteDevURL"]; exists {
+			t.Fatalf(
+				"expected viteDevURL to be omitted from route-data JSON payload, got %#v",
 				output,
 			)
 		}
@@ -817,7 +839,16 @@ func TestBuildRouteAssets(t *testing.T) {
 			if assets.SortedAndPreEscapedHeadEls != callbackResult {
 				t.Fatal("expected route assets to use callback sorting output")
 			}
-			if got, want := assets.CSSBundles, []string{"vorma_out/chunk-items.css"}; !reflect.DeepEqual(
+			if got, want := assets.Deps, []string{
+				"/public/vorma_out/chunk-layout.js",
+				"/public/vorma_out/chunk-items.js",
+			}; !reflect.DeepEqual(
+				got,
+				want,
+			) {
+				t.Fatalf("Deps = %#v, want %#v", got, want)
+			}
+			if got, want := assets.CSSBundles, []string{"/public/vorma_out/chunk-items.css"}; !reflect.DeepEqual(
 				got,
 				want,
 			) {
@@ -853,7 +884,7 @@ func TestBuildRouteAssets(t *testing.T) {
 			if got, want := callbackInput[4].AttributesKnownSafe["href"], "/public/vorma_out/chunk-items.css"; got != want {
 				t.Fatalf("stylesheet href = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[4].Attributes["data-vorma-css-bundle"], "vorma_out/chunk-items.css"; got != want {
+			if got, want := callbackInput[4].Attributes["data-vorma-css-bundle"], "/public/vorma_out/chunk-items.css"; got != want {
 				t.Fatalf("data-vorma-css-bundle = %q, want %q", got, want)
 			}
 		},

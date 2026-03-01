@@ -74,7 +74,10 @@ func (v *Vorma) LoadersHandler() mux.TasksCtxRequirerFunc {
 					return
 				}
 
-				routeData := routepipeline.BuildRouteDataFinal(routeResult)
+				routeData := routepipeline.BuildRouteDataFinal(
+					routeResult,
+					v.Wave.PublicPathPrefix(),
+				)
 
 				routepipeline.EnsureLoadersCacheControlHeader(w, res)
 
@@ -222,9 +225,7 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 				RouteManifestFile: routeResult.RouteManifestFileSnapshot,
 			},
 			SSRRouteData: rendering.SSRRouteData{
-				ViteDevURL: routeData.ViteDevURL,
-				CSSBundles: routeData.CSSBundles,
-
+				ViteDevURL:              routeResult.Assets.ViteDevURL,
 				OutermostServerError:    routeData.RouteDataCore.OutermostServerError,
 				OutermostServerErrorIdx: routeData.RouteDataCore.OutermostServerErrorIdx,
 				ErrorExportKeys:         routeData.RouteDataCore.ErrorExportKeys,
@@ -235,7 +236,6 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 				HasRootData:             routeData.RouteDataCore.HasRootData,
 				Params:                  routeData.RouteDataCore.Params,
 				SplatValues:             routeData.RouteDataCore.SplatValues,
-				Deps:                    routeData.RouteDataCore.Deps,
 			},
 			RootTemplateData: rootTemplateData,
 

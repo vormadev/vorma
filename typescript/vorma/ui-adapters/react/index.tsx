@@ -1,10 +1,18 @@
-import type { ComponentProps, ComponentType, JSX, MouseEvent } from "react";
+/// <reference types="vite/client" />
+
 import {
 	memo,
 	useLayoutEffect,
 	useMemo,
 	useRef,
 	useSyncExternalStore,
+	type ComponentProps,
+	type ComponentType,
+	type FocusEvent,
+	type JSX,
+	type MouseEvent,
+	type PointerEvent,
+	type TouchEvent,
 } from "react";
 import type {
 	ExtractApp,
@@ -15,211 +23,133 @@ import type {
 	VormaRouteGeneric,
 	VormaRoutePropsGeneric,
 } from "vorma/client";
-import type {
-	RouteOutletStoreState,
-	TypedAdapterLinkDefaultProps,
-	TypedAdapterLinkProps,
-	VormaLinkPropsBase,
-} from "vorma/client/__internal";
 import {
-	buildInitialRouteOutletStoreState,
 	buildNavigationLinkAnchorRenderProps,
+	buildInitialRouteOutletStoreState,
 	buildTypedAdapterRouteComponentMountProps,
 	createRouteOutletAdapterSyncHost,
 	createTypedAdapterLinkFactory,
 	createTypedAdapterValueHookFactories,
 	renderRouteOutletAdapterRenderModel,
 	resolveRouteOutletAdapterRenderModel,
+	type RouteOutletStoreState,
+	type TypedAdapterLinkDefaultProps,
+	type TypedAdapterLinkProps,
+	type VormaLinkPropsBase,
 } from "vorma/client/__internal";
+
+/////////////////////////////////////////////////////////////////////
+/////// Store
+/////////////////////////////////////////////////////////////////////
+
+type RouteOutletStoreListener = () => void;
+
+let routeOutletStoreState: RouteOutletStoreState | undefined;
+const routeOutletStoreListeners = new Set<RouteOutletStoreListener>();
+
+function getRouteOutletStoreStateOrInitialize(): RouteOutletStoreState {
+	if (routeOutletStoreState !== undefined) {
+		return routeOutletStoreState;
+	}
+	routeOutletStoreState = buildInitialRouteOutletStoreState();
+	return routeOutletStoreState;
+}
+
+function applyNextRouteOutletStoreState(props: {
+	nextStoreState: RouteOutletStoreState;
+}): void {
+	if (props.nextStoreState === getRouteOutletStoreStateOrInitialize()) {
+		return;
+	}
+	routeOutletStoreState = props.nextStoreState;
+	routeOutletStoreListeners.forEach((listener) => {
+		listener();
+	});
+}
+
+function subscribeToRouteOutletStore(
+	listener: RouteOutletStoreListener,
+): () => void {
+	routeOutletStoreListeners.add(listener);
+	return () => {
+		routeOutletStoreListeners.delete(listener);
+	};
+}
+
+function useRouteOutletStoreSelector<Value>(props: {
+	selectValue: (storeState: RouteOutletStoreState) => Value;
+}): Value {
+	return useSyncExternalStore(
+		subscribeToRouteOutletStore,
+		() => props.selectValue(getRouteOutletStoreStateOrInitialize()),
+		() => props.selectValue(getRouteOutletStoreStateOrInitialize()),
+	);
+}
+
+const routeOutletAdapterSyncHost = createRouteOutletAdapterSyncHost({
+	getCurrentStoreState: getRouteOutletStoreStateOrInitialize,
+	applyNextStoreState: (nextStoreState) => {
+		applyNextRouteOutletStoreState({
+			nextStoreState,
+		});
+	},
+});
+
+function useMatchedPatterns(): string[] {
+	return useRouteOutletStoreSelector({
+		selectValue: (storeState) =>
+			storeState.routeOutletBranchInputState.matchedPatterns,
+	});
+}
+
+export function useLoadersData(): unknown[] {
+	return useRouteOutletStoreSelector({
+		selectValue: (storeState) => storeState.navigation.loadersData,
+	});
+}
+
+export function useClientLoadersData(): unknown[] {
+	return useRouteOutletStoreSelector({
+		selectValue: (storeState) => storeState.navigation.clientLoadersData,
+	});
+}
+
+function useRouterDataFromStore() {
+	return useRouteOutletStoreSelector({
+		selectValue: (storeState) => storeState.navigation.routerData,
+	});
+}
+
+export function useRouterData() {
+	return useRouterDataFromStore();
+}
+
+export function useLocation() {
+	return useRouteOutletStoreSelector({
+		selectValue: (storeState) => storeState.location,
+	});
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Typed Value Hooks
+/////////////////////////////////////////////////////////////////////
 
 export type VormaRouteProps<
 	App extends VormaAppBase = any,
-	Pattern extends VormaLoaderPattern<App> = string,
+	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = VormaRoutePropsGeneric<JSX.Element, App, Pattern>;
 
 export type VormaRoute<
 	App extends VormaAppBase = any,
-	Pattern extends VormaLoaderPattern<App> = string,
+	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
 > = VormaRouteGeneric<JSX.Element, App, Pattern>;
-
-/////////////////////////////////////////////////////////////////////
-/////// STORE
-/////////////////////////////////////////////////////////////////////
-
-let state = buildInitialRouteOutletStoreState();
-const listeners = new Set<() => void>();
-
-const store = {
-	getSnapshot: (): RouteOutletStoreState => state,
-	subscribe(listener: () => void): () => void {
-		listeners.add(listener);
-		return () => {
-			listeners.delete(listener);
-		};
-	},
-	setState(
-		updater: (prev: RouteOutletStoreState) => RouteOutletStoreState,
-	): void {
-		const nextState = updater(state);
-		if (nextState !== state) {
-			state = nextState;
-			listeners.forEach((listener) => {
-				listener();
-			});
-		}
-	},
-};
-
-function useStoreSelector<T>(selector: (state: RouteOutletStoreState) => T): T {
-	return useSyncExternalStore(
-		store.subscribe,
-		() => selector(store.getSnapshot()),
-		() => selector(store.getSnapshot()),
-	);
-}
-
-export function useLoadersData(): any {
-	return useStoreSelector((storeState) => storeState.navigation.loadersData);
-}
-
-export function useClientLoadersData(): any {
-	return useStoreSelector(
-		(storeState) => storeState.navigation.clientLoadersData,
-	);
-}
-
-export function useRouterData() {
-	return useStoreSelector((storeState) => storeState.navigation.routerData);
-}
-
-export function useLocation() {
-	return useStoreSelector((storeState) => storeState.location);
-}
-
-const routeOutletAdapterSyncHost = createRouteOutletAdapterSyncHost({
-	getCurrentStoreState: store.getSnapshot,
-	applyNextStoreState: (nextStoreState) => {
-		store.setState(() => nextStoreState);
-	},
-});
-
-/////////////////////////////////////////////////////////////////////
-/////// COMPONENT
-/////////////////////////////////////////////////////////////////////
-
-type VormaOutletProps = {
-	idx: number;
-	Outlet: (localProps: Record<string, any> | undefined) => JSX.Element;
-};
-
-type VormaErrorBoundaryProps = {
-	error: unknown;
-};
-
-type VormaRouteComponentMountProps = {
-	CurrentComp: ComponentType<VormaOutletProps>;
-	idx: number;
-	matchedPattern: string;
-	Outlet: (localProps: Record<string, any> | undefined) => JSX.Element;
-};
-
-function VormaRouteComponentMount(
-	props: VormaRouteComponentMountProps,
-): JSX.Element {
-	const typedAdapterRouteMountProps = useMemo(() => {
-		return buildTypedAdapterRouteComponentMountProps({
-			routePropsIndex: props.idx,
-			matchedPattern: props.matchedPattern,
-		});
-	}, [props.idx, props.matchedPattern]);
-
-	return (
-		<props.CurrentComp
-			idx={props.idx}
-			Outlet={props.Outlet}
-			{...typedAdapterRouteMountProps}
-		/>
-	);
-}
-
-export function VormaRootOutlet(props: { idx?: number }): JSX.Element {
-	const idx = props.idx ?? 0;
-	const passthroughPropsRef = useRef(props);
-	passthroughPropsRef.current = props;
-
-	useLayoutEffect(() => {
-		routeOutletAdapterSyncHost.syncRootOutletMount({
-			idx,
-		});
-	}, [idx]);
-
-	const routeOutletBranchInputState = useStoreSelector(
-		(storeState) => storeState.routeOutletBranchInputState,
-	);
-	const outermostErrorFromStore = useStoreSelector(
-		(storeState) => storeState.navigation.outermostError,
-	);
-	const routeOutletRenderModel = resolveRouteOutletAdapterRenderModel({
-		routeOutletBranchInputState,
-		outermostError: outermostErrorFromStore,
-		idx,
-	});
-
-	const Outlet = useMemo(() => {
-		return (localProps: Record<string, any> | undefined) => {
-			return (
-				<VormaRootOutlet
-					{...passthroughPropsRef.current}
-					{...localProps}
-					idx={idx + 1}
-				/>
-			);
-		};
-	}, [idx, routeOutletRenderModel.nextRouteKey]);
-
-	return renderRouteOutletAdapterRenderModel<JSX.Element>({
-		routeOutletRenderModel,
-		renderErrorWithBoundary: ({ errorComponent, outermostError }) => {
-			const ErrorComp =
-				errorComponent as ComponentType<VormaErrorBoundaryProps>;
-			return <ErrorComp error={outermostError} />;
-		},
-		renderErrorWithoutBoundary: ({ outermostError }) => {
-			return <>{`Error: ${outermostError || "unknown"}`}</>;
-		},
-		renderComponent: ({
-			currentComponent,
-			currentRouteKey,
-			matchedPattern,
-		}) => {
-			const CurrentComp =
-				currentComponent as ComponentType<VormaOutletProps>;
-			return (
-				<VormaRouteComponentMount
-					key={currentRouteKey}
-					CurrentComp={CurrentComp}
-					idx={idx}
-					matchedPattern={matchedPattern}
-					Outlet={Outlet}
-				/>
-			);
-		},
-		renderMissingComponent: () => <></>,
-		renderFallback: ({ nextRouteKey }) => <Outlet key={nextRouteKey} />,
-		renderEmpty: () => <></>,
-	});
-}
-
-/////////////////////////////////////////////////////////////////////
-/////// TYPED HOOKS
-/////////////////////////////////////////////////////////////////////
 
 export function makeTypedUseRouterData<C extends VormaAppConfig>(
 	vormaAppConfig: C,
 ) {
 	void vormaAppConfig;
 	type App = ExtractApp<C>;
-	return useRouterData as UseRouterDataFunction<App, false>;
+	return useRouterDataFromStore as UseRouterDataFunction<App, false>;
 }
 
 function createReactTypedAdapterValueHookFactories<
@@ -227,13 +157,10 @@ function createReactTypedAdapterValueHookFactories<
 >() {
 	return createTypedAdapterValueHookFactories<App>({
 		useLoadersData,
-		useMatchedPatterns: () => useRouterData().matchedPatterns,
+		useMatchedPatterns: useMatchedPatterns,
 		useClientLoadersData,
-		useMemoizedPatternLoaderData: ({
-			resolvePatternLoaderData,
-			dependencies,
-		}) => {
-			return useMemo(resolvePatternLoaderData, dependencies);
+		useMemoizedPatternLoaderData: (props) => {
+			return useMemo(props.resolvePatternLoaderData, props.dependencies);
 		},
 	});
 }
@@ -263,21 +190,23 @@ export function makeTypedAddClientLoader<C extends VormaAppConfig>(
 }
 
 /////////////////////////////////////////////////////////////////////
-/////// LINK APIs
+/////// Link
 /////////////////////////////////////////////////////////////////////
 
-export function VormaLink(
-	props: ComponentProps<"a"> &
-		VormaLinkPropsBase<
-			MouseEvent<HTMLAnchorElement, globalThis.MouseEvent>
-		>,
-) {
-	const anchorRenderProps = buildNavigationLinkAnchorRenderProps(props);
+type ReactLinkEvent =
+	| MouseEvent<HTMLAnchorElement, globalThis.MouseEvent>
+	| PointerEvent<HTMLAnchorElement>
+	| FocusEvent<HTMLAnchorElement>
+	| TouchEvent<HTMLAnchorElement>;
 
+export function VormaLink(
+	linkProps: ComponentProps<"a"> & VormaLinkPropsBase<ReactLinkEvent>,
+) {
+	const anchorRenderProps = buildNavigationLinkAnchorRenderProps(linkProps);
 	return (
 		<a
 			data-external={anchorRenderProps.dataExternal}
-			{...(anchorRenderProps.safeAnchorProps as any)}
+			{...(anchorRenderProps.safeAnchorProps as ComponentProps<"a">)}
 			onPointerEnter={anchorRenderProps.onPointerEnter}
 			onFocus={anchorRenderProps.onFocus}
 			onPointerLeave={anchorRenderProps.onPointerLeave}
@@ -285,58 +214,156 @@ export function VormaLink(
 			onTouchCancel={anchorRenderProps.onTouchCancel}
 			onClick={anchorRenderProps.onClick}
 		>
-			{props.children}
+			{linkProps.children}
 		</a>
 	);
 }
 
-type TypedVormaLinkProps<
+type ReactTypedLinkProps<
 	App extends VormaAppBase,
 	Pattern extends VormaLoaderPattern<App> = VormaLoaderPattern<App>,
-> = TypedAdapterLinkProps<
-	App,
-	Pattern,
-	ComponentProps<"a">,
-	MouseEvent<HTMLAnchorElement, globalThis.MouseEvent>
->;
+> = TypedAdapterLinkProps<App, Pattern, ComponentProps<"a">, ReactLinkEvent>;
 
 export function makeTypedLink<C extends VormaAppConfig>(
 	vormaAppConfig: C,
 	defaultProps?: TypedAdapterLinkDefaultProps<
 		ExtractApp<C>,
 		ComponentProps<"a">,
-		MouseEvent<HTMLAnchorElement, globalThis.MouseEvent>
+		ReactLinkEvent
 	>,
 ) {
 	type App = ExtractApp<C>;
-
 	const TypedLink = createTypedAdapterLinkFactory<
 		App,
 		ComponentProps<"a">,
-		MouseEvent<HTMLAnchorElement, globalThis.MouseEvent>,
+		ReactLinkEvent,
 		JSX.Element
 	>({
 		vormaAppConfig,
 		defaultProps,
-		renderTypedLink: ({ resolveTypedLinkProps }) => {
-			const resolvedProps = resolveTypedLinkProps();
+		renderTypedLink: (renderProps) => {
+			const resolvedTypedLinkProps = renderProps.resolveTypedLinkProps();
 			return (
 				<VormaLink
-					{...resolvedProps.linkProps}
-					href={resolvedProps.href}
-					state={resolvedProps.state}
+					{...resolvedTypedLinkProps.linkProps}
+					href={resolvedTypedLinkProps.href}
+					state={resolvedTypedLinkProps.state}
 				/>
 			);
 		},
 	});
-
-	const MemoizedTypedLink = memo(TypedLink) as <
-		Pattern extends VormaLoaderPattern<App>,
-	>(
-		props: TypedVormaLinkProps<App, Pattern>,
+	return memo(TypedLink) as <Pattern extends VormaLoaderPattern<App>>(
+		linkProps: ReactTypedLinkProps<App, Pattern>,
 	) => JSX.Element;
+}
 
-	(MemoizedTypedLink as any).displayName = (TypedLink as any).displayName;
+/////////////////////////////////////////////////////////////////////
+/////// Root Outlet
+/////////////////////////////////////////////////////////////////////
 
-	return MemoizedTypedLink;
+type RouteOutletComponentProps = {
+	idx: number;
+	Outlet: (localProps?: Record<string, unknown>) => JSX.Element;
+} & Record<string, unknown>;
+
+type RouteErrorBoundaryProps = {
+	error: unknown;
+};
+
+function RouteOutletComponentMount(props: {
+	currentComponent: unknown;
+	currentRouteMountKey: string;
+	matchedPattern: string;
+	routeIndex: number;
+	Outlet: (localProps?: Record<string, unknown>) => JSX.Element;
+}) {
+	const CurrentComponent =
+		props.currentComponent as ComponentType<RouteOutletComponentProps>;
+	return (
+		<CurrentComponent
+			key={props.currentRouteMountKey}
+			idx={props.routeIndex}
+			Outlet={props.Outlet}
+			{...buildTypedAdapterRouteComponentMountProps({
+				routePropsIndex: props.routeIndex,
+				matchedPattern: props.matchedPattern,
+			})}
+		/>
+	);
+}
+
+export function VormaRootOutlet(
+	rootOutletProps: { idx?: number } & Record<string, unknown>,
+): JSX.Element {
+	const routeIndex = rootOutletProps.idx ?? 0;
+	const passthroughPropsRef = useRef(rootOutletProps);
+	passthroughPropsRef.current = rootOutletProps;
+
+	useLayoutEffect(() => {
+		if (routeIndex !== 0) {
+			return;
+		}
+		routeOutletAdapterSyncHost.syncRootOutletMount({
+			idx: routeIndex,
+		});
+		return () => {
+			routeOutletAdapterSyncHost.syncRootOutletUnmount();
+		};
+	}, [routeIndex]);
+
+	const routeOutletBranchInputState = useRouteOutletStoreSelector({
+		selectValue: (storeState) => storeState.routeOutletBranchInputState,
+	});
+	const outermostError = useRouteOutletStoreSelector({
+		selectValue: (storeState) => storeState.navigation.outermostError,
+	});
+	const routeOutletRenderModel = resolveRouteOutletAdapterRenderModel({
+		routeOutletBranchInputState,
+		outermostError,
+		idx: routeIndex,
+	});
+	const Outlet = useMemo(() => {
+		return (localProps?: Record<string, unknown>) => {
+			return (
+				<VormaRootOutlet
+					{...passthroughPropsRef.current}
+					{...localProps}
+					idx={routeIndex + 1}
+				/>
+			);
+		};
+	}, [routeIndex, routeOutletRenderModel.nextRouteKey]);
+
+	return renderRouteOutletAdapterRenderModel<JSX.Element>({
+		routeOutletRenderModel,
+		renderErrorWithBoundary: (props) => {
+			const ErrorBoundaryComponent =
+				props.errorComponent as ComponentType<RouteErrorBoundaryProps>;
+			return <ErrorBoundaryComponent error={props.outermostError} />;
+		},
+		renderErrorWithoutBoundary: (props) => {
+			return <>Error: {String(props.outermostError ?? "unknown")}</>;
+		},
+		renderComponent: (props) => {
+			return (
+				<RouteOutletComponentMount
+					key={props.currentRouteMountKey}
+					currentComponent={props.currentComponent}
+					currentRouteMountKey={props.currentRouteMountKey}
+					matchedPattern={props.matchedPattern}
+					routeIndex={routeIndex}
+					Outlet={Outlet}
+				/>
+			);
+		},
+		renderMissingComponent: () => {
+			return <></>;
+		},
+		renderFallback: (props) => {
+			return <Outlet key={props.nextRouteKey} />;
+		},
+		renderEmpty: () => {
+			return <></>;
+		},
+	});
 }

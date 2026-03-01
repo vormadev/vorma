@@ -1,0 +1,37 @@
+{
+	"generated_at": "2026-02-28",
+	"legacy_should_totals": {
+		"rows": 818,
+		"zero_value_due_to_duplication_or_non_observability": 134,
+		"must_be_ported_to_black_box": 684
+	},
+	"must_port_reference_verification": {
+		"rows": 684,
+		"na": 61,
+		"verified": 623,
+		"missing": 0,
+		"titleCount": 430
+	},
+	"unresolved_must_port_rows": [],
+	"black_box_execution": {
+		"src": {
+			"total": 288,
+			"passed": 288,
+			"failed": 0,
+			"success": true,
+			"failedTests": []
+		},
+		"dist": {
+			"total": 146,
+			"passed": 146,
+			"failed": 0,
+			"success": true,
+			"failedTests": []
+		}
+	},
+	"notes": [
+		"No cutover performed.",
+		"must_port reference verification requires exact title match, %d placeholder expansion, and react/preact/solid segment expansion.",
+		"Rows with black_box_reference set to N/A are counted separately and include AGENTS-rule exclusions (backend-contract trust, browser-only runtime assumptions, and type-system contract bypasses)."
+	]
+}

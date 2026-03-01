@@ -324,7 +324,7 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, "vorma_out/chunk-old.js") {
+	if !containsString(oldData.Deps, "/vorma_out/chunk-old.js") {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -371,13 +371,13 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, "vorma_out/chunk-new.js") {
+	if !containsString(newData.Deps, "/vorma_out/chunk-new.js") {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "vorma_out/chunk-old.js") {
+	if containsString(newData.Deps, "/vorma_out/chunk-old.js") {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "vorma_out/chunk-mutated.js") {
+	if containsString(newData.Deps, "/vorma_out/chunk-mutated.js") {
 		t.Fatalf(
 			"new Deps should not include post-set caller mutation: %#v",
 			newData.Deps,

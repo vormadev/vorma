@@ -1,5 +1,5 @@
-import { createComponent } from "solid-js";
 import { h, render as renderPreact } from "preact";
+import { createComponent } from "solid-js";
 import { render as renderSolid } from "solid-js/web";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {

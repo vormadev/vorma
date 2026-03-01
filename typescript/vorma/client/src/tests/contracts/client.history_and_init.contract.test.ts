@@ -94,8 +94,7 @@ describe("client history/init contracts", () => {
 		const cleanup = api.addLocationListener(locationListener);
 		api.getUnsafeHistoryInstance();
 
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "PUSH",
 			location: {
@@ -114,8 +113,7 @@ describe("client history/init contracts", () => {
 	it("applies hash scroll on same-document POP updates", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -151,8 +149,7 @@ describe("client history/init contracts", () => {
 	it("applies decoded hash scroll on same-document POP updates", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -188,8 +185,7 @@ describe("client history/init contracts", () => {
 	it("preserves single-decode semantics for percent-encoded literal IDs on POP", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -225,8 +221,7 @@ describe("client history/init contracts", () => {
 	it("does not re-scroll when POP hash target is encoding-equivalent", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -262,8 +257,7 @@ describe("client history/init contracts", () => {
 	it("triggers browser-history navigation fetch for cross-document POP", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -301,8 +295,7 @@ describe("client history/init contracts", () => {
 	it("follows cross-document POP redirects and renders redirected destination", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -372,8 +365,7 @@ describe("client history/init contracts", () => {
 	it("uses listener location payload as the source of truth for cross-document POP target", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -416,8 +408,7 @@ describe("client history/init contracts", () => {
 		(window as any).scrollX = 123;
 		(window as any).scrollY = 456;
 
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "PUSH",
 			location: {
@@ -479,8 +470,7 @@ describe("client history/init contracts", () => {
 	it("saves scroll state on cross-document POP before restoring the target document", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 
 		await customHistoryListener({
 			action: "PUSH",
@@ -519,8 +509,7 @@ describe("client history/init contracts", () => {
 	it("restores saved scroll position when POP removes a hash from the same document", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 		const { scrollStateManager } = await import("../../runtime.ts");
 
 		await customHistoryListener({
@@ -553,8 +542,7 @@ describe("client history/init contracts", () => {
 	it("restores saved scroll position when POP transitions from hash target to empty-fragment '#'", async () => {
 		const api = await loadClientAPI();
 		api.getUnsafeHistoryInstance();
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 		const { scrollStateManager } = await import("../../runtime.ts");
 
 		await customHistoryListener({

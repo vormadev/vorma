@@ -1,0 +1,415 @@
+[
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "preserves single-decode semantics for percent-encoded literal IDs on POP",
+		"score": 0.16666666666666666,
+		"best": "resolves encoded unicode hash targets on same-document POP transitions"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "does not repeatedly write unchanged pointer modality state",
+		"score": 0.1875,
+		"best": "does not restore page-refresh scroll state when stored href differs"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "installs an HMR update hook during init and keeps it callable",
+		"score": 0.15,
+		"best": "drops parseable non-object and invalid-shape page-refresh snapshots during init"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "ignores HMR updates when the provided hot runtime is invalid",
+		"score": 0.17647058823529413,
+		"best": "does not deduplicate submissions when no dedupe key is provided"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "fails fast on invalid precompiled route-manifest payload shapes",
+		"score": 0.2,
+		"best": "uses precompiled route manifest during init without progressive fetch"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "fails fast on precompiled route-manifest entries whose loader flags are outside 0 or 1",
+		"score": 0.14285714285714285,
+		"best": "uses precompiled route manifest during init without progressive fetch"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "fails fast on invalid progressive route-manifest payload shapes without mutating registry state",
+		"score": 0.2222222222222222,
+		"best": "uses precompiled route manifest during init without progressive fetch"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "fails fast on progressive route-manifest entries whose loader flags are outside 0 or 1",
+		"score": 0.14285714285714285,
+		"best": "uses precompiled route manifest during init without progressive fetch"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "fails fast on progressive manifest pattern normalization errors without partial registry mutation",
+		"score": 0.21052631578947367,
+		"best": "ignores progressive manifest payload when pattern registry is replaced mid-flight"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "fails fast on precompiled manifest pattern normalization errors without partial registry mutation",
+		"score": 0.16666666666666666,
+		"best": "uses precompiled route manifest during init without progressive fetch"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"title": "honors user onClick preventDefault by skipping internal navigation",
+		"score": 0.2,
+		"best": "react typed links honor consumer onClick preventDefault and skip navigation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"title": "falls back to default error boundary when server index has no error component",
+		"score": 0.2222222222222222,
+		"best": "sets active error boundary from server error index and error export key"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"title": "uses document.startViewTransition for user navigation when enabled",
+		"score": 0.21428571428571427,
+		"best": "pushes history for user navigation to a different URL"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"title": "applies each CSS bundle only once across repeated navigations",
+		"score": 0.23076923076923078,
+		"best": "preserves metadata across programmatic hash-only navigations"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"title": "uses browser history flow on POP updates",
+		"score": 0.17647058823529413,
+		"best": "does not let a stale browser-history POP completion override a newer user navigation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"title": "starts prefetch only after the configured delay",
+		"score": 0.2,
+		"best": "react typed links run intent prefetch after delay without committing navigation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"title": "stopping a pure prefetch aborts it and allows a fresh prefetch",
+		"score": 0.23529411764705882,
+		"best": "aborts stale prefetch and revalidation work when a new user navigation starts"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"title": "decodes encoded hash fragments before element lookup",
+		"score": 0.16666666666666666,
+		"best": "decodes HTML entities before updating document.title"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"title": "builds typed navigation hrefs from splat values",
+		"score": 0.16666666666666666,
+		"best": "reads values from the shared global state"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"title": "maps custom handler keys in __makeFinalLinkProps and preserves callbacks",
+		"score": 0.17647058823529413,
+		"best": "supports click while prefetch is in-flight and runs render callbacks"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"title": "marks external hrefs with dataExternal in __makeFinalLinkProps",
+		"score": 0.11764705882352941,
+		"best": "react links mark external hrefs and do not prevent default for external clicks"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"title": "supports intent-prefetch link props without requiring user callbacks",
+		"score": 0.1875,
+		"best": "prefetch-only link intent does not emit loading status transitions"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "throws when section markers are out of order",
+		"score": 0.2,
+		"best": "fails loud when managed head markers are missing or invalid"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "adds and removes boolean attributes across updates",
+		"score": 0.21428571428571427,
+		"best": "updates style and script rest-head elements across consecutive navigations"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "keeps updated elements positioned immediately after section start",
+		"score": 0.1111111111111111,
+		"best": "inserts requested managed meta elements between markers when the section is empty"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "reorders elements to match requested block order",
+		"score": 0.2,
+		"best": "reuses matching meta elements and collapses duplicates to the requested count"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "removes elements that are no longer part of requested blocks",
+		"score": 0.17647058823529413,
+		"best": "keeps managed head sections unchanged when requested blocks are empty"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "updates changed element attributes",
+		"score": 0.125,
+		"best": "updates getRouterData after successful navigation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "removes obsolete elements from section",
+		"score": 0.13333333333333333,
+		"best": "inserts requested managed meta elements between markers when the section is empty"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "reuses existing element when fingerprint is unchanged",
+		"score": 0.15384615384615385,
+		"best": "emits undefined scroll state when scrollToTop is disabled"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "reorders existing elements to requested sequence",
+		"score": 0.21428571428571427,
+		"best": "reuses matching meta elements and collapses duplicates to the requested count"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "applies boolean attributes to inserted elements",
+		"score": 0.13333333333333333,
+		"best": "reuses matching meta elements and collapses duplicates to the requested count"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "applies dangerousInnerHTML to inserted elements",
+		"score": 0.14285714285714285,
+		"best": "reuses matching meta elements and collapses duplicates to the requested count"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "ignores blocks without tag while still applying valid blocks",
+		"score": 0.13333333333333333,
+		"best": "ignores malformed HMR update payloads without throwing or revalidating"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "handles add update remove and reorder in a single reconciliation",
+		"score": 0.23529411764705882,
+		"best": "reconciles meta head blocks with deterministic add update remove reorder behavior"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "removes interleaved text nodes while preserving element placement",
+		"score": 0.2,
+		"best": "cleans interleaved text nodes between managed head markers during reconciliation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "reuses identical elements instead of recreating nodes",
+		"score": 0.125,
+		"best": "reuses matching meta elements and collapses duplicates to the requested count"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "updates rest section without modifying meta section",
+		"score": 0.14285714285714285,
+		"best": "updates style and script rest-head elements across consecutive navigations"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "throws for null attribute values",
+		"score": 0.18181818181818182,
+		"best": "omits null bodies for non-GET submit methods"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "ignores entries whose tag is undefined",
+		"score": 0.16666666666666666,
+		"best": "emits undefined scroll state when scrollToTop is disabled"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "matches existing elements regardless of attribute insertion order",
+		"score": 0.21428571428571427,
+		"best": "keeps attribute-order-independent fingerprint matches stable across updates"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"title": "returns safe defaults from getRouterData when state is uninitialized",
+		"score": 0.21428571428571427,
+		"best": "emits undefined scroll state when scrollToTop is disabled"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"title": "returns root loader data when getRouterData has root data",
+		"score": 0.23076923076923078,
+		"best": "returns #vorma-root from getRootEl and throws when missing"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_helpers_link_mocked.test.ts",
+		"title": "makeTypedAddClientLoader registers a wait function for each adapter",
+		"score": 0.14285714285714285,
+		"best": "makeTypedAddClientLoader keeps the latest registration for duplicate patterns"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_helpers_link_mocked.test.ts",
+		"title": "makeTypedAddClientLoader overwrites duplicate pattern registrations with latest function",
+		"score": 0.23076923076923078,
+		"best": "makeTypedAddClientLoader keeps the latest registration for duplicate patterns"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_helpers_link_mocked.test.ts",
+		"title": "react makeTypedLink resolves href and merges default/override props",
+		"score": 0.17647058823529413,
+		"best": "react typed links prevent default and navigate for eligible internal clicks"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_helpers_link_mocked.test.ts",
+		"title": "preact makeTypedLink resolves href and merges default/override props",
+		"score": 0.16666666666666666,
+		"best": "preact root outlet covers fallback, empty, custom/default error, and child-error branches"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_helpers_link_mocked.test.ts",
+		"title": "solid makeTypedLink resolves href and merges default/override props",
+		"score": 0.16666666666666666,
+		"best": "solid root outlet covers fallback, empty, custom/default error, and child-error branches"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_branches.test.ts",
+		"title": "react renders child-level error branch at idx=1 while keeping parent output",
+		"score": 0.13636363636363635,
+		"best": "react root outlet covers fallback, empty, custom/default error, and child-error branches"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_branches.test.ts",
+		"title": "preact renders child-level error branch at idx=1 while keeping parent output",
+		"score": 0.13636363636363635,
+		"best": "preact root outlet covers fallback, empty, custom/default error, and child-error branches"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_branches.test.ts",
+		"title": "solid renders child-level error branch at idx=1 while keeping parent output",
+		"score": 0.13636363636363635,
+		"best": "solid root outlet covers fallback, empty, custom/default error, and child-error branches"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "react useClientLoaderData(routeProps) stays fresh across transition windows for a stable route scope",
+		"score": 0.22727272727272727,
+		"best": "react route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "react useLoaderData(routeProps) tracks current route scope through transition windows",
+		"score": 0.2,
+		"best": "react route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "preact useLoaderData(routeProps) tracks current route scope through transition windows",
+		"score": 0.2,
+		"best": "preact route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "preact useClientLoaderData(routeProps) stays fresh across transition windows for a stable route scope",
+		"score": 0.22727272727272727,
+		"best": "preact route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "solid useLoaderData(routeProps) tracks current route scope through transition windows",
+		"score": 0.2,
+		"best": "solid route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "solid useClientLoaderData(routeProps) stays fresh across transition windows for a stable route scope",
+		"score": 0.22727272727272727,
+		"best": "solid route-props loader/client-loader selectors stay current across stable and scope-change transitions"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+		"score": 0.22727272727272727,
+		"best": "react nested route-props loader data follows route-key remounts when component identity is reused"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_client_runtime.test.ts",
+		"title": "registers adapter client loaders in compiled runtime",
+		"score": 0.14285714285714285,
+		"best": "react typed links resolve hrefs through compiled dist runtime"
+	}
+]

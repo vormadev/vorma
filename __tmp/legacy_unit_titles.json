@@ -1,0 +1,1610 @@
+[
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"serializes plain objects when ReadableStream is unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"passes through ReadableStream bodies when available"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"does not throw when body constructors are unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"passes through ArrayBuffer-backed typed arrays without cloning"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"clones SharedArrayBuffer-backed views before returning a body"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"URL-encodes dynamic parameter values and replaces repeated exact tokens"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"URL-encodes splat segments individually"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"strips explicit loader index segments after path resolution"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when dynamic params required by the pattern are missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when splat values required by the pattern are missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when required route param values are nullish or non-string"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when unexpected extra route params are provided"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when splat values are provided for non-splat patterns"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when splat payload includes non-string segments"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"builds query URLs from mounted action paths and serialized input"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when query input root is a primitive value"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"throws when query input root is an array"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"treats null query input as empty query params"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"builds mutation URLs without encoding input into query params"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"resolves submit bodies via resolveBody wrapper"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/app_helpers.test.ts",
+		"resolves query and mutation paths using action runes via resolvePath"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"builds ordered commands for reuse with prefetch promotion and stale-lane aborts"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"does not emit explicit schedule command when creating active-lane navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"does not emit status-update command for prefetch create"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"returns immediate-abort terminal result for prefetch of current location"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"executes reuse promotion/abort commands before returning reused control"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"creates active navigation control and schedules status update"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"returns immediate-abort control without starting fetch work"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"creates revalidation with current href from revalidation instruction"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_runtime_internal.test.ts",
+		"deletes owned active entry when created active fetch rejects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"reuses matching active navigation and aborts stale lanes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"promotes matching prefetch entry into active lane"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"returns immediate-abort plan for prefetch targeting current page"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"reuses matching prefetch entry for prefetch intent"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"reuses matching revalidation lane and ignores explicit href"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"aborts stale revalidation lane before creating a new revalidation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"creates an active-lane navigation when no reusable lane entry exists"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"reuses active lane entry for matching prefetch target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"reuses revalidation lane entry for matching prefetch target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"creates a new prefetch when target is unmatched and not current"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/begin_navigation_state_machine_internal.test.ts",
+		"creates a new revalidation lane when none is active"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/client_runtime_initialization.test.ts",
+		"does not initialize navigation state access during module import"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/client_runtime_initialization.test.ts",
+		"initializes navigation state access on first runtime usage"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/client_runtime_initialization.test.ts",
+		"initializes navigation state access when history instance is requested"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/client_runtime_initialization.test.ts",
+		"keeps debug journal APIs stable and no-op when dev mode is disabled"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/events_platform.test.ts",
+		"dispatchStatusEvent does not throw when window is unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/events_platform.test.ts",
+		"addStatusListener returns a safe cleanup when window is unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/events_platform.test.ts",
+		"dispatches status detail to listeners when window is available"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/events_platform.test.ts",
+		"dispatches location events without a detail payload"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/extras_internal.test.ts",
+		"registers pattern and installs the wait function"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/extras_internal.test.ts",
+		"throws with pattern context when registration fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/extras_internal.test.ts",
+		"delegates failures to onRegistrationError without installing wait function"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_commands_internal.test.ts",
+		"returns empty preload plan for aborted preloads"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_commands_internal.test.ts",
+		"maps dependencies and css bundles to ordered preload arrays"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_commands_internal.test.ts",
+		"filters empty-string preload entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_commands_internal.test.ts",
+		"fails loud for non-string preload entries that violate the typed contract"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_state_machine_internal.test.ts",
+		"returns empty preload plan when signal is already aborted"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_state_machine_internal.test.ts",
+		"uses deduped import URLs for dev preload module dependencies"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_preload_state_machine_internal.test.ts",
+		"uses production deps for non-dev preload module dependencies"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"always appends vorma_json build ID"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"adds deployment ID only for revalidation requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"returns decoded payload for valid route-data JSON"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws when payload root is not an object"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws when a required route-data key is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws when top-level required array fields are not arrays"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws when hasRootData is not a boolean"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws when params is not an object"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws when optional clientLoadersData is present and not an array"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"accepts semantically odd but top-level shape-correct payloads"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"deep-freezes decoded payload to prevent post-decode mutation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"returns aborted outcome when server response is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"returns redirect outcome when redirect should be effectuated"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"returns redirect outcome even when redirect response status is non-OK"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws for non-OK responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"returns success payload for OK JSON responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"throws and aborts when route-data JSON violates top-level contract at ingress"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"starts matched loader wait functions and forwards resolved server data"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"starts speculative loader work before the server route-data promise resolves"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/fetch_route_data_server_internal.test.ts",
+		"converts server promise rejection into unavailable-server-data abort errors"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"normalizes and decodes hash fragments"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"extracts raw hash fragments without decoding"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"falls back to raw fragments when decode fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"extracts and normalizes hash fragments from href values"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"normalizes href identity without hash fragments"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"normalizes navigation target identity with exact and hash-insensitive checks"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"finds map entries by navigation target with exact-key precedence"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"resolves relative and URL inputs to absolute hrefs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"resolves absolute hrefs with optional search and hash overrides"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"detects same-document hash-only transitions"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"detects same-document location no-op targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"classifies same-document targets as noop, hash-change, or navigate"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"preserves absolute module URLs when resolving public hrefs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"preserves protocol-relative module URLs when resolving public hrefs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"allows same-origin targets for programmatic client APIs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/hash_fragment.test.ts",
+		"throws for cross-origin programmatic client API targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"treats POP updates on the same data target as same-document"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"treats query-order changes as different POP targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"never flags non-POP actions as same-document POP"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"reloads the browser when cross-document POP navigation cannot be handled by client navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"logs hard-reload failures when browser reload throws"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"keeps history location in sync after successful cross-document POP navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"serializes overlapping POP updates and applies location updates in enqueue order"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"restores stored scroll coordinates when same-document POP removes hash"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"falls back to origin scroll when same-document POP removes hash without stored state"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/history_listener_prelude.test.ts",
+		"does not dispatch location events when history keys do not change"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"delegates eligible navigate clicks to navigationStateManager.navigate"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"treats same-document hash changes as runtime-only navigations without link callbacks"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"treats same-document no-op targets as runtime-only no-op navigations without link callbacks"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"does not handle ineligible anchor clicks"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"does not call afterRender when runtime navigate reports no commit"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"swallows runtime navigate rejections and logs errors"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/links_internal.test.ts",
+		"can skip beforeBegin execution while still navigating for prefetch-started clicks"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/make_typed_api.test.ts",
+		"merges resolver defaults with per-call requestInit headers"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/make_typed_api.test.ts",
+		"supports mutation calls without request-init decoration"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"applies removal transition and returns a navigation_removed event"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"sets causedByOperationID to null when not provided for removal transitions"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"no-ops removal transition when target is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"builds navigation phase transition events from explicit phases"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"allows same-phase transition events when reason logging is needed"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"builds begin-arbitrated transition event with updated after snapshot"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"builds submission and clear-all transition events"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_lifecycle_transitions_internal.test.ts",
+		"builds navigation-failed transition events"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts",
+		"returns cancelled when no navigation entry exists for the target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts",
+		"deletes and cancels for aborted outcomes owned by the current operation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts",
+		"syncs build ID, deletes navigation, and effectuates redirects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts",
+		"does not run redirect side effects when stale ownership cancels the outcome"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts",
+		"processes successful outcomes and returns committed didNavigate true"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_runtime_internal.test.ts",
+		"returns committed didNavigate false for idle prefetch success entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"stops when target entry is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"stops when operation-id ownership is stale"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"accepts explicit operation-id ownership"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"ignores redirect outcomes for idle prefetch entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"effectuates redirect outcomes for current navigate entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"ignores redirect outcomes for stale revalidation entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"emits success execution metadata for current non-prefetch entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"marks idle prefetch success as non-navigating"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"builds redirect runtime command plans with explicit command ordering"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"builds delete-and-stop runtime command plans for aborted outcomes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"plans delete+report for owned rejected passes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"plans report-only for stale or missing ownership"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"reduces resolved events into resolved command plans"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"reduces rejected events into rejected delete-or-report plans"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"classifies lifecycle state from ownership/prefetch/staleness in one seam"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"pre-waiting stops when entry is no longer current"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"pre-waiting deletes stale revalidation entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"pre-waiting continues for idle prefetch entries that remain current"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"post-waiting command planner reflects ownership stop/continue states"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"post-asset renders only for current non-prefetch fresh entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"post-asset stops stale revalidation entries after waiting"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"decides successful-navigation cleanup through one explicit cleanup seam"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"emits checkpoint-specific plans through a single planner seam"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"reduces successful-navigation checkpoint events through one reducer seam"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"maps committed and cancelled internal results to public navigate output"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_outcome_state_machine_internal.test.ts",
+		"syncs idle prefetch build IDs before asset wait and navigations after post-wait ownership checks"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_pass_runtime_internal.test.ts",
+		"runs a successful pass and applies outcome handling"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_pass_runtime_internal.test.ts",
+		"cleans up owned entries and reports rejected pass failures"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_pass_runtime_internal.test.ts",
+		"does not delete entries that are no longer owned on rejection"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"plans start-pass commands when no pass is in flight"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"plans mismatch restart commands in deterministic order"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"plans in-flight reuse before trailing eligibility opens"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"plans trailing-pass scheduling when the trailing window is open"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"starts a single pass when idle"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"reuses in-flight promise before trailing window opens"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"queues at most one trailing pass once trailing window opens"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"starts a new pass immediately when in-flight target mismatches current href"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_revalidation_lane_internal.test.ts",
+		"clears queued trailing request without running a second pass"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"ignores stale fetch-resolve ownership outcomes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"enforces wait-resolve phase ordering"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"treats start events without operation ownership as planning-only"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"cleans stale revalidation lane on external-location-change"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"does nothing when external-location-change keeps same data target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"plans cleanup commands for remove-navigation over data-target aliases"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"plans ordered clear-all commands"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"enforces cleanup ownership guard before side effects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"runs only declared commands in-order"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_engine_state_machine_internal.test.ts",
+		"runs clear-all executor commands in reducer order"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"routes start events into revalidation/hash/noop/single-pass terminal behavior"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"finds active navigation by same data target when hash differs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not alias active navigation when search params differ"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"deletes prefetch entry by same data target when hash differs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not delete prefetch entry when search params differ"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"tracks active, prefetch, and revalidation entries and clears them atomically"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns an already-aborted control when prefetch targets the current location"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"reuses active navigation control for same-target prefetch requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"reuses pending revalidation control for same-target prefetch requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"reuses same-target prefetch control for browser-history navigation and promotes it to active"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"reuses same-target revalidation control for redirect navigation and promotes it to active"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale prefetch and revalidation work when browser-history navigation starts to a different target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"removeNavigation aborts and removes entries addressed by hash-alias key"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"keeps a newer same-target active entry when an older active fetch rejects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not delete a newer same-target entry when stale navigate rejection resolves"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"deletes current same-target entry on navigate rejection when reused prefetch ownership still matches"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"keeps a newer same-target prefetch entry when an older prefetch rejects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"keeps a newer same-target revalidation entry when an older revalidation rejects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"removeNavigation no-ops when target does not exist"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"records debug-journal navigation transitions with operation IDs and reasons"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"records submission dedupe causal links in debug journal"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"keeps debug journal APIs as no-ops when journaling is disabled"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"records explicit fetch-rejection reasons across active, prefetch, and revalidation lanes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not delete current entry when stale aborted outcome resolves for same target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not process success when stale operation ID no longer owns target"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"deletes target for current aborted outcome when operation ID matches"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns didNavigate true when current redirect effectuation completes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"uses current entry navigation options for redirect effectuation when a prefetch is promoted"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not synchronize build IDs or effectuate redirects for stale redirect outcomes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"hasNavigation reflects tracked entries and hash aliases"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"continues successful processing when css preload commands reject"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"marks navigation complete and rethrows when render fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"rethrows abort render failures without logging completion errors"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns early when the entry is removed before waiting phase resolves"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns early when ownership is lost during waiting-phase transition"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not commit client-loader state when ownership is lost during asset wait"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"syncs build ID only after asset wait completes for current browser-history entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"resolves navigation intent only after successful navigation commit"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"commits same-document hash-only navigations without fetch and without resolving freshness intent"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"treats programmatic same-document no-op targets as no-op without fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not resolve navigation intent for stale successful completions"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale revalidation after wait completes without rendering"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not render or delete a newer same-target entry when an older success finishes late"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not mark a newer same-target entry complete from a stale render onFinish callback"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not commit render side effects when ownership is lost during async module resolution"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale deduped submit before finalize response processing after build-id listener replacement"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale deduped submit after JSON parsing when a replacement submission starts during parsing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale deduped submit when response classification starts a replacement submission"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale deduped submit before auto-revalidation when method access starts a replacement submission"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns success for submit responses that trigger client redirects"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"fails fast and avoids fetch for cross-origin submit targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns success with undefined data for 204 submit responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns text data for successful non-JSON submit responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns text data for successful submit responses without content-type"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"prioritizes submit redirects even when submit response status is non-OK"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns explicit submit error when redirect effectuation fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale deduped submit when replacement starts during redirect effectuation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts stale deduped submit when replacement starts during auto-revalidation navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"keeps submit ownership when submission map entry instance changes but operation ID stays the same"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns null when pattern registry is unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"returns null when no client loaders are registered"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"setupClientLoaders tolerates missing route-data snapshots"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"registerClientLoaderPattern fails fast without a registry"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"always fetches server route data even for client-only manifest routes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"uses the current route-data payload server error index for fetch-time client-loader skipping"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"handles server fetch outcomes when client-loader map is undefined"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"fails fast when server JSON omits required importURLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"uses build-id fallback in server route-data request URLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"falls back to build-id 1 when loader server-data response header is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"starts only matched client loaders and preserves parent slots without loaders"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"throws when matched route arrays contain sparse entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"throws when matched route arrays contain empty route patterns"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"aborts waiting client loaders when server JSON omits required matched loader arrays"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"maps server fetch rejections to unavailable server-data for client loaders"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"defaults omitted deps and cssBundles to empty arrays in production"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"preloads only truthy production deps"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"does not preload stale deps or update build ID from superseded browser-history responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+		"throws explicit error when server route-data request returns 304"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_slots_internal.test.ts",
+		"treats active non-complete user navigation as navigating"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_slots_internal.test.ts",
+		"does not treat non-navigate active entries as navigating"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_slots_internal.test.ts",
+		"reports revalidation and global submission status independently"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_slots_internal.test.ts",
+		"deduplicates unchanged status snapshots"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_runtime_slots_internal.test.ts",
+		"dispatches when status changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_state_machine_bundle_internal.test.ts",
+		"excludes debug transition machinery from production bundles"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_state_machine_bundle_internal.test.ts",
+		"retains debug transition machinery in development bundles"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_state_machine_internal.test.ts",
+		"records and clears entries when build is in dev mode"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_state_machine_internal.test.ts",
+		"no-ops when build is in production mode"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/navigation_successful_runtime_commit_internal.test.ts",
+		"syncs build ID from response only when it changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"serializes object bodies without throwing when body constructors are unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"omits body for implicit GET requests even when constructors are unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"passes through ArrayBufferView bodies for non-GET methods"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"omits null bodies for non-GET methods"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"omits body for HEAD requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"passes through Blob and ArrayBuffer bodies for non-GET methods"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"passes through ReadableStream bodies for non-GET methods"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirect_request_init.test.ts",
+		"keeps caller-provided content type when serializing object bodies"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"is a no-op for already-applied redirect data"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"returns null for already-applied redirect data without requiring navigation state"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"returns null when hard redirect data is non-http"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"returns null for unknown redirect strategy after cleanup"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"returns null for soft redirect when navigation does not complete"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"cleans redirect and revalidation lanes before soft redirect navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"returns did redirect data for soft redirect when navigation completes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"throws explicit error for non-http native redirect response URLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"throws explicit error for invalid redirect header targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"throws explicit error for invalid native redirect response URLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"resolves relative X-Client-Redirect targets against request URL, not current page URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"resolves relative X-Vorma-Reload targets against request URL, not current page URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"short-circuits same-target X-Client-Redirect headers to did redirect data"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/redirects_internal.test.ts",
+		"does not short-circuit same-target X-Vorma-Reload headers"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"derives effective error from the lower server/client error index"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"ignores stale error text when no error index is set"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"uses available error text when indices tie"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"clears derived error state when no server/client error exists"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"loads component modules while tolerating empty import URLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"builds active components using default export keys and null fallback"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"skips error-boundary updates when no effective error index exists"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"does not rewrite activeErrorBoundary when it is unchanged"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"falls back to the default error boundary when error export keys are missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"returns null when client-loader server data is missing pattern match"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"returns null when root data is required but unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"propagates aborted parent signal to client loader controllers"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"uses the current payload server error index for client-loader skip decisions"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"starts matched client loaders in parallel before waiting for settlement"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"reuses running loader promises without invoking duplicate wait functions"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"reports non-Error client loader failures using string conversion"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"aborts downstream client loaders when an earlier loader fails with a non-abort error"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"finds partial matches when the full pathname is not registered"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"handles missing export-key snapshots by defaulting to module default exports"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"setupClientLoaders no-ops cleanly when no result is provided"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"sets client error index only when an error message exists"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"fails loud when client-loader results violate the typed data contract"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"sets outermost client error index to the last loader index when data exists"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"supports setupClientLoaders with missing snapshots and empty maps"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"passes unavailable server data to client loaders when required server payload is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"fails fast when registering client loader without pattern registry"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"re-renders while applying head updates with canonical empty asset arrays"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"applies CSS bundles during rerender when cssBundles are provided"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"skips module loading and commit side effects when shouldCommit is false before module load"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"stops commit side effects when shouldCommit turns false after module load"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"does not dispatch default top-scroll state when explicit user-navigation scrollToTop is false"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"falls back to empty title text when title HTML payload is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"normalizes null head-element arrays to empty lists during rerender"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"commits a coherent runtime snapshot before route-change events are dispatched"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/render_runtime_internal.test.ts",
+		"shares the same in-flight CSS preload promise for repeated bundle preloads"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts",
+		"blocks focus revalidate while navigating"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts",
+		"blocks focus revalidate while submitting"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts",
+		"blocks focus revalidate while a revalidation is in flight"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts",
+		"blocks focus revalidate when stale window has not elapsed"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_focus_trigger_policy_state_machine_internal.test.ts",
+		"allows focus revalidate exactly at stale window boundary"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_trigger_timestamp_state_machine_internal.test.ts",
+		"reduces committed intent events to the committed timestamp"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_trigger_timestamp_state_machine_internal.test.ts",
+		"initializes runtime timestamp from getNowTimestampMS when initial state is absent"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_trigger_timestamp_state_machine_internal.test.ts",
+		"records committed intent updates via runtime event dispatch"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/revalidation_trigger_timestamp_state_machine_internal.test.ts",
+		"honors provided initial state before subsequent committed intent events"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"resolves adapter render models for component/fallback/error branches"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"resolves matched patterns through render-model binding and fails loudly on missing patterns"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"resolves adapter render model with matched pattern and outermost error payload"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"resolves render kinds directly from shared render models"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"builds route-component mount props with internal route-scope token"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"delegates remount decisions through shared adapter host helper"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_adapter_host_runtime_internal.test.ts",
+		"resolves shared root-outlet lifecycle sync guard decisions"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"builds distinct route keys when import and export parts contain delimiters"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"propagates collision-safe keys through branch state"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"keeps branch keys distinct when route metadata is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"resolves branch render state for component, fallback, and error branches"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"remount policy remounts on component identity change and any key change"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"compares location state by pathname/search/hash and state identity"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"compares branch input snapshots by identity-sensitive fields"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"builds initial store state from current runtime snapshots"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"reuses previous store state when runtime snapshots are equivalent"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"updates navigation and branch snapshots when runtime navigation changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"reuses previous branch snapshot when navigation changes only in non-branch fields"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"updates location snapshot when pathname/search/hash/state changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"sync helper skips apply callback when runtime store snapshot is unchanged"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+		"sync helper applies next snapshot when runtime store snapshot changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_apply_state.test.ts",
+		"does not resolve an element when current location hash is empty"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_apply_state.test.ts",
+		"does not resolve an element when explicit hash state is empty"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_refresh_state.test.ts",
+		"removes malformed page-refresh snapshots"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_refresh_state.test.ts",
+		"removes parseable but invalid snapshot shapes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_refresh_state.test.ts",
+		"removes parseable non-object snapshots"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_refresh_state.test.ts",
+		"restores recent snapshots for encoding-equivalent same-document hash URLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_refresh_state.test.ts",
+		"removes snapshots that are stale or for a different URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_storage.test.ts",
+		"drops malformed stored maps instead of keeping corrupt state"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_storage.test.ts",
+		"can save fresh state after malformed stored data is cleared"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_storage.test.ts",
+		"evicts the oldest entry even when its key is an empty string"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_storage.test.ts",
+		"returns undefined instead of throwing when sessionStorage getItem fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/scroll_state_storage.test.ts",
+		"does not throw when sessionStorage write/remove operations fail"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"classifies submit response outcomes into redirect/error/success execution plans"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"builds post-classification command plans from execution plans"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"reduces request/response/payload checkpoints through explicit submit runtime phases"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"short-circuits submit runtime reducer transitions to stale ownership"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"plans redirect and error terminals from response-classification reducer events"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"fails loud when submit runtime reducer receives events in the wrong phase"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"plans begin lifecycle commands with dedupe abort before started transition"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"plans finish lifecycle commands with conditional delete/removal transition"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"begins with dedupe abort transition when a keyed submission already exists"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"begins unique submissions without a dedupe abort transition"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"finishes by removing current submissions and emitting removal transition"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/submission_lifecycle_commands_internal.test.ts",
+		"finishes stale submissions without removing or emitting removal transition"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"does not expose legacy route-props indexed resolver through internal exports"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"selects indexed data by matched pattern"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"resolves loader data by route scope against current snapshot"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"resolves client loader data by route scope against current snapshot"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"throws for client-loader route-props path when scope is bound to another pattern"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"throws for route-props path when route scope is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"throws when route props index changes after route scope binding"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"follows current indexed loader data for a bound route scope across pattern changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"throws when route-scoped loader data is unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"returns undefined for no-route-props client-loader path when pattern is unmatched"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+		"validates route scope initialization contracts"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/utils_runtime.test.ts",
+		"returns false instead of throwing when constructors are unavailable"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/utils_runtime.test.ts",
+		"detects matching instances when constructors exist"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/utils_runtime.test.ts",
+		"detects cross-realm ArrayBuffer instances"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/utils_runtime.test.ts",
+		"preserves resolved promise values"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/utils_runtime.test.ts",
+		"preserves rejection behavior for awaiters"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"should get a value from the global state"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"should set a value in the global state"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"should update existing global values correctly"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"returns the current client runtime render state from global values"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"merges client loader wait functions into patternToWaitFnMap"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"throws when navigation state access is requested before initialization"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"returns navigation state access after it is initialized"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"throws a clear error when Vorma runtime globals are missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"fails loud for invalid route-field get/set keys passed via unsafe casts"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"canonicalizes runtime snapshots, freezes them, and keeps snapshot fields authoritative"
+	],
+	[
+		"typescript/vorma/client/src/tests/unit/vorma_ctx.test.ts",
+		"finalizes preinstalled non-canonical runtime snapshots on first read"
+	]
+]

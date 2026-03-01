@@ -17,6 +17,7 @@ export {
 	navigationInternalLinkPropKeysForAnchors,
 	registerClientLoaderForAdapter,
 	renderRouteOutletAdapterRenderModel,
+	resolveRouteOutletComponentMountKey,
 	resolvePath,
 	resolveRouteOutletAdapterRenderModel,
 	resolveTypedAdapterClientLoaderDataForPatternOrRouteProps,

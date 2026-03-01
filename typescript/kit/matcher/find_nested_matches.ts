@@ -1,11 +1,15 @@
-import { parseSegments } from "./parse_segments.ts";
 import type {
 	Params,
 	PatternRegistry,
 	RegisteredPattern,
 	SegmentNode,
-} from "./register.ts";
-import { NODE_DYNAMIC, NODE_SPLAT, SEG_TYPES } from "./register.ts";
+} from "vorma/kit/matcher/register";
+import {
+	NODE_DYNAMIC,
+	NODE_SPLAT,
+	SEG_TYPES,
+} from "vorma/kit/matcher/register";
+import { parseSegments, stripTrailingSlash } from "vorma/kit/matcher/utils";
 
 export type Match = {
 	registeredPattern: RegisteredPattern;
@@ -18,12 +22,6 @@ type FindNestedMatchesResult = {
 	splatValues: string[];
 	matches: Match[];
 };
-
-function stripTrailingSlash(pattern: string): string {
-	return pattern.length > 0 && pattern[pattern.length - 1] === "/"
-		? pattern.substring(0, pattern.length - 1)
-		: pattern;
-}
 
 function dfsNestedMatches(
 	registry: PatternRegistry,

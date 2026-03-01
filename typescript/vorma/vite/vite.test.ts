@@ -1,7 +1,7 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
+import { describe, expect, it } from "vitest";
 import vormaVitePlugin from "./vite.ts";
 
 function buildPluginConfig() {

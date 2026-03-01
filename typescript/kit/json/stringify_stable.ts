@@ -18,7 +18,9 @@ function stabilizeStructure(value: unknown, visited: WeakSet<object>): unknown {
 
 	// Prevent circular references
 	if (visited.has(value)) {
-		throw new Error("Circular reference detected during stable JSON stringification");
+		throw new Error(
+			"Circular reference detected during stable JSON stringification",
+		);
 	}
 	visited.add(value);
 
@@ -35,7 +37,10 @@ function stabilizeStructure(value: unknown, visited: WeakSet<object>): unknown {
 
 	// Add sorted keys with stabilized values
 	for (const key of keys) {
-		stable[key] = stabilizeStructure((value as Record<string, unknown>)[key], visited);
+		stable[key] = stabilizeStructure(
+			(value as Record<string, unknown>)[key],
+			visited,
+		);
 	}
 
 	visited.delete(value); // Clean up after processing

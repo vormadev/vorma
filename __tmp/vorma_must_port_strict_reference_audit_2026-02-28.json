@@ -1,0 +1,315 @@
+{
+	"totals": {
+		"rows": 684,
+		"na": 43,
+		"verified": 618,
+		"missing": 23
+	},
+	"missingRows": [
+		{
+			"row_id": "c3-0166",
+			"should": "should keeps last-started navigation authoritative across generated resolve permutations (seed=%d)",
+			"file": "typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+			"line": 125,
+			"ref": "client.black_box_authoritative.test.ts :: keeps last-started navigation authoritative across generated resolve permutations (seed=%d)",
+			"segChecks": [
+				{
+					"segment": "keeps last-started navigation authoritative across generated resolve permutations (seed=%d)",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0360",
+			"should": "should react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+			"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+			"line": 5020,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+			"segChecks": [
+				{
+					"segment": "react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0552",
+			"should": "should maps server fetch rejections to unavailable server-data for client loaders",
+			"file": "typescript/vorma/client/src/tests/unit/navigation_runtime_internal.test.ts",
+			"line": 3639,
+			"ref": "client.black_box_authoritative.test.ts :: contains client-loader data-shape failures without leaking unhandled rejections; npm_dist_black_box_authoritative.test.ts :: rejects client-loader serverDataPromise with AbortError for failed prefetch responses",
+			"segChecks": [
+				{
+					"segment": "contains client-loader data-shape failures without leaking unhandled rejections",
+					"ok": true,
+					"kind": "exact",
+					"match": "contains client-loader data-shape failures without leaking unhandled rejections"
+				},
+				{
+					"segment": "rejects client-loader serverDataPromise with AbortError for failed prefetch responses",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0622",
+			"should": "should builds distinct route keys when import and export parts contain delimiters",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 68,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid root outlet preserves child instance until child module identity changes and ignores location-only updates",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid root outlet preserves child instance until child module identity changes and ignores location-only updates",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0623",
+			"should": "should propagates collision-safe keys through branch state",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 85,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid root outlet uses the freshest child component when route updates keep the same child key",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid root outlet uses the freshest child component when route updates keep the same child key",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0624",
+			"should": "should keeps branch keys distinct when route metadata is missing",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 108,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid root outlet covers fallback, empty, custom/default error, and child-error branches",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid root outlet covers fallback, empty, custom/default error, and child-error branches",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0625",
+			"should": "should resolves branch render state for component, fallback, and error branches",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 125,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid root outlet covers fallback, empty, custom/default error, and child-error branches",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid root outlet covers fallback, empty, custom/default error, and child-error branches",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0626",
+			"should": "should remount policy remounts on component identity change and any key change",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 195,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid remounts child when child export key changes even if import URL stays the same",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid remounts child when child export key changes even if import URL stays the same",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0627",
+			"should": "should compares location state by pathname/search/hash and state identity",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 230,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid location signal only updates on location events, not route events",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid location signal only updates on location events, not route events",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0629",
+			"should": "should builds initial store state from current runtime snapshots",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 312,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid root outlet covers fallback, empty, custom/default error, and child-error branches",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid root outlet covers fallback, empty, custom/default error, and child-error branches",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0631",
+			"should": "should updates navigation and branch snapshots when runtime navigation changes",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 358,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid route-props hooks keep owner-consistent values on every transition tick",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid route-props hooks keep owner-consistent values on every transition tick",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0633",
+			"should": "should updates location snapshot when pathname/search/hash/state changes",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 403,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid location signal only updates on location events, not route events",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid location signal only updates on location events, not route events",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0635",
+			"should": "should sync helper applies next snapshot when runtime store snapshot changes",
+			"file": "typescript/vorma/client/src/tests/unit/route_outlet_runtime_internal.test.ts",
+			"line": 441,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid typed loader/client-loader/router selectors update on route changes and ignore location events",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid typed loader/client-loader/router selectors update on route changes and ignore location events",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0679",
+			"should": "should selects indexed data by matched pattern",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 28,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid typed pattern-based selectors stay fresh across route index changes",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid typed pattern-based selectors stay fresh across route index changes",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0680",
+			"should": "should resolves loader data by route scope against current snapshot",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 38,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid route-props loader/client-loader selectors stay current across stable and scope-change transitions",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid route-props loader/client-loader selectors stay current across stable and scope-change transitions",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0681",
+			"should": "should resolves client loader data by route scope against current snapshot",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 56,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid route-props loader/client-loader selectors stay current across stable and scope-change transitions",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid route-props loader/client-loader selectors stay current across stable and scope-change transitions",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0682",
+			"should": "should throws for client-loader route-props path when scope is bound to another pattern",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 76,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+			"segChecks": [
+				{
+					"segment": "react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0683",
+			"should": "should throws for route-props path when route scope is missing",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 98,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+			"segChecks": [
+				{
+					"segment": "react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0684",
+			"should": "should throws when route props index changes after route scope binding",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 109,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid route-props hooks keep owner-consistent values on every transition tick",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid route-props hooks keep owner-consistent values on every transition tick",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0685",
+			"should": "should follows current indexed loader data for a bound route scope across pattern changes",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 129,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid typed pattern-based selectors stay fresh across route index changes",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid typed pattern-based selectors stay fresh across route index changes",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0686",
+			"should": "should throws when route-scoped loader data is unavailable",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 147,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+			"segChecks": [
+				{
+					"segment": "react useClientLoaderData(routeProps) throws when route props are not produced by a route component",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0687",
+			"should": "should returns undefined for no-route-props client-loader path when pattern is unmatched",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 167,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid typed loader/client-loader/router selectors update on route changes and ignore location events",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid typed loader/client-loader/router selectors update on route changes and ignore location events",
+					"ok": false
+				}
+			]
+		},
+		{
+			"row_id": "c3-0688",
+			"should": "should validates route scope initialization contracts",
+			"file": "typescript/vorma/client/src/tests/unit/typed_adapter_helpers_runtime_internal.test.ts",
+			"line": 178,
+			"ref": "npm_dist_black_box_authoritative.test.ts :: react/preact/solid route-props hooks keep owner-consistent values on every transition tick",
+			"segChecks": [
+				{
+					"segment": "react/preact/solid route-props hooks keep owner-consistent values on every transition tick",
+					"ok": false
+				}
+			]
+		}
+	]
+}

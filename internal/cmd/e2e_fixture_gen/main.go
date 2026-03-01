@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/vormadev/vorma/internal/coalescepath"
+	"github.com/vormadev/vorma/lab/coalescecmd"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -20,6 +23,7 @@ import (
 type commandOptions struct {
 	outputDirectoryPath string
 	repositoryRootPath  string
+	reuseIfPresent      bool
 	uiAdapter           string
 	viteDefaultPort     int
 }
@@ -39,8 +43,15 @@ func main() {
 		fatalf("%v", optionsError)
 	}
 
-	if generateError := generateFixtureProject(options); generateError != nil {
-		fatalf("%v", generateError)
+	coalesceError := coalescecmd.Run(coalescecmd.Options{
+		Key:                    coalescepath.BuildE2EFixtureGenerationCommandKey(options.outputDirectoryPath),
+		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
+		Func: func() error {
+			return generateFixtureProject(options)
+		},
+	})
+	if coalesceError != nil {
+		fatalf("%v", coalesceError)
 	}
 }
 
@@ -49,6 +60,14 @@ func main() {
 /////////////////////////////////////////////////////////////////////
 
 func generateFixtureProject(options commandOptions) error {
+	canReuseExistingFixture, canReuseExistingFixtureError := canReuseExistingFixtureProject(options)
+	if canReuseExistingFixtureError != nil {
+		return canReuseExistingFixtureError
+	}
+	if canReuseExistingFixture {
+		return nil
+	}
+
 	if makeDirectoryError := os.MkdirAll(options.outputDirectoryPath, 0755); makeDirectoryError != nil {
 		return fmt.Errorf(
 			"create output directory %q: %w",
@@ -136,6 +155,110 @@ func generateFixtureProject(options commandOptions) error {
 	}
 	if ensureJavaScriptDependenciesError := ensureFixtureJavaScriptDependencies(options); ensureJavaScriptDependenciesError != nil {
 		return ensureJavaScriptDependenciesError
+	}
+	if writeReadyMarkerError := writeReadyMarkerFile(options); writeReadyMarkerError != nil {
+		return writeReadyMarkerError
+	}
+
+	return nil
+}
+
+func canReuseExistingFixtureProject(options commandOptions) (bool, error) {
+	if !options.reuseIfPresent {
+		return false, nil
+	}
+
+	readyMarkerPath := resolveFixtureReadyMarkerPath(options)
+	readyMarkerFileInfo, statReadyMarkerError := os.Stat(readyMarkerPath)
+	if statReadyMarkerError != nil {
+		if os.IsNotExist(statReadyMarkerError) {
+			return false, nil
+		}
+		return false, fmt.Errorf(
+			"stat fixture ready marker file %q: %w",
+			readyMarkerPath,
+			statReadyMarkerError,
+		)
+	}
+	if readyMarkerFileInfo.IsDir() {
+		return false, fmt.Errorf(
+			"fixture ready marker path %q is a directory",
+			readyMarkerPath,
+		)
+	}
+
+	requiredFixtureEntryRelativePaths := reusableFixtureRequiredEntryRelativePaths()
+	for _, requiredFixtureEntryRelativePath := range requiredFixtureEntryRelativePaths {
+		requiredFixtureEntryPath := filepath.Join(
+			options.outputDirectoryPath,
+			filepath.FromSlash(requiredFixtureEntryRelativePath),
+		)
+		requiredFixtureEntryInfo, statRequiredFixtureEntryError := os.Stat(
+			requiredFixtureEntryPath,
+		)
+		if statRequiredFixtureEntryError != nil {
+			if os.IsNotExist(statRequiredFixtureEntryError) {
+				return false, nil
+			}
+			return false, fmt.Errorf(
+				"stat fixture reusable entry %q: %w",
+				requiredFixtureEntryPath,
+				statRequiredFixtureEntryError,
+			)
+		}
+
+		requiredEntryMustBeDirectory := doesReusableFixtureEntryPathRequireDirectory(
+			requiredFixtureEntryRelativePath,
+		)
+		if requiredEntryMustBeDirectory && !requiredFixtureEntryInfo.IsDir() {
+			return false, nil
+		}
+		if !requiredEntryMustBeDirectory && requiredFixtureEntryInfo.IsDir() {
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+func reusableFixtureRequiredEntryRelativePaths() []string {
+	return []string{
+		"backend/wave.config.json",
+		"package.json",
+		"node_modules",
+		"node_modules/vite/bin/vite.js",
+		"node_modules/vite/dist/node/cli.js",
+		"node_modules/vite/dist/node/chunks/chunk.js",
+	}
+}
+
+func doesReusableFixtureEntryPathRequireDirectory(
+	requiredFixtureEntryRelativePath string,
+) bool {
+	return requiredFixtureEntryRelativePath == "node_modules"
+}
+
+func resolveFixtureReadyMarkerPath(options commandOptions) string {
+	return filepath.Join(
+		options.outputDirectoryPath,
+		".vorma_e2e_fixture_ready",
+	)
+}
+
+func writeReadyMarkerFile(options commandOptions) error {
+	readyMarkerPath := resolveFixtureReadyMarkerPath(options)
+	readyMarkerContents := []byte("ready\n")
+
+	if writeReadyMarkerError := os.WriteFile(
+		readyMarkerPath,
+		readyMarkerContents,
+		0644,
+	); writeReadyMarkerError != nil {
+		return fmt.Errorf(
+			"write fixture ready marker file %q: %w",
+			readyMarkerPath,
+			writeReadyMarkerError,
+		)
 	}
 
 	return nil
@@ -602,6 +725,12 @@ func parseCommandOptions() (commandOptions, error) {
 		"repository-root",
 		"",
 		"absolute repository root path",
+	)
+	flag.BoolVar(
+		&options.reuseIfPresent,
+		"reuse-if-present",
+		false,
+		"reuse generated fixture when output directory already has a readiness marker",
 	)
 	flag.StringVar(
 		&options.uiAdapter,

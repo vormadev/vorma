@@ -1,0 +1,1314 @@
+[
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"clears navigating state for AbortError failures"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"handles non-abort failures by clearing loading state and staying operable"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not mutate established router state after a failed navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"treats empty JSON response as failed and then recovers"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"handles non-ok responses and still allows later navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not leak unhandled rejections when user navigation gets a failed response"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not leak unhandled rejections when user navigation redirects before loader data is available"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not leak unhandled rejections when stale prefetch success is dropped before wait phase"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"rejects client-loader serverDataPromise with AbortError when required server loader payload is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"contains client-loader data-shape failures without leaking unhandled rejections"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"ignores late stale navigation responses with loader-data shape failures after newer navigation wins"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not apply side effects from stale aborted navigation successes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not let stale revalidation override later prefetched navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"does not apply CSS bundles from stale revalidation responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.events.contract.test.ts",
+		"fires location event when history location key changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.events.contract.test.ts",
+		"fires build-id event with old/new IDs on navigation mismatch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.events.contract.test.ts",
+		"updates getBuildID before dispatching build-id events"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"exposes a usable history instance"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"updates history location after push navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"treats direct history push as outside Vorma route navigation lifecycle"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"emits location events when history key changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"applies hash scroll on same-document POP updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"applies decoded hash scroll on same-document POP updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"preserves single-decode semantics for percent-encoded literal IDs on POP"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"does not re-scroll when POP hash target is encoding-equivalent"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"triggers browser-history navigation fetch for cross-document POP"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"follows cross-document POP redirects and renders redirected destination"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"uses listener location payload as the source of truth for cross-document POP target"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"saves scroll state before moving to a different document"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"stores scroll states in session storage with FIFO eviction at 50 entries"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"saves outgoing scroll position before user navigation pushes a new history entry"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"saves scroll state on cross-document POP before restoring the target document"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"restores saved scroll position when POP removes a hash from the same document"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"restores saved scroll position when POP transitions from hash target to empty-fragment '#'"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"initializes client options and calls render function"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"applies useViewTransitions option on every init call"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"registers browser history listener during init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"registers beforeunload and pointer-modality listeners only once across repeated init calls"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"sets history scrollRestoration to manual during init when supported"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"cleans vorma_reload from URL during init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"loads initial components during init from current importURLs"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"runs initial client wait functions during init and stores loader data"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"restores recent page-refresh scroll state during init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"saves page-refresh scroll state on beforeunload after init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"does not restore page-refresh scroll state when snapshot URL differs"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"does not restore page-refresh scroll state when snapshot is older than five seconds"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"switches pointer modality between touch and fine pointers after init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"does not repeatedly write unchanged pointer modality state"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"exposes the dev revalidate handle during init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"installs an HMR update hook during init and keeps it callable"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"ignores HMR updates when the provided hot runtime is invalid"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"refreshes matched route loaders after matching HMR js updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"does not refresh matched route loaders for css-only HMR updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"refreshes when any matched pattern is tracked for the same HMR module path"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"registers same-path HMR listeners for new hot runtimes across repeated init calls"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"does not throw or refresh when matched patterns are unavailable during HMR updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"initializes route matcher state from precompiled manifest payload without progressive fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"fails fast on invalid precompiled route-manifest payload shapes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"fails fast on precompiled route-manifest entries whose loader flags are outside 0 or 1"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"falls back to progressive route-manifest loading when precompiled manifest is absent"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"treats route-manifest progressive loading failures as non-fatal"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"fails fast on invalid progressive route-manifest payload shapes without mutating registry state"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"treats non-OK route-manifest responses as non-fatal and leaves state unchanged"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"fails fast on progressive route-manifest entries whose loader flags are outside 0 or 1"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"fails fast on progressive manifest pattern normalization errors without partial registry mutation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"fails fast on precompiled manifest pattern normalization errors without partial registry mutation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"ignores stale older progressive manifest responses after a newer init"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"ignores progressive manifest payload when pattern registry was replaced mid-flight"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"prevents default for eligible internal links"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"honors user onClick preventDefault by skipping internal navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not prevent default for external links"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not prevent default when modifier keys are used"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not prevent default for non-primary button clicks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not prevent default for internal links targeting non-self browsing contexts"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"handles text-node click targets inside internal anchors"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not save scroll state for modifier-key same-document hash clicks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"handles hash-only links without navigation fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"handles same-document hash removal links without navigation fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not trigger navigation for same-document no-op hash links"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"prevents default for same-document no-op links without hash and does not fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not trigger navigation for encoding-equivalent hash links"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not treat cross-origin hash links as same-document hash changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"updates build ID before following redirects triggered by link clicks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"cleans up aborted link outcomes when a newer navigation supersedes the click"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"does not throw and clears navigating state when link navigation fetch fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"reports navigating status while navigation is in flight"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"reports submitting status during submit() without auto-revalidate"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not expose submitting status for hidden submissions"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"drops submitting status when only hidden submissions remain in-flight"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"reports revalidating status while revalidate() is in flight"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"debounces rapid status transitions into one event"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not dispatch duplicate status events for identical status"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"provides synchronous status from getStatus()"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps at least one loading state active across submit to auto-revalidate"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps submitting state continuous for overlapping submissions"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps navigating state continuous through soft redirect handoff"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps navigating state continuous through redirect chains"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps loading continuous through a complete navigation render cycle"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"includes hash scroll state in route-change events"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"dispatches top scroll state in route-change events for standard navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"dispatches route-change after title updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps navigating while waiting for CSS preload completion"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps navigating while waiting for client loader completion"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"starts and stops the global loading indicator around navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"clears pending start timer when work finishes before start delay elapses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"respects global loading indicator include filters"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"supports navigation-only global loading indicator filters"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"supports revalidation-only global loading indicator filters"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"clears global loading indicator timers when timer id is zero"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"stops and detaches global loading indicator behavior after cleanup"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"cancels a pending stop timer when new work begins before stop delay elapses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"avoids start-stop thrash during overlapping work with non-zero delays"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not start the global loading indicator for prefetch-only activity"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"keeps simultaneous indicator registrations isolated across cleanup and timers"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"revalidates on focus after staleTime has elapsed"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"resets focus stale-time window after successful navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not reset focus stale-time window for hash-only programmatic navigations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not advance focus stale-time timestamp for aborted navigations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"resets focus stale-time window after successful revalidation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not advance focus stale-time timestamp for aborted revalidations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"does not revalidate on focus while navigation is active"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"stops listening after cleanup from revalidateOnWindowFocus"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"includes current build ID in navigation fetch URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"loads modules using publicPathPrefix and maps export keys to active components"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"sets active error boundary from server error index and error export key"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"falls back to default error boundary when server index has no error component"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"replaces active error boundary when later navigations report a new boundary"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"passes matched server data into registered client wait functions"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"uses server fetch when current client snapshot lacks required loader data"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"preserves active error boundaries across hash-only navigations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"resolves module imports from viteDevURL when present"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"preloads unique deps as modulepreload links in production mode"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"preloads css bundle assets during fetch route-data phase"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"normalizes trailing slashes when applying stylesheet hrefs"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"deduplicates stylesheet application for repeated CSS bundles"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"does not prime prefetch module/css artifacts when response build ID differs"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"cleans up completed navigation entries so later distinct navigations still fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"aborts stale prefetch and revalidation work when a new user navigation starts"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"runs speculative client-loader code for superseded navigations but discards stale commits"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"clearAll aborts in-flight navigation and submit work, then returns idle"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"clearAll aborts in-flight prefetch and revalidation work, then returns idle"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"clearAll prevents late side effects from navigations whose fetch ignores abort"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"clearAll prevents late side effects from prefetches whose fetch ignores abort"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"remains operable after clearAll by allowing fresh navigation to complete"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"deduplicates concurrent prefetch starts for the same URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"waits for client loader completion before dispatching route-change"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"uses document.startViewTransition for user navigation when enabled"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"skips view transitions for prefetch and revalidation navigation types"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"updates exposed router data after successful navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"preserves metadata across programmatic hash-only navigations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"pushes history for user navigation to a different URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"does not mutate history when navigating to the current URL"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"does not mutate history when hash target is encoding-equivalent"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"pushes history when hash target changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"includes restored scroll state in browser-history route-change events"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"decodes HTML entities before updating document.title"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"applies each CSS bundle only once across repeated navigations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"throws and avoids fetch when vormaNavigate target is cross-origin"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"fetches route data for user navigation with vorma_json marker"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"uses browser history flow on POP updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not push or replace history during revalidation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"follows server redirects and renders redirected destination"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"follows redirect headers even when navigation response status is non-OK"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"resolves relative X-Client-Redirect targets against the redirecting request URL path"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not re-follow X-Client-Redirect targets that are same-document current locations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"performs hard redirect for external navigation redirect targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"performs hard reload redirect for navigation X-Vorma-Reload responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"resolves relative X-Vorma-Reload targets against the redirecting request URL path"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"prioritizes X-Vorma-Reload over X-Client-Redirect for navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"follows native fetch redirects for GET navigation requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not re-follow native redirects that land on an encoding-equivalent current hash target"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not emit loading status when running prefetch only"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"uses history.replace when navigate is called with replace=true"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"applies explicit search/hash overrides on programmatic navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not fetch on programmatic same-document hash-only navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"treats programmatic same-document no-op targets as no-op without fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"reuses in-flight navigation when only hash changes on the same data target"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not let a stale browser-history POP completion override a newer user navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not let stale redirect-follow-up navigation override a newer user navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not follow stale native redirects from an aborted user navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not follow stale client-redirect headers from an aborted user navigation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_modes.contract.test.ts",
+		"does not hard-reload from stale aborted user-navigation responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+		"keeps last-started user navigation authoritative despite late earlier completions (resolve order: %j)"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+		"keeps last-started navigation authoritative across generated resolve permutations (seed=%d)"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+		"preserves invariants across mixed prefetch/navigate/submit/revalidate sequences"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+		"preserves last-navigation authority across a seeded randomized model sequence"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+		"records terminal lifecycle states with explicit reasons for settled operations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"creates prefetch handlers only for eligible internal HTTP links"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"does not prefetch when target is the current page"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"does not client-navigate prefetch clicks for non-self target anchors"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"retries prefetch after a current-page no-op when location changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"starts prefetch only after the configured delay"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"deduplicates same-data prefetches when only hash differs"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"deduplicates identical prefetches for the same href"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"aborts a hash-deduped shared prefetch when stop is called from either handler"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"aborts idle prefetch entries via same-data-target alias lookup"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"cancels pending prefetch timer on hash-only click"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"cancels pending prefetch timer on same-document hash removal click"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"cancels pending prefetch timer on same-document no-op hash click"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"prevents default on same-document no-op prefetch clicks without hash"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"cancels pending prefetch timer on encoding-equivalent hash click"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"runs beforeBegin callback before prefetch starts"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"recovers from beforeBegin prefetch callback failures and allows retry"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"reuses completed prefetch response on click without refetching"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"warms internal prefetch artifacts without committing page mutations"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"applies prefetched css only after navigation commit"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"cancels pending prefetch timeout when stop is called"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"does not leak orphan timers when start is called multiple times before stop"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"clears pending prefetch timer even when timer id is zero"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"aborts in-flight prefetch when stop is called"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"does not abort upgraded navigation when prefetch handlers stop"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"upgrades same-data prefetch to navigation even when only hash differs"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"does not leak unhandled rejections when pure prefetch resolves to redirect"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"rejects serverDataPromise with AbortError for failed prefetch responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"rejects serverDataPromise with AbortError when server omits a prestarted matched pattern"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"supports click while prefetch is in-flight and runs render callbacks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"runs beforeBegin on direct click when no prefetch has started yet"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"drops completed prefetch cache when stop is called so later prefetches refetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"aborts an in-flight user navigation when a new target is requested"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"can report navigating and revalidating simultaneously"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"coalesces rapid revalidate calls into one fetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"keeps one revalidation in-flight and runs at most one trailing pass for rapid repeated requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"does not coalesce revalidation across data-target changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"keeps same-target revalidation status when user navigation is a same-document no-op"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"revalidates against the current URL including search params"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"includes deployment query param on revalidation when deployment ID is configured"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"follows redirects returned from revalidation when still relevant"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"applies in-flight revalidation results across hash-only URL changes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"treats search-param location changes as stale revalidation boundaries"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"ignores stale revalidation side effects after external location change"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"does not follow stale revalidation redirects after external location change"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"does not follow stale native revalidation redirects after external location change"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"does not perform hard reload from stale revalidation responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"does not update build ID from stale revalidation responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.state_and_revalidation.contract.test.ts",
+		"stopping a pure prefetch aborts it and allows a fresh prefetch"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"throws and avoids fetch when submit target is cross-origin"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"deduplicates submissions with the same dedupe key by aborting the first"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"keeps submitting state active through same-key dedupe handoff"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not deduplicate submissions with different dedupe keys"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"drops stale redirect side effects when concurrent different-key submits overlap"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"ignores stale submit-redirect side effects when a newer user navigation commits first"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"follows submit redirect headers even when submit response status is non-OK"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not deduplicate submissions when no dedupe key is provided"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"clears submitting state when a deduped replacement submission fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"ignores late stale deduped submit redirect responses after replacement submission wins"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"ignores late stale deduped submit hard-reload responses after replacement submission wins"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not trigger revalidation from a late stale deduped submit response"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"aborts stale deduped submits that are superseded during JSON parsing"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not allow late stale deduped submits to change build ID"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"preserves BodyInit payloads and serializes object bodies for submit requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"omits bodies for GET/HEAD/implicit-GET submit requests even when provided"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"auto-revalidates after non-GET submissions unless disabled"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not auto-revalidate after GET submissions"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"returns success with undefined data for 204 non-GET submit responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"returns success with undefined data for null-body 200 submit responses without content type"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"returns text data for successful non-JSON submit responses"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"follows internal redirect responses from submit"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not fetch route data for submit redirects that only change hash"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"does not re-follow submit redirects to the current path"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"returns explicit error when submit soft redirect navigation fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"performs hard reload redirect when submit response includes X-Vorma-Reload"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"performs hard redirect for external submit redirect targets"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"prioritizes X-Vorma-Reload over X-Client-Redirect"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"follows native fetch redirects for non-GET submit requests"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"includes redirect-accept header on navigation and submit fetches"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"includes x-deployment-id on submit requests when deployment ID is configured"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"updates build ID and dispatches event before following navigation redirects"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"treats non-http redirect targets as explicit navigation errors"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"returns failure results for status and thrown errors"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.submit_and_redirect.contract.test.ts",
+		"caps redirect chains and exits loading state"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"does not expose buildtime-only route registration from the runtime client entry"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"does not expose unstable internal __* helpers from the runtime client entry"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"exposes route registration from the buildtime entry"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"formats errors through defaultErrorBoundary"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"returns listener cleanup functions that unsubscribe handlers"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"registers listeners on window for all event types"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"returns #vorma-root via getRootEl()"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"throws when #vorma-root is missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"returns #vorma-root when root is a non-div HTMLElement"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"uses configured root element id from SSR runtime state"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"applies coordinate and hash-based scroll states"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"decodes encoded hash fragments before element lookup"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"falls back to raw hash fragments when decode fails"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"returns current URL parts from getLocation()"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"returns current build ID from getBuildID()"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"builds typed navigation hrefs and forwards navigation options"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"builds typed navigation hrefs from splat values"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"maps custom handler keys in __makeFinalLinkProps and preserves callbacks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"marks external hrefs with dataExternal in __makeFinalLinkProps"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"prevents default for same-document no-op clicks through __makeFinalLinkProps"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"prevents default for same-document no-op prefetch clicks through __makeFinalLinkProps"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"supports intent-prefetch link props without requiring user callbacks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"cancels idle prefetch after touch when pointer modality switches back to mouse"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"throws when section markers are out of order"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"uses the nearest valid marker pair when earlier stray markers exist"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"updates style innerHTML content across consecutive rest updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"adds and removes boolean attributes across updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"collapses duplicate existing elements down to requested count"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"keeps updated elements positioned immediately after section start"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"reorders elements to match requested block order"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"removes elements that are no longer part of requested blocks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"keeps head unchanged when blocks array is empty"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"inserts requested elements between meta markers when none exist"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"updates changed element attributes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"removes obsolete elements from section"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"reuses existing element when fingerprint is unchanged"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"reorders existing elements to requested sequence"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"applies boolean attributes to inserted elements"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"applies dangerousInnerHTML to inserted elements"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"throws when requested section markers are missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"ignores blocks without tag while still applying valid blocks"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"handles add update remove and reorder in a single reconciliation"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"removes interleaved text nodes while preserving element placement"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"reuses identical elements instead of recreating nodes"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"updates rest section without modifying meta section"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"cleans text nodes between markers during updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"remains idempotent across repeated identical updates"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"throws for null attribute values"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"ignores entries whose tag is undefined"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"matches existing elements regardless of attribute insertion order"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"handles combined add update remove and reorder deterministically"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"reads values from the shared global state"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"writes values into the shared global state"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"overwrites existing global values deterministically"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"returns safe defaults from getRouterData when state is uninitialized"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"returns root loader data when getRouterData has root data"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"throws a clear bootstrap error when runtime globals are missing"
+	],
+	[
+		"typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"fails loud when invalid route-field keys are passed through unsafe casts"
+	]
+]

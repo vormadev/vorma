@@ -1,0 +1,2632 @@
+{
+	"numTotalTestSuites": 2,
+	"numPassedTestSuites": 2,
+	"numFailedTestSuites": 0,
+	"numPendingTestSuites": 0,
+	"numTotalTests": 288,
+	"numPassedTests": 288,
+	"numFailedTests": 0,
+	"numPendingTests": 0,
+	"numTodoTests": 0,
+	"snapshot": {
+		"added": 0,
+		"failure": false,
+		"filesAdded": 0,
+		"filesRemoved": 0,
+		"filesRemovedList": [],
+		"filesUnmatched": 0,
+		"filesUpdated": 0,
+		"matched": 0,
+		"total": 0,
+		"unchecked": 0,
+		"uncheckedKeysByFile": [],
+		"unmatched": 0,
+		"updated": 0,
+		"didUpdate": false
+	},
+	"startTime": 1772298077086,
+	"success": true,
+	"testResults": [
+		{
+			"assertionResults": [
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts commits navigation location and title from server route-data",
+					"status": "passed",
+					"title": "commits navigation location and title from server route-data",
+					"duration": 15.68487499999992,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts decodes HTML entities before updating document.title",
+					"status": "passed",
+					"title": "decodes HTML entities before updating document.title",
+					"duration": 2.7173340000000508,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clears document.title when route-data omits title payload",
+					"status": "passed",
+					"title": "clears document.title when route-data omits title payload",
+					"duration": 2.289541999999983,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses nearest valid managed head marker pair and ignores stray markers",
+					"status": "passed",
+					"title": "uses nearest valid managed head marker pair and ignores stray markers",
+					"duration": 10.617917000000034,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts fails loud when managed head markers are missing or invalid",
+					"status": "passed",
+					"title": "fails loud when managed head markers are missing or invalid",
+					"duration": 2.8513750000000755,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reconciles meta head blocks with deterministic add update remove reorder behavior",
+					"status": "passed",
+					"title": "reconciles meta head blocks with deterministic add update remove reorder behavior",
+					"duration": 3.550000000000068,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reuses matching meta elements and collapses duplicates to the requested count",
+					"status": "passed",
+					"title": "reuses matching meta elements and collapses duplicates to the requested count",
+					"duration": 2.2077920000000404,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps managed head sections unchanged when requested blocks are empty",
+					"status": "passed",
+					"title": "keeps managed head sections unchanged when requested blocks are empty",
+					"duration": 2.1194580000000087,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts inserts requested managed meta elements between markers when the section is empty",
+					"status": "passed",
+					"title": "inserts requested managed meta elements between markers when the section is empty",
+					"duration": 2.277417000000014,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps attribute-order-independent fingerprint matches stable across updates",
+					"status": "passed",
+					"title": "keeps attribute-order-independent fingerprint matches stable across updates",
+					"duration": 2.03937499999995,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts remains idempotent across repeated identical managed head updates",
+					"status": "passed",
+					"title": "remains idempotent across repeated identical managed head updates",
+					"duration": 2.803625000000011,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts updates style and script rest-head elements across consecutive navigations",
+					"status": "passed",
+					"title": "updates style and script rest-head elements across consecutive navigations",
+					"duration": 4.275125000000003,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps meta and rest managed sections isolated from each other",
+					"status": "passed",
+					"title": "keeps meta and rest managed sections isolated from each other",
+					"duration": 1.9430419999999913,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts cleans interleaved text nodes between managed head markers during reconciliation",
+					"status": "passed",
+					"title": "cleans interleaved text nodes between managed head markers during reconciliation",
+					"duration": 1.68425000000002,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts dispatches location listeners on commit and stops after cleanup",
+					"status": "passed",
+					"title": "dispatches location listeners on commit and stops after cleanup",
+					"duration": 2.347041000000104,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts exposes a usable history instance",
+					"status": "passed",
+					"title": "exposes a usable history instance",
+					"duration": 1.2767920000000004,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats direct history pushes as outside vorma navigation lifecycle",
+					"status": "passed",
+					"title": "treats direct history pushes as outside vorma navigation lifecycle",
+					"duration": 1.2390420000000404,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts emits location events when history keys change via direct history pushes",
+					"status": "passed",
+					"title": "emits location events when history keys change via direct history pushes",
+					"duration": 1.3836669999999458,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reflects direct history push state through getLocation",
+					"status": "passed",
+					"title": "reflects direct history push state through getLocation",
+					"duration": 1.2657500000000255,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats direct history replace as outside navigation lifecycle",
+					"status": "passed",
+					"title": "treats direct history replace as outside navigation lifecycle",
+					"duration": 1.0894169999999122,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts applies hash-element scroll on same-document POP transitions",
+					"status": "passed",
+					"title": "applies hash-element scroll on same-document POP transitions",
+					"duration": 2.5553330000000187,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts applies coordinate and hash-based scroll states on same-document POP transitions",
+					"status": "passed",
+					"title": "applies coordinate and hash-based scroll states on same-document POP transitions",
+					"duration": 3.141083000000094,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts includes restored scroll state in browser-history route-change events",
+					"status": "passed",
+					"title": "includes restored scroll state in browser-history route-change events",
+					"duration": 2.2838749999999663,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses one decode step when resolving same-document POP hash targets",
+					"status": "passed",
+					"title": "uses one decode step when resolving same-document POP hash targets",
+					"duration": 1.7321249999999964,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolves encoded unicode hash targets on same-document POP transitions",
+					"status": "passed",
+					"title": "resolves encoded unicode hash targets on same-document POP transitions",
+					"duration": 3.415499999999952,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts falls back to raw hash fragments when decode fails during same-document POP",
+					"status": "passed",
+					"title": "falls back to raw hash fragments when decode fails during same-document POP",
+					"duration": 1.6779169999999795,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not re-scroll when same-document POP hash targets are encoding-equivalent",
+					"status": "passed",
+					"title": "does not re-scroll when same-document POP hash targets are encoding-equivalent",
+					"duration": 1.4428749999999582,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts fetches and commits route data for cross-document POP transitions",
+					"status": "passed",
+					"title": "fetches and commits route data for cross-document POP transitions",
+					"duration": 2.187583000000018,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows cross-document POP redirects and commits redirected destination",
+					"status": "passed",
+					"title": "follows cross-document POP redirects and commits redirected destination",
+					"duration": 2.6097500000000764,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses the POP listener payload URL as fetch source-of-truth",
+					"status": "passed",
+					"title": "uses the POP listener payload URL as fetch source-of-truth",
+					"duration": 1.8274170000000822,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats query-order changes as different POP targets",
+					"status": "passed",
+					"title": "treats query-order changes as different POP targets",
+					"duration": 1.5806660000000647,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reloads the browser when cross-document POP navigation fails in client runtime",
+					"status": "passed",
+					"title": "reloads the browser when cross-document POP navigation fails in client runtime",
+					"duration": 1.6393749999999727,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts logs when hard-reload fallback fails after cross-document POP navigation errors",
+					"status": "passed",
+					"title": "logs when hard-reload fallback fails after cross-document POP navigation errors",
+					"duration": 1.717416999999955,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts saves outgoing scroll state before cross-document POP commits",
+					"status": "passed",
+					"title": "saves outgoing scroll state before cross-document POP commits",
+					"duration": 1.8110000000000355,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores malformed session-stored scroll entries and persists fresh valid state",
+					"status": "passed",
+					"title": "ignores malformed session-stored scroll entries and persists fresh valid state",
+					"duration": 1.7583339999999907,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps scroll-state storage at 50 entries with oldest-first eviction",
+					"status": "passed",
+					"title": "keeps scroll-state storage at 50 entries with oldest-first eviction",
+					"duration": 14.797167000000059,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts restores saved scroll coordinates when same-document POP removes a hash",
+					"status": "passed",
+					"title": "restores saved scroll coordinates when same-document POP removes a hash",
+					"duration": 1.9978750000000218,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts falls back to origin scroll when same-document POP removes hash without stored state",
+					"status": "passed",
+					"title": "falls back to origin scroll when same-document POP removes hash without stored state",
+					"duration": 1.859333000000106,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts restores saved scroll coordinates when same-document POP targets empty fragment '#'",
+					"status": "passed",
+					"title": "restores saved scroll coordinates when same-document POP targets empty fragment '#'",
+					"duration": 1.7093750000000227,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts saves outgoing scroll state before programmatic navigation pushes a new history entry",
+					"status": "passed",
+					"title": "saves outgoing scroll state before programmatic navigation pushes a new history entry",
+					"duration": 1.798291000000063,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not dispatch location events when history keys do not change",
+					"status": "passed",
+					"title": "does not dispatch location events when history keys do not change",
+					"duration": 1.0655830000000606,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts dispatches route-change after title is committed",
+					"status": "passed",
+					"title": "dispatches route-change after title is committed",
+					"duration": 1.5785829999999805,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts dispatches route-change only after committed location and router snapshot are coherent",
+					"status": "passed",
+					"title": "dispatches route-change only after committed location and router snapshot are coherent",
+					"duration": 1.3918750000000273,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts emits hash scroll state in route-change events for hash-only navigation",
+					"status": "passed",
+					"title": "emits hash scroll state in route-change events for hash-only navigation",
+					"duration": 1.4509590000000117,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts emits top scroll state in route-change events for standard navigation",
+					"status": "passed",
+					"title": "emits top scroll state in route-change events for standard navigation",
+					"duration": 1.5657500000000937,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts emits undefined scroll state when scrollToTop is disabled",
+					"status": "passed",
+					"title": "emits undefined scroll state when scrollToTop is disabled",
+					"duration": 1.550292000000013,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps the latest started navigation authoritative when completions race",
+					"status": "passed",
+					"title": "keeps the latest started navigation authoritative when completions race",
+					"duration": 2.158374999999978,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps last-started navigation authoritative across generated resolve permutations (seed=11)",
+					"status": "passed",
+					"title": "keeps last-started navigation authoritative across generated resolve permutations (seed=11)",
+					"duration": 2.518957999999998,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps last-started navigation authoritative across generated resolve permutations (seed=29)",
+					"status": "passed",
+					"title": "keeps last-started navigation authoritative across generated resolve permutations (seed=29)",
+					"duration": 4.005708000000027,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps last-started navigation authoritative across generated resolve permutations (seed=47)",
+					"status": "passed",
+					"title": "keeps last-started navigation authoritative across generated resolve permutations (seed=47)",
+					"duration": 2.2016660000000456,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps last-started navigation authoritative across generated resolve permutations (seed=83)",
+					"status": "passed",
+					"title": "keeps last-started navigation authoritative across generated resolve permutations (seed=83)",
+					"duration": 2.0883329999999205,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps last-started navigation authoritative across generated resolve permutations (seed=131)",
+					"status": "passed",
+					"title": "keeps last-started navigation authoritative across generated resolve permutations (seed=131)",
+					"duration": 1.784208000000035,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts preserves invariants across mixed prefetch/navigate/submit/revalidate sequences",
+					"status": "passed",
+					"title": "preserves invariants across mixed prefetch/navigate/submit/revalidate sequences",
+					"duration": 3.7181249999999864,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts records terminal lifecycle states with explicit reasons for settled operations",
+					"status": "passed",
+					"title": "records terminal lifecycle states with explicit reasons for settled operations",
+					"duration": 1.4212499999999864,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not fetch for same-document no-op programmatic navigation",
+					"status": "passed",
+					"title": "does not fetch for same-document no-op programmatic navigation",
+					"duration": 0.9110839999999598,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts classifies same-document programmatic targets as noop, hash-change, and navigate",
+					"status": "passed",
+					"title": "classifies same-document programmatic targets as noop, hash-change, and navigate",
+					"duration": 1.5915830000000142,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts replaces history state on same-document no-op when replace=true",
+					"status": "passed",
+					"title": "replaces history state on same-document no-op when replace=true",
+					"duration": 1.3504580000000033,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses history.replace when navigate is called with replace=true",
+					"status": "passed",
+					"title": "uses history.replace when navigate is called with replace=true",
+					"duration": 1.71712500000001,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts applies explicit search/hash overrides on programmatic navigation",
+					"status": "passed",
+					"title": "applies explicit search/hash overrides on programmatic navigation",
+					"duration": 1.8361659999999347,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts pushes history for user navigation to a different URL",
+					"status": "passed",
+					"title": "pushes history for user navigation to a different URL",
+					"duration": 2.015625,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not mutate history when navigating to the current URL",
+					"status": "passed",
+					"title": "does not mutate history when navigating to the current URL",
+					"duration": 1.0247090000000298,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts throws and avoids fetch when programmatic navigate target is cross-origin",
+					"status": "passed",
+					"title": "throws and avoids fetch when programmatic navigate target is cross-origin",
+					"duration": 0.8730839999999489,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts allows relative and same-origin absolute targets for programmatic client APIs",
+					"status": "passed",
+					"title": "allows relative and same-origin absolute targets for programmatic client APIs",
+					"duration": 1.8097910000000184,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts throws and avoids fetch when submit target is cross-origin",
+					"status": "passed",
+					"title": "throws and avoids fetch when submit target is cross-origin",
+					"duration": 1.140625,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not emit duplicate idle status snapshots for same-document no-op navigation",
+					"status": "passed",
+					"title": "does not emit duplicate idle status snapshots for same-document no-op navigation",
+					"duration": 1.638832999999977,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts commits same-document hash-only programmatic navigation without fetching route data",
+					"status": "passed",
+					"title": "commits same-document hash-only programmatic navigation without fetching route data",
+					"duration": 1.3892080000000533,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts preserves metadata across programmatic hash-only navigations",
+					"status": "passed",
+					"title": "preserves metadata across programmatic hash-only navigations",
+					"duration": 1.966374999999971,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not mutate history when hash target is encoding-equivalent",
+					"status": "passed",
+					"title": "does not mutate history when hash target is encoding-equivalent",
+					"duration": 1.0415000000000418,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts pushes history when hash target changes",
+					"status": "passed",
+					"title": "pushes history when hash target changes",
+					"duration": 1.3032920000000559,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reports revalidation status while in flight and clears on completion",
+					"status": "passed",
+					"title": "reports revalidation status while in flight and clears on completion",
+					"duration": 1.3385000000000673,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts aborts an in-flight user navigation when a new target is requested",
+					"status": "passed",
+					"title": "aborts an in-flight user navigation when a new target is requested",
+					"duration": 1.5180840000000444,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts runs speculative client-loader code for superseded navigations but discards stale commits",
+					"status": "passed",
+					"title": "runs speculative client-loader code for superseded navigations but discards stale commits",
+					"duration": 1.6701670000001059,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clearAll aborts in-flight navigation and submit work, then returns idle",
+					"status": "passed",
+					"title": "clearAll aborts in-flight navigation and submit work, then returns idle",
+					"duration": 1.0430830000000242,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clearAll prevents late side effects from navigations whose fetch ignores abort",
+					"status": "passed",
+					"title": "clearAll prevents late side effects from navigations whose fetch ignores abort",
+					"duration": 1.9724590000000717,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts remains operable after clearAll by allowing fresh navigation to complete",
+					"status": "passed",
+					"title": "remains operable after clearAll by allowing fresh navigation to complete",
+					"duration": 1.9671670000000177,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts can report navigating and revalidating simultaneously",
+					"status": "passed",
+					"title": "can report navigating and revalidating simultaneously",
+					"duration": 1.5413340000000062,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps in-flight revalidation status during same-document no-op navigations",
+					"status": "passed",
+					"title": "keeps in-flight revalidation status during same-document no-op navigations",
+					"duration": 1.2665419999999585,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts coalesces rapid same-target revalidate calls into one fetch",
+					"status": "passed",
+					"title": "coalesces rapid same-target revalidate calls into one fetch",
+					"duration": 1.0969170000000759,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps one revalidation in-flight and runs at most one trailing pass for rapid repeated requests",
+					"status": "passed",
+					"title": "keeps one revalidation in-flight and runs at most one trailing pass for rapid repeated requests",
+					"duration": 1.6911669999999503,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not coalesce revalidation across data-target changes",
+					"status": "passed",
+					"title": "does not coalesce revalidation across data-target changes",
+					"duration": 1.6036249999999654,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not mutate history during revalidation",
+					"status": "passed",
+					"title": "does not mutate history during revalidation",
+					"duration": 1.457125000000019,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts revalidates against the current url including search params",
+					"status": "passed",
+					"title": "revalidates against the current url including search params",
+					"duration": 2.585458000000017,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts includes deployment query param on revalidation when deployment id is configured",
+					"status": "passed",
+					"title": "includes deployment query param on revalidation when deployment id is configured",
+					"duration": 1.812791999999945,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows redirects returned from revalidation when still relevant",
+					"status": "passed",
+					"title": "follows redirects returned from revalidation when still relevant",
+					"duration": 1.8624579999999469,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not follow stale revalidation redirects after target ownership changes",
+					"status": "passed",
+					"title": "does not follow stale revalidation redirects after target ownership changes",
+					"duration": 2.2597920000000613,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not apply stale revalidation hard-reload or build-id side effects after ownership changes",
+					"status": "passed",
+					"title": "does not apply stale revalidation hard-reload or build-id side effects after ownership changes",
+					"duration": 1.9947499999999536,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores stale revalidation side effects after external location change",
+					"status": "passed",
+					"title": "ignores stale revalidation side effects after external location change",
+					"duration": 1.3397079999999733,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not let stale revalidation results override later navigation state or css",
+					"status": "passed",
+					"title": "does not let stale revalidation results override later navigation state or css",
+					"duration": 2.311417000000006,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not update build id from stale revalidation responses after external location change",
+					"status": "passed",
+					"title": "does not update build id from stale revalidation responses after external location change",
+					"duration": 1.1984170000000631,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not perform hard reload from stale revalidation responses after external location change",
+					"status": "passed",
+					"title": "does not perform hard reload from stale revalidation responses after external location change",
+					"duration": 0.9494170000000395,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not follow stale revalidation redirects after external location change",
+					"status": "passed",
+					"title": "does not follow stale revalidation redirects after external location change",
+					"duration": 0.9275830000000269,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not follow stale native revalidation redirects after external location change",
+					"status": "passed",
+					"title": "does not follow stale native revalidation redirects after external location change",
+					"duration": 0.9657909999999674,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts applies in-flight revalidation results across hash-only location changes",
+					"status": "passed",
+					"title": "applies in-flight revalidation results across hash-only location changes",
+					"duration": 1.1797920000000204,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats search-param location changes as stale revalidation boundaries",
+					"status": "passed",
+					"title": "treats search-param location changes as stale revalidation boundaries",
+					"duration": 1.1433750000001055,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts revalidates on focus only after staleTime has elapsed",
+					"status": "passed",
+					"title": "revalidates on focus only after staleTime has elapsed",
+					"duration": 1.8897089999999253,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resets focus stale-time window after successful navigation",
+					"status": "passed",
+					"title": "resets focus stale-time window after successful navigation",
+					"duration": 1.9975420000000668,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not reset focus stale-time window for hash-only programmatic navigations",
+					"status": "passed",
+					"title": "does not reset focus stale-time window for hash-only programmatic navigations",
+					"duration": 1.8183340000000499,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not advance focus stale-time timestamp for aborted navigations",
+					"status": "passed",
+					"title": "does not advance focus stale-time timestamp for aborted navigations",
+					"duration": 1.5405419999999594,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resets focus stale-time window after successful revalidation",
+					"status": "passed",
+					"title": "resets focus stale-time window after successful revalidation",
+					"duration": 1.647792000000095,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not advance focus stale-time timestamp for aborted revalidations",
+					"status": "passed",
+					"title": "does not advance focus stale-time timestamp for aborted revalidations",
+					"duration": 1.6354169999999613,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not revalidate on focus while a navigation is active",
+					"status": "passed",
+					"title": "does not revalidate on focus while a navigation is active",
+					"duration": 1.646082999999976,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not revalidate on focus while a submission is active",
+					"status": "passed",
+					"title": "does not revalidate on focus while a submission is active",
+					"duration": 1.2720420000000559,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not revalidate on focus while a revalidation is already in flight",
+					"status": "passed",
+					"title": "does not revalidate on focus while a revalidation is already in flight",
+					"duration": 1.1428750000000036,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts stops revalidate-on-focus listener after cleanup",
+					"status": "passed",
+					"title": "stops revalidate-on-focus listener after cleanup",
+					"duration": 0.8257499999999709,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts builds query and mutation URLs from app config and route params",
+					"status": "passed",
+					"title": "builds query and mutation URLs from app config and route params",
+					"duration": 1.180417000000034,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolveBody serializes plain object input",
+					"status": "passed",
+					"title": "resolveBody serializes plain object input",
+					"duration": 0.8779580000000351,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolveBody passes through ReadableStream bodies when available",
+					"status": "passed",
+					"title": "resolveBody passes through ReadableStream bodies when available",
+					"duration": 0.8320410000000038,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolveBody passes through cross-realm ArrayBuffer instances",
+					"status": "passed",
+					"title": "resolveBody passes through cross-realm ArrayBuffer instances",
+					"duration": 1.4211669999999685,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolveBody passes through ArrayBuffer-backed typed-array views without cloning",
+					"status": "passed",
+					"title": "resolveBody passes through ArrayBuffer-backed typed-array views without cloning",
+					"duration": 0.7258749999999736,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolveBody clones SharedArrayBuffer-backed typed-array views before returning",
+					"status": "passed",
+					"title": "resolveBody clones SharedArrayBuffer-backed typed-array views before returning",
+					"duration": 1.146250000000009,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts buildMutationURL URL-encodes dynamic params and replaces repeated exact tokens",
+					"status": "passed",
+					"title": "buildMutationURL URL-encodes dynamic params and replaces repeated exact tokens",
+					"duration": 0.8945420000000013,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts buildMutationURL URL-encodes splat segments individually",
+					"status": "passed",
+					"title": "buildMutationURL URL-encodes splat segments individually",
+					"duration": 0.6960000000000264,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts buildQueryURL strips explicit index segments after path resolution",
+					"status": "passed",
+					"title": "buildQueryURL strips explicit index segments after path resolution",
+					"duration": 0.6797500000000127,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts buildQueryURL treats null query input as empty",
+					"status": "passed",
+					"title": "buildQueryURL treats null query input as empty",
+					"duration": 0.6192920000000868,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts buildMutationURL does not encode input into query params",
+					"status": "passed",
+					"title": "buildMutationURL does not encode input into query params",
+					"duration": 0.6759579999999232,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts buildQueryURL and buildMutationURL resolve action paths using action runes",
+					"status": "passed",
+					"title": "buildQueryURL and buildMutationURL resolve action paths using action runes",
+					"duration": 0.8624999999999545,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolveBody wrapper returns BodyInit-compatible values for object and URLSearchParams inputs",
+					"status": "passed",
+					"title": "resolveBody wrapper returns BodyInit-compatible values for object and URLSearchParams inputs",
+					"duration": 2.7606250000000045,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts includes vorma_json marker query param on navigation route-data requests",
+					"status": "passed",
+					"title": "includes vorma_json marker query param on navigation route-data requests",
+					"duration": 1.9344170000000531,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts includes the current build id in navigation route-data requests",
+					"status": "passed",
+					"title": "includes the current build id in navigation route-data requests",
+					"duration": 2.3005419999999503,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses build-id fallback 1 in route-data request URLs when response header is missing",
+					"status": "passed",
+					"title": "uses build-id fallback 1 in route-data request URLs when response header is missing",
+					"duration": 1.8022919999999658,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses server fetch when current snapshot lacks loader data for the matched route",
+					"status": "passed",
+					"title": "uses server fetch when current snapshot lacks loader data for the matched route",
+					"duration": 4.05966699999999,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts typed navigate resolves route params and forwards navigation options",
+					"status": "passed",
+					"title": "typed navigate resolves route params and forwards navigation options",
+					"duration": 1.597291000000041,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts typed API client query/mutate apply decorator and preserve submit result contract",
+					"status": "passed",
+					"title": "typed API client query/mutate apply decorator and preserve submit result contract",
+					"duration": 1.663167000000044,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts merges resolver defaults with per-call requestInit headers for typed API query calls",
+					"status": "passed",
+					"title": "merges resolver defaults with per-call requestInit headers for typed API query calls",
+					"duration": 1.32974999999999,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts supports mutation calls without request-init decoration",
+					"status": "passed",
+					"title": "supports mutation calls without request-init decoration",
+					"duration": 1.0932920000000195,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns formatted errors through defaultErrorBoundary",
+					"status": "passed",
+					"title": "returns formatted errors through defaultErrorBoundary",
+					"duration": 0.7489590000000135,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not expose buildtime-only route registration from the runtime client entry",
+					"status": "passed",
+					"title": "does not expose buildtime-only route registration from the runtime client entry",
+					"duration": 0.2615000000000691,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not expose unstable internal __* helpers from the runtime client entry",
+					"status": "passed",
+					"title": "does not expose unstable internal __* helpers from the runtime client entry",
+					"duration": 0.2923749999999927,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts exposes route registration from the buildtime entry",
+					"status": "passed",
+					"title": "exposes route registration from the buildtime entry",
+					"duration": 3.1247919999999567,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns listener cleanup functions that unsubscribe handlers",
+					"status": "passed",
+					"title": "returns listener cleanup functions that unsubscribe handlers",
+					"duration": 0.9231250000000273,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts registers listeners on window for all event types",
+					"status": "passed",
+					"title": "registers listeners on window for all event types",
+					"duration": 1.0616660000000593,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns #vorma-root from getRootEl and throws when missing",
+					"status": "passed",
+					"title": "returns #vorma-root from getRootEl and throws when missing",
+					"duration": 1.1892500000000155,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns #vorma-root when root is a non-div HTMLElement",
+					"status": "passed",
+					"title": "returns #vorma-root when root is a non-div HTMLElement",
+					"duration": 1.5819170000000895,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns safe default router data before init and before any route commit",
+					"status": "passed",
+					"title": "returns safe default router data before init and before any route commit",
+					"duration": 0.7622920000000022,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses configured root element id via initClient",
+					"status": "passed",
+					"title": "uses configured root element id via initClient",
+					"duration": 1.2002089999999725,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts initializes client options and calls render function",
+					"status": "passed",
+					"title": "initializes client options and calls render function",
+					"duration": 0.9027089999999589,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts loads initial components during init from current importURLs",
+					"status": "passed",
+					"title": "loads initial components during init from current importURLs",
+					"duration": 1.5,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts runs initial client wait functions during init with current loader data",
+					"status": "passed",
+					"title": "runs initial client wait functions during init with current loader data",
+					"duration": 1.7487089999999625,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts exposes a dev revalidate handle on window during init",
+					"status": "passed",
+					"title": "exposes a dev revalidate handle on window during init",
+					"duration": 1.158457999999996,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts switches pointer modality between touch and fine pointers after init",
+					"status": "passed",
+					"title": "switches pointer modality between touch and fine pointers after init",
+					"duration": 1.6264579999999569,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps pointer-modality side effects idempotent for repeated same-modality events",
+					"status": "passed",
+					"title": "keeps pointer-modality side effects idempotent for repeated same-modality events",
+					"duration": 1.3335830000000897,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts revalidates after matching HMR js updates",
+					"status": "passed",
+					"title": "revalidates after matching HMR js updates",
+					"duration": 1.578457999999955,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not revalidate for css-only HMR updates",
+					"status": "passed",
+					"title": "does not revalidate for css-only HMR updates",
+					"duration": 1.313833000000045,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not revalidate for non-matching HMR js updates",
+					"status": "passed",
+					"title": "does not revalidate for non-matching HMR js updates",
+					"duration": 1.7895409999999856,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores malformed HMR update payloads without throwing or revalidating",
+					"status": "passed",
+					"title": "ignores malformed HMR update payloads without throwing or revalidating",
+					"duration": 1.2325839999999744,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not throw or revalidate when no matched import URLs are available for HMR updates",
+					"status": "passed",
+					"title": "does not throw or revalidate when no matched import URLs are available for HMR updates",
+					"duration": 1.173667000000023,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts revalidates when any matched route shares the updated module path",
+					"status": "passed",
+					"title": "revalidates when any matched route shares the updated module path",
+					"duration": 1.8125420000000076,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts preserves HMR refresh behavior across repeated init calls for the same route module path",
+					"status": "passed",
+					"title": "preserves HMR refresh behavior across repeated init calls for the same route module path",
+					"duration": 1.7439580000000205,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reads values from the shared global state",
+					"status": "passed",
+					"title": "reads values from the shared global state",
+					"duration": 0.3860829999999851,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts writes values into the shared global state",
+					"status": "passed",
+					"title": "writes values into the shared global state",
+					"duration": 0.4119999999999209,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts uses precompiled route manifest during init without progressive fetch",
+					"status": "passed",
+					"title": "uses precompiled route manifest during init without progressive fetch",
+					"duration": 1.0464170000000195,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts falls back to progressive route-manifest loading when precompiled manifest is absent",
+					"status": "passed",
+					"title": "falls back to progressive route-manifest loading when precompiled manifest is absent",
+					"duration": 1.671291999999994,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats route-manifest progressive loading failures as non-fatal",
+					"status": "passed",
+					"title": "treats route-manifest progressive loading failures as non-fatal",
+					"duration": 10.547374999999988,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats non-OK route-manifest responses as non-fatal and leaves state unchanged",
+					"status": "passed",
+					"title": "treats non-OK route-manifest responses as non-fatal and leaves state unchanged",
+					"duration": 3.562332999999967,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores stale older progressive manifest responses after a newer init",
+					"status": "passed",
+					"title": "ignores stale older progressive manifest responses after a newer init",
+					"duration": 1.3679999999999382,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores progressive manifest payload when pattern registry is replaced mid-flight",
+					"status": "passed",
+					"title": "ignores progressive manifest payload when pattern registry is replaced mid-flight",
+					"duration": 1.2590000000000146,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts applies useViewTransitions option on every init call",
+					"status": "passed",
+					"title": "applies useViewTransitions option on every init call",
+					"duration": 2.1744579999999587,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts skips view transitions for prefetch and revalidation navigation types",
+					"status": "passed",
+					"title": "skips view transitions for prefetch and revalidation navigation types",
+					"duration": 1.605792000000065,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts cleans vorma_reload from url during init",
+					"status": "passed",
+					"title": "cleans vorma_reload from url during init",
+					"duration": 1.0852499999999736,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts sets history scrollRestoration to manual during init when supported",
+					"status": "passed",
+					"title": "sets history scrollRestoration to manual during init when supported",
+					"duration": 1.1038330000000087,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts registers beforeunload scroll persistence once across repeated init calls",
+					"status": "passed",
+					"title": "registers beforeunload scroll persistence once across repeated init calls",
+					"duration": 2.3155000000000427,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts restores recent page-refresh scroll state during init",
+					"status": "passed",
+					"title": "restores recent page-refresh scroll state during init",
+					"duration": 1.4677500000000236,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts drops malformed page-refresh scroll snapshots during init",
+					"status": "passed",
+					"title": "drops malformed page-refresh scroll snapshots during init",
+					"duration": 1.2997500000000173,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts drops parseable non-object and invalid-shape page-refresh snapshots during init",
+					"status": "passed",
+					"title": "drops parseable non-object and invalid-shape page-refresh snapshots during init",
+					"duration": 1.3602920000000722,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts restores recent page-refresh scroll state for encoding-equivalent same-document hash URLs",
+					"status": "passed",
+					"title": "restores recent page-refresh scroll state for encoding-equivalent same-document hash URLs",
+					"duration": 1.0755830000000515,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not restore page-refresh scroll state when stored href differs",
+					"status": "passed",
+					"title": "does not restore page-refresh scroll state when stored href differs",
+					"duration": 1.3464590000000953,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not throw when sessionStorage getItem fails for scroll-state reads",
+					"status": "passed",
+					"title": "does not throw when sessionStorage getItem fails for scroll-state reads",
+					"duration": 1.7782499999999573,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not throw when sessionStorage set/remove fails for scroll persistence",
+					"status": "passed",
+					"title": "does not throw when sessionStorage set/remove fails for scroll persistence",
+					"duration": 1.4394159999999374,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not restore page-refresh scroll state when stored snapshot is stale",
+					"status": "passed",
+					"title": "does not restore page-refresh scroll state when stored snapshot is stale",
+					"duration": 0.9799170000000004,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts starts and stops global loading indicator around navigation",
+					"status": "passed",
+					"title": "starts and stops global loading indicator around navigation",
+					"duration": 1.624416999999994,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clears pending start timer when work finishes before start delay elapses",
+					"status": "passed",
+					"title": "clears pending start timer when work finishes before start delay elapses",
+					"duration": 1.7360830000000078,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clears global loading indicator timers when timer id is zero",
+					"status": "passed",
+					"title": "clears global loading indicator timers when timer id is zero",
+					"duration": 1.572917000000075,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts stops and detaches global loading indicator behavior after cleanup",
+					"status": "passed",
+					"title": "stops and detaches global loading indicator behavior after cleanup",
+					"duration": 1.5604170000000295,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts cancels a pending stop timer when new work begins before stop delay elapses",
+					"status": "passed",
+					"title": "cancels a pending stop timer when new work begins before stop delay elapses",
+					"duration": 2.5965419999999995,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts avoids start-stop thrash during overlapping work with non-zero delays",
+					"status": "passed",
+					"title": "avoids start-stop thrash during overlapping work with non-zero delays",
+					"duration": 1.6875840000000153,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps simultaneous indicator registrations isolated across cleanup and timers",
+					"status": "passed",
+					"title": "keeps simultaneous indicator registrations isolated across cleanup and timers",
+					"duration": 1.8329589999999598,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts respects navigation-only global loading indicator filters",
+					"status": "passed",
+					"title": "respects navigation-only global loading indicator filters",
+					"duration": 5.523082999999929,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts respects revalidation-only global loading indicator filters",
+					"status": "passed",
+					"title": "respects revalidation-only global loading indicator filters",
+					"duration": 2.0051670000000286,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts respects submitting-only global loading indicator filters",
+					"status": "passed",
+					"title": "respects submitting-only global loading indicator filters",
+					"duration": 1.6105420000000095,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts skips global loading indicator when navigate opts out",
+					"status": "passed",
+					"title": "skips global loading indicator when navigate opts out",
+					"duration": 4.678042000000005,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts skips global loading indicator when submit opts out",
+					"status": "passed",
+					"title": "skips global loading indicator when submit opts out",
+					"duration": 1.3420839999999998,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reports navigating status while navigation is in flight",
+					"status": "passed",
+					"title": "reports navigating status while navigation is in flight",
+					"duration": 1.4616659999999229,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reports submitting status during submit without auto-revalidate",
+					"status": "passed",
+					"title": "reports submitting status during submit without auto-revalidate",
+					"duration": 1.0025419999999485,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not expose submitting status for hidden submissions",
+					"status": "passed",
+					"title": "does not expose submitting status for hidden submissions",
+					"duration": 1.0592079999998987,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts drops submitting status when only hidden submissions remain in-flight",
+					"status": "passed",
+					"title": "drops submitting status when only hidden submissions remain in-flight",
+					"duration": 0.9122080000000778,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not dispatch duplicate status events for identical status",
+					"status": "passed",
+					"title": "does not dispatch duplicate status events for identical status",
+					"duration": 0.8826249999999618,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts debounces rapid status transitions into one event",
+					"status": "passed",
+					"title": "debounces rapid status transitions into one event",
+					"duration": 0.7611249999999927,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps submitting state continuous for overlapping submissions",
+					"status": "passed",
+					"title": "keeps submitting state continuous for overlapping submissions",
+					"duration": 1.0579159999999774,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps loading continuous through a complete navigation render cycle",
+					"status": "passed",
+					"title": "keeps loading continuous through a complete navigation render cycle",
+					"duration": 1.3523340000001554,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps navigating while waiting for css preload completion",
+					"status": "passed",
+					"title": "keeps navigating while waiting for css preload completion",
+					"duration": 2.563041999999996,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts continues successful navigation processing when css preload settles via error",
+					"status": "passed",
+					"title": "continues successful navigation processing when css preload settles via error",
+					"duration": 2.199000000000069,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts preloads unique deps as modulepreload links in production mode",
+					"status": "passed",
+					"title": "preloads unique deps as modulepreload links in production mode",
+					"duration": 1.805458999999928,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts preloads css bundle assets during fetch route-data phase",
+					"status": "passed",
+					"title": "preloads css bundle assets during fetch route-data phase",
+					"duration": 1.7903329999999187,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts normalizes trailing slashes when applying stylesheet hrefs",
+					"status": "passed",
+					"title": "normalizes trailing slashes when applying stylesheet hrefs",
+					"duration": 2.141125000000102,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolves module imports from viteDevURL when present",
+					"status": "passed",
+					"title": "resolves module imports from viteDevURL when present",
+					"duration": 1.9484169999998358,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts deduplicates stylesheet application for repeated css bundles",
+					"status": "passed",
+					"title": "deduplicates stylesheet application for repeated css bundles",
+					"duration": 2.049582999999984,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps navigating while waiting for client loader completion",
+					"status": "passed",
+					"title": "keeps navigating while waiting for client loader completion",
+					"duration": 1.5789170000000468,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts waits for client loader completion before dispatching route-change",
+					"status": "passed",
+					"title": "waits for client loader completion before dispatching route-change",
+					"duration": 1.709250000000111,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts starts matched client loaders in parallel before waiting for settlement",
+					"status": "passed",
+					"title": "starts matched client loaders in parallel before waiting for settlement",
+					"duration": 2.37237499999992,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reuses running client-loader promises without duplicate invocations",
+					"status": "passed",
+					"title": "reuses running client-loader promises without duplicate invocations",
+					"duration": 1.9812500000000455,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts passes matched server loader data into registered client loader functions",
+					"status": "passed",
+					"title": "passes matched server loader data into registered client loader functions",
+					"duration": 1.1025419999998576,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns synchronous status snapshots from getStatus for in-flight navigation",
+					"status": "passed",
+					"title": "returns synchronous status snapshots from getStatus for in-flight navigation",
+					"duration": 1.1389169999999922,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns submit success payloads for successful JSON responses",
+					"status": "passed",
+					"title": "returns submit success payloads for successful JSON responses",
+					"duration": 1.1811660000000757,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts deduplicates submissions with same dedupe key by aborting the first",
+					"status": "passed",
+					"title": "deduplicates submissions with same dedupe key by aborting the first",
+					"duration": 0.9731249999999818,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps submitting state active through same-key dedupe handoff",
+					"status": "passed",
+					"title": "keeps submitting state active through same-key dedupe handoff",
+					"duration": 1.0029159999999138,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts aborts stale deduped submits that are superseded during json parsing",
+					"status": "passed",
+					"title": "aborts stale deduped submits that are superseded during json parsing",
+					"duration": 0.8859999999999673,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clears submitting state when a deduped replacement submission fails",
+					"status": "passed",
+					"title": "clears submitting state when a deduped replacement submission fails",
+					"duration": 0.7997910000001411,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores late stale deduped submit redirect responses after replacement submission wins",
+					"status": "passed",
+					"title": "ignores late stale deduped submit redirect responses after replacement submission wins",
+					"duration": 0.9294580000000678,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not allow late stale deduped submits to change build id or trigger hard reload",
+					"status": "passed",
+					"title": "does not allow late stale deduped submits to change build id or trigger hard reload",
+					"duration": 1.0171250000000782,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not trigger revalidation from a late stale deduped submit response",
+					"status": "passed",
+					"title": "does not trigger revalidation from a late stale deduped submit response",
+					"duration": 0.8394160000000284,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts preserves BodyInit payloads and serializes object bodies for submit requests",
+					"status": "passed",
+					"title": "preserves BodyInit payloads and serializes object bodies for submit requests",
+					"duration": 0.9291670000000067,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts passes through Blob, ArrayBuffer, and ArrayBufferView submit bodies for non-GET methods",
+					"status": "passed",
+					"title": "passes through Blob, ArrayBuffer, and ArrayBufferView submit bodies for non-GET methods",
+					"duration": 1.1742080000001351,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts omits null bodies for non-GET submit methods",
+					"status": "passed",
+					"title": "omits null bodies for non-GET submit methods",
+					"duration": 0.9309169999999085,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps caller-provided content type when serializing object submit bodies",
+					"status": "passed",
+					"title": "keeps caller-provided content type when serializing object submit bodies",
+					"duration": 0.9114999999999327,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not deduplicate submissions with different dedupe keys",
+					"status": "passed",
+					"title": "does not deduplicate submissions with different dedupe keys",
+					"duration": 1.037417000000005,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts drops stale redirect side effects when newer different-key submit completes first",
+					"status": "passed",
+					"title": "drops stale redirect side effects when newer different-key submit completes first",
+					"duration": 1.1652919999999085,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts drops stale hard-reload/build-id submit side effects when newer different-key submit completes first",
+					"status": "passed",
+					"title": "drops stale hard-reload/build-id submit side effects when newer different-key submit completes first",
+					"duration": 0.9519580000001042,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts ignores stale submit-redirect side effects when a newer user navigation commits first",
+					"status": "passed",
+					"title": "ignores stale submit-redirect side effects when a newer user navigation commits first",
+					"duration": 1.6575000000000273,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not deduplicate submissions when no dedupe key is provided",
+					"status": "passed",
+					"title": "does not deduplicate submissions when no dedupe key is provided",
+					"duration": 1.0742499999998927,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns submit failure payloads for non-ok responses",
+					"status": "passed",
+					"title": "returns submit failure payloads for non-ok responses",
+					"duration": 1.2144169999999122,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns submit failure results for status and thrown error paths",
+					"status": "passed",
+					"title": "returns submit failure results for status and thrown error paths",
+					"duration": 1.060707999999977,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts auto-revalidates after non-GET submissions by default",
+					"status": "passed",
+					"title": "auto-revalidates after non-GET submissions by default",
+					"duration": 1.1735419999999976,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not auto-revalidate after GET submissions",
+					"status": "passed",
+					"title": "does not auto-revalidate after GET submissions",
+					"duration": 0.9995830000000296,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts omits request body for GET, HEAD, and implicit-GET submit calls",
+					"status": "passed",
+					"title": "omits request body for GET, HEAD, and implicit-GET submit calls",
+					"duration": 1.038000000000011,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns text body for successful non-json submit responses",
+					"status": "passed",
+					"title": "returns text body for successful non-json submit responses",
+					"duration": 0.8834170000000086,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns text data for successful submit responses without content-type",
+					"status": "passed",
+					"title": "returns text data for successful submit responses without content-type",
+					"duration": 0.9212500000001,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns success with undefined data for 204 submit responses",
+					"status": "passed",
+					"title": "returns success with undefined data for 204 submit responses",
+					"duration": 0.8255840000001626,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns success with undefined data for null-body 200 submit responses without content type",
+					"status": "passed",
+					"title": "returns success with undefined data for null-body 200 submit responses without content type",
+					"duration": 1.1485000000000127,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps loading continuous from submit into auto-revalidate",
+					"status": "passed",
+					"title": "keeps loading continuous from submit into auto-revalidate",
+					"duration": 2.086749999999938,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts dispatches build-id updates with old/new values after navigation commit",
+					"status": "passed",
+					"title": "dispatches build-id updates with old/new values after navigation commit",
+					"duration": 1.9692919999999958,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts syncs build ID from responses only when the value changes",
+					"status": "passed",
+					"title": "syncs build ID from responses only when the value changes",
+					"duration": 1.8392499999999927,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts updates getBuildID before build-id listeners observe the event",
+					"status": "passed",
+					"title": "updates getBuildID before build-id listeners observe the event",
+					"duration": 1.5277909999999792,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts stops build-id event delivery after listener cleanup",
+					"status": "passed",
+					"title": "stops build-id event delivery after listener cleanup",
+					"duration": 1.7368750000000546,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts stops status event delivery after listener cleanup",
+					"status": "passed",
+					"title": "stops status event delivery after listener cleanup",
+					"duration": 1.5455829999998514,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns current location parts from getLocation",
+					"status": "passed",
+					"title": "returns current location parts from getLocation",
+					"duration": 0.7976670000000468,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns current build ID from getBuildID",
+					"status": "passed",
+					"title": "returns current build ID from getBuildID",
+					"duration": 1.0873750000000655,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts stops route-change event delivery after listener cleanup",
+					"status": "passed",
+					"title": "stops route-change event delivery after listener cleanup",
+					"duration": 1.3457499999999527,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts updates getRouterData after successful navigation",
+					"status": "passed",
+					"title": "updates getRouterData after successful navigation",
+					"duration": 1.0658750000000055,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts deterministically overwrites router-data snapshot values on later commits",
+					"status": "passed",
+					"title": "deterministically overwrites router-data snapshot values on later commits",
+					"duration": 1.5352500000001328,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts throws a clear bootstrap error when test deployment configuration runs before runtime init",
+					"status": "passed",
+					"title": "throws a clear bootstrap error when test deployment configuration runs before runtime init",
+					"duration": 0.30133299999988594,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts fails loud when test-only client-loader registration is passed an invalid pattern through unsafe casts",
+					"status": "passed",
+					"title": "fails loud when test-only client-loader registration is passed an invalid pattern through unsafe casts",
+					"duration": 0.27366699999993216,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not mutate established router data after failed navigation",
+					"status": "passed",
+					"title": "does not mutate established router data after failed navigation",
+					"duration": 1.6340419999999085,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows redirect responses through final destination commit",
+					"status": "passed",
+					"title": "follows redirect responses through final destination commit",
+					"duration": 1.5410000000001673,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clears navigating state after abort-style navigation failures",
+					"status": "passed",
+					"title": "clears navigating state after abort-style navigation failures",
+					"duration": 1.1455419999999776,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts clears loading state after non-abort failures and remains operable",
+					"status": "passed",
+					"title": "clears loading state after non-abort failures and remains operable",
+					"duration": 1.888582999999926,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts recovers from non-ok navigation responses and remains operable",
+					"status": "passed",
+					"title": "recovers from non-ok navigation responses and remains operable",
+					"duration": 1.7468340000000353,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts fails loud when server route-data requests return 304",
+					"status": "passed",
+					"title": "fails loud when server route-data requests return 304",
+					"duration": 1.0454999999999472,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not leak unhandled rejections when failed navigation responses are surfaced",
+					"status": "passed",
+					"title": "does not leak unhandled rejections when failed navigation responses are surfaced",
+					"duration": 1.6652500000000146,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not leak unhandled rejections when navigation redirects before loader payload resolution",
+					"status": "passed",
+					"title": "does not leak unhandled rejections when navigation redirects before loader payload resolution",
+					"duration": 1.5900000000001455,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts contains client-loader data-shape failures without leaking unhandled rejections",
+					"status": "passed",
+					"title": "contains client-loader data-shape failures without leaking unhandled rejections",
+					"duration": 1.106708000000026,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not let stale revalidation override later prefetched navigation",
+					"status": "passed",
+					"title": "does not let stale revalidation override later prefetched navigation",
+					"duration": 1.597250000000031,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats empty navigation json payloads as failures and remains recoverable",
+					"status": "passed",
+					"title": "treats empty navigation json payloads as failures and remains recoverable",
+					"duration": 1.8047079999998914,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows navigation redirect headers even when first response is non-ok",
+					"status": "passed",
+					"title": "follows navigation redirect headers even when first response is non-ok",
+					"duration": 1.4577499999998054,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolves relative navigation X-Client-Redirect targets against the redirecting request URL path",
+					"status": "passed",
+					"title": "resolves relative navigation X-Client-Redirect targets against the redirecting request URL path",
+					"duration": 1.5845839999999498,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not re-follow navigation X-Client-Redirect targets that resolve to the current same-document location",
+					"status": "passed",
+					"title": "does not re-follow navigation X-Client-Redirect targets that resolve to the current same-document location",
+					"duration": 1.1854169999999158,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts updates build ID before following navigation redirect targets",
+					"status": "passed",
+					"title": "updates build ID before following navigation redirect targets",
+					"duration": 1.4034590000001117,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts performs hard redirect for external navigation redirect targets",
+					"status": "passed",
+					"title": "performs hard redirect for external navigation redirect targets",
+					"duration": 3.952166000000034,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts performs hard reload redirect for navigation X-Vorma-Reload responses",
+					"status": "passed",
+					"title": "performs hard reload redirect for navigation X-Vorma-Reload responses",
+					"duration": 1.334041999999954,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts resolves relative X-Vorma-Reload targets against redirecting request URL path",
+					"status": "passed",
+					"title": "resolves relative X-Vorma-Reload targets against redirecting request URL path",
+					"duration": 1.0036250000000564,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts prioritizes X-Vorma-Reload over X-Client-Redirect for navigation",
+					"status": "passed",
+					"title": "prioritizes X-Vorma-Reload over X-Client-Redirect for navigation",
+					"duration": 0.9240420000000995,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts treats non-http navigation redirect targets as explicit navigation errors",
+					"status": "passed",
+					"title": "treats non-http navigation redirect targets as explicit navigation errors",
+					"duration": 1.1086660000000848,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows native fetch redirects for GET navigation requests",
+					"status": "passed",
+					"title": "follows native fetch redirects for GET navigation requests",
+					"duration": 1.6233330000000024,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not re-follow native redirects that land on encoding-equivalent current hash targets",
+					"status": "passed",
+					"title": "does not re-follow native redirects that land on encoding-equivalent current hash targets",
+					"duration": 1.02800000000002,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows submit redirect headers even when submit response is non-ok",
+					"status": "passed",
+					"title": "follows submit redirect headers even when submit response is non-ok",
+					"duration": 1.7920419999998103,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows internal redirect responses from submit",
+					"status": "passed",
+					"title": "follows internal redirect responses from submit",
+					"duration": 1.8119159999998828,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not fetch route data for submit redirects that only change hash",
+					"status": "passed",
+					"title": "does not fetch route data for submit redirects that only change hash",
+					"duration": 1.1057909999999538,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not re-follow submit redirects to the current path",
+					"status": "passed",
+					"title": "does not re-follow submit redirects to the current path",
+					"duration": 0.8524999999999636,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts updates build ID before following submit redirect targets",
+					"status": "passed",
+					"title": "updates build ID before following submit redirect targets",
+					"duration": 1.514791999999943,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts returns explicit failure when submit soft redirect follow fails",
+					"status": "passed",
+					"title": "returns explicit failure when submit soft redirect follow fails",
+					"duration": 1.2528749999999036,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts performs hard reload redirect when submit response includes X-Vorma-Reload",
+					"status": "passed",
+					"title": "performs hard reload redirect when submit response includes X-Vorma-Reload",
+					"duration": 0.9831250000002001,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts performs hard redirect for external submit redirect targets",
+					"status": "passed",
+					"title": "performs hard redirect for external submit redirect targets",
+					"duration": 0.9179999999998927,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts prioritizes X-Vorma-Reload over X-Client-Redirect for submit",
+					"status": "passed",
+					"title": "prioritizes X-Vorma-Reload over X-Client-Redirect for submit",
+					"duration": 0.801040999999941,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts follows native fetch redirects for non-get submit requests",
+					"status": "passed",
+					"title": "follows native fetch redirects for non-get submit requests",
+					"duration": 1.290124999999989,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts includes redirect-accept header on navigation and submit fetches",
+					"status": "passed",
+					"title": "includes redirect-accept header on navigation and submit fetches",
+					"duration": 1.3174169999999776,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts includes x-deployment-id on submit requests when deployment ID is configured",
+					"status": "passed",
+					"title": "includes x-deployment-id on submit requests when deployment ID is configured",
+					"duration": 1.179208000000017,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts keeps loading status continuous through redirect chains",
+					"status": "passed",
+					"title": "keeps loading status continuous through redirect chains",
+					"duration": 2.077874999999949,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts caps redirect chains at ten follows and exits loading state",
+					"status": "passed",
+					"title": "caps redirect chains at ten follows and exits loading state",
+					"duration": 1.730750000000171,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not require stale route-data responses to settle before winner commit",
+					"status": "passed",
+					"title": "does not require stale route-data responses to settle before winner commit",
+					"duration": 1.3465830000000096,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts cleans up completed navigation entries so later distinct navigations still fetch",
+					"status": "passed",
+					"title": "cleans up completed navigation entries so later distinct navigations still fetch",
+					"duration": 1.279416000000083,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not apply side effects from stale aborted navigation successes",
+					"status": "passed",
+					"title": "does not apply side effects from stale aborted navigation successes",
+					"duration": 1.6423750000001291,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts reuses in-flight navigation when only hash changes on the same data target",
+					"status": "passed",
+					"title": "reuses in-flight navigation when only hash changes on the same data target",
+					"duration": 1.840541999999914,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not alias in-flight navigation when search params differ",
+					"status": "passed",
+					"title": "does not alias in-flight navigation when search params differ",
+					"duration": 1.513541000000032,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not dedupe prefetch work when only search params differ",
+					"status": "passed",
+					"title": "does not dedupe prefetch work when only search params differ",
+					"duration": 1.0695840000000771,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not let stale redirect-follow-up navigation override a newer user navigation",
+					"status": "passed",
+					"title": "does not let stale redirect-follow-up navigation override a newer user navigation",
+					"duration": 1.420042000000194,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not follow stale native redirects from an aborted user navigation",
+					"status": "passed",
+					"title": "does not follow stale native redirects from an aborted user navigation",
+					"duration": 1.251540999999861,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not let a stale browser-history POP completion override a newer user navigation",
+					"status": "passed",
+					"title": "does not let a stale browser-history POP completion override a newer user navigation",
+					"duration": 2.530292000000145,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not follow stale client-redirect headers from an aborted user navigation",
+					"status": "passed",
+					"title": "does not follow stale client-redirect headers from an aborted user navigation",
+					"duration": 1.5579579999998714,
+					"failureMessages": [],
+					"meta": {}
+				},
+				{
+					"ancestorTitles": ["authoritative black-box contracts"],
+					"fullName": "authoritative black-box contracts does not hard-reload from stale aborted user-navigation responses",
+					"status": "passed",
+					"title": "does not hard-reload from stale aborted user-navigation responses",
+					"duration": 1.8503749999999854,
+					"failureMessages": [],
+					"meta": {}
+				}
+			],
+			"startTime": 1772298077773,
+			"endTime": 1772298078269.8503,
+			"status": "passed",
+			"message": "",
+			"name": "/Users/sjc/__code/river/typescript/vorma/black_box_tests/src/index.test.ts"
+		}
+	]
+}

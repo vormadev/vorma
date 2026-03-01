@@ -11,23 +11,6 @@ export default defineConfig({
 				"./node_modules/solid-js/web/dist/web.js",
 			),
 			"solid-js": sourcePath("./node_modules/solid-js/dist/solid.js"),
-			"vorma/client/__internal": sourcePath(
-				"./typescript/vorma/client/internal.ts",
-			),
-			"vorma/client": sourcePath("./typescript/vorma/client/index.ts"),
-			"vorma/buildtime": sourcePath(
-				"./typescript/vorma/client/buildtime.ts",
-			),
-			"vorma/react": sourcePath(
-				"./typescript/vorma/ui-adapters/react/index.tsx",
-			),
-			"vorma/solid": sourcePath(
-				"./typescript/vorma/ui-adapters/solid/index.tsx",
-			),
-			"vorma/preact": sourcePath(
-				"./typescript/vorma/ui-adapters/preact/index.tsx",
-			),
-			"vorma/vite": sourcePath("./typescript/vorma/vite/vite.ts"),
 			"vorma/kit/converters": sourcePath(
 				"./typescript/kit/converters/converters.ts",
 			),

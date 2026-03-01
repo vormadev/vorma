@@ -6,20 +6,16 @@
 package shared
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
-	"sync"
-	"syscall"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/vormadev/vorma/kit/lockfile"
 )
 
 // LockFileName is the canonical lock file used by wave dev orchestration.
@@ -38,273 +34,59 @@ var ErrLockHeld = errors.New("another wave dev process is already running")
 
 // DevLock manages exclusive per-project ownership for development mode.
 //
-// The lock file contains only the owner PID as text, and stale lock
-// reclamation is guarded by compare-before-delete checks.
+// It uses lease-based lock files so stale or suspended owners can be reclaimed.
 type DevLock struct {
-	path string
-	mu   sync.Mutex
-	held bool
-}
-
-// lockFileSnapshot captures one stable read of lock file state.
-type lockFileSnapshot struct {
-	rawData   []byte
-	pid       int
-	pidParsed bool
-	modified  time.Time
+	lock *lockfile.PIDLock
 }
 
 // NewDevLock creates a lock rooted in the project's dist static directory.
 func NewDevLock(distStaticDirectoryPath string) *DevLock {
+	lockPath := filepath.Join(distStaticDirectoryPath, LockFileName)
 	return &DevLock{
-		path: filepath.Join(distStaticDirectoryPath, LockFileName),
+		lock: lockfile.NewPIDLockWithOptions(
+			lockPath,
+			lockfile.Options{
+				HeldError:                    ErrLockHeld,
+				AcquireRetryLimit:            lockAcquireRetryLimit,
+				AcquireRetryDelay:            lockAcquireRetryDelay,
+				InvalidPIDLockStaleThreshold: invalidLockStaleThreshold,
+				FileWriteMode:                fileWriteMode,
+				DirectoryWriteMode:           directoryWriteMode,
+			},
+		),
 	}
 }
 
 // Path returns the full lock file path.
 func (devLock *DevLock) Path() string {
-	if devLock == nil {
+	if devLock == nil || devLock.lock == nil {
 		return ""
 	}
-	return devLock.path
+	return devLock.lock.Path()
 }
 
 // Acquire obtains lock ownership or returns ErrLockHeld.
 func (devLock *DevLock) Acquire() error {
-	if devLock == nil {
+	if devLock == nil || devLock.lock == nil {
 		return errors.New("lock is nil")
 	}
-
-	devLock.mu.Lock()
-	defer devLock.mu.Unlock()
-
-	if strings.TrimSpace(devLock.path) == "" {
-		return errors.New("lock path is empty")
-	}
-
-	if ensureDirectoryError := os.MkdirAll(filepath.Dir(devLock.path), directoryWriteMode); ensureDirectoryError != nil {
-		return fmt.Errorf("create lock directory: %w", ensureDirectoryError)
-	}
-
-	for attemptIndex := 0; attemptIndex < lockAcquireRetryLimit; attemptIndex++ {
-		acquired, lockHeldError, acquireAttemptError := devLock.tryAcquireSingleAttempt()
-		if acquireAttemptError != nil {
-			return acquireAttemptError
-		}
-		if lockHeldError != nil {
-			return lockHeldError
-		}
-		if acquired {
-			devLock.held = true
-			return nil
-		}
-		time.Sleep(lockAcquireRetryDelay)
-	}
-
-	return fmt.Errorf("acquire lock: contention exceeded retry budget")
+	return devLock.lock.Acquire()
 }
 
 // Release drops lock ownership by removing the lock file.
 func (devLock *DevLock) Release() error {
-	if devLock == nil {
+	if devLock == nil || devLock.lock == nil {
 		return nil
 	}
-
-	devLock.mu.Lock()
-	defer devLock.mu.Unlock()
-
-	removeError := os.Remove(devLock.path)
-	if removeError != nil && !os.IsNotExist(removeError) {
-		return fmt.Errorf("release lock: %w", removeError)
-	}
-	devLock.held = false
-	return nil
+	return devLock.lock.Release()
 }
 
 // Held reports whether Acquire has succeeded in-process and has not been released.
 func (devLock *DevLock) Held() bool {
-	if devLock == nil {
+	if devLock == nil || devLock.lock == nil {
 		return false
 	}
-	devLock.mu.Lock()
-	defer devLock.mu.Unlock()
-	return devLock.held
-}
-
-// tryAcquireSingleAttempt tries O_EXCL create, then stale lock reclamation.
-func (devLock *DevLock) tryAcquireSingleAttempt() (bool, error, error) {
-	created, createError := devLock.tryCreateLockFileForCurrentProcess()
-	if createError != nil {
-		return false, nil, createError
-	}
-	if created {
-		return true, nil, nil
-	}
-
-	snapshot, snapshotFound, snapshotError := devLock.readLockFileSnapshot()
-	if snapshotError != nil {
-		return false, nil, snapshotError
-	}
-	if !snapshotFound {
-		return false, nil, nil
-	}
-
-	if snapshot.pidParsed {
-		if processAppearsAlive(snapshot.pid) {
-			return false, fmt.Errorf(
-				"%w (pid %d)",
-				ErrLockHeld,
-				snapshot.pid,
-			), nil
-		}
-	} else if !isInvalidPIDLockStale(snapshot.modified) {
-		return false, fmt.Errorf("%w (pid unavailable)", ErrLockHeld), nil
-	}
-
-	removed, removeError := devLock.tryRemoveSnapshotIfUnchanged(snapshot)
-	if removeError != nil {
-		return false, nil, removeError
-	}
-	if !removed {
-		return false, nil, nil
-	}
-
-	return false, nil, nil
-}
-
-// tryCreateLockFileForCurrentProcess performs one atomic lock-file create.
-func (devLock *DevLock) tryCreateLockFileForCurrentProcess() (bool, error) {
-	file, openError := os.OpenFile(
-		devLock.path,
-		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
-		fileWriteMode,
-	)
-	if openError != nil {
-		if os.IsExist(openError) {
-			return false, nil
-		}
-		return false, fmt.Errorf("create lock file: %w", openError)
-	}
-
-	written := false
-	defer func() {
-		if !written {
-			_ = file.Close()
-			_ = os.Remove(devLock.path)
-		}
-	}()
-
-	if _, writeError := file.WriteString(strconv.Itoa(os.Getpid())); writeError != nil {
-		return false, fmt.Errorf("write lock file pid: %w", writeError)
-	}
-	if closeError := file.Close(); closeError != nil {
-		return false, fmt.Errorf("close lock file: %w", closeError)
-	}
-	written = true
-	return true, nil
-}
-
-// readLockFileSnapshot loads lock content and metadata.
-func (devLock *DevLock) readLockFileSnapshot() (lockFileSnapshot, bool, error) {
-	lockRawData, readError := os.ReadFile(devLock.path)
-	if readError != nil {
-		if os.IsNotExist(readError) {
-			return lockFileSnapshot{}, false, nil
-		}
-		return lockFileSnapshot{}, false, fmt.Errorf(
-			"read lock file: %w",
-			readError,
-		)
-	}
-
-	lockFileInfo, statError := os.Stat(devLock.path)
-	if statError != nil {
-		if os.IsNotExist(statError) {
-			return lockFileSnapshot{}, false, nil
-		}
-		return lockFileSnapshot{}, false, fmt.Errorf(
-			"stat lock file: %w",
-			statError,
-		)
-	}
-
-	lockPID, lockPIDParsed := parsePIDFromLockData(lockRawData)
-	return lockFileSnapshot{
-		rawData:   lockRawData,
-		pid:       lockPID,
-		pidParsed: lockPIDParsed,
-		modified:  lockFileInfo.ModTime(),
-	}, true, nil
-}
-
-// tryRemoveSnapshotIfUnchanged removes the lock file only if content matches.
-func (devLock *DevLock) tryRemoveSnapshotIfUnchanged(
-	snapshot lockFileSnapshot,
-) (bool, error) {
-	currentRawData, readError := os.ReadFile(devLock.path)
-	if readError != nil {
-		if os.IsNotExist(readError) {
-			return false, nil
-		}
-		return false, fmt.Errorf("re-read lock file: %w", readError)
-	}
-
-	if !bytes.Equal(currentRawData, snapshot.rawData) {
-		return false, nil
-	}
-
-	if removeError := os.Remove(devLock.path); removeError != nil {
-		if os.IsNotExist(removeError) {
-			return false, nil
-		}
-		return false, fmt.Errorf("remove stale lock file: %w", removeError)
-	}
-	return true, nil
-}
-
-// parsePIDFromLockData parses pid text from lock file bytes.
-func parsePIDFromLockData(lockRawData []byte) (int, bool) {
-	lockPID, parseError := strconv.Atoi(strings.TrimSpace(string(lockRawData)))
-	if parseError != nil || lockPID <= 0 {
-		return 0, false
-	}
-	return lockPID, true
-}
-
-// isInvalidPIDLockStale reports whether invalid-pid lock data is old enough to reclaim.
-func isInvalidPIDLockStale(lockModifiedAt time.Time) bool {
-	return time.Since(lockModifiedAt) >= invalidLockStaleThreshold
-}
-
-// processAppearsAlive reports whether a process should be treated as active.
-func processAppearsAlive(processID int) bool {
-	process, findError := os.FindProcess(processID)
-	if findError != nil {
-		return false
-	}
-
-	signalError := process.Signal(syscall.Signal(0))
-	if signalError == nil {
-		return true
-	}
-	if errors.Is(signalError, os.ErrProcessDone) {
-		return false
-	}
-
-	errorString := strings.ToLower(signalError.Error())
-	if runtime.GOOS == "windows" {
-		if strings.Contains(errorString, "access is denied") {
-			return true
-		}
-		if strings.Contains(errorString, "operation completed successfully") {
-			return true
-		}
-	}
-	if strings.Contains(errorString, "operation not permitted") {
-		return true
-	}
-
-	return false
+	return devLock.lock.Held()
 }
 
 // IsLockFileName reports whether a filename is the Wave dev lock file.

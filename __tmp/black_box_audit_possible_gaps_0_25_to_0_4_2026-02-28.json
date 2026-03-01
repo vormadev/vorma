@@ -1,0 +1,261 @@
+[
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"title": "treats empty JSON response as failed and then recovers",
+		"score": 0.35714285714285715,
+		"best": "treats empty navigation json payloads as failures and remains recoverable"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"title": "handles non-ok responses and still allows later navigation",
+		"score": 0.38461538461538464,
+		"best": "recovers from non-ok navigation responses and remains operable"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"title": "does not leak unhandled rejections when stale prefetch success is dropped before wait phase",
+		"score": 0.3888888888888889,
+		"best": "does not leak unhandled rejections when pure prefetch resolves to redirect"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.error_and_edge.contract.test.ts",
+		"title": "does not apply CSS bundles from stale revalidation responses",
+		"score": 0.375,
+		"best": "does not update build id from stale revalidation responses after external location change"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.events.contract.test.ts",
+		"title": "fires location event when history location key changes",
+		"score": 0.3,
+		"best": "pushes history when hash target changes"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.events.contract.test.ts",
+		"title": "fires build-id event with old/new IDs on navigation mismatch",
+		"score": 0.375,
+		"best": "dispatches build-id updates with old/new values after navigation commit"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "updates history location after push navigation",
+		"score": 0.375,
+		"best": "updates getRouterData after successful navigation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "triggers browser-history navigation fetch for cross-document POP",
+		"score": 0.3125,
+		"best": "reloads the browser when cross-document POP navigation fails in client runtime"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "saves scroll state before moving to a different document",
+		"score": 0.38461538461538464,
+		"best": "saves outgoing scroll state before cross-document POP commits"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "registers browser history listener during init",
+		"score": 0.25,
+		"best": "sets history scrollRestoration to manual during init when supported"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.history_and_init.contract.test.ts",
+		"title": "refreshes when any matched pattern is tracked for the same HMR module path",
+		"score": 0.35294117647058826,
+		"best": "revalidates when any matched route shares the updated module path"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"title": "does not prevent default when modifier keys are used",
+		"score": 0.2857142857142857,
+		"best": "resolveBody does not throw when body constructors are unavailable"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"title": "does not prevent default for non-primary button clicks",
+		"score": 0.35714285714285715,
+		"best": "react typed links do not intercept non-primary button clicks"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"title": "does not prevent default for internal links targeting non-self browsing contexts",
+		"score": 0.2777777777777778,
+		"best": "react typed links prevent default and navigate for eligible internal clicks"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"title": "handles hash-only links without navigation fetch",
+		"score": 0.38461538461538464,
+		"best": "react typed links handle hash-only same-document clicks without fetch"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.link_click.contract.test.ts",
+		"title": "does not trigger navigation for encoding-equivalent hash links",
+		"score": 0.375,
+		"best": "react typed links do not fetch for same-document encoding-equivalent hash clicks"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"title": "provides synchronous status from getStatus()",
+		"score": 0.36363636363636365,
+		"best": "returns synchronous status snapshots from getStatus for in-flight navigation"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"title": "keeps at least one loading state active across submit to auto-revalidate",
+		"score": 0.3333333333333333,
+		"best": "keeps loading continuous from submit into auto-revalidate"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"title": "keeps navigating state continuous through soft redirect handoff",
+		"score": 0.36363636363636365,
+		"best": "keeps loading status continuous through redirect chains"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"title": "does not start the global loading indicator for prefetch-only activity",
+		"score": 0.3125,
+		"best": "prefetch-only link intent does not emit loading status transitions"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.loading_and_focus.contract.test.ts",
+		"title": "stops listening after cleanup from revalidateOnWindowFocus",
+		"score": 0.3,
+		"best": "stops revalidate-on-focus listener after cleanup"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.module_loading_and_fetch.contract.test.ts",
+		"title": "loads modules using publicPathPrefix and maps export keys to active components",
+		"score": 0.375,
+		"best": "loads route modules through publicPathPrefix and resolves export-key-selected components"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.navigation_lifecycle.contract.test.ts",
+		"title": "deduplicates concurrent prefetch starts for the same URL",
+		"score": 0.36363636363636365,
+		"best": "deduplicates identical prefetches for the same href"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.navigation_state_machine.contract.test.ts",
+		"title": "keeps last-started user navigation authoritative despite late earlier completions (resolve order: %j)",
+		"score": 0.3333333333333333,
+		"best": "keeps last-started navigation authoritative across generated resolve permutations (seed=%d)"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"title": "does not client-navigate prefetch clicks for non-self target anchors",
+		"score": 0.25,
+		"best": "does not revalidate for non-matching HMR js updates"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.prefetch.contract.test.ts",
+		"title": "rejects serverDataPromise with AbortError when server omits a prestarted matched pattern",
+		"score": 0.26666666666666666,
+		"best": "rejects serverDataPromise with AbortError for failed prefetch responses"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/client.utilities.contract.test.ts",
+		"title": "cancels idle prefetch after touch when pointer modality switches back to mouse",
+		"score": 0.29411764705882354,
+		"best": "switches pointer modality between touch and fine pointers after init"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "collapses duplicate existing elements down to requested count",
+		"score": 0.35714285714285715,
+		"best": "reuses matching meta elements and collapses duplicates to the requested count"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "throws when requested section markers are missing",
+		"score": 0.3076923076923077,
+		"best": "fails loud when managed head markers are missing or invalid"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/head_elements.contract.test.ts",
+		"title": "handles combined add update remove and reorder deterministically",
+		"score": 0.26666666666666666,
+		"best": "reconciles meta head blocks with deterministic add update remove reorder behavior"
+	},
+	{
+		"kind": "contract",
+		"file": "typescript/vorma/client/src/tests/contracts/vorma_ctx.contract.test.ts",
+		"title": "overwrites existing global values deterministically",
+		"score": 0.2727272727272727,
+		"best": "deterministically overwrites router-data snapshot values on later commits"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "react pattern loader selector stays fresh when match index changes",
+		"score": 0.3125,
+		"best": "react typed pattern-based selectors stay fresh across route index changes"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "preact pattern loader selector stays fresh when match index changes",
+		"score": 0.3125,
+		"best": "preact typed pattern-based selectors stay fresh across route index changes"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "solid pattern loader selector stays fresh when match index changes",
+		"score": 0.3125,
+		"best": "solid typed pattern-based selectors stay fresh across route index changes"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "react pattern client-loader selector stays fresh when match index changes",
+		"score": 0.29411764705882354,
+		"best": "react typed pattern-based selectors stay fresh across route index changes"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "preact pattern client-loader selector stays fresh when match index changes",
+		"score": 0.29411764705882354,
+		"best": "preact typed pattern-based selectors stay fresh across route index changes"
+	},
+	{
+		"kind": "dist",
+		"file": "typescript/vorma/client/src/tests/dist/npm_dist_adapters_root_outlet_runtime_state.test.ts",
+		"title": "solid pattern client-loader selector stays fresh when match index changes",
+		"score": 0.29411764705882354,
+		"best": "solid typed pattern-based selectors stay fresh across route index changes"
+	}
+]

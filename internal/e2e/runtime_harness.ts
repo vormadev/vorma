@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -62,9 +63,18 @@ const isolatedFixtureRootDirectoryPrefix = path.join(
 	os.tmpdir(),
 	"wave-vorma-e2e-fixture-",
 );
+const sharedFixtureTemplateDirectoryPrefix = path.join(
+	os.tmpdir(),
+	"wave-vorma-e2e-fixture-template-",
+);
+const fixtureTemplateCacheVersion = "v2";
 const outputLineLimit = 800;
 const readinessTimeoutMS = 240_000;
 const shutdownTimeoutMS = 12_000;
+const runtimeStartupPortRetryCount = 3;
+
+const trackedLongLivedRuntimeCommands = new Set<SpawnedCommand>();
+let hasInstalledTrackedRuntimeCommandCleanupHooks = false;
 
 /////////////////////////////////////////////////////////////////////
 /////// Public API
@@ -85,14 +95,13 @@ export async function startFixtureSiteForE2E(props: {
 		viteDefaultPort,
 	});
 
-	const port = await resolvePortForLane({
+	let runtimePort = await resolvePortForLane({
 		mode: props.mode,
 		uiAdapter: props.uiAdapter,
 	});
-	const baseURL = `http://127.0.0.1:${port}`;
-	const commonEnv = {
+	let runtimeBaseURL = `http://127.0.0.1:${runtimePort}`;
+	const baseRuntimeEnv = {
 		...process.env,
-		PORT: String(port),
 		GOCACHE: process.env.GOCACHE ?? "/tmp/go-build",
 		VORMA_E2E_UI_ADAPTER: props.uiAdapter,
 	};
@@ -115,6 +124,13 @@ export async function startFixtureSiteForE2E(props: {
 		return spawnedRuntimeCommand;
 	}
 
+	function resolveRuntimeEnvironmentForPort(port: number): NodeJS.ProcessEnv {
+		return {
+			...baseRuntimeEnv,
+			PORT: String(port),
+		};
+	}
+
 	async function startRuntimeProcess(runtimeStartupOptions: {
 		runProdBuild: boolean;
 	}): Promise<void> {
@@ -123,20 +139,59 @@ export async function startFixtureSiteForE2E(props: {
 				command: "go",
 				args: ["run", "./backend/cmd/build"],
 				cwd: preparedFixtureVariant.fixtureRootDir,
-				env: commonEnv,
+				env: resolveRuntimeEnvironmentForPort(runtimePort),
 			});
 		}
 
-		const runtimeCommandSpec = resolveRuntimeCommandSpec({
-			mode: props.mode,
-			fixtureRootDir: preparedFixtureVariant.fixtureRootDir,
-			env: commonEnv,
-		});
-		spawnedRuntimeCommand = spawnManagedCommand(runtimeCommandSpec);
-		await waitForHealthEndpoint({
-			baseURL,
-			spawnedCommand: mustGetRunningRuntimeCommand(),
-		});
+		for (
+			let runtimeStartupAttemptIndex = 0;
+			runtimeStartupAttemptIndex < runtimeStartupPortRetryCount;
+			runtimeStartupAttemptIndex += 1
+		) {
+			const runtimeCommandSpec = resolveRuntimeCommandSpec({
+				mode: props.mode,
+				fixtureRootDir: preparedFixtureVariant.fixtureRootDir,
+				env: resolveRuntimeEnvironmentForPort(runtimePort),
+			});
+			spawnedRuntimeCommand = spawnManagedCommand(runtimeCommandSpec);
+			trackLongLivedRuntimeCommandForCleanup({
+				spawnedCommand: mustGetRunningRuntimeCommand(),
+			});
+
+			try {
+				await waitForHealthEndpoint({
+					baseURL: runtimeBaseURL,
+					spawnedCommand: mustGetRunningRuntimeCommand(),
+				});
+				return;
+			} catch (error) {
+				const currentRuntimeCommand = spawnedRuntimeCommand;
+				spawnedRuntimeCommand = null;
+				if (currentRuntimeCommand !== null) {
+					untrackLongLivedRuntimeCommandForCleanup({
+						spawnedCommand: currentRuntimeCommand,
+					});
+					await stopManagedCommand({
+						spawnedCommand: currentRuntimeCommand,
+					});
+				}
+
+				const hasAnotherPortRetryAvailable =
+					runtimeStartupAttemptIndex <
+					runtimeStartupPortRetryCount - 1;
+				if (
+					!hasAnotherPortRetryAvailable ||
+					!isAddressInUseStartupError({ error })
+				) {
+					throw error;
+				}
+
+				runtimePort = await reserveOpenPort();
+				runtimeBaseURL = `http://127.0.0.1:${runtimePort}`;
+			}
+		}
+
+		throw new Error("runtime startup retries exhausted unexpectedly");
 	}
 
 	try {
@@ -147,7 +202,7 @@ export async function startFixtureSiteForE2E(props: {
 		return {
 			mode: props.mode,
 			uiAdapter: props.uiAdapter,
-			baseURL,
+			baseURL: runtimeBaseURL,
 			frontendSourceDir: preparedFixtureVariant.frontendSourceDir,
 			readRecentOutput: () =>
 				formatRecentCommandOutput({
@@ -155,6 +210,9 @@ export async function startFixtureSiteForE2E(props: {
 				}),
 			restartRuntime: async () => {
 				const currentRuntimeCommand = mustGetRunningRuntimeCommand();
+				untrackLongLivedRuntimeCommandForCleanup({
+					spawnedCommand: currentRuntimeCommand,
+				});
 				await stopManagedCommand({
 					spawnedCommand: currentRuntimeCommand,
 				});
@@ -167,6 +225,9 @@ export async function startFixtureSiteForE2E(props: {
 				const currentRuntimeCommand = spawnedRuntimeCommand;
 				spawnedRuntimeCommand = null;
 				if (currentRuntimeCommand !== null) {
+					untrackLongLivedRuntimeCommandForCleanup({
+						spawnedCommand: currentRuntimeCommand,
+					});
 					await stopManagedCommand({
 						spawnedCommand: currentRuntimeCommand,
 					});
@@ -177,6 +238,9 @@ export async function startFixtureSiteForE2E(props: {
 	} catch (error) {
 		if (spawnedRuntimeCommand !== null) {
 			try {
+				untrackLongLivedRuntimeCommandForCleanup({
+					spawnedCommand: spawnedRuntimeCommand,
+				});
 				await stopManagedCommand({
 					spawnedCommand: spawnedRuntimeCommand,
 				});
@@ -240,12 +304,77 @@ function spawnManagedCommand(props: CommandSpec): SpawnedCommand {
 	return { child, commandLine, outputLines };
 }
 
+function trackLongLivedRuntimeCommandForCleanup(props: {
+	spawnedCommand: SpawnedCommand;
+}): void {
+	installTrackedRuntimeCommandCleanupHooksIfNeeded();
+	trackedLongLivedRuntimeCommands.add(props.spawnedCommand);
+	void waitForChildExit({ child: props.spawnedCommand.child }).finally(() => {
+		trackedLongLivedRuntimeCommands.delete(props.spawnedCommand);
+	});
+}
+
+function untrackLongLivedRuntimeCommandForCleanup(props: {
+	spawnedCommand: SpawnedCommand;
+}): void {
+	trackedLongLivedRuntimeCommands.delete(props.spawnedCommand);
+}
+
+function installTrackedRuntimeCommandCleanupHooksIfNeeded(): void {
+	if (hasInstalledTrackedRuntimeCommandCleanupHooks) {
+		return;
+	}
+	hasInstalledTrackedRuntimeCommandCleanupHooks = true;
+	process.once("exit", () => {
+		terminateAllTrackedRuntimeCommandsSync();
+	});
+	process.once("SIGINT", () => {
+		terminateAllTrackedRuntimeCommandsSync();
+		process.exit(130);
+	});
+	process.once("SIGTERM", () => {
+		terminateAllTrackedRuntimeCommandsSync();
+		process.exit(143);
+	});
+	process.once("SIGHUP", () => {
+		terminateAllTrackedRuntimeCommandsSync();
+		process.exit(129);
+	});
+}
+
+function terminateAllTrackedRuntimeCommandsSync(): void {
+	for (const spawnedCommand of trackedLongLivedRuntimeCommands) {
+		try {
+			terminateProcessGroup({
+				child: spawnedCommand.child,
+				signal: "SIGTERM",
+			});
+		} catch {
+			// Process may have already exited.
+		}
+	}
+}
+
 /** Runs a one-shot command and throws on non-zero exit. */
 async function runOneShotCommand(props: CommandSpec): Promise<void> {
 	const spawnedCommand = spawnManagedCommand(props);
-	const commandResult = await waitForChildExit({
-		child: spawnedCommand.child,
+	trackLongLivedRuntimeCommandForCleanup({
+		spawnedCommand,
 	});
+
+	let commandResult: {
+		exitCode: number | null;
+		signal: NodeJS.Signals | null;
+	};
+	try {
+		commandResult = await waitForChildExit({
+			child: spawnedCommand.child,
+		});
+	} finally {
+		untrackLongLivedRuntimeCommandForCleanup({
+			spawnedCommand,
+		});
+	}
 
 	if (commandResult.exitCode === 0) {
 		return;
@@ -324,22 +453,47 @@ async function createIsolatedFixtureRootDirectory(props: {
 	uiAdapter: E2EUIAdapter;
 	viteDefaultPort: number;
 }): Promise<string> {
+	const sharedFixtureTemplateRootDir =
+		await ensureSharedFixtureTemplateForAdapter({
+			uiAdapter: props.uiAdapter,
+		});
+
 	const isolatedFixtureRootDir = await fs.promises.mkdtemp(
 		isolatedFixtureRootDirectoryPrefix,
 	);
+	await copyDirectoryContents({
+		sourceDirectoryPath: sharedFixtureTemplateRootDir,
+		destinationDirectoryPath: isolatedFixtureRootDir,
+	});
+	await configureFixtureViteDefaultPort({
+		fixtureRootDir: isolatedFixtureRootDir,
+		viteDefaultPort: props.viteDefaultPort,
+	});
+
+	return isolatedFixtureRootDir;
+}
+
+/** Ensures a shared adapter template exists to avoid re-installing deps per lane. */
+async function ensureSharedFixtureTemplateForAdapter(props: {
+	uiAdapter: E2EUIAdapter;
+}): Promise<string> {
+	const sharedFixtureTemplateRootDir =
+		buildSharedFixtureTemplateRootDirectoryPath({
+			uiAdapter: props.uiAdapter,
+		});
+
 	await runOneShotCommand({
 		command: "go",
 		args: [
 			"run",
 			"./internal/cmd/e2e_fixture_gen",
 			"--output-dir",
-			isolatedFixtureRootDir,
+			sharedFixtureTemplateRootDir,
 			"--repository-root",
 			repositoryRootDir,
 			"--ui-adapter",
 			props.uiAdapter,
-			"--vite-default-port",
-			String(props.viteDefaultPort),
+			"--reuse-if-present",
 		],
 		cwd: repositoryRootDir,
 		env: {
@@ -348,7 +502,96 @@ async function createIsolatedFixtureRootDirectory(props: {
 		},
 	});
 
-	return isolatedFixtureRootDir;
+	return sharedFixtureTemplateRootDir;
+}
+
+function buildSharedFixtureTemplateRootDirectoryPath(props: {
+	uiAdapter: E2EUIAdapter;
+}): string {
+	const repositoryRootHash = createHash("sha256")
+		.update(repositoryRootDir)
+		.digest("hex")
+		.slice(0, 12);
+
+	return `${sharedFixtureTemplateDirectoryPrefix}${repositoryRootHash}-${fixtureTemplateCacheVersion}-${props.uiAdapter}`;
+}
+
+async function copyDirectoryContents(props: {
+	sourceDirectoryPath: string;
+	destinationDirectoryPath: string;
+}): Promise<void> {
+	const sourceDirectoryEntryNames = await fs.promises.readdir(
+		props.sourceDirectoryPath,
+	);
+
+	for (const sourceDirectoryEntryName of sourceDirectoryEntryNames) {
+		const sourceEntryPath = path.join(
+			props.sourceDirectoryPath,
+			sourceDirectoryEntryName,
+		);
+		const destinationEntryPath = path.join(
+			props.destinationDirectoryPath,
+			sourceDirectoryEntryName,
+		);
+		await fs.promises.cp(sourceEntryPath, destinationEntryPath, {
+			recursive: true,
+			force: true,
+			errorOnExist: false,
+		});
+	}
+}
+
+async function configureFixtureViteDefaultPort(props: {
+	fixtureRootDir: string;
+	viteDefaultPort: number;
+}): Promise<void> {
+	if (props.viteDefaultPort === 0) {
+		return;
+	}
+
+	const waveConfigFilePath = path.join(
+		props.fixtureRootDir,
+		"backend",
+		"wave.config.json",
+	);
+	const waveConfigFileContents = await fs.promises.readFile(
+		waveConfigFilePath,
+		"utf8",
+	);
+	const parsedWaveConfigObject = JSON.parse(
+		waveConfigFileContents,
+	) as unknown;
+	if (!isRecordObject(parsedWaveConfigObject)) {
+		throw new Error(
+			`expected wave config object in ${waveConfigFilePath}, got non-object JSON`,
+		);
+	}
+
+	const waveConfigObject: Record<string, unknown> = parsedWaveConfigObject;
+	const rawViteConfigObject = waveConfigObject["Vite"];
+	if (
+		rawViteConfigObject !== undefined &&
+		!isRecordObject(rawViteConfigObject)
+	) {
+		throw new Error(
+			`expected wave config Vite object in ${waveConfigFilePath}, got non-object JSON`,
+		);
+	}
+
+	const viteConfigObject: Record<string, unknown> =
+		rawViteConfigObject === undefined ? {} : rawViteConfigObject;
+	viteConfigObject["DefaultPort"] = props.viteDefaultPort;
+	waveConfigObject["Vite"] = viteConfigObject;
+
+	await fs.promises.writeFile(
+		waveConfigFilePath,
+		`${JSON.stringify(waveConfigObject, null, "\t")}\n`,
+		"utf8",
+	);
+}
+
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -439,6 +682,14 @@ function throwIfRuntimeExitedBeforeReadiness(input: {
 			}),
 		].join("\n"),
 	);
+}
+
+function isAddressInUseStartupError(input: { error: unknown }): boolean {
+	const errorMessage =
+		input.error instanceof Error
+			? input.error.message
+			: String(input.error);
+	return errorMessage.toLowerCase().includes("address already in use");
 }
 
 /** Reads an HTTP response status code for liveness checks. */

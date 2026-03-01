@@ -300,17 +300,17 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		}
 
 		wantDeps := []string{
-			"vorma_out/chunk-shared.js",
-			"vorma_out/chunk-items.js",
+			"/vorma_out/chunk-shared.js",
+			"/vorma_out/chunk-items.js",
 		}
 		if !reflect.DeepEqual(routeData.Deps, wantDeps) {
 			t.Fatalf("Deps = %#v, want %#v", routeData.Deps, wantDeps)
 		}
 
 		wantCSSBundles := []string{
-			"vorma_out/client-entry.css",
-			"vorma_out/chunk-shared.css",
-			"vorma_out/chunk-items.css",
+			"/vorma_out/client-entry.css",
+			"/vorma_out/chunk-shared.css",
+			"/vorma_out/chunk-items.css",
 		}
 		if !reflect.DeepEqual(routeData.CSSBundles, wantCSSBundles) {
 			t.Fatalf(
@@ -1107,7 +1107,7 @@ func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(
 		)
 	}
 
-	wantDeps := []string{"vorma_out/client-shared.js", "vorma_out/items.js"}
+	wantDeps := []string{"/vorma_out/client-shared.js", "/vorma_out/items.js"}
 	if !reflect.DeepEqual(routeData.Deps, wantDeps) {
 		t.Fatalf("Deps = %#v, want %#v", routeData.Deps, wantDeps)
 	}
@@ -1982,13 +1982,13 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 	}
 	if !reflect.DeepEqual(
 		resultA.Deps,
-		[]string{"vorma_out/client-shared.js", "vorma_out/chunk-a.js"},
+		[]string{"/vorma_out/client-shared.js", "/vorma_out/chunk-a.js"},
 	) {
 		t.Fatalf("appA Deps = %#v", resultA.Deps)
 	}
 	if !reflect.DeepEqual(
 		resultB.Deps,
-		[]string{"vorma_out/client-shared.js", "vorma_out/chunk-b.js"},
+		[]string{"/vorma_out/client-shared.js", "/vorma_out/chunk-b.js"},
 	) {
 		t.Fatalf("appB Deps = %#v", resultB.Deps)
 	}
@@ -2331,7 +2331,7 @@ func TestLoadersHandler_HTMLHeadDedupeAndAssetLinks(t *testing.T) {
 		"vorma_out/chunk-shared.css",
 		"vorma_out/chunk-items.css",
 	} {
-		if !strings.Contains(body, `data-vorma-css-bundle="`+bundle+`"`) {
+		if !strings.Contains(body, `data-vorma-css-bundle="/static/`+bundle+`"`) {
 			t.Fatalf("expected css bundle marker for %q, body=%q", bundle, body)
 		}
 		if !strings.Contains(body, `href="/static/`+bundle+`"`) {

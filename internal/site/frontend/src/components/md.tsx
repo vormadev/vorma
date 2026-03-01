@@ -40,13 +40,13 @@ export function MD(props: RouteProps<"/*">) {
 
 	return (
 		<div class="flex flex-col gap-6" id="md-route">
-			<div class="flex flex-wrap gap-6 items-center">
+			<div class="flex flex-wrap items-center gap-6">
 				<Show when={loaderData()?.BackItem}>
 					{(backUrl) => (
 						<VormaLink
 							prefetch="intent"
 							href={backUrl()}
-							class="back-link self-start my-2"
+							class="back-link my-2 self-start"
 						>
 							↑ Go to parent folder
 						</VormaLink>
@@ -55,7 +55,7 @@ export function MD(props: RouteProps<"/*">) {
 
 				<Show when={loaderData().Content && !loaderData().IsFolder}>
 					<button
-						class="sm:ml-auto px-2 py-1 text-xs bg-dark rounded-sm text-light border border-[#7777] font-normal tracking-wide hover:outline-3 hover:outline-nice-blue hover:outline-offset-1 hover:cursor-pointer uppercase"
+						class="bg-dark text-light hover:outline-nice-blue rounded-sm border border-[#7777] px-2 py-1 text-xs font-normal tracking-wide uppercase hover:cursor-pointer hover:outline-3 hover:outline-offset-1 sm:ml-auto"
 						onClick={async () => {
 							const ld = loaderData();
 							const markdown = `# ${ld.Title}\n\n${htmlToMarkdown(ld.Content ?? "")}\n`;

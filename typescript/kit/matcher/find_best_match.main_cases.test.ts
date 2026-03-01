@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { findBestMatch } from "./find_best_match.ts";
-import { createPatternRegistry, registerPattern } from "./register.ts";
 import {
 	differentOptsToTest,
 	getTestCases,
 	modifyPatternsToOpts,
 	NOT_FOUND,
 } from "./find_best_match.test.helpers.ts";
+import { findBestMatch } from "./find_best_match.ts";
+import { createPatternRegistry, registerPattern } from "./register.ts";
 
 describe("FindBestMatch", () => {
 	for (const opts of differentOptsToTest) {
@@ -60,7 +60,9 @@ describe("FindBestMatch", () => {
 					if (tt.wantSplatSegments === null) {
 						expect(match!.splatValues).toEqual([]);
 					} else {
-						expect(match!.splatValues).toEqual(tt.wantSplatSegments);
+						expect(match!.splatValues).toEqual(
+							tt.wantSplatSegments,
+						);
 					}
 				});
 			});

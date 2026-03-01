@@ -48,8 +48,12 @@ describe("jsonDeepEquals", () => {
 		});
 
 		it("should handle arrays with mixed types", () => {
-			expect(jsonDeepEquals([1, "two", true], [1, "two", true])).toBe(true);
-			expect(jsonDeepEquals([1, "two", true], [1, "two", false])).toBe(false);
+			expect(jsonDeepEquals([1, "two", true], [1, "two", true])).toBe(
+				true,
+			);
+			expect(jsonDeepEquals([1, "two", true], [1, "two", false])).toBe(
+				false,
+			);
 		});
 	});
 
@@ -66,15 +70,21 @@ describe("jsonDeepEquals", () => {
 
 		it("should handle nested objects", () => {
 			expect(jsonDeepEquals({ a: { b: 1 } }, { a: { b: 1 } })).toBe(true);
-			expect(jsonDeepEquals({ a: { b: 1 } }, { a: { b: 2 } })).toBe(false);
-			expect(jsonDeepEquals({ a: { b: { c: 3 } } }, { a: { b: { c: 3 } } })).toBe(
-				true,
+			expect(jsonDeepEquals({ a: { b: 1 } }, { a: { b: 2 } })).toBe(
+				false,
 			);
+			expect(
+				jsonDeepEquals({ a: { b: { c: 3 } } }, { a: { b: { c: 3 } } }),
+			).toBe(true);
 		});
 
 		it("should handle objects with arrays", () => {
-			expect(jsonDeepEquals({ a: [1, 2], b: 3 }, { a: [1, 2], b: 3 })).toBe(true);
-			expect(jsonDeepEquals({ a: [1, 2], b: 3 }, { a: [1, 3], b: 3 })).toBe(false);
+			expect(
+				jsonDeepEquals({ a: [1, 2], b: 3 }, { a: [1, 2], b: 3 }),
+			).toBe(true);
+			expect(
+				jsonDeepEquals({ a: [1, 2], b: 3 }, { a: [1, 3], b: 3 }),
+			).toBe(false);
 		});
 	});
 
@@ -124,8 +134,12 @@ describe("jsonDeepEquals", () => {
 		});
 
 		it("should handle objects with undefined values", () => {
-			expect(jsonDeepEquals({ a: undefined }, { a: undefined })).toBe(true);
-			expect(jsonDeepEquals({ a: undefined }, { b: undefined })).toBe(false);
+			expect(jsonDeepEquals({ a: undefined }, { a: undefined })).toBe(
+				true,
+			);
+			expect(jsonDeepEquals({ a: undefined }, { b: undefined })).toBe(
+				false,
+			);
 		});
 
 		it("should handle arrays with undefined values", () => {

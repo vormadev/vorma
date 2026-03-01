@@ -25,8 +25,6 @@ func TestBuildSSRInnerHTML_RendersScriptAndHash(t *testing.T) {
 			HasRootData:             true,
 			Params:                  map[string]string{"id": "7"},
 			SplatValues:             []string{"rest"},
-			Deps:                    []string{"dep-a"},
-			CSSBundles:              []string{"/assets/home.css"},
 			DeploymentID:            `"dep-123"`,
 			OutermostServerErrorIdx: nil,
 		},
@@ -64,6 +62,52 @@ func TestBuildSSRInnerHTML_RendersScriptAndHash(t *testing.T) {
 			"expected route manifest URL assignment in script, got %q",
 			script,
 		)
+	}
+	if strings.Contains(script, "metaHeadEls:") {
+		t.Fatalf("expected SSR snapshot to omit metaHeadEls payload, got %q", script)
+	}
+	if strings.Contains(script, "restHeadEls:") {
+		t.Fatalf("expected SSR snapshot to omit restHeadEls payload, got %q", script)
+	}
+}
+
+func TestBuildSSRInnerHTMLFromRuntimeState_NormalizesNilParamsAndSplatValues(
+	t *testing.T,
+) {
+	output, buildError := BuildSSRInnerHTMLFromRuntimeState(
+		SSRRuntimeState{
+			VormaSymbolStr:    "__vorma_internal__",
+			BuildID:           `"build-123"`,
+			RootElementID:     "root-id",
+			PublicPathPrefix:  "/assets/",
+			RouteManifestFile: "route-manifest.json",
+		},
+		SSRRouteData{
+			ViteDevURL:              `"http://localhost:5173"`,
+			OutermostServerError:    `""`,
+			OutermostServerErrorIdx: nil,
+			ErrorExportKeys:         []string{""},
+			MatchedPatterns:         []string{"/"},
+			LoadersData:             []any{map[string]any{"ok": true}},
+			ImportURLs:              []string{"/assets/home.js"},
+			ExportKeys:              []string{"default"},
+			HasRootData:             true,
+			Params:                  nil,
+			SplatValues:             nil,
+		},
+	)
+	if buildError != nil {
+		t.Fatalf("BuildSSRInnerHTMLFromRuntimeState returned error: %v", buildError)
+	}
+	if output == nil || output.Script == nil {
+		t.Fatal("expected non-nil output script")
+	}
+	script := string(*output.Script)
+	if !strings.Contains(script, `params: {},`) {
+		t.Fatalf("expected params object in script, got %q", script)
+	}
+	if !strings.Contains(script, `splatValues: [],`) {
+		t.Fatalf("expected splatValues array in script, got %q", script)
 	}
 }
 
@@ -238,7 +282,6 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 			},
 			SSRRouteData: SSRRouteData{
 				ViteDevURL:           `"http://localhost:5173"`,
-				CSSBundles:           []string{"vorma_out/app.css"},
 				MatchedPatterns:      []string{"/"},
 				LoadersData:          []any{map[string]bool{"ok": true}},
 				ImportURLs:           []string{"/src/main.tsx"},

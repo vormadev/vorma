@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vormadev/vorma/internal/coalescepath"
+	"github.com/vormadev/vorma/lab/coalescecmd"
 )
 
 type releaseGateStage struct {
@@ -64,11 +67,32 @@ var releaseGateStages = []releaseGateStage{
 }
 
 func main() {
+	os.Exit(runMain())
+}
+
+func runMain() int {
 	if len(os.Args) != 1 {
 		fmt.Fprintln(os.Stderr, "release gate command does not take arguments")
-		os.Exit(2)
+		return 2
 	}
 
+	commandExitCode := 0
+	coalesceError := coalescecmd.Run(coalescecmd.Options{
+		Key:                    coalescepath.FullGateCommandKey,
+		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
+		Func: func() error {
+			commandExitCode = runReleaseGateProcess()
+			return nil
+		},
+	})
+	if coalesceError != nil {
+		fmt.Fprintf(os.Stderr, "full gate coalesce failed: %v\n", coalesceError)
+		return 1
+	}
+	return commandExitCode
+}
+
+func runReleaseGateProcess() int {
 	maxParallelTargets := resolveMaxParallelTargets()
 	resultsByTargetName := make(map[string]gateTargetResult)
 
@@ -102,7 +126,7 @@ func main() {
 				failedTargetResult.exitCode,
 			)
 		}
-		os.Exit(failedTargetResults[0].exitCode)
+		return failedTargetResults[0].exitCode
 	}
 
 	skippedTargetResults := collectSkippedTargetResultsInOrder(resultsByTargetName)
@@ -117,11 +141,12 @@ func main() {
 				skippedTargetResult.skippedReason,
 			)
 		}
-		os.Exit(1)
+		return 1
 	}
 
 	fmt.Println()
 	fmt.Println("RELEASE GATE: PASS")
+	return 0
 }
 
 func resolveMaxParallelTargets() int {

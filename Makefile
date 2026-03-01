@@ -32,30 +32,27 @@ gobench:
 tstest: tstest-source tstest-dist
 
 tstest-source:
-	@pnpm vitest run --exclude "typescript/vorma/client/src/tests/dist/**"
+	@pnpm vitest run --exclude "typescript/vorma/black_box_tests/dist/**"
 
 tstest-dist:
-	@pnpm vitest --run --config typescript/vorma/client/vitest.dist.config.ts
+	@pnpm vitest --run --config typescript/vorma/black_box_tests/dist/vitest.config.ts
 
 tstestwatch:
-	@pnpm vitest --exclude "typescript/vorma/client/src/tests/dist/**"
+	@pnpm vitest --exclude "typescript/vorma/black_box_tests/dist/**"
 
 tsbench:
 	@npx vitest bench
 
 nuke-node-modules:
-	@rm -rf node_modules 2>/dev/null || true
-	@find . -path "*/node_modules" -type d -exec rm -rf {} \; 2>/dev/null || true
+	@go run ./internal/cmd/tsstate nuke-node-modules
 
 tsinstall:
-	@pnpm i
-	@cd typescript/vorma/create && pnpm i
-	@$(MAKE) --no-print-directory e2e-install
+	@go run ./internal/cmd/tsstate install
 
 tsreset: nuke-node-modules tsinstall
 
 tslint:
-	@pnpm oxlint
+	@pnpm oxlint --type-aware
 
 tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact tscheck-fw-vite tscheck-fw-create
 
@@ -66,7 +63,7 @@ tscheck-fw-client:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/client
 
 tscheck-fw-client-dist:
-	@pnpm tsgo --noEmit --project ./typescript/vorma/client/src/tests/dist/tsconfig.json
+	@pnpm tsgo --noEmit --project ./typescript/vorma/black_box_tests/dist/tsconfig.json
 
 tscheck-fw-react:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/react
@@ -83,6 +80,12 @@ tscheck-fw-vite:
 tscheck-fw-create:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/create
 
+tsfmt:
+	@pnpm oxfmt
+
+tsfmtcheck:
+	@pnpm oxfmt --check
+
 npmbuild:
 	@go run ./internal/cmd/buildts
 
@@ -91,21 +94,21 @@ npmbuild:
 #####################################################################
 
 e2e-install:
-	@cd internal/e2e && pnpm i
+	@go run ./internal/cmd/e2e install
 
 e2e-install-browsers:
-	@cd internal/e2e && pnpm exec playwright install chromium
+	@go run ./internal/cmd/e2e install-browsers
 
 e2e-setup: e2e-install e2e-install-browsers
 
-e2e-test:
-	@cd internal/e2e && pnpm exec playwright test --config ./playwright.config.ts $(PLAYWRIGHT_ARGS)
+e2e-test: npmbuild
+	@go run ./internal/cmd/e2e test $(PLAYWRIGHT_ARGS)
 
-e2e-test-dev:
-	@cd internal/e2e && VORMA_E2E_MODE=dev pnpm exec playwright test --config ./playwright.config.ts $(PLAYWRIGHT_ARGS)
+e2e-test-dev: npmbuild
+	@go run ./internal/cmd/e2e test-dev $(PLAYWRIGHT_ARGS)
 
-e2e-test-prod:
-	@cd internal/e2e && VORMA_E2E_MODE=prod pnpm exec playwright test --config ./playwright.config.ts $(PLAYWRIGHT_ARGS)
+e2e-test-prod: npmbuild
+	@go run ./internal/cmd/e2e test-prod $(PLAYWRIGHT_ARGS)
 
 #####################################################################
 ####### OTHER

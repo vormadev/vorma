@@ -2726,7 +2726,9 @@ describe("navigation runtime submit stale checkpoints", () => {
 			const firstSubmit = runtime.submit(
 				"/api/original",
 				firstRequestInit,
-				{ dedupeKey: "revalidate-stale" },
+				{
+					dedupeKey: "revalidate-stale",
+				},
 			);
 
 			await expect(firstSubmit).resolves.toEqual({

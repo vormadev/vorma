@@ -22,6 +22,9 @@ export default defineConfig({
 			"vorma/buildtime": sourcePath(
 				"../../../npm_dist/typescript/vorma/client/buildtime.js",
 			),
+			"vorma/testing": sourcePath(
+				"../../../npm_dist/typescript/vorma/client/testing.js",
+			),
 			"vorma/react": sourcePath(
 				"../../../npm_dist/typescript/vorma/ui-adapters/react/index.js",
 			),
@@ -60,6 +63,9 @@ export default defineConfig({
 			),
 			"vorma/kit/matcher/find-nested": sourcePath(
 				"../../../npm_dist/typescript/kit/matcher/find_nested_matches.js",
+			),
+			"vorma/kit/matcher/utils": sourcePath(
+				"../../../npm_dist/typescript/kit/matcher/utils.js",
 			),
 			"vorma/kit/theme": sourcePath(
 				"../../../npm_dist/typescript/kit/theme/theme.js",

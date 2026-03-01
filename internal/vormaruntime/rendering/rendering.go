@@ -42,8 +42,6 @@ type SSRInnerHTMLInput struct {
 	HasRootData             bool
 	Params                  any
 	SplatValues             any
-	Deps                    []string
-	CSSBundles              []string
 }
 
 const ssrInnerHTMLTemplateString = `<script>
@@ -119,7 +117,6 @@ type SSRRuntimeState struct {
 // the SSR bootstrap script.
 type SSRRouteData struct {
 	ViteDevURL string
-	CSSBundles []string
 
 	OutermostServerError    string
 	OutermostServerErrorIdx *int
@@ -131,7 +128,6 @@ type SSRRouteData struct {
 	HasRootData             bool
 	Params                  any
 	SplatValues             any
-	Deps                    []string
 }
 
 // BuildLoadersHTMLResponseInput captures dependencies and values needed to
@@ -234,6 +230,15 @@ func BuildSSRInnerHTMLFromRuntimeState(
 	runtimeState SSRRuntimeState,
 	routeData SSRRouteData,
 ) (*BuildSSRInnerHTMLOutput, error) {
+	params := routeData.Params
+	if params == nil {
+		params = map[string]string{}
+	}
+	splatValues := routeData.SplatValues
+	if splatValues == nil {
+		splatValues = []string{}
+	}
+
 	for i, loaderData := range routeData.LoadersData {
 		if err := json.NewEncoder(io.Discard).Encode(loaderData); err != nil {
 			return nil, fmt.Errorf(
@@ -263,10 +268,8 @@ func BuildSSRInnerHTMLFromRuntimeState(
 		ImportURLs:              routeData.ImportURLs,
 		ExportKeys:              routeData.ExportKeys,
 		HasRootData:             routeData.HasRootData,
-		Params:                  routeData.Params,
-		SplatValues:             routeData.SplatValues,
-		Deps:                    routeData.Deps,
-		CSSBundles:              routeData.CSSBundles,
+		Params:                  params,
+		SplatValues:             splatValues,
 	}
 
 	return BuildSSRInnerHTML(input)

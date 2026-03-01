@@ -860,7 +860,9 @@ describe("client submit/redirect contracts", () => {
 		await api.submit(
 			"/api/get-with-body",
 			{ method: "GET", body: "should-not-send" } as any,
-			{ revalidate: false },
+			{
+				revalidate: false,
+			},
 		);
 
 		await api.submit(

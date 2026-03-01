@@ -36,6 +36,26 @@ export function resolveAbsoluteHrefWithOptionalSearchAndHash(props: {
 	return url.href;
 }
 
+export function getIsModifiedNavigationClick(event: {
+	metaKey?: boolean;
+	altKey?: boolean;
+	ctrlKey?: boolean;
+	shiftKey?: boolean;
+}): boolean {
+	return (
+		Boolean(event.metaKey) ||
+		Boolean(event.altKey) ||
+		Boolean(event.ctrlKey) ||
+		Boolean(event.shiftKey)
+	);
+}
+
+export function getIsPrimaryNavigationClick(event: {
+	button?: number;
+}): boolean {
+	return event.button === undefined || event.button === 0;
+}
+
 type EventTargetWithElementNavigation = {
 	closest?: (selector: string) => Element | null;
 	parentElement?: Element | null;
@@ -82,12 +102,9 @@ export function getAnchorDetailsFromEvent(event: MouseEvent) {
 
 	const isEligibleForDefaultPrevention =
 		isCurrentBrowsingContextAnchorTarget(anchor.target) &&
-		event.button === 0 &&
+		getIsPrimaryNavigationClick(event) &&
 		!anchor.hasAttribute("download") && // ignore downloads
-		!event.ctrlKey && // ignore ctrl+click
-		!event.shiftKey && // ignore shift+click
-		!event.metaKey && // ignore cmd+click
-		!event.altKey; // ignore alt+click
+		!getIsModifiedNavigationClick(event); // ignore modified click
 
 	const hrefDetails = getHrefDetails(anchor.href);
 	const isInternal = hrefDetails.isHTTP && hrefDetails.isInternal;

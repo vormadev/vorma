@@ -1,4 +1,4 @@
-import { parseSegments } from "./parse_segments.ts";
+import { parseSegments } from "vorma/kit/matcher/utils";
 
 export type Params = Record<string, string>;
 export type SegType = "splat" | "static" | "dynamic" | "index";

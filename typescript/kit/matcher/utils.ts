@@ -16,15 +16,19 @@ export function parseSegments(path: string): string[] {
 		}
 	}
 
-	// Add the last segment if it exists
 	if (start < path.length) {
 		segments.push(path.substring(start));
 	}
 
-	// Add empty segment for trailing slash
 	if (path.endsWith("/")) {
 		segments.push("");
 	}
 
 	return segments;
+}
+
+export function stripTrailingSlash(pattern: string): string {
+	return pattern.length > 0 && pattern[pattern.length - 1] === "/"
+		? pattern.substring(0, pattern.length - 1)
+		: pattern;
 }

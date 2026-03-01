@@ -15,8 +15,7 @@ describe("client events contracts", () => {
 		// Ensure HistoryManager has an initialized lastKnownLocation.
 		api.getUnsafeHistoryInstance();
 
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "PUSH",
 			location: {

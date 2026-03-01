@@ -341,7 +341,6 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 			Deps:                 []string{"vorma_out/chunk-items.js"},
 		},
 		CSSBundles: []string{"vorma_out/chunk-items.css"},
-		ViteDevURL: "",
 	}
 
 	b.ReportAllocs()

@@ -45,7 +45,6 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 			Deps:                 []string{"vorma_out/chunk-items.js"},
 		},
 		CSSBundles: []string{"vorma_out/chunk-items.css"},
-		ViteDevURL: "http://localhost:5173",
 	}
 
 	out, err := buildSSRInnerHTMLFromAppAndRouteData(app, routeData)
@@ -248,9 +247,7 @@ func buildSSRInnerHTMLFromAppAndRouteData(
 			RouteManifestFile: routeManifestFile,
 		},
 		rendering.SSRRouteData{
-			ViteDevURL: routeData.ViteDevURL,
-			CSSBundles: routeData.CSSBundles,
-
+			ViteDevURL:              routepipeline.GetViteDevURLForMode(isDev),
 			OutermostServerError:    routeData.RouteDataCore.OutermostServerError,
 			OutermostServerErrorIdx: routeData.RouteDataCore.OutermostServerErrorIdx,
 			ErrorExportKeys:         routeData.RouteDataCore.ErrorExportKeys,
@@ -261,7 +258,6 @@ func buildSSRInnerHTMLFromAppAndRouteData(
 			HasRootData:             routeData.RouteDataCore.HasRootData,
 			Params:                  routeData.RouteDataCore.Params,
 			SplatValues:             routeData.RouteDataCore.SplatValues,
-			Deps:                    routeData.RouteDataCore.Deps,
 		},
 	)
 }

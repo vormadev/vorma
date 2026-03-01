@@ -48,8 +48,7 @@ describe("client navigation mode contracts", () => {
 
 		window.history.replaceState({}, "", "/back-origin");
 
-		const { customHistoryListener } =
-			await import("../../runtime.ts");
+		const { customHistoryListener } = await import("../../runtime.ts");
 		await customHistoryListener({
 			action: "POP",
 			location: {
@@ -567,8 +566,7 @@ describe("client navigation mode contracts", () => {
 		]);
 
 		try {
-			const { customHistoryListener } =
-				await import("../../runtime.ts");
+			const { customHistoryListener } = await import("../../runtime.ts");
 			const stalePOPNavigation = customHistoryListener({
 				action: "POP",
 				location: {

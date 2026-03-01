@@ -1,6 +1,6 @@
 import { h, render as renderPreact } from "preact";
-import { act as actPreact } from "preact/test-utils";
 import { useEffect as usePreactEffect } from "preact/hooks";
+import { act as actPreact } from "preact/test-utils";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import {

@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { expect, test, type Page } from "@playwright/test";
 import {
 	startFixtureSiteForE2E,
 	type E2ERunMode,

@@ -11,38 +11,7 @@
 		"esModuleInterop": true,
 		"noUncheckedIndexedAccess": true,
 		"verbatimModuleSyntax": true,
-		"allowImportingTsExtensions": true,
-		"paths": {
-			"vorma/client": ["./typescript/vorma/client/index.ts"],
-			"vorma/client/__internal": [
-				"./typescript/vorma/client/internal.ts"
-			],
-			"vorma/buildtime": ["./typescript/vorma/client/buildtime.ts"],
-			"vorma/react": ["./typescript/vorma/ui-adapters/react/index.tsx"],
-			"vorma/solid": ["./typescript/vorma/ui-adapters/solid/index.tsx"],
-			"vorma/preact": ["./typescript/vorma/ui-adapters/preact/index.tsx"],
-			"vorma/vite": ["./typescript/vorma/vite/vite.ts"],
-			"vorma/kit/converters": [
-				"./typescript/kit/converters/converters.ts"
-			],
-			"vorma/kit/cookies": ["./typescript/kit/cookies/cookies.ts"],
-			"vorma/kit/csrf": ["./typescript/kit/csrf/csrf.ts"],
-			"vorma/kit/debounce": ["./typescript/kit/debounce/debounce.ts"],
-			"vorma/kit/fmt": ["./typescript/kit/fmt/fmt.ts"],
-			"vorma/kit/json": ["./typescript/kit/json/json.ts"],
-			"vorma/kit/listeners": ["./typescript/kit/listeners/listeners.ts"],
-			"vorma/kit/matcher/register": [
-				"./typescript/kit/matcher/register.ts"
-			],
-			"vorma/kit/matcher/find-best": [
-				"./typescript/kit/matcher/find_best_match.ts"
-			],
-			"vorma/kit/matcher/find-nested": [
-				"./typescript/kit/matcher/find_nested_matches.ts"
-			],
-			"vorma/kit/theme": ["./typescript/kit/theme/theme.ts"],
-			"vorma/kit/url": ["./typescript/kit/url/url.ts"]
-		}
+		"allowImportingTsExtensions": true
 	},
 	"exclude": ["**/node_modules", "npm_dist"]
 }

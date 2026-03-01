@@ -26,7 +26,12 @@ describe("URLSearchParams Serializer", () => {
 
 	// Pointer Fields (simulated with null in TypeScript)
 	it("Pointer fields", () => {
-		const input = { name: "Jane", age: 28, salary: 50000.5, isEmployee: true };
+		const input = {
+			name: "Jane",
+			age: 28,
+			salary: 50000.5,
+			isEmployee: true,
+		};
 		expect(serializeToSearchParams(input).toString()).toBe(
 			"age=28&isEmployee=true&name=Jane&salary=50000.5",
 		);
@@ -34,7 +39,9 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Nil pointer fields", () => {
 		const input = { name: "John", age: 30, salary: null };
-		expect(serializeToSearchParams(input).toString()).toBe("age=30&name=John&salary=");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"age=30&name=John&salary=",
+		);
 	});
 
 	it("Slice of pointers", () => {
@@ -46,17 +53,24 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Empty values -- pointers", () => {
 		const input = { name: null, age: null, active: null };
-		expect(serializeToSearchParams(input).toString()).toBe("active=&age=&name=");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"active=&age=&name=",
+		);
 	});
 
 	it("Empty values -- non-pointers", () => {
 		const input = { name: "", age: 0, active: false };
-		expect(serializeToSearchParams(input).toString()).toBe("active=false&age=0&name=");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"active=false&age=0&name=",
+		);
 	});
 
 	// Nested Structs
 	it("Nested structs", () => {
-		const input = { name: "John", address: { city: "NewYork", zip: 10001 } };
+		const input = {
+			name: "John",
+			address: { city: "NewYork", zip: 10001 },
+		};
 		expect(serializeToSearchParams(input).toString()).toBe(
 			"address.city=NewYork&address.zip=10001&name=John",
 		);
@@ -132,7 +146,9 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Map with empty values", () => {
 		const input = { data: { key1: "", key2: "" } };
-		expect(serializeToSearchParams(input).toString()).toBe("data.key1=&data.key2=");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"data.key1=&data.key2=",
+		);
 	});
 
 	it("Map with pointer values", () => {
@@ -155,7 +171,9 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Map key with dot", () => {
 		const input = { data: { "key.with.dot": "value" } };
-		expect(serializeToSearchParams(input).toString()).toBe("data.key.with.dot=value");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"data.key.with.dot=value",
+		);
 	});
 
 	// Pointers to Complex Types
@@ -175,7 +193,9 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Basic slice pointer", () => {
 		const input = { data: ["value1", "value2"] };
-		expect(serializeToSearchParams(input).toString()).toBe("data=value1&data=value2");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"data=value1&data=value2",
+		);
 	});
 
 	// Misc
@@ -212,7 +232,9 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Sorted nested keys", () => {
 		const input = { c: { y: "yes", x: "no" }, a: 1 };
-		expect(serializeToSearchParams(input).toString()).toBe("a=1&c.x=no&c.y=yes");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"a=1&c.x=no&c.y=yes",
+		);
 	});
 
 	it("Empty query parameters with sorting", () => {
@@ -235,7 +257,9 @@ describe("URLSearchParams Serializer", () => {
 
 	it("Array order preserved", () => {
 		const input = { tags: ["go", "test"], a: 1 };
-		expect(serializeToSearchParams(input).toString()).toBe("a=1&tags=go&tags=test");
+		expect(serializeToSearchParams(input).toString()).toBe(
+			"a=1&tags=go&tags=test",
+		);
 	});
 
 	it("Encodes URI properly", () => {

@@ -31,24 +31,24 @@ export function App() {
 
 	return (
 		<>
-			<nav class="w-full flex items-center flex-wrap">
+			<nav class="flex w-full flex-wrap items-center">
 				<div class="flex items-baseline">
 					<Link pattern="/">
 						<h1 class="logo">
 							<img
 								src={hashedURL("favicon.svg")}
 								alt="Vorma logo"
-								class="w-5 h-5 brightness-85 dark:brightness-[unset]"
+								class="h-5 w-5 brightness-85 dark:brightness-[unset]"
 							/>
 							<span>VORMA</span>
 						</h1>
 					</Link>
-					<div class="text-xs opacity-70 hidden sm:flex">
+					<div class="hidden text-xs opacity-70 sm:flex">
 						({routerData().rootData?.LatestVersion})
 					</div>
 				</div>
 
-				<div class="flex nav-right gap-1 flex-wrap">
+				<div class="nav-right flex flex-wrap gap-1">
 					<Link pattern="/*" splatValues={["docs"]} class="nav-item">
 						Docs
 					</Link>
@@ -70,7 +70,7 @@ export function App() {
 					<button
 						type="button"
 						title="Change theme"
-						class="cursor-pointer nav-item"
+						class="nav-item cursor-pointer"
 						onClick={() => {
 							if (theme() === "dark") {
 								setTheme(THEMES.Light);
@@ -89,7 +89,7 @@ export function App() {
 						<img
 							src={theme_to_label_map[theme()]}
 							alt="Theme icon"
-							class="w-5 h-5"
+							class="h-5 w-5"
 						/>
 					</button>
 				</div>

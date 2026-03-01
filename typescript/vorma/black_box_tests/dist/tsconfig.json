@@ -1,0 +1,9 @@
+{
+	"extends": "../../../../tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["vitest/globals", "node", "vite/client"],
+		"paths": {},
+		"noImplicitAny": false
+	},
+	"include": ["./**/*.ts", "./**/*.tsx", "./ambient_modules.d.ts"]
+}

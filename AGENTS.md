@@ -116,11 +116,11 @@ packages just for purity's sake.
 For all TypeScript test execution, keep source and dist test modes separate.
 
 - Source tests: run `make tstest-source` (or the equivalent
-  `pnpm vitest run --exclude "typescript/vorma/client/src/tests/dist/**"`).
+  `pnpm vitest run --exclude "typescript/vorma/black_box_tests/dist/**"`).
 - Dist tests: run `make tstest-dist` (or the equivalent
-  `pnpm vitest --run --config typescript/vorma/client/vitest.dist.config.ts`).
+  `pnpm vitest --run --config typescript/vorma/black_box_tests/dist/vitest.config.ts`).
 - If running targeted subsets, still keep the same split and use the dist config
-  for all tests under `typescript/vorma/client/src/tests/dist/**`.
+  for all tests under `typescript/vorma/black_box_tests/dist/**`.
 
 ### Special Rule: UI Adapter Tests and Imports Are Dist-Only
 
@@ -128,7 +128,7 @@ For `typescript/vorma/ui-adapters/**`, always operate on and validate behavior
 through compiled outputs.
 
 - All `ui-adapters` tests must run in dist mode with
-  `typescript/vorma/client/vitest.dist.config.ts`.
+  `typescript/vorma/black_box_tests/dist/vitest.config.ts`.
 - All `ui-adapters` imports in those tests must resolve through `npm_dist`
   exports (for example `vorma/react`, `vorma/preact`, `vorma/solid` via the dist
   config), not source-path aliases.
@@ -156,6 +156,84 @@ order-fragile and unclear at callsites.
   Additionally, no need to follow this for compare functions where order doesn't
   actually matter.
 
+## Frontend Runtime and Contract-Test Rules
+
+### Escalate Suspicious or Ambiguous Normative Intent
+
+If a test expectation appears suspicious, ambiguous, bug-memorializing, or
+first-principles-wrong:
+
+- Escalate to the user immediately upon noticing it.
+- Do not continue triage or implementation work on that expectation until the
+  user responds.
+- Do not change normative contract expectations without explicit user sign-off.
+
+### Backend-Contract Trust for Backend-Owned Fields
+
+- Frontend runtime must trust backend-owned contract fields.
+- Do not add frontend fallback or recovery logic for backend-owned contract
+  violations.
+- Do not add frontend panic/assert validation branches for backend-owned
+  contract violations.
+- Backend contract enforcement belongs in backend tests and backend build-time
+  invariants, not frontend runtime checks.
+- Keep frontend runtime checks only for non-backend-owned surfaces (e.g., user
+  input or client-side storage).
+
+### Do Not Spend Bundle Size Protecting Type-System Violations
+
+- Do not add runtime guards whose primary purpose is tolerating consumer
+  type-system bypasses (for example `as any`, unsafe casts, or deliberately
+  incorrect generic arguments).
+- Assume typed public APIs are used according to their type contracts.
+- If a caller bypasses TypeScript contracts, resulting runtime failures are an
+  application bug, not framework runtime responsibility.
+- Keep runtime validation only for truly untyped/tamperable boundaries (for
+  example browser persistence or raw network payload boundaries that are not
+  backend-owned invariants).
+- If any tests tries to require us to be resilient against a type system
+  violation, that test assertion is wrong and should be changed (but always
+  double check with me first).
+
+### Client-Owned Persistence Validation Must Be Minimal
+
+- Browser-owned persisted state (`sessionStorage`, `localStorage`, IndexedDB,
+  Cache API, cookies) is mutable/tamperable and not backend-owned.
+- Parse safely and validate only the fields required for current behavior.
+- Ignore/drop malformed entries instead of adding broad fallback systems.
+- Add black-box regression tests for client-owned persistence parsing paths.
+
+### Browser-Only Frontend Runtime Rule
+
+- Frontend TypeScript runtime and adapter code in this repository is
+  browser-only code.
+- Do not add server/SSR fallback guards like `typeof window === "undefined"` or
+  `typeof document === "undefined"` to frontend runtime paths.
+- Assume browser APIs are present on supported frontend runtime paths.
+- If logic must be portable across environments, move it to a separate
+  non-browser module instead of bloating frontend runtime with server guards.
+- Cross-realm resilience is a non-goal; do not ever try to add resilience for
+  missing browser APIs or other "cross-realm" concerns.
+
+### Contract Tests Must Stay Strictly Black-Box
+
+- Contract tests must assert only public observable behavior: public API return
+  values, DOM/head/title effects, history/location changes, event payload/order,
+  and network-visible behavior.
+- Contract tests must not assert internal state shape, internal helper
+  names/symbols, reducer/state-machine internals, event-plan internals, or
+  private implementation sequencing.
+- UI adapter behavior validation remains dist-only via `npm_dist` imports and
+  dist configuration.
+
+### Never Add Random Hardening To Frontend Code Without Clear Justification
+
+It's easy to forget that every line of code inflates the user bundle, but it's
+true, and we want to avoid that bloat. Do not add random hardening "for good
+measure" to frontend code the way you might on the backend. The tradeoffs are
+different. Some hardening may be appropriate, but you should be able to
+articulate clearly why it's necessary and worth the bloat.
+
 ## Path Hygiene
 
 - Never, ever commit machine-specific absolute paths (for example, `/Users/...`)
@@ -164,9 +242,8 @@ order-fragile and unclear at callsites.
 
 ## Formatting
 
-- After editing any files formattable by Prettier (including, without
-  limitation, `.ts`, `.tsx`, `.json` and `.md` files), always run
-  `pnpm prettier` on the files.
+- After editing any files formattable by oxfmt (including, without limitation,
+  `.ts`, `.tsx`, `.json` and `.md` files), always run `make tsfmt` on the files.
 
 ## No Conversational or Changelog Comments
 

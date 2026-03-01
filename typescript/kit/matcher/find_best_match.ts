@@ -1,4 +1,3 @@
-import { parseSegments } from "./parse_segments.ts";
 import {
 	NODE_DYNAMIC,
 	NODE_SPLAT,
@@ -9,7 +8,8 @@ import {
 	type PatternRegistry,
 	type RegisteredPattern,
 	type SegmentNode,
-} from "./register.ts";
+} from "vorma/kit/matcher/register";
+import { parseSegments } from "vorma/kit/matcher/utils";
 
 type BestMatch = {
 	registeredPattern: RegisteredPattern;

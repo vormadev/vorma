@@ -2,12 +2,12 @@
 import { bench, describe } from "vitest";
 import { findBestMatch } from "./find_best_match.ts";
 import { findNestedMatches } from "./find_nested_matches.ts";
-import { parseSegments } from "./parse_segments.ts";
 import {
 	createPatternRegistry,
 	registerPattern,
 	type PatternRegistry,
 } from "./register.ts";
+import { parseSegments } from "./utils.ts";
 
 // Nested patterns for the nested benchmarks
 const NestedPatterns = [
