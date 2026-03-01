@@ -759,3 +759,41 @@ func TestCollectReturnsClone(t *testing.T) {
 		t.Errorf("Collect did not return a clone; original was mutated")
 	}
 }
+
+func TestLenAndAppendElementsInto(t *testing.T) {
+	h := New()
+	h.Add(Tag("title"), TextContent("Original"))
+	h.Meta(h.Name("description"), h.Content("desc"))
+
+	if got, want := h.Len(), 2; got != want {
+		t.Fatalf("Len() = %d, want %d", got, want)
+	}
+
+	prefix := []*htmlutil.Element{
+		{Tag: "meta", Attributes: map[string]string{"name": "prefix"}},
+	}
+	out := h.AppendElementsInto(prefix)
+
+	if got, want := len(out), 3; got != want {
+		t.Fatalf("len(AppendElementsInto) = %d, want %d", got, want)
+	}
+	if out[0].Tag != "meta" || out[0].Attributes["name"] != "prefix" {
+		t.Fatalf("unexpected prefix element at out[0]: %#v", out[0])
+	}
+	if out[1].Tag != "title" {
+		t.Fatalf("out[1].Tag = %q, want %q", out[1].Tag, "title")
+	}
+	if out[2].Tag != "meta" || out[2].Attributes["name"] != "description" {
+		t.Fatalf("unexpected appended meta element: %#v", out[2])
+	}
+
+	// Mutating returned slice shape should not affect HeadEls storage.
+	out[1] = nil
+	collected := h.Collect()
+	if len(collected) != 2 {
+		t.Fatalf("len(Collect()) = %d, want 2", len(collected))
+	}
+	if collected[0] == nil || collected[0].Tag != "title" {
+		t.Fatalf("head elements mutated unexpectedly: %#v", collected)
+	}
+}

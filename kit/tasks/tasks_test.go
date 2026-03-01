@@ -255,6 +255,55 @@ func TestCtxWithNativeContext(t *testing.T) {
 			t.Fatalf("error = %v, want context.Canceled", err)
 		}
 	})
+
+	t.Run(
+		"AcquireSharedStateChildContextWithNativeContext_SharesCacheAndReleases",
+		func(t *testing.T) {
+			var runs atomic.Int32
+			task := NewTask(func(c *Ctx, input string) (string, error) {
+				runs.Add(1)
+				return "ok-" + input, nil
+			})
+
+			parent := NewCtx(context.Background())
+			child := parent.AcquireSharedStateChildContextWithNativeContext(
+				context.Background(),
+			)
+
+			parentValue, err := task.Run(parent, "cache-key")
+			if err != nil {
+				t.Fatalf("parent run error = %v, want nil", err)
+			}
+			if parentValue != "ok-cache-key" {
+				t.Fatalf("parent run value = %q, want %q", parentValue, "ok-cache-key")
+			}
+
+			childValue, err := task.Run(child, "cache-key")
+			if err != nil {
+				t.Fatalf("child run error = %v, want nil", err)
+			}
+			if childValue != "ok-cache-key" {
+				t.Fatalf("child run value = %q, want %q", childValue, "ok-cache-key")
+			}
+			if runs.Load() != 1 {
+				t.Fatalf("task runs = %d, want 1", runs.Load())
+			}
+
+			ReleaseSharedStateChildContext(child)
+
+			if child.isBorrowedSharedStateChildContext {
+				t.Fatal(
+					"expected released child context to clear borrowed-child marker",
+				)
+			}
+			if child.mu != nil ||
+				child.results != nil ||
+				child.ctx != nil ||
+				child.lastCleanup != nil {
+				t.Fatal("expected released child context internals to be cleared")
+			}
+		},
+	)
 }
 
 func TestComprehensiveSharedDependencies(t *testing.T) {

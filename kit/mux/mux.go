@@ -14,7 +14,6 @@ package mux
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"path"
 	"reflect"
 	"strconv"
@@ -94,6 +93,7 @@ type Router struct {
 	httpMws               []httpMiddlewareWithOptions
 	taskMws               []taskMiddlewareWithOptions
 	httpMiddlewareVersion atomic.Uint64
+	taskMiddlewareVersion atomic.Uint64
 	methodToMatcherMap    map[string]*methodMatcher
 	matcherOpts           *matcher.Options
 	notFoundHandler       http.Handler
@@ -221,6 +221,7 @@ func AddGlobalTaskMiddleware[O any](
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
+	router.incrementTaskMiddlewareVersion()
 }
 
 // AddGlobalHTTPMiddleware registers HTTP middleware for all routes.
@@ -256,6 +257,7 @@ func AddMethodLevelTaskMiddleware[O any](
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
+	mm.incrementTaskMiddlewareVersion()
 }
 
 // AddMethodLevelHTTPMiddleware registers HTTP middleware for one method.
@@ -292,6 +294,7 @@ func AddPatternLevelTaskMiddleware[PI any, PO any, MWO any](
 		mw:   taskMw,
 		opts: getFirstOpt(opts),
 	})
+	route.incrementTaskMiddlewareVersion()
 }
 
 // AddPatternLevelHTTPMiddleware registers HTTP middleware for one route pattern.
@@ -334,11 +337,13 @@ type Route[I, O any] struct {
 	httpMws               []httpMiddlewareWithOptions
 	taskMws               []taskMiddlewareWithOptions
 	httpMiddlewareVersion atomic.Uint64
+	taskMiddlewareVersion atomic.Uint64
 	handlerType           string
 	userHTTPHandler       http.Handler
 	taskHandler           tasks.AnyTask
 	needsTasksCtx         bool
 	compiledHTTP          atomic.Value
+	compiledTaskMws       atomic.Value
 }
 
 // AnyRoute is the internal polymorphic route contract used by Router.
@@ -351,6 +356,7 @@ type AnyRoute interface {
 	getTaskHandler() tasks.AnyTask
 	getHTTPMws() []httpMiddlewareWithOptions
 	getTaskMws() []taskMiddlewareWithOptions
+	taskMiddlewareChain(rt *Router, mm *methodMatcher) []taskMiddlewareWithOptions
 	getNeedsTasksCtx() bool
 	httpChain(rt *Router, mm *methodMatcher) http.Handler
 }
@@ -653,22 +659,6 @@ func (m *middlewareBoundTask) Run(ctx *tasks.Ctx) error {
 	return err
 }
 
-func (rt *Router) gatherAllTaskMiddlewares(
-	methodMatcher *methodMatcher, routeMarker AnyRoute,
-) []taskMiddlewareWithOptions {
-	taskMwsRoute := routeMarker.getTaskMws()
-	if len(rt.taskMws) == 0 && len(methodMatcher.taskMws) == 0 &&
-		len(taskMwsRoute) == 0 {
-		return nil
-	}
-	cap := len(taskMwsRoute) + len(methodMatcher.taskMws) + len(rt.taskMws)
-	allTaskMws := make([]taskMiddlewareWithOptions, 0, cap)
-	allTaskMws = append(allTaskMws, rt.taskMws...)
-	allTaskMws = append(allTaskMws, methodMatcher.taskMws...)
-	allTaskMws = append(allTaskMws, taskMwsRoute...)
-	return allTaskMws
-}
-
 func (rt *Router) createTaskFinalHandler(
 	route AnyRoute,
 	reqDataMarker reqDataMarker,
@@ -721,31 +711,36 @@ func (rt *Router) runAppropriateMws(
 	} else {
 		handlerWithHTTPMws = applyHTTPMiddlewares(finalHandler, routeMarker.getHTTPMws(), methodMatcher.httpMws, rt.httpMws)
 	}
-	collected := rt.gatherAllTaskMiddlewares(methodMatcher, routeMarker)
+	collected := routeMarker.taskMiddlewareChain(rt, methodMatcher)
 	if len(collected) == 0 {
 		return handlerWithHTTPMws
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		boundTasks := make([]tasks.BoundTask, 0, len(collected))
-		reqDataInstances := make([]*ReqData[None], 0, len(collected))
+		proxies := make([]*response.Proxy, 0, len(collected))
 		for _, taskWithOpts := range collected {
 			if taskWithOpts.opts != nil && taskWithOpts.opts.If != nil &&
 				!taskWithOpts.opts.If(r) {
 				continue
 			}
+			proxy := response.NewProxy()
 			rdForMw := &ReqData[None]{
 				params:        reqDataMarker.Params(),
 				splatVals:     reqDataMarker.SplatValues(),
 				tasksCtx:      tasksCtx,
 				input:         None{},
 				req:           r,
-				responseProxy: response.NewProxy(),
+				responseProxy: proxy,
 			}
-			reqDataInstances = append(reqDataInstances, rdForMw)
+			proxies = append(proxies, proxy)
 			boundTasks = append(boundTasks, &middlewareBoundTask{
 				taskToRun: taskWithOpts.mw,
 				input:     rdForMw,
 			})
+		}
+		if len(boundTasks) == 0 {
+			handlerWithHTTPMws.ServeHTTP(w, r)
+			return
 		}
 		if err := tasksCtx.RunParallel(boundTasks...); err != nil {
 			muxLog.Error(
@@ -759,10 +754,6 @@ func (rt *Router) runAppropriateMws(
 				http.StatusInternalServerError,
 			)
 			return
-		}
-		proxies := make([]*response.Proxy, len(reqDataInstances))
-		for i, rdInst := range reqDataInstances {
-			proxies[i] = rdInst.ResponseProxy()
 		}
 		merged := response.MergeProxyResponses(proxies...)
 		merged.ApplyToResponseWriter(w, r)
@@ -891,6 +882,7 @@ type methodMatcher struct {
 	httpMws               []httpMiddlewareWithOptions
 	taskMws               []taskMiddlewareWithOptions
 	httpMiddlewareVersion atomic.Uint64
+	taskMiddlewareVersion atomic.Uint64
 	routes                map[string]AnyRoute
 	reqDataGetters        map[string]reqDataGetter
 }
@@ -916,6 +908,20 @@ func (rt *Router) currentHTTPMiddlewareVersion() uint64 {
 	return rt.httpMiddlewareVersion.Load()
 }
 
+func (rt *Router) incrementTaskMiddlewareVersion() {
+	if rt == nil {
+		return
+	}
+	rt.taskMiddlewareVersion.Add(1)
+}
+
+func (rt *Router) currentTaskMiddlewareVersion() uint64 {
+	if rt == nil {
+		return 0
+	}
+	return rt.taskMiddlewareVersion.Load()
+}
+
 func (mm *methodMatcher) incrementHTTPMiddlewareVersion() {
 	if mm == nil {
 		return
@@ -930,6 +936,20 @@ func (mm *methodMatcher) currentHTTPMiddlewareVersion() uint64 {
 	return mm.httpMiddlewareVersion.Load()
 }
 
+func (mm *methodMatcher) incrementTaskMiddlewareVersion() {
+	if mm == nil {
+		return
+	}
+	mm.taskMiddlewareVersion.Add(1)
+}
+
+func (mm *methodMatcher) currentTaskMiddlewareVersion() uint64 {
+	if mm == nil {
+		return 0
+	}
+	return mm.taskMiddlewareVersion.Load()
+}
+
 func (route *Route[I, O]) incrementHTTPMiddlewareVersion() {
 	if route == nil {
 		return
@@ -942,6 +962,20 @@ func (route *Route[I, O]) currentHTTPMiddlewareVersion() uint64 {
 		return 0
 	}
 	return route.httpMiddlewareVersion.Load()
+}
+
+func (route *Route[I, O]) incrementTaskMiddlewareVersion() {
+	if route == nil {
+		return
+	}
+	route.taskMiddlewareVersion.Add(1)
+}
+
+func (route *Route[I, O]) currentTaskMiddlewareVersion() uint64 {
+	if route == nil {
+		return 0
+	}
+	return route.taskMiddlewareVersion.Load()
 }
 
 func (route *Route[I, O]) getHandlerType() string { return route.handlerType }
@@ -991,6 +1025,60 @@ func (r *Route[I, O]) httpChain(rt *Router, mm *methodMatcher) http.Handler {
 	return compiledHandler
 }
 
+type compiledTaskMiddlewareCacheEntry struct {
+	middlewares                  []taskMiddlewareWithOptions
+	globalTaskMiddlewareVersion  uint64
+	methodTaskMiddlewareVersion  uint64
+	patternTaskMiddlewareVersion uint64
+}
+
+func (route *Route[I, O]) taskMiddlewareChain(
+	rt *Router,
+	mm *methodMatcher,
+) []taskMiddlewareWithOptions {
+	globalTaskMiddlewareVersion := rt.currentTaskMiddlewareVersion()
+	methodTaskMiddlewareVersion := mm.currentTaskMiddlewareVersion()
+	patternTaskMiddlewareVersion := route.currentTaskMiddlewareVersion()
+
+	cachedValue, hasCachedValue := route.compiledTaskMws.Load().(*compiledTaskMiddlewareCacheEntry)
+	if hasCachedValue &&
+		cachedValue != nil &&
+		cachedValue.globalTaskMiddlewareVersion == globalTaskMiddlewareVersion &&
+		cachedValue.methodTaskMiddlewareVersion == methodTaskMiddlewareVersion &&
+		cachedValue.patternTaskMiddlewareVersion == patternTaskMiddlewareVersion {
+		return cachedValue.middlewares
+	}
+
+	taskMwsRoute := route.getTaskMws()
+	totalCount := len(rt.taskMws) + len(mm.taskMws) + len(taskMwsRoute)
+	if totalCount == 0 {
+		route.compiledTaskMws.Store(
+			&compiledTaskMiddlewareCacheEntry{
+				middlewares:                  nil,
+				globalTaskMiddlewareVersion:  globalTaskMiddlewareVersion,
+				methodTaskMiddlewareVersion:  methodTaskMiddlewareVersion,
+				patternTaskMiddlewareVersion: patternTaskMiddlewareVersion,
+			},
+		)
+		return nil
+	}
+
+	compiledMiddlewares := make([]taskMiddlewareWithOptions, 0, totalCount)
+	compiledMiddlewares = append(compiledMiddlewares, rt.taskMws...)
+	compiledMiddlewares = append(compiledMiddlewares, mm.taskMws...)
+	compiledMiddlewares = append(compiledMiddlewares, taskMwsRoute...)
+
+	route.compiledTaskMws.Store(
+		&compiledTaskMiddlewareCacheEntry{
+			middlewares:                  compiledMiddlewares,
+			globalTaskMiddlewareVersion:  globalTaskMiddlewareVersion,
+			methodTaskMiddlewareVersion:  methodTaskMiddlewareVersion,
+			patternTaskMiddlewareVersion: patternTaskMiddlewareVersion,
+		},
+	)
+	return compiledMiddlewares
+}
+
 type reqDataMarker interface {
 	getInput() any
 	getUnderlyingReqDataInstance() any
@@ -1020,24 +1108,76 @@ func (f reqDataGetterImpl[I]) getReqData(
 	return f(r, tasksCtx, m)
 }
 
+type headResponseWriter struct {
+	header       http.Header
+	statusCode   int
+	wroteHeader  bool
+	bytesWritten int
+}
+
+func newHeadResponseWriter() *headResponseWriter {
+	return &headResponseWriter{
+		header:     make(http.Header),
+		statusCode: http.StatusOK,
+	}
+}
+
+func (hw *headResponseWriter) Header() http.Header {
+	return hw.header
+}
+
+func (hw *headResponseWriter) WriteHeader(statusCode int) {
+	if hw.wroteHeader {
+		return
+	}
+	hw.wroteHeader = true
+	hw.statusCode = statusCode
+}
+
+func (hw *headResponseWriter) Write(data []byte) (int, error) {
+	if !hw.wroteHeader {
+		hw.WriteHeader(http.StatusOK)
+	}
+
+	if len(data) > 0 &&
+		hw.header.Get("Content-Type") == "" &&
+		hw.header.Get("Transfer-Encoding") == "" {
+		sniffLength := len(data)
+		if sniffLength > 512 {
+			sniffLength = 512
+		}
+		hw.header.Set(
+			"Content-Type",
+			http.DetectContentType(data[:sniffLength]),
+		)
+	}
+
+	hw.bytesWritten += len(data)
+	return len(data), nil
+}
+
 func treatGetAsHead(
 	handler http.Handler,
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	headRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(headRecorder, r)
+	headWriter := newHeadResponseWriter()
+	handler.ServeHTTP(headWriter, r)
 
-	for k, values := range headRecorder.Header() {
+	for k, values := range headWriter.Header() {
 		for _, v := range values {
 			w.Header().Add(k, v)
 		}
 	}
 
-	if w.Header().Get("Content-Length") == "" {
-		w.Header().Set("Content-Length", strconv.Itoa(headRecorder.Body.Len()))
+	if w.Header().Get("Content-Length") == "" &&
+		w.Header().Get("Transfer-Encoding") == "" {
+		w.Header().Set(
+			"Content-Length",
+			strconv.Itoa(headWriter.bytesWritten),
+		)
 	}
-	w.WriteHeader(headRecorder.Code)
+	w.WriteHeader(headWriter.statusCode)
 }
 
 func writeErrorResponseWithHeadFallbackSupport(

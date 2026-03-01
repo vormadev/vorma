@@ -738,6 +738,59 @@ func TestRunNestedTasks(t *testing.T) {
 		}
 	})
 
+	t.Run("Request_Cancellation_Cancels_All_Matched_Tasks", func(t *testing.T) {
+		nr := nestedmux.NewRouter(&nestedmux.Options{})
+
+		waitForContextCancellation := func(
+			rd *mux.ReqData[mux.None],
+		) (string, error) {
+			select {
+			case <-rd.TasksCtx().NativeContext().Done():
+				return "", rd.TasksCtx().NativeContext().Err()
+			case <-time.After(250 * time.Millisecond):
+				return "unexpected-success", nil
+			}
+		}
+
+		parentHandler := mux.TaskHandlerFromFunc(waitForContextCancellation)
+		childHandler := mux.TaskHandlerFromFunc(waitForContextCancellation)
+
+		nestedmux.AddTaskHandler(nr, "/items", parentHandler)
+		nestedmux.AddTaskHandler(nr, "/items/:id", childHandler)
+
+		nativeRequestCtx, cancelRequest := context.WithCancel(context.Background())
+		t.Cleanup(cancelRequest)
+
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/items/123",
+			nil,
+		).WithContext(nativeRequestCtx)
+		req = mux.RequestWithTasksCtx(req, tasks.NewCtx(req.Context()))
+
+		go func() {
+			time.Sleep(20 * time.Millisecond)
+			cancelRequest()
+		}()
+
+		results, found := nestedmux.FindMatchesAndRunTasks(nr, req)
+		if !found {
+			t.Fatal("should find matches")
+		}
+
+		parent := results.Map["/items"]
+		child := results.Map["/items/:id"]
+		if parent == nil || child == nil {
+			t.Fatal("missing parent or child result")
+		}
+		if !errors.Is(parent.Err(), context.Canceled) {
+			t.Fatalf("parent err = %v, want context.Canceled", parent.Err())
+		}
+		if !errors.Is(child.Err(), context.Canceled) {
+			t.Fatalf("child err = %v, want context.Canceled", child.Err())
+		}
+	})
+
 	t.Run(
 		"SharedTaskDependencyRunsOnceAcrossNestedHandlers",
 		func(t *testing.T) {
@@ -1148,7 +1201,7 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 }
 
 func TestResponseProxies(t *testing.T) {
-	t.Run("Response_Proxies_Created", func(t *testing.T) {
+	t.Run("Response_Proxies_OnlyForMatchedTaskHandlers", func(t *testing.T) {
 		nr := nestedmux.NewRouter(&nestedmux.Options{})
 
 		handler1 := mux.TaskHandlerFromFunc(
@@ -1165,26 +1218,87 @@ func TestResponseProxies(t *testing.T) {
 		)
 
 		nestedmux.AddTaskHandler(nr, "/", handler1)
-		nestedmux.AddTaskHandler(nr, "/page", handler2)
+		nestedmux.AddPatternWithoutHandler(nr, "/page")
+		nestedmux.AddTaskHandler(nr, "/page/details", handler2)
 
-		req := createRequestWithGetTasksCtx(http.MethodGet, "/page")
+		req := createRequestWithGetTasksCtx(http.MethodGet, "/page/details")
 
 		results, _ := nestedmux.FindMatchesAndRunTasks(nr, req)
 
-		// Verify we have response proxies for each match
+		// Verify proxy slots align with results.
 		if len(results.ResponseProxies) != len(results.Slice) {
 			t.Errorf("Expected %d response proxies, got %d",
 				len(results.Slice), len(results.ResponseProxies))
 		}
 
-		// In a real scenario, these would be merged and applied to the response
-		// Here we just verify they exist
+		// Verify only matched task-handler routes have proxies.
 		for i, proxy := range results.ResponseProxies {
-			if proxy == nil {
-				t.Errorf("Response proxy at index %d is nil", i)
+			if results.Slice[i].RanTask() {
+				if proxy == nil {
+					t.Errorf(
+						"response proxy at index %d should exist for task handler",
+						i,
+					)
+				}
+				continue
+			}
+			if proxy != nil {
+				t.Errorf(
+					"response proxy at index %d should be nil for no-handler route",
+					i,
+				)
 			}
 		}
 	})
+}
+
+func TestRunTasksWithoutPatternMap(t *testing.T) {
+	nr := nestedmux.NewRouter(&nestedmux.Options{})
+
+	leafHandler := mux.TaskHandlerFromFunc(
+		func(rd *mux.ReqData[mux.None]) (string, error) {
+			return "leaf-ok", nil
+		},
+	)
+
+	nestedmux.AddPatternWithoutHandler(nr, "/docs")
+	nestedmux.AddTaskHandler(nr, "/docs/:slug", leafHandler)
+
+	req := createRequestWithGetTasksCtx(http.MethodGet, "/docs/runtime")
+	matches, found := nestedmux.FindMatches(nr, req)
+	if !found {
+		t.Fatal("expected nested matches")
+	}
+
+	results := nestedmux.RunTasksWithoutPatternMap(nr, req, matches)
+	if results == nil {
+		t.Fatal("expected non-nil tasks results")
+	}
+	if results.Map != nil {
+		t.Fatalf("expected nil pattern map in no-map mode, got %#v", results.Map)
+	}
+	if len(results.Slice) < 2 {
+		t.Fatalf("slice length = %d, want at least 2", len(results.Slice))
+	}
+
+	var sawLeafResult bool
+	var sawNoTaskRoute bool
+	for _, routeResult := range results.Slice {
+		if !routeResult.RanTask() {
+			sawNoTaskRoute = true
+			continue
+		}
+		switch routeResult.Data() {
+		case "leaf-ok":
+			sawLeafResult = true
+		}
+	}
+	if !sawLeafResult {
+		t.Fatal("expected leaf task result in no-map mode")
+	}
+	if !sawNoTaskRoute {
+		t.Fatal("expected no-handler route result in no-map mode")
+	}
 }
 
 // Test error type

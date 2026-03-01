@@ -61,7 +61,10 @@ func (inst *Instance) InitUniqueRules(e *HeadEls) {
 			if !seenHashes[rule.Tag][hash] {
 				seenHashes[rule.Tag][hash] = true
 				attrs := extractRuleAttrs(rule)
-				inst.uniqueRulesByTag[rule.Tag] = append(inst.uniqueRulesByTag[rule.Tag], attrs)
+				inst.uniqueRulesByTag[rule.Tag] = append(
+					inst.uniqueRulesByTag[rule.Tag],
+					attrs,
+				)
 			}
 		}
 	})
@@ -75,7 +78,9 @@ type SortedAndPreEscapedHeadEls struct {
 
 const roughSafeAvgElLen = 80
 
-func (inst *Instance) Render(input *SortedAndPreEscapedHeadEls) (template.HTML, error) {
+func (inst *Instance) Render(
+	input *SortedAndPreEscapedHeadEls,
+) (template.HTML, error) {
 	inst.InitUniqueRules(nil)
 	if input == nil {
 		input = &SortedAndPreEscapedHeadEls{}
@@ -124,7 +129,9 @@ func (inst *Instance) Render(input *SortedAndPreEscapedHeadEls) (template.HTML, 
 	return template.HTML(b.String()), nil
 }
 
-func (inst *Instance) ToSortedAndPreEscapedHeadEls(els []*htmlutil.Element) *SortedAndPreEscapedHeadEls {
+func (inst *Instance) ToSortedAndPreEscapedHeadEls(
+	els []*htmlutil.Element,
+) *SortedAndPreEscapedHeadEls {
 	inst.InitUniqueRules(nil)
 
 	deduped := inst.dedupeHeadEls(els)
@@ -149,7 +156,20 @@ func (inst *Instance) ToSortedAndPreEscapedHeadEls(els []*htmlutil.Element) *Sor
 	return headEls
 }
 
-var hashSeparator = []byte{0}
+var (
+	hashSeparator                = []byte{0}
+	hashRegularAttributePrefix   = []byte("a:")
+	hashTrustedAttributePrefix   = []byte("t:")
+	hashBooleanAttributePrefix   = []byte("b:")
+	hashDangerousInnerHTMLPrefix = []byte("i:")
+	hashTextContentPrefix        = []byte("c:")
+	hashSelfClosingPrefix        = []byte("s:")
+	hashEquals                   = []byte("=")
+	hashTrue                     = []byte("1")
+	hashFalse                    = []byte("0")
+)
+
+const smallHashKeyBufferLen = 8
 
 func hashElement(el *htmlutil.Element) uint64 {
 	h := fnv.New64a()
@@ -157,67 +177,121 @@ func hashElement(el *htmlutil.Element) uint64 {
 	h.Write([]byte(el.Tag))
 	h.Write(hashSeparator)
 
-	attrKeys := make([]string, 0, len(el.Attributes)+len(el.AttributesKnownSafe))
-	for k := range el.Attributes {
-		attrKeys = append(attrKeys, k)
-	}
-	for k := range el.AttributesKnownSafe {
-		if _, exists := el.Attributes[k]; !exists {
-			attrKeys = append(attrKeys, k)
+	combinedAttributeCount := len(el.Attributes) + len(el.AttributesKnownSafe)
+	switch combinedAttributeCount {
+	case 0:
+	case 1:
+		if len(el.Attributes) == 1 {
+			for key, value := range el.Attributes {
+				h.Write(hashRegularAttributePrefix)
+				h.Write([]byte(key))
+				h.Write(hashEquals)
+				h.Write([]byte(value))
+				h.Write(hashSeparator)
+			}
+		} else {
+			for key, value := range el.AttributesKnownSafe {
+				h.Write(hashTrustedAttributePrefix)
+				h.Write([]byte(key))
+				h.Write(hashEquals)
+				h.Write([]byte(value))
+				h.Write(hashSeparator)
+			}
 		}
-	}
-	sort.Strings(attrKeys)
+	default:
+		var stackAttributeKeys [smallHashKeyBufferLen]string
+		attributeKeys := stackAttributeKeys[:0]
+		if combinedAttributeCount > len(stackAttributeKeys) {
+			attributeKeys = make([]string, 0, combinedAttributeCount)
+		}
+		for key := range el.Attributes {
+			attributeKeys = append(attributeKeys, key)
+		}
+		for key := range el.AttributesKnownSafe {
+			if _, exists := el.Attributes[key]; exists {
+				continue
+			}
+			attributeKeys = append(attributeKeys, key)
+		}
+		if len(attributeKeys) > 1 {
+			sort.Strings(attributeKeys)
+		}
 
-	for _, k := range attrKeys {
-		if v, ok := el.Attributes[k]; ok {
-			h.Write([]byte("a:"))
-			h.Write([]byte(k))
-			h.Write([]byte("="))
-			h.Write([]byte(v))
-			h.Write(hashSeparator)
-		}
-		if v, ok := el.AttributesKnownSafe[k]; ok {
-			h.Write([]byte("t:"))
-			h.Write([]byte(k))
-			h.Write([]byte("="))
-			h.Write([]byte(v))
-			h.Write(hashSeparator)
+		for _, key := range attributeKeys {
+			if value, ok := el.Attributes[key]; ok {
+				h.Write(hashRegularAttributePrefix)
+				h.Write([]byte(key))
+				h.Write(hashEquals)
+				h.Write([]byte(value))
+				h.Write(hashSeparator)
+			}
+			if value, ok := el.AttributesKnownSafe[key]; ok {
+				h.Write(hashTrustedAttributePrefix)
+				h.Write([]byte(key))
+				h.Write(hashEquals)
+				h.Write([]byte(value))
+				h.Write(hashSeparator)
+			}
 		}
 	}
 
-	boolAttrs := slices.Clone(el.BooleanAttributes)
-	sort.Strings(boolAttrs)
-	for _, attr := range boolAttrs {
-		h.Write([]byte("b:"))
-		h.Write([]byte(attr))
+	switch len(el.BooleanAttributes) {
+	case 0:
+	case 1:
+		h.Write(hashBooleanAttributePrefix)
+		h.Write([]byte(el.BooleanAttributes[0]))
 		h.Write(hashSeparator)
+	default:
+		var stackBooleanAttributes [smallHashKeyBufferLen]string
+		booleanAttributes := stackBooleanAttributes[:0]
+		if len(el.BooleanAttributes) > len(stackBooleanAttributes) {
+			booleanAttributes = make(
+				[]string,
+				0,
+				len(el.BooleanAttributes),
+			)
+		}
+		booleanAttributes = append(booleanAttributes, el.BooleanAttributes...)
+		sort.Strings(booleanAttributes)
+		for _, attribute := range booleanAttributes {
+			h.Write(hashBooleanAttributePrefix)
+			h.Write([]byte(attribute))
+			h.Write(hashSeparator)
+		}
 	}
 
 	if len(el.DangerousInnerHTML) > 0 {
-		h.Write([]byte("i:"))
+		h.Write(hashDangerousInnerHTMLPrefix)
 		h.Write([]byte(el.DangerousInnerHTML))
 		h.Write(hashSeparator)
 	}
 	if len(el.TextContent) > 0 {
-		h.Write([]byte("c:"))
+		h.Write(hashTextContentPrefix)
 		h.Write([]byte(el.TextContent))
 		h.Write(hashSeparator)
 	}
 
-	h.Write([]byte("s:"))
+	h.Write(hashSelfClosingPrefix)
 	if el.SelfClosing {
-		h.Write([]byte("1"))
+		h.Write(hashTrue)
 	} else {
-		h.Write([]byte("0"))
+		h.Write(hashFalse)
 	}
 
 	return h.Sum64()
 }
 
-func (inst *Instance) dedupeHeadEls(els []*htmlutil.Element) []*htmlutil.Element {
+func (inst *Instance) dedupeHeadEls(
+	els []*htmlutil.Element,
+) []*htmlutil.Element {
 	result := make([]*htmlutil.Element, 0, len(els))
 
-	seenRule := make(map[string]int)
+	type dedupeRuleKey struct {
+		tag     string
+		ruleIdx int
+	}
+
+	seenRule := make(map[dedupeRuleKey]int)
 	seenHash := make(map[uint64]int)
 
 	for _, el := range els {
@@ -229,7 +303,7 @@ func (inst *Instance) dedupeHeadEls(els []*htmlutil.Element) []*htmlutil.Element
 			matchedRule := false
 			for ruleIdx, rule := range rules {
 				if matchesRule(el, rule) {
-					ruleKey := fmt.Sprintf("rule:%s:%d", el.Tag, ruleIdx)
+					ruleKey := dedupeRuleKey{tag: el.Tag, ruleIdx: ruleIdx}
 
 					if pos, exists := seenRule[ruleKey]; exists {
 						result[pos] = el
@@ -275,10 +349,12 @@ func extractRuleAttrs(rule *htmlutil.Element) *ruleAttrs {
 
 func matchesRule(el *htmlutil.Element, rule *ruleAttrs) bool {
 	checkKeyValue := func(key, expectedValue string) bool {
-		if actualValue, ok := el.Attributes[key]; ok && actualValue == expectedValue {
+		if actualValue, ok := el.Attributes[key]; ok &&
+			actualValue == expectedValue {
 			return true
 		}
-		if actualValue, ok := el.AttributesKnownSafe[key]; ok && actualValue == expectedValue {
+		if actualValue, ok := el.AttributesKnownSafe[key]; ok &&
+			actualValue == expectedValue {
 			return true
 		}
 		return false
@@ -355,7 +431,7 @@ func (SelfClosing) Type() htmlutilType      { return typeSelfClosing }
 // HeadEls is a collection of HTML head elements.
 // It is safe for concurrent use.
 type HeadEls struct {
-	mu  sync.Mutex
+	mu  sync.RWMutex
 	els []*htmlutil.Element
 }
 
@@ -421,9 +497,26 @@ func (h *HeadEls) AddElements(other *HeadEls) {
 }
 
 func (h *HeadEls) Collect() []*htmlutil.Element {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	h.mu.RLock()
+	defer h.mu.RUnlock()
 	return slices.Clone(h.els)
+}
+
+// Len returns the current element count.
+func (h *HeadEls) Len() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.els)
+}
+
+// AppendElementsInto appends all current elements into dst and returns the
+// resulting slice.
+func (h *HeadEls) AppendElementsInto(
+	dst []*htmlutil.Element,
+) []*htmlutil.Element {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return append(dst, h.els...)
 }
 
 func (h *HeadEls) SelfClosing() SelfClosing {

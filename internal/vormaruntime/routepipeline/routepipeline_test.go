@@ -504,6 +504,54 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 	}
 }
 
+func TestBuildRouteDataFinal_UsesCoreDepsWhenAssetsAreMissing(t *testing.T) {
+	routeData := BuildRouteDataFinal(
+		&RouteResult{
+			Core: &RouteDataCore{
+				MatchedPatterns: []string{"/docs"},
+				LoadersData:     []any{"data"},
+				ImportURLs:      []string{"vorma_out/routes/docs.js"},
+				ExportKeys:      []string{"default"},
+				Deps:            []string{"vorma_out/chunk-layout.js"},
+			},
+			CSSBundles: []string{"vorma_out/docs.css"},
+			IsDev:      false,
+		},
+		"/public/",
+	)
+
+	if got, want := routeData.RouteDataCore.ImportURLs, []string{
+		"/public/vorma_out/routes/docs.js",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
+	}
+	if got, want := routeData.RouteDataCore.Deps, []string{
+		"/public/vorma_out/chunk-layout.js",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Deps = %#v, want %#v", got, want)
+	}
+	if got, want := routeData.CSSBundles, []string{
+		"/public/vorma_out/docs.css",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
+	}
+	if routeData.Title != nil {
+		t.Fatalf("Title = %#v, want nil when assets are missing", routeData.Title)
+	}
+	if routeData.MetaHeadEls != nil {
+		t.Fatalf(
+			"MetaHeadEls = %#v, want nil when assets are missing",
+			routeData.MetaHeadEls,
+		)
+	}
+	if routeData.RestHeadEls != nil {
+		t.Fatalf(
+			"RestHeadEls = %#v, want nil when assets are missing",
+			routeData.RestHeadEls,
+		)
+	}
+}
+
 func TestEnsureLoadersCacheControlHeader(t *testing.T) {
 	t.Run("writes_default_when_header_is_missing", func(t *testing.T) {
 		recorder := httptest.NewRecorder()
@@ -956,6 +1004,125 @@ func TestBuildRouteAssets(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run(
+		"production_html_static_only_head_uses_cached_sorted_output",
+		func(t *testing.T) {
+			cached := &CachedItemSubset{}
+			routeResult := &RouteResult{
+				Cached: cached,
+				Core: &RouteDataCore{
+					Deps: []string{
+						"vorma_out/chunk-layout.js",
+						"vorma_out/chunk-items.js",
+					},
+				},
+				CSSBundles: []string{"vorma_out/chunk-items.css"},
+				IsDev:      false,
+			}
+
+			sortCallbackCallCount := 0
+			sortCallback := func(
+				input []*htmlutil.Element,
+			) *headels.SortedAndPreEscapedHeadEls {
+				sortCallbackCallCount++
+				return &headels.SortedAndPreEscapedHeadEls{
+					Rest: append([]*htmlutil.Element(nil), input...),
+				}
+			}
+
+			assetsFirst, firstError := BuildRouteAssets(BuildRouteAssetsInput{
+				RouteResult:                    routeResult,
+				IsJSON:                         false,
+				ToSortedAndPreEscapedHeadElsFn: sortCallback,
+			})
+			if firstError != nil {
+				t.Fatalf("BuildRouteAssets first call: %v", firstError)
+			}
+			assetsSecond, secondError := BuildRouteAssets(BuildRouteAssetsInput{
+				RouteResult:                    routeResult,
+				IsJSON:                         false,
+				ToSortedAndPreEscapedHeadElsFn: sortCallback,
+			})
+			if secondError != nil {
+				t.Fatalf("BuildRouteAssets second call: %v", secondError)
+			}
+
+			if got, want := sortCallbackCallCount, 1; got != want {
+				t.Fatalf("sort callback call count = %d, want %d", got, want)
+			}
+			if assetsFirst.SortedAndPreEscapedHeadEls != assetsSecond.SortedAndPreEscapedHeadEls {
+				t.Fatal("expected cached static sorted head output pointer reuse")
+			}
+			if got, want := len(assetsFirst.SortedAndPreEscapedHeadEls.Rest), 3; got != want {
+				t.Fatalf("len(Rest) = %d, want %d", got, want)
+			}
+		},
+	)
+
+	t.Run(
+		"production_html_static_only_head_cache_keys_on_deps_and_css",
+		func(t *testing.T) {
+			cached := &CachedItemSubset{}
+			sortCallbackCallCount := 0
+			sortCallback := func(
+				input []*htmlutil.Element,
+			) *headels.SortedAndPreEscapedHeadEls {
+				sortCallbackCallCount++
+				return &headels.SortedAndPreEscapedHeadEls{
+					Rest: append([]*htmlutil.Element(nil), input...),
+				}
+			}
+
+			routeResultA := &RouteResult{
+				Cached: cached,
+				Core: &RouteDataCore{
+					Deps: []string{"vorma_out/chunk-a.js"},
+				},
+				CSSBundles: []string{"vorma_out/chunk-a.css"},
+				IsDev:      false,
+			}
+			routeResultB := &RouteResult{
+				Cached: cached,
+				Core: &RouteDataCore{
+					Deps: []string{"vorma_out/chunk-b.js"},
+				},
+				CSSBundles: []string{"vorma_out/chunk-b.css"},
+				IsDev:      false,
+			}
+
+			_, errA1 := BuildRouteAssets(BuildRouteAssetsInput{
+				RouteResult:                    routeResultA,
+				IsJSON:                         false,
+				ToSortedAndPreEscapedHeadElsFn: sortCallback,
+			})
+			if errA1 != nil {
+				t.Fatalf("BuildRouteAssets route A first call: %v", errA1)
+			}
+
+			_, errB := BuildRouteAssets(BuildRouteAssetsInput{
+				RouteResult:                    routeResultB,
+				IsJSON:                         false,
+				ToSortedAndPreEscapedHeadElsFn: sortCallback,
+			})
+			if errB != nil {
+				t.Fatalf("BuildRouteAssets route B call: %v", errB)
+			}
+
+			_, errA2 := BuildRouteAssets(BuildRouteAssetsInput{
+				RouteResult:                    routeResultA,
+				IsJSON:                         false,
+				ToSortedAndPreEscapedHeadElsFn: sortCallback,
+			})
+			if errA2 != nil {
+				t.Fatalf("BuildRouteAssets route A second call: %v", errA2)
+			}
+
+			if got, want := sortCallbackCallCount, 2; got != want {
+				t.Fatalf("sort callback call count = %d, want %d", got, want)
+			}
+		},
+	)
 }
 
 func TestGetViteDevURLForMode(t *testing.T) {
@@ -1003,6 +1170,12 @@ func TestBuildCachedItemSubset_UsesOutPathAndHandlesMissingRouteMetadata(
 		"",
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
+	}
+	if got, want := cached.MatchedPatterns, []string{
+		"/products/:id",
+		"/products/:id/details",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("MatchedPatterns = %#v, want %#v", got, want)
 	}
 	if got, want := cached.ExportKeys, []string{"ProductRoute", ""}; !reflect.DeepEqual(
 		got,
@@ -1092,6 +1265,66 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_UsesEmptyCachedSubsetWhenMissin
 		want,
 	) {
 		t.Fatalf("ErrorExportKeys = %#v, want %#v", got, want)
+	}
+}
+
+func TestCollectFlattenedHeadElementsForPrefix_PreservesRouteOrderAndSkipsEmpty(
+	t *testing.T,
+) {
+	parentHead := headels.New()
+	parentHead.Title("Parent")
+	parentHead.Meta(parentHead.Name("description"), parentHead.Content("p"))
+
+	childHead := headels.New()
+	childHead.Link(
+		childHead.Rel("stylesheet"),
+		childHead.Href("/child.css"),
+		childHead.SelfClosing(),
+	)
+
+	parentProxy := response.NewProxy()
+	parentProxy.AddHeadEls(parentHead)
+
+	noHeadProxy := response.NewProxy()
+
+	childProxy := response.NewProxy()
+	childProxy.AddHeadEls(childHead)
+
+	flattened := CollectFlattenedHeadElementsForPrefix(
+		[]*response.Proxy{
+			parentProxy,
+			nil,
+			noHeadProxy,
+			childProxy,
+		},
+		4,
+	)
+
+	if got, want := len(flattened), 3; got != want {
+		t.Fatalf("len(flattened) = %d, want %d", got, want)
+	}
+	if got, want := flattened[0].Tag, "title"; got != want {
+		t.Fatalf("flattened[0].Tag = %q, want %q", got, want)
+	}
+	if got, want := flattened[1].Tag, "meta"; got != want {
+		t.Fatalf("flattened[1].Tag = %q, want %q", got, want)
+	}
+	if got, want := flattened[2].Tag, "link"; got != want {
+		t.Fatalf("flattened[2].Tag = %q, want %q", got, want)
+	}
+}
+
+func TestCollectFlattenedHeadElementsForPrefix_ReturnsNilWhenNoHeadEls(
+	t *testing.T,
+) {
+	emptyProxy := response.NewProxy()
+
+	flattened := CollectFlattenedHeadElementsForPrefix(
+		[]*response.Proxy{nil, emptyProxy},
+		2,
+	)
+	if flattened != nil {
+		t.Fatalf("expected nil flattened head elements, got %#v", flattened)
 	}
 }
 

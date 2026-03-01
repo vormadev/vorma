@@ -26,14 +26,20 @@ type AnyTask interface {
 }
 
 type Task[I comparable, O any] struct {
+	id uint64
 	fn func(ctx *Ctx, input I) (O, error)
 }
+
+var globalTaskIDCounter atomic.Uint64
 
 func NewTask[I comparable, O any](fn func(ctx *Ctx, input I) (O, error)) *Task[I, O] {
 	if fn == nil {
 		return nil
 	}
-	return &Task[I, O]{fn: fn}
+	return &Task[I, O]{
+		id: globalTaskIDCounter.Add(1),
+		fn: fn,
+	}
 }
 
 func (t *Task[I, O]) RunWithAnyInput(ctx *Ctx, input any) (any, error) {
@@ -58,16 +64,24 @@ func (t *Task[I, O]) Bind(input I, dest *O) BoundTask {
 
 // taskKey is used for map lookups to avoid allocating anonymous structs
 type taskKey struct {
-	taskPtr uintptr
-	input   any
+	taskID uint64
+	input  any
 }
 
 type Ctx struct {
 	mu          *sync.RWMutex
-	results     map[taskKey]*cacheEntry
+	results     map[taskKey]cacheEntry
 	ctx         context.Context
 	ttl         time.Duration
 	lastCleanup *atomic.Int64 // Unix timestamp in nanoseconds (nil when TTL disabled)
+	// true only for contexts leased from sharedStateChildCtxPool.
+	isBorrowedSharedStateChildContext bool
+}
+
+var sharedStateChildCtxPool = sync.Pool{
+	New: func() any {
+		return &Ctx{}
+	},
 }
 
 type cacheEntry struct {
@@ -95,7 +109,7 @@ func NewCtxWithTTL(parent context.Context, ttl time.Duration) *Ctx {
 
 	c := &Ctx{
 		mu:      &sync.RWMutex{},
-		results: make(map[taskKey]*cacheEntry, 4),
+		results: make(map[taskKey]cacheEntry, 4),
 		ctx:     parent,
 		ttl:     ttl,
 	}
@@ -131,6 +145,44 @@ func (c *Ctx) WithNativeContext(native context.Context) *Ctx {
 	}
 }
 
+// AcquireSharedStateChildContextWithNativeContext returns a child Ctx that
+// shares task cache state with c and uses native for cancellation/deadline
+// behavior. The returned context must be returned via
+// ReleaseSharedStateChildContext once the caller is done with it.
+func (c *Ctx) AcquireSharedStateChildContextWithNativeContext(
+	native context.Context,
+) *Ctx {
+	if c == nil {
+		return NewCtx(native)
+	}
+	if native == nil {
+		native = context.Background()
+	}
+	child := sharedStateChildCtxPool.Get().(*Ctx)
+	child.mu = c.mu
+	child.results = c.results
+	child.ctx = native
+	child.ttl = c.ttl
+	child.lastCleanup = c.lastCleanup
+	child.isBorrowedSharedStateChildContext = true
+	return child
+}
+
+// ReleaseSharedStateChildContext returns a context leased via
+// AcquireSharedStateChildContextWithNativeContext back to the internal pool.
+func ReleaseSharedStateChildContext(child *Ctx) {
+	if child == nil || !child.isBorrowedSharedStateChildContext {
+		return
+	}
+	child.mu = nil
+	child.results = nil
+	child.ctx = nil
+	child.ttl = 0
+	child.lastCleanup = nil
+	child.isBorrowedSharedStateChildContext = false
+	sharedStateChildCtxPool.Put(child)
+}
+
 func (c *Ctx) RunParallel(tasks ...BoundTask) error {
 	return runTasks(c, tasks...)
 }
@@ -148,7 +200,10 @@ func runTask[I comparable, O any](c *Ctx, task *Task[I, O], input I) (result O, 
 		return result, err
 	}
 
-	r := c.getOrCreateResult(task, input)
+	r := c.getOrCreateResult(
+		task.id,
+		input,
+	)
 	r.once.Do(func() {
 		val, err := task.fn(c, input)
 		if err != nil {
@@ -172,71 +227,81 @@ func runTask[I comparable, O any](c *Ctx, task *Task[I, O], input I) (result O, 
 	return genericsutil.AssertOrZero[O](r.data), nil
 }
 
-func (c *Ctx) getOrCreateResult(taskPtr any, input any) *taskResult {
-	// Use uintptr for task pointer to avoid allocation
+func (c *Ctx) getOrCreateResult(taskID uint64, input any) *taskResult {
 	key := taskKey{
-		taskPtr: reflect.ValueOf(taskPtr).Pointer(),
-		input:   input,
+		taskID: taskID,
+		input:  input,
 	}
 
-	// Only do time operations if TTL is enabled
-	if c.ttl > 0 {
-		now := time.Now()
-
-		// Lazy cleanup: remove expired entries at most once per TTL period
-		lastCleanupNano := c.lastCleanup.Load()
-		lastCleanupTime := time.Unix(0, lastCleanupNano)
-		if now.Sub(lastCleanupTime) >= c.ttl {
-			c.cleanupExpired(now)
-		}
+	if c.ttl == 0 {
+		return c.getOrCreateResultWithoutTTL(key)
 	}
+	return c.getOrCreateResultWithTTL(key)
+}
 
-	// Fast path: check if valid cached result exists
+func (c *Ctx) getOrCreateResultWithoutTTL(key taskKey) *taskResult {
 	c.mu.RLock()
 	if entry, ok := c.results[key]; ok {
-		// Check if entry is still valid (not expired)
-		if c.ttl == 0 || time.Now().Before(entry.expiresAt) {
-			c.mu.RUnlock()
-			return entry.result
-		}
-		// Entry expired, fall through to recreate
+		c.mu.RUnlock()
+		return entry.result
 	}
 	c.mu.RUnlock()
 
-	// Slow path: need to create new result
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	now := time.Now()
-
-	// Double-check after acquiring write lock
 	if entry, ok := c.results[key]; ok {
-		// Check again if still valid (another goroutine may have refreshed it)
-		if c.ttl == 0 || now.Before(entry.expiresAt) {
-			return entry.result
-		}
-		// Still expired, will overwrite below
+		return entry.result
 	}
 
-	// Create new result and cache entry
 	r := newTaskResult()
-	c.results[key] = &cacheEntry{result: r}
-	if c.ttl > 0 {
-		c.results[key].expiresAt = now.Add(c.ttl)
+	c.results[key] = cacheEntry{result: r}
+	return r
+}
+
+func (c *Ctx) getOrCreateResultWithTTL(key taskKey) *taskResult {
+	now := time.Now()
+	nowUnixNano := now.UnixNano()
+
+	// Lazy cleanup: remove expired entries at most once per TTL period.
+	if nowUnixNano-c.lastCleanup.Load() >= int64(c.ttl) {
+		c.cleanupExpired(now, nowUnixNano)
+	}
+
+	c.mu.RLock()
+	if entry, ok := c.results[key]; ok {
+		if now.Before(entry.expiresAt) {
+			c.mu.RUnlock()
+			return entry.result
+		}
+	}
+	c.mu.RUnlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if entry, ok := c.results[key]; ok {
+		if now.Before(entry.expiresAt) {
+			return entry.result
+		}
+	}
+
+	r := newTaskResult()
+	c.results[key] = cacheEntry{
+		result:    r,
+		expiresAt: now.Add(c.ttl),
 	}
 	return r
 }
 
 // cleanupExpired removes all expired entries from the cache.
 // This is called lazily during getOrCreateResult, at most once per TTL period.
-func (c *Ctx) cleanupExpired(now time.Time) {
+func (c *Ctx) cleanupExpired(
+	now time.Time,
+	nowUnixNano int64,
+) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Double-check after acquiring write lock
-	lastCleanupNano := c.lastCleanup.Load()
-	lastCleanupTime := time.Unix(0, lastCleanupNano)
-	if now.Sub(lastCleanupTime) < c.ttl {
+	if nowUnixNano-c.lastCleanup.Load() < int64(c.ttl) {
 		return
 	}
 
@@ -247,17 +312,17 @@ func (c *Ctx) cleanupExpired(now time.Time) {
 		}
 	}
 
-	c.lastCleanup.Store(now.UnixNano())
+	c.lastCleanup.Store(nowUnixNano)
 }
 
 type taskResult struct {
 	data any
 	err  error
-	once *sync.Once
+	once sync.Once
 }
 
 func newTaskResult() *taskResult {
-	return &taskResult{once: &sync.Once{}}
+	return &taskResult{}
 }
 
 type BoundTask interface {

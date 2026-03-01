@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"path"
 	"strings"
 
@@ -36,7 +35,7 @@ type SSRInnerHTMLInput struct {
 	OutermostServerErrorIdx *int
 	ErrorExportKeys         []string
 	MatchedPatterns         []string
-	LoadersData             []any
+	LoadersDataJSON         template.JS
 	ImportURLs              []string
 	ExportKeys              []string
 	HasRootData             bool
@@ -57,7 +56,7 @@ x.runtimeRouteSnapshot = {
 	outermostServerError: {{.OutermostServerError}},
 	outermostServerErrorIdx: {{.OutermostServerErrorIdx}},
 	matchedPatterns: {{.MatchedPatterns}},
-	loadersData: {{.LoadersData}},
+	loadersData: {{.LoadersDataJSON}},
 	importURLs: {{.ImportURLs}},
 	exportKeys: {{.ExportKeys}},
 	errorExportKeys: {{.ErrorExportKeys}},
@@ -239,14 +238,12 @@ func BuildSSRInnerHTMLFromRuntimeState(
 		splatValues = []string{}
 	}
 
-	for i, loaderData := range routeData.LoadersData {
-		if err := json.NewEncoder(io.Discard).Encode(loaderData); err != nil {
-			return nil, fmt.Errorf(
-				"routeData.LoadersData[%d] must be JSON-serializable: %w",
-				i,
-				err,
-			)
-		}
+	loadersDataJSON, marshalError := json.Marshal(routeData.LoadersData)
+	if marshalError != nil {
+		return nil, fmt.Errorf(
+			"routeData.LoadersData must be JSON-serializable: %w",
+			marshalError,
+		)
 	}
 
 	input := SSRInnerHTMLInput{
@@ -264,7 +261,7 @@ func BuildSSRInnerHTMLFromRuntimeState(
 		OutermostServerErrorIdx: routeData.OutermostServerErrorIdx,
 		ErrorExportKeys:         routeData.ErrorExportKeys,
 		MatchedPatterns:         routeData.MatchedPatterns,
-		LoadersData:             routeData.LoadersData,
+		LoadersDataJSON:         template.JS(loadersDataJSON),
 		ImportURLs:              routeData.ImportURLs,
 		ExportKeys:              routeData.ExportKeys,
 		HasRootData:             routeData.HasRootData,

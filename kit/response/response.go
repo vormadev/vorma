@@ -301,7 +301,7 @@ type Proxy struct {
 }
 
 func NewProxy() *Proxy {
-	return &Proxy{_headerOps: make(map[string][]headerOp)}
+	return &Proxy{}
 }
 
 type headerOp struct {
@@ -327,6 +327,9 @@ func (p *Proxy) Status() (int, string) {
 /////// HEADERS
 
 func (p *Proxy) SetHeader(key, value string) {
+	if p._headerOps == nil {
+		p._headerOps = make(map[string][]headerOp)
+	}
 	canonicalHeaderKey := http.CanonicalHeaderKey(key)
 	p._headerOps[canonicalHeaderKey] = append(
 		p._headerOps[canonicalHeaderKey],
@@ -335,6 +338,9 @@ func (p *Proxy) SetHeader(key, value string) {
 }
 
 func (p *Proxy) AddHeader(key, value string) {
+	if p._headerOps == nil {
+		p._headerOps = make(map[string][]headerOp)
+	}
 	canonicalHeaderKey := http.CanonicalHeaderKey(key)
 	p._headerOps[canonicalHeaderKey] = append(
 		p._headerOps[canonicalHeaderKey],
@@ -396,6 +402,11 @@ func (p *Proxy) HeadEls() *headels.HeadEls {
 	if p._head_els == nil {
 		p._head_els = headels.New()
 	}
+	return p._head_els
+}
+
+// HeadElsIfPresent returns the proxy head elements only when already present.
+func (p *Proxy) HeadElsIfPresent() *headels.HeadEls {
 	return p._head_els
 }
 
@@ -546,32 +557,36 @@ type cookieWithIdx struct {
 // Consumers should deduplicate head els after calling MergeProxyResponses
 // by using headels.ToHeadEls(proxy.HeadEls())
 func MergeProxyResponses(proxies ...*Proxy) *Proxy {
-	merged := NewProxy()
+	merged := &Proxy{}
 
 	// Head Elements -- MERGED IN ORDER
-	merged._head_els = headels.New()
 	for _, p := range proxies {
 		if p == nil {
 			continue
 		}
 		if p._head_els != nil {
+			if merged._head_els == nil {
+				merged._head_els = headels.New()
+			}
 			merged._head_els.AddElements(p._head_els)
 		}
 	}
 
 	// Headers -- MERGED IN ORDER
-	merged._headerOps = make(map[string][]headerOp)
 	for _, p := range proxies {
 		if p == nil {
 			continue
 		}
 		for key, ops := range p._headerOps {
+			if merged._headerOps == nil {
+				merged._headerOps = make(map[string][]headerOp)
+			}
 			merged._headerOps[key] = append(merged._headerOps[key], ops...)
 		}
 	}
 
 	// Cookies -- MERGED IN ORDER (later cookies overwrite earlier ones with same name)
-	_unique_cookies_map := make(map[string]*cookieWithIdx)
+	var uniqueCookiesMap map[string]*cookieWithIdx
 	for i, p := range proxies {
 		if p == nil {
 			continue
@@ -580,21 +595,26 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 			if c == nil {
 				continue
 			}
-			_unique_cookies_map[c.Name] = &cookieWithIdx{i, c}
+			if uniqueCookiesMap == nil {
+				uniqueCookiesMap = make(map[string]*cookieWithIdx)
+			}
+			uniqueCookiesMap[c.Name] = &cookieWithIdx{i, c}
 		}
 	}
 
-	deduped := make([]*cookieWithIdx, 0, len(_unique_cookies_map))
-	for _, c := range _unique_cookies_map {
-		deduped = append(deduped, c)
-	}
-	slices.SortStableFunc(deduped, func(i, j *cookieWithIdx) int {
-		return i.idx - j.idx
-	})
+	if uniqueCookiesMap != nil {
+		deduped := make([]*cookieWithIdx, 0, len(uniqueCookiesMap))
+		for _, c := range uniqueCookiesMap {
+			deduped = append(deduped, c)
+		}
+		slices.SortStableFunc(deduped, func(i, j *cookieWithIdx) int {
+			return i.idx - j.idx
+		})
 
-	merged._cookies = make([]*http.Cookie, 0, len(deduped))
-	for _, c := range deduped {
-		merged._cookies = append(merged._cookies, c.cookie)
+		merged._cookies = make([]*http.Cookie, 0, len(deduped))
+		for _, c := range deduped {
+			merged._cookies = append(merged._cookies, c.cookie)
+		}
 	}
 
 	// Status

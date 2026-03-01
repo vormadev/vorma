@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash"
-	"io"
-	"maps"
 	"net"
 	"net/http"
 	"strconv"
@@ -57,7 +55,7 @@ func Auto(config ...*Config) func(http.Handler) http.Handler {
 				ew.WriteOriginalResponse()
 				return
 			}
-			etag := generateETag(ew.hash, configToUse.Strong, ew.headers)
+			etag := generateETag(ew.hash, configToUse.Strong, ew.w.Header())
 			ifNoneMatch := r.Header.Get("If-None-Match")
 			if ifNoneMatch != "" && etagMatches(ifNoneMatch, etag) {
 				respondNotModified(w, etag)
@@ -74,8 +72,6 @@ type etagWriter struct {
 	headersSent bool
 	buf         *bytes.Buffer
 	hash        hash.Hash
-	tee         io.Writer
-	headers     http.Header
 	maxSize     int64
 	size        int64
 	tooBig      bool
@@ -90,22 +86,17 @@ var bufPool = sync.Pool{
 func newETagWriter(w http.ResponseWriter, hash hash.Hash, maxSize int64) *etagWriter {
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	headers := make(http.Header)
-	maps.Copy(headers, w.Header())
-	ew := &etagWriter{
+	return &etagWriter{
 		w:       w,
 		status:  http.StatusOK,
 		buf:     buf,
 		hash:    hash,
-		headers: headers,
 		maxSize: maxSize,
 	}
-	ew.tee = io.MultiWriter(buf, hash)
-	return ew
 }
 
 func (ew *etagWriter) Header() http.Header {
-	return ew.headers
+	return ew.w.Header()
 }
 
 func (ew *etagWriter) WriteHeader(code int) {
@@ -130,7 +121,11 @@ func (ew *etagWriter) Write(b []byte) (int, error) {
 	}
 
 	ew.size += int64(len(b))
-	return ew.tee.Write(b)
+	_, err := ew.hash.Write(b)
+	if err != nil {
+		return 0, err
+	}
+	return ew.buf.Write(b)
 }
 
 func (ew *etagWriter) Close() {
@@ -145,7 +140,6 @@ func (ew *etagWriter) beginPassthrough() {
 		return
 	}
 	ew.tooBig = true
-	maps.Copy(ew.w.Header(), ew.headers)
 	ew.w.WriteHeader(ew.status)
 	if ew.buf != nil && ew.buf.Len() > 0 {
 		_, _ = ew.w.Write(ew.buf.Bytes())
@@ -189,7 +183,6 @@ func (ew *etagWriter) Push(target string, opts *http.PushOptions) error {
 
 func (ew *etagWriter) WriteResponseWithETag(etag string) {
 	h := ew.w.Header()
-	maps.Copy(h, ew.headers)
 	h.Set("ETag", etag)
 	if !ew.tooBig && ew.buf != nil {
 		h.Set("Content-Length", strconv.Itoa(ew.buf.Len()))
@@ -204,7 +197,6 @@ func (ew *etagWriter) WriteOriginalResponse() {
 	if ew.tooBig {
 		return
 	}
-	maps.Copy(ew.w.Header(), ew.headers)
 	ew.w.WriteHeader(ew.status)
 	if ew.buf != nil && ew.buf.Len() > 0 {
 		ew.w.Write(ew.buf.Bytes())
@@ -221,10 +213,11 @@ func canUseETag(ew *etagWriter) bool {
 	if ew.buf == nil || ew.buf.Len() == 0 {
 		return false
 	}
-	if hasNoStoreDirective(ew.headers.Get("Cache-Control")) {
+	headers := ew.w.Header()
+	if hasNoStoreDirective(headers.Get("Cache-Control")) {
 		return false
 	}
-	if ew.headers.Get("Set-Cookie") != "" {
+	if headers.Get("Set-Cookie") != "" {
 		return false
 	}
 	return true

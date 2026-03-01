@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
@@ -831,14 +832,12 @@ func TestLoadersHandler_DefaultHeadErrorsDoNotOverrideShortCircuitResponses(
 		},
 	})
 
-	var defaultHeadCalls atomic.Int32
 	fixture := newTestFixture(t, testFixtureOptions{
 		stageOne: stage,
 		stageTwo: stage,
 		getDefaultHeadEls: func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
-			defaultHeadCalls.Add(1)
 			return errors.New(
-				"default head should not run for short-circuit responses",
+				"default head error should not override short-circuit response",
 			)
 		},
 	})
@@ -913,10 +912,69 @@ func TestLoadersHandler_DefaultHeadErrorsDoNotOverrideShortCircuitResponses(
 		}
 	})
 
-	if got := defaultHeadCalls.Load(); got != 0 {
+}
+
+func TestLoadersHandler_DefaultHeadAndStageOneRunInParallel(
+	t *testing.T,
+) {
+	stage := defaultPathsFile("build-default-head-parallel", map[string]*Path{
+		"/parallel": {
+			OriginalPattern: "/parallel",
+			SrcPath:         "frontend/src/routes/parallel.tsx",
+			OutPath:         "vorma_out/routes/parallel.js",
+			ExportKey:       "default",
+		},
+	})
+
+	const workDuration = 180 * time.Millisecond
+	fixture := newTestFixture(t, testFixtureOptions{
+		stageOne: stage,
+		stageTwo: stage,
+		getDefaultHeadEls: func(
+			r *http.Request,
+			app *Vorma,
+			h *headels.HeadEls,
+		) error {
+			time.Sleep(workDuration)
+			h.Meta(h.Name("x-default-head"), h.Content("ready"))
+			return nil
+		},
+	})
+	app := fixture.app
+
+	nestedmux.AddTaskHandler(
+		app.LoadersRouter().NestedRouter,
+		"/parallel",
+		mux.TaskHandlerFromFunc(
+			func(rd *mux.ReqData[mux.None]) (map[string]string, error) {
+				time.Sleep(workDuration)
+				return map[string]string{"ok": "true"}, nil
+			},
+		),
+	)
+
+	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/parallel?vorma_json=build-default-head-parallel",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	handler.ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	// Sequential work would be roughly 2*workDuration; allow wide margin for
+	// scheduler jitter while still enforcing overlap.
+	if elapsed >= (workDuration + 120*time.Millisecond) {
 		t.Fatalf(
-			"DefaultHeadElsFunc calls = %d, want 0 for short-circuit responses",
-			got,
+			"expected default-head and stage-1 overlap, elapsed=%v",
+			elapsed,
 		)
 	}
 }

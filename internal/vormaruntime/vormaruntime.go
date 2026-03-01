@@ -6,6 +6,7 @@
 package vormaruntime
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -458,11 +459,6 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.validateConfig()
 
 	v.getDefaultHeadEls = o.DefaultHeadElsFunc
-	if v.getDefaultHeadEls == nil {
-		v.getDefaultHeadEls = func(r *http.Request, app *Vorma, h *headels.HeadEls) error {
-			return nil
-		}
-	}
 	v.getHeadDedupeKeys = o.HeadDedupeKeysFunc
 	if v.getHeadDedupeKeys == nil {
 		v.getHeadDedupeKeys = func(h *headels.HeadEls) {}
@@ -609,7 +605,7 @@ func (v *Vorma) getRouteDataStage1(
 		}
 	}
 
-	tasksResults := nestedmux.RunTasks(
+	tasksResults := nestedmux.RunTasksWithoutPatternMap(
 		nestedRouter,
 		r,
 		inputs.MatchResults,
@@ -723,7 +719,32 @@ func (v *Vorma) getUIRouteData(
 	isJSON bool,
 	requestedBuildID string,
 ) *routepipeline.RouteResult {
-	res := response.New(w)
+	if v.getDefaultHeadEls == nil {
+		return v.getUIRouteDataWithoutCustomDefaultHead(
+			w,
+			r,
+			nestedRouter,
+			isJSON,
+			requestedBuildID,
+		)
+	}
+
+	return v.getUIRouteDataWithCustomDefaultHead(
+		w,
+		r,
+		nestedRouter,
+		isJSON,
+		requestedBuildID,
+	)
+}
+
+func (v *Vorma) getUIRouteDataWithoutCustomDefaultHead(
+	w http.ResponseWriter,
+	r *http.Request,
+	nestedRouter *nestedmux.Router,
+	isJSON bool,
+	requestedBuildID string,
+) *routepipeline.RouteResult {
 	routeResult := v.getRouteDataStage1(w, r, nestedRouter, requestedBuildID)
 	if routeResult.MergedResponseProxy != nil {
 		routeResult.MergedResponseProxy.ApplyToResponseWriter(w, r)
@@ -732,9 +753,67 @@ func (v *Vorma) getUIRouteData(
 		return routeResult
 	}
 
-	defaultHeadElsRaw, err := v.getDefaultHeadElsRaw(r)
-	if err != nil {
-		v.Log.Error("Error in getUIRouteData", "error", err.Error())
+	return v.buildUIRouteDataFromResolvedRoute(
+		w,
+		routeResult,
+		isJSON,
+		nil,
+	)
+}
+
+func (v *Vorma) getUIRouteDataWithCustomDefaultHead(
+	w http.ResponseWriter,
+	r *http.Request,
+	nestedRouter *nestedmux.Router,
+	isJSON bool,
+	requestedBuildID string,
+) *routepipeline.RouteResult {
+	res := response.New(w)
+	var (
+		defaultHeadElsRaw         []*htmlutil.Element
+		defaultHeadErr            error
+		defaultHeadWaitGroup      sync.WaitGroup
+		cancelDefaultHeadWorkFunc context.CancelFunc
+	)
+
+	defaultHeadContext, cancelDefaultHeadWork := context.WithCancel(
+		r.Context(),
+	)
+	cancelDefaultHeadWorkFunc = cancelDefaultHeadWork
+	defaultHeadRequest := r.Clone(defaultHeadContext)
+
+	defaultHeadWaitGroup.Add(1)
+	go func() {
+		defer defaultHeadWaitGroup.Done()
+		defaultHeadElsRaw, defaultHeadErr = v.getDefaultHeadElsRaw(
+			defaultHeadRequest,
+		)
+	}()
+
+	defer func() {
+		if cancelDefaultHeadWorkFunc != nil {
+			cancelDefaultHeadWorkFunc()
+		}
+	}()
+
+	routeResult := v.getRouteDataStage1(w, r, nestedRouter, requestedBuildID)
+	if routeResult.MergedResponseProxy != nil {
+		routeResult.MergedResponseProxy.ApplyToResponseWriter(w, r)
+	}
+	if routeResult.TerminalState != routepipeline.RouteTerminalStateNone {
+		if cancelDefaultHeadWorkFunc != nil {
+			cancelDefaultHeadWorkFunc()
+		}
+		return routeResult
+	}
+
+	defaultHeadWaitGroup.Wait()
+	if defaultHeadErr != nil {
+		v.Log.Error(
+			"Error in getUIRouteData",
+			"error",
+			defaultHeadErr.Error(),
+		)
 		res.InternalServerError()
 		return &routepipeline.RouteResult{
 			TerminalState: routepipeline.RouteTerminalStateError,
@@ -742,6 +821,21 @@ func (v *Vorma) getUIRouteData(
 		}
 	}
 
+	return v.buildUIRouteDataFromResolvedRoute(
+		w,
+		routeResult,
+		isJSON,
+		defaultHeadElsRaw,
+	)
+}
+
+func (v *Vorma) buildUIRouteDataFromResolvedRoute(
+	w http.ResponseWriter,
+	routeResult *routepipeline.RouteResult,
+	isJSON bool,
+	defaultHeadElsRaw []*htmlutil.Element,
+) *routepipeline.RouteResult {
+	res := response.New(w)
 	assets, err := routepipeline.BuildRouteAssets(
 		routepipeline.BuildRouteAssetsInput{
 			RouteResult:         routeResult,

@@ -59,24 +59,30 @@ func TestBuildRuntimeSnapshotFromCore_PreservesCoreFields(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeSnapshotFromCore_ConvertsRuntimeCorePaths(t *testing.T) {
-	snapshot := BuildRuntimeSnapshotFromCore(RuntimeSnapshotFromCoreInput{
-		Paths: map[string]*runtimecore.RoutePath{
-			"/products/:id": {
-				OriginalPattern: "/products/:id",
-				SrcPath:         "frontend/src/routes/products.$id.tsx",
-				OutPath:         "vorma_out/routes/products.$id.js",
-				ExportKey:       "default",
-				ErrorExportKey:  "ProductErrorBoundary",
-				Deps:            []string{"vorma_out/chunk-products.js"},
-			},
-			"/nil": nil,
+func TestBuildRuntimeSnapshotFromCore_PreservesRuntimeCorePathsReference(
+	t *testing.T,
+) {
+	inputPaths := map[string]*runtimecore.RoutePath{
+		"/products/:id": {
+			OriginalPattern: "/products/:id",
+			SrcPath:         "frontend/src/routes/products.$id.tsx",
+			OutPath:         "vorma_out/routes/products.$id.js",
+			ExportKey:       "default",
+			ErrorExportKey:  "ProductErrorBoundary",
+			Deps:            []string{"vorma_out/chunk-products.js"},
 		},
+		"/nil": nil,
+	}
+	snapshot := BuildRuntimeSnapshotFromCore(RuntimeSnapshotFromCoreInput{
+		Paths: inputPaths,
 	})
 
 	gotPath := snapshot.Paths["/products/:id"]
 	if gotPath == nil {
-		t.Fatal("expected converted path entry for /products/:id")
+		t.Fatal("expected path entry for /products/:id")
+	}
+	if gotPath != inputPaths["/products/:id"] {
+		t.Fatal("expected runtime snapshot to preserve route path pointers")
 	}
 	if got, want := gotPath.SrcPath, "frontend/src/routes/products.$id.tsx"; got != want {
 		t.Fatalf("SrcPath = %q, want %q", got, want)

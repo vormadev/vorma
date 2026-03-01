@@ -685,14 +685,13 @@ func (m *Matcher) FindNestedMatches(
 	realPath = StripTrailingSlash(realPath)
 
 	realSegments := ParseSegments(realPath)
+	realSegmentsLen := len(realSegments)
 	matches := make(matchesMap)
 
 	emptyRR, hasEmptyRR := m.staticPatterns[""]
 	if hasEmptyRR {
 		matches[emptyRR.normalizedPattern] = &Match{RegisteredPattern: emptyRR}
 	}
-
-	realSegmentsLen := len(realSegments)
 
 	if realPath == "" {
 		if rr, ok := m.staticPatterns["/"]; ok {
@@ -753,15 +752,26 @@ func (m *Matcher) FindNestedMatches(
 	}
 
 	var longestSegmentLen int
-	longestSegmentMatches := make(map[SegmentType]*Match)
+	var longestIndexMatch *Match
+	var longestDynamicMatch *Match
+	var longestSplatMatch *Match
 	for _, match := range matches {
-		if len(match.normalizedSegments) > longestSegmentLen {
-			longestSegmentLen = len(match.normalizedSegments)
+		segmentsLen := len(match.normalizedSegments)
+		if segmentsLen > longestSegmentLen {
+			longestSegmentLen = segmentsLen
+			longestIndexMatch = nil
+			longestDynamicMatch = nil
+			longestSplatMatch = nil
 		}
-	}
-	for _, match := range matches {
-		if len(match.normalizedSegments) == longestSegmentLen {
-			longestSegmentMatches[match.lastSegType] = match
+		if segmentsLen == longestSegmentLen {
+			switch match.lastSegType {
+			case segTypes.index:
+				longestIndexMatch = match
+			case segTypes.dynamic:
+				longestDynamicMatch = match
+			case segTypes.splat:
+				longestSplatMatch = match
+			}
 		}
 	}
 
@@ -777,25 +787,36 @@ func (m *Matcher) FindNestedMatches(
 		return flattenAndSortMatches(matches, realPath, realSegmentsLen)
 	}
 
-	if len(longestSegmentMatches) > 1 {
-		if match, indexExists := longestSegmentMatches[segTypes.index]; indexExists {
-			delete(matches, match.normalizedPattern)
+	longestSegmentTypeCount := 0
+	if longestIndexMatch != nil {
+		longestSegmentTypeCount++
+	}
+	if longestDynamicMatch != nil {
+		longestSegmentTypeCount++
+	}
+	if longestSplatMatch != nil {
+		longestSegmentTypeCount++
+	}
+
+	if longestSegmentTypeCount > 1 {
+		if longestIndexMatch != nil {
+			delete(matches, longestIndexMatch.normalizedPattern)
 		}
 
-		_, dynamicExists := longestSegmentMatches[segTypes.dynamic]
-		_, splatExists := longestSegmentMatches[segTypes.splat]
+		dynamicExists := longestDynamicMatch != nil
+		splatExists := longestSplatMatch != nil
 
 		if realSegmentsLen == longestSegmentLen && dynamicExists &&
 			splatExists {
 			delete(
 				matches,
-				longestSegmentMatches[segTypes.splat].normalizedPattern,
+				longestSplatMatch.normalizedPattern,
 			)
 		}
 		if realSegmentsLen > longestSegmentLen && splatExists && dynamicExists {
 			delete(
 				matches,
-				longestSegmentMatches[segTypes.dynamic].normalizedPattern,
+				longestDynamicMatch.normalizedPattern,
 			)
 		}
 	}
@@ -813,8 +834,11 @@ func (m *Matcher) dfsNestedMatches(
 	if len(node.pattern) > 0 {
 		if rp := m.dynamicPatterns[node.pattern]; rp != nil {
 			if node.pattern != "/*" {
-				paramsCopy := make(Params, len(params))
-				maps.Copy(paramsCopy, params)
+				var paramsCopy Params
+				if len(params) > 0 {
+					paramsCopy = make(Params, len(params))
+					maps.Copy(paramsCopy, params)
+				}
 
 				var splatValues []string
 				if node.nodeType == nodeSplat && depth < len(segments) {
@@ -830,11 +854,7 @@ func (m *Matcher) dfsNestedMatches(
 				matches[node.pattern] = match
 
 				if depth == len(segments) {
-					var indexBuilder strings.Builder
-					indexBuilder.Grow(len(node.pattern) + 1)
-					indexBuilder.WriteString(node.pattern)
-					indexBuilder.WriteByte('/')
-					indexPattern := indexBuilder.String()
+					indexPattern := node.pattern + "/"
 					if rp, ok := m.dynamicPatterns[indexPattern]; ok {
 						matches[indexPattern] = &Match{
 							RegisteredPattern: rp,
@@ -882,29 +902,32 @@ func flattenAndSortMatches(
 	realPath string,
 	realSegmentLen int,
 ) (*FindNestedMatchesResults, bool) {
-	var results []*Match
+	matchCount := len(matches)
+	if matchCount == 0 {
+		return nil, false
+	}
+
+	results := make([]*Match, 0, matchCount)
 	for _, match := range matches {
 		results = append(results, match)
 	}
 
-	slices.SortStableFunc(results, func(left, right *Match) int {
-		if left.lastSegIsIndex {
-			return 1
-		}
-		if right.lastSegIsIndex {
-			return -1
-		}
+	if matchCount > 1 {
+		slices.SortFunc(results, func(left, right *Match) int {
+			if left.lastSegIsIndex != right.lastSegIsIndex {
+				if left.lastSegIsIndex {
+					return 1
+				}
+				return -1
+			}
 
-		lenDiff := len(left.normalizedSegments) - len(right.normalizedSegments)
-		if lenDiff != 0 {
-			return lenDiff
-		}
+			lenDiff := len(left.normalizedSegments) - len(right.normalizedSegments)
+			if lenDiff != 0 {
+				return lenDiff
+			}
 
-		return strings.Compare(left.normalizedPattern, right.normalizedPattern)
-	})
-
-	if len(results) == 0 {
-		return nil, false
+			return strings.Compare(left.normalizedPattern, right.normalizedPattern)
+		})
 	}
 
 	isNotSlashRoute := realPath != "" && realPath != "/"

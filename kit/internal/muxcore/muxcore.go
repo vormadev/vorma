@@ -59,7 +59,7 @@ func NewRequestDataWithTasksCtxOnly(
 		splatValues:   emptySplatValues,
 		tasksCtx:      tasksCtx,
 		request:       request,
-		responseProxy: response.NewProxy(),
+		responseProxy: nil,
 	}
 }
 

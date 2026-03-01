@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/kit/internal/muxcore"
 	"github.com/vormadev/vorma/kit/validate"
 )
 
@@ -389,6 +390,8 @@ func TestInjectTasksCtxMiddleware_NoParamsReturnsNilMap(t *testing.T) {
 	requestCount := 0
 	var firstRequestParams Params
 	var secondRequestParams Params
+	var firstRequestProxyIsNil bool
+	var secondRequestProxyIsNil bool
 
 	handler := InjectTasksCtxMiddleware(
 		http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -400,6 +403,16 @@ func TestInjectTasksCtxMiddleware_NoParamsReturnsNilMap(t *testing.T) {
 			}
 			if requestCount == 2 {
 				secondRequestParams = params
+			}
+			requestData := muxcore.DataFromRequest(req)
+			if requestData == nil {
+				t.Fatal("expected request data to be present")
+			}
+			if requestCount == 1 {
+				firstRequestProxyIsNil = requestData.ResponseProxy() == nil
+			}
+			if requestCount == 2 {
+				secondRequestProxyIsNil = requestData.ResponseProxy() == nil
 			}
 
 			w.WriteHeader(http.StatusNoContent)
@@ -424,6 +437,13 @@ func TestInjectTasksCtxMiddleware_NoParamsReturnsNilMap(t *testing.T) {
 		t.Fatalf(
 			"expected second middleware request no-params map to be nil, got %#v",
 			secondRequestParams,
+		)
+	}
+	if !firstRequestProxyIsNil || !secondRequestProxyIsNil {
+		t.Fatalf(
+			"expected InjectTasksCtxMiddleware request proxy to stay nil; first=%v second=%v",
+			firstRequestProxyIsNil,
+			secondRequestProxyIsNil,
 		)
 	}
 }

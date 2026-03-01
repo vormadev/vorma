@@ -24,23 +24,21 @@ import (
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
-// PathData contains route metadata needed by the route data planning pipeline.
-type PathData struct {
-	OriginalPattern string
-	SrcPath         string
-	OutPath         string
-	ExportKey       string
-	ErrorExportKey  string
-	Deps            []string
-}
+// PathData is the route metadata shape used by the route-data planning
+// pipeline.
+type PathData = runtimecore.RoutePath
 
 // CachedItemSubset stores the cached route metadata used to build route-data
 // payloads.
 type CachedItemSubset struct {
+	MatchedPatterns []string
 	ImportURLs      []string
 	ExportKeys      []string
 	ErrorExportKeys []string
 	Deps            []string
+
+	staticProductionHeadByKeyMu sync.RWMutex
+	staticProductionHeadByKey   map[string]*headels.SortedAndPreEscapedHeadEls
 }
 
 // RouteDataCore contains the core route data that is serialized to JSON for the
@@ -111,22 +109,16 @@ func BuildRouteDataFinal(
 	routeResult *RouteResult,
 	publicPathPrefix string,
 ) *RouteDataFinal {
-	resolvedImportURLs := cloneStringSlice(routeResult.Core.ImportURLs)
-	if !routeResult.IsDev {
+	resolvedImportURLs := routeResult.Core.ImportURLs
+	if !routeResult.IsDev && !isDefaultPublicPathPrefix(publicPathPrefix) {
 		resolvedImportURLs = resolveClientAssetPaths(
 			publicPathPrefix,
 			routeResult.Core.ImportURLs,
 		)
 	}
 
-	resolvedDeps := resolveClientAssetPaths(
-		publicPathPrefix,
-		routeResult.Core.Deps,
-	)
-	resolvedCSSBundles := resolveClientAssetPaths(
-		publicPathPrefix,
-		routeResult.CSSBundles,
-	)
+	var resolvedDeps []string
+	var resolvedCSSBundles []string
 	var title *htmlutil.Element
 	var metaHeadEls []*htmlutil.Element
 	var restHeadEls []*htmlutil.Element
@@ -134,8 +126,17 @@ func BuildRouteDataFinal(
 		title = routeResult.Assets.SortedAndPreEscapedHeadEls.Title
 		metaHeadEls = routeResult.Assets.SortedAndPreEscapedHeadEls.Meta
 		restHeadEls = routeResult.Assets.SortedAndPreEscapedHeadEls.Rest
-		resolvedDeps = cloneStringSlice(routeResult.Assets.Deps)
-		resolvedCSSBundles = cloneStringSlice(routeResult.Assets.CSSBundles)
+		resolvedDeps = routeResult.Assets.Deps
+		resolvedCSSBundles = routeResult.Assets.CSSBundles
+	} else {
+		resolvedDeps = resolveClientAssetPaths(
+			publicPathPrefix,
+			routeResult.Core.Deps,
+		)
+		resolvedCSSBundles = resolveClientAssetPaths(
+			publicPathPrefix,
+			routeResult.CSSBundles,
+		)
 	}
 
 	normalizedParams := routeResult.Core.Params
@@ -151,11 +152,11 @@ func BuildRouteDataFinal(
 		RouteDataCore: &RouteDataCore{
 			OutermostServerError:    routeResult.Core.OutermostServerError,
 			OutermostServerErrorIdx: routeResult.Core.OutermostServerErrorIdx,
-			ErrorExportKeys:         cloneStringSlice(routeResult.Core.ErrorExportKeys),
-			MatchedPatterns:         cloneStringSlice(routeResult.Core.MatchedPatterns),
-			LoadersData:             cloneAnySlice(routeResult.Core.LoadersData),
+			ErrorExportKeys:         routeResult.Core.ErrorExportKeys,
+			MatchedPatterns:         routeResult.Core.MatchedPatterns,
+			LoadersData:             routeResult.Core.LoadersData,
 			ImportURLs:              resolvedImportURLs,
-			ExportKeys:              cloneStringSlice(routeResult.Core.ExportKeys),
+			ExportKeys:              routeResult.Core.ExportKeys,
 			HasRootData:             routeResult.Core.HasRootData,
 			Params:                  normalizedParams,
 			SplatValues:             normalizedSplatValues,
@@ -213,6 +214,7 @@ type RouteResult struct {
 	TerminalState RouteTerminalState
 	BuildID       string
 
+	Cached                    *CachedItemSubset
 	Core                      *RouteDataCore
 	HeadElements              []*htmlutil.Element
 	CSSBundles                []string
@@ -261,7 +263,7 @@ func BuildRuntimeSnapshotFromCore(
 	return RuntimeSnapshot{
 		BuildID:           input.BuildID,
 		IsDev:             input.IsDev,
-		Paths:             convertRuntimeCorePathsToPathData(input.Paths),
+		Paths:             input.Paths,
 		ClientEntryDeps:   input.ClientEntryDeps,
 		ClientEntryOut:    input.ClientEntryOut,
 		DepToCSSBundleMap: input.DepToCSSBundleMap,
@@ -274,31 +276,6 @@ func BuildRuntimeSnapshotFromCore(
 		RouteDataSnapshotVersion: input.RouteDataSnapshotVersion,
 		RouteDataCache:           input.RouteDataCache,
 	}
-}
-
-func convertRuntimeCorePathsToPathData(
-	paths map[string]*runtimecore.RoutePath,
-) map[string]*PathData {
-	if paths == nil {
-		return nil
-	}
-
-	out := make(map[string]*PathData, len(paths))
-	for pattern, pathValue := range paths {
-		if pathValue == nil {
-			out[pattern] = nil
-			continue
-		}
-		out[pattern] = &PathData{
-			OriginalPattern: pathValue.OriginalPattern,
-			SrcPath:         pathValue.SrcPath,
-			OutPath:         pathValue.OutPath,
-			ExportKey:       pathValue.ExportKey,
-			ErrorExportKey:  pathValue.ErrorExportKey,
-			Deps:            pathValue.Deps,
-		}
-	}
-	return out
 }
 
 // RouteDataExecutionInputs are the prepared inputs for route-data planning.
@@ -418,12 +395,17 @@ func BuildCachedItemSubset(
 	isDev bool,
 ) *CachedItemSubset {
 	cached := &CachedItemSubset{
+		MatchedPatterns: make([]string, 0, len(matches)),
 		ImportURLs:      make([]string, 0, len(matches)),
 		ExportKeys:      make([]string, 0, len(matches)),
 		ErrorExportKeys: make([]string, 0, len(matches)),
 	}
 
 	for _, match := range matches {
+		cached.MatchedPatterns = append(
+			cached.MatchedPatterns,
+			match.OriginalPattern(),
+		)
 		foundPath := pathsSnapshot[match.OriginalPattern()]
 		if foundPath == nil || foundPath.SrcPath == "" {
 			cached.ImportURLs = append(cached.ImportURLs, "")
@@ -561,6 +543,7 @@ func PlanRouteResultFromResolvedTaskOutcomes(
 
 	return &RouteResult{
 		BuildID: normalizedInput.RuntimeSnapshot.BuildID,
+		Cached:  normalizedInput.Cached,
 		Core:    core,
 		HeadElements: CollectFlattenedHeadElementsForPrefix(
 			normalizedInput.ResponseProxies,
@@ -648,17 +631,33 @@ func CollectFlattenedHeadElementsForPrefix(
 		routeCount = len(responseProxies)
 	}
 
-	headElsByRoute := make([][]*htmlutil.Element, 0, routeCount)
 	total := 0
 	for routeIdx := 0; routeIdx < routeCount; routeIdx++ {
-		routeElements := responseProxies[routeIdx].HeadEls().Collect()
-		headElsByRoute = append(headElsByRoute, routeElements)
-		total += len(routeElements)
+		routeProxy := responseProxies[routeIdx]
+		if routeProxy == nil {
+			continue
+		}
+		routeHeadEls := routeProxy.HeadElsIfPresent()
+		if routeHeadEls == nil {
+			continue
+		}
+		total += routeHeadEls.Len()
+	}
+	if total == 0 {
+		return nil
 	}
 
 	flattenedHeadEls := make([]*htmlutil.Element, 0, total)
-	for _, routeElements := range headElsByRoute {
-		flattenedHeadEls = append(flattenedHeadEls, routeElements...)
+	for routeIdx := 0; routeIdx < routeCount; routeIdx++ {
+		routeProxy := responseProxies[routeIdx]
+		if routeProxy == nil {
+			continue
+		}
+		routeHeadEls := routeProxy.HeadElsIfPresent()
+		if routeHeadEls == nil {
+			continue
+		}
+		flattenedHeadEls = routeHeadEls.AppendElementsInto(flattenedHeadEls)
 	}
 	return flattenedHeadEls
 }
@@ -693,6 +692,51 @@ func BuildRouteAssets(input BuildRouteAssetsInput) (*RouteAssets, error) {
 		input.PublicPathPrefix,
 		input.RouteResult.CSSBundles,
 	)
+	if shouldUseStaticProductionHeadCache(
+		input.RouteResult.IsDev,
+		input.IsJSON,
+		input.DefaultHeadElements,
+		input.RouteResult.HeadElements,
+		input.RouteResult.Cached,
+	) {
+		cachedStaticHead := input.RouteResult.Cached.
+			LoadCachedStaticProductionHead(
+				resolvedDeps,
+				resolvedCSSBundles,
+			)
+		if cachedStaticHead != nil {
+			return &RouteAssets{
+				SortedAndPreEscapedHeadEls: cachedStaticHead,
+				Deps:                       resolvedDeps,
+				CSSBundles:                 resolvedCSSBundles,
+				ViteDevURL: GetViteDevURLForMode(
+					input.RouteResult.IsDev,
+				),
+			}, nil
+		}
+
+		cachedStaticHead = input.ToSortedAndPreEscapedHeadElsFn(
+			appendProductionAssetLinks(
+				nil,
+				resolvedDeps,
+				resolvedCSSBundles,
+			),
+		)
+		input.RouteResult.Cached.StoreCachedStaticProductionHead(
+			resolvedDeps,
+			resolvedCSSBundles,
+			cachedStaticHead,
+		)
+		return &RouteAssets{
+			SortedAndPreEscapedHeadEls: cachedStaticHead,
+			Deps:                       resolvedDeps,
+			CSSBundles:                 resolvedCSSBundles,
+			ViteDevURL: GetViteDevURLForMode(
+				input.RouteResult.IsDev,
+			),
+		}, nil
+	}
+
 	combinedHeadEls := combineDefaultAndRouteHeadElements(
 		input.DefaultHeadElements,
 		input.RouteResult.HeadElements,
@@ -735,6 +779,19 @@ func shouldAppendProductionAssetLinks(isDev bool, isJSON bool) bool {
 	return !isDev && !isJSON
 }
 
+func shouldUseStaticProductionHeadCache(
+	isDev bool,
+	isJSON bool,
+	defaultHeadElsRaw []*htmlutil.Element,
+	routeHeadEls []*htmlutil.Element,
+	cached *CachedItemSubset,
+) bool {
+	return shouldAppendProductionAssetLinks(isDev, isJSON) &&
+		len(defaultHeadElsRaw) == 0 &&
+		len(routeHeadEls) == 0 &&
+		cached != nil
+}
+
 func appendProductionAssetLinks(
 	headElements []*htmlutil.Element,
 	deps []string,
@@ -770,6 +827,67 @@ func appendProductionAssetLinks(
 	}
 
 	return out
+}
+
+func buildStaticProductionHeadCacheKey(
+	deps []string,
+	cssBundles []string,
+) string {
+	var sb strings.Builder
+	sb.Grow((len(deps) * 32) + (len(cssBundles) * 32) + 4)
+	sb.WriteByte('d')
+	sb.WriteByte(0)
+	for _, dep := range deps {
+		sb.WriteString(dep)
+		sb.WriteByte(0)
+	}
+	sb.WriteByte('|')
+	sb.WriteByte(0)
+	sb.WriteByte('c')
+	sb.WriteByte(0)
+	for _, cssBundle := range cssBundles {
+		sb.WriteString(cssBundle)
+		sb.WriteByte(0)
+	}
+	return sb.String()
+}
+
+func (cached *CachedItemSubset) LoadCachedStaticProductionHead(
+	deps []string,
+	cssBundles []string,
+) *headels.SortedAndPreEscapedHeadEls {
+	if cached == nil {
+		return nil
+	}
+	cacheKey := buildStaticProductionHeadCacheKey(deps, cssBundles)
+	cached.staticProductionHeadByKeyMu.RLock()
+	defer cached.staticProductionHeadByKeyMu.RUnlock()
+	if cached.staticProductionHeadByKey == nil {
+		return nil
+	}
+	return cached.staticProductionHeadByKey[cacheKey]
+}
+
+func (cached *CachedItemSubset) StoreCachedStaticProductionHead(
+	deps []string,
+	cssBundles []string,
+	sortedHead *headels.SortedAndPreEscapedHeadEls,
+) {
+	if cached == nil || sortedHead == nil {
+		return
+	}
+	cacheKey := buildStaticProductionHeadCacheKey(deps, cssBundles)
+	cached.staticProductionHeadByKeyMu.Lock()
+	defer cached.staticProductionHeadByKeyMu.Unlock()
+	if cached.staticProductionHeadByKey == nil {
+		cached.staticProductionHeadByKey = make(
+			map[string]*headels.SortedAndPreEscapedHeadEls,
+		)
+	}
+	if _, exists := cached.staticProductionHeadByKey[cacheKey]; exists {
+		return
+	}
+	cached.staticProductionHeadByKey[cacheKey] = sortedHead
 }
 
 // GetViteDevURLForMode returns the Vite dev server URL for dev mode requests.
@@ -868,32 +986,21 @@ func resolveClientAssetPath(
 	if trimmedAssetPath == "" {
 		return ""
 	}
-	trimmedAssetPath = strings.TrimPrefix(trimmedAssetPath, "/")
 
 	trimmedPublicPathPrefix := strings.TrimSpace(publicPathPrefix)
-	switch trimmedPublicPathPrefix {
-	case "", "/":
+	if isDefaultPublicPathPrefix(trimmedPublicPathPrefix) {
+		if strings.HasPrefix(trimmedAssetPath, "/") {
+			return trimmedAssetPath
+		}
 		return "/" + trimmedAssetPath
 	}
 
+	trimmedAssetPath = strings.TrimPrefix(trimmedAssetPath, "/")
 	trimmedPublicPathPrefix = "/" + strings.Trim(trimmedPublicPathPrefix, "/")
 	return trimmedPublicPathPrefix + "/" + trimmedAssetPath
 }
 
-func cloneStringSlice(values []string) []string {
-	if values == nil {
-		return nil
-	}
-	out := make([]string, len(values))
-	copy(out, values)
-	return out
-}
-
-func cloneAnySlice(values []any) []any {
-	if values == nil {
-		return nil
-	}
-	out := make([]any, len(values))
-	copy(out, values)
-	return out
+func isDefaultPublicPathPrefix(publicPathPrefix string) bool {
+	trimmedPublicPathPrefix := strings.TrimSpace(publicPathPrefix)
+	return trimmedPublicPathPrefix == "" || trimmedPublicPathPrefix == "/"
 }

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
@@ -252,6 +253,56 @@ func TestPrepareExecutionInputs(t *testing.T) {
 			t.Fatalf("MatchResults = %#v, want nil", inputs.MatchResults)
 		}
 	})
+}
+
+func TestBuildExecutionInputsFromMatchResults_FallbacksMatchedPatternsWhenMissingInCachedSubset(
+	t *testing.T,
+) {
+	router := nestedmux.NewRouter(nil)
+	nestedmux.AddPatternWithoutHandler(router, "")
+	nestedmux.AddPatternWithoutHandler(router, "/items/:id")
+
+	request := httptest.NewRequest(http.MethodGet, "/items/42", nil)
+	matchResults, found := nestedmux.FindMatches(router, request)
+	if !found {
+		t.Fatal("expected nested match for /items/42")
+	}
+
+	runtimeSnapshot := runtimeSnapshotForRuntimeHTTPTests()
+	routeDataCache := &sync.Map{}
+	cacheKey := routepipeline.BuildRouteDataCacheKey(
+		matchResults.Matches,
+		runtimeSnapshot.IsDev,
+		runtimeSnapshot.BuildID,
+		runtimeSnapshot.RouteDataSnapshotVersion,
+	)
+	cachedWithoutMatchedPatterns := &routepipeline.CachedItemSubset{
+		ImportURLs:      []string{"/frontend/src/routes/root.tsx", "/frontend/src/routes/items.$id.tsx"},
+		ExportKeys:      []string{"Root", "ItemRoute"},
+		ErrorExportKeys: []string{"RootErrorBoundary", "ItemErrorBoundary"},
+		Deps: []string{
+			"vorma_out/chunk-client.js",
+			"vorma_out/chunk-root.js",
+			"vorma_out/chunk-items.js",
+		},
+	}
+	routeDataCache.Store(cacheKey, cachedWithoutMatchedPatterns)
+	runtimeSnapshot.RouteDataCache = routeDataCache
+
+	inputs := BuildExecutionInputsFromMatchResults(
+		BuildExecutionInputsFromMatchResultsInput{
+			MatchResults:             matchResults,
+			RuntimeSnapshot:          runtimeSnapshot,
+			IsSnapshotVersionCurrent: nil,
+		},
+	)
+
+	if got, want := inputs.MatchedPatterns, []string{"", "/items/:id"}; !reflect.DeepEqual(
+		got,
+		want,
+	) {
+		t.Fatalf("MatchedPatterns = %#v, want %#v", got, want)
+	}
 }
 
 func TestPlanRouteResultFromTaskResults(t *testing.T) {

@@ -19,7 +19,7 @@ func TestBuildSSRInnerHTML_RendersScriptAndHash(t *testing.T) {
 			OutermostServerError:    `""`,
 			ErrorExportKeys:         []string{"default"},
 			MatchedPatterns:         []string{"/"},
-			LoadersData:             []any{map[string]any{"ok": true}},
+			LoadersDataJSON:         template.JS(`[{"ok":true}]`),
 			ImportURLs:              []string{"/assets/home.js"},
 			ExportKeys:              []string{"default"},
 			HasRootData:             true,
@@ -251,9 +251,49 @@ func TestBuildSSRInnerHTMLFromRuntimeState_ValidatesLoadersDataJSON(
 	}
 	if !strings.Contains(
 		buildError.Error(),
-		"routeData.LoadersData[0] must be JSON-serializable",
+		"routeData.LoadersData must be JSON-serializable",
 	) {
 		t.Fatalf("unexpected error: %v", buildError)
+	}
+}
+
+func TestBuildSSRInnerHTMLFromRuntimeState_LoadersDataJSONEscapesScriptTerminators(
+	t *testing.T,
+) {
+	output, buildError := BuildSSRInnerHTMLFromRuntimeState(
+		SSRRuntimeState{
+			VormaSymbolStr:    "__vorma_internal__",
+			BuildID:           `"build-escape"`,
+			RootElementID:     "root",
+			PublicPathPrefix:  "/static/",
+			RouteManifestFile: "vorma_out/route-manifest.js",
+		},
+		SSRRouteData{
+			MatchedPatterns: []string{"/"},
+			LoadersData: []any{
+				map[string]any{"html": `</script><script>alert("x")</script>`},
+			},
+			ImportURLs:           []string{"/static/entry.js"},
+			ExportKeys:           []string{"default"},
+			OutermostServerError: `""`,
+		},
+	)
+	if buildError != nil {
+		t.Fatalf("BuildSSRInnerHTMLFromRuntimeState returned error: %v", buildError)
+	}
+	if output == nil || output.Script == nil {
+		t.Fatal("expected non-nil output script")
+	}
+
+	script := string(*output.Script)
+	if strings.Contains(script, `</script><script>alert("x")</script>`) {
+		t.Fatalf("expected script terminator to be escaped, got %q", script)
+	}
+	if !strings.Contains(script, `\u003c/script\u003e`) {
+		t.Fatalf(
+			"expected escaped script terminator in output, got %q",
+			script,
+		)
 	}
 }
 

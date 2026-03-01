@@ -366,7 +366,6 @@ func BuildExecutionInputsFromMatchResults(
 
 	matchResults := input.MatchResults
 	matches := matchResults.Matches
-	matchedPatterns := routepipeline.CollectMatchedPatterns(matches)
 	cacheKey := routepipeline.BuildRouteDataCacheKey(
 		matches,
 		input.RuntimeSnapshot.IsDev,
@@ -383,6 +382,10 @@ func BuildExecutionInputsFromMatchResults(
 		input.RuntimeSnapshot.RouteDataCache,
 		input.IsSnapshotVersionCurrent,
 	)
+	matchedPatterns := cached.MatchedPatterns
+	if len(matchedPatterns) != len(matches) {
+		matchedPatterns = routepipeline.CollectMatchedPatterns(matches)
+	}
 
 	return routepipeline.RouteDataExecutionInputs{
 		MatchResults:    matchResults,

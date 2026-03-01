@@ -307,6 +307,36 @@ func RunTasks(
 	r *http.Request,
 	findNestedMatchesResults *nestedmatcher.Results,
 ) *TasksResults {
+	return runTasks(
+		nestedRouter,
+		r,
+		findNestedMatchesResults,
+		true,
+	)
+}
+
+// RunTasksWithoutPatternMap executes matched handlers while skipping
+// TasksResults.Map materialization. This is useful for high-throughput callers
+// that consume ordered results only.
+func RunTasksWithoutPatternMap(
+	nestedRouter *Router,
+	r *http.Request,
+	findNestedMatchesResults *nestedmatcher.Results,
+) *TasksResults {
+	return runTasks(
+		nestedRouter,
+		r,
+		findNestedMatchesResults,
+		false,
+	)
+}
+
+func runTasks(
+	nestedRouter *Router,
+	r *http.Request,
+	findNestedMatchesResults *nestedmatcher.Results,
+	includePatternMap bool,
+) *TasksResults {
 	tasksCtx := mux.GetTasksCtx(r)
 	if tasksCtx == nil {
 		nestedMuxLog.Error("No TasksCtx found in request for RunTasks")
@@ -323,10 +353,13 @@ func RunTasks(
 	results := &TasksResults{
 		Params:          findNestedMatchesResults.Params,
 		SplatValues:     findNestedMatchesResults.SplatValues,
-		Map:             make(map[string]*TasksResult, numMatches),
 		Slice:           make([]*TasksResult, numMatches),
 		ResponseProxies: make([]*response.Proxy, numMatches),
 	}
+	if includePatternMap {
+		results.Map = make(map[string]*TasksResult, numMatches)
+	}
+	resultsByRoute := make([]TasksResult, numMatches)
 
 	compiledRoutesSnapshotForRun := nestedRouter.currentCompiledRoutesSnapshot()
 	compiledRoutes := compiledRoutesSnapshotForRun.compiledRoutes
@@ -334,21 +367,24 @@ func RunTasks(
 
 	// Pre-allocate boundTasks based on estimated task count
 	boundTasks := make(
-		[]*optimizedBoundTask,
+		[]optimizedBoundTask,
 		0,
-		numMatches/2,
-	) // Assume ~50% have handlers
-	taskCancels := make([]context.CancelFunc, 0, numMatches/2)
+		numMatches,
+	)
+	var rootDescendantsCancel context.CancelFunc
 
-	// Track pooled objects for cleanup
-	pooledReqData := make([]*mux.ReqData[mux.None], 0, numMatches/2)
-
-	// Ensure cleanup happens after RunParallel completes (which blocks until all tasks finish)
+	// Ensure cleanup happens after task execution completes.
 	defer func() {
-		// Return mux.ReqData objects to pool after clearing
-		for _, rd := range pooledReqData {
-			rd.ClearForPool()
-			reqDataPool.Put(rd)
+		if rootDescendantsCancel != nil {
+			rootDescendantsCancel()
+		}
+		for i := range boundTasks {
+			boundTask := &boundTasks[i]
+			tasks.ReleaseSharedStateChildContext(boundTask.borrowedTasksCtx)
+			if boundTask.reqData != nil {
+				boundTask.reqData.ClearForPool()
+				reqDataPool.Put(boundTask.reqData)
+			}
 		}
 	}()
 
@@ -357,25 +393,22 @@ func RunTasks(
 		pattern := match.OriginalPattern()
 
 		// Get pooled result
-		result := &TasksResult{}
+		result := &resultsByRoute[i]
 		result.pattern = pattern
-		result.data = nil
-		result.err = nil
-		result.ranTask = false
 
-		results.Map[pattern] = result
+		if includePatternMap {
+			results.Map[pattern] = result
+		}
 		results.Slice[i] = result
 
 		// Fast lookup using pre-computed index
 		idx, exists := routeIndexMap[pattern]
 		if !exists || idx >= len(compiledRoutes) {
-			results.ResponseProxies[i] = response.NewProxy()
 			continue
 		}
 
 		compiled := &compiledRoutes[idx]
 		if !compiled.hasHandler {
-			results.ResponseProxies[i] = response.NewProxy()
 			continue
 		}
 
@@ -394,9 +427,8 @@ func RunTasks(
 			r,
 			proxy,
 		)
-		pooledReqData = append(pooledReqData, reqData)
 
-		boundTask := &optimizedBoundTask{
+		boundTask := optimizedBoundTask{
 			taskHandler:       compiled.taskHandler,
 			reqData:           reqData,
 			result:            result,
@@ -414,12 +446,18 @@ func RunTasks(
 			boundTasks[0].reqData.SetTasksCtx(tasksCtx)
 		} else {
 			currentCtx := tasksCtx
-			for i, bt := range boundTasks {
+			for i := range boundTasks {
+				bt := &boundTasks[i]
 				if i < len(boundTasks)-1 {
 					childNativeCtx, cancel := context.WithCancel(currentCtx.NativeContext())
-					taskCancels = append(taskCancels, cancel)
-					childCtx := currentCtx.WithNativeContext(childNativeCtx)
+					if rootDescendantsCancel == nil {
+						rootDescendantsCancel = cancel
+					}
+					childCtx := currentCtx.AcquireSharedStateChildContextWithNativeContext(
+						childNativeCtx,
+					)
 					bt.reqData.SetTasksCtx(childCtx)
+					bt.borrowedTasksCtx = childCtx
 					bt.cancelDescendants = cancel
 					currentCtx = childCtx
 					continue
@@ -429,10 +467,6 @@ func RunTasks(
 			}
 		}
 		runBoundTasks(boundTasks)
-	}
-
-	for _, cancel := range taskCancels {
-		cancel()
 	}
 
 	return results
@@ -489,6 +523,8 @@ type optimizedBoundTask struct {
 	taskHandler tasks.AnyTask
 	reqData     *mux.ReqData[mux.None]
 	result      *TasksResult
+	// Non-nil only when this task owns a borrowed child tasks context.
+	borrowedTasksCtx *tasks.Ctx
 	// Called when this task fails; should cancel deeper matched routes only.
 	cancelDescendants context.CancelFunc
 }
@@ -506,7 +542,7 @@ func (oc *optimizedBoundTask) Run() error {
 	return err
 }
 
-func runBoundTasks(boundTasks []*optimizedBoundTask) {
+func runBoundTasks(boundTasks []optimizedBoundTask) {
 	switch len(boundTasks) {
 	case 0:
 		return
@@ -516,15 +552,20 @@ func runBoundTasks(boundTasks []*optimizedBoundTask) {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(len(boundTasks))
-	for _, bt := range boundTasks {
-		bt := bt
-		go func() {
-			defer wg.Done()
-			_ = bt.Run()
-		}()
+	wg.Add(len(boundTasks) - 1)
+	for i := 1; i < len(boundTasks); i++ {
+		go runBoundTaskInGoroutine(&wg, &boundTasks[i])
 	}
+	_ = boundTasks[0].Run()
 	wg.Wait()
+}
+
+func runBoundTaskInGoroutine(
+	wg *sync.WaitGroup,
+	boundTask *optimizedBoundTask,
+) {
+	defer wg.Done()
+	_ = boundTask.Run()
 }
 
 // ReplaceRoutes atomically replaces all routes with a new set.

@@ -137,6 +137,91 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 			t.Errorf("Expected 3 X-Multi-Trace headers, got %d: %v", len(traces), traces)
 		}
 	})
+
+	t.Run(
+		"TaskMiddlewareChainCacheInvalidatesWhenNewMiddlewaresAreRegistered",
+		func(t *testing.T) {
+			r := NewRouter(nil)
+			route := AddTaskHandler(
+				r,
+				http.MethodGet,
+				"/cache-chain",
+				TaskHandlerFromFunc(func(rd *ReqData[None]) (map[string]string, error) {
+					return map[string]string{"ok": "true"}, nil
+				}),
+			)
+
+			AddGlobalTaskMiddleware(
+				r,
+				TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+					rd.ResponseProxy().AddHeader("X-Task-MW", "global-1")
+					return None{}, nil
+				}),
+			)
+
+			firstReq := httptest.NewRequest(http.MethodGet, "/cache-chain", nil)
+			firstRes := httptest.NewRecorder()
+			r.ServeHTTP(firstRes, firstReq)
+			if firstRes.Code != http.StatusOK {
+				t.Fatalf("first request status = %d, want %d", firstRes.Code, http.StatusOK)
+			}
+			if got := firstRes.Header().Values("X-Task-MW"); len(got) != 1 || got[0] != "global-1" {
+				t.Fatalf(
+					"first request X-Task-MW = %v, want [global-1]",
+					got,
+				)
+			}
+
+			AddGlobalTaskMiddleware(
+				r,
+				TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+					rd.ResponseProxy().AddHeader("X-Task-MW", "global-2")
+					return None{}, nil
+				}),
+			)
+			AddMethodLevelTaskMiddleware(
+				r,
+				http.MethodGet,
+				TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+					rd.ResponseProxy().AddHeader("X-Task-MW", "method")
+					return None{}, nil
+				}),
+			)
+			AddPatternLevelTaskMiddleware(
+				route,
+				TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+					rd.ResponseProxy().AddHeader("X-Task-MW", "pattern")
+					return None{}, nil
+				}),
+			)
+
+			secondReq := httptest.NewRequest(http.MethodGet, "/cache-chain", nil)
+			secondRes := httptest.NewRecorder()
+			r.ServeHTTP(secondRes, secondReq)
+			if secondRes.Code != http.StatusOK {
+				t.Fatalf("second request status = %d, want %d", secondRes.Code, http.StatusOK)
+			}
+
+			gotValues := secondRes.Header().Values("X-Task-MW")
+			if len(gotValues) != 4 {
+				t.Fatalf("second request X-Task-MW len = %d, want 4 (%v)", len(gotValues), gotValues)
+			}
+
+			gotSet := map[string]bool{}
+			for _, value := range gotValues {
+				gotSet[value] = true
+			}
+			for _, wantValue := range []string{"global-1", "global-2", "method", "pattern"} {
+				if !gotSet[wantValue] {
+					t.Fatalf(
+						"second request X-Task-MW missing value %q (got %v)",
+						wantValue,
+						gotValues,
+					)
+				}
+			}
+		},
+	)
 }
 
 // --- TestComplexMiddlewareScenarios ---
