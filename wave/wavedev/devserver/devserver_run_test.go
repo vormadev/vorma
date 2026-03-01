@@ -409,7 +409,7 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			runLogOutput,
 		)
 	}
-	if !strings.Contains(runLogOutput, "build completed") {
+	if !strings.Contains(runLogOutput, "DONE building Wave") {
 		t.Fatalf(
 			"expected recovered build success log after config fix, got logs: %s",
 			runLogOutput,
@@ -650,7 +650,7 @@ func main() {
 			runLogOutput,
 		)
 	}
-	if !strings.Contains(runLogOutput, "build completed") {
+	if !strings.Contains(runLogOutput, "DONE building Wave") {
 		t.Fatalf(
 			"expected go syntax fix to produce build success log, got logs: %s",
 			runLogOutput,
@@ -891,7 +891,7 @@ func main() {
 			runLogOutput,
 		)
 	}
-	if !strings.Contains(runLogOutput, "build completed") {
+	if !strings.Contains(runLogOutput, "DONE building Wave") {
 		t.Fatalf(
 			"expected go type-error fix to produce build success log, got logs: %s",
 			runLogOutput,
@@ -1123,7 +1123,7 @@ func main() {
 			runLogOutput,
 		)
 	}
-	if !strings.Contains(runLogOutput, "build completed") {
+	if !strings.Contains(runLogOutput, "DONE building Wave") {
 		t.Fatalf(
 			"expected main entry fix to produce build success log, got logs: %s",
 			runLogOutput,
@@ -1377,18 +1377,9 @@ func main() {
 			runLogOutput,
 		)
 	}
-	if !strings.Contains(runLogOutput, "build completed") {
+	if !strings.Contains(runLogOutput, "DONE building Wave") {
 		t.Fatalf(
 			"expected main entry fix to produce build success log, got logs: %s",
-			runLogOutput,
-		)
-	}
-	if !strings.Contains(
-		runLogOutput,
-		"waiting for build retry; queuing restart from watcher batch",
-	) {
-		t.Fatalf(
-			"expected non-config watcher batch to queue retry restart, got logs: %s",
 			runLogOutput,
 		)
 	}
@@ -1403,7 +1394,7 @@ func main() {
 	}
 }
 
-func TestServerRun_MainAppEntryTypo_ConfigErrorEventThenQuickFixRecoversWithoutReadinessStall(
+func TestServerRun_MainAppEntryTypoThenConfigErrorEventTerminatesRun(
 	t *testing.T,
 ) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
@@ -1503,206 +1494,65 @@ func main() {
 				),
 			}
 
-			recoveryDurationCh := make(chan time.Duration, 1)
-			done := make(chan struct{})
+			runErrCh := make(chan error, 1)
 			go func() {
-				defer close(done)
-
-				failAndStopRun := func(testError error) {
-					if testError != nil {
-						t.Error(testError)
-					}
-					_ = writeToolingConfigForWatchRoot(
-						cfg.Core.ConfigLocation,
-						cfg,
-						filepath.Join(
-							root,
-							"missing-watch-root-main-entry-config-error-recovery-timeout",
-						),
-					)
-					sendRestartRequestWithTimeout(
-						serverForTest,
-						restartengine.RestartRequest{RecompileGo: false},
-						2*time.Second,
-					)
-				}
-
-				firstWatcher := waitForWatcherPointer(
-					serverForTest,
-					nil,
-					5*time.Second,
-				)
-				if firstWatcher == nil {
-					failAndStopRun(
-						fmt.Errorf(
-							"timed out waiting for initial watcher before config-error recovery sequence",
-						),
-					)
-					return
-				}
-
-				if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-					cfg.Core.ConfigLocation,
-					cfg,
-					goMainPath+"2",
-					cfg.Watch.WatchRoot,
-				); writeError != nil {
-					failAndStopRun(
-						fmt.Errorf(
-							"failed writing broken main entry config: %w",
-							writeError,
-						),
-					)
-					return
-				}
-
-				if !waitForWaitingForBuildRetryFlag(
-					serverForTest,
-					true,
-					5*time.Second,
-				) {
-					failAndStopRun(
-						fmt.Errorf(
-							"timed out waiting for build-retry state after main entry typo",
-						),
-					)
-					return
-				}
-
-				testCase.writeConfigError(t, cfg)
-				time.Sleep(150 * time.Millisecond)
-
-				fixWriteStart := time.Now()
-				if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-					cfg.Core.ConfigLocation,
-					cfg,
-					goMainPath,
-					cfg.Watch.WatchRoot,
-				); writeError != nil {
-					failAndStopRun(
-						fmt.Errorf(
-							"failed writing fixed main entry config: %w",
-							writeError,
-						),
-					)
-					return
-				}
-
-				if !waitForWaitingForBuildRetryFlag(
-					serverForTest,
-					false,
-					8*time.Second,
-				) {
-					failAndStopRun(
-						fmt.Errorf(
-							"timed out waiting for retry recovery after main entry/config-error fix",
-						),
-					)
-					return
-				}
-				time.Sleep(200 * time.Millisecond)
-				serverForTest.Mu.Lock()
-				waitingForBuildRetryAfterRecovery := serverForTest.WaitingForBuildRetry
-				serverForTest.Mu.Unlock()
-				if waitingForBuildRetryAfterRecovery {
-					failAndStopRun(
-						fmt.Errorf(
-							"expected retry wait state to remain cleared after recovery",
-						),
-					)
-					return
-				}
-
-				recoveryDuration := time.Since(fixWriteStart)
-				if recoveryDuration > 8*time.Second {
-					failAndStopRun(
-						fmt.Errorf(
-							"main entry/config-error fix recovery exceeded responsiveness budget: %s",
-							recoveryDuration,
-						),
-					)
-					return
-				}
-				recoveryDurationCh <- recoveryDuration
-
-				time.Sleep(200 * time.Millisecond)
-
-				if writeError := writeToolingConfigForWatchRoot(
-					cfg.Core.ConfigLocation,
-					cfg,
-					filepath.Join(
-						root,
-						"missing-watch-root-after-main-entry-config-error-recovery",
-					),
-				); writeError != nil {
-					t.Error(writeError)
-					return
-				}
-				sendRestartRequestWithTimeout(
-					serverForTest,
-					restartengine.RestartRequest{RecompileGo: false},
-					2*time.Second,
-				)
+				runErrCh <- serverForTest.Run()
 			}()
 
-			runError := serverForTest.Run()
-			if runError == nil {
-				t.Fatal(
-					"expected Run to exit with watcher init error after config-error recovery validation path",
-				)
-			}
-			if !strings.Contains(runError.Error(), "init watcher") {
-				t.Fatalf("unexpected Run error: %v", runError)
-			}
-
-			select {
-			case <-done:
-			case <-time.After(1 * time.Second):
-				t.Fatal(
-					"timed out waiting for config-error recovery helper goroutine",
-				)
+			firstWatcher := waitForWatcherPointer(
+				serverForTest,
+				nil,
+				5*time.Second,
+			)
+			if firstWatcher == nil {
+				t.Fatal("timed out waiting for initial watcher before config-error run sequence")
 			}
 
+			if writeError := writeToolingConfigForMainEntryAndWatchRoot(
+				cfg.Core.ConfigLocation,
+				cfg,
+				goMainPath+"2",
+				cfg.Watch.WatchRoot,
+			); writeError != nil {
+				t.Fatalf("failed writing broken main entry config: %v", writeError)
+			}
+
+			if !waitForWaitingForBuildRetryFlag(
+				serverForTest,
+				true,
+				5*time.Second,
+			) {
+				t.Fatal("timed out waiting for build-retry state after main entry typo")
+			}
+
+			testCase.writeConfigError(t, cfg)
+
 			select {
-			case recoveryDuration := <-recoveryDurationCh:
-				if recoveryDuration > 8*time.Second {
-					t.Fatalf(
-						"expected main entry/config-error fix recovery under 8s, got %s",
-						recoveryDuration,
-					)
+			case runError := <-runErrCh:
+				if runError == nil {
+					t.Fatal("expected Run to exit on config reload failure")
 				}
-			default:
-				t.Fatal(
-					"expected config-error recovery helper to report measured recovery duration",
-				)
+				if !strings.Contains(
+					runError.Error(),
+					"reload config during cycle prepare",
+				) {
+					t.Fatalf("unexpected Run error: %v", runError)
+				}
+			case <-time.After(8 * time.Second):
+				t.Fatal("timed out waiting for run failure after config error event")
 			}
 
 			runLogOutput := runLogBuffer.String()
 			if !strings.Contains(runLogOutput, "build failed") {
 				t.Fatalf(
-					"expected build failure log before config-error recovery, got logs: %s",
-					runLogOutput,
-				)
-			}
-			if !strings.Contains(runLogOutput, "build completed") {
-				t.Fatalf(
-					"expected main entry/config-error fix to produce build success log, got logs: %s",
+					"expected build failure log before config error event, got logs: %s",
 					runLogOutput,
 				)
 			}
 			if !strings.Contains(runLogOutput, "config reload failed") {
 				t.Fatalf(
-					"expected config reload failure log for %s path, got logs: %s",
+					"expected config reload failure log for %s case, got logs: %s",
 					testCase.name,
-					runLogOutput,
-				)
-			}
-			if strings.Contains(
-				runLogOutput,
-				"reload readiness failed; skipping browser broadcast",
-			) {
-				t.Fatalf(
-					"expected config-error recovery path not to block on reload readiness timeout, got logs: %s",
 					runLogOutput,
 				)
 			}
@@ -1839,7 +1689,7 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 	}
 }
 
-func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
+func TestServerRun_ViteStartFailureExitsRunLifecycleImmediately(t *testing.T) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
@@ -1862,44 +1712,13 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 	serverForTest := &Server{
 		Cfg: cfg,
 		Log: newDiscardLogger(),
-		RestartIntents: restartengine.NewRestartIntentAccumulator(
-			make(chan restartengine.RestartRequest, 1),
-		),
 	}
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-
-		deadline := time.Now().Add(3 * time.Second)
-		for time.Now().Before(deadline) {
-			serverForTest.Mu.Lock()
-			watcherReady := serverForTest.Watcher != nil
-			serverForTest.Mu.Unlock()
-			if watcherReady {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
-			cfg,
-			filepath.Join(root, "missing-after-vite-start-failure"),
-		); writeError != nil {
-			t.Error(writeError)
-			return
-		}
-		serverForTest.QueueRestartRequest(
-			restartengine.RestartRequest{RecompileGo: false},
-		)
-	}()
 
 	runError := serverForTest.Run()
 	if runError == nil {
-		t.Fatal("expected Run to exit with watcher init error after restart")
+		t.Fatal("expected Run to fail when Vite startup fails")
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "start vite:") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 	if _, statError := os.Stat(cfg.Dist.Binary()); statError != nil {
@@ -1907,12 +1726,6 @@ func TestServerRun_ViteStartFailureStillEntersRestartLoop(t *testing.T) {
 			"expected first pass to compile binary before Vite start attempt, stat error: %v",
 			statError,
 		)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(1 * time.Second):
-		t.Fatal("timed out waiting for Run helper goroutine")
 	}
 }
 
@@ -2164,7 +1977,7 @@ func TestQueueRestartRequest_WaitingForBuildRetryStillMergesToStrongestIntent(
 	}
 }
 
-func TestServerRun_ConfigReloadFailureDoesNotTerminateRun(
+func TestServerRun_ConfigReloadFailureTerminatesRun(
 	t *testing.T,
 ) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
@@ -2182,10 +1995,7 @@ func TestServerRun_ConfigReloadFailureDoesNotTerminateRun(
 					[]byte("{ invalid config payload"),
 					0o644,
 				); writeError != nil {
-					t.Fatalf(
-						"write invalid syntax config payload: %v",
-						writeError,
-					)
+					t.Fatalf("write invalid syntax config payload: %v", writeError)
 				}
 			},
 		},
@@ -2199,10 +2009,7 @@ func TestServerRun_ConfigReloadFailureDoesNotTerminateRun(
 					"",
 					cfg.Watch.WatchRoot,
 				); writeError != nil {
-					t.Fatalf(
-						"write invalid semantic config payload: %v",
-						writeError,
-					)
+					t.Fatalf("write invalid semantic config payload: %v", writeError)
 				}
 			},
 		},
@@ -2221,10 +2028,7 @@ func TestServerRun_ConfigReloadFailureDoesNotTerminateRun(
 				cfg,
 				cfg.Watch.WatchRoot,
 			); writeError != nil {
-				t.Fatalf(
-					"failed writing initial tooling config: %v",
-					writeError,
-				)
+				t.Fatalf("failed writing initial tooling config: %v", writeError)
 			}
 
 			serverForTest := &Server{
@@ -2240,11 +2044,7 @@ func TestServerRun_ConfigReloadFailureDoesNotTerminateRun(
 				runErrCh <- serverForTest.Run()
 			}()
 
-			firstWatcher := waitForWatcherPointer(
-				serverForTest,
-				nil,
-				4*time.Second,
-			)
+			firstWatcher := waitForWatcherPointer(serverForTest, nil, 4*time.Second)
 			if firstWatcher == nil {
 				t.Fatal("timed out waiting for initial watcher setup")
 			}
@@ -2259,315 +2059,78 @@ func TestServerRun_ConfigReloadFailureDoesNotTerminateRun(
 				2*time.Second,
 			)
 
-			secondWatcher := waitForWatcherPointer(
-				serverForTest,
-				firstWatcher,
-				4*time.Second,
-			)
-			if secondWatcher == nil {
-				select {
-				case runError := <-runErrCh:
-					t.Fatalf(
-						"expected run to continue after config reload failure, got error: %v",
-						runError,
-					)
-				default:
-				}
-				t.Fatal("timed out waiting for watcher re-initialization")
-			}
-
-			select {
-			case runError := <-runErrCh:
-				t.Fatalf(
-					"expected run to remain active after config reload failure, got error: %v",
-					runError,
-				)
-			case <-time.After(250 * time.Millisecond):
-			}
-
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
-				cfg,
-				filepath.Join(root, "missing-watch-root-after-config-reload"),
-			); writeError != nil {
-				t.Fatalf(
-					"failed writing teardown tooling config: %v",
-					writeError,
-				)
-			}
-			sendRestartRequestWithTimeout(
-				serverForTest,
-				restartengine.RestartRequest{RecompileGo: false},
-				2*time.Second,
-			)
-
 			select {
 			case runError := <-runErrCh:
 				if runError == nil {
-					t.Fatal(
-						"expected Run to exit with watcher init error after teardown",
-					)
+					t.Fatal("expected run to exit on config reload failure")
 				}
-				if !strings.Contains(runError.Error(), "init watcher") {
+				if !strings.Contains(
+					runError.Error(),
+					"reload config during cycle prepare",
+				) {
 					t.Fatalf("unexpected Run error: %v", runError)
 				}
 			case <-time.After(6 * time.Second):
-				t.Fatal("timed out waiting for run teardown failure")
+				t.Fatal("timed out waiting for run failure after config reload error")
 			}
 		})
 	}
 }
 
-func TestServerRun_ConfigReloadErrorThenQuickFixRecoversWithoutReadinessStall(
+func TestServerRun_InvalidConfigWriteTriggersConfigRestartAndTerminatesRun(
 	t *testing.T,
 ) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
-	testCases := []struct {
-		name               string
-		writeInvalidConfig func(*testing.T, *wave.ParsedConfig)
-	}{
-		{
-			name: "syntax_error",
-			writeInvalidConfig: func(t *testing.T, cfg *wave.ParsedConfig) {
-				t.Helper()
-				if writeError := os.WriteFile(
-					cfg.Core.ConfigLocation,
-					[]byte("{ invalid config payload"),
-					0o644,
-				); writeError != nil {
-					t.Fatalf(
-						"write invalid syntax config payload: %v",
-						writeError,
-					)
-				}
-			},
-		},
-		{
-			name: "validation_error",
-			writeInvalidConfig: func(t *testing.T, cfg *wave.ParsedConfig) {
-				t.Helper()
-				if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-					cfg.Core.ConfigLocation,
-					cfg,
-					"",
-					cfg.Watch.WatchRoot,
-				); writeError != nil {
-					t.Fatalf(
-						"write invalid semantic config payload: %v",
-						writeError,
-					)
-				}
-			},
-		},
+	root := t.TempDir()
+	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg.Core.ServerOnlyMode = true
+	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+
+	if writeError := writeToolingConfigForWatchRoot(
+		cfg.Core.ConfigLocation,
+		cfg,
+		cfg.Watch.WatchRoot,
+	); writeError != nil {
+		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
-	for _, testCase := range testCases {
-		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			root := t.TempDir()
-			cfg := newParsedConfigForToolingTestsAtRoot(root)
-			cfg.Core.ServerOnlyMode = false
-			cfg.Watch.HealthcheckEndpoint = "/healthz"
-			cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
-
-			goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
-			if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
-				t.Fatalf("failed creating go main parent dir: %v", mkdirError)
-			}
-			if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
-				t.Fatalf("failed creating public static dir: %v", mkdirError)
-			}
-			if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
-				t.Fatalf("failed creating private static dir: %v", mkdirError)
-			}
-			if writeError := writeGoMainFileForDevserverRunTests(
-				goMainPath,
-				`package main
-
-import "time"
-
-func main() {
-	for {
-		time.Sleep(10 * time.Second)
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		),
 	}
-}
-`,
-			); writeError != nil {
-				t.Fatalf("failed writing initial go main file: %v", writeError)
-			}
-			cfg.Core.MainAppEntry = goMainPath
 
-			if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-				cfg.Core.ConfigLocation,
-				cfg,
-				cfg.Core.MainAppEntry,
-				cfg.Watch.WatchRoot,
-			); writeError != nil {
-				t.Fatalf(
-					"failed writing initial tooling config: %v",
-					writeError,
-				)
-			}
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- serverForTest.Run()
+	}()
 
-			var runLogBuffer bytes.Buffer
-			serverForTest := &Server{
-				Cfg: cfg,
-				Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
-				RestartIntents: restartengine.NewRestartIntentAccumulator(
-					make(chan restartengine.RestartRequest, 1),
-				),
-			}
+	firstWatcher := waitForWatcherPointer(serverForTest, nil, 4*time.Second)
+	if firstWatcher == nil {
+		t.Fatal("timed out waiting for initial watcher setup")
+	}
 
-			runErrCh := make(chan error, 1)
-			go func() {
-				runErrCh <- serverForTest.Run()
-			}()
+	if writeError := os.WriteFile(
+		cfg.Core.ConfigLocation,
+		[]byte("{ invalid config payload"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("write invalid syntax config payload: %v", writeError)
+	}
 
-			firstWatcher := waitForWatcherPointer(
-				serverForTest,
-				nil,
-				5*time.Second,
-			)
-			if firstWatcher == nil {
-				t.Fatal(
-					"timed out waiting for initial watcher before config error sequence",
-				)
-			}
-
-			testCase.writeInvalidConfig(t, cfg)
-
-			watcherAfterInvalidConfig := waitForWatcherPointer(
-				serverForTest,
-				firstWatcher,
-				6*time.Second,
-			)
-			if watcherAfterInvalidConfig == nil {
-				select {
-				case runError := <-runErrCh:
-					t.Fatalf(
-						"expected run to stay active after invalid config write, got error: %v",
-						runError,
-					)
-				default:
-				}
-				t.Fatal(
-					"timed out waiting for watcher restart after invalid config write",
-				)
-			}
-
-			fixedWatchRoot := filepath.Join(
-				root,
-				"watch-root-after-"+testCase.name+"-fix",
-			)
-			if mkdirError := os.MkdirAll(fixedWatchRoot, 0o755); mkdirError != nil {
-				t.Fatalf("failed creating fixed watch root: %v", mkdirError)
-			}
-
-			fixWriteStartedAt := time.Now()
-			if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-				cfg.Core.ConfigLocation,
-				cfg,
-				cfg.Core.MainAppEntry,
-				fixedWatchRoot,
-			); writeError != nil {
-				t.Fatalf("failed writing fixed config payload: %v", writeError)
-			}
-
-			watcherAfterFix := waitForWatcherPointer(
-				serverForTest,
-				watcherAfterInvalidConfig,
-				8*time.Second,
-			)
-			if watcherAfterFix == nil {
-				select {
-				case runError := <-runErrCh:
-					t.Fatalf(
-						"expected run to stay active while applying fixed config, got error: %v",
-						runError,
-					)
-				default:
-				}
-				t.Fatal(
-					"timed out waiting for watcher restart after fixed config write",
-				)
-			}
-
-			if !waitForServerConfigWatchRoot(
-				serverForTest,
-				fixedWatchRoot,
-				2*time.Second,
-			) {
-				t.Fatalf(
-					"timed out waiting for server config watch root update to %q",
-					fixedWatchRoot,
-				)
-			}
-
-			recoveryDuration := time.Since(fixWriteStartedAt)
-			if recoveryDuration > 8*time.Second {
-				t.Fatalf(
-					"config fix recovery exceeded responsiveness budget: %s",
-					recoveryDuration,
-				)
-			}
-
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
-				cfg,
-				filepath.Join(
-					root,
-					"missing-watch-root-after-config-error-fix",
-				),
-			); writeError != nil {
-				t.Fatalf(
-					"failed writing teardown tooling config: %v",
-					writeError,
-				)
-			}
-			sendRestartRequestWithTimeout(
-				serverForTest,
-				restartengine.RestartRequest{RecompileGo: false},
-				2*time.Second,
-			)
-
-			select {
-			case runError := <-runErrCh:
-				if runError == nil {
-					t.Fatal(
-						"expected Run to exit with watcher init error after teardown",
-					)
-				}
-				if !strings.Contains(runError.Error(), "init watcher") {
-					t.Fatalf("unexpected Run error: %v", runError)
-				}
-			case <-time.After(6 * time.Second):
-				t.Fatal("timed out waiting for run teardown failure")
-			}
-
-			runLogOutput := runLogBuffer.String()
-			if !strings.Contains(runLogOutput, "config reload failed") {
-				t.Fatalf(
-					"expected config reload failure logs, got logs: %s",
-					runLogOutput,
-				)
-			}
-			if !strings.Contains(runLogOutput, "build completed") {
-				t.Fatalf(
-					"expected fixed config to produce build success log, got logs: %s",
-					runLogOutput,
-				)
-			}
-			if strings.Contains(
-				runLogOutput,
-				"reload readiness failed; skipping browser broadcast",
-			) {
-				t.Fatalf(
-					"expected config-error recovery path not to block on reload readiness timeout, got logs: %s",
-					runLogOutput,
-				)
-			}
-		})
+	select {
+	case runError := <-runErrCh:
+		if runError == nil {
+			t.Fatal("expected run to exit on config reload failure after watcher-side invalid write")
+		}
+		if !strings.Contains(runError.Error(), "reload config during cycle prepare") {
+			t.Fatalf("unexpected Run error: %v", runError)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("timed out waiting for run failure after watcher-side invalid write")
 	}
 }
 

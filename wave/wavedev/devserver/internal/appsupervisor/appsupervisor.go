@@ -49,12 +49,12 @@ type ReadinessWaitPolicy struct {
 // DefaultReadinessWaitPolicy returns robust defaults for local dev readiness polling.
 func DefaultReadinessWaitPolicy() ReadinessWaitPolicy {
 	return ReadinessWaitPolicy{
-		HTTPClientTimeout: 900 * time.Millisecond,
-		InitialDelay:      50 * time.Millisecond,
+		HTTPClientTimeout: 500 * time.Millisecond,
+		InitialDelay:      20 * time.Millisecond,
 		MaximumDelay:      500 * time.Millisecond,
-		MaximumTotalWait:  25 * time.Second,
+		MaximumTotalWait:  3 * time.Second,
 		TreatHTTPStatusCodeAsReady: func(statusCode int) bool {
-			return statusCode >= 200 && statusCode < 400
+			return statusCode >= 200 && statusCode < 300
 		},
 	}
 }
@@ -374,7 +374,7 @@ func DeriveReadinessWaitDelay(
 	maximumDelay time.Duration,
 ) time.Duration {
 	if baseDelay <= 0 {
-		baseDelay = 50 * time.Millisecond
+		baseDelay = 20 * time.Millisecond
 	}
 	if maximumDelay <= 0 {
 		maximumDelay = 500 * time.Millisecond
@@ -383,12 +383,9 @@ func DeriveReadinessWaitDelay(
 		return baseDelay
 	}
 
-	computedDelay := baseDelay
-	for index := 0; index < attemptIndex; index++ {
-		computedDelay *= 2
-		if computedDelay >= maximumDelay {
-			return maximumDelay
-		}
+	computedDelay := baseDelay + time.Duration(attemptIndex)*baseDelay
+	if computedDelay >= maximumDelay {
+		return maximumDelay
 	}
 	return computedDelay
 }
@@ -399,7 +396,7 @@ func ShouldContinueReadinessWait(
 	maximumTotal time.Duration,
 ) bool {
 	if maximumTotal <= 0 {
-		maximumTotal = 25 * time.Second
+		maximumTotal = 3 * time.Second
 	}
 	return totalElapsed <= maximumTotal
 }

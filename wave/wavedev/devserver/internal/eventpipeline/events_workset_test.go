@@ -241,6 +241,37 @@ func TestWorkSetApplyRefreshActionWorkMutationDecision(t *testing.T) {
 	}
 }
 
+func TestWorkSetResolve_DoesNotDowngradeExplicitHardReloadToInvalidateVite(
+	t *testing.T,
+) {
+	work := &eventpipeline.WorkSet{
+		Build: eventpipeline.BuildPhaseDecision{
+			ProcessPublicFiles: true,
+		},
+	}
+	work.AddFromRefreshAction(wave.RefreshAction{
+		ReloadBrowser: true,
+		WaitForApp:    true,
+		WaitForVite:   true,
+	})
+
+	work.Resolve(true)
+
+	if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload {
+		t.Fatalf(
+			"expected explicit hard reload to win over public-static invalidate, got %v",
+			work.Browser.Action,
+		)
+	}
+	if !work.Browser.WaitForApp || !work.Browser.WaitForVite {
+		t.Fatalf(
+			"expected wait flags preserved on explicit hard reload, got waitApp=%v waitVite=%v",
+			work.Browser.WaitForApp,
+			work.Browser.WaitForVite,
+		)
+	}
+}
+
 func TestWorkSetApplyRefreshActions(t *testing.T) {
 	t.Run(
 		"returns restart request and stops processing remaining actions",

@@ -8,7 +8,7 @@ import (
 	"github.com/vormadev/vorma/kit/netutil"
 )
 
-func TestInitPort_UsesCallerDefaultPortWhenAvailable(
+func TestInitPort_HonorsCallerDefaultPortWhenAvailable(
 	t *testing.T,
 ) {
 	t.Setenv(PortEnvName, "")
@@ -24,11 +24,11 @@ func TestInitPort_UsesCallerDefaultPortWhenAvailable(
 		t.Fatalf("InitPort() returned error: %v", err)
 	}
 	if vitePort != candidatePort {
-		t.Fatalf("expected InitPort() to use caller default port %d, got %d", candidatePort, vitePort)
+		t.Fatalf("expected InitPort() to return caller default port %d, got %d", candidatePort, vitePort)
 	}
 
-	if got := GetVitePortStr(); got != fmt.Sprintf("%d", candidatePort) {
-		t.Fatalf("GetVitePortStr() = %q, want %d", got, candidatePort)
+	if got := GetVitePortStr(); got != fmt.Sprintf("%d", vitePort) {
+		t.Fatalf("GetVitePortStr() = %q, want %d", got, vitePort)
 	}
 }
 
@@ -101,33 +101,27 @@ func TestFindAllDependencies_RecursesThroughManifestImports(t *testing.T) {
 	}
 }
 
-func TestToDevScripts_UsesDefaultPortWhenVitePortIsUnset(t *testing.T) {
+func TestToDevScripts_ReturnsErrorWhenVitePortIsUnset(t *testing.T) {
 	t.Setenv(PortEnvName, "")
 
-	scripts, err := ToDevScripts(ToDevScriptsOptions{
+	_, err := ToDevScripts(ToDevScriptsOptions{
 		ClientEntry: "/src/vorma.entry.tsx",
 		Variant:     VariantOther,
 	})
-	if err != nil {
-		t.Fatalf("ToDevScripts() error = %v", err)
-	}
-	if !strings.Contains(string(scripts), "http://localhost:5173/@vite/client") {
-		t.Fatalf("expected scripts to use default port 5173, got %q", string(scripts))
+	if err == nil {
+		t.Fatal("expected ToDevScripts() to fail when __VITE_PORT is unset")
 	}
 }
 
-func TestToDevScripts_UsesDefaultPortWhenVitePortIsInvalid(t *testing.T) {
+func TestToDevScripts_ReturnsErrorWhenVitePortIsInvalid(t *testing.T) {
 	t.Setenv(PortEnvName, "not-a-port")
 
-	scripts, err := ToDevScripts(ToDevScriptsOptions{
+	_, err := ToDevScripts(ToDevScriptsOptions{
 		ClientEntry: "/src/vorma.entry.tsx",
 		Variant:     VariantOther,
 	})
-	if err != nil {
-		t.Fatalf("ToDevScripts() error = %v", err)
-	}
-	if !strings.Contains(string(scripts), "http://localhost:5173/@vite/client") {
-		t.Fatalf("expected scripts to use default port 5173, got %q", string(scripts))
+	if err == nil {
+		t.Fatal("expected ToDevScripts() to fail when __VITE_PORT is invalid")
 	}
 }
 
@@ -145,8 +139,8 @@ func TestToDevScripts_ReactIncludesRefreshPreambleAndClientScripts(t *testing.T)
 	scriptsAsString := string(scripts)
 	requiredFragments := []string{
 		"@react-refresh",
-		"http://localhost:5173/@vite/client",
-		"http://localhost:5173/src/vorma.entry.tsx",
+		"http://127.0.0.1:5173/@vite/client",
+		"http://127.0.0.1:5173/src/vorma.entry.tsx",
 	}
 	for _, requiredFragment := range requiredFragments {
 		if !strings.Contains(scriptsAsString, requiredFragment) {

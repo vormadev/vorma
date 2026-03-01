@@ -43,8 +43,8 @@ func TestBuildCtxHelperProcess(t *testing.T) {
 
 func TestNewBuildCtx_DefaultPortAndNilOptions(t *testing.T) {
 	ctx := NewBuildCtx(nil)
-	if got := ctx.Port(); got != 5173 {
-		t.Fatalf("expected default port 5173, got %d", got)
+	if got := ctx.Port(); got != 5199 {
+		t.Fatalf("expected default port 5199, got %d", got)
 	}
 }
 
@@ -134,6 +134,7 @@ func TestDevBuild_UsesInitPortAndAppendsExpectedArgs(t *testing.T) {
 	ctx.mu.Unlock()
 
 	assertArgPair(t, args, "--port", "6200")
+	assertArgPair(t, args, "--host", "127.0.0.1")
 	assertArgPair(t, args, "--clearScreen", "false")
 	assertArgPair(t, args, "--strictPort", "true")
 }

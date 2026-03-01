@@ -16,6 +16,8 @@ import (
 	"github.com/vormadev/vorma/lab/stringsutil"
 )
 
+const defaultDevVitePort = 5199
+
 type ManifestChunk struct {
 	Src            string   `json:"src"`
 	File           string   `json:"file"`
@@ -127,12 +129,15 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	var htmlBuilder strings.Builder
 	var err error
 
-	port := resolveVitePortOrDefault(strings.TrimSpace(GetVitePortStr()))
+	port, resolvePortError := resolveVitePortStrict(strings.TrimSpace(GetVitePortStr()))
+	if resolvePortError != nil {
+		return "", resolvePortError
+	}
 
 	if options.Variant == VariantReact {
 		var b stringsutil.Builder
 
-		b.Linef(`import RefreshRuntime from "http://localhost:%s/@react-refresh";`, port)
+		b.Linef(`import RefreshRuntime from "http://127.0.0.1:%s/@react-refresh";`, port)
 		b.Line("RefreshRuntime.injectIntoGlobalHook(window);")
 		b.Line("window.$RefreshReg$ = () => {};")
 		b.Line("window.$RefreshSig$ = () => (type) => type;")
@@ -149,7 +154,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	}
 
 	err = htmlutil.RenderModuleScriptToBuilder(
-		fmt.Sprintf("http://localhost:%s/@vite/client", port), &htmlBuilder,
+		fmt.Sprintf("http://127.0.0.1:%s/@vite/client", port), &htmlBuilder,
 	)
 	if err != nil {
 		return "", fmt.Errorf("could not render vite script: %w", err)
@@ -157,7 +162,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 
 	err = htmlutil.RenderModuleScriptToBuilder(
 		fmt.Sprintf(
-			"http://localhost:%s/%s",
+			"http://127.0.0.1:%s/%s",
 			port,
 			stripPrecedingSlash(options.ClientEntry),
 		),
@@ -170,15 +175,15 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	return template.HTML(htmlBuilder.String()), nil
 }
 
-func resolveVitePortOrDefault(port string) string {
-	const defaultVitePort = "5173"
-
+func resolveVitePortStrict(port string) (string, error) {
+	if strings.TrimSpace(port) == "" {
+		return "", errors.New("__VITE_PORT is not set")
+	}
 	parsedPort, parseError := strconv.Atoi(port)
 	if parseError != nil || parsedPort <= 0 || parsedPort > 65535 {
-		return defaultVitePort
+		return "", fmt.Errorf("__VITE_PORT is invalid: %q", port)
 	}
-
-	return strconv.Itoa(parsedPort)
+	return strconv.Itoa(parsedPort), nil
 }
 
 func stripPrecedingSlash(s string) string {
@@ -191,6 +196,10 @@ func stripPrecedingSlash(s string) string {
 const PortEnvName = "__VITE_PORT"
 
 func InitPort(defaultPort int) (int, error) {
+	if defaultPort <= 0 || defaultPort > 65535 {
+		defaultPort = defaultDevVitePort
+	}
+
 	vitePort, err := netutil.GetFreePort(defaultPort)
 	if err != nil {
 		return 0, err

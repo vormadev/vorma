@@ -602,7 +602,7 @@ func TestBroadcastReload_CleanupCancelsOutstandingReadinessWait(
 	}
 }
 
-func TestBroadcastReload_CycleViteReadinessWaitIsAsyncAndCleanupCancelable(
+func TestBroadcastReload_CycleViteWithoutActiveViteSkipsReadinessAndQueuesRestart(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
@@ -644,24 +644,34 @@ func TestBroadcastReload_CycleViteReadinessWaitIsAsyncAndCleanupCancelable(
 	case <-broadcastReturn:
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal(
-			"expected cycle-vite reload scheduling to return without waiting for readiness probes",
+			"expected cycle-vite reload scheduling to return without blocking",
 		)
 	}
 
 	select {
 	case <-requestStarted:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for cycle-vite readiness wait request")
+		t.Fatal(
+			"did not expect app readiness wait when cycle-vite preconditions are not met",
+		)
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	restartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		serverForTest,
+		time.Second,
+	)
+	if restartRequest.IsConfigRestart || restartRequest.RecompileGo {
+		t.Fatalf(
+			"expected restart without go recompilation after cycle-vite precondition failure, got %#v",
+			restartRequest,
+		)
 	}
 
 	serverForTest.CleanupForRebuild()
-
 	select {
 	case <-requestCanceled:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal(
-			"timed out waiting for cycle-vite readiness wait cancellation during cleanup",
-		)
+	case <-time.After(250 * time.Millisecond):
 	}
 }
 
@@ -682,9 +692,9 @@ func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
 			expected:      true,
 		},
 		{
-			name:          "cycle requested broadcasts payload",
+			name:          "cycle requested skips payload broadcast",
 			reloadOptions: eventpipeline.ReloadOpts{CycleVite: true},
-			expected:      true,
+			expected:      false,
 		},
 	}
 
@@ -705,7 +715,7 @@ func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
 	}
 }
 
-func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcast(
+func TestBroadcastReload_CycleViteWithoutActiveContextQueuesRestartAndSkipsPayload(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
@@ -727,19 +737,23 @@ func TestBroadcastReload_CycleViteWithoutActiveContextFallsBackToPayloadBroadcas
 		CycleVite: true,
 	})
 
-	connection.SetReadDeadline(
-		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	restartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		serverForTest,
+		time.Second,
 	)
-	var receivedPayload broadcast.Payload
-	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+	if restartRequest.IsConfigRestart || restartRequest.RecompileGo {
 		t.Fatalf(
-			"expected fallback payload broadcast when cycleVite cannot be applied, got read error: %v",
-			readError,
+			"expected restart without go recompilation after cycle-vite precondition failure, got %#v",
+			restartRequest,
 		)
 	}
-	if receivedPayload.ChangeType != broadcast.ChangeTypeOther {
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
 		t.Fatalf(
-			"expected fallback hard-reload payload, got %#v",
+			"did not expect fallback payload broadcast when cycle-vite preconditions fail, got %#v",
 			receivedPayload,
 		)
 	}
@@ -1127,7 +1141,7 @@ func TestBroadcastReload_FrameworkRuntimeReloadSuccessBroadcastsPayloadAndHeader
 	}
 }
 
-func TestBroadcastReload_CycleViteFailureFallsBackToPayloadBroadcast(
+func TestBroadcastReload_CycleViteFailureQueuesRestartAndSkipsPayload(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
@@ -1163,19 +1177,23 @@ func TestBroadcastReload_CycleViteFailureFallsBackToPayloadBroadcast(
 		CycleVite: true,
 	})
 
-	connection.SetReadDeadline(
-		time.Now().Add(positiveBroadcastReadTimeoutForBehaviorTests),
+	restartRequest := waitForPendingRestartRequestForToolingTests(
+		t,
+		serverForTest,
+		time.Second,
 	)
-	var receivedPayload broadcast.Payload
-	if readError := connection.ReadJSON(&receivedPayload); readError != nil {
+	if restartRequest.IsConfigRestart || restartRequest.RecompileGo {
 		t.Fatalf(
-			"expected fallback payload broadcast after cycleVite failure, got read error: %v",
-			readError,
+			"expected restart without go recompilation after cycle-vite start failure, got %#v",
+			restartRequest,
 		)
 	}
-	if receivedPayload.ChangeType != broadcast.ChangeTypeOther {
+
+	connection.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	var receivedPayload broadcast.Payload
+	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
 		t.Fatalf(
-			"expected fallback hard-reload payload, got %#v",
+			"did not expect fallback payload broadcast after cycle-vite failure, got %#v",
 			receivedPayload,
 		)
 	}
@@ -1248,7 +1266,7 @@ func TestExecuteBrowserPhase_WaitingForBuildRetrySkipsBrowserBroadcast(
 	}
 }
 
-func TestExecuteBrowserPhase_InvalidateViteFailureFallsBackToHardReload(
+func TestExecuteBrowserPhase_InvalidateViteRuntimeUnavailableQueuesRestart(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
@@ -1268,19 +1286,21 @@ func TestExecuteBrowserPhase_InvalidateViteFailureFallsBackToHardReload(
 	}
 	serverForTest.ExecuteBrowserPhase(work)
 
-	if work.Browser.Action != eventpipeline.BrowserPhaseActionHardReload ||
-		!work.Browser.WaitForApp ||
-		!work.Browser.WaitForVite {
+	pendingRestartRequest, hasPendingRestartRequest := consumePendingRestartRequestForToolingTests(
+		serverForTest,
+	)
+	if !hasPendingRestartRequest {
+		t.Fatal("expected invalidate-vite without runtime to queue restart")
+	}
+	if pendingRestartRequest.RecompileGo || pendingRestartRequest.IsConfigRestart {
 		t.Fatalf(
-			"expected fallback hard-reload flags, got action=%v waitApp=%v waitVite=%v",
-			work.Browser.Action,
-			work.Browser.WaitForApp,
-			work.Browser.WaitForVite,
+			"expected no-go non-config restart request, got %#v",
+			pendingRestartRequest,
 		)
 	}
 }
 
-func TestExecuteBrowserPhase_InvalidateViteFailureLogsFallbackMessage(
+func TestExecuteBrowserPhase_InvalidateViteRuntimeUnavailableLogsRestartMessage(
 	t *testing.T,
 ) {
 	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
@@ -1303,10 +1323,10 @@ func TestExecuteBrowserPhase_InvalidateViteFailureLogsFallbackMessage(
 
 	if !strings.Contains(
 		logBuffer.String(),
-		"vite invalidate endpoint failed; falling back to hard reload",
+		"vite invalidate requested while vite runtime is unavailable; scheduling restart without go recompilation",
 	) {
 		t.Fatalf(
-			"expected invalidate fallback log message, got logs: %s",
+			"expected invalidate runtime-unavailable restart log message, got logs: %s",
 			logBuffer.String(),
 		)
 	}

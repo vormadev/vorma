@@ -93,6 +93,32 @@ func TestBuild_Success(t *testing.T) {
 	}
 }
 
+func TestBuildWithMetrics_CompileGoDurationIsZeroWhenCompileSkipped(t *testing.T) {
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config.Core.ServerOnlyMode = true
+
+	builderForTest := NewBuilder(
+		config,
+		newDiscardLoggerForBuilderBasicTests(),
+	)
+	defer builderForTest.Close()
+
+	metrics, buildError := builderForTest.BuildWithMetrics(BuildOpts{
+		IsDev:     true,
+		CompileGo: false,
+		IsRebuild: false,
+	})
+	if buildError != nil {
+		t.Fatalf("BuildWithMetrics returned error: %v", buildError)
+	}
+	if metrics.GoCompileDuration != 0 {
+		t.Fatalf(
+			"expected GoCompileDuration=0 when CompileGo=false, got %s",
+			metrics.GoCompileDuration,
+		)
+	}
+}
+
 func TestBuild_WritesConfigSchema(t *testing.T) {
 	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
 	config.Core.ServerOnlyMode = true

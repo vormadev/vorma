@@ -800,7 +800,7 @@ func DeriveHookStageFailurePolicyFromConfiguredValue(
 	case "fail-closed", "failclosed", "closed":
 		return HookStageFailurePolicyStop
 	default:
-		return HookStageFailurePolicyContinue
+		return HookStageFailurePolicyStop
 	}
 }
 

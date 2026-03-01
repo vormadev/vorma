@@ -415,7 +415,7 @@ func (processor *Processor) buildCriticalCSS() error {
 	processor.criticalFreshOutputAvailable = true
 	processor.criticalImports = trackedCriticalImports
 	processor.mu.Unlock()
-	processor.log.Info(
+	processor.log.Debug(
 		"built critical css",
 		"entry",
 		entryPath,
@@ -515,7 +515,7 @@ func (processor *Processor) buildNormalCSS() error {
 	processor.normalFreshOutputAvailable = true
 	processor.normalImports = trackedNormalImports
 	processor.mu.Unlock()
-	processor.log.Info(
+	processor.log.Debug(
 		"built normal css",
 		"entry",
 		entryPath,

@@ -17,12 +17,15 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/appsupervisor"
 	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/eventpipeline"
 	"github.com/vormadev/vorma/wave/wavedev/internal/broadcast"
 )
+
+const localReloadHTTPRequestTimeout = 3 * time.Second
 
 // CancelableGeneration tracks a monotonically increasing generation id and the
 // active cancellation handle for that generation.
@@ -303,10 +306,16 @@ func BroadcastReloadAfterReadinessWithGeneration(
 		) {
 		if options.ReadinessContext == nil ||
 			options.ReadinessContext.Err() == nil {
-			if options.Log != nil {
-				options.Log.Warn(
-					"reload readiness failed; skipping browser broadcast",
-				)
+			if options.IsGenerationCurrent == nil ||
+				options.IsGenerationCurrent(options.ReloadBroadcastGeneration) {
+				if options.Log != nil {
+					options.Log.Warn(
+						"reload readiness failed; scheduling restart without go recompilation",
+					)
+				}
+				if options.TriggerRestartNoGo != nil {
+					options.TriggerRestartNoGo()
+				}
 			}
 		}
 		return
@@ -378,25 +387,34 @@ func WaitForReloadReadiness(
 	options WaitForReloadReadinessOptions,
 ) bool {
 	if options.ReloadOptions.CycleVite {
-		cycleViteRequestedAndApplicable := false
-		if options.UsingVite && options.IsViteRunning != nil {
-			cycleViteRequestedAndApplicable = options.IsViteRunning()
-		}
-		if cycleViteRequestedAndApplicable &&
-			options.CycleViteAndWaitForReadinessWithContext != nil {
-			if !options.CycleViteAndWaitForReadinessWithContext(
-				options.ReadinessContext,
-			) {
-				if options.ReadinessContext != nil &&
-					options.ReadinessContext.Err() != nil {
-					return false
-				}
-				if options.Log != nil {
-					options.Log.Warn(
-						"cycle vite readiness failed; falling back to payload broadcast",
-					)
-				}
+		if !options.UsingVite {
+			if options.Log != nil {
+				options.Log.Warn(
+					"cycle vite requested while vite is disabled",
+				)
 			}
+			return false
+		}
+		if options.IsViteRunning == nil || !options.IsViteRunning() {
+			if options.Log != nil {
+				options.Log.Warn(
+					"cycle vite requested while vite runtime is unavailable",
+				)
+			}
+			return false
+		}
+		if options.CycleViteAndWaitForReadinessWithContext == nil {
+			if options.Log != nil {
+				options.Log.Warn(
+					"cycle vite requested but cycle callback is unavailable",
+				)
+			}
+			return false
+		}
+		if !options.CycleViteAndWaitForReadinessWithContext(
+			options.ReadinessContext,
+		) {
+			return false
 		}
 	}
 
@@ -421,16 +439,8 @@ func WaitForReloadReadiness(
 // sent after readiness checks complete.
 func ShouldBroadcastReloadPayloadAfterReadiness(
 	reloadOptions eventpipeline.ReloadOpts,
-	usingVite bool,
-	viteRunning bool,
 ) bool {
-	if !reloadOptions.CycleVite {
-		return true
-	}
-	if !usingVite {
-		return true
-	}
-	return !viteRunning
+	return !reloadOptions.CycleVite
 }
 
 // ResolveViteReadyURL resolves the canonical Vite readiness probe URL.
@@ -479,7 +489,9 @@ func CallViteFilemapInvalidateWithContext(
 		return requestCreateError
 	}
 	request = request.WithContext(invalidateContext)
-	response, requestError := (&http.Client{}).Do(request)
+	response, requestError := (&http.Client{
+		Timeout: localReloadHTTPRequestTimeout,
+	}).Do(request)
 	if requestError != nil {
 		return requestError
 	}
@@ -531,9 +543,9 @@ func CallFrameworkRuntimeReloadEndpointWithContext(
 		reloadRequest,
 	)
 
-	reloadEndpointResponse, requestError := (&http.Client{}).Do(
-		reloadEndpointRequest,
-	)
+	reloadEndpointResponse, requestError := (&http.Client{
+		Timeout: localReloadHTTPRequestTimeout,
+	}).Do(reloadEndpointRequest)
 	if requestError != nil {
 		return fmt.Errorf("request failed: %w", requestError)
 	}
@@ -633,7 +645,7 @@ func StartRefreshRuntime(
 	log *slog.Logger,
 ) (RefreshRuntimeStartResult, error) {
 	listenOnPort := func(port int) (net.Listener, error) {
-		return net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(port))
+		return net.Listen("tcp", ":"+strconv.Itoa(port))
 	}
 
 	listener, listenError := listenOnPort(preferredPort)

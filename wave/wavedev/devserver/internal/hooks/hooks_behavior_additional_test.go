@@ -426,7 +426,7 @@ func TestHookStageFailurePolicyParsing(t *testing.T) {
 		},
 		{
 			configuredValue: "unknown",
-			expectedPolicy:  hooks.HookStageFailurePolicyContinue,
+			expectedPolicy:  hooks.HookStageFailurePolicyStop,
 		},
 	}
 

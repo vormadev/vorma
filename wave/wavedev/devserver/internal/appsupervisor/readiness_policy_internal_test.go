@@ -95,6 +95,9 @@ func TestNormalizeReadinessWaitPolicy_FillsUnsetFieldsWithDefaults(
 	if !normalizedPolicy.TreatHTTPStatusCodeAsReady(http.StatusOK) {
 		t.Fatal("expected default readiness predicate to treat 200 as ready")
 	}
+	if normalizedPolicy.TreatHTTPStatusCodeAsReady(http.StatusFound) {
+		t.Fatal("expected default readiness predicate to reject 302")
+	}
 	if normalizedPolicy.TreatHTTPStatusCodeAsReady(
 		http.StatusInternalServerError,
 	) {

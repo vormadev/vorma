@@ -95,6 +95,13 @@ func (inst *Instance) PageDetails(r *http.Request) (detailedPage *DetailedPage, 
 		log.Println("Error getting pageBase in getPageDetails: ", err)
 		return nil, err
 	}
+	if !found {
+		notFoundPageDetails := &DetailedPage{
+			Page: pageBase,
+		}
+		inst.pageDetailsCache.Set(cleanPath, notFoundPageDetails, true)
+		return notFoundPageDetails, nil
+	}
 
 	var eg errgroup.Group
 	var indexSitemap, sitemap Sitemap

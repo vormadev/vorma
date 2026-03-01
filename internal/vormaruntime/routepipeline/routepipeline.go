@@ -895,7 +895,7 @@ func GetViteDevURLForMode(isDevMode bool) string {
 	if !isDevMode {
 		return ""
 	}
-	return fmt.Sprintf("http://localhost:%s", viteutil.GetVitePortStr())
+	return fmt.Sprintf("http://127.0.0.1:%s", viteutil.GetVitePortStr())
 }
 
 // GetDepsFromData computes request deps in stable order with de-duplication and

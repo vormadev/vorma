@@ -18,7 +18,7 @@ import (
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
-var log = colorlog.New("vitecmd")
+var log = colorlog.New("viteutil")
 var initPort = viteutil.InitPort
 
 type BuildCtx struct {
@@ -45,7 +45,7 @@ type BuildCtxOptions struct {
 	OutDir string
 	// required
 	ManifestOut string
-	// optional -- default is 5173
+	// optional -- default is 5199
 	DefaultPort int
 	// optional
 	ViteConfigFile string
@@ -58,7 +58,7 @@ func NewBuildCtx(opts *BuildCtxOptions) *BuildCtx {
 
 	port := opts.DefaultPort
 	if port == 0 {
-		port = 5173
+		port = 5199
 	}
 	return &BuildCtx{
 		mu:   &sync.Mutex{},
@@ -106,6 +106,7 @@ func (c *BuildCtx) DevBuild() error {
 
 	c.cmd.Args = append(c.cmd.Args, "vite",
 		"--port", fmt.Sprintf("%d", c.port),
+		"--host", "127.0.0.1",
 		"--clearScreen", "false",
 		"--strictPort", "true",
 	)
@@ -158,7 +159,7 @@ func (c *BuildCtx) Wait() {
 	c.mu.Unlock()
 
 	if err != nil {
-		log.Info(fmt.Sprintf("vitecmd: BuildCtx: Wait: %s", err))
+		log.Info(fmt.Sprintf("viteutil: BuildCtx: Wait: %s", err))
 	}
 }
 
@@ -169,7 +170,7 @@ func (c *BuildCtx) Cleanup() {
 	c.mu.Unlock()
 
 	if err != nil {
-		log.Info(fmt.Sprintf("vitecmd: BuildCtx: Cleanup: %s", err))
+		log.Info(fmt.Sprintf("viteutil: BuildCtx: Cleanup: %s", err))
 		return
 	}
 

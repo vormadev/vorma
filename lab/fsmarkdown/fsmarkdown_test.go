@@ -40,6 +40,36 @@ func TestPlainTextMiddleware_MatchesAcceptHeaderCaseInsensitively(t *testing.T) 
 	}
 }
 
+func TestPageDetails_MissingDotWellKnownPathReturnsNotFoundWithoutError(
+	t *testing.T,
+) {
+	instance := newFSMarkdownInstanceForMiddlewareTest(
+		t,
+		fstest.MapFS{
+			"markdown/_index.md": {Data: []byte("home")},
+		},
+	)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"http://example.com/.well-known/appspecific/com.chrome.devtools.json",
+		nil,
+	)
+	pageDetails, pageDetailsError := instance.PageDetails(request)
+	if pageDetailsError != nil {
+		t.Fatalf("PageDetails() returned error: %v", pageDetailsError)
+	}
+	if pageDetails == nil || pageDetails.Page == nil {
+		t.Fatal("expected PageDetails() to return a not-found page")
+	}
+	if pageDetails.Title != "Error" {
+		t.Fatalf("expected not-found page title \"Error\", got %q", pageDetails.Title)
+	}
+	if len(pageDetails.Sitemap) != 0 {
+		t.Fatalf("expected empty sitemap for missing path, got %#v", pageDetails.Sitemap)
+	}
+}
+
 func newFSMarkdownInstanceForMiddlewareTest(
 	t *testing.T,
 	fileSystem fs.FS,

@@ -161,7 +161,7 @@ func (processor *Processor) WriteFrameworkPublicFileMapTS() error {
 		}
 	}
 
-	processor.log.Info(
+	processor.log.Debug(
 		"wrote framework public filemap",
 		"path",
 		outputPath,
@@ -648,7 +648,7 @@ func (processor *Processor) processFullScan(
 	}
 	if reflect.DeepEqual(previousFileMap, nextFileMap) {
 		processor.updateCachedFileMap(isPublic, nextFileMap)
-		processor.log.Info(
+		processor.log.Debug(
 			"processed static files (full scan)",
 			"public",
 			isPublic,
@@ -669,7 +669,7 @@ func (processor *Processor) processFullScan(
 		}
 	}
 
-	processor.log.Info(
+	processor.log.Debug(
 		"processed static files (full scan)",
 		"public",
 		isPublic,
@@ -811,7 +811,7 @@ func (processor *Processor) processChangedPaths(
 		}
 	}
 
-	processor.log.Info(
+	processor.log.Debug(
 		"processed static files (changed paths)",
 		"public",
 		isPublic,

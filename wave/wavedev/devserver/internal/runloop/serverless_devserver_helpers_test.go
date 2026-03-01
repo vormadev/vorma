@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave"
@@ -372,7 +371,6 @@ type runloopTestServer struct {
 	concurrentNoWaitHookLifecycleContext context.Context
 	concurrentNoWaitHookLifecycleCancel  context.CancelFunc
 	concurrentNoWaitHookContextMutex     sync.Mutex
-	watcherBatchDurationWarningThreshold time.Duration
 
 	nextWatcherBatchID                  uint64
 	currentWatcherExecutionTraceContext runloop.WatcherExecutionTraceContext
@@ -718,7 +716,6 @@ func (server *runloopTestServer) BuildRunloopEngine() *runloop.Engine {
 		RunNoWaitHookWithConcurrencyLimit:               server.RunNoWaitHookWithConcurrencyLimit,
 		GetOrCreateConcurrentNoWaitHookLifecycleContext: server.GetOrCreateConcurrentNoWaitHookLifecycleContext,
 		ResolveHookExecutionPlan:                        server.ResolveHookExecutionPlan,
-		WatcherBatchDurationWarningThreshold:            server.watcherBatchDurationWarningThreshold,
 	})
 }
 

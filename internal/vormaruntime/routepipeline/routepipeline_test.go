@@ -1131,9 +1131,9 @@ func TestGetViteDevURLForMode(t *testing.T) {
 	}
 
 	devURL := GetViteDevURLForMode(true)
-	if !strings.HasPrefix(devURL, "http://localhost:") {
+	if !strings.HasPrefix(devURL, "http://127.0.0.1:") {
 		t.Fatalf(
-			"GetViteDevURLForMode(true) = %q, want localhost URL",
+			"GetViteDevURLForMode(true) = %q, want 127.0.0.1 URL",
 			devURL,
 		)
 	}

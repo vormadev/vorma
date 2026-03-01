@@ -2,6 +2,7 @@ package reloadwait
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/eventpipeline"
+	"github.com/vormadev/vorma/wave/wavedev/internal/broadcast"
 )
 
 func newDiscardLoggerForReloadWaitTests() *slog.Logger {
@@ -258,10 +261,55 @@ func TestStartAndStopRefreshRuntime(t *testing.T) {
 	StopRefreshRuntime(startResult.State)
 }
 
+func TestStartRefreshRuntime_HealthzReachableOnLocalhostAndIPv4Loopback(
+	t *testing.T,
+) {
+	startResult, startError := StartRefreshRuntime(
+		0,
+		newDiscardLoggerForReloadWaitTests(),
+	)
+	if startError != nil {
+		t.Fatalf("StartRefreshRuntime returned error: %v", startError)
+	}
+	defer StopRefreshRuntime(startResult.State)
+
+	go startResult.RunManager()
+	go startResult.RunServer()
+
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	for _, healthzURL := range []string{
+		fmt.Sprintf("http://localhost:%d/healthz", startResult.State.Port),
+		fmt.Sprintf("http://127.0.0.1:%d/healthz", startResult.State.Port),
+	} {
+		var lastError error
+		ready := false
+		for range 40 {
+			response, requestError := client.Get(healthzURL)
+			if requestError == nil {
+				_ = response.Body.Close()
+				if response.StatusCode == http.StatusOK {
+					ready = true
+					break
+				}
+				lastError = fmt.Errorf(
+					"status=%d",
+					response.StatusCode,
+				)
+			} else {
+				lastError = requestError
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		if !ready {
+			t.Fatalf("healthz never became ready for %s: %v", healthzURL, lastError)
+		}
+	}
+}
+
 func TestStartRefreshRuntime_FallsBackFromUnavailablePreferredPort(
 	t *testing.T,
 ) {
-	preferredListener, listenError := net.Listen("tcp", "127.0.0.1:0")
+	preferredListener, listenError := net.Listen("tcp", ":0")
 	if listenError != nil {
 		t.Fatalf("failed creating preferred listener: %v", listenError)
 	}
@@ -285,6 +333,220 @@ func TestStartRefreshRuntime_FallsBackFromUnavailablePreferredPort(
 		t.Fatalf(
 			"expected fallback from preferred port %d, but runtime bound same port",
 			preferredPort,
+		)
+	}
+}
+
+func TestBroadcastReloadAfterReadinessWithGeneration_ReadinessFailureTriggersNoGoRestart(
+	t *testing.T,
+) {
+	var triggerRestartNoGoCallCount int
+	var broadcastCallCount int
+
+	BroadcastReloadAfterReadinessWithGeneration(
+		BroadcastReloadAfterReadinessWithGenerationOptions{
+			ReadinessContext:          context.Background(),
+			ReloadBroadcastGeneration: 1,
+			ReloadOptions: eventpipeline.ReloadOpts{
+				Payload: broadcast.Payload{
+					ChangeType: broadcast.ChangeTypeOther,
+				},
+				WaitApp: true,
+			},
+			IsGenerationCurrent: func(uint64) bool { return true },
+			WaitForReloadReadiness: func(
+				context.Context,
+				eventpipeline.ReloadOpts,
+			) bool {
+				return false
+			},
+			TriggerRestartNoGo: func() {
+				triggerRestartNoGoCallCount++
+			},
+			BroadcastReloadPayloadIfGenerationCurrent: func(
+				uint64,
+				broadcast.Payload,
+			) {
+				broadcastCallCount++
+			},
+			Log: newDiscardLoggerForReloadWaitTests(),
+		},
+	)
+
+	if triggerRestartNoGoCallCount != 1 {
+		t.Fatalf(
+			"expected one TriggerRestartNoGo call, got %d",
+			triggerRestartNoGoCallCount,
+		)
+	}
+	if broadcastCallCount != 0 {
+		t.Fatalf(
+			"expected no broadcast on readiness failure, got %d calls",
+			broadcastCallCount,
+		)
+	}
+}
+
+func TestWaitForReloadReadiness_CycleViteContract(t *testing.T) {
+	testCases := []struct {
+		name      string
+		options   WaitForReloadReadinessOptions
+		shouldRun bool
+	}{
+		{
+			name: "cycle fails when vite is disabled",
+			options: WaitForReloadReadinessOptions{
+				ReloadOptions: eventpipeline.ReloadOpts{CycleVite: true},
+				UsingVite:     false,
+			},
+			shouldRun: false,
+		},
+		{
+			name: "cycle fails when vite runtime is unavailable",
+			options: WaitForReloadReadinessOptions{
+				ReloadOptions: eventpipeline.ReloadOpts{CycleVite: true},
+				UsingVite:     true,
+				IsViteRunning: func() bool { return false },
+			},
+			shouldRun: false,
+		},
+		{
+			name: "cycle fails when callback is missing",
+			options: WaitForReloadReadinessOptions{
+				ReloadOptions: eventpipeline.ReloadOpts{CycleVite: true},
+				UsingVite:     true,
+				IsViteRunning: func() bool { return true },
+			},
+			shouldRun: false,
+		},
+		{
+			name: "cycle failure returns false",
+			options: WaitForReloadReadinessOptions{
+				ReloadOptions: eventpipeline.ReloadOpts{CycleVite: true},
+				UsingVite:     true,
+				IsViteRunning: func() bool { return true },
+				CycleViteAndWaitForReadinessWithContext: func(
+					context.Context,
+				) bool {
+					return false
+				},
+			},
+			shouldRun: false,
+		},
+		{
+			name: "cycle success continues to wait gates",
+			options: WaitForReloadReadinessOptions{
+				ReloadOptions: eventpipeline.ReloadOpts{
+					CycleVite: true,
+					WaitApp:   true,
+					WaitVite:  true,
+				},
+				UsingVite: true,
+				IsViteRunning: func() bool {
+					return true
+				},
+				CycleViteAndWaitForReadinessWithContext: func(
+					context.Context,
+				) bool {
+					return true
+				},
+				WaitForAppWithContext: func(context.Context) bool {
+					return true
+				},
+				WaitForViteWithContext: func(context.Context) bool {
+					return true
+				},
+			},
+			shouldRun: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := WaitForReloadReadiness(testCase.options)
+			if result != testCase.shouldRun {
+				t.Fatalf("result=%v, want %v", result, testCase.shouldRun)
+			}
+		})
+	}
+}
+
+func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
+	if !ShouldBroadcastReloadPayloadAfterReadiness(
+		eventpipeline.ReloadOpts{CycleVite: false},
+	) {
+		t.Fatal("expected non-cycle reload to broadcast payload")
+	}
+
+	if ShouldBroadcastReloadPayloadAfterReadiness(
+		eventpipeline.ReloadOpts{CycleVite: true},
+	) {
+		t.Fatal("expected cycle-vite reload to skip payload broadcast")
+	}
+}
+
+func TestCallViteFilemapInvalidateWithContext_UsesClientTimeout(t *testing.T) {
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(localReloadHTTPRequestTimeout + 300*time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer server.Close()
+
+	port := parsePortFromRawURLForReloadWaitTests(t, server.URL)
+	start := time.Now()
+	callError := CallViteFilemapInvalidateWithContext(context.Background(), port)
+	elapsed := time.Since(start)
+
+	if callError == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(callError, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded error, got %v", callError)
+	}
+	if elapsed > localReloadHTTPRequestTimeout+time.Second {
+		t.Fatalf(
+			"expected request to fail near timeout budget; elapsed=%s timeout=%s",
+			elapsed,
+			localReloadHTTPRequestTimeout,
+		)
+	}
+}
+
+func TestCallFrameworkRuntimeReloadEndpointWithContext_UsesClientTimeout(
+	t *testing.T,
+) {
+	server := httptest.NewServer(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			time.Sleep(localReloadHTTPRequestTimeout + 300*time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+	defer server.Close()
+
+	port := parsePortFromRawURLForReloadWaitTests(t, server.URL)
+	start := time.Now()
+	callError := CallFrameworkRuntimeReloadEndpointWithContext(
+		context.Background(),
+		port,
+		wave.FrameworkRuntimeReloadRequest{
+			EndpointPath: "/__vorma_internal/reload-template",
+		},
+	)
+	elapsed := time.Since(start)
+
+	if callError == nil {
+		t.Fatal("expected timeout error")
+	}
+	if !errors.Is(callError, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded error, got %v", callError)
+	}
+	if elapsed > localReloadHTTPRequestTimeout+time.Second {
+		t.Fatalf(
+			"expected request to fail near timeout budget; elapsed=%s timeout=%s",
+			elapsed,
+			localReloadHTTPRequestTimeout,
 		)
 	}
 }

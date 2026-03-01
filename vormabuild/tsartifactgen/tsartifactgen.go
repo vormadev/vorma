@@ -1061,7 +1061,7 @@ func (generatedTSWriteFileExecutor generatedTSWriteFileExecutor) writeGeneratedT
 		return fmt.Errorf("check existing generated file: %w", err)
 	}
 	if unchanged {
-		v.Log.Info("Generated config unchanged, skipping write")
+		v.Log.Debug("Generated config unchanged, skipping write")
 		return nil
 	}
 

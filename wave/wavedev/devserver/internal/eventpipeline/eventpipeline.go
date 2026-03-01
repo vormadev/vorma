@@ -699,8 +699,24 @@ func (work *WorkSet) DetermineBrowserBehavior(usingVite bool) {
 }
 
 func (work *WorkSet) requestBrowserAction(action BrowserPhaseAction) {
-	if action > work.Browser.Action {
+	if deriveBrowserActionPrecedence(action) >
+		deriveBrowserActionPrecedence(work.Browser.Action) {
 		work.Browser.Action = action
+	}
+}
+
+func deriveBrowserActionPrecedence(action BrowserPhaseAction) int {
+	switch action {
+	case BrowserPhaseActionHardReload:
+		return 4
+	case BrowserPhaseActionInvalidateVite:
+		return 3
+	case BrowserPhaseActionRevalidate:
+		return 2
+	case BrowserPhaseActionHotReloadCSS:
+		return 1
+	default:
+		return 0
 	}
 }
 

@@ -3,7 +3,6 @@ package devserver
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,6 +16,7 @@ import (
 	"github.com/vormadev/vorma/lab/vitecmd"
 	"github.com/vormadev/vorma/wave"
 	"github.com/vormadev/vorma/wave/wavebuild/builder"
+	"github.com/vormadev/vorma/wave/wavedev/devserver/internal/restartengine"
 	"github.com/vormadev/vorma/wave/wavedev/internal/broadcast"
 	"github.com/vormadev/vorma/wave/wavedev/internal/watch"
 )
@@ -575,7 +575,9 @@ func TestStartAndStopRefreshServer(t *testing.T) {
 	}
 }
 
-func TestStartRefreshServer_BindsToLoopbackHost(t *testing.T) {
+func TestStartRefreshServer_RefreshEndpointIsReachableOnLocalhostAndIPv4Loopback(
+	t *testing.T,
+) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
@@ -597,20 +599,22 @@ func TestStartRefreshServer_BindsToLoopbackHost(t *testing.T) {
 		t.Fatal("expected refresh server to be initialized")
 	}
 
-	resolvedHost, _, splitHostPortError := net.SplitHostPort(
-		s.RefreshServer.Addr,
-	)
-	if splitHostPortError != nil {
+	refreshScriptURLOnLocalhost := "http://localhost:" + strconv.Itoa(
+		port,
+	) + "/get-refresh-script-inner"
+	if !s.WaitForAnyReady([]string{refreshScriptURLOnLocalhost}) {
 		t.Fatalf(
-			"failed parsing refresh server address %q: %v",
-			s.RefreshServer.Addr,
-			splitHostPortError,
+			"expected refresh endpoint to be reachable via localhost: %s",
+			refreshScriptURLOnLocalhost,
 		)
 	}
-	if resolvedHost != "127.0.0.1" {
+	refreshScriptURLOnIPv4Loopback := "http://127.0.0.1:" + strconv.Itoa(
+		port,
+	) + "/get-refresh-script-inner"
+	if !s.WaitForAnyReady([]string{refreshScriptURLOnIPv4Loopback}) {
 		t.Fatalf(
-			"expected refresh server to bind to 127.0.0.1, got %q",
-			resolvedHost,
+			"expected refresh endpoint to be reachable via IPv4 loopback: %s",
+			refreshScriptURLOnIPv4Loopback,
 		)
 	}
 }
@@ -694,7 +698,9 @@ func TestStartAppAndStopApp_WithExecutableBinary(t *testing.T) {
 		Log: newDiscardLogger(),
 	}
 
-	s.StartApp()
+	if startAppError := s.StartApp(); startAppError != nil {
+		t.Fatalf("startApp returned error: %v", startAppError)
+	}
 	if s.AppCommand == nil || s.AppCommand.Process == nil {
 		t.Fatal("expected startApp to launch process")
 	}
@@ -713,9 +719,57 @@ func TestStartApp_FailureLeavesAppCmdNil(t *testing.T) {
 		Log: newDiscardLogger(),
 	}
 
-	s.StartApp()
+	startAppError := s.StartApp()
+	if startAppError == nil {
+		t.Fatal("expected startApp to fail for missing binary")
+	}
 	if s.AppCommand != nil {
 		t.Fatal("expected startApp failure to leave appCmd nil")
+	}
+}
+
+func TestStartAppOrQueueNoGoRestart_QueuesRestartOnStartFailure(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+
+	s := &Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+		RestartIntents: restartengine.NewRestartIntentAccumulator(
+			make(chan restartengine.RestartRequest, 1),
+		),
+	}
+
+	s.startAppOrQueueNoGoRestart()
+
+	pendingRestartRequest, hasPendingRestartRequest := s.ConsumePendingRestartRequest()
+	if !hasPendingRestartRequest {
+		t.Fatal("expected no-go restart request after start-app failure")
+	}
+	if pendingRestartRequest.RecompileGo || pendingRestartRequest.IsConfigRestart {
+		t.Fatalf(
+			"expected no-go non-config restart request, got %#v",
+			pendingRestartRequest,
+		)
+	}
+	if s.AppCommand != nil {
+		t.Fatal("expected start-app failure helper to leave app command nil")
+	}
+}
+
+func TestStartRunCycleRuntime_ReturnsErrorWhenStartAppFails(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = true
+	cfg.Vite = nil
+
+	s := &Server{
+		Cfg: cfg,
+		Log: newDiscardLogger(),
+	}
+
+	startRuntimeError := s.startRunCycleRuntime()
+	if startRuntimeError == nil {
+		t.Fatal("expected startRunCycleRuntime to fail when app binary is missing")
 	}
 }
 

@@ -21,9 +21,9 @@ func TestDeriveReadinessWaitDelay(t *testing.T) {
 			Expected:     20 * time.Millisecond,
 		},
 		{
-			Name:         "later attempt applies exponential backoff",
+			Name:         "later attempt applies bounded linear backoff",
 			AttemptIndex: 3,
-			Expected:     160 * time.Millisecond,
+			Expected:     80 * time.Millisecond,
 		},
 	}
 

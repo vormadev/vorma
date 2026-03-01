@@ -12,7 +12,7 @@ func TestContinuePipelineAfterHookStageOrTriggerRestart_UsesConfiguredFailurePol
 ) {
 	syntheticError := errors.New("synthetic stage error")
 
-	t.Run("default fail-open continues on stage errors", func(t *testing.T) {
+	t.Run("default fail-closed stops on stage errors", func(t *testing.T) {
 		configuredFailurePolicy := hooks.DeriveHookStageFailurePolicy(
 			"",
 		)
@@ -23,9 +23,15 @@ func TestContinuePipelineAfterHookStageOrTriggerRestart_UsesConfiguredFailurePol
 			},
 			configuredFailurePolicy,
 		)
-		if !continuationDecision.ShouldContinue {
+		if continuationDecision.ShouldContinue {
 			t.Fatalf(
-				"expected default fail-open policy to continue, got %#v",
+				"expected default fail-closed policy to stop, got %#v",
+				continuationDecision,
+			)
+		}
+		if continuationDecision.StopReason != hooks.HookStageContinuationStopReasonStageFailure {
+			t.Fatalf(
+				"expected stop reason stage failure, got %#v",
 				continuationDecision,
 			)
 		}

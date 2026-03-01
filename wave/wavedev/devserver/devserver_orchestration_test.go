@@ -275,7 +275,7 @@ func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(
 	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
 	cfg.Core.ServerOnlyMode = false
 
-	occupiedListener, listenError := net.Listen("tcp", "127.0.0.1:0")
+	occupiedListener, listenError := net.Listen("tcp", ":0")
 	if listenError != nil {
 		t.Skipf(
 			"unable to reserve preferred port for fallback test: %v",
@@ -360,6 +360,43 @@ func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
 	if refreshServerPort := os.Getenv("__WAVE_REFRESH_SERVER_PORT"); refreshServerPort != "" {
 		t.Fatalf(
 			"expected refresh server env port to remain unset in server-only mode, got %q",
+			refreshServerPort,
+		)
+	}
+}
+
+func TestStartRefreshServer_SetsAndClearsRefreshPortEnvironment(t *testing.T) {
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
+	cfg.Core.ServerOnlyMode = false
+
+	t.Setenv("__WAVE_REFRESH_SERVER_PORT", "")
+
+	serverForTest := &Server{
+		Cfg: cfg,
+		Log: newDiscardLoggerForRunloopOrchestrationTests(),
+	}
+
+	actualPort, startRefreshServerError := serverForTest.StartRefreshServer(0)
+	if startRefreshServerError != nil {
+		t.Fatalf("StartRefreshServer returned error: %v", startRefreshServerError)
+	}
+	if actualPort <= 0 {
+		t.Fatalf("expected positive refresh server port, got %d", actualPort)
+	}
+	if refreshServerPort := os.Getenv("__WAVE_REFRESH_SERVER_PORT"); refreshServerPort != strconv.Itoa(actualPort) {
+		t.Fatalf(
+			"expected refresh server env port %d, got %q",
+			actualPort,
+			refreshServerPort,
+		)
+	}
+
+	if stopRefreshServerError := serverForTest.StopRefreshServer(); stopRefreshServerError != nil {
+		t.Fatalf("StopRefreshServer returned error: %v", stopRefreshServerError)
+	}
+	if refreshServerPort := os.Getenv("__WAVE_REFRESH_SERVER_PORT"); refreshServerPort != "" {
+		t.Fatalf(
+			"expected refresh server env port to be cleared after stop, got %q",
 			refreshServerPort,
 		)
 	}
@@ -503,7 +540,7 @@ func helperViteBaseCommand(t *testing.T) string {
 func fetchViteProcessID(t *testing.T, port int) string {
 	t.Helper()
 
-	viteClientURL := fmt.Sprintf("http://localhost:%d/@vite/client", port)
+	viteClientURL := fmt.Sprintf("http://127.0.0.1:%d/@vite/client", port)
 	client := &http.Client{Timeout: 300 * time.Millisecond}
 	deadline := time.Now().Add(2 * time.Second)
 

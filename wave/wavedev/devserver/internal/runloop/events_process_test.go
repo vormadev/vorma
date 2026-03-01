@@ -664,7 +664,7 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 	}
 }
 
-func TestProcessEvents_LogsWatcherEventsWithCycleAndBatchTraceFields(
+func TestProcessEvents_LogsWatcherEventsWithOperationAndPathFields(
 	t *testing.T,
 ) {
 	root := t.TempDir()
@@ -707,149 +707,18 @@ func TestProcessEvents_LogsWatcherEventsWithCycleAndBatchTraceFields(
 	)
 
 	logOutput := logBuffer.String()
-	if !strings.Contains(logOutput, "watch event") {
+	if !strings.Contains(logOutput, "[watcher]") {
 		t.Fatalf("expected watcher event log entry, got %q", logOutput)
 	}
-	if !strings.Contains(logOutput, "cycle_id=") {
+	if !strings.Contains(logOutput, "op=WRITE") {
 		t.Fatalf(
-			"expected watcher event log to include cycle_id, got %q",
+			"expected watcher event log to include op field, got %q",
 			logOutput,
 		)
 	}
-	if !strings.Contains(logOutput, "batch_id=") {
+	if !strings.Contains(logOutput, "filename="+watchedTextFilePath) {
 		t.Fatalf(
-			"expected watcher event log to include batch_id, got %q",
-			logOutput,
-		)
-	}
-}
-
-func TestProcessEvents_LogsWarningWhenBatchDurationExceedsThreshold(
-	t *testing.T,
-) {
-	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	watchedTextFilePath := filepath.Join(root, "slow-notes.txt")
-	if writeError := os.WriteFile(
-		watchedTextFilePath,
-		[]byte("notes"),
-		0o644,
-	); writeError != nil {
-		t.Fatalf("write watched text file: %v", writeError)
-	}
-
-	cfg.Watch.Include = []wave.WatchedFile{
-		{
-			Pattern:         "**/*.txt",
-			RunOnChangeOnly: true,
-			OnChangeHooks: []wave.OnChangeHook{
-				{
-					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-						time.Sleep(35 * time.Millisecond)
-						return nil, nil
-					},
-				},
-			},
-		},
-	}
-
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
-	serverForTest.watcherBatchDurationWarningThreshold = 5 * time.Millisecond
-	var logBuffer bytes.Buffer
-	serverForTest.Log = slog.New(slog.NewTextHandler(&logBuffer, nil))
-
-	processEventsForRunloopTests(
-		t,
-		serverForTest,
-		[]fsnotify.Event{
-			{
-				Name: watchedTextFilePath,
-				Op:   fsnotify.Write,
-			},
-		},
-	)
-
-	logOutput := logBuffer.String()
-	if !strings.Contains(
-		logOutput,
-		"watcher batch processing exceeded duration threshold",
-	) {
-		t.Fatalf(
-			"expected slow watcher-batch warning log entry, got %q",
-			logOutput,
-		)
-	}
-	if !strings.Contains(logOutput, "cycle_id=") {
-		t.Fatalf(
-			"expected slow watcher-batch warning to include cycle_id, got %q",
-			logOutput,
-		)
-	}
-	if !strings.Contains(logOutput, "batch_id=") {
-		t.Fatalf(
-			"expected slow watcher-batch warning to include batch_id, got %q",
-			logOutput,
-		)
-	}
-}
-
-func TestProcessEvents_DoesNotLogBatchDurationWarningWhenBelowThreshold(
-	t *testing.T,
-) {
-	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	watchedTextFilePath := filepath.Join(root, "fast-notes.txt")
-	if writeError := os.WriteFile(
-		watchedTextFilePath,
-		[]byte("notes"),
-		0o644,
-	); writeError != nil {
-		t.Fatalf("write watched text file: %v", writeError)
-	}
-
-	cfg.Watch.Include = []wave.WatchedFile{
-		{
-			Pattern:         "**/*.txt",
-			RunOnChangeOnly: true,
-			OnChangeHooks: []wave.OnChangeHook{
-				{
-					Callback: func(*wave.HookContext) (*wave.RefreshAction, error) {
-						return nil, nil
-					},
-				},
-			},
-		},
-	}
-
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
-	serverForTest.watcherBatchDurationWarningThreshold = 2 * time.Second
-	var logBuffer bytes.Buffer
-	serverForTest.Log = slog.New(slog.NewTextHandler(&logBuffer, nil))
-
-	processEventsForRunloopTests(
-		t,
-		serverForTest,
-		[]fsnotify.Event{
-			{
-				Name: watchedTextFilePath,
-				Op:   fsnotify.Write,
-			},
-		},
-	)
-
-	logOutput := logBuffer.String()
-	if strings.Contains(
-		logOutput,
-		"watcher batch processing exceeded duration threshold",
-	) {
-		t.Fatalf(
-			"did not expect slow watcher-batch warning when below threshold, got %q",
+			"expected watcher event log to include filename field, got %q",
 			logOutput,
 		)
 	}

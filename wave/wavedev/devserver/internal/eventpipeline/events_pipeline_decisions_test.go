@@ -827,10 +827,10 @@ func TestDeriveHookStageFailurePolicy_FromConfiguredValue(t *testing.T) {
 		ExpectedHookStageFailurePolicy   hooks.HookStageFailurePolicy
 	}{
 		{
-			Name:                             "empty policy defaults fail-open",
+			Name:                             "empty policy defaults fail-closed",
 			StageType:                        hooks.HookStageTypePre,
 			ConfiguredHookStageFailurePolicy: "",
-			ExpectedHookStageFailurePolicy:   hooks.HookStageFailurePolicyContinue,
+			ExpectedHookStageFailurePolicy:   hooks.HookStageFailurePolicyStop,
 		},
 		{
 			Name:                             "explicit fail-open remains fail-open",
@@ -845,10 +845,10 @@ func TestDeriveHookStageFailurePolicy_FromConfiguredValue(t *testing.T) {
 			ExpectedHookStageFailurePolicy:   hooks.HookStageFailurePolicyStop,
 		},
 		{
-			Name:                             "invalid configured policy falls back fail-open",
+			Name:                             "invalid configured policy falls back fail-closed",
 			StageType:                        hooks.HookStageTypePre,
 			ConfiguredHookStageFailurePolicy: "invalid-policy",
-			ExpectedHookStageFailurePolicy:   hooks.HookStageFailurePolicyContinue,
+			ExpectedHookStageFailurePolicy:   hooks.HookStageFailurePolicyStop,
 		},
 	}
 

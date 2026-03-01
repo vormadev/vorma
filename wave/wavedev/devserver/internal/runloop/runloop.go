@@ -19,8 +19,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const defaultWatcherBatchDurationWarningThreshold = 1500 * time.Millisecond
-
 // WatcherExecutionTraceContext carries watcher-cycle and batch identifiers.
 type WatcherExecutionTraceContext struct {
 	CycleID uint64
@@ -61,8 +59,6 @@ type Dependencies struct {
 
 	ResolveHookExecutionPlan func(wave.OnChangeHook) hooks.HookExecutionPlan
 	IsWaitingForBuildRetry   func() bool
-
-	WatcherBatchDurationWarningThreshold time.Duration
 }
 
 // Engine owns deterministic watcher batch processing and hook/build orchestration.
@@ -138,12 +134,6 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 	traceContext := engine.deriveWatcherExecutionTraceContext()
 	engine.setCurrentWatcherExecutionTraceContext(traceContext)
 	defer engine.clearCurrentWatcherExecutionTraceContext()
-	batchStartedAt := time.Now()
-	defer engine.warnIfWatcherBatchProcessingExceededThreshold(
-		batchStartedAt,
-		traceContext,
-		len(events),
-	)
 
 	executionPlanningResult := engine.buildEventExecutionPlan(
 		events,
@@ -171,17 +161,7 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 	}
 
 	for _, logPayload := range executionInput.WatcherEventLogPayloads {
-		engine.logInfo(
-			"watch event",
-			"operation",
-			logPayload.Operation,
-			"file",
-			logPayload.FilePath,
-			"cycle_id",
-			traceContext.CycleID,
-			"batch_id",
-			traceContext.BatchID,
-		)
+		engine.logInfo("[watcher]", "op", logPayload.Operation, "filename", logPayload.FilePath)
 	}
 	if engine.isWaitingForBuildRetry() {
 		engine.logInfo(
@@ -344,7 +324,7 @@ func (engine *Engine) ProcessEventsWithDeterministicPipeline(
 		implicitBuildDecision.ShouldRunImplicitBuild,
 		work.Restart,
 	) {
-		engine.logInfo("restarting app process")
+		engine.logInfo("Restarting app")
 		engine.startApp()
 	}
 
@@ -363,12 +343,12 @@ func (engine *Engine) ExecuteAppStopStrategy(
 ) {
 	switch appStopStrategy {
 	case eventpipeline.AppStopStrategySingleEventHardReload:
-		engine.logInfo("stopping app for hard reload")
+		engine.logInfo("Terminating running app")
 		if stopError := engine.stopApp(); stopError != nil {
 			engine.logError("failed to stop app", "error", stopError)
 		}
 	case eventpipeline.AppStopStrategyBatchHardReload:
-		engine.logInfo("stopping app for batch rebuild")
+		engine.logInfo("Shutting down running app")
 		if stopError := engine.stopApp(); stopError != nil {
 			engine.logError("failed to stop app", "error", stopError)
 		}
@@ -1048,48 +1028,6 @@ func (engine *Engine) isWaitingForBuildRetry() bool {
 		return false
 	}
 	return engine.dependencies.IsWaitingForBuildRetry()
-}
-
-func (engine *Engine) watcherBatchDurationWarningThreshold() time.Duration {
-	if engine == nil {
-		return defaultWatcherBatchDurationWarningThreshold
-	}
-	if engine.dependencies.WatcherBatchDurationWarningThreshold > 0 {
-		return engine.dependencies.WatcherBatchDurationWarningThreshold
-	}
-	return defaultWatcherBatchDurationWarningThreshold
-}
-
-func (engine *Engine) warnIfWatcherBatchProcessingExceededThreshold(
-	startedAt time.Time,
-	traceContext WatcherExecutionTraceContext,
-	eventCount int,
-) {
-	threshold := engine.watcherBatchDurationWarningThreshold()
-	if threshold <= 0 || eventCount <= 0 {
-		return
-	}
-
-	elapsed := time.Since(startedAt)
-	if elapsed < threshold {
-		return
-	}
-
-	engine.logWarn(
-		"watcher batch processing exceeded duration threshold",
-		"duration",
-		elapsed,
-		"threshold",
-		threshold,
-		"event_count",
-		eventCount,
-		"cycle_id",
-		traceContext.CycleID,
-		"batch_id",
-		traceContext.BatchID,
-		"waiting_for_build_retry",
-		engine.isWaitingForBuildRetry(),
-	)
 }
 
 // setCurrentWatcherExecutionTraceContext delegates trace context set callback.

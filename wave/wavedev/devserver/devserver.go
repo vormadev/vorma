@@ -13,10 +13,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/lab/vitecmd"
@@ -38,11 +41,27 @@ import (
 )
 
 const defaultRefreshPort = 10000
+const envRefreshServerPort = "__WAVE_REFRESH_SERVER_PORT"
 
 // watcherExecutionTraceContext carries watcher cycle and batch identifiers.
 type watcherExecutionTraceContext struct {
 	CycleID uint64
 	BatchID uint64
+}
+
+// runLifecycleTransitionDebugLogger routes lifecycle-transition diagnostics to debug level.
+type runLifecycleTransitionDebugLogger struct {
+	log *slog.Logger
+}
+
+func (transitionLogger runLifecycleTransitionDebugLogger) Info(
+	message string,
+	arguments ...any,
+) {
+	if transitionLogger.log == nil {
+		return
+	}
+	transitionLogger.log.Debug(message, arguments...)
 }
 
 // runtimeServer owns dev runtime orchestration and mutable lifecycle state.
@@ -120,6 +139,15 @@ func RunDev(cfg *wave.ParsedConfig, log *slog.Logger) error {
 		make(chan restartengine.RestartRequest, 1),
 	)
 	return server.Run()
+}
+
+func deriveRunLifecycleTransitionLogger(
+	log *slog.Logger,
+) restartengine.TransitionLogger {
+	if log == nil {
+		return nil
+	}
+	return runLifecycleTransitionDebugLogger{log: log}
 }
 
 // Builder returns current builder instance.
@@ -280,7 +308,7 @@ func (server *runtimeServer) buildRunloopEngineWithWaitingForBuildRetryResolver(
 		CurrentRunCycleContextOrBackground: server.CurrentRunCycleContextOrBackground,
 		ExecuteBuildPhase:                  server.ExecuteBuildPhase,
 		ExecuteBrowserPhase:                server.ExecuteBrowserPhase,
-		StartApp:                           server.StartApp,
+		StartApp:                           server.startAppOrQueueNoGoRestart,
 		StopApp:                            server.StopApp,
 		TriggerRestart:                     server.TriggerRestart,
 		TriggerRestartNoGo:                 server.TriggerRestartNoGo,
@@ -344,19 +372,49 @@ func (server *runtimeServer) ensureAppProcessManager() *appsupervisor.AppProcess
 }
 
 // StartApp starts application binary process.
-func (server *runtimeServer) StartApp() {
+func (server *runtimeServer) StartApp() error {
 	manager := server.ensureAppProcessManager()
 	if manager == nil {
-		return
+		return errors.New("app process manager is unavailable")
 	}
+	previousCommand := manager.CurrentCommand()
+	previousProcessID := 0
+	if previousCommand != nil && previousCommand.Process != nil {
+		previousProcessID = previousCommand.Process.Pid
+	}
+
 	command, startError := manager.StartApp(server.Cfg.Dist.Binary())
 	if startError != nil {
-		server.Log.Error("start app failed", "error", startError)
-		return
+		return startError
 	}
+
+	if previousProcessID > 0 {
+		server.Log.Info("Terminated previous process", "pid", previousProcessID)
+	}
+	if command != nil && command.Process != nil {
+		server.Log.Info("Running app binary...", "pid", command.Process.Pid)
+	}
+
 	server.Mu.Lock()
 	server.AppCommand = command
 	server.Mu.Unlock()
+	return nil
+}
+
+func (server *runtimeServer) startAppOrQueueNoGoRestart() {
+	if server == nil {
+		return
+	}
+	if startAppError := server.StartApp(); startAppError != nil {
+		if server.Log != nil {
+			server.Log.Error(
+				"restart app failed; scheduling restart without go recompilation",
+				"error",
+				startAppError,
+			)
+		}
+		server.TriggerRestartNoGo()
+	}
 }
 
 // StopApp stops current application process.
@@ -612,6 +670,16 @@ func (server *runtimeServer) StartRefreshServer(
 	server.RefreshServer = startResult.State.Server
 	server.RefreshPort = startResult.State.Port
 	server.Mu.Unlock()
+	_ = os.Setenv(
+		envRefreshServerPort,
+		strconv.Itoa(startResult.State.Port),
+	)
+
+	server.Log.Info(
+		"Starting sidecar refresh server...",
+		"port",
+		startResult.State.Port,
+	)
 
 	server.launchRunCycleScopedAsyncWorkOrDetached(func(context.Context) {
 		startResult.RunManager()
@@ -627,6 +695,7 @@ func (server *runtimeServer) StopRefreshServer() error {
 	server.cancelReloadReadinessWait()
 
 	server.Mu.Lock()
+	hadRefreshServer := server.RefreshServer != nil
 	refreshRuntimeState := reloadwait.RefreshRuntimeState{
 		Manager: server.RefreshManager,
 		Server:  server.RefreshServer,
@@ -638,8 +707,15 @@ func (server *runtimeServer) StopRefreshServer() error {
 	server.RefreshPort = 0
 	server.RefreshMgrCancel = nil
 	server.Mu.Unlock()
+	_ = os.Unsetenv(envRefreshServerPort)
 
+	if hadRefreshServer {
+		server.Log.Info("Shutting down sidecar refresh server...")
+	}
 	reloadwait.StopRefreshRuntime(refreshRuntimeState)
+	if hadRefreshServer {
+		server.Log.Info("DONE shutting down sidecar refresh server")
+	}
 	return nil
 }
 
@@ -782,7 +858,7 @@ func (server *runtimeServer) Run() error {
 		}
 
 		nextState, transitionError := restartengine.TransitionRunLifecycleState(
-			server.Log,
+			deriveRunLifecycleTransitionLogger(server.Log),
 			currentState,
 			result.RunLifecycleEvent,
 			currentCycleID,
@@ -839,13 +915,7 @@ func (server *runtimeServer) prepareRunCycle(firstRun bool) error {
 	if !firstRun && server.Cfg != nil && server.Cfg.Core != nil &&
 		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
 		if _, reloadConfigError := server.ReloadConfig(); reloadConfigError != nil {
-			if server.Log != nil {
-				server.Log.Error(
-					"reload config failed; continuing with previous config",
-					"error",
-					reloadConfigError,
-				)
-			}
+			return fmt.Errorf("reload config during cycle prepare: %w", reloadConfigError)
 		}
 	}
 
@@ -878,23 +948,55 @@ func (server *runtimeServer) executeRunBuildForIntent(
 		return errors.New("builder is unavailable")
 	}
 
-	return builderInstance.Build(builder.BuildOpts{
-		CompileGo:    orderingDecision.ShouldCompileGo,
-		IsDev:        true,
-		IsRebuild:    isRebuild,
-		FileOnlyMode: false,
-	})
+	server.Log.Info(
+		"START building Wave",
+		"recompile_go_binary",
+		orderingDecision.ShouldCompileGo,
+		"is_dev_rebuild",
+		isRebuild,
+	)
+	buildStartedAt := time.Now()
+	buildMetrics, buildError := builderInstance.BuildWithMetrics(
+		builder.BuildOpts{
+			CompileGo:    orderingDecision.ShouldCompileGo,
+			IsDev:        true,
+			IsRebuild:    isRebuild,
+			FileOnlyMode: false,
+		},
+	)
+	if buildError != nil {
+		return buildError
+	}
+
+	totalDuration := time.Since(buildStartedAt)
+	waveBuildDuration := max(totalDuration-
+		buildMetrics.HookDuration-
+		buildMetrics.GoCompileDuration, 0)
+	server.Log.Info(
+		"DONE building Wave",
+		"total_duration",
+		totalDuration,
+		"hook_duration",
+		buildMetrics.HookDuration,
+		"go_compile_duration",
+		buildMetrics.GoCompileDuration,
+		"wave_build_duration",
+		waveBuildDuration,
+	)
+	return nil
 }
 
 // startRunCycleRuntime starts app/vite and watcher runloop for runtime phase.
-func (server *runtimeServer) startRunCycleRuntime() {
+func (server *runtimeServer) startRunCycleRuntime() error {
 	if server.Cfg.UsingVite() {
 		if startViteError := server.StartVite(); startViteError != nil {
-			server.Log.Error("start vite failed", "error", startViteError)
+			return fmt.Errorf("start vite: %w", startViteError)
 		}
 	}
 
-	server.StartApp()
+	if startAppError := server.StartApp(); startAppError != nil {
+		return fmt.Errorf("start app: %w", startAppError)
+	}
 
 	cycleScope := server.startRunCycleScope()
 	runloopEngine := server.BuildRunloopEngine()
@@ -912,6 +1014,7 @@ func (server *runtimeServer) startRunCycleRuntime() {
 	}
 
 	close(watcherStartCh)
+	return nil
 }
 
 // WaitForBuildRetry waits for file events that trigger a restart after build failure.
@@ -1026,7 +1129,9 @@ func (server *runtimeServer) executeRunLifecycleCommandAwaitBuildRetry(
 func (server *runtimeServer) executeRunLifecycleCommandStartRuntime(
 	_ restartengine.RunLifecycleCommandInput,
 ) (restartengine.RunLifecycleCommandResult, error) {
-	server.startRunCycleRuntime()
+	if startRuntimeError := server.startRunCycleRuntime(); startRuntimeError != nil {
+		return restartengine.RunLifecycleCommandResult{}, startRuntimeError
+	}
 	return restartengine.RunLifecycleCommandResult{
 		RunLifecycleEvent: restartengine.RunLifecycleEventRuntimeStarted,
 	}, nil
@@ -1103,16 +1208,30 @@ func (server *runtimeServer) StopVite() error {
 
 // CycleVite restarts Vite and does not wait for readiness.
 func (server *runtimeServer) CycleVite() {
+	if cycleViteError := server.cycleViteWithError(); cycleViteError != nil {
+		if server.Log != nil {
+			server.Log.Warn("cycle vite failed", "error", cycleViteError)
+		}
+	}
+}
+
+func (server *runtimeServer) cycleViteWithError() error {
 	_ = server.StopVite()
 	if startViteError := server.StartVite(); startViteError != nil {
-		server.Log.Warn("cycle vite failed", "error", startViteError)
+		return startViteError
 	}
+	return nil
 }
 
 func (server *runtimeServer) cycleViteAndWaitForReadinessWithContext(
 	readinessContext context.Context,
 ) bool {
-	server.CycleVite()
+	if cycleViteError := server.cycleViteWithError(); cycleViteError != nil {
+		if server.Log != nil {
+			server.Log.Warn("cycle vite failed", "error", cycleViteError)
+		}
+		return false
+	}
 	return server.WaitForViteWithContext(readinessContext)
 }
 
@@ -1307,13 +1426,8 @@ func (server *runtimeServer) waitForReloadReadiness(
 func (server *runtimeServer) shouldBroadcastReloadPayloadAfterReadiness(
 	reloadOptions eventpipeline.ReloadOpts,
 ) bool {
-	usingVite := server != nil &&
-		server.Cfg != nil &&
-		server.Cfg.UsingVite()
 	return reloadwait.ShouldBroadcastReloadPayloadAfterReadiness(
 		reloadOptions,
-		usingVite,
-		server.currentViteContext() != nil,
 	)
 }
 
@@ -1366,11 +1480,11 @@ func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 			}
 			if server.Log != nil {
 				server.Log.Warn(
-					"vite invalidate endpoint failed; falling back to hard reload",
-					"error",
-					errors.New("vite not running"),
+					"vite invalidate requested while vite runtime is unavailable; scheduling restart without go recompilation",
 				)
 			}
+			server.TriggerRestartNoGo()
+			return
 		}
 		browserDecision = eventpipeline.ResolveBrowserDecisionAfterInvalidateViteFallback(
 			browserDecision,
@@ -1574,7 +1688,7 @@ func (server *runtimeServer) applyWatcherEventPreClassificationSideEffects(
 	if server.IsConfigFile(watcherEvent.Name) {
 		configChanged, reloadError := server.ReloadConfigIfChanged()
 		if reloadError != nil {
-			return true, reloadError
+			return false, reloadError
 		}
 		if !configChanged {
 			logNoopConfigReloadForWatcherEvent(server, watcherEvent)
@@ -1633,6 +1747,7 @@ func (server *runtimeServer) classifyWatcherEventsFromPreClassificationPlan(
 		)
 		if sideEffectError != nil {
 			server.Log.Error("config reload failed", "error", sideEffectError)
+			return nil, true
 		}
 		if configChanged {
 			return nil, true

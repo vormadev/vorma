@@ -35,6 +35,12 @@ type BuildOpts struct {
 	FileOnlyMode bool
 }
 
+// BuildMetrics captures timing breakdown for one build execution.
+type BuildMetrics struct {
+	HookDuration      time.Duration
+	GoCompileDuration time.Duration
+}
+
 // CSSBuildOptions controls CSS pipeline build behavior.
 type CSSBuildOptions struct {
 	BuildCriticalCSS bool
@@ -238,26 +244,35 @@ func (builder *Builder) processFiles(granular bool, isDev bool) error {
 
 // Build executes one full build with selected options.
 func (builder *Builder) Build(options BuildOpts) error {
+	_, buildError := builder.BuildWithMetrics(options)
+	return buildError
+}
+
+// BuildWithMetrics executes one full build and returns timing breakdown.
+func (builder *Builder) BuildWithMetrics(options BuildOpts) (BuildMetrics, error) {
+	metrics := BuildMetrics{}
 	if builder == nil || builder.cfg == nil {
-		return errors.New("builder config is nil")
+		return metrics, errors.New("builder config is nil")
 	}
 	if validationError := ValidateConfig(builder.cfg); validationError != nil {
-		return validationError
+		return metrics, validationError
 	}
 	if ensureError := builder.ensureOutputDirectories(); ensureError != nil {
-		return ensureError
+		return metrics, ensureError
 	}
 	if options.FileOnlyMode {
-		return builder.processFilesOnly(options.IsRebuild, options.IsDev)
+		return metrics, builder.processFilesOnly(options.IsRebuild, options.IsDev)
 	}
 
+	hookStartedAt := time.Now()
 	if hookError := builder.runBuildHooks(options.IsDev); hookError != nil {
-		return hookError
+		return metrics, hookError
 	}
+	metrics.HookDuration = time.Since(hookStartedAt)
 
 	if builder.cfg.UsingBrowser() {
 		if processPublicError := builder.ProcessPublicFilesOnly(); processPublicError != nil {
-			return processPublicError
+			return metrics, processPublicError
 		}
 
 		var browserBuildGroup errgroup.Group
@@ -270,34 +285,43 @@ func (builder *Builder) Build(options BuildOpts) error {
 			)
 		})
 		if browserBuildError := browserBuildGroup.Wait(); browserBuildError != nil {
-			return browserBuildError
+			return metrics, browserBuildError
 		}
 	}
 
 	if schemaWriteError := builder.schemaProcessor.WriteSchema(); schemaWriteError != nil {
-		return schemaWriteError
+		return metrics, schemaWriteError
 	}
 
 	if options.CompileGo {
+		goCompileStartedAt := time.Now()
+		builder.log.Info("Compiling Go binary...")
 		if compileError := builder.compileGoForMode(options.IsDev); compileError != nil {
-			return fmt.Errorf("go compilation failed: %w", compileError)
+			return metrics, fmt.Errorf("go compilation failed: %w", compileError)
 		}
+		goCompileDuration := time.Since(goCompileStartedAt)
+		metrics.GoCompileDuration = goCompileDuration
+		builder.log.Info(
+			"DONE compiling Go binary",
+			"duration",
+			goCompileDuration,
+		)
 	}
 
 	if builder.cfg.FrameworkPublicFileMapOutDir != "" {
 		if writeMapError := builder.writeFrameworkPublicFileMapTS(); writeMapError != nil {
-			return writeMapError
+			return metrics, writeMapError
 		}
 	}
 
-	builder.log.Info(
+	builder.log.Debug(
 		"build completed",
 		"is_dev",
 		options.IsDev,
 		"is_rebuild",
 		options.IsRebuild,
 	)
-	return nil
+	return metrics, nil
 }
 
 // CompileGo compiles the configured go binary output.
@@ -396,7 +420,7 @@ func (builder *Builder) compileGoForMode(isDev bool) error {
 		)
 	}
 
-	builder.log.Info("compiled go binary", "out", binaryOutputPath)
+	builder.log.Debug("compiled go binary", "out", binaryOutputPath)
 	return nil
 }
 

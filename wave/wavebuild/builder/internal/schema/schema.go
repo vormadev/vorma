@@ -51,7 +51,7 @@ func (processor *Processor) WriteSchema() error {
 	if writeError := shared.WriteFileAtomically(targetPath, schemaBytes, 0o644); writeError != nil {
 		return writeError
 	}
-	processor.log.Info("wrote wave config schema", "path", targetPath)
+	processor.log.Debug("wrote wave config schema", "path", targetPath)
 	return nil
 }
 
