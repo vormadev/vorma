@@ -5,6 +5,8 @@ package testkit
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"os"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -49,15 +52,23 @@ func NewBuildTestFixture(
 ) *BuildTestFixture {
 	t.Helper()
 
-	rootDir := t.TempDir()
+	rootDir := wavetest.NewWorkspaceTempDir(t, "vormabuild-fixture-")
 	distDir := filepath.Join(rootDir, "dist")
 	staticDir := filepath.Join(distDir, "static")
-	privateDir := filepath.Join(staticDir, "assets", "private")
-	publicDir := filepath.Join(staticDir, "assets", "public")
+	privateDir := filepath.Join(
+		staticDir,
+		waveartifacts.AssetsDirname,
+		waveartifacts.PrivateDirname,
+	)
+	publicDir := filepath.Join(
+		staticDir,
+		waveartifacts.AssetsDirname,
+		waveartifacts.PublicDirname,
+	)
 
 	MustMkdirAll(t, privateDir)
 	MustMkdirAll(t, publicDir)
-	MustMkdirAll(t, filepath.Join(privateDir, runtimepaths.VormaOutDirname))
+	MustMkdirAll(t, filepath.Join(privateDir, runtimepaths.VormaInternalDirname))
 
 	cfg := vormaruntime.VormaConfig{
 		MainBuildEntry:       "backend/cmd/build",
@@ -81,15 +92,15 @@ func NewBuildTestFixture(
 	)
 
 	rawConfig := struct {
-		Core  wave.CoreConfig          `json:"Core"`
+		Core  waveconfig.CoreConfig    `json:"Core"`
 		Vorma vormaruntime.VormaConfig `json:"Vorma"`
 	}{
-		Core: wave.CoreConfig{
+		Core: waveconfig.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      distDir,
+			DistDir:      wavetest.MustCWDRelativePath(distDir),
 			StaticAssetDirs: staticAssetDirsForTests{
-				Private: privateDir,
-				Public:  publicDir,
+				Private: wavetest.MustCWDRelativePath(privateDir),
+				Public:  wavetest.MustCWDRelativePath(publicDir),
 			},
 			PublicPathPrefix: "/",
 		},
@@ -178,13 +189,27 @@ func MustResolveRepositoryRootDir(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("resolve current working directory: %v", err)
 	}
-	repositoryRootDir := filepath.Clean(
-		filepath.Join(currentWorkingDir, "..", ".."),
-	)
-	if _, err := os.Stat(filepath.Join(repositoryRootDir, "go.mod")); err != nil {
-		t.Fatalf("resolve repository root from %q: %v", currentWorkingDir, err)
+
+	repositoryRootDir := currentWorkingDir
+	for {
+		if _, statError := os.Stat(
+			filepath.Join(repositoryRootDir, "go.mod"),
+		); statError == nil {
+			return repositoryRootDir
+		}
+
+		parentDir := filepath.Dir(repositoryRootDir)
+		if parentDir == repositoryRootDir {
+			break
+		}
+		repositoryRootDir = parentDir
 	}
-	return repositoryRootDir
+
+	t.Fatalf(
+		"resolve repository root from %q: go.mod not found in ancestor directories",
+		currentWorkingDir,
+	)
+	return ""
 }
 
 // RunCommandAndCaptureOutput executes a command and returns merged stdout/stderr

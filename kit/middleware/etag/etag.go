@@ -236,7 +236,7 @@ func hasNoStoreDirective(cacheControl string) bool {
 }
 
 func generateETag(h hash.Hash, strong bool, headers http.Header) string {
-	if buildID := headers.Get("X-Vorma-Build-Id"); buildID != "" {
+	if buildID := headers.Get("X-Wave-Framework-Build-Id"); buildID != "" {
 		h.Write([]byte(buildID))
 	}
 

@@ -6,21 +6,35 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/internal/wavecache"
 )
+
+func newValueCacheForTest[T any](
+	fn func() (T, error),
+) *wavecache.ValueCache[T] {
+	return wavecache.NewValueCacheWithModeResolver(fn, GetIsDev)
+}
+
+func newKeyedCacheForTest[K comparable, V any](
+	fn func(K) (V, error),
+) *wavecache.KeyedCache[K, V] {
+	return wavecache.NewKeyedCacheWithPolicyAndModeResolver(fn, nil, GetIsDev)
+}
 
 func TestCacheCachesInProductionMode(t *testing.T) {
 	setWaveDevModeForTest(t, false)
 	calls := 0
-	c := newCache(func() (int, error) {
+	c := newValueCacheForTest(func() (int, error) {
 		calls++
 		return calls, nil
 	})
 
-	first, err := c.get()
+	first, err := c.Get()
 	if err != nil {
 		t.Fatalf("unexpected error on first cache get: %v", err)
 	}
-	second, err := c.get()
+	second, err := c.Get()
 	if err != nil {
 		t.Fatalf("unexpected error on second cache get: %v", err)
 	}
@@ -36,16 +50,16 @@ func TestCacheCachesInProductionMode(t *testing.T) {
 func TestCacheRecomputesInDevMode(t *testing.T) {
 	setWaveDevModeForTest(t, true)
 	calls := 0
-	c := newCache(func() (int, error) {
+	c := newValueCacheForTest(func() (int, error) {
 		calls++
 		return calls, nil
 	})
 
-	first, err := c.get()
+	first, err := c.Get()
 	if err != nil {
 		t.Fatalf("unexpected error on first cache get: %v", err)
 	}
-	second, err := c.get()
+	second, err := c.Get()
 	if err != nil {
 		t.Fatalf("unexpected error on second cache get: %v", err)
 	}
@@ -61,7 +75,7 @@ func TestCacheRecomputesInDevMode(t *testing.T) {
 func TestCacheMapCachesSuccessfulResultsInProductionMode(t *testing.T) {
 	setWaveDevModeForTest(t, false)
 	calls := 0
-	cm := newCacheMap(func(key string) (string, error) {
+	cm := newKeyedCacheForTest(func(key string) (string, error) {
 		calls++
 		if key == "fail" {
 			return "", fmt.Errorf("fail")
@@ -69,11 +83,11 @@ func TestCacheMapCachesSuccessfulResultsInProductionMode(t *testing.T) {
 		return key + "-value", nil
 	})
 
-	first, err := cm.get("ok")
+	first, err := cm.Get("ok")
 	if err != nil {
 		t.Fatalf("unexpected error for successful key: %v", err)
 	}
-	second, err := cm.get("ok")
+	second, err := cm.Get("ok")
 	if err != nil {
 		t.Fatalf("unexpected error for cached key: %v", err)
 	}
@@ -85,11 +99,11 @@ func TestCacheMapCachesSuccessfulResultsInProductionMode(t *testing.T) {
 		t.Fatalf("expected success result to be cached, calls=%d", calls)
 	}
 
-	_, err = cm.get("fail")
+	_, err = cm.Get("fail")
 	if err == nil {
 		t.Fatal("expected failure key to return error")
 	}
-	_, err = cm.get("fail")
+	_, err = cm.Get("fail")
 	if err == nil {
 		t.Fatal("expected repeated failure key to return error")
 	}
@@ -101,16 +115,16 @@ func TestCacheMapCachesSuccessfulResultsInProductionMode(t *testing.T) {
 func TestCacheMapRecomputesInDevMode(t *testing.T) {
 	setWaveDevModeForTest(t, true)
 	calls := 0
-	cm := newCacheMap(func(key string) (int, error) {
+	cm := newKeyedCacheForTest(func(key string) (int, error) {
 		calls++
 		return calls, nil
 	})
 
-	first, err := cm.get("any")
+	first, err := cm.Get("any")
 	if err != nil {
 		t.Fatalf("unexpected error on first map get: %v", err)
 	}
-	second, err := cm.get("any")
+	second, err := cm.Get("any")
 	if err != nil {
 		t.Fatalf("unexpected error on second map get: %v", err)
 	}
@@ -126,16 +140,16 @@ func TestCacheMapRecomputesInDevMode(t *testing.T) {
 func TestCacheCachesErrorsInProductionMode(t *testing.T) {
 	setWaveDevModeForTest(t, false)
 	calls := 0
-	c := newCache(func() (string, error) {
+	c := newValueCacheForTest(func() (string, error) {
 		calls++
 		return "", fmt.Errorf("boom")
 	})
 
-	_, firstErr := c.get()
+	_, firstErr := c.Get()
 	if firstErr == nil {
 		t.Fatal("expected first cache call to return error")
 	}
-	_, secondErr := c.get()
+	_, secondErr := c.Get()
 	if secondErr == nil {
 		t.Fatal("expected second cache call to return cached error")
 	}
@@ -150,16 +164,16 @@ func TestCacheCachesErrorsInProductionMode(t *testing.T) {
 func TestCacheRecomputesErrorsInDevMode(t *testing.T) {
 	setWaveDevModeForTest(t, true)
 	calls := 0
-	c := newCache(func() (string, error) {
+	c := newValueCacheForTest(func() (string, error) {
 		calls++
 		return "", fmt.Errorf("boom-%d", calls)
 	})
 
-	_, firstErr := c.get()
+	_, firstErr := c.Get()
 	if firstErr == nil {
 		t.Fatal("expected first cache call to return error")
 	}
-	_, secondErr := c.get()
+	_, secondErr := c.Get()
 	if secondErr == nil {
 		t.Fatal("expected second cache call to return error")
 	}
@@ -175,7 +189,7 @@ func TestCacheMapRunsInitializerOncePerKeyInProductionUnderConcurrency(t *testin
 	setWaveDevModeForTest(t, false)
 
 	var calls atomic.Int32
-	cm := newCacheMap(func(key string) (string, error) {
+	cm := newKeyedCacheForTest(func(key string) (string, error) {
 		time.Sleep(10 * time.Millisecond)
 		callCount := calls.Add(1)
 		return fmt.Sprintf("%s-%d", key, callCount), nil
@@ -189,7 +203,7 @@ func TestCacheMapRunsInitializerOncePerKeyInProductionUnderConcurrency(t *testin
 	for i := 0; i < goroutines; i++ {
 		go func(i int) {
 			defer wg.Done()
-			val, err := cm.get("shared")
+			val, err := cm.Get("shared")
 			if err != nil {
 				t.Errorf("cm.get returned error: %v", err)
 				return
@@ -213,7 +227,7 @@ func TestCacheMapRunsInitializerOncePerKeyInProductionUnderConcurrency(t *testin
 func TestCacheMapErrorDoesNotPoisonFutureSuccessInProduction(t *testing.T) {
 	setWaveDevModeForTest(t, false)
 	callCount := 0
-	cm := newCacheMap(func(key string) (string, error) {
+	cm := newKeyedCacheForTest(func(key string) (string, error) {
 		callCount++
 		if callCount == 1 {
 			return "", fmt.Errorf("transient failure")
@@ -221,12 +235,12 @@ func TestCacheMapErrorDoesNotPoisonFutureSuccessInProduction(t *testing.T) {
 		return fmt.Sprintf("%s-success-%d", key, callCount), nil
 	})
 
-	_, firstErr := cm.get("recovering-key")
+	_, firstErr := cm.Get("recovering-key")
 	if firstErr == nil {
 		t.Fatal("expected first cache map call to fail")
 	}
 
-	secondValue, secondErr := cm.get("recovering-key")
+	secondValue, secondErr := cm.Get("recovering-key")
 	if secondErr != nil {
 		t.Fatalf("expected second cache map call to succeed, got error: %v", secondErr)
 	}
@@ -234,7 +248,7 @@ func TestCacheMapErrorDoesNotPoisonFutureSuccessInProduction(t *testing.T) {
 		t.Fatalf("unexpected second cache map value: %q", secondValue)
 	}
 
-	thirdValue, thirdErr := cm.get("recovering-key")
+	thirdValue, thirdErr := cm.Get("recovering-key")
 	if thirdErr != nil {
 		t.Fatalf("expected third cache map call to use cached success, got error: %v", thirdErr)
 	}

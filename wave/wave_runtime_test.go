@@ -15,6 +15,11 @@ import (
 	"testing/fstest"
 
 	"github.com/vormadev/vorma/lab/jsonschema"
+	"github.com/vormadev/vorma/wave/internal/wavefilemap"
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveenv"
+	"github.com/vormadev/vorma/wave/waveframework"
+	"github.com/vormadev/vorma/wave/wavewatch"
 )
 
 func newDiscardLoggerForWaveTests() *slog.Logger {
@@ -34,6 +39,16 @@ func newWaveForTest(
 		DistStaticFS:   distStaticFS,
 		Logger:         newDiscardLoggerForWaveTests(),
 	})
+}
+
+func appendFrameworkWatchPatternsForTest(
+	w *Wave,
+	watchPatterns []wavewatch.WatchedFile,
+) {
+	waveframework.StateForConfig(w.cfg).WatchPatterns = append(
+		waveframework.StateForConfig(w.cfg).WatchPatterns,
+		watchPatterns...,
+	)
 }
 
 func TestNewPanicsWhenConfigJSONIsMissing(t *testing.T) {
@@ -94,70 +109,68 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 		t.Fatal("expected RawConfigJSON to return original configuration bytes")
 	}
 
-	w.addFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.txt"}})
-	if len(w.cfg.FrameworkWatchPatterns) != 1 {
+	appendFrameworkWatchPatternsForTest(
+		w,
+		[]wavewatch.WatchedFile{{Pattern: "**/*.txt"}},
+	)
+	if len(waveframework.StateForConfig(w.cfg).WatchPatterns) != 1 {
 		t.Fatalf(
 			"expected FrameworkWatchPatterns to append, got %+v",
-			w.cfg.FrameworkWatchPatterns,
+			waveframework.StateForConfig(w.cfg).WatchPatterns,
 		)
 	}
 
-	w.addIgnoredPatterns([]string{"**/*.tmp"})
-	if len(w.cfg.FrameworkIgnoredPatterns) != 1 {
+	waveframework.StateForConfig(w.cfg).IgnoredPatterns = append(
+		waveframework.StateForConfig(w.cfg).IgnoredPatterns,
+		"**/*.tmp",
+	)
+	if len(waveframework.StateForConfig(w.cfg).IgnoredPatterns) != 1 {
 		t.Fatalf(
 			"expected FrameworkIgnoredPatterns to append, got %+v",
-			w.cfg.FrameworkIgnoredPatterns,
+			waveframework.StateForConfig(w.cfg).IgnoredPatterns,
 		)
 	}
 
-	w.setPublicFileMapOutDir("generated/public")
-	if w.cfg.FrameworkPublicFileMapOutDir != "generated/public" {
-		t.Fatalf(
-			"unexpected public filemap out dir: %q",
-			w.cfg.FrameworkPublicFileMapOutDir,
-		)
-	}
-
-	w.setBrowserRuntimeNamespace("__vorma_runtime")
-	if got := w.cfg.FrameworkBrowserRuntimeNamespace; got != "__vorma_runtime" {
+	waveframework.StateForConfig(w.cfg).BrowserRuntimeNamespace = "__vorma_runtime"
+	if got := waveframework.StateForConfig(w.cfg).BrowserRuntimeNamespace; got != "__vorma_runtime" {
 		t.Fatalf("unexpected browser runtime namespace: %q", got)
 	}
 
-	w.setBrowserPublicURLResolverFunctionName("resolvePublicURL")
-	if got := w.cfg.FrameworkBrowserPublicURLResolverFunctionName; got != "resolvePublicURL" {
+	waveframework.StateForConfig(w.cfg).BrowserPublicURLResolverFunctionName = "resolvePublicURL"
+	if got := waveframework.StateForConfig(w.cfg).BrowserPublicURLResolverFunctionName; got != "resolvePublicURL" {
 		t.Fatalf("unexpected public URL resolver function name: %q", got)
 	}
 
-	w.setBrowserRevalidateFunctionName("__vorma_revalidate")
-	if got := w.cfg.FrameworkBrowserRevalidateFunctionName; got != "__vorma_revalidate" {
+	waveframework.StateForConfig(w.cfg).BrowserRevalidateFunctionName = "__vorma_revalidate"
+	if got := waveframework.StateForConfig(w.cfg).BrowserRevalidateFunctionName; got != "__vorma_revalidate" {
 		t.Fatalf("unexpected browser revalidate function name: %q", got)
 	}
 
-	w.setRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
-	if got := w.cfg.FrameworkRefreshRebuildingOverlayElementID; got != "vorma-refresh-overlay" {
+	waveframework.StateForConfig(w.cfg).RefreshRebuildingOverlayElementID = "vorma-refresh-overlay"
+	if got := waveframework.StateForConfig(w.cfg).RefreshRebuildingOverlayElementID; got != "vorma-refresh-overlay" {
 		t.Fatalf("unexpected refresh rebuilding overlay element ID: %q", got)
 	}
 
-	w.setCriticalCSSStyleElementID("vorma-critical-css")
-	if got := w.cfg.FrameworkCriticalCSSStyleElementID; got != "vorma-critical-css" {
+	waveframework.StateForConfig(w.cfg).CriticalCSSStyleElementID = "vorma-critical-css"
+	if got := waveframework.StateForConfig(w.cfg).CriticalCSSStyleElementID; got != "vorma-critical-css" {
 		t.Fatalf("unexpected critical CSS style element ID: %q", got)
 	}
 
-	w.setNonCriticalCSSLinkElementID("vorma-noncritical-css")
-	if got := w.cfg.FrameworkNonCriticalCSSLinkElementID; got != "vorma-noncritical-css" {
+	waveframework.StateForConfig(w.cfg).NonCriticalCSSLinkElementID = "vorma-noncritical-css"
+	if got := waveframework.StateForConfig(w.cfg).NonCriticalCSSLinkElementID; got != "vorma-noncritical-css" {
 		t.Fatalf("unexpected non-critical CSS link element ID: %q", got)
 	}
 
 	resetPortCacheForTest()
-	t.Setenv(envMode, "production")
-	t.Setenv(envPortSet, "true")
-	t.Setenv(envPort, "4500")
-	w.portResolver = newPortResolver()
+	t.Setenv(waveenv.EnvMode, "production")
+	t.Setenv(waveenv.EnvPortSet, "true")
+	t.Setenv(waveenv.EnvPort, "4500")
+	w.runtime.SetPortResolver(waveenv.NewResolverForMode(w.IsDev()))
 	if got := w.MustGetPort(); got != 4500 {
 		t.Fatalf("expected Wave instance resolver port 4500, got %d", got)
 	}
 
-	t.Setenv(envPort, "4501")
+	t.Setenv(waveenv.EnvPort, "4501")
 	if got := w.MustGetPort(); got != 4500 {
 		t.Fatalf(
 			"expected Wave instance resolver to cache first port 4500, got %d",
@@ -165,7 +178,7 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 		)
 	}
 
-	w.portResolver = newPortResolver()
+	w.runtime.SetPortResolver(waveenv.NewResolverForMode(w.IsDev()))
 	if got := w.MustGetPort(); got != 4501 {
 		t.Fatalf(
 			"expected Wave instance resolver reset to pick updated port 4501, got %d",
@@ -195,29 +208,33 @@ func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
 
 	originalCoreConfig := *w.cfg.Core
 
-	w.addFrameworkWatchPatterns([]WatchedFile{{Pattern: "**/*.route"}})
-	w.addIgnoredPatterns([]string{"generated/**"})
-	w.setPublicFileMapOutDir("generated/public")
-	w.setFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
-	w.setFrameworkProdBuildHookCommand("go run ./backend/cmd/build --prod")
-	w.registerFrameworkSchemaSection(
-		"Vorma",
-		jsonschema.Entry{Type: jsonschema.TypeObject},
+	appendFrameworkWatchPatternsForTest(
+		w,
+		[]wavewatch.WatchedFile{{Pattern: "**/*.route"}},
 	)
-	w.setFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+	waveframework.StateForConfig(w.cfg).IgnoredPatterns = append(
+		waveframework.StateForConfig(w.cfg).IgnoredPatterns,
+		"generated/**",
+	)
+	waveframework.StateForConfig(w.cfg).DevBuildHook = "go run ./backend/cmd/build --dev"
+	waveframework.StateForConfig(w.cfg).ProdBuildHook = "go run ./backend/cmd/build --prod"
+	waveframework.StateForConfig(w.cfg).SchemaExtensions = map[string]jsonschema.Entry{
+		"Vorma": {Type: jsonschema.TypeObject},
+	}
+	waveframework.StateForConfig(w.cfg).RunBuildHook = func(context.Context, bool) error {
 		return nil
-	})
-	w.setFrameworkPrepareGoBuildOverlay(func() (*GoBuildOverlay, error) {
-		return &GoBuildOverlay{
+	}
+	waveframework.StateForConfig(w.cfg).PrepareGoBuildOverlay = func() (*waveframework.GoBuildOverlay, error) {
+		return &waveframework.GoBuildOverlay{
 			OverlayConfigPath: "/tmp/vorma-overlay.json",
 		}, nil
-	})
-	w.setBrowserRuntimeNamespace("__vorma_runtime")
-	w.setBrowserPublicURLResolverFunctionName("resolvePublicURL")
-	w.setBrowserRevalidateFunctionName("__vorma_revalidate")
-	w.setRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
-	w.setCriticalCSSStyleElementID("vorma-critical-css")
-	w.setNonCriticalCSSLinkElementID("vorma-normal-css")
+	}
+	waveframework.StateForConfig(w.cfg).BrowserRuntimeNamespace = "__vorma_runtime"
+	waveframework.StateForConfig(w.cfg).BrowserPublicURLResolverFunctionName = "resolvePublicURL"
+	waveframework.StateForConfig(w.cfg).BrowserRevalidateFunctionName = "__vorma_revalidate"
+	waveframework.StateForConfig(w.cfg).RefreshRebuildingOverlayElementID = "vorma-refresh-overlay"
+	waveframework.StateForConfig(w.cfg).CriticalCSSStyleElementID = "vorma-critical-css"
+	waveframework.StateForConfig(w.cfg).NonCriticalCSSLinkElementID = "vorma-normal-css"
 
 	if got := *w.cfg.Core; got != originalCoreConfig {
 		t.Fatalf(
@@ -228,14 +245,14 @@ func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
 	}
 }
 
-func TestAddFrameworkWatchPatternsClonesInput(t *testing.T) {
+func TestAddFrameworkWatchPatternsAppendsInput(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
 
-	frameworkWatchPatterns := []WatchedFile{
+	frameworkWatchPatterns := []wavewatch.WatchedFile{
 		{
 			Pattern: "**/*.txt",
-			OnChangeHooks: []OnChangeHook{
+			OnChangeHooks: []wavewatch.OnChangeHook{
 				{
 					Exclude: []string{"generated/**"},
 				},
@@ -243,15 +260,12 @@ func TestAddFrameworkWatchPatternsClonesInput(t *testing.T) {
 		},
 	}
 
-	w.addFrameworkWatchPatterns(frameworkWatchPatterns)
+	appendFrameworkWatchPatternsForTest(w, frameworkWatchPatterns)
 
-	frameworkWatchPatterns[0].Pattern = "**/*.changed"
-	frameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed/**"
-
-	if got := w.cfg.FrameworkWatchPatterns[0].Pattern; got != "**/*.txt" {
+	if got := waveframework.StateForConfig(w.cfg).WatchPatterns[0].Pattern; got != "**/*.txt" {
 		t.Fatalf("framework watch pattern = %q, want **/*.txt", got)
 	}
-	if got := w.cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "generated/**" {
+	if got := waveframework.StateForConfig(w.cfg).WatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "generated/**" {
 		t.Fatalf("framework watch hook exclude = %q, want generated/**", got)
 	}
 }
@@ -260,12 +274,12 @@ func TestBaseFSUsesDiskInDevMode(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, fstest.MapFS{})
 
-	baseFS, err := w.getBaseFS()
+	baseFS, err := w.runtime.GetBaseFS()
 	if err != nil {
 		t.Fatalf("baseFS returned error: %v", err)
 	}
 
-	criticalCSS := mustReadFileFromFS(t, baseFS, RelPaths.CriticalCSS())
+	criticalCSS := mustReadFileFromFS(t, baseFS, "internal/critical.css")
 	if criticalCSS != "body{color:red;}" {
 		t.Fatalf(
 			"unexpected critical css content from base FS: %q",
@@ -278,7 +292,7 @@ func TestBaseFSProductionRequiresDistStaticFS(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, nil)
 
-	_, err := w.getBaseFS()
+	_, err := w.runtime.GetBaseFS()
 	if err == nil {
 		t.Fatal(
 			"expected production mode base FS initialization to fail without DistStaticFS",
@@ -296,7 +310,7 @@ func TestBaseFSProductionUsesProvidedFS(t *testing.T) {
 	}
 	w := newWaveForTest(t, fixture, false, mapFS)
 
-	baseFS, err := w.getBaseFS()
+	baseFS, err := w.runtime.GetBaseFS()
 	if err != nil {
 		t.Fatalf("baseFS returned error: %v", err)
 	}
@@ -310,7 +324,7 @@ func TestGetPublicAndPrivateFS(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	publicFS, err := w.getPublicFS()
+	publicFS, err := w.runtime.GetPublicFS()
 	if err != nil {
 		t.Fatalf("publicFS returned error: %v", err)
 	}
@@ -322,7 +336,11 @@ func TestGetPublicAndPrivateFS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PrivateFS returned error: %v", err)
 	}
-	if got := mustReadFileFromFS(t, privateFS, "template.html"); got != "private" {
+	if got := mustReadFileFromFS(
+		t,
+		privateFS,
+		"template.html",
+	); got != waveartifacts.PrivateDirname {
 		t.Fatalf("unexpected private file content: %q", got)
 	}
 }
@@ -331,7 +349,7 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	fm, err := w.publicFileMap()
+	fm, err := w.runtime.PublicFileMap()
 	if err != nil {
 		t.Fatalf("publicFileMap returned error: %v", err)
 	}
@@ -339,7 +357,9 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 		t.Fatalf("expected logo.txt in public file map, got %+v", fm)
 	}
 
-	if got := w.PublicURL("logo.txt"); got != "/assets/vorma_out/logo.hash.txt" {
+	if got := w.PublicURL("logo.txt"); got != testHashedOutputPublicURL(
+		"logo.hash.txt",
+	) {
 		t.Fatalf("unexpected mapped public URL: %q", got)
 	}
 	if got := w.PublicURL("missing.txt"); got != "" {
@@ -348,7 +368,9 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 			got,
 		)
 	}
-	if got := w.PublicURL("/assets/logo.txt"); got != "/assets/vorma_out/logo.hash.txt" {
+	if got := w.PublicURL("/assets/logo.txt"); got != testHashedOutputPublicURL(
+		"logo.hash.txt",
+	) {
 		t.Fatalf("unexpected already-prefixed mapped public URL: %q", got)
 	}
 	if got := w.PublicURL("/assets/missing.txt"); got != "" {
@@ -412,21 +434,23 @@ func TestPublicFileMapReturnsDefensiveCopy(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
 
-	firstMap, err := w.publicFileMap()
+	firstMap, err := w.runtime.PublicFileMap()
 	if err != nil {
 		t.Fatalf("publicFileMap returned error: %v", err)
 	}
 
-	firstMap["logo.txt"] = FileVal{
+	firstMap["logo.txt"] = wavefilemap.FileVal{
 		DistName: "changed/logo.txt",
 	}
 
-	secondMap, err := w.publicFileMap()
+	secondMap, err := w.runtime.PublicFileMap()
 	if err != nil {
 		t.Fatalf("publicFileMap returned error: %v", err)
 	}
 
-	if got := secondMap["logo.txt"].DistName; got != "vorma_out/logo.hash.txt" {
+	if got := secondMap["logo.txt"].DistName; got != testHashedOutputRelativePath(
+		"logo.hash.txt",
+	) {
 		t.Fatalf("public file map entry persisted caller mutation: got %q", got)
 	}
 }
@@ -435,7 +459,9 @@ func TestPublicFileMapElementsAndHash(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.publicFileMapURL(); got != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
+	if got := w.runtime.PublicFileMapURL(); got != testOwnedOutputPublicURL(
+		"public_filemap_hash.js",
+	) {
 		t.Fatalf("unexpected public file map URL: %q", got)
 	}
 
@@ -443,7 +469,7 @@ func TestPublicFileMapElementsAndHash(t *testing.T) {
 	if fileMapDetails == nil {
 		t.Fatal("expected public file map details to be initialized")
 	}
-	elements := fileMapDetails.elements
+	elements := fileMapDetails.Elements
 	if !strings.Contains(elements, `rel="modulepreload"`) {
 		t.Fatalf(
 			"expected modulepreload link in filemap elements, got %q",
@@ -475,14 +501,14 @@ func TestPublicFileMapElementsUseConfiguredBrowserRuntimeSettings(
 ) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.setBrowserRuntimeNamespace("__vorma_runtime")
-	w.setBrowserPublicURLResolverFunctionName("resolvePublicURL")
+	waveframework.StateForConfig(w.cfg).BrowserRuntimeNamespace = "__vorma_runtime"
+	waveframework.StateForConfig(w.cfg).BrowserPublicURLResolverFunctionName = "resolvePublicURL"
 
 	fileMapDetails := readFileMapDetailsFromCacheForTest(w)
 	if fileMapDetails == nil {
 		t.Fatal("expected public file map details to be initialized")
 	}
-	elements := fileMapDetails.elements
+	elements := fileMapDetails.Elements
 	if !strings.Contains(
 		elements,
 		`const browserRuntimeNamespace = "__vorma_runtime";`,
@@ -501,7 +527,7 @@ func TestPublicFileMapElementsEmptyWhenRefMissing(t *testing.T) {
 	}
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.publicFileMapURL(); got != "" {
+	if got := w.runtime.PublicFileMapURL(); got != "" {
 		t.Fatalf(
 			"expected empty file map URL when ref file is missing, got %q",
 			got,
@@ -511,7 +537,7 @@ func TestPublicFileMapElementsEmptyWhenRefMissing(t *testing.T) {
 	if fileMapDetails == nil {
 		t.Fatal("expected public file map details cache value")
 	}
-	if got := fileMapDetails.elements; got != "" {
+	if got := fileMapDetails.Elements; got != "" {
 		t.Fatalf(
 			"expected empty file map elements when ref file is missing, got %q",
 			got,
@@ -533,10 +559,10 @@ func TestCriticalCSSMethods(t *testing.T) {
 	if !strings.Contains(el, "body{color:red;}") {
 		t.Fatalf("expected critical css content in style element, got %q", el)
 	}
-	if w.cfg.criticalCSSStyleElementID() != defaultCriticalCSSStyleElementID {
+	if waveframework.CriticalCSSStyleElementID(w.cfg) != "wave-critical-css" {
 		t.Fatalf(
 			"unexpected critical css element id: %q",
-			w.cfg.criticalCSSStyleElementID(),
+			waveframework.CriticalCSSStyleElementID(w.cfg),
 		)
 	}
 }
@@ -544,7 +570,7 @@ func TestCriticalCSSMethods(t *testing.T) {
 func TestCriticalCSSUsesConfiguredElementID(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.setCriticalCSSStyleElementID("vorma-critical-css")
+	waveframework.StateForConfig(w.cfg).CriticalCSSStyleElementID = "vorma-critical-css"
 
 	el := string(w.CriticalCSSStyleElement())
 	if !strings.Contains(el, `id="vorma-critical-css"`) {
@@ -553,10 +579,10 @@ func TestCriticalCSSUsesConfiguredElementID(t *testing.T) {
 			el,
 		)
 	}
-	if w.cfg.criticalCSSStyleElementID() != "vorma-critical-css" {
+	if waveframework.CriticalCSSStyleElementID(w.cfg) != "vorma-critical-css" {
 		t.Fatalf(
 			"unexpected configured critical css element id getter value: %q",
-			w.cfg.criticalCSSStyleElementID(),
+			waveframework.CriticalCSSStyleElementID(w.cfg),
 		)
 	}
 }
@@ -598,23 +624,25 @@ func TestStylesheetURLAndLink(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.styleSheetURL(); got != "/assets/vorma_out/vorma_internal_normal_hash.css" {
+	if got := w.runtime.StyleSheetURL(); got != testOwnedOutputPublicURL(
+		"normal_hash.css",
+	) {
 		t.Fatalf("unexpected stylesheet URL: %q", got)
 	}
 	link := string(w.StyleSheetLinkElement())
 	if !strings.Contains(
 		link,
-		`href="/assets/vorma_out/vorma_internal_normal_hash.css"`,
+		`href="`+testOwnedOutputPublicURL("normal_hash.css")+`"`,
 	) {
 		t.Fatalf("expected stylesheet href in link element, got %q", link)
 	}
 	if !strings.Contains(link, `id="wave-normal-css"`) {
 		t.Fatalf("expected stylesheet element id in link element, got %q", link)
 	}
-	if w.cfg.nonCriticalCSSLinkElementID() != defaultNonCriticalCSSLinkElementID {
+	if waveframework.NonCriticalCSSLinkElementID(w.cfg) != "wave-normal-css" {
 		t.Fatalf(
 			"unexpected stylesheet element id: %q",
-			w.cfg.nonCriticalCSSLinkElementID(),
+			waveframework.NonCriticalCSSLinkElementID(w.cfg),
 		)
 	}
 }
@@ -622,7 +650,7 @@ func TestStylesheetURLAndLink(t *testing.T) {
 func TestStylesheetLinkUsesConfiguredElementID(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.setNonCriticalCSSLinkElementID("vorma-normal-css")
+	waveframework.StateForConfig(w.cfg).NonCriticalCSSLinkElementID = "vorma-normal-css"
 
 	link := string(w.StyleSheetLinkElement())
 	if !strings.Contains(link, `id="vorma-normal-css"`) {
@@ -631,10 +659,10 @@ func TestStylesheetLinkUsesConfiguredElementID(t *testing.T) {
 			link,
 		)
 	}
-	if w.cfg.nonCriticalCSSLinkElementID() != "vorma-normal-css" {
+	if waveframework.NonCriticalCSSLinkElementID(w.cfg) != "vorma-normal-css" {
 		t.Fatalf(
 			"unexpected configured stylesheet element id getter value: %q",
-			w.cfg.nonCriticalCSSLinkElementID(),
+			waveframework.NonCriticalCSSLinkElementID(w.cfg),
 		)
 	}
 }
@@ -644,7 +672,7 @@ func TestStylesheetReturnsEmptyWhenEntryUnset(t *testing.T) {
 	fixture.cfg.Core.CSSEntryFiles.NonCritical = ""
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if got := w.styleSheetURL(); got != "" {
+	if got := w.runtime.StyleSheetURL(); got != "" {
 		t.Fatalf(
 			"expected empty stylesheet URL when non-critical entry is unset, got %q",
 			got,
@@ -662,22 +690,22 @@ func TestIsPublicAssetWithConfiguredPrefixUsesFileExistence(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if !w.isPublicAsset("/assets/logo.txt") {
+	if !w.runtime.IsPublicAsset("/assets/logo.txt") {
 		t.Fatal(
 			"expected existing prefixed file path to be treated as a public asset",
 		)
 	}
-	if w.isPublicAsset("/assets/anything.txt") {
+	if w.runtime.IsPublicAsset("/assets/anything.txt") {
 		t.Fatal(
 			"expected missing prefixed file path to not be treated as a public asset",
 		)
 	}
-	if w.isPublicAsset("/other/path") {
+	if w.runtime.IsPublicAsset("/other/path") {
 		t.Fatal(
 			"expected non-prefixed path to not be treated as a public asset",
 		)
 	}
-	if w.isPublicAsset("/assets/vorma_out") {
+	if w.runtime.IsPublicAsset("/assets/" + waveartifacts.HashedOutputDirname) {
 		t.Fatal(
 			"expected prefixed directory path to not be treated as a public asset",
 		)
@@ -689,18 +717,18 @@ func TestIsPublicAssetRootPrefixUsesFileExistence(t *testing.T) {
 	fixture.cfg.Core.PublicPathPrefix = "/"
 	w := newWaveForTest(t, fixture, true, nil)
 
-	if !w.isPublicAsset("/logo.txt") {
+	if !w.runtime.IsPublicAsset("/logo.txt") {
 		t.Fatal("expected existing file under root prefix to be a public asset")
 	}
-	if w.isPublicAsset("/missing.txt") {
+	if w.runtime.IsPublicAsset("/missing.txt") {
 		t.Fatal(
 			"expected missing file under root prefix to not be a public asset",
 		)
 	}
-	if w.isPublicAsset("/") {
+	if w.runtime.IsPublicAsset("/") {
 		t.Fatal("expected root path to not be treated as an asset")
 	}
-	if w.isPublicAsset("/vorma_out") {
+	if w.runtime.IsPublicAsset("/" + waveartifacts.HashedOutputDirname) {
 		t.Fatal("expected directory path to not be treated as an asset")
 	}
 }
@@ -709,7 +737,7 @@ func TestStaticHandlerAndMustStaticMiddleware(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	immutableHandler, err := w.staticHandler(true)
+	immutableHandler, err := w.runtime.StaticHandler(true)
 	if err != nil {
 		t.Fatalf("staticHandler returned error: %v", err)
 	}
@@ -731,7 +759,7 @@ func TestStaticHandlerAndMustStaticMiddleware(t *testing.T) {
 		t.Fatalf("unexpected immutable handler body: %q", body)
 	}
 
-	mutableHandler, err := w.staticHandler(false)
+	mutableHandler, err := w.runtime.StaticHandler(false)
 	if err != nil {
 		t.Fatalf("staticHandler returned error: %v", err)
 	}
@@ -826,99 +854,131 @@ func TestConfigAccessorMethods(t *testing.T) {
 	if w.PublicPathPrefix() != "/assets/" {
 		t.Fatalf("unexpected public path prefix: %q", w.PublicPathPrefix())
 	}
-	if w.DistDir() != fixture.cfg.Core.DistDir {
+	expectedDistDir := filepath.Clean(fixture.cfg.Core.DistDir)
+	if w.DistDir() != expectedDistDir {
 		t.Fatalf("unexpected dist dir: %q", w.DistDir())
 	}
-	if w.publicStaticDir() != fixture.cfg.Core.StaticAssetDirs.Public {
-		t.Fatalf("unexpected public static dir: %q", w.publicStaticDir())
+	expectedPublicStaticDir := filepath.Clean(
+		fixture.cfg.Core.StaticAssetDirs.Public,
+	)
+	if w.runtime.PublicStaticDir() != expectedPublicStaticDir {
+		t.Fatalf(
+			"unexpected public static dir: %q",
+			w.runtime.PublicStaticDir(),
+		)
 	}
-	if w.PrivateStaticDir() != fixture.cfg.Core.StaticAssetDirs.Private {
+	expectedPrivateStaticDir := filepath.Clean(
+		fixture.cfg.Core.StaticAssetDirs.Private,
+	)
+	if w.PrivateStaticDir() != expectedPrivateStaticDir {
 		t.Fatalf("unexpected private static dir: %q", w.PrivateStaticDir())
 	}
-	if w.ViteManifestLocation() != fixture.cfg.ViteManifestPath() {
+	expectedViteManifestLocation := filepath.Clean(
+		fixture.cfg.ViteManifestPath(),
+	)
+	if w.ViteManifestLocation() != expectedViteManifestLocation {
 		t.Fatalf(
 			"unexpected Vite manifest location: %q",
 			w.ViteManifestLocation(),
 		)
 	}
-	if w.viteOutDir() != fixture.cfg.Dist.StaticPublic() {
-		t.Fatalf("unexpected Vite out dir: %q", w.viteOutDir())
+	expectedViteOutDir := filepath.Clean(fixture.cfg.Dist.StaticPublic())
+	if w.runtime.ViteOutDir() != expectedViteOutDir {
+		t.Fatalf("unexpected Vite out dir: %q", w.runtime.ViteOutDir())
 	}
-	if w.StaticPrivateOutDir() != fixture.cfg.Dist.StaticPrivate() {
+	expectedStaticPrivateOutDir := filepath.Clean(
+		fixture.cfg.Dist.StaticPrivate(),
+	)
+	if w.StaticPrivateOutDir() != expectedStaticPrivateOutDir {
 		t.Fatalf(
 			"unexpected static private out dir: %q",
 			w.StaticPrivateOutDir(),
 		)
 	}
-	if w.StaticPublicOutDir() != fixture.cfg.Dist.StaticPublic() {
+	expectedStaticPublicOutDir := filepath.Clean(
+		fixture.cfg.Dist.StaticPublic(),
+	)
+	if w.StaticPublicOutDir() != expectedStaticPublicOutDir {
 		t.Fatalf("unexpected static public out dir: %q", w.StaticPublicOutDir())
 	}
 
-	w.addFrameworkWatchPatterns([]WatchedFile{
-		{
-			Pattern: "**/*.txt",
-			OnChangeHooks: []OnChangeHook{
-				{
-					Exclude: []string{"generated/**"},
+	parsedConfig := waveframework.ParsedConfig(w.RawConfigJSON())
+	if parsedConfig == nil {
+		t.Fatal("expected ParsedConfig() to return non-nil parsed config")
+	}
+	parsedConfigAgain := waveframework.ParsedConfig(w.RawConfigJSON())
+	if parsedConfigAgain != parsedConfig {
+		t.Fatal(
+			"expected ParsedConfig() to return stable canonical parsed config across repeated calls",
+		)
+	}
+
+	appendFrameworkWatchPatternsForTest(
+		&Wave{cfg: parsedConfig},
+		[]wavewatch.WatchedFile{
+			{
+				Pattern: "**/*.txt",
+				OnChangeHooks: []wavewatch.OnChangeHook{
+					{
+						Exclude: []string{"generated/**"},
+					},
 				},
 			},
 		},
-	})
-	w.addIgnoredPatterns([]string{"ignored/**"})
-	w.setFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
-	w.setFrameworkRunBuildHookRunner(func(context.Context, bool) error {
+	)
+	waveframework.StateForConfig(parsedConfig).IgnoredPatterns = append(
+		waveframework.StateForConfig(parsedConfig).IgnoredPatterns,
+		"ignored/**",
+	)
+	waveframework.StateForConfig(parsedConfig).DevBuildHook = "go run ./backend/cmd/build --dev"
+	waveframework.StateForConfig(parsedConfig).RunBuildHook = func(context.Context, bool) error {
 		return nil
-	})
-
-	parsedConfigSnapshot := w.ParsedConfig()
-	if parsedConfigSnapshot == w.cfg {
-		t.Fatal("expected ParsedConfig to return a defensive copy")
 	}
-	if parsedConfigSnapshot.Core == w.cfg.Core {
-		t.Fatal("expected ParsedConfig to deep-clone Core config")
+	waveframework.StateForConfig(parsedConfig).SchemaExtensions = map[string]jsonschema.Entry{
+		"Custom": {Type: jsonschema.TypeObject},
 	}
 
-	parsedConfigSnapshot.Core.MainAppEntry = "cmd/changed"
-	parsedConfigSnapshot.FrameworkWatchPatterns[0].Pattern = "**/*.changed"
-	parsedConfigSnapshot.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = "changed/**"
-	parsedConfigSnapshot.FrameworkIgnoredPatterns[0] = "changed-ignored/**"
-	parsedConfigSnapshot.FrameworkDevBuildHook = "go run ./backend/cmd/build --changed-dev"
-
-	if got := w.cfg.Core.MainAppEntry; got != fixture.cfg.Core.MainAppEntry {
-		t.Fatalf("ParsedConfig snapshot mutated core main app entry: %q", got)
-	}
-	if got := w.cfg.FrameworkWatchPatterns[0].Pattern; got != "**/*.txt" {
-		t.Fatalf(
-			"ParsedConfig snapshot mutated framework watch pattern: %q",
-			got,
-		)
-	}
-	if got := w.cfg.FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "generated/**" {
-		t.Fatalf(
-			"ParsedConfig snapshot mutated framework watch hook exclude: %q",
-			got,
-		)
-	}
-	if got := w.cfg.FrameworkIgnoredPatterns[0]; got != "ignored/**" {
-		t.Fatalf(
-			"ParsedConfig snapshot mutated framework ignored pattern: %q",
-			got,
-		)
-	}
-	if got := w.cfg.FrameworkDevBuildHook; got != "go run ./backend/cmd/build --dev" {
-		t.Fatalf(
-			"ParsedConfig snapshot mutated framework dev build hook: %q",
-			got,
-		)
-	}
-	if parsedConfigSnapshot.FrameworkSchemaExtensions != nil {
+	buildtimeParsedConfig := waveframework.BuildtimeParsedConfig(
+		w.RawConfigJSON(),
+	)
+	if buildtimeParsedConfig != parsedConfig {
 		t.Fatal(
-			"expected ParsedConfig snapshot to omit framework schema extensions",
+			"expected BuildtimeParsedConfig() to resolve to canonical parsed config instance",
 		)
 	}
-	if parsedConfigSnapshot.FrameworkRunBuildHook != nil {
+
+	if got := waveframework.StateForConfig(buildtimeParsedConfig).WatchPatterns[0].Pattern; got != "**/*.txt" {
+		t.Fatalf(
+			"FrameworkWatchPatterns[0].Pattern = %q, want %q",
+			got,
+			"**/*.txt",
+		)
+	}
+	if got := waveframework.StateForConfig(buildtimeParsedConfig).WatchPatterns[0].OnChangeHooks[0].Exclude[0]; got != "generated/**" {
+		t.Fatalf(
+			"FrameworkWatchPatterns[0].OnChangeHooks[0].Exclude[0] = %q, want %q",
+			got,
+			"generated/**",
+		)
+	}
+	if got := waveframework.StateForConfig(buildtimeParsedConfig).IgnoredPatterns[0]; got != "ignored/**" {
+		t.Fatalf("FrameworkIgnoredPatterns[0] = %q, want %q", got, "ignored/**")
+	}
+	if got := waveframework.StateForConfig(buildtimeParsedConfig).DevBuildHook; got != "go run ./backend/cmd/build --dev" {
+		t.Fatalf(
+			"FrameworkDevBuildHook = %q, want %q",
+			got,
+			"go run ./backend/cmd/build --dev",
+		)
+	}
+	if _, ok := waveframework.StateForConfig(buildtimeParsedConfig).SchemaExtensions["Custom"]; !ok {
 		t.Fatal(
-			"expected ParsedConfig snapshot to omit framework run build hook callback",
+			"expected BuildtimeParsedConfig() to preserve schema extensions",
+		)
+	}
+	if waveframework.StateForConfig(buildtimeParsedConfig).RunBuildHook == nil {
+		t.Fatal(
+			"expected BuildtimeParsedConfig() to preserve run build hook callback",
 		)
 	}
 }
@@ -927,33 +987,37 @@ func TestBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	w.setFrameworkDevBuildHookCommand("go run ./backend/cmd/build --dev")
-	w.registerFrameworkSchemaSection(
-		"Custom",
-		jsonschema.Entry{Type: jsonschema.TypeObject},
-	)
-	w.setFrameworkRunBuildHookRunner(func(context.Context, bool) error {
-		return nil
-	})
-
-	buildtimeParsedConfig := w.BuildtimeParsedConfig()
-	buildtimeParsedConfig.Core.MainAppEntry = "cmd/internal-mutated"
-
-	if got := w.cfg.Core.MainAppEntry; got != fixture.cfg.Core.MainAppEntry {
-		t.Fatalf(
-			"BuildtimeParsedConfig snapshot mutated core main app entry: %q",
-			got,
+	parsedConfig := waveframework.BuildtimeParsedConfig(w.RawConfigJSON())
+	if parsedConfig == nil {
+		t.Fatal(
+			"expected BuildtimeParsedConfig() to return non-nil parsed config",
 		)
 	}
-	if got := buildtimeParsedConfig.FrameworkDevBuildHook; got != "go run ./backend/cmd/build --dev" {
+	waveframework.StateForConfig(parsedConfig).DevBuildHook = "go run ./backend/cmd/build --dev"
+	waveframework.StateForConfig(parsedConfig).SchemaExtensions = map[string]jsonschema.Entry{
+		"Custom": {Type: jsonschema.TypeObject},
+	}
+	waveframework.StateForConfig(parsedConfig).RunBuildHook = func(context.Context, bool) error {
+		return nil
+	}
+
+	buildtimeParsedConfig := waveframework.BuildtimeParsedConfig(
+		w.RawConfigJSON(),
+	)
+	if buildtimeParsedConfig != parsedConfig {
+		t.Fatal(
+			"expected BuildtimeParsedConfig() to return stable canonical parsed config",
+		)
+	}
+	if got := waveframework.StateForConfig(buildtimeParsedConfig).DevBuildHook; got != "go run ./backend/cmd/build --dev" {
 		t.Fatalf("FrameworkDevBuildHook = %q, want configured value", got)
 	}
-	if _, ok := buildtimeParsedConfig.FrameworkSchemaExtensions["Custom"]; !ok {
+	if _, ok := waveframework.StateForConfig(buildtimeParsedConfig).SchemaExtensions["Custom"]; !ok {
 		t.Fatal(
 			"expected BuildtimeParsedConfig snapshot to include framework schema extensions",
 		)
 	}
-	if buildtimeParsedConfig.FrameworkRunBuildHook == nil {
+	if waveframework.StateForConfig(buildtimeParsedConfig).RunBuildHook == nil {
 		t.Fatal(
 			"expected BuildtimeParsedConfig snapshot to include framework run build hook",
 		)
@@ -964,9 +1028,12 @@ func TestMustGetFSAndStaticHandlerPanicsOnFailure(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, nil)
 
-	publicFS, publicFSError := w.getPublicFS()
+	publicFS, publicFSError := w.runtime.GetPublicFS()
 	if publicFSError == nil {
-		t.Fatalf("expected getPublicFS to fail when distStaticFS is nil, got %#v", publicFS)
+		t.Fatalf(
+			"expected getPublicFS to fail when distStaticFS is nil, got %#v",
+			publicFS,
+		)
 	}
 	if !strings.Contains(publicFSError.Error(), "distStaticFS is nil") {
 		t.Fatalf("unexpected getPublicFS error: %v", publicFSError)

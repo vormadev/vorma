@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/vormadev/vorma/wave/internal/wavecore"
+	"github.com/vormadev/vorma/wave/waveenv"
 )
 
 func stubGetFreePortForTest(
@@ -14,12 +14,12 @@ func stubGetFreePortForTest(
 ) {
 	t.Helper()
 
-	defaultPortResolver = wavecore.NewResolverWithFreePortResolver(getFreePortFunc)
+	defaultPortResolver = waveenv.NewResolverWithFreePortResolver(getFreePortFunc)
 	t.Cleanup(resetPortCacheForTest)
 }
 
 func TestGetIsDevAndSetModeToDev(t *testing.T) {
-	t.Setenv(envMode, "production")
+	t.Setenv(waveenv.EnvMode, "production")
 	if GetIsDev() {
 		t.Fatal("expected GetIsDev=false when __WAVE_MODE is not development")
 	}
@@ -31,37 +31,37 @@ func TestGetIsDevAndSetModeToDev(t *testing.T) {
 }
 
 func TestEnvPort(t *testing.T) {
-	t.Setenv(envPort, "")
-	if got := wavecore.ParseEnvPort(); got != 0 {
+	t.Setenv(waveenv.EnvPort, "")
+	if got := waveenv.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected empty PORT to return 0, got %d", got)
 	}
 
-	t.Setenv(envPort, "4242")
-	if got := wavecore.ParseEnvPort(); got != 4242 {
+	t.Setenv(waveenv.EnvPort, "4242")
+	if got := waveenv.ParseEnvPort(); got != 4242 {
 		t.Fatalf("expected PORT=4242 to parse to 4242, got %d", got)
 	}
 
-	t.Setenv(envPort, "not-a-number")
-	if got := wavecore.ParseEnvPort(); got != 0 {
+	t.Setenv(waveenv.EnvPort, "not-a-number")
+	if got := waveenv.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected invalid PORT to return 0, got %d", got)
 	}
 
-	t.Setenv(envPort, "-1")
-	if got := wavecore.ParseEnvPort(); got != 0 {
+	t.Setenv(waveenv.EnvPort, "-1")
+	if got := waveenv.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected negative PORT to return 0, got %d", got)
 	}
 
-	t.Setenv(envPort, "70000")
-	if got := wavecore.ParseEnvPort(); got != 0 {
+	t.Setenv(waveenv.EnvPort, "70000")
+	if got := waveenv.ParseEnvPort(); got != 0 {
 		t.Fatalf("expected out-of-range PORT to return 0, got %d", got)
 	}
 }
 
 func TestMustGetPortNonDevPanicsWhenPortMissing(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, "production")
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "")
+	t.Setenv(waveenv.EnvMode, "production")
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "")
 
 	defer func() {
 		if recover() == nil {
@@ -75,9 +75,9 @@ func TestMustGetPortNonDevPanicsWhenPortMissing(t *testing.T) {
 
 func TestMustGetPortNonDevUsesConfiguredPort(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, "production")
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "9090")
+	t.Setenv(waveenv.EnvMode, "production")
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "9090")
 
 	if got := MustGetPort(); got != 9090 {
 		t.Fatalf("expected configured non-dev port 9090, got %d", got)
@@ -86,9 +86,9 @@ func TestMustGetPortNonDevUsesConfiguredPort(t *testing.T) {
 
 func TestMustGetPortNonDevPanicsWhenPortInvalid(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, "production")
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "not-a-number")
+	t.Setenv(waveenv.EnvMode, "production")
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "not-a-number")
 
 	defer func() {
 		if recover() == nil {
@@ -102,9 +102,9 @@ func TestMustGetPortNonDevPanicsWhenPortInvalid(t *testing.T) {
 
 func TestMustGetPortDevChoosesPortAndMarksSet(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, envModeDev)
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "32123")
+	t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "32123")
 	stubGetFreePortForTest(t, func(port int) (int, error) {
 		if port != 32123 {
 			t.Fatalf("expected free-port lookup from 32123, got %d", port)
@@ -116,23 +116,23 @@ func TestMustGetPortDevChoosesPortAndMarksSet(t *testing.T) {
 	if got != 32124 {
 		t.Fatalf("expected deterministic free-port result 32124, got %d", got)
 	}
-	if env := wavecore.ParseEnvPort(); env != got {
+	if env := waveenv.ParseEnvPort(); env != got {
 		t.Fatalf(
 			"expected PORT env to match returned port (%d), got %d",
 			got,
 			env,
 		)
 	}
-	if flag := os.Getenv(envPortSet); flag != "true" {
-		t.Fatalf("expected %s to be true, got %q", envPortSet, flag)
+	if flag := os.Getenv(waveenv.EnvPortSet); flag != "true" {
+		t.Fatalf("expected %s to be true, got %q", waveenv.EnvPortSet, flag)
 	}
 }
 
 func TestMustGetPortDevUsesFallbackBasePortWhenPortMissing(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, envModeDev)
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "")
+	t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "")
 
 	stubGetFreePortForTest(t, func(port int) (int, error) {
 		if port != 0 {
@@ -148,23 +148,23 @@ func TestMustGetPortDevUsesFallbackBasePortWhenPortMissing(t *testing.T) {
 	if got != 38080 {
 		t.Fatalf("expected fallback free-port result 38080, got %d", got)
 	}
-	if env := wavecore.ParseEnvPort(); env != got {
+	if env := waveenv.ParseEnvPort(); env != got {
 		t.Fatalf(
 			"expected PORT env to match returned port (%d), got %d",
 			got,
 			env,
 		)
 	}
-	if flag := os.Getenv(envPortSet); flag != "true" {
-		t.Fatalf("expected %s to be true, got %q", envPortSet, flag)
+	if flag := os.Getenv(waveenv.EnvPortSet); flag != "true" {
+		t.Fatalf("expected %s to be true, got %q", waveenv.EnvPortSet, flag)
 	}
 }
 
 func TestMustGetPortDevPanicsWhenRequestedPortIsInvalid(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, envModeDev)
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "0")
+	t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "0")
 
 	defer func() {
 		if recover() == nil {
@@ -176,9 +176,9 @@ func TestMustGetPortDevPanicsWhenRequestedPortIsInvalid(t *testing.T) {
 
 func TestMustGetPortDevPanicsWhenFreePortResolutionFails(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, envModeDev)
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "32123")
+	t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "32123")
 
 	stubGetFreePortForTest(t, func(int) (int, error) {
 		return 0, errors.New("boom")
@@ -194,12 +194,12 @@ func TestMustGetPortDevPanicsWhenFreePortResolutionFails(t *testing.T) {
 
 func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, "production")
-	t.Setenv(envPortSet, "")
-	t.Setenv(envPort, "5001")
+	t.Setenv(waveenv.EnvMode, "production")
+	t.Setenv(waveenv.EnvPortSet, "")
+	t.Setenv(waveenv.EnvPort, "5001")
 
 	first := MustGetPort()
-	t.Setenv(envPort, "5002")
+	t.Setenv(waveenv.EnvPort, "5002")
 	second := MustGetPort()
 
 	if first != 5001 || second != 5001 {
@@ -213,16 +213,16 @@ func TestMustGetPortCachesResultAfterFirstCall(t *testing.T) {
 
 func TestPortResolverInstancesCacheIndependently(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, "production")
-	t.Setenv(envPort, "5001")
+	t.Setenv(waveenv.EnvMode, "production")
+	t.Setenv(waveenv.EnvPort, "5001")
 
-	firstResolver := newPortResolver()
+	firstResolver := waveenv.NewResolverForMode(GetIsDev())
 	if got := firstResolver.MustGetPort(); got != 5001 {
 		t.Fatalf("expected first resolver to return 5001, got %d", got)
 	}
 
-	t.Setenv(envPort, "5002")
-	secondResolver := newPortResolver()
+	t.Setenv(waveenv.EnvPort, "5002")
+	secondResolver := waveenv.NewResolverForMode(GetIsDev())
 	if got := secondResolver.MustGetPort(); got != 5002 {
 		t.Fatalf("expected second resolver to return 5002, got %d", got)
 	}
@@ -234,9 +234,9 @@ func TestPortResolverInstancesCacheIndependently(t *testing.T) {
 
 func TestMustGetPortDevHonorsPortWhenAlreadySet(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, envModeDev)
-	t.Setenv(envPortSet, "true")
-	t.Setenv(envPort, "3333")
+	t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
+	t.Setenv(waveenv.EnvPortSet, "true")
+	t.Setenv(waveenv.EnvPort, "3333")
 
 	if got := MustGetPort(); got != 3333 {
 		t.Fatalf("expected Port to honor already-set dev port, got %d", got)
@@ -245,9 +245,9 @@ func TestMustGetPortDevHonorsPortWhenAlreadySet(t *testing.T) {
 
 func TestMustGetPortDevAlreadySetPanicsForInvalidPort(t *testing.T) {
 	resetPortCacheForTest()
-	t.Setenv(envMode, envModeDev)
-	t.Setenv(envPortSet, "true")
-	t.Setenv(envPort, "")
+	t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
+	t.Setenv(waveenv.EnvPortSet, "true")
+	t.Setenv(waveenv.EnvPort, "")
 
 	defer func() {
 		if recover() == nil {
@@ -260,28 +260,28 @@ func TestMustGetPortDevAlreadySetPanicsForInvalidPort(t *testing.T) {
 }
 
 func TestGetAndSetRefreshServerPort(t *testing.T) {
-	t.Setenv(envRefreshServerPort, "")
-	if got := getRefreshServerPort(); got != 0 {
+	t.Setenv(waveenv.EnvRefreshServerPort, "")
+	if got := waveenv.ParseRefreshServerPort(); got != 0 {
 		t.Fatalf("expected empty refresh port to return 0, got %d", got)
 	}
 
-	setRefreshServerPort(10999)
-	if got := getRefreshServerPort(); got != 10999 {
+	waveenv.SetRefreshServerPort(10999)
+	if got := waveenv.ParseRefreshServerPort(); got != 10999 {
 		t.Fatalf("expected refresh port 10999, got %d", got)
 	}
 
-	t.Setenv(envRefreshServerPort, "invalid")
-	if got := getRefreshServerPort(); got != 0 {
+	t.Setenv(waveenv.EnvRefreshServerPort, "invalid")
+	if got := waveenv.ParseRefreshServerPort(); got != 0 {
 		t.Fatalf("expected invalid refresh port to return 0, got %d", got)
 	}
 
-	t.Setenv(envRefreshServerPort, "-10")
-	if got := getRefreshServerPort(); got != 0 {
+	t.Setenv(waveenv.EnvRefreshServerPort, "-10")
+	if got := waveenv.ParseRefreshServerPort(); got != 0 {
 		t.Fatalf("expected negative refresh port to return 0, got %d", got)
 	}
 
-	t.Setenv(envRefreshServerPort, "70000")
-	if got := getRefreshServerPort(); got != 0 {
+	t.Setenv(waveenv.EnvRefreshServerPort, "70000")
+	if got := waveenv.ParseRefreshServerPort(); got != 0 {
 		t.Fatalf("expected out-of-range refresh port to return 0, got %d", got)
 	}
 }

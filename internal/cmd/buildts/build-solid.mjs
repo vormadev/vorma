@@ -10,7 +10,7 @@ await build({
 	splitting: true,
 	write: true,
 	bundle: true,
-	entryPoints: ["./typescript/vorma/ui-adapters/solid/index.tsx"],
+	entryPoints: ["./typescript/vorma/ui-adapters/solid/index.ts"],
 	external: ["vorma", "solid-js"],
 	outdir: "./npm_dist/typescript/vorma/ui-adapters/solid",
 	tsconfig: "./typescript/vorma/ui-adapters/solid/tsconfig.json",

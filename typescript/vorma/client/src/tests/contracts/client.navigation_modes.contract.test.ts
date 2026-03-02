@@ -228,7 +228,7 @@ describe("client navigation mode contracts", () => {
 		}
 	});
 
-	it("performs hard reload redirect for navigation X-Vorma-Reload responses", async () => {
+	it("performs hard reload redirect for navigation X-Wave-Framework-Reload responses", async () => {
 		const api = await loadClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 
@@ -238,8 +238,8 @@ describe("client navigation mode contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-nav",
-							"X-Vorma-Build-Id": "reload-nav-build-1",
+							"X-Wave-Framework-Reload": "/force-reload-nav",
+							"X-Wave-Framework-Build-Id": "reload-nav-build-1",
 						},
 					},
 				),
@@ -264,7 +264,7 @@ describe("client navigation mode contracts", () => {
 		}
 	});
 
-	it("resolves relative X-Vorma-Reload targets against the redirecting request URL path", async () => {
+	it("resolves relative X-Wave-Framework-Reload targets against the redirecting request URL path", async () => {
 		window.history.replaceState({}, "", "/current-parent/");
 		const api = await loadClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
@@ -275,8 +275,9 @@ describe("client navigation mode contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "child-reload",
-							"X-Vorma-Build-Id": "relative-reload-build-1",
+							"X-Wave-Framework-Reload": "child-reload",
+							"X-Wave-Framework-Build-Id":
+								"relative-reload-build-1",
 						},
 					},
 				),
@@ -296,7 +297,7 @@ describe("client navigation mode contracts", () => {
 		}
 	});
 
-	it("prioritizes X-Vorma-Reload over X-Client-Redirect for navigation", async () => {
+	it("prioritizes X-Wave-Framework-Reload over X-Client-Redirect for navigation", async () => {
 		const api = await loadClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 
@@ -306,9 +307,10 @@ describe("client navigation mode contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-nav-priority",
+							"X-Wave-Framework-Reload":
+								"/force-reload-nav-priority",
 							"X-Client-Redirect": "/ignored-soft-nav",
-							"X-Vorma-Build-Id": "priority-nav-build-1",
+							"X-Wave-Framework-Build-Id": "priority-nav-build-1",
 						},
 					},
 				),
@@ -589,7 +591,7 @@ describe("client navigation mode contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-pop-build",
+							"X-Wave-Framework-Build-Id": "stale-pop-build",
 						},
 					},
 				),
@@ -675,7 +677,7 @@ describe("client navigation mode contracts", () => {
 			{},
 			{
 				headers: {
-					"X-Vorma-Build-Id": "stale-native-nav-build",
+					"X-Wave-Framework-Build-Id": "stale-native-nav-build",
 				},
 			},
 		);
@@ -759,7 +761,7 @@ describe("client navigation mode contracts", () => {
 					{
 						headers: {
 							"X-Client-Redirect": "/stale-soft-target",
-							"X-Vorma-Build-Id": "stale-soft-nav-build",
+							"X-Wave-Framework-Build-Id": "stale-soft-nav-build",
 						},
 					},
 				),
@@ -819,8 +821,8 @@ describe("client navigation mode contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/stale-hard-redirect",
-							"X-Vorma-Build-Id": "stale-hard-nav-build",
+							"X-Wave-Framework-Reload": "/stale-hard-redirect",
+							"X-Wave-Framework-Build-Id": "stale-hard-nav-build",
 						},
 					},
 				),

@@ -204,7 +204,7 @@ export function createRouteDataResponse(
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
-			"X-Vorma-Build-Id": "1",
+			"X-Wave-Framework-Build-Id": "1",
 			...init.headers,
 		},
 		...init,
@@ -219,7 +219,7 @@ export function createJSONResponse(
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
-			"X-Vorma-Build-Id": "1",
+			"X-Wave-Framework-Build-Id": "1",
 			...init.headers,
 		},
 		...init,

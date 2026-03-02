@@ -472,6 +472,17 @@ type waitForOwnerCompletionResult struct {
 func waitForOwnerCompletion(
 	input waitForOwnerCompletionInput,
 ) (waitForOwnerCompletionResult, error) {
+	initialDoneRunID := ""
+	initialStateSnapshot, initialStateFound, initialStateError := readRunStateFile(
+		input.runStatePath,
+	)
+	if initialStateError != nil {
+		return waitForOwnerCompletionResult{}, initialStateError
+	}
+	if initialStateFound && initialStateSnapshot.Status == runStateStatusDone {
+		initialDoneRunID = strings.TrimSpace(initialStateSnapshot.RunID)
+	}
+
 	trackedRunID := ""
 	sawRunningState := false
 
@@ -485,9 +496,12 @@ func waitForOwnerCompletion(
 				trackedRunID = stateSnapshot.RunID
 				sawRunningState = true
 			}
-			if stateSnapshot.Status == runStateStatusDone &&
-				sawRunningState &&
-				stateSnapshot.RunID == trackedRunID {
+			if didObserveOwnerCompletionForCurrentWait(
+				stateSnapshot,
+				sawRunningState,
+				trackedRunID,
+				initialDoneRunID,
+			) {
 				return waitForOwnerCompletionResult{
 					joined:     true,
 					ownerError: ownerErrorFromState(stateSnapshot),
@@ -512,10 +526,12 @@ func waitForOwnerCompletion(
 				)
 			}
 
-			if latestStateFound &&
-				latestState.Status == runStateStatusDone &&
-				sawRunningState &&
-				latestState.RunID == trackedRunID {
+			if latestStateFound && didObserveOwnerCompletionForCurrentWait(
+				latestState,
+				sawRunningState,
+				trackedRunID,
+				initialDoneRunID,
+			) {
 				return waitForOwnerCompletionResult{
 					joined:     true,
 					ownerError: ownerErrorFromState(latestState),
@@ -532,6 +548,31 @@ func waitForOwnerCompletion(
 
 		time.Sleep(input.ownerWaitPollingInterval)
 	}
+}
+
+func didObserveOwnerCompletionForCurrentWait(
+	stateSnapshot runStateFile,
+	sawRunningState bool,
+	trackedRunID string,
+	initialDoneRunID string,
+) bool {
+	if stateSnapshot.Status != runStateStatusDone {
+		return false
+	}
+
+	if sawRunningState {
+		trackedRunID = strings.TrimSpace(trackedRunID)
+		if trackedRunID == "" {
+			return false
+		}
+		return stateSnapshot.RunID == trackedRunID
+	}
+
+	observedDoneRunID := strings.TrimSpace(stateSnapshot.RunID)
+	if observedDoneRunID == "" {
+		return false
+	}
+	return observedDoneRunID != initialDoneRunID
 }
 
 func runFunctionAsOwner(input runFunctionAsOwnerInput) error {

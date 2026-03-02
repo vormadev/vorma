@@ -20,21 +20,21 @@ func TestBuildRuntimeRouteArtifacts(t *testing.T) {
 		pathsFile := &RuntimePathsFileSnapshot{
 			BuildID:        "build-artifacts",
 			ClientEntrySrc: "frontend/src/main.tsx",
-			ClientEntryOut: "vorma_out/main.js",
+			ClientEntryOut: testWaveOutPath("main.js"),
 			ClientEntryDeps: []string{
-				"vorma_out/chunk-shared.js",
+				testWaveOutPath("chunk-shared.js"),
 			},
 			DepToCSSBundleMap: map[string][]string{
-				"vorma_out/main.js": {"vorma_out/main.css"},
+				testWaveOutPath("main.js"): {testWaveOutPath("main.css")},
 			},
-			RouteManifestFile: "vorma_out/route-manifest.js",
+			RouteManifestFile: testWaveOutPath("route-manifest.js"),
 			Paths: map[string]*RoutePath{
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.tsx",
-					OutPath:         "vorma_out/routes/products.$id.js",
+					OutPath:         testWaveOutPath("routes/products.$id.js"),
 					ExportKey:       "default",
-					Deps:            []string{"vorma_out/products.js"},
+					Deps:            []string{testWaveOutPath("products.js")},
 				},
 			},
 		}
@@ -81,12 +81,12 @@ func TestApplyRuntimeRouteArtifactsMetadata(t *testing.T) {
 	ApplyRuntimeRouteArtifactsMetadata(state, &RuntimeRouteArtifacts{
 		BuildID:         "build-new",
 		ClientEntrySrc:  "frontend/src/main.tsx",
-		ClientEntryOut:  "vorma_out/main.js",
-		ClientEntryDeps: []string{"vorma_out/chunk-shared.js"},
+		ClientEntryOut:  testWaveOutPath("main.js"),
+		ClientEntryDeps: []string{testWaveOutPath("chunk-shared.js")},
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/main.js": {"vorma_out/main.css"},
+			testWaveOutPath("main.js"): {testWaveOutPath("main.css")},
 		},
-		RouteManifestFile: "vorma_out/route-manifest.js",
+		RouteManifestFile: testWaveOutPath("route-manifest.js"),
 	})
 
 	if got, want := state.BuildID, "build-new"; got != want {
@@ -94,7 +94,7 @@ func TestApplyRuntimeRouteArtifactsMetadata(t *testing.T) {
 	}
 	if got := state.ClientEntryDeps; !reflect.DeepEqual(
 		got,
-		[]string{"vorma_out/chunk-shared.js"},
+		[]string{testWaveOutPath("chunk-shared.js")},
 	) {
 		t.Fatalf("ClientEntryDeps = %#v", got)
 	}
@@ -135,9 +135,9 @@ func TestSyncPathsFromDevReload_MergesServerRoutesAndClones(t *testing.T) {
 		"/client": {
 			OriginalPattern: "/client",
 			SrcPath:         "frontend/src/routes/client.tsx",
-			OutPath:         "vorma_out/routes/client.js",
+			OutPath:         testWaveOutPath("routes/client.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-client.js"},
+			Deps:            []string{testWaveOutPath("chunk-client.js")},
 		},
 	}
 
@@ -154,7 +154,7 @@ func TestSyncPathsFromDevReload_MergesServerRoutesAndClones(t *testing.T) {
 	if got := merged["/client"].SrcPath; got != "frontend/src/routes/client.tsx" {
 		t.Fatalf("SrcPath = %q, want original value", got)
 	}
-	if got := merged["/client"].Deps[0]; got != "vorma_out/chunk-client.js" {
+	if got := merged["/client"].Deps[0]; got != testWaveOutPath("chunk-client.js") {
 		t.Fatalf("Deps[0] = %q, want original value", got)
 	}
 }
@@ -163,18 +163,18 @@ func TestReplaceParsedPathsForInit_Clones(t *testing.T) {
 	input := map[string]*RoutePath{
 		"/docs": {
 			OriginalPattern: "/docs",
-			OutPath:         "vorma_out/routes/docs.js",
-			Deps:            []string{"vorma_out/chunk-docs.js"},
+			OutPath:         testWaveOutPath("routes/docs.js"),
+			Deps:            []string{testWaveOutPath("chunk-docs.js")},
 		},
 	}
 	cloned := ReplaceParsedPathsForInit(input)
 	input["/docs"].OutPath = "MUTATED"
 	input["/docs"].Deps[0] = "MUTATED_DEP"
 
-	if got := cloned["/docs"].OutPath; got != "vorma_out/routes/docs.js" {
+	if got := cloned["/docs"].OutPath; got != testWaveOutPath("routes/docs.js") {
 		t.Fatalf("OutPath = %q, want original value", got)
 	}
-	if got := cloned["/docs"].Deps[0]; got != "vorma_out/chunk-docs.js" {
+	if got := cloned["/docs"].Deps[0]; got != testWaveOutPath("chunk-docs.js") {
 		t.Fatalf("Deps[0] = %q, want original value", got)
 	}
 }
@@ -188,10 +188,10 @@ func TestCloneRoutePathAndRouteMaps_NilAndDeepCopySemantics(t *testing.T) {
 		"/pricing": {
 			OriginalPattern: "/pricing",
 			SrcPath:         "frontend/src/routes/pricing.tsx",
-			OutPath:         "vorma_out/routes/pricing.js",
+			OutPath:         testWaveOutPath("routes/pricing.js"),
 			ExportKey:       "Pricing",
 			ErrorExportKey:  "PricingError",
-			Deps:            []string{"vorma_out/chunk-pricing.js"},
+			Deps:            []string{testWaveOutPath("chunk-pricing.js")},
 		},
 	}
 
@@ -205,7 +205,7 @@ func TestCloneRoutePathAndRouteMaps_NilAndDeepCopySemantics(t *testing.T) {
 	if got, want := clonedPaths["/pricing"].SrcPath, "frontend/src/routes/pricing.tsx"; got != want {
 		t.Fatalf("cloned SrcPath = %q, want %q", got, want)
 	}
-	if got, want := clonedPaths["/pricing"].Deps[0], "vorma_out/chunk-pricing.js"; got != want {
+	if got, want := clonedPaths["/pricing"].Deps[0], testWaveOutPath("chunk-pricing.js"); got != want {
 		t.Fatalf("cloned Deps[0] = %q, want %q", got, want)
 	}
 
@@ -234,11 +234,11 @@ func TestCloneStringAndBundleMaps_NilAndDeepCopySemantics(t *testing.T) {
 	}
 
 	originalBundleMap := map[string][]string{
-		"vorma_out/main.js": {"vorma_out/main.css"},
+		testWaveOutPath("main.js"): {testWaveOutPath("main.css")},
 	}
 	clonedBundleMap := CloneDepToCSSBundleMapOrNil(originalBundleMap)
-	originalBundleMap["vorma_out/main.js"][0] = "MUTATED"
-	if got, want := clonedBundleMap["vorma_out/main.js"][0], "vorma_out/main.css"; got != want {
+	originalBundleMap[testWaveOutPath("main.js")][0] = "MUTATED"
+	if got, want := clonedBundleMap[testWaveOutPath("main.js")][0], testWaveOutPath("main.css"); got != want {
 		t.Fatalf("cloned bundle map first value = %q, want %q", got, want)
 	}
 }
@@ -292,9 +292,9 @@ func TestSyncRouteStateFromDevReload(t *testing.T) {
 			"/old-client": {
 				OriginalPattern: "/old-client",
 				SrcPath:         "frontend/src/routes/old-client.tsx",
-				OutPath:         "vorma_out/routes/old-client.js",
+				OutPath:         testWaveOutPath("routes/old-client.js"),
 				ExportKey:       "default",
-				Deps:            []string{"vorma_out/chunk-old.js"},
+				Deps:            []string{testWaveOutPath("chunk-old.js")},
 			},
 		},
 		RouteDataSnapshotVersion: 10,
@@ -306,9 +306,9 @@ func TestSyncRouteStateFromDevReload(t *testing.T) {
 		"/fresh-client": {
 			OriginalPattern: "/fresh-client",
 			SrcPath:         "frontend/src/routes/fresh-client.tsx",
-			OutPath:         "vorma_out/routes/fresh-client.js",
+			OutPath:         testWaveOutPath("routes/fresh-client.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-fresh.js"},
+			Deps:            []string{testWaveOutPath("chunk-fresh.js")},
 		},
 	}
 
@@ -360,7 +360,7 @@ func TestSyncRouteStateFromDevReload(t *testing.T) {
 	}
 
 	parsedClientPaths["/fresh-client"].Deps[0] = "MUTATED_DEP"
-	if got, want := state.Paths["/fresh-client"].Deps[0], "vorma_out/chunk-fresh.js"; got != want {
+	if got, want := state.Paths["/fresh-client"].Deps[0], testWaveOutPath("chunk-fresh.js"); got != want {
 		t.Fatalf("state deps = %q, want %q", got, want)
 	}
 }
@@ -380,9 +380,9 @@ func TestReplaceRouteStateForInit(t *testing.T) {
 			"/docs": {
 				OriginalPattern: "/docs",
 				SrcPath:         "frontend/src/routes/docs.tsx",
-				OutPath:         "vorma_out/routes/docs.js",
+				OutPath:         testWaveOutPath("routes/docs.js"),
 				ExportKey:       "default",
-				Deps:            []string{"vorma_out/chunk-docs.js"},
+				Deps:            []string{testWaveOutPath("chunk-docs.js")},
 			},
 		}
 		ReplaceRouteStateForInit(
@@ -404,7 +404,7 @@ func TestReplaceRouteStateForInit(t *testing.T) {
 			t.Fatal("expected /docs path after replace")
 		}
 		parsedPaths["/docs"].OutPath = "MUTATED_OUT"
-		if got, want := state.Paths["/docs"].OutPath, "vorma_out/routes/docs.js"; got != want {
+		if got, want := state.Paths["/docs"].OutPath, testWaveOutPath("routes/docs.js"); got != want {
 			t.Fatalf("state OutPath = %q, want %q", got, want)
 		}
 	})

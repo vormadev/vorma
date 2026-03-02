@@ -15,7 +15,7 @@ func TestFlexibilityContract_CustomNestedPublicPathPrefix(t *testing.T) {
 		t.Fatalf("expected normalized nested public path prefix %q, got %q", "/cdn/assets/v2/", got)
 	}
 
-	if got := waveInstance.PublicURL("logo.txt"); got != "/cdn/assets/v2/vorma_out/logo.hash.txt" {
+	if got := waveInstance.PublicURL("logo.txt"); got != "/cdn/assets/v2/"+testHashedOutputRelativePath("logo.hash.txt") {
 		t.Fatalf("expected mapped URL to honor custom nested prefix, got %q", got)
 	}
 

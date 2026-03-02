@@ -2,6 +2,7 @@ package runtimehttp
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/tasks"
@@ -61,6 +63,71 @@ func TestBuildSupportedMethodsMap(t *testing.T) {
 			t.Fatalf("custom supported methods should include %q", method)
 		}
 	}
+}
+
+func TestEnsureLoaderPatternsRegistered(t *testing.T) {
+	t.Run("adds_missing_patterns", func(t *testing.T) {
+		router := nestedmux.NewRouter(nil)
+		EnsureLoaderPatternsRegistered(
+			EnsureLoaderPatternsRegisteredInput{
+				NestedRouter: router,
+				Paths: map[string]*runtimecore.RoutePath{
+					"": {
+						OriginalPattern: "",
+						ExportKey:       "default",
+					},
+					"/items/:id": {
+						OriginalPattern: "/items/:id",
+						ExportKey:       "ItemRoute",
+					},
+				},
+			},
+		)
+
+		allRoutes := router.AllRoutes()
+		if _, hasRootPattern := allRoutes[""]; !hasRootPattern {
+			t.Fatal("expected root pattern to be registered")
+		}
+		if _, hasItemPattern := allRoutes["/items/:id"]; !hasItemPattern {
+			t.Fatal("expected /items/:id pattern to be registered")
+		}
+	})
+
+	t.Run("panics_when_nested_router_is_nil", func(t *testing.T) {
+		expectRuntimeHTTPPanicWithText(
+			t,
+			"nestedRouter is nil",
+			func() {
+				EnsureLoaderPatternsRegistered(
+					EnsureLoaderPatternsRegisteredInput{
+						NestedRouter: nil,
+						Paths: map[string]*runtimecore.RoutePath{
+							"/items/:id": {
+								OriginalPattern: "/items/:id",
+							},
+						},
+					},
+				)
+			},
+		)
+	})
+
+	t.Run("panics_when_paths_entry_is_nil", func(t *testing.T) {
+		expectRuntimeHTTPPanicWithText(
+			t,
+			`paths entry for pattern "/items/:id" is nil`,
+			func() {
+				EnsureLoaderPatternsRegistered(
+					EnsureLoaderPatternsRegisteredInput{
+						NestedRouter: nestedmux.NewRouter(nil),
+						Paths: map[string]*runtimecore.RoutePath{
+							"/items/:id": nil,
+						},
+					},
+				)
+			},
+		)
+	})
 }
 
 func TestParseActionInput(t *testing.T) {
@@ -222,9 +289,9 @@ func TestPrepareExecutionInputs(t *testing.T) {
 			t.Fatalf("Cached.ImportURLs = %#v, want %#v", got, want)
 		}
 		if got, want := inputs.Cached.Deps, []string{
-			"vorma_out/chunk-client.js",
-			"vorma_out/chunk-root.js",
-			"vorma_out/chunk-items.js",
+			testWaveOutPath("chunk-client.js"),
+			testWaveOutPath("chunk-root.js"),
+			testWaveOutPath("chunk-items.js"),
 		}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("Cached.Deps = %#v, want %#v", got, want)
 		}
@@ -281,9 +348,9 @@ func TestBuildExecutionInputsFromMatchResults_FallbacksMatchedPatternsWhenMissin
 		ExportKeys:      []string{"Root", "ItemRoute"},
 		ErrorExportKeys: []string{"RootErrorBoundary", "ItemErrorBoundary"},
 		Deps: []string{
-			"vorma_out/chunk-client.js",
-			"vorma_out/chunk-root.js",
-			"vorma_out/chunk-items.js",
+			testWaveOutPath("chunk-client.js"),
+			testWaveOutPath("chunk-root.js"),
+			testWaveOutPath("chunk-items.js"),
 		},
 	}
 	routeDataCache.Store(cacheKey, cachedWithoutMatchedPatterns)
@@ -411,33 +478,33 @@ func runtimeSnapshotForRuntimeHTTPTests() routepipeline.RuntimeSnapshot {
 			"": {
 				OriginalPattern: "",
 				SrcPath:         "frontend/src/routes/root.tsx",
-				OutPath:         "vorma_out/routes/root.js",
+				OutPath:         testWaveOutPath("routes/root.js"),
 				ExportKey:       "Root",
 				ErrorExportKey:  "RootErrorBoundary",
-				Deps:            []string{"vorma_out/chunk-root.js"},
+				Deps:            []string{testWaveOutPath("chunk-root.js")},
 			},
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items.$id.tsx",
-				OutPath:         "vorma_out/routes/items.$id.js",
+				OutPath:         testWaveOutPath("routes/items.$id.js"),
 				ExportKey:       "ItemRoute",
 				ErrorExportKey:  "ItemErrorBoundary",
-				Deps:            []string{"vorma_out/chunk-items.js"},
+				Deps:            []string{testWaveOutPath("chunk-items.js")},
 			},
 		},
-		ClientEntryDeps: []string{"vorma_out/chunk-client.js"},
-		ClientEntryOut:  "vorma_out/client-entry.js",
+		ClientEntryDeps: []string{testWaveOutPath("chunk-client.js")},
+		ClientEntryOut:  testWaveOutPath("client-entry.js"),
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/client-entry.js": {"vorma_out/client.css"},
-			"vorma_out/chunk-client.js": {"vorma_out/chunk-client.css"},
-			"vorma_out/chunk-root.js":   {"vorma_out/chunk-root.css"},
-			"vorma_out/chunk-items.js":  {"vorma_out/chunk-items.css"},
+			testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
+			testWaveOutPath("chunk-client.js"): {testWaveOutPath("chunk-client.css")},
+			testWaveOutPath("chunk-root.js"):   {testWaveOutPath("chunk-root.css")},
+			testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
 		},
 		HTMLRenderSnapshot: rendering.LoadersHTMLRenderSnapshot{
 			IsDevMode:      true,
-			ClientEntryOut: "vorma_out/client-entry.js",
+			ClientEntryOut: testWaveOutPath("client-entry.js"),
 		},
-		RouteManifestFile:        "vorma_out/route-manifest.js",
+		RouteManifestFile:        testWaveOutPath("route-manifest.js"),
 		RouteDataSnapshotVersion: 5,
 	}
 }
@@ -449,4 +516,23 @@ func createRequestWithTasksCtxForRuntimeHTTPTests(
 	request := httptest.NewRequest(method, url, nil)
 	tasksCtx := tasks.NewCtx(request.Context())
 	return mux.RequestWithTasksCtx(request, tasksCtx)
+}
+
+func expectRuntimeHTTPPanicWithText(
+	t *testing.T,
+	expectedText string,
+	fn func(),
+) {
+	t.Helper()
+	defer func() {
+		panicValue := recover()
+		if panicValue == nil {
+			t.Fatalf("expected panic containing %q", expectedText)
+		}
+		panicText := fmt.Sprint(panicValue)
+		if !strings.Contains(panicText, expectedText) {
+			t.Fatalf("panic text = %q, want contains %q", panicText, expectedText)
+		}
+	}()
+	fn()
 }

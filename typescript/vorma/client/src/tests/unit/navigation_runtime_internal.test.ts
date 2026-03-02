@@ -211,7 +211,7 @@ function createSuccessNavigationOutcome(
 			status: 200,
 			headers: {
 				"Content-Type": "application/json",
-				"X-Vorma-Build-Id": overrides.responseBuildID ?? "1",
+				"X-Wave-Framework-Build-Id": overrides.responseBuildID ?? "1",
 			},
 		}),
 		json: {
@@ -289,7 +289,7 @@ function createSubmitResponse(props: {
 	const status = props.status ?? 200;
 	const headers = new Headers();
 	if (props.buildID !== undefined) {
-		headers.set("X-Vorma-Build-Id", props.buildID);
+		headers.set("X-Wave-Framework-Build-Id", props.buildID);
 	}
 
 	return {
@@ -1123,7 +1123,7 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -1246,7 +1246,7 @@ describe("navigation runtime bookkeeping lifecycle", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -2630,7 +2630,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 			if (fetchCallCount === 1) {
 				return Promise.resolve({
 					headers: new Headers({
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					}),
 					redirected: false,
 					url: window.location.href,
@@ -2753,7 +2753,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 				status: 200,
 				headers: {
 					"Content-Type": "application/json",
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 					"X-Client-Redirect": "/loop-redirect",
 				},
 			}),
@@ -2804,7 +2804,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 			new Response(null, {
 				status: 204,
 				headers: {
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);
@@ -2832,7 +2832,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 				status: 200,
 				headers: {
 					"Content-Type": "text/plain",
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);
@@ -2859,7 +2859,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 			new Response("ok-text-no-content-type", {
 				status: 200,
 				headers: {
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);
@@ -2893,7 +2893,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 				status: 422,
 				headers: {
 					"Content-Type": "application/json",
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 					"X-Client-Redirect": "/submit-redirect-target",
 				},
 			}),
@@ -2929,7 +2929,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 				status: 200,
 				headers: {
 					"Content-Type": "application/json",
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 					"X-Client-Redirect": "/submit-redirect-target",
 				},
 			}),
@@ -2988,7 +2988,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-Vorma-Build-Id": "1",
+							"X-Wave-Framework-Build-Id": "1",
 							"X-Client-Redirect": "/submit-redirect-target",
 						},
 					});
@@ -2997,7 +2997,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				});
 			});
@@ -3065,7 +3065,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-Vorma-Build-Id": "1",
+							"X-Wave-Framework-Build-Id": "1",
 						},
 					});
 				}
@@ -3073,7 +3073,7 @@ describe("navigation runtime submit stale checkpoints", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				});
 			});
@@ -3241,7 +3241,7 @@ describe("fetchRouteData behavior", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "build-42",
+						"X-Wave-Framework-Build-Id": "build-42",
 					},
 				},
 			),
@@ -3269,7 +3269,7 @@ describe("fetchRouteData behavior", () => {
 		if (outcome.type !== "success") {
 			throw new Error("Expected a success outcome");
 		}
-		expect(outcome.response.headers.get("X-Vorma-Build-Id")).toBe(
+		expect(outcome.response.headers.get("X-Wave-Framework-Build-Id")).toBe(
 			"build-42",
 		);
 		await expect(outcome.waitFnPromise).resolves.toEqual({
@@ -3301,7 +3301,7 @@ describe("fetchRouteData behavior", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -3355,7 +3355,7 @@ describe("fetchRouteData behavior", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -3390,7 +3390,7 @@ describe("fetchRouteData behavior", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -3427,7 +3427,7 @@ describe("fetchRouteData behavior", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -3528,7 +3528,7 @@ describe("fetchRouteData behavior", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "1",
+						"X-Wave-Framework-Build-Id": "1",
 					},
 				},
 			),
@@ -3701,7 +3701,7 @@ describe("fetchRouteData behavior", () => {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-Vorma-Build-Id": "1",
+							"X-Wave-Framework-Build-Id": "1",
 						},
 					},
 				),
@@ -3751,7 +3751,7 @@ describe("fetchRouteData behavior", () => {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-Vorma-Build-Id": "1",
+							"X-Wave-Framework-Build-Id": "1",
 						},
 					},
 				),
@@ -3839,7 +3839,7 @@ describe("fetchRouteData behavior", () => {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-Vorma-Build-Id": "1",
+							"X-Wave-Framework-Build-Id": "1",
 						},
 					},
 				),
@@ -3869,7 +3869,8 @@ describe("fetchRouteData behavior", () => {
 						status: 200,
 						headers: {
 							"Content-Type": "application/json",
-							"X-Vorma-Build-Id": "stale-browser-history-build",
+							"X-Wave-Framework-Build-Id":
+								"stale-browser-history-build",
 						},
 					},
 				),
@@ -3899,7 +3900,7 @@ describe("fetchRouteData behavior", () => {
 			new Response(null, {
 				status: 304,
 				headers: {
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);

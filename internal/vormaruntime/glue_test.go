@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -18,6 +20,7 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
@@ -25,17 +28,17 @@ import (
 )
 
 func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
-	rootDir := t.TempDir()
+	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-glue-")
 	staticDir := filepath.Join(rootDir, "dist", "static")
 	mustMkdirAll(t, staticDir)
 
 	baseCfg := struct {
-		Core  wave.CoreConfig `json:"Core"`
-		Vorma VormaConfig     `json:"Vorma"`
+		Core  waveconfig.CoreConfig `json:"Core"`
+		Vorma VormaConfig           `json:"Vorma"`
 	}{
-		Core: wave.CoreConfig{
+		Core: waveconfig.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      filepath.Join(rootDir, "dist"),
+			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
@@ -200,17 +203,17 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 }
 
 func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
-	rootDir := t.TempDir()
+	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-glue-")
 	staticDir := filepath.Join(rootDir, "dist", "static")
 	mustMkdirAll(t, staticDir)
 
 	cfg := struct {
-		Core  wave.CoreConfig `json:"Core"`
-		Vorma VormaConfig     `json:"Vorma"`
+		Core  waveconfig.CoreConfig `json:"Core"`
+		Vorma VormaConfig           `json:"Vorma"`
 	}{
-		Core: wave.CoreConfig{
+		Core: waveconfig.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      filepath.Join(rootDir, "dist"),
+			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
@@ -344,16 +347,16 @@ func TestNewVormaApp_RequiresWaveInstance(t *testing.T) {
 func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(
 	t *testing.T,
 ) {
-	rootDir := t.TempDir()
+	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-glue-")
 	staticDir := filepath.Join(rootDir, "dist", "static")
 	mustMkdirAll(t, staticDir)
 
 	cfg := struct {
-		Core wave.CoreConfig `json:"Core"`
+		Core waveconfig.CoreConfig `json:"Core"`
 	}{
-		Core: wave.CoreConfig{
+		Core: waveconfig.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      filepath.Join(rootDir, "dist"),
+			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
@@ -472,7 +475,12 @@ func TestVormaServeStatic_PublicAssetAndPassthroughContracts(t *testing.T) {
 
 	mustWriteFile(
 		t,
-		filepath.Join(fixture.staticDir, "assets", "public", "hello.txt"),
+		filepath.Join(
+			fixture.staticDir,
+			waveartifacts.AssetsDirname,
+			waveartifacts.PublicDirname,
+			"hello.txt",
+		),
 		[]byte("hello-static"),
 	)
 
@@ -576,7 +584,12 @@ func TestVormaServeStatic_RootPublicPathPrefixContracts(t *testing.T) {
 
 	mustWriteFile(
 		t,
-		filepath.Join(fixture.staticDir, "assets", "public", "asset.txt"),
+		filepath.Join(
+			fixture.staticDir,
+			waveartifacts.AssetsDirname,
+			waveartifacts.PublicDirname,
+			"asset.txt",
+		),
 		[]byte("root-prefix-asset"),
 	)
 
@@ -1014,7 +1027,7 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         "vorma_out/routes/hello.js",
+			OutPath:         testWaveOutPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1091,7 +1104,7 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         "vorma_out/routes/hello.js",
+			OutPath:         testWaveOutPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1099,13 +1112,13 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         "vorma_out/routes/hello.js",
+			OutPath:         testWaveOutPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         "vorma_out/routes/new.js",
+			OutPath:         testWaveOutPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1148,7 +1161,7 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 			t,
 			filepath.Join(
 				fixture.privateDir,
-				runtimepaths.VormaOutDirname,
+				runtimepaths.VormaInternalDirname,
 				runtimepaths.VormaPathsStageOneJSONFileName,
 			),
 			stageNew,
@@ -1461,7 +1474,7 @@ func TestInitWithDefaultRouter_LoadersHeadContracts(t *testing.T) {
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         "vorma_out/routes/hello.js",
+			OutPath:         testWaveOutPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1572,8 +1585,8 @@ func TestInitWithDefaultRouter_LoadersHeadContracts(t *testing.T) {
 					app.BuildID(),
 				)
 			}
-			if got, want := rec.Header().Get("X-Vorma-Reload"), "/hello?x=1"; got != want {
-				t.Fatalf("X-Vorma-Reload = %q, want %q", got, want)
+			if got, want := rec.Header().Get("X-Wave-Framework-Reload"), "/hello?x=1"; got != want {
+				t.Fatalf("X-Wave-Framework-Reload = %q, want %q", got, want)
 			}
 			if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(
 				got,

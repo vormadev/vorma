@@ -441,7 +441,7 @@ describe("client state/revalidation contracts", () => {
 					{
 						headers: {
 							"X-Client-Redirect": "/stale-redirect-target",
-							"X-Vorma-Build-Id": "stale-soft-build",
+							"X-Wave-Framework-Build-Id": "stale-soft-build",
 						},
 					},
 				),
@@ -539,8 +539,8 @@ describe("client state/revalidation contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/stale-hard-reload",
-							"X-Vorma-Build-Id": "stale-hard-build",
+							"X-Wave-Framework-Reload": "/stale-hard-reload",
+							"X-Wave-Framework-Build-Id": "stale-hard-build",
 						},
 					},
 				),
@@ -589,7 +589,8 @@ describe("client state/revalidation contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-revalidation-build",
+							"X-Wave-Framework-Build-Id":
+								"stale-revalidation-build",
 						},
 					},
 				),

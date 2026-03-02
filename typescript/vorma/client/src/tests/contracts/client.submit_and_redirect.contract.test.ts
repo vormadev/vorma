@@ -212,7 +212,8 @@ describe("client submit/redirect contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-redirect-a-build",
+							"X-Wave-Framework-Build-Id":
+								"stale-redirect-a-build",
 						},
 					},
 				),
@@ -226,7 +227,8 @@ describe("client submit/redirect contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "winner-redirect-b-build",
+							"X-Wave-Framework-Build-Id":
+								"winner-redirect-b-build",
 						},
 					},
 				),
@@ -296,7 +298,8 @@ describe("client submit/redirect contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "user-navigation-winner-build",
+							"X-Wave-Framework-Build-Id":
+								"user-navigation-winner-build",
 						},
 					},
 				),
@@ -310,7 +313,8 @@ describe("client submit/redirect contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "submit-redirect-stale-build",
+							"X-Wave-Framework-Build-Id":
+								"submit-redirect-stale-build",
 						},
 					},
 				),
@@ -586,8 +590,9 @@ describe("client submit/redirect contracts", () => {
 								{},
 								{
 									headers: {
-										"X-Vorma-Reload": "/stale-reload",
-										"X-Vorma-Build-Id":
+										"X-Wave-Framework-Reload":
+											"/stale-reload",
+										"X-Wave-Framework-Build-Id":
 											"stale-reload-build",
 									},
 								},
@@ -778,7 +783,7 @@ describe("client submit/redirect contracts", () => {
 					{ stale: true },
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-build-id-999",
+							"X-Wave-Framework-Build-Id": "stale-build-id-999",
 						},
 					},
 				),
@@ -940,7 +945,7 @@ describe("client submit/redirect contracts", () => {
 			new Response(null, {
 				status: 204,
 				headers: {
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);
@@ -962,7 +967,7 @@ describe("client submit/redirect contracts", () => {
 			new Response(null, {
 				status: 200,
 				headers: {
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);
@@ -985,7 +990,7 @@ describe("client submit/redirect contracts", () => {
 				status: 200,
 				headers: {
 					"Content-Type": "text/plain",
-					"X-Vorma-Build-Id": "1",
+					"X-Wave-Framework-Build-Id": "1",
 				},
 			}),
 		);
@@ -1112,7 +1117,7 @@ describe("client submit/redirect contracts", () => {
 		});
 	});
 
-	it("performs hard reload redirect when submit response includes X-Vorma-Reload", async () => {
+	it("performs hard reload redirect when submit response includes X-Wave-Framework-Reload", async () => {
 		const api = await loadClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 
@@ -1122,8 +1127,8 @@ describe("client submit/redirect contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload",
-							"X-Vorma-Build-Id": "reload-build-1",
+							"X-Wave-Framework-Reload": "/force-reload",
+							"X-Wave-Framework-Build-Id": "reload-build-1",
 						},
 					},
 				),
@@ -1170,7 +1175,7 @@ describe("client submit/redirect contracts", () => {
 		}
 	});
 
-	it("prioritizes X-Vorma-Reload over X-Client-Redirect", async () => {
+	it("prioritizes X-Wave-Framework-Reload over X-Client-Redirect", async () => {
 		const api = await loadClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 
@@ -1180,9 +1185,9 @@ describe("client submit/redirect contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-priority",
+							"X-Wave-Framework-Reload": "/force-reload-priority",
 							"X-Client-Redirect": "/ignored-soft-redirect",
-							"X-Vorma-Build-Id": "priority-build-1",
+							"X-Wave-Framework-Build-Id": "priority-build-1",
 						},
 					},
 				),
@@ -1301,7 +1306,7 @@ describe("client submit/redirect contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "redirect-build-22",
+							"X-Wave-Framework-Build-Id": "redirect-build-22",
 							"X-Client-Redirect": "/redirect-target",
 						},
 					},
@@ -1314,7 +1319,7 @@ describe("client submit/redirect contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "redirect-build-22",
+							"X-Wave-Framework-Build-Id": "redirect-build-22",
 						},
 					},
 				),

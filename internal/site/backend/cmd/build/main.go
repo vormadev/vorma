@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/vormadev/vorma/wave/waveframework"
 	"site/backend/internal/docsync"
 	"site/backend/src/router"
 
@@ -11,7 +12,7 @@ func main() {
 	app := router.App
 
 	if _, err := docsync.SyncAndResolvePublicURLs(
-		app.ParsedConfig(),
+		waveframework.ParsedConfig(app.Wave.RawConfigJSON()),
 		app.Logger(),
 	); err != nil {
 		panic(err)

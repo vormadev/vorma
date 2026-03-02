@@ -3,6 +3,9 @@ package wave
 import (
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/waveenv"
+	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
@@ -28,7 +31,7 @@ func TestRefreshScriptIsOnlyRenderedInDevMode(t *testing.T) {
 
 func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	t.Setenv(envRefreshServerPort, "12345")
+	t.Setenv(waveenv.EnvRefreshServerPort, "12345")
 	w := newWaveForTest(t, fixture, true, nil)
 
 	script := string(w.RefreshScript())
@@ -39,7 +42,7 @@ func TestRefreshScriptUsesConfiguredRefreshServerPort(t *testing.T) {
 
 func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	t.Setenv(envRefreshServerPort, "-1")
+	t.Setenv(waveenv.EnvRefreshServerPort, "-1")
 	w := newWaveForTest(t, fixture, true, nil)
 
 	script := string(w.RefreshScript())
@@ -51,10 +54,10 @@ func TestRefreshScriptFallsBackToDefaultWhenRefreshPortIsInvalid(t *testing.T) {
 func TestRefreshScriptUsesConfiguredBrowserRuntimeSettings(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
-	w.setBrowserRevalidateFunctionName("__vorma_revalidate")
-	w.setRefreshRebuildingOverlayElementID("vorma-refresh-overlay")
-	w.setCriticalCSSStyleElementID("vorma-critical-css")
-	w.setNonCriticalCSSLinkElementID("vorma-normal-css")
+	waveframework.StateForConfig(w.cfg).BrowserRevalidateFunctionName = "__vorma_revalidate"
+	waveframework.StateForConfig(w.cfg).RefreshRebuildingOverlayElementID = "vorma-refresh-overlay"
+	waveframework.StateForConfig(w.cfg).CriticalCSSStyleElementID = "vorma-critical-css"
+	waveframework.StateForConfig(w.cfg).NonCriticalCSSLinkElementID = "vorma-normal-css"
 
 	script := string(w.RefreshScript())
 	if !strings.Contains(script, `const browserRevalidateFunctionName = "__vorma_revalidate";`) {

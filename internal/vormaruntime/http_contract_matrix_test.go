@@ -41,22 +41,22 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemsErrorBoundary",
-			Deps:            []string{"vorma_out/chunk-items.js"},
+			Deps:            []string{testWaveOutPath("chunk-items.js")},
 		},
 		"/error": {
 			OriginalPattern: "/error",
 			SrcPath:         "frontend/src/routes/error.tsx",
-			OutPath:         "vorma_out/routes/error.js",
+			OutPath:         testWaveOutPath("routes/error.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "RouteErrorBoundary",
 		},
 		"/cache": {
 			OriginalPattern: "/cache",
 			SrcPath:         "frontend/src/routes/cache.tsx",
-			OutPath:         "vorma_out/routes/cache.js",
+			OutPath:         testWaveOutPath("routes/cache.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -468,16 +468,16 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 			}
 
 			if tt.wantReloadHeader != "" {
-				if got := rec.Header().Get("X-Vorma-Reload"); got != tt.wantReloadHeader {
+				if got := rec.Header().Get("X-Wave-Framework-Reload"); got != tt.wantReloadHeader {
 					t.Fatalf(
-						"X-Vorma-Reload = %q, want %q",
+						"X-Wave-Framework-Reload = %q, want %q",
 						got,
 						tt.wantReloadHeader,
 					)
 				}
 			} else {
-				if got := rec.Header().Get("X-Vorma-Reload"); got != "" {
-					t.Fatalf("X-Vorma-Reload = %q, want empty", got)
+				if got := rec.Header().Get("X-Wave-Framework-Reload"); got != "" {
+					t.Fatalf("X-Wave-Framework-Reload = %q, want empty", got)
 				}
 			}
 

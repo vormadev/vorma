@@ -313,7 +313,7 @@ describe("client link click contracts", () => {
 					{
 						headers: {
 							"X-Client-Redirect": "/redirected-click",
-							"X-Vorma-Build-Id": "build-click-2",
+							"X-Wave-Framework-Build-Id": "build-click-2",
 						},
 					},
 				),
@@ -321,7 +321,11 @@ describe("client link click contracts", () => {
 			.mockResolvedValueOnce(
 				createRouteDataResponse(
 					{},
-					{ headers: { "X-Vorma-Build-Id": "build-click-2" } },
+					{
+						headers: {
+							"X-Wave-Framework-Build-Id": "build-click-2",
+						},
+					},
 				),
 			);
 

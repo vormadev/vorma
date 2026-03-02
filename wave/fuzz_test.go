@@ -6,19 +6,22 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/wave/internal/wavefilemap"
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
 )
 
 func FuzzFileMapLookup(f *testing.F) {
 	f.Add("logo.txt", "/assets/")
 	f.Add("/logo.txt", "/")
-	f.Add("nested/../logo.txt", "assets")
+	f.Add("nested/../logo.txt", waveartifacts.AssetsDirname)
 	f.Add("missing.txt", "/assets/")
 	f.Add("/assets/logo.txt", "/assets/")
 	f.Add("0/logo.txt", "/0/")
 
-	fm := FileMap{
+	fm := wavefilemap.FileMap{
 		"logo.txt": {
-			DistName: "vorma_out/logo.hash.txt",
+			DistName: waveartifacts.ApplyWaveFileOutputPrefix("logo.hash.txt"),
 		},
 	}
 
@@ -60,7 +63,12 @@ func FuzzFileMapLookup(f *testing.F) {
 			t.Fatalf("mapped lookup must return a leading-slash URL, got %q", url)
 		}
 
-		expected := matcher.EnsureLeadingSlash(path.Join(prefix, "vorma_out/logo.hash.txt"))
+		expected := matcher.EnsureLeadingSlash(
+			path.Join(
+				prefix,
+				waveartifacts.ApplyWaveFileOutputPrefix("logo.hash.txt"),
+			),
+		)
 		if url != expected {
 			t.Fatalf("unexpected mapped URL: got %q want %q", url, expected)
 		}
@@ -70,13 +78,13 @@ func FuzzFileMapLookup(f *testing.F) {
 func FuzzPublicPathPrefixNormalization(f *testing.F) {
 	f.Add("")
 	f.Add("/")
-	f.Add("assets")
+	f.Add(waveartifacts.AssetsDirname)
 	f.Add("/assets")
 	f.Add("assets/")
 	f.Add("/assets/")
 
 	f.Fuzz(func(t *testing.T, prefix string) {
-		cfg := &ParsedConfig{Core: &CoreConfig{PublicPathPrefix: prefix}}
+		cfg := &waveconfig.ParsedConfig{Core: &waveconfig.CoreConfig{PublicPathPrefix: prefix}}
 		normalized := cfg.PublicPathPrefix()
 
 		if normalized == "" {

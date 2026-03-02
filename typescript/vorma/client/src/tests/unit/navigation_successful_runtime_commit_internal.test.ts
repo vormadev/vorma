@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { __vormaClientGlobal, VORMA_SYMBOL } from "../../runtime.ts";
-import { addBuildIDListener } from "../../runtime.ts";
 import {
+	__vormaClientGlobal,
+	addBuildIDListener,
 	getBuildIDFromResponse,
 	syncRuntimeBuildIDIfChanged,
+	VORMA_SYMBOL,
 } from "../../runtime.ts";
 
 type TestGlobalState = {
@@ -32,7 +33,7 @@ function createResponseWithBuildID(props: { buildID?: string }): Response {
 		"Content-Type": "application/json",
 	});
 	if (props.buildID !== undefined) {
-		headers.set("X-Vorma-Build-Id", props.buildID);
+		headers.set("X-Wave-Framework-Build-Id", props.buildID);
 	}
 	return new Response(JSON.stringify({ ok: true }), {
 		status: 200,

@@ -316,7 +316,7 @@ describe("client history/init contracts", () => {
 					{
 						headers: {
 							"X-Client-Redirect": "/pop-redirect-destination",
-							"X-Vorma-Build-Id": "2",
+							"X-Wave-Framework-Build-Id": "2",
 						},
 					},
 				),
@@ -330,7 +330,7 @@ describe("client history/init contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "2",
+							"X-Wave-Framework-Build-Id": "2",
 						},
 					},
 				),

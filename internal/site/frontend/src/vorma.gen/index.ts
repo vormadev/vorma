@@ -144,13 +144,12 @@ export const vormaViteConfig = {
 		"frontend/src/vorma.entry.tsx"
 	],
 	publicPathPrefix,
-	staticPublicAssetMap,
 	buildtimePublicURLFuncName: "hashedURL",
-	filemapJSONPath: "frontend/src/vorma.gen/filemap.json",
+	distDir: "/Users/sjc/__code/river/internal/site/backend/dist",
 	ignoredPatterns: [
 		"**/*.go",
-		"**/backend/dist/**/*",
-		"**/backend/assets/**/*",
+		"**/Users/sjc/__code/river/internal/site/backend/dist/**/*",
+		"**/Users/sjc/__code/river/internal/site/backend/assets/**/*",
 		"**/frontend/src/vorma.gen/**/*",
 		"**/backend/wave.config.json",
 		"**/frontend/src/**/*vorma.routes.ts"

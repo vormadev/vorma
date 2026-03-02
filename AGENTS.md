@@ -13,6 +13,35 @@ run. For that reason, every time you come across a failing E2E test, make sure
 to (if possible) recreate a non-E2E regression test version covering the issue
 for faster feedback and regression protection.
 
+## Wave Must Be 100% Independent Of Vorma
+
+Wave is a lower-layer framework and must remain fully Vorma-agnostic.
+
+- Do not add Vorma-specific symbols, defaults, filenames, endpoint names,
+  template placeholders, or behavior to `wave/**`.
+- Vorma must build on top of Wave through configuration/adapters; Wave must not
+  encode Vorma conventions.
+- Repository module import paths that happen to include `vorma` are not a
+  semantic Wave->Vorma dependency by themselves.
+
+## Keep Runtime Dependency Surfaces Lean (Wave + Vorma)
+
+Wave and Vorma runtime package boundaries must stay clean so production binaries
+do not accidentally pull in build/dev-time dependency weight.
+
+- Treat `wave` and `vorma` runtime imports as strict contracts. Do not pull
+  build/dev-only helpers into runtime-facing packages.
+- Do not introduce build/dev-heavy dependencies (for example file-watching,
+  lock/glob orchestration, or build toolchain deps) into runtime-facing packages
+  in `wave/**`, `vorma.go`, or `internal/vormaruntime/**`.
+- Keep build/dev orchestration in `wave/wavebuild/**`, `wave/wavedev/**`, and
+  `vormabuild/**`.
+- If shared behavior is needed, split it into runtime-safe and build/dev-only
+  packages instead of putting everything into one base package.
+- After dependency-boundary refactors, verify runtime deps explicitly (for
+  example with `go list -deps github.com/vormadev/vorma/wave` and
+  `go list -deps github.com/vormadev/vorma`).
+
 ## Git Command Policy
 
 The agent may use Git only for read-only inspection.
@@ -301,7 +330,7 @@ high-quality, and keeps context windows smaller. Within reason and using common
 sense, never repeat complex logic that should be abstracted into a shared
 helper.
 
-## Correct, Ideal Code Is The Goal, Not Easy Migrations Or Backwards Compatibility
+## Correct, Ideal Code Is The Goal, Not Quick Unblocks, Easy Migrations, Or Backwards Compatibility
 
 When analyzing code, do not get caught up in "the easiest way to update it" or
 "the way to maintain backwards compatibility". The goal is always "what is the

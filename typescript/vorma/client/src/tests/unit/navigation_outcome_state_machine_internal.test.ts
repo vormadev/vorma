@@ -55,7 +55,7 @@ function createSuccessOutcome(): Extract<
 			status: 200,
 			headers: {
 				"Content-Type": "application/json",
-				"X-Vorma-Build-Id": "1",
+				"X-Wave-Framework-Build-Id": "1",
 			},
 		}),
 		json: {

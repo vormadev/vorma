@@ -547,7 +547,7 @@ describe("fetch route data server internals", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "build-77",
+						"X-Wave-Framework-Build-Id": "build-77",
 					},
 				}),
 				json: {
@@ -634,7 +634,7 @@ describe("fetch route data server internals", () => {
 					status: 200,
 					headers: {
 						"Content-Type": "application/json",
-						"X-Vorma-Build-Id": "build-78",
+						"X-Wave-Framework-Build-Id": "build-78",
 					},
 				}),
 				json: {

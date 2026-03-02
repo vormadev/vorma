@@ -13,6 +13,9 @@ export default defineConfig({
 			"solid-js": sourcePath(
 				"../../../../node_modules/solid-js/dist/solid.js",
 			),
+			"vorma/client/__internal/hmr_dev": sourcePath(
+				"../../../../npm_dist/typescript/vorma/client/internal/hmr_dev.js",
+			),
 			"vorma/client/__internal": sourcePath(
 				"../../../../npm_dist/typescript/vorma/client/internal.js",
 			),

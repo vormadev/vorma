@@ -26,7 +26,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         "vorma_out/routes/old.js",
+			OutPath:         testWaveOutPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -71,7 +71,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         "vorma_out/routes/new.js",
+			OutPath:         testWaveOutPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -81,7 +81,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		reloaded,
@@ -153,36 +153,36 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.old.tsx",
-			OutPath:         "vorma_out/routes/page.old.js",
+			OutPath:         testWaveOutPath("routes/page.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/route-dep-old.js"},
+			Deps:            []string{testWaveOutPath("route-dep-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.ClientEntryOut = "vorma_out/client-entry-old.js"
-	oldStage.ClientEntryDeps = []string{"vorma_out/client-dep-old.js"}
+	oldStage.ClientEntryOut = testWaveOutPath("client-entry-old.js")
+	oldStage.ClientEntryDeps = []string{testWaveOutPath("client-dep-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry-old.js": {"vorma_out/client-entry-old.css"},
-		"vorma_out/client-dep-old.js":   {"vorma_out/client-dep-old.css"},
-		"vorma_out/route-dep-old.js":    {"vorma_out/route-dep-old.css"},
+		testWaveOutPath("client-entry-old.js"): {testWaveOutPath("client-entry-old.css")},
+		testWaveOutPath("client-dep-old.js"):   {testWaveOutPath("client-dep-old.css")},
+		testWaveOutPath("route-dep-old.js"):    {testWaveOutPath("route-dep-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.new.tsx",
-			OutPath:         "vorma_out/routes/page.new.js",
+			OutPath:         testWaveOutPath("routes/page.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/route-dep-new.js"},
+			Deps:            []string{testWaveOutPath("route-dep-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.ClientEntryOut = "vorma_out/client-entry-new.js"
-	newStage.ClientEntryDeps = []string{"vorma_out/client-dep-new.js"}
+	newStage.ClientEntryOut = testWaveOutPath("client-entry-new.js")
+	newStage.ClientEntryDeps = []string{testWaveOutPath("client-dep-new.js")}
 	newStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry-new.js": {"vorma_out/client-entry-new.css"},
-		"vorma_out/client-dep-new.js":   {"vorma_out/client-dep-new.css"},
-		"vorma_out/route-dep-new.js":    {"vorma_out/route-dep-new.css"},
+		testWaveOutPath("client-entry-new.js"): {testWaveOutPath("client-entry-new.css")},
+		testWaveOutPath("client-dep-new.js"):   {testWaveOutPath("client-dep-new.css")},
+		testWaveOutPath("route-dep-new.js"):    {testWaveOutPath("route-dep-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -219,10 +219,10 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if !containsString(oldData.Deps, "/vorma_out/client-dep-old.js") {
+	if !containsString(oldData.Deps, testWaveOutURLPath("client-dep-old.js")) {
 		t.Fatalf("old deps missing old client dep: %#v", oldData.Deps)
 	}
-	if !containsString(oldData.CSSBundles, "/vorma_out/client-entry-old.css") {
+	if !containsString(oldData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"old css bundles missing old client-entry css: %#v",
 			oldData.CSSBundles,
@@ -233,7 +233,7 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
@@ -245,12 +245,12 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 	if got, want := app.BuildID(), "build-new"; got != want {
 		t.Fatalf("build ID = %q, want %q", got, want)
 	}
-	if got, want := app.ClientEntryOut(), "vorma_out/client-entry-new.js"; got != want {
+	if got, want := app.ClientEntryOut(), testWaveOutPath("client-entry-new.js"); got != want {
 		t.Fatalf("client entry out = %q, want %q", got, want)
 	}
 	if got := app.ClientEntryDeps(); !containsString(
 		got,
-		"vorma_out/client-dep-new.js",
+		testWaveOutPath("client-dep-new.js"),
 	) {
 		t.Fatalf("client entry deps = %#v, expected new client dep", got)
 	}
@@ -271,22 +271,22 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("decode new route data: %v", err)
 	}
 
-	if !containsString(newData.Deps, "/vorma_out/client-dep-new.js") {
+	if !containsString(newData.Deps, testWaveOutURLPath("client-dep-new.js")) {
 		t.Fatalf("new deps missing new client dep: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "/vorma_out/client-dep-old.js") {
+	if containsString(newData.Deps, testWaveOutURLPath("client-dep-old.js")) {
 		t.Fatalf(
 			"new deps should not include old client dep: %#v",
 			newData.Deps,
 		)
 	}
-	if !containsString(newData.CSSBundles, "/vorma_out/client-entry-new.css") {
+	if !containsString(newData.CSSBundles, testWaveOutURLPath("client-entry-new.css")) {
 		t.Fatalf(
 			"new css bundles missing new client-entry css: %#v",
 			newData.CSSBundles,
 		)
 	}
-	if containsString(newData.CSSBundles, "/vorma_out/client-entry-old.css") {
+	if containsString(newData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"new css bundles should not include old client-entry css: %#v",
 			newData.CSSBundles,
@@ -301,28 +301,28 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.old.tsx",
-			OutPath:         "vorma_out/routes/page.old.js",
+			OutPath:         testWaveOutPath("routes/page.old.js"),
 			ExportKey:       "default",
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.ClientEntryOut = "vorma_out/client-entry-old.js"
-	oldStage.ClientEntryDeps = []string{"vorma_out/client-dep-old.js"}
+	oldStage.ClientEntryOut = testWaveOutPath("client-entry-old.js")
+	oldStage.ClientEntryDeps = []string{testWaveOutPath("client-dep-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry-old.js": {"vorma_out/client-entry-old.css"},
-		"vorma_out/client-dep-old.js":   {"vorma_out/client-dep-old.css"},
+		testWaveOutPath("client-entry-old.js"): {testWaveOutPath("client-entry-old.css")},
+		testWaveOutPath("client-dep-old.js"):   {testWaveOutPath("client-dep-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.new.tsx",
-			OutPath:         "vorma_out/routes/page.new.js",
+			OutPath:         testWaveOutPath("routes/page.new.js"),
 			ExportKey:       "default",
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.ClientEntryOut = "vorma_out/client-entry-new.js"
+	newStage.ClientEntryOut = testWaveOutPath("client-entry-new.js")
 	newStage.ClientEntryDeps = nil
 	newStage.DepToCSSBundleMap = nil
 
@@ -360,10 +360,10 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if !containsString(oldData.Deps, "/vorma_out/client-dep-old.js") {
+	if !containsString(oldData.Deps, testWaveOutURLPath("client-dep-old.js")) {
 		t.Fatalf("old deps missing old client dep: %#v", oldData.Deps)
 	}
-	if !containsString(oldData.CSSBundles, "/vorma_out/client-entry-old.css") {
+	if !containsString(oldData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"old css bundles missing old client-entry css: %#v",
 			oldData.CSSBundles,
@@ -374,7 +374,7 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
@@ -412,13 +412,13 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
-	if containsString(newData.Deps, "/vorma_out/client-dep-old.js") {
+	if containsString(newData.Deps, testWaveOutURLPath("client-dep-old.js")) {
 		t.Fatalf(
 			"new deps should not include old client dep: %#v",
 			newData.Deps,
 		)
 	}
-	if containsString(newData.CSSBundles, "/vorma_out/client-entry-old.css") {
+	if containsString(newData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"new css bundles should not include old client-entry css: %#v",
 			newData.CSSBundles,
@@ -433,7 +433,7 @@ func TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState(
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         "vorma_out/routes/old.js",
+			OutPath:         testWaveOutPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -468,11 +468,14 @@ func TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		[]byte(
-			`{"stage":"stage-one","buildID":"build-new-invalid","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/bad":null},"routeManifestFile":"vorma_out/route-manifest.js"}`,
+			fmt.Sprintf(
+				`{"stage":"stage-one","buildID":"build-new-invalid","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/bad":null},"routeManifestFile":%q}`,
+				testWaveOutPath("route-manifest.js"),
+			),
 		),
 	)
 
@@ -534,9 +537,9 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-					OutPath:         "vorma_out/routes/products.$id.old.js",
+					OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 					ExportKey:       "default",
-					Deps:            []string{"vorma_out/chunk-old.js"},
+					Deps:            []string{testWaveOutPath("chunk-old.js")},
 				},
 			})
 			initialStage.Stage = "stage-one"
@@ -578,9 +581,9 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.invalid.tsx",
-					OutPath:         "vorma_out/routes/products.$id.invalid.js",
+					OutPath:         testWaveOutPath("routes/products.$id.invalid.js"),
 					ExportKey:       "default",
-					Deps:            []string{"vorma_out/chunk-invalid.js"},
+					Deps:            []string{testWaveOutPath("chunk-invalid.js")},
 				},
 			})
 			invalidStage.Stage = "stage-one"
@@ -590,7 +593,7 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 				t,
 				filepath.Join(
 					fixture.privateDir,
-					runtimepaths.VormaOutDirname,
+					runtimepaths.VormaInternalDirname,
 					runtimepaths.VormaPathsStageOneJSONFileName,
 				),
 				invalidStage,
@@ -654,7 +657,7 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 		"/client-old": {
 			OriginalPattern: "/client-old",
 			SrcPath:         "frontend/src/routes/client-old.tsx",
-			OutPath:         "vorma_out/routes/client-old.js",
+			OutPath:         testWaveOutPath("routes/client-old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -698,17 +701,17 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 		Stage:             "stage-one",
 		BuildID:           "build-new",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:    "vorma_out/client-entry.js",
+		ClientEntryOut:    testWaveOutPath("client-entry.js"),
 		ClientEntryDeps:   nil,
 		Paths:             nil,
-		RouteManifestFile: "vorma_out/route-manifest.js",
+		RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		DepToCSSBundleMap: nil,
 	}
 	mustWriteJSONFile(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		nilPathsStage,
@@ -757,7 +760,7 @@ func TestDevReloadTemplateFromDisk_UsesUpdatedTemplate(t *testing.T) {
 		"/template": {
 			OriginalPattern: "/template",
 			SrcPath:         "frontend/src/routes/template.tsx",
-			OutPath:         "vorma_out/routes/template.js",
+			OutPath:         testWaveOutPath("routes/template.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -819,7 +822,7 @@ func TestDevReloadTemplateFromDisk_ParseFailureDoesNotMutateTemplate(
 		"/template": {
 			OriginalPattern: "/template",
 			SrcPath:         "frontend/src/routes/template.tsx",
-			OutPath:         "vorma_out/routes/template.js",
+			OutPath:         testWaveOutPath("routes/template.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -894,18 +897,18 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 
@@ -949,7 +952,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, "/vorma_out/chunk-old.js") {
+	if !containsString(oldData.Deps, testWaveOutURLPath("chunk-old.js")) {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -957,7 +960,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
@@ -987,10 +990,10 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, "/vorma_out/chunk-new.js") {
+	if !containsString(newData.Deps, testWaveOutURLPath("chunk-new.js")) {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "/vorma_out/chunk-old.js") {
+	if containsString(newData.Deps, testWaveOutURLPath("chunk-old.js")) {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
 }
@@ -1002,9 +1005,9 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
@@ -1013,9 +1016,9 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
@@ -1064,7 +1067,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, "/vorma_out/chunk-old.js") {
+	if !containsString(oldData.Deps, testWaveOutURLPath("chunk-old.js")) {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -1072,7 +1075,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,
@@ -1109,10 +1112,10 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, "/vorma_out/chunk-new.js") {
+	if !containsString(newData.Deps, testWaveOutURLPath("chunk-new.js")) {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "/vorma_out/chunk-old.js") {
+	if containsString(newData.Deps, testWaveOutURLPath("chunk-old.js")) {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
 }
@@ -1124,18 +1127,18 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_OnlyServeCoherentArtifactSet
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 
@@ -1159,7 +1162,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_OnlyServeCoherentArtifactSet
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
@@ -1315,30 +1318,30 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
-	oldStage.ClientEntryOut = "vorma_out/client-old.js"
+	oldStage.ClientEntryOut = testWaveOutPath("client-old.js")
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-old.js": {"vorma_out/client-old.css"},
-		"vorma_out/chunk-old.js":  {"vorma_out/chunk-old.css"},
+		testWaveOutPath("client-old.js"): {testWaveOutPath("client-old.css")},
+		testWaveOutPath("chunk-old.js"):  {testWaveOutPath("chunk-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
-	newStage.ClientEntryOut = "vorma_out/client-new.js"
+	newStage.ClientEntryOut = testWaveOutPath("client-new.js")
 	newStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-new.js": {"vorma_out/client-new.css"},
-		"vorma_out/chunk-new.js":  {"vorma_out/chunk-new.css"},
+		testWaveOutPath("client-new.js"): {testWaveOutPath("client-new.css")},
+		testWaveOutPath("chunk-new.js"):  {testWaveOutPath("chunk-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -1360,7 +1363,7 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	var didReload atomic.Bool
@@ -1404,7 +1407,7 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.Deps, []string{"/vorma_out/client-shared.js", "/vorma_out/chunk-old.js"}; !slicesEqual(
+	if got, want := routeData.Deps, []string{testWaveOutURLPath("client-shared.js"), testWaveOutURLPath("chunk-old.js")}; !slicesEqual(
 		got,
 		want,
 	) {
@@ -1412,19 +1415,19 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	}
 
 	wantCSSBundles := []string{
-		"/vorma_out/client-old.css",
-		"/vorma_out/chunk-old.css",
+		testWaveOutURLPath("client-old.css"),
+		testWaveOutURLPath("chunk-old.css"),
 	}
 	if got := routeData.CSSBundles; !slicesEqual(got, wantCSSBundles) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, wantCSSBundles)
 	}
-	if containsString(routeData.CSSBundles, "/vorma_out/client-new.css") {
+	if containsString(routeData.CSSBundles, testWaveOutURLPath("client-new.css")) {
 		t.Fatalf(
 			"CSSBundles should not include new-build client CSS: %#v",
 			routeData.CSSBundles,
 		)
 	}
-	if containsString(routeData.CSSBundles, "/vorma_out/chunk-new.css") {
+	if containsString(routeData.CSSBundles, testWaveOutURLPath("chunk-new.css")) {
 		t.Fatalf(
 			"CSSBundles should not include new-build route CSS: %#v",
 			routeData.CSSBundles,
@@ -1439,38 +1442,38 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.RouteManifestFile = "vorma_out/route-manifest-old.js"
-	oldStage.ClientEntryOut = "vorma_out/client-old.js"
-	oldStage.ClientEntryDeps = []string{"vorma_out/shared-old.js"}
+	oldStage.RouteManifestFile = testWaveOutPath("route-manifest-old.js")
+	oldStage.ClientEntryOut = testWaveOutPath("client-old.js")
+	oldStage.ClientEntryDeps = []string{testWaveOutPath("shared-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-old.js": {"vorma_out/client-old.css"},
-		"vorma_out/shared-old.js": {"vorma_out/shared-old.css"},
-		"vorma_out/chunk-old.js":  {"vorma_out/chunk-old.css"},
+		testWaveOutPath("client-old.js"): {testWaveOutPath("client-old.css")},
+		testWaveOutPath("shared-old.js"): {testWaveOutPath("shared-old.css")},
+		testWaveOutPath("chunk-old.js"):  {testWaveOutPath("chunk-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.RouteManifestFile = "vorma_out/route-manifest-new.js"
-	newStage.ClientEntryOut = "vorma_out/client-new.js"
-	newStage.ClientEntryDeps = []string{"vorma_out/shared-new.js"}
+	newStage.RouteManifestFile = testWaveOutPath("route-manifest-new.js")
+	newStage.ClientEntryOut = testWaveOutPath("client-new.js")
+	newStage.ClientEntryDeps = []string{testWaveOutPath("shared-new.js")}
 	newStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-new.js": {"vorma_out/client-new.css"},
-		"vorma_out/shared-new.js": {"vorma_out/shared-new.css"},
-		"vorma_out/chunk-new.js":  {"vorma_out/chunk-new.css"},
+		testWaveOutPath("client-new.js"): {testWaveOutPath("client-new.css")},
+		testWaveOutPath("shared-new.js"): {testWaveOutPath("shared-new.css")},
+		testWaveOutPath("chunk-new.js"):  {testWaveOutPath("chunk-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -1493,7 +1496,7 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	var didReload atomic.Bool
@@ -1525,7 +1528,7 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 	body := rec.Body.String()
 	expectedOldFragments := []string{
 		`buildID: "build-old",`,
-		`x.routeManifestURL = "/vorma_out/route-manifest-old.js";`,
+		`x.routeManifestURL = "` + testWaveOutURLPath("route-manifest-old.js") + `";`,
 		"/frontend/src/routes/products.$id.old.tsx",
 	}
 	for _, expectedOldFragment := range expectedOldFragments {
@@ -1540,7 +1543,7 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 
 	unexpectedNewFragments := []string{
 		`buildID: "build-new",`,
-		`x.routeManifestURL = "/vorma_out/route-manifest-new.js";`,
+		`x.routeManifestURL = "` + testWaveOutURLPath("route-manifest-new.js") + `";`,
 		"/frontend/src/routes/products.$id.new.tsx",
 	}
 	for _, unexpectedNewFragment := range unexpectedNewFragments {
@@ -1561,36 +1564,36 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.ClientEntryOut = "vorma_out/client-old.js"
-	oldStage.ClientEntryDeps = []string{"vorma_out/shared-old.js"}
+	oldStage.ClientEntryOut = testWaveOutPath("client-old.js")
+	oldStage.ClientEntryDeps = []string{testWaveOutPath("shared-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-old.js": {"vorma_out/client-old.css"},
-		"vorma_out/shared-old.js": {"vorma_out/shared-old.css"},
-		"vorma_out/chunk-old.js":  {"vorma_out/chunk-old.css"},
+		testWaveOutPath("client-old.js"): {testWaveOutPath("client-old.css")},
+		testWaveOutPath("shared-old.js"): {testWaveOutPath("shared-old.css")},
+		testWaveOutPath("chunk-old.js"):  {testWaveOutPath("chunk-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.ClientEntryOut = "vorma_out/client-new.js"
-	newStage.ClientEntryDeps = []string{"vorma_out/shared-new.js"}
+	newStage.ClientEntryOut = testWaveOutPath("client-new.js")
+	newStage.ClientEntryDeps = []string{testWaveOutPath("shared-new.js")}
 	newStage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-new.js": {"vorma_out/client-new.css"},
-		"vorma_out/shared-new.js": {"vorma_out/shared-new.css"},
-		"vorma_out/chunk-new.js":  {"vorma_out/chunk-new.css"},
+		testWaveOutPath("client-new.js"): {testWaveOutPath("client-new.css")},
+		testWaveOutPath("shared-new.js"): {testWaveOutPath("shared-new.css")},
+		testWaveOutPath("chunk-new.js"):  {testWaveOutPath("chunk-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -1613,7 +1616,7 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 	var didReload atomic.Bool
@@ -1645,15 +1648,15 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "/vorma_out/routes/products.$id.old.js") {
+	if !strings.Contains(body, testWaveOutURLPath("routes/products.$id.old.js")) {
 		t.Fatalf("body missing old route import URL, body=%q", body)
 	}
-	if strings.Contains(body, "/vorma_out/routes/products.$id.new.js") {
+	if strings.Contains(body, testWaveOutURLPath("routes/products.$id.new.js")) {
 		t.Fatalf("body leaked new route import URL, body=%q", body)
 	}
 	if !strings.Contains(
 		body,
-		`<script type="module" src="/vorma_out/client-old.js"></script>`,
+		`<script type="module" src="`+testWaveOutURLPath("client-old.js")+`"></script>`,
 	) {
 		t.Fatalf(
 			"body missing old-generation client entry script, body=%q",
@@ -1662,7 +1665,7 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 	}
 	if strings.Contains(
 		body,
-		`<script type="module" src="/vorma_out/client-new.js"></script>`,
+		`<script type="module" src="`+testWaveOutURLPath("client-new.js")+`"></script>`,
 	) {
 		t.Fatalf(
 			"body leaked new-generation client entry script, body=%q",
@@ -1678,18 +1681,18 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_DoNotSilentlyServeN
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 
@@ -1713,7 +1716,7 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_DoNotSilentlyServeN
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
@@ -1778,7 +1781,7 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_DoNotSilentlyServeN
 					return
 				}
 
-				reloadHeader := rec.Header().Get("X-Vorma-Reload")
+				reloadHeader := rec.Header().Get("X-Wave-Framework-Reload")
 				if reloadHeader != "" {
 					// Stale request fast-path: do not return route-artifact payload.
 					body := rec.Body.String()
@@ -1853,18 +1856,18 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_WithRedirectingLoad
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	})
 
@@ -1891,7 +1894,7 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_WithRedirectingLoad
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
@@ -1945,7 +1948,7 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_WithRedirectingLoad
 				handler.ServeHTTP(rec, req)
 
 				buildIDHeader := rec.Header().Get(VormaBuildIDHeaderKey)
-				reloadHeader := rec.Header().Get("X-Vorma-Reload")
+				reloadHeader := rec.Header().Get("X-Wave-Framework-Reload")
 
 				if buildIDHeader == "build-new" {
 					if reloadHeader == "" {
@@ -2022,7 +2025,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithRouteShapeChanges(
 		"/alpha": {
 			OriginalPattern: "/alpha",
 			SrcPath:         "frontend/src/routes/alpha.old.tsx",
-			OutPath:         "vorma_out/routes/alpha.old.js",
+			OutPath:         testWaveOutPath("routes/alpha.old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2030,7 +2033,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithRouteShapeChanges(
 		"/beta": {
 			OriginalPattern: "/beta",
 			SrcPath:         "frontend/src/routes/beta.new.tsx",
-			OutPath:         "vorma_out/routes/beta.new.js",
+			OutPath:         testWaveOutPath("routes/beta.new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2045,7 +2048,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithRouteShapeChanges(
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
@@ -2186,13 +2189,13 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithNestedParamShapeChanges(
 		"/catalog/:catalogID/items/:itemID": {
 			OriginalPattern: "/catalog/:catalogID/items/:itemID",
 			SrcPath:         "frontend/src/routes/catalog.$catalogID.items.$itemID.old.tsx",
-			OutPath:         "vorma_out/routes/catalog.$catalogID.items.$itemID.old.js",
+			OutPath:         testWaveOutPath("routes/catalog.$catalogID.items.$itemID.old.js"),
 			ExportKey:       "default",
 		},
 		"/catalog/:catalogID/items/:itemID/reviews/:reviewID": {
 			OriginalPattern: "/catalog/:catalogID/items/:itemID/reviews/:reviewID",
 			SrcPath:         "frontend/src/routes/catalog.$catalogID.items.$itemID.reviews.$reviewID.old.tsx",
-			OutPath:         "vorma_out/routes/catalog.$catalogID.items.$itemID.reviews.$reviewID.old.js",
+			OutPath:         testWaveOutPath("routes/catalog.$catalogID.items.$itemID.reviews.$reviewID.old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2200,13 +2203,13 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithNestedParamShapeChanges(
 		"/orgs/:orgID/repos/:repoID": {
 			OriginalPattern: "/orgs/:orgID/repos/:repoID",
 			SrcPath:         "frontend/src/routes/orgs.$orgID.repos.$repoID.new.tsx",
-			OutPath:         "vorma_out/routes/orgs.$orgID.repos.$repoID.new.js",
+			OutPath:         testWaveOutPath("routes/orgs.$orgID.repos.$repoID.new.js"),
 			ExportKey:       "default",
 		},
 		"/orgs/:orgID/repos/:repoID/issues/:issueID": {
 			OriginalPattern: "/orgs/:orgID/repos/:repoID/issues/:issueID",
 			SrcPath:         "frontend/src/routes/orgs.$orgID.repos.$repoID.issues.$issueID.new.tsx",
-			OutPath:         "vorma_out/routes/orgs.$orgID.repos.$repoID.issues.$issueID.new.js",
+			OutPath:         testWaveOutPath("routes/orgs.$orgID.repos.$repoID.issues.$issueID.new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2221,7 +2224,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithNestedParamShapeChanges(
 	handler := mux.InjectTasksCtxMiddleware(app.Loaders().Handler())
 	stageOnePath := filepath.Join(
 		fixture.privateDir,
-		runtimepaths.VormaOutDirname,
+		runtimepaths.VormaInternalDirname,
 		runtimepaths.VormaPathsStageOneJSONFileName,
 	)
 
@@ -2406,7 +2409,7 @@ func TestDevReloadMethods_FailOutsideDevMode(t *testing.T) {
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.tsx",
-			OutPath:         "vorma_out/routes/page.js",
+			OutPath:         testWaveOutPath("routes/page.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2431,7 +2434,7 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         "vorma_out/routes/old.js",
+			OutPath:         testWaveOutPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2439,7 +2442,7 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         "vorma_out/routes/new.js",
+			OutPath:         testWaveOutPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2456,7 +2459,7 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 		t,
 		filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		newStage,

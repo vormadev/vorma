@@ -17,15 +17,9 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimecore"
 )
 
-// RoutePath is one serialized route entry from stage-one/stage-two paths files.
-type RoutePath struct {
-	OriginalPattern string   `json:"originalPattern"`
-	SrcPath         string   `json:"srcPath"`
-	ExportKey       string   `json:"exportKey"`
-	ErrorExportKey  string   `json:"errorExportKey,omitempty"`
-	OutPath         string   `json:"outPath,omitempty"`
-	Deps            []string `json:"deps,omitempty"`
-}
+// RoutePath aliases runtimecore.RoutePath so path shape ownership lives in one
+// place.
+type RoutePath = runtimecore.RoutePath
 
 // PathsFile represents the serialized route artifact payload written to disk.
 type PathsFile struct {
@@ -40,8 +34,9 @@ type PathsFile struct {
 }
 
 const (
-	// VormaOutDirname is the output directory for Vorma build artifacts.
-	VormaOutDirname = "vorma_out"
+	// VormaInternalDirname is the private output directory for Vorma runtime
+	// internal artifacts.
+	VormaInternalDirname = "vorma_owned"
 )
 
 const (
@@ -49,16 +44,22 @@ const (
 	VormaPathsStageOneJSONFileName = "vorma_paths_stage_1.json"
 	// VormaPathsStageTwoJSONFileName is the stage-two route artifacts filename.
 	VormaPathsStageTwoJSONFileName = "vorma_paths_stage_2.json"
+	// GeneratedTypeScriptIndexFileName is the main generated TypeScript runtime
+	// module filename.
+	GeneratedTypeScriptIndexFileName = "index.ts"
+	// GeneratedTypeScriptPublicFileMapFileName is the generated TypeScript
+	// static-public filemap module filename.
+	GeneratedTypeScriptPublicFileMapFileName = "filemap.ts"
 )
 
 // GetVormaPathsStageOneJSONPath returns the stage-one artifacts file path.
 func GetVormaPathsStageOneJSONPath() string {
-	return path.Join(VormaOutDirname, VormaPathsStageOneJSONFileName)
+	return path.Join(VormaInternalDirname, VormaPathsStageOneJSONFileName)
 }
 
 // GetVormaPathsStageTwoJSONPath returns the stage-two artifacts file path.
 func GetVormaPathsStageTwoJSONPath() string {
-	return path.Join(VormaOutDirname, VormaPathsStageTwoJSONFileName)
+	return path.Join(VormaInternalDirname, VormaPathsStageTwoJSONFileName)
 }
 
 // LoadPathsFileFromFS reads, decodes, and validates stage-one/stage-two paths
@@ -76,7 +77,7 @@ func LoadPathsFileFromFS(
 		fileToUse = VormaPathsStageTwoJSONFileName
 	}
 
-	file, err := privateFS.Open(path.Join(VormaOutDirname, fileToUse))
+	file, err := privateFS.Open(path.Join(VormaInternalDirname, fileToUse))
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s: %w", fileToUse, err)
 	}
@@ -246,33 +247,6 @@ func BuildRuntimePathsFileSnapshot(
 			pathsFile.DepToCSSBundleMap,
 		),
 		RouteManifestFile: pathsFile.RouteManifestFile,
-		Paths: convertRuntimePathsToRuntimeCorePaths(
-			pathsFile.Paths,
-		),
+		Paths:             runtimecore.CloneRoutePathsOrNil(pathsFile.Paths),
 	}
-}
-
-func convertRuntimePathsToRuntimeCorePaths(
-	paths map[string]*RoutePath,
-) map[string]*runtimecore.RoutePath {
-	if paths == nil {
-		return nil
-	}
-
-	cloned := make(map[string]*runtimecore.RoutePath, len(paths))
-	for pattern, pathValue := range paths {
-		if pathValue == nil {
-			cloned[pattern] = nil
-			continue
-		}
-		cloned[pattern] = &runtimecore.RoutePath{
-			OriginalPattern: pathValue.OriginalPattern,
-			SrcPath:         pathValue.SrcPath,
-			OutPath:         pathValue.OutPath,
-			ExportKey:       pathValue.ExportKey,
-			ErrorExportKey:  pathValue.ErrorExportKey,
-			Deps:            runtimecore.CloneStringSliceOrNil(pathValue.Deps),
-		}
-	}
-	return cloned
 }

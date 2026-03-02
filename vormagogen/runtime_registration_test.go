@@ -2,6 +2,7 @@ package vormagogen
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -26,7 +28,7 @@ func newDiscoveredRegistrationRuntimeFixture(
 ) *discoveredRegistrationRuntimeFixture {
 	t.Helper()
 
-	rootDir := t.TempDir()
+	rootDir := wavetest.NewWorkspaceTempDir(t, "vormagogen-fixture-")
 	distDir := filepath.Join(rootDir, "dist")
 	staticDir := filepath.Join(distDir, "static")
 	privateDir := filepath.Join(staticDir, "assets", "private")
@@ -46,7 +48,7 @@ func newDiscoveredRegistrationRuntimeFixture(
 	}
 
 	rawConfig := struct {
-		Core  wave.CoreConfig `json:"Core"`
+		Core  waveconfig.CoreConfig `json:"Core"`
 		Vorma struct {
 			MainBuildEntry                string   `json:"MainBuildEntry"`
 			UIVariant                     string   `json:"UIVariant"`
@@ -57,12 +59,12 @@ func newDiscoveredRegistrationRuntimeFixture(
 			BuildtimePublicURLFuncName    string   `json:"BuildtimePublicURLFuncName"`
 		} `json:"Vorma"`
 	}{
-		Core: wave.CoreConfig{
+		Core: waveconfig.CoreConfig{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      distDir,
+			DistDir:      wavetest.MustCWDRelativePath(distDir),
 			StaticAssetDirs: discoveredRegistrationStaticAssetDirs{
-				Private: privateDir,
-				Public:  publicDir,
+				Private: wavetest.MustCWDRelativePath(privateDir),
+				Public:  wavetest.MustCWDRelativePath(publicDir),
 			},
 			PublicPathPrefix: "/",
 		},

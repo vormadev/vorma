@@ -2,6 +2,8 @@ package vormaruntime
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"os"
@@ -49,14 +51,23 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	tb.Setenv("__WAVE_MODE", "")
 	tb.Setenv("PORT", "8080")
 	tb.Setenv("__WAVE_PORT_HAS_BEEN_SET", "true")
+	tb.Setenv("__VITE_PORT", "5173")
 
-	rootDir := tb.TempDir()
+	rootDir := wavetest.NewWorkspaceTempDir(tb, "vormaruntime-fixture-")
 	staticDir := filepath.Join(rootDir, "dist", "static")
-	privateDir := filepath.Join(staticDir, "assets", "private")
-	publicDir := filepath.Join(staticDir, "assets", "public")
-	internalDir := filepath.Join(staticDir, "internal")
+	privateDir := filepath.Join(
+		staticDir,
+		waveartifacts.AssetsDirname,
+		waveartifacts.PrivateDirname,
+	)
+	publicDir := filepath.Join(
+		staticDir,
+		waveartifacts.AssetsDirname,
+		waveartifacts.PublicDirname,
+	)
+	internalDir := filepath.Join(staticDir, waveartifacts.InternalDirname)
 
-	mustMkdirAll(tb, filepath.Join(privateDir, runtimepaths.VormaOutDirname))
+	mustMkdirAll(tb, filepath.Join(privateDir, runtimepaths.VormaInternalDirname))
 	mustMkdirAll(tb, publicDir)
 	mustMkdirAll(tb, internalDir)
 
@@ -78,7 +89,7 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		tb,
 		filepath.Join(
 			privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		stageOne,
@@ -87,15 +98,15 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		tb,
 		filepath.Join(
 			privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageTwoJSONFileName,
 		),
 		stageTwo,
 	)
 
-	coreCfg := wave.CoreConfig{
+	coreCfg := waveconfig.CoreConfig{
 		MainAppEntry:     "backend/cmd/serve",
-		DistDir:          filepath.Join(rootDir, "dist"),
+		DistDir:          wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 		PublicPathPrefix: o.publicPathPrefix,
 	}
 	wavetest.SetCoreStaticAssetDirectories(&coreCfg, publicDir, privateDir)
@@ -110,21 +121,21 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	if o.enableCriticalCSS {
 		mustWriteFile(
 			tb,
-			filepath.Join(internalDir, "critical.css"),
+			filepath.Join(internalDir, waveartifacts.CriticalCSSFileName),
 			[]byte("body{color:black;}"),
 		)
 	}
 	if o.enableNonCriticalCSS {
 		mustWriteFile(
 			tb,
-			filepath.Join(internalDir, "normal_css_file_ref.txt"),
-			[]byte("vorma_out_styles.css"),
+			filepath.Join(internalDir, waveartifacts.NormalCSSRefFileName),
+			[]byte(testWaveOutPrefixedFileName("styles.css")),
 		)
 	}
 
 	rawCfg := struct {
-		Core  wave.CoreConfig `json:"Core"`
-		Vorma VormaConfig     `json:"Vorma"`
+		Core  waveconfig.CoreConfig `json:"Core"`
+		Vorma VormaConfig           `json:"Vorma"`
 	}{
 		Core: coreCfg,
 		Vorma: VormaConfig{
@@ -184,7 +195,7 @@ func defaultPathsFile(
 			"/": {
 				OriginalPattern: "/",
 				SrcPath:         "frontend/src/routes/root.tsx",
-				OutPath:         "vorma_out/root.js",
+				OutPath:         testWaveOutPath("root.js"),
 				ExportKey:       "default",
 			},
 		}
@@ -193,13 +204,13 @@ func defaultPathsFile(
 		Stage:             "stage-two",
 		BuildID:           buildID,
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:    "vorma_out/client-entry.js",
-		ClientEntryDeps:   []string{"vorma_out/client-shared.js"},
+		ClientEntryOut:    testWaveOutPath("client-entry.js"),
+		ClientEntryDeps:   []string{testWaveOutPath("client-shared.js")},
 		Paths:             toRuntimePathsRouteMap(paths),
-		RouteManifestFile: "vorma_out/route-manifest.js",
+		RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/client-entry.js":  {"vorma_out/client-entry.css"},
-			"vorma_out/client-shared.js": {"vorma_out/client-shared.css"},
+			testWaveOutPath("client-entry.js"):  {testWaveOutPath("client-entry.css")},
+			testWaveOutPath("client-shared.js"): {testWaveOutPath("client-shared.css")},
 		},
 	}
 }

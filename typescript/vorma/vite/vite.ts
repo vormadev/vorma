@@ -1,16 +1,17 @@
 import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 import type { ConfigEnv, Plugin, UserConfig, ViteDevServer } from "vite";
 
 export type VormaVitePluginConfig = {
 	rollupInput: ReadonlyArray<string>;
 	publicPathPrefix: string;
-	staticPublicAssetMap: Record<string, string>;
 	buildtimePublicURLFuncName: string;
-	filemapJSONPath: string;
+	distDir: string;
 	ignoredPatterns: ReadonlyArray<string>;
 	dedupeList: ReadonlyArray<string>;
 };
+
+const FILEMAP_CHANGED_NOTIFY_ENDPOINT_PATH = "/__wave_notify_filemap_changed";
 
 function mergeRollupInput(
 	vormaRollupInput: ReadonlyArray<string>,
@@ -82,50 +83,114 @@ function mergeServerWatchIgnoredPatterns(
 }
 
 export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
-	// Cache for dev mode filemap reading.
-	// In dev mode, we read from the JSON file so we can pick up changes
-	// without restarting Vite. The mtime check allows us to avoid re-reading
-	// the file on every transform if it hasn't changed.
 	let cachedMap: Record<string, string> | null = null;
-	let cachedMtime: number = 0;
+	let cachedRefMtime: number = 0;
+	let cachedFileMapMtime: number = 0;
+	let cachedFileMapPath = "";
 	let isDev = false;
-	let resolvedFilemapPath: string | null = null;
+	let resolvedStaticDistDirPath: string | null = null;
 
-	/**
-	 * Gets the current filemap, reading from disk in dev mode.
-	 * In production builds, uses the static map passed at plugin creation.
-	 */
-	function getFilemap(): Record<string, string> {
-		if (!isDev) {
-			return config.staticPublicAssetMap;
+	type CanonicalPublicFileMap = Record<
+		string,
+		{ dist: string; hash: string; prehashed: boolean }
+	>;
+
+	function getResolvedStaticDistDirPath(): string {
+		if (!resolvedStaticDistDirPath) {
+			resolvedStaticDistDirPath = resolve(
+				process.cwd(),
+				config.distDir,
+				"static",
+			);
+		}
+		return resolvedStaticDistDirPath;
+	}
+
+	function getResolvedPublicFileMapRefPath(): string {
+		return resolve(
+			getResolvedStaticDistDirPath(),
+			"internal",
+			"public_file_map_file_ref.txt",
+		);
+	}
+
+	function getResolvedStaticPublicOutDir(): string {
+		return resolve(getResolvedStaticDistDirPath(), "assets", "public");
+	}
+
+	function resolveCanonicalPublicFileMapPathFromRef(
+		refTargetPath: string,
+	): string {
+		const trimmedRefTargetPath = refTargetPath.trim();
+		if (trimmedRefTargetPath === "") {
+			throw new Error("[vorma-vite-plugin] public filemap ref is empty.");
 		}
 
-		if (!resolvedFilemapPath) {
-			resolvedFilemapPath = resolve(
-				process.cwd(),
-				config.filemapJSONPath,
+		const staticPublicOutDir = getResolvedStaticPublicOutDir();
+		const resolvedCanonicalPath = resolve(
+			staticPublicOutDir,
+			trimmedRefTargetPath,
+		);
+		const normalizedStaticPublicOutDir = staticPublicOutDir.endsWith(sep)
+			? staticPublicOutDir
+			: `${staticPublicOutDir}${sep}`;
+		if (
+			resolvedCanonicalPath !== staticPublicOutDir &&
+			!resolvedCanonicalPath.startsWith(normalizedStaticPublicOutDir)
+		) {
+			throw new Error(
+				`[vorma-vite-plugin] public filemap ref escapes static public out dir: ${trimmedRefTargetPath}`,
 			);
 		}
 
-		try {
-			const stat = statSync(resolvedFilemapPath);
-			const mtime = stat.mtimeMs;
+		return resolvedCanonicalPath;
+	}
 
-			// Return cached version if file hasn't changed
-			if (cachedMap && mtime === cachedMtime) {
-				return cachedMap;
+	function flattenCanonicalPublicFileMap(
+		canonicalPublicFileMap: CanonicalPublicFileMap,
+	): Record<string, string> {
+		const flattenedMap: Record<string, string> = {};
+		for (const [sourcePath, value] of Object.entries(
+			canonicalPublicFileMap,
+		)) {
+			if (!value || typeof value.dist !== "string" || value.dist === "") {
+				throw new Error(
+					`[vorma-vite-plugin] canonical public filemap entry is missing dist for ${sourcePath}.`,
+				);
 			}
-
-			const content = readFileSync(resolvedFilemapPath, "utf-8");
-			cachedMap = JSON.parse(content);
-			cachedMtime = mtime;
-			return cachedMap!;
-		} catch {
-			// Fallback to initial config if file can't be read.
-			// This handles the case where the JSON file doesn't exist yet
-			// (e.g., on first build before Wave has written it).
-			return config.staticPublicAssetMap;
+			flattenedMap[sourcePath] = value.dist;
 		}
+		return flattenedMap;
+	}
+
+	function getFilemap(): Record<string, string> {
+		const resolvedRefPath = getResolvedPublicFileMapRefPath();
+		const refStat = statSync(resolvedRefPath);
+		const refContent = readFileSync(resolvedRefPath, "utf-8");
+		const resolvedCanonicalPath =
+			resolveCanonicalPublicFileMapPathFromRef(refContent);
+		const canonicalStat = statSync(resolvedCanonicalPath);
+
+		const refMtime = refStat.mtimeMs;
+		const canonicalMtime = canonicalStat.mtimeMs;
+		if (
+			cachedMap &&
+			cachedFileMapPath === resolvedCanonicalPath &&
+			cachedRefMtime === refMtime &&
+			cachedFileMapMtime === canonicalMtime
+		) {
+			return cachedMap;
+		}
+
+		const canonicalContent = readFileSync(resolvedCanonicalPath, "utf-8");
+		const canonicalPublicFileMap = JSON.parse(
+			canonicalContent,
+		) as CanonicalPublicFileMap;
+		cachedMap = flattenCanonicalPublicFileMap(canonicalPublicFileMap);
+		cachedRefMtime = refMtime;
+		cachedFileMapMtime = canonicalMtime;
+		cachedFileMapPath = resolvedCanonicalPath;
+		return cachedMap;
 	}
 
 	return {
@@ -154,9 +219,9 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 						preserveEntrySignatures: "exports-only",
 						output: {
 							assetFileNames:
-								"vorma_out_vite_[name]-[hash][extname]",
-							chunkFileNames: "vorma_out_vite_[name]-[hash].js",
-							entryFileNames: "vorma_out_vite_[name]-[hash].js",
+								"wave_out_vite_[name]-[hash][extname]",
+							chunkFileNames: "wave_out_vite_[name]-[hash].js",
+							entryFileNames: "wave_out_vite_[name]-[hash].js",
 						},
 					},
 				},
@@ -185,7 +250,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 		},
 
 		/**
-		 * Configures the dev server with an endpoint for filemap cache invalidation.
+		 * Configures the dev server with a generic filemap-changed notify endpoint.
 		 * Wave calls this endpoint after updating public static files, which:
 		 * 1. Clears the cached filemap so the next transform reads fresh data
 		 * 2. Invalidates all modules in Vite's module graph
@@ -195,17 +260,19 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 		 */
 		configureServer(server: ViteDevServer) {
 			server.middlewares.use((req, res, next) => {
-				if (req.url !== "/__vorma_invalidate_filemap") {
+				if (req.url !== FILEMAP_CHANGED_NOTIFY_ENDPOINT_PATH) {
 					return next();
 				}
 
 				console.log(
-					"[vorma-vite-plugin] Filemap invalidation triggered",
+					"[vorma-vite-plugin] Filemap-changed notification received",
 				);
 
 				// Clear the filemap cache so the next transform reads fresh data
 				cachedMap = null;
-				cachedMtime = 0;
+				cachedRefMtime = 0;
+				cachedFileMapMtime = 0;
+				cachedFileMapPath = "";
 
 				// Invalidate all modules in Vite's module graph.
 				// This is simpler than tracking which specific modules use
@@ -237,7 +304,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 			const needsReplacement = regex.test(code);
 			if (!needsReplacement) return null;
 
-			// Get the current filemap (reads from disk in dev mode)
+			// Get the current filemap from canonical Wave output.
 			const filemap = getFilemap();
 			const missingStaticPublicAssets = new Set<string>();
 

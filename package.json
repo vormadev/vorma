@@ -35,6 +35,10 @@
 			"import": "./npm_dist/typescript/vorma/client/internal.js",
 			"types": "./npm_dist/typescript/vorma/client/internal.d.ts"
 		},
+		"./client/__internal/hmr_dev": {
+			"import": "./npm_dist/typescript/vorma/client/internal/hmr_dev.js",
+			"types": "./npm_dist/typescript/vorma/client/internal/hmr_dev.d.ts"
+		},
 		"./buildtime": {
 			"import": "./npm_dist/typescript/vorma/client/buildtime.js",
 			"types": "./npm_dist/typescript/vorma/client/buildtime.d.ts"

@@ -3,6 +3,11 @@
  *
  * Unstable adapter/runtime internals are exported from `vorma/client/__internal`.
  */
+/**
+ * Stable public runtime client API.
+ *
+ * Unstable adapter/runtime internals are exported from `vorma/client/__internal`.
+ */
 export {
 	addBuildIDListener,
 	addLocationListener,
@@ -12,11 +17,11 @@ export {
 	buildQueryURL,
 	defaultErrorBoundary,
 	getBuildID,
+	getHistoryInstance,
 	getLocation,
 	getRootEl,
 	getRouterData,
 	getStatus,
-	getUnsafeHistoryInstance,
 	initClient,
 	makeTypedAPIClient,
 	makeTypedNavigate,

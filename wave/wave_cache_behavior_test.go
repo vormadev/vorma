@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/internal/wavefilemap"
 )
 
 func TestRawConfigJSONIsDefensivelyCopied(t *testing.T) {
@@ -46,13 +48,13 @@ func TestPublicURLCachingDiffersByMode(t *testing.T) {
 		)
 
 		first := w.PublicURL("logo.txt")
-		if first != "/assets/vorma_out/logo.hash.txt" {
+		if first != testHashedOutputPublicURL("logo.hash.txt") {
 			t.Fatalf("unexpected initial public URL: %q", first)
 		}
 
-		mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), FileMap{
+		mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), wavefilemap.FileMap{
 			"logo.txt": {
-				DistName: "vorma_out/logo.changed.txt",
+				DistName: testHashedOutputRelativePath("logo.changed.txt"),
 			},
 		})
 
@@ -71,18 +73,18 @@ func TestPublicURLCachingDiffersByMode(t *testing.T) {
 		w := newWaveForTest(t, fixture, true, nil)
 
 		first := w.PublicURL("logo.txt")
-		if first != "/assets/vorma_out/logo.hash.txt" {
+		if first != testHashedOutputPublicURL("logo.hash.txt") {
 			t.Fatalf("unexpected initial public URL: %q", first)
 		}
 
-		mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), FileMap{
+		mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), wavefilemap.FileMap{
 			"logo.txt": {
-				DistName: "vorma_out/logo.changed.txt",
+				DistName: testHashedOutputRelativePath("logo.changed.txt"),
 			},
 		})
 
 		second := w.PublicURL("logo.txt")
-		if second != "/assets/vorma_out/logo.changed.txt" {
+		if second != testHashedOutputPublicURL("logo.changed.txt") {
 			t.Fatalf(
 				"expected development mode to recompute public URL, got %q",
 				second,
@@ -102,7 +104,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 			os.DirFS(fixture.cfg.Dist.Static()),
 		)
 
-		if !w.isPublicAsset("/logo.txt") {
+		if !w.runtime.IsPublicAsset("/logo.txt") {
 			t.Fatal(
 				"expected /logo.txt to be an asset on first production lookup",
 			)
@@ -110,7 +112,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
-		if !w.isPublicAsset("/logo.txt") {
+		if !w.runtime.IsPublicAsset("/logo.txt") {
 			t.Fatal(
 				"expected production mode to reuse cached file-existence result",
 			)
@@ -122,7 +124,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 		fixture.cfg.Core.PublicPathPrefix = "/"
 		w := newWaveForTest(t, fixture, true, nil)
 
-		if !w.isPublicAsset("/logo.txt") {
+		if !w.runtime.IsPublicAsset("/logo.txt") {
 			t.Fatal(
 				"expected /logo.txt to be an asset on first development lookup",
 			)
@@ -130,7 +132,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
-		if w.isPublicAsset("/logo.txt") {
+		if w.runtime.IsPublicAsset("/logo.txt") {
 			t.Fatal("expected development mode to recompute file existence")
 		}
 	})
@@ -146,7 +148,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 			os.DirFS(fixture.cfg.Dist.Static()),
 		)
 
-		if !w.isPublicAsset("/assets/logo.txt") {
+		if !w.runtime.IsPublicAsset("/assets/logo.txt") {
 			t.Fatal(
 				"expected /assets/logo.txt to be an asset on first production lookup",
 			)
@@ -154,7 +156,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
-		if !w.isPublicAsset("/assets/logo.txt") {
+		if !w.runtime.IsPublicAsset("/assets/logo.txt") {
 			t.Fatal(
 				"expected production mode to reuse cached prefixed file-existence result",
 			)
@@ -165,7 +167,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 		fixture := newWaveTestFixture(t)
 		w := newWaveForTest(t, fixture, true, nil)
 
-		if !w.isPublicAsset("/assets/logo.txt") {
+		if !w.runtime.IsPublicAsset("/assets/logo.txt") {
 			t.Fatal(
 				"expected /assets/logo.txt to be an asset on first development lookup",
 			)
@@ -173,7 +175,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
-		if w.isPublicAsset("/assets/logo.txt") {
+		if w.runtime.IsPublicAsset("/assets/logo.txt") {
 			t.Fatal(
 				"expected development mode to recompute prefixed file existence",
 			)
@@ -185,7 +187,7 @@ func TestIsPublicAssetProductionDoesNotCacheNegativeResults(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
 
-	if w.isPublicAsset("/assets/newly-created.txt") {
+	if w.runtime.IsPublicAsset("/assets/newly-created.txt") {
 		t.Fatal("expected missing asset to return false before file exists")
 	}
 
@@ -195,7 +197,7 @@ func TestIsPublicAssetProductionDoesNotCacheNegativeResults(t *testing.T) {
 		"now-present",
 	)
 
-	if !w.isPublicAsset("/assets/newly-created.txt") {
+	if !w.runtime.IsPublicAsset("/assets/newly-created.txt") {
 		t.Fatal(
 			"expected production mode to recompute and detect newly created asset",
 		)
@@ -266,18 +268,18 @@ func TestStylesheetURLCachingDiffersByMode(t *testing.T) {
 			os.DirFS(fixture.cfg.Dist.Static()),
 		)
 
-		first := w.styleSheetURL()
-		if first != "/assets/vorma_out/vorma_internal_normal_hash.css" {
+		first := w.runtime.StyleSheetURL()
+		if first != testOwnedOutputPublicURL("normal_hash.css") {
 			t.Fatalf("unexpected initial stylesheet URL: %q", first)
 		}
 
 		mustWriteFile(
 			t,
 			fixture.cfg.Dist.NormalCSSRef(),
-			"vorma_out/changed.css",
+			testHashedOutputRelativePath("changed.css"),
 		)
 
-		second := w.styleSheetURL()
+		second := w.runtime.StyleSheetURL()
 		if second != first {
 			t.Fatalf(
 				"expected production mode to keep cached stylesheet URL, got first=%q second=%q",
@@ -291,19 +293,19 @@ func TestStylesheetURLCachingDiffersByMode(t *testing.T) {
 		fixture := newWaveTestFixture(t)
 		w := newWaveForTest(t, fixture, true, nil)
 
-		first := w.styleSheetURL()
-		if first != "/assets/vorma_out/vorma_internal_normal_hash.css" {
+		first := w.runtime.StyleSheetURL()
+		if first != testOwnedOutputPublicURL("normal_hash.css") {
 			t.Fatalf("unexpected initial stylesheet URL: %q", first)
 		}
 
 		mustWriteFile(
 			t,
 			fixture.cfg.Dist.NormalCSSRef(),
-			"vorma_out/changed.css",
+			testHashedOutputRelativePath("changed.css"),
 		)
 
-		second := w.styleSheetURL()
-		if second != "/assets/vorma_out/changed.css" {
+		second := w.runtime.StyleSheetURL()
+		if second != testHashedOutputPublicURL("changed.css") {
 			t.Fatalf(
 				"expected development mode to recompute stylesheet URL, got %q",
 				second,
@@ -322,18 +324,18 @@ func TestPublicFileMapURLCachingDiffersByMode(t *testing.T) {
 			os.DirFS(fixture.cfg.Dist.Static()),
 		)
 
-		first := w.publicFileMapURL()
-		if first != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
+		first := w.runtime.PublicFileMapURL()
+		if first != testOwnedOutputPublicURL("public_filemap_hash.js") {
 			t.Fatalf("unexpected initial public file map URL: %q", first)
 		}
 
 		mustWriteFile(
 			t,
 			fixture.cfg.Dist.PublicFileMapRef(),
-			"vorma_out/changed_public_filemap.js",
+			testHashedOutputRelativePath("changed_public_filemap.js"),
 		)
 
-		second := w.publicFileMapURL()
+		second := w.runtime.PublicFileMapURL()
 		if second != first {
 			t.Fatalf(
 				"expected production mode to keep cached file map URL, got first=%q second=%q",
@@ -347,19 +349,19 @@ func TestPublicFileMapURLCachingDiffersByMode(t *testing.T) {
 		fixture := newWaveTestFixture(t)
 		w := newWaveForTest(t, fixture, true, nil)
 
-		first := w.publicFileMapURL()
-		if first != "/assets/vorma_out/vorma_internal_public_filemap_hash.js" {
+		first := w.runtime.PublicFileMapURL()
+		if first != testOwnedOutputPublicURL("public_filemap_hash.js") {
 			t.Fatalf("unexpected initial public file map URL: %q", first)
 		}
 
 		mustWriteFile(
 			t,
 			fixture.cfg.Dist.PublicFileMapRef(),
-			"vorma_out/changed_public_filemap.js",
+			testHashedOutputRelativePath("changed_public_filemap.js"),
 		)
 
-		second := w.publicFileMapURL()
-		if second != "/assets/vorma_out/changed_public_filemap.js" {
+		second := w.runtime.PublicFileMapURL()
+		if second != testHashedOutputPublicURL("changed_public_filemap.js") {
 			t.Fatalf(
 				"expected development mode to recompute file map URL, got %q",
 				second,

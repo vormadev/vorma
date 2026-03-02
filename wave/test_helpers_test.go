@@ -9,39 +9,62 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vormadev/vorma/wave/internal/wavecore"
+	"github.com/vormadev/vorma/internal/testpath"
+	"github.com/vormadev/vorma/wave/internal/wavefilemap"
+	"github.com/vormadev/vorma/wave/internal/waveruntimecore"
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/waveenv"
 )
 
 type waveTestFixture struct {
 	root string
-	cfg  *ParsedConfig
+	cfg  *waveconfig.ParsedConfig
+}
+
+func testHashedOutputRelativePath(fileName string) string {
+	return waveartifacts.ApplyWaveFileOutputPrefix(fileName)
+}
+
+func testHashedOutputPublicURL(fileName string) string {
+	return "/assets/" + testHashedOutputRelativePath(fileName)
+}
+
+func testOwnedOutputRelativePath(fileName string) string {
+	return waveartifacts.ApplyWaveFileOutputPrefix(
+		waveartifacts.ApplyWaveOwnedFileOutputPrefix(fileName),
+	)
+}
+
+func testOwnedOutputPublicURL(fileName string) string {
+	return "/assets/" + testOwnedOutputRelativePath(fileName)
 }
 
 func newWaveTestFixture(t *testing.T) *waveTestFixture {
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := &ParsedConfig{
-		Core: &CoreConfig{
+	cfg := &waveconfig.ParsedConfig{
+		Core: &waveconfig.CoreConfig{
 			MainAppEntry: "cmd/app",
 			DistDir:      filepath.Join(root, "dist"),
-			StaticAssetDirs: staticAssetDirs{
+			StaticAssetDirs: waveconfig.StaticAssetDirs{
 				Public:  filepath.Join(root, "public-src"),
 				Private: filepath.Join(root, "private-src"),
 			},
-			CSSEntryFiles: cssEntryFiles{
+			CSSEntryFiles: waveconfig.CSSEntryFiles{
 				Critical:    "./src/critical.css",
 				NonCritical: "./src/non_critical.css",
 			},
 			PublicPathPrefix: "/assets/",
 		},
-		Vite: &viteConfig{DefaultPort: 5173},
-		Watch: &WatchConfig{
+		Vite: &waveconfig.ViteConfig{DefaultPort: 5173},
+		Watch: &waveconfig.WatchConfig{
 			WatchRoot:           "./watch/root",
 			HealthcheckEndpoint: "/healthz",
 		},
 	}
-	cfg.Dist = distLayout{Root: cfg.Core.DistDir}
+	cfg.Dist.Root = cfg.Core.DistDir
 
 	mustEnsureDir(t, cfg.Dist.StaticPublic())
 	mustEnsureDir(t, cfg.Dist.StaticPrivate())
@@ -49,23 +72,63 @@ func newWaveTestFixture(t *testing.T) *waveTestFixture {
 
 	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPublic(), "logo.txt"), "logo")
 	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPublic(), "favicon.ico"), "ico")
-	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPublic(), "vorma_out", "logo.hash.txt"), "hashed-logo")
-	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPublic(), "vorma_out", "favicon.hash.ico"), "hashed-ico")
-	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPublic(), "vorma_out", "vorma_internal_normal_hash.css"), "body{color:blue;}")
-	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPublic(), "vorma_out", "vorma_internal_public_filemap_hash.js"), "export const wavePublicFileMap = {}")
-	mustWriteFile(t, filepath.Join(cfg.Dist.StaticPrivate(), "template.html"), "private")
+	mustWriteFile(
+		t,
+		filepath.Join(
+			cfg.Dist.StaticPublic(),
+			waveartifacts.ApplyWaveFileOutputPrefix("logo.hash.txt"),
+		),
+		"hashed-logo",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(
+			cfg.Dist.StaticPublic(),
+			waveartifacts.ApplyWaveFileOutputPrefix("favicon.hash.ico"),
+		),
+		"hashed-ico",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(
+			cfg.Dist.StaticPublic(),
+			testOwnedOutputRelativePath("normal_hash.css"),
+		),
+		"body{color:blue;}",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(
+			cfg.Dist.StaticPublic(),
+			testOwnedOutputRelativePath("public_filemap_hash.js"),
+		),
+		"export const wavePublicFileMap = {}",
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(cfg.Dist.StaticPrivate(), "template.html"),
+		waveartifacts.PrivateDirname,
+	)
 
 	mustWriteFile(t, cfg.Dist.CriticalCSS(), "body{color:red;}")
-	mustWriteFile(t, cfg.Dist.NormalCSSRef(), "vorma_out/vorma_internal_normal_hash.css")
-	mustWriteFile(t, cfg.Dist.PublicFileMapRef(), "vorma_out/vorma_internal_public_filemap_hash.js")
+	mustWriteFile(
+		t,
+		cfg.Dist.NormalCSSRef(),
+		testOwnedOutputRelativePath("normal_hash.css"),
+	)
+	mustWriteFile(
+		t,
+		cfg.Dist.PublicFileMapRef(),
+		testOwnedOutputRelativePath("public_filemap_hash.js"),
+	)
 
-	mustWriteGob(t, cfg.Dist.PublicFileMapGob(), FileMap{
+	mustWriteGob(t, cfg.Dist.PublicFileMapGob(), wavefilemap.FileMap{
 		"logo.txt": {
-			DistName:    "vorma_out/logo.hash.txt",
+			DistName:    testHashedOutputRelativePath("logo.hash.txt"),
 			ContentHash: "logo-hash",
 		},
 		"favicon.ico": {
-			DistName:    "vorma_out/favicon.hash.ico",
+			DistName:    testHashedOutputRelativePath("favicon.hash.ico"),
 			ContentHash: "favicon-hash",
 		},
 	})
@@ -75,11 +138,96 @@ func newWaveTestFixture(t *testing.T) *waveTestFixture {
 
 func (f *waveTestFixture) configJSON(t *testing.T) []byte {
 	t.Helper()
-	data, err := json.Marshal(f.cfg)
+	cfgForJSON := f.cfg.Clone()
+	normalizeMachineAbsoluteFilesystemConfigPathsForWaveTestFixtureJSON(
+		t,
+		cfgForJSON,
+	)
+	data, err := json.Marshal(cfgForJSON)
 	if err != nil {
 		t.Fatalf("failed to marshal config JSON: %v", err)
 	}
 	return data
+}
+
+func normalizeMachineAbsoluteFilesystemConfigPathsForWaveTestFixtureJSON(
+	t *testing.T,
+	cfg *waveconfig.ParsedConfig,
+) {
+	t.Helper()
+	if cfg == nil || cfg.Core == nil {
+		return
+	}
+
+	cfg.Core.MainAppEntry = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Core.MainAppEntry,
+	)
+	cfg.Core.DistDir = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Core.DistDir,
+	)
+	cfg.Core.StaticAssetDirs.Public = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Core.StaticAssetDirs.Public,
+	)
+	cfg.Core.StaticAssetDirs.Private = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Core.StaticAssetDirs.Private,
+	)
+	cfg.Core.CSSEntryFiles.Critical = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Core.CSSEntryFiles.Critical,
+	)
+	cfg.Core.CSSEntryFiles.NonCritical = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Core.CSSEntryFiles.NonCritical,
+	)
+
+	if cfg.Vite != nil {
+		cfg.Vite.JSPackageManagerCmdDir = testpath.PathRelativeToCurrentWorkingDirectory(
+			t,
+			cfg.Vite.JSPackageManagerCmdDir,
+		)
+		cfg.Vite.ViteConfigFile = testpath.PathRelativeToCurrentWorkingDirectory(
+			t,
+			cfg.Vite.ViteConfigFile,
+		)
+	}
+
+	if cfg.Watch == nil {
+		return
+	}
+	cfg.Watch.WatchRoot = testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		cfg.Watch.WatchRoot,
+	)
+	for excludeDirectoryPatternIndex, excludeDirectoryPattern := range cfg.Watch.Exclude.Dirs {
+		cfg.Watch.Exclude.Dirs[excludeDirectoryPatternIndex] = testpath.PathRelativeToCurrentWorkingDirectory(
+			t,
+			excludeDirectoryPattern,
+		)
+	}
+	for excludeFilePatternIndex, excludeFilePattern := range cfg.Watch.Exclude.Files {
+		cfg.Watch.Exclude.Files[excludeFilePatternIndex] = testpath.PathRelativeToCurrentWorkingDirectory(
+			t,
+			excludeFilePattern,
+		)
+	}
+	for watchIncludeIndex, watchedFile := range cfg.Watch.Include {
+		cfg.Watch.Include[watchIncludeIndex].Pattern = testpath.PathRelativeToCurrentWorkingDirectory(
+			t,
+			watchedFile.Pattern,
+		)
+		for hookIndex, onChangeHook := range watchedFile.OnChangeHooks {
+			for excludedPatternIndex, excludedPattern := range onChangeHook.Exclude {
+				cfg.Watch.Include[watchIncludeIndex].OnChangeHooks[hookIndex].Exclude[excludedPatternIndex] = testpath.PathRelativeToCurrentWorkingDirectory(
+					t,
+					excludedPattern,
+				)
+			}
+		}
+	}
 }
 
 func mustEnsureDir(t *testing.T, dir string) {
@@ -115,22 +263,23 @@ func mustWriteGob(t *testing.T, filePath string, data any) {
 func setWaveDevModeForTest(t *testing.T, isDev bool) {
 	t.Helper()
 	if isDev {
-		t.Setenv(envMode, envModeDev)
+		t.Setenv(waveenv.EnvMode, waveenv.EnvModeDev)
 		return
 	}
-	t.Setenv(envMode, "production")
+	t.Setenv(waveenv.EnvMode, "production")
 }
 
 func resetPortCacheForTest() {
-	defaultPortResolver = wavecore.NewResolver()
+	defaultPortResolver = waveenv.NewResolver()
 }
 
-func readFileMapDetailsFromCacheForTest(w *Wave) *fileMapDetails {
-	if w == nil || w.fileMapDetails == nil {
+func readFileMapDetailsFromCacheForTest(
+	w *Wave,
+) *waveruntimecore.FileMapDetails {
+	if w == nil || w.runtime == nil {
 		return nil
 	}
-	fileMapDetails, _ := w.fileMapDetails.get()
-	return fileMapDetails
+	return w.runtime.FileMapDetailsFromCache()
 }
 
 func mustReadFileFromFS(t *testing.T, filesystem fs.FS, filePath string) string {

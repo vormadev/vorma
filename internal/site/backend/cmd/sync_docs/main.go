@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/vormadev/vorma/wave/waveframework"
 	"log"
 
 	"site/backend"
@@ -18,7 +19,7 @@ func main() {
 
 	if *rewriteOnly {
 		rewritten, err := docsync.ResolveGeneratedDocsPublicURLs(
-			backend.Wave.ParsedConfig(),
+			waveframework.ParsedConfig(backend.Wave.RawConfigJSON()),
 			backend.Wave.Logger(),
 		)
 		if err != nil {
@@ -29,7 +30,7 @@ func main() {
 	}
 
 	res, err := docsync.SyncAndResolvePublicURLs(
-		backend.Wave.ParsedConfig(),
+		waveframework.ParsedConfig(backend.Wave.RawConfigJSON()),
 		backend.Wave.Logger(),
 	)
 	if err != nil {

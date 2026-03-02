@@ -373,7 +373,7 @@ describe("redirects internal defensive branches", () => {
 		expect(result.response).toBe(response);
 	});
 
-	it("resolves relative X-Vorma-Reload targets against request URL, not current page URL", async () => {
+	it("resolves relative X-Wave-Framework-Reload targets against request URL, not current page URL", async () => {
 		window.history.replaceState({}, "", "/current-parent/");
 		const { redirectsModule } = await loadRedirectModules();
 		const response = new Response(
@@ -383,7 +383,7 @@ describe("redirects internal defensive branches", () => {
 			{
 				status: 200,
 				headers: {
-					"X-Vorma-Reload": "child-reload",
+					"X-Wave-Framework-Reload": "child-reload",
 				},
 			},
 		);
@@ -438,7 +438,7 @@ describe("redirects internal defensive branches", () => {
 		expect(result.response).toBe(response);
 	});
 
-	it("does not short-circuit same-target X-Vorma-Reload headers", async () => {
+	it("does not short-circuit same-target X-Wave-Framework-Reload headers", async () => {
 		window.history.replaceState({}, "", "/header-same-target-reload#~");
 		const { redirectsModule } = await loadRedirectModules();
 		const response = new Response(
@@ -448,7 +448,7 @@ describe("redirects internal defensive branches", () => {
 			{
 				status: 200,
 				headers: {
-					"X-Vorma-Reload": "/header-same-target-reload#%7E",
+					"X-Wave-Framework-Reload": "/header-same-target-reload#%7E",
 				},
 			},
 		);

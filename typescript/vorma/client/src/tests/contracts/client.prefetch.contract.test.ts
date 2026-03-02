@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
 	createDeferredFetchCall,
-	patchContractRuntimeRouteSnapshot,
 	createRouteDataResponse,
 	createSignalCapturingNeverFetchSpy,
 	loadClientAPI,
+	patchContractRuntimeRouteSnapshot,
 	registerServerDataFieldProbeLoader,
 	setupContractTestSuite,
 	withUnhandledRejectionCapture,
@@ -466,7 +466,7 @@ describe("client prefetch contracts", () => {
 						},
 					],
 				},
-				{ headers: { "X-Vorma-Build-Id": "2" } },
+				{ headers: { "X-Wave-Framework-Build-Id": "2" } },
 			),
 		);
 

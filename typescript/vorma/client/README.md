@@ -16,10 +16,10 @@ singleton-based.
 - Use `revalidate()` to refresh current route data without adding a history
   entry.
 
-## `getUnsafeHistoryInstance()` Escape Hatch
+## `getHistoryInstance()` Escape Hatch
 
-`getUnsafeHistoryInstance()` returns the raw `history` instance (`npm:history`)
-for advanced integrations that intentionally opt into low-level behavior.
+`getHistoryInstance()` returns the raw `history` instance (`npm:history`) for
+advanced integrations that intentionally opt into low-level behavior.
 
 Use it when you need:
 

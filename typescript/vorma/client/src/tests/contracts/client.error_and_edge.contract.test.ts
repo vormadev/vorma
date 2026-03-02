@@ -446,7 +446,7 @@ describe("client error and edge contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "winner-build-1",
+							"X-Wave-Framework-Build-Id": "winner-build-1",
 						},
 					},
 				),
@@ -474,7 +474,7 @@ describe("client error and edge contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-build-2",
+							"X-Wave-Framework-Build-Id": "stale-build-2",
 						},
 					},
 				),

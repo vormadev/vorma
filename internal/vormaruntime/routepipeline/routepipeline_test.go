@@ -95,7 +95,7 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_ErrorAtPrefixRouteTruncatesPayl
 	if got, want := len(result.Core.LoadersData), 1; got != want {
 		t.Fatalf("len(LoadersData) = %d, want %d", got, want)
 	}
-	if got, want := result.Core.Deps, []string{"vorma_out/client-shared.js", "vorma_out/products.js"}; !reflect.DeepEqual(
+	if got, want := result.Core.Deps, []string{testWaveOutPath("client-shared.js"), testWaveOutPath("products.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
@@ -105,9 +105,9 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_ErrorAtPrefixRouteTruncatesPayl
 		t.Fatalf("len(HeadElements) = %d, want %d", got, want)
 	}
 	if got, want := result.CSSBundles, []string{
-		"vorma_out/client-entry.css",
-		"vorma_out/client-shared.css",
-		"vorma_out/products.css",
+		testWaveOutPath("client-entry.css"),
+		testWaveOutPath("client-shared.css"),
+		testWaveOutPath("products.css"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
 	}
@@ -143,27 +143,27 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_SuccessBuildsFullRouteCoreAndAs
 		t.Fatalf("MatchedPatterns = %#v, want %#v", got, want)
 	}
 	if got, want := result.Core.Deps, []string{
-		"vorma_out/client-shared.js",
-		"vorma_out/products.js",
-		"vorma_out/product-details.js",
+		testWaveOutPath("client-shared.js"),
+		testWaveOutPath("products.js"),
+		testWaveOutPath("product-details.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
 	if got, want := result.CSSBundles, []string{
-		"vorma_out/client-entry.css",
-		"vorma_out/client-shared.css",
-		"vorma_out/products.css",
-		"vorma_out/product-details.css",
+		testWaveOutPath("client-entry.css"),
+		testWaveOutPath("client-shared.css"),
+		testWaveOutPath("products.css"),
+		testWaveOutPath("product-details.css"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
 	}
 	if got, want := len(result.HeadElements), 2; got != want {
 		t.Fatalf("len(HeadElements) = %d, want %d", got, want)
 	}
-	if got, want := result.RouteManifestFileSnapshot, "vorma_out/route-manifest.js"; got != want {
+	if got, want := result.RouteManifestFileSnapshot, testWaveOutPath("route-manifest.js"); got != want {
 		t.Fatalf("RouteManifestFileSnapshot = %q, want %q", got, want)
 	}
-	if got, want := result.HTMLRenderSnapshot.ClientEntryOut, "vorma_out/client-entry.js"; got != want {
+	if got, want := result.HTMLRenderSnapshot.ClientEntryOut, testWaveOutPath("client-entry.js"); got != want {
 		t.Fatalf("HTMLRenderSnapshot.ClientEntryOut = %q, want %q", got, want)
 	}
 	if !result.IsDev {
@@ -187,21 +187,21 @@ func TestLoadOrBuildCachedItemSubset_DoesNotStoreWhenSnapshotVersionIsStale(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	}
 	newPaths := map[string]*PathData{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	}
-	clientEntryDeps := []string{"vorma_out/client-shared.js"}
+	clientEntryDeps := []string{testWaveOutPath("client-shared.js")}
 
 	staleCached := LoadOrBuildCachedItemSubset(
 		cacheKey,
@@ -277,15 +277,15 @@ func TestGetDepsFromData_ClientEntryFirstAndDeduped(t *testing.T) {
 		"": {
 			OriginalPattern: "",
 			Deps: []string{
-				"vorma_out/root.js",
-				"vorma_out/shared.js",
+				testWaveOutPath("root.js"),
+				testWaveOutPath("shared.js"),
 			},
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			Deps: []string{
-				"vorma_out/item.js",
-				"vorma_out/shared.js",
+				testWaveOutPath("item.js"),
+				testWaveOutPath("shared.js"),
 			},
 		},
 	}
@@ -299,13 +299,13 @@ func TestGetDepsFromData_ClientEntryFirstAndDeduped(t *testing.T) {
 	deps := GetDepsFromData(
 		matchResults.Matches,
 		paths,
-		[]string{"vorma_out/client.js", "vorma_out/shared.js"},
+		[]string{testWaveOutPath("client.js"), testWaveOutPath("shared.js")},
 	)
 	want := []string{
-		"vorma_out/client.js",
-		"vorma_out/shared.js",
-		"vorma_out/root.js",
-		"vorma_out/item.js",
+		testWaveOutPath("client.js"),
+		testWaveOutPath("shared.js"),
+		testWaveOutPath("root.js"),
+		testWaveOutPath("item.js"),
 	}
 	if !reflect.DeepEqual(deps, want) {
 		t.Fatalf("deps = %#v, want %#v", deps, want)
@@ -314,25 +314,25 @@ func TestGetDepsFromData_ClientEntryFirstAndDeduped(t *testing.T) {
 
 func TestGetCSSBundles_DedupedAndClientEntryFirst(t *testing.T) {
 	css := GetCSSBundles(
-		[]string{"vorma_out/shared.js", "vorma_out/item.js"},
-		"vorma_out/client-entry.js",
+		[]string{testWaveOutPath("shared.js"), testWaveOutPath("item.js")},
+		testWaveOutPath("client-entry.js"),
 		map[string][]string{
-			"vorma_out/client-entry.js": {
-				"vorma_out/client.css",
-				"vorma_out/shared.css",
+			testWaveOutPath("client-entry.js"): {
+				testWaveOutPath("client.css"),
+				testWaveOutPath("shared.css"),
 			},
-			"vorma_out/shared.js": {
-				"vorma_out/shared.css",
-				"vorma_out/layout.css",
+			testWaveOutPath("shared.js"): {
+				testWaveOutPath("shared.css"),
+				testWaveOutPath("layout.css"),
 			},
-			"vorma_out/item.js": {"vorma_out/item.css"},
+			testWaveOutPath("item.js"): {testWaveOutPath("item.css")},
 		},
 	)
 	want := []string{
-		"vorma_out/client.css",
-		"vorma_out/shared.css",
-		"vorma_out/layout.css",
-		"vorma_out/item.css",
+		testWaveOutPath("client.css"),
+		testWaveOutPath("shared.css"),
+		testWaveOutPath("layout.css"),
+		testWaveOutPath("item.css"),
 	}
 	if !reflect.DeepEqual(css, want) {
 		t.Fatalf("css bundles = %#v, want %#v", css, want)
@@ -429,9 +429,9 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 	core := &RouteDataCore{
 		MatchedPatterns: []string{"/docs"},
 		LoadersData:     []any{"data"},
-		ImportURLs:      []string{"vorma_out/routes/docs.js"},
+		ImportURLs:      []string{testWaveOutPath("routes/docs.js")},
 		ExportKeys:      []string{"default"},
-		Deps:            []string{"vorma_out/chunk-layout.js"},
+		Deps:            []string{testWaveOutPath("chunk-layout.js")},
 	}
 	titleEl := &htmlutil.Element{Tag: "title", TextContent: "Docs"}
 	metaEl := &htmlutil.Element{
@@ -453,8 +453,8 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 			Meta:  []*htmlutil.Element{metaEl},
 			Rest:  []*htmlutil.Element{restEl},
 		},
-		Deps:       []string{"/public/vorma_out/chunk-layout.js"},
-		CSSBundles: []string{"/public/vorma_out/docs.css"},
+		Deps:       []string{testPublicWaveOutURLPath("chunk-layout.js")},
+		CSSBundles: []string{testPublicWaveOutURLPath("docs.css")},
 	}
 
 	routeData := BuildRouteDataFinal(
@@ -484,19 +484,19 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 	) {
 		t.Fatalf("RestHeadEls = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.RouteDataCore.ImportURLs, []string{"/public/vorma_out/routes/docs.js"}; !reflect.DeepEqual(
+	if got, want := routeData.RouteDataCore.ImportURLs, []string{testPublicWaveOutURLPath("routes/docs.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.RouteDataCore.Deps, []string{"/public/vorma_out/chunk-layout.js"}; !reflect.DeepEqual(
+	if got, want := routeData.RouteDataCore.Deps, []string{testPublicWaveOutURLPath("chunk-layout.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.CSSBundles, []string{"/public/vorma_out/docs.css"}; !reflect.DeepEqual(
+	if got, want := routeData.CSSBundles, []string{testPublicWaveOutURLPath("docs.css")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
@@ -510,28 +510,28 @@ func TestBuildRouteDataFinal_UsesCoreDepsWhenAssetsAreMissing(t *testing.T) {
 			Core: &RouteDataCore{
 				MatchedPatterns: []string{"/docs"},
 				LoadersData:     []any{"data"},
-				ImportURLs:      []string{"vorma_out/routes/docs.js"},
+				ImportURLs:      []string{testWaveOutPath("routes/docs.js")},
 				ExportKeys:      []string{"default"},
-				Deps:            []string{"vorma_out/chunk-layout.js"},
+				Deps:            []string{testWaveOutPath("chunk-layout.js")},
 			},
-			CSSBundles: []string{"vorma_out/docs.css"},
+			CSSBundles: []string{testWaveOutPath("docs.css")},
 			IsDev:      false,
 		},
 		"/public/",
 	)
 
 	if got, want := routeData.RouteDataCore.ImportURLs, []string{
-		"/public/vorma_out/routes/docs.js",
+		testPublicWaveOutURLPath("routes/docs.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
 	if got, want := routeData.RouteDataCore.Deps, []string{
-		"/public/vorma_out/chunk-layout.js",
+		testPublicWaveOutURLPath("chunk-layout.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
 	if got, want := routeData.CSSBundles, []string{
-		"/public/vorma_out/docs.css",
+		testPublicWaveOutURLPath("docs.css"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
 	}
@@ -863,12 +863,12 @@ func TestBuildRouteAssets(t *testing.T) {
 				RouteResult: &RouteResult{
 					Core: &RouteDataCore{
 						Deps: []string{
-							"vorma_out/chunk-layout.js",
-							"vorma_out/chunk-items.js",
+							testWaveOutPath("chunk-layout.js"),
+							testWaveOutPath("chunk-items.js"),
 						},
 					},
 					HeadElements: routeHeadEls,
-					CSSBundles:   []string{"vorma_out/chunk-items.css"},
+					CSSBundles:   []string{testWaveOutPath("chunk-items.css")},
 					IsDev:        false,
 				},
 				DefaultHeadElements: defaultHeadEls,
@@ -888,15 +888,15 @@ func TestBuildRouteAssets(t *testing.T) {
 				t.Fatal("expected route assets to use callback sorting output")
 			}
 			if got, want := assets.Deps, []string{
-				"/public/vorma_out/chunk-layout.js",
-				"/public/vorma_out/chunk-items.js",
+				testPublicWaveOutURLPath("chunk-layout.js"),
+				testPublicWaveOutURLPath("chunk-items.js"),
 			}; !reflect.DeepEqual(
 				got,
 				want,
 			) {
 				t.Fatalf("Deps = %#v, want %#v", got, want)
 			}
-			if got, want := assets.CSSBundles, []string{"/public/vorma_out/chunk-items.css"}; !reflect.DeepEqual(
+			if got, want := assets.CSSBundles, []string{testPublicWaveOutURLPath("chunk-items.css")}; !reflect.DeepEqual(
 				got,
 				want,
 			) {
@@ -920,19 +920,19 @@ func TestBuildRouteAssets(t *testing.T) {
 			if got, want := callbackInput[2].AttributesKnownSafe["rel"], "modulepreload"; got != want {
 				t.Fatalf("first preload rel = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[2].AttributesKnownSafe["href"], "/public/vorma_out/chunk-layout.js"; got != want {
+			if got, want := callbackInput[2].AttributesKnownSafe["href"], testPublicWaveOutURLPath("chunk-layout.js"); got != want {
 				t.Fatalf("first preload href = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[3].AttributesKnownSafe["href"], "/public/vorma_out/chunk-items.js"; got != want {
+			if got, want := callbackInput[3].AttributesKnownSafe["href"], testPublicWaveOutURLPath("chunk-items.js"); got != want {
 				t.Fatalf("second preload href = %q, want %q", got, want)
 			}
 			if got, want := callbackInput[4].AttributesKnownSafe["rel"], "stylesheet"; got != want {
 				t.Fatalf("stylesheet rel = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[4].AttributesKnownSafe["href"], "/public/vorma_out/chunk-items.css"; got != want {
+			if got, want := callbackInput[4].AttributesKnownSafe["href"], testPublicWaveOutURLPath("chunk-items.css"); got != want {
 				t.Fatalf("stylesheet href = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[4].Attributes["data-vorma-css-bundle"], "/public/vorma_out/chunk-items.css"; got != want {
+			if got, want := callbackInput[4].Attributes["data-vorma-css-bundle"], testPublicWaveOutURLPath("chunk-items.css"); got != want {
 				t.Fatalf("data-vorma-css-bundle = %q, want %q", got, want)
 			}
 		},
@@ -962,12 +962,12 @@ func TestBuildRouteAssets(t *testing.T) {
 				_, err := BuildRouteAssets(BuildRouteAssetsInput{
 					RouteResult: &RouteResult{
 						Core: &RouteDataCore{
-							Deps: []string{"vorma_out/chunk.js"},
+							Deps: []string{testWaveOutPath("chunk.js")},
 						},
 						HeadElements: []*htmlutil.Element{
 							{Tag: "title", TextContent: "Route"},
 						},
-						CSSBundles: []string{"vorma_out/chunk.css"},
+						CSSBundles: []string{testWaveOutPath("chunk.css")},
 						IsDev:      testCase.isDev,
 					},
 					DefaultHeadElements: []*htmlutil.Element{
@@ -1013,11 +1013,11 @@ func TestBuildRouteAssets(t *testing.T) {
 				Cached: cached,
 				Core: &RouteDataCore{
 					Deps: []string{
-						"vorma_out/chunk-layout.js",
-						"vorma_out/chunk-items.js",
+						testWaveOutPath("chunk-layout.js"),
+						testWaveOutPath("chunk-items.js"),
 					},
 				},
-				CSSBundles: []string{"vorma_out/chunk-items.css"},
+				CSSBundles: []string{testWaveOutPath("chunk-items.css")},
 				IsDev:      false,
 			}
 
@@ -1077,17 +1077,17 @@ func TestBuildRouteAssets(t *testing.T) {
 			routeResultA := &RouteResult{
 				Cached: cached,
 				Core: &RouteDataCore{
-					Deps: []string{"vorma_out/chunk-a.js"},
+					Deps: []string{testWaveOutPath("chunk-a.js")},
 				},
-				CSSBundles: []string{"vorma_out/chunk-a.css"},
+				CSSBundles: []string{testWaveOutPath("chunk-a.css")},
 				IsDev:      false,
 			}
 			routeResultB := &RouteResult{
 				Cached: cached,
 				Core: &RouteDataCore{
-					Deps: []string{"vorma_out/chunk-b.js"},
+					Deps: []string{testWaveOutPath("chunk-b.js")},
 				},
-				CSSBundles: []string{"vorma_out/chunk-b.css"},
+				CSSBundles: []string{testWaveOutPath("chunk-b.css")},
 				IsDev:      false,
 			}
 
@@ -1151,22 +1151,22 @@ func TestBuildCachedItemSubset_UsesOutPathAndHandlesMissingRouteMetadata(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.tsx",
-			OutPath:         "vorma_out/routes/products.$id.js",
+			OutPath:         testWaveOutPath("routes/products.$id.js"),
 			ExportKey:       "ProductRoute",
 			ErrorExportKey:  "ProductErrorBoundary",
-			Deps:            []string{"vorma_out/chunk-products.js"},
+			Deps:            []string{testWaveOutPath("chunk-products.js")},
 		},
 	}
 
 	cached := BuildCachedItemSubset(
 		matchResults.Matches,
 		paths,
-		[]string{"vorma_out/chunk-client.js"},
+		[]string{testWaveOutPath("chunk-client.js")},
 		false,
 	)
 
 	if got, want := cached.ImportURLs, []string{
-		"/vorma_out/routes/products.$id.js",
+		testWaveOutURLPath("routes/products.$id.js"),
 		"",
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
@@ -1190,8 +1190,8 @@ func TestBuildCachedItemSubset_UsesOutPathAndHandlesMissingRouteMetadata(
 		t.Fatalf("ErrorExportKeys = %#v, want %#v", got, want)
 	}
 	if got, want := cached.Deps, []string{
-		"vorma_out/chunk-client.js",
-		"vorma_out/chunk-products.js",
+		testWaveOutPath("chunk-client.js"),
+		testWaveOutPath("chunk-products.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
@@ -1211,12 +1211,12 @@ func TestLoadOrBuildCachedItemSubset_NoCacheMap(t *testing.T) {
 			"/products/:id": {
 				OriginalPattern: "/products/:id",
 				SrcPath:         "frontend/src/routes/products.$id.tsx",
-				OutPath:         "vorma_out/routes/products.$id.js",
+				OutPath:         testWaveOutPath("routes/products.$id.js"),
 				ExportKey:       "default",
-				Deps:            []string{"vorma_out/chunk-products.js"},
+				Deps:            []string{testWaveOutPath("chunk-products.js")},
 			},
 		},
-		[]string{"vorma_out/chunk-client.js"},
+		[]string{testWaveOutPath("chunk-client.js")},
 		true,
 		1,
 		nil,
@@ -1347,21 +1347,21 @@ func newRouteStageOnePlannerInputFixture(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.tsx",
-			OutPath:         "vorma_out/routes/products.$id.js",
+			OutPath:         testWaveOutPath("routes/products.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ProductsErrorBoundary",
-			Deps:            []string{"vorma_out/products.js"},
+			Deps:            []string{testWaveOutPath("products.js")},
 		},
 		"/products/:id/details": {
 			OriginalPattern: "/products/:id/details",
 			SrcPath:         "frontend/src/routes/products.$id.details.tsx",
-			OutPath:         "vorma_out/routes/products.$id.details.js",
+			OutPath:         testWaveOutPath("routes/products.$id.details.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ProductDetailsErrorBoundary",
-			Deps:            []string{"vorma_out/product-details.js"},
+			Deps:            []string{testWaveOutPath("product-details.js")},
 		},
 	}
-	clientEntryDeps := []string{"vorma_out/client-shared.js"}
+	clientEntryDeps := []string{testWaveOutPath("client-shared.js")}
 	cached := BuildCachedItemSubset(matches, paths, clientEntryDeps, true)
 
 	parentHeadEls := headels.New()
@@ -1387,20 +1387,20 @@ func newRouteStageOnePlannerInputFixture(
 			IsDev:           true,
 			Paths:           paths,
 			ClientEntryDeps: clientEntryDeps,
-			ClientEntryOut:  "vorma_out/client-entry.js",
+			ClientEntryOut:  testWaveOutPath("client-entry.js"),
 			DepToCSSBundleMap: map[string][]string{
-				"vorma_out/client-entry.js":  {"vorma_out/client-entry.css"},
-				"vorma_out/client-shared.js": {"vorma_out/client-shared.css"},
-				"vorma_out/products.js":      {"vorma_out/products.css"},
-				"vorma_out/product-details.js": {
-					"vorma_out/product-details.css",
+				testWaveOutPath("client-entry.js"):  {testWaveOutPath("client-entry.css")},
+				testWaveOutPath("client-shared.js"): {testWaveOutPath("client-shared.css")},
+				testWaveOutPath("products.js"):      {testWaveOutPath("products.css")},
+				testWaveOutPath("product-details.js"): {
+					testWaveOutPath("product-details.css"),
 				},
 			},
 			HTMLRenderSnapshot: rendering.LoadersHTMLRenderSnapshot{
 				IsDevMode:      true,
-				ClientEntryOut: "vorma_out/client-entry.js",
+				ClientEntryOut: testWaveOutPath("client-entry.js"),
 			},
-			RouteManifestFile: "vorma_out/route-manifest.js",
+			RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		},
 		ResponseProxies: []*response.Proxy{parentProxy, childProxy},
 		MergedResponseProxy: response.MergeProxyResponses(

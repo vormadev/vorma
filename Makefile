@@ -21,6 +21,9 @@ gotestloud:
 staticcheck:
 	@staticcheck ./...
 
+runtime-deps-check:
+	@go run ./internal/cmd/runtime_deps_guard
+
 # call with `make gobench pkg=./kit/mux` (or whatever)
 gobench:
 	@go test -bench=. $(pkg)

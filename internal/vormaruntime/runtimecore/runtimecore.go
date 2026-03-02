@@ -15,12 +15,12 @@ import (
 // RoutePath is the route metadata shape used by runtime route-state mutation
 // helpers.
 type RoutePath struct {
-	OriginalPattern string
-	SrcPath         string
-	OutPath         string
-	ExportKey       string
-	ErrorExportKey  string
-	Deps            []string
+	OriginalPattern string   `json:"originalPattern"`
+	SrcPath         string   `json:"srcPath"`
+	OutPath         string   `json:"outPath,omitempty"`
+	ExportKey       string   `json:"exportKey"`
+	ErrorExportKey  string   `json:"errorExportKey,omitempty"`
+	Deps            []string `json:"deps,omitempty"`
 }
 
 // RuntimePathsFileSnapshot is the route artifact snapshot read from disk.

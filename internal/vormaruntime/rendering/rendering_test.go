@@ -163,6 +163,8 @@ func TestBuildBodyScriptsForTemplate_Production(t *testing.T) {
 }
 
 func TestBuildBodyScriptsForTemplate_DevIncludesRefreshScript(t *testing.T) {
+	t.Setenv("__VITE_PORT", "5173")
+
 	bodyScripts, buildError := BuildBodyScriptsForTemplate(
 		BodyScriptsInput{
 			RenderSnapshot:  LoadersHTMLRenderSnapshot{IsDevMode: true},
@@ -240,7 +242,7 @@ func TestBuildSSRInnerHTMLFromRuntimeState_ValidatesLoadersDataJSON(
 			BuildID:           `"build"`,
 			RootElementID:     "root",
 			PublicPathPrefix:  "/static/",
-			RouteManifestFile: "vorma_out/route-manifest.js",
+			RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		},
 		SSRRouteData{
 			LoadersData: []any{make(chan int)},
@@ -266,7 +268,7 @@ func TestBuildSSRInnerHTMLFromRuntimeState_LoadersDataJSONEscapesScriptTerminato
 			BuildID:           `"build-escape"`,
 			RootElementID:     "root",
 			PublicPathPrefix:  "/static/",
-			RouteManifestFile: "vorma_out/route-manifest.js",
+			RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		},
 		SSRRouteData{
 			MatchedPatterns: []string{"/"},
@@ -318,7 +320,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 				BuildID:           "build-123",
 				RootElementID:     "root",
 				PublicPathPrefix:  "/static/",
-				RouteManifestFile: "vorma_out/route-manifest.js",
+				RouteManifestFile: testWaveOutPath("route-manifest.js"),
 			},
 			SSRRouteData: SSRRouteData{
 				ViteDevURL:           `"http://localhost:5173"`,
@@ -338,7 +340,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 			BodyScriptsInput: BodyScriptsInput{
 				RenderSnapshot: LoadersHTMLRenderSnapshot{
 					IsDevMode:      false,
-					ClientEntryOut: "vorma_out/client-entry.js",
+					ClientEntryOut: testWaveOutPath("client-entry.js"),
 					RootTemplate:   rootTemplate,
 				},
 				PublicPathPrefix: "/static/",
@@ -356,7 +358,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 	if !strings.Contains(rendered, `id="critical"`) {
 		t.Fatalf("missing critical CSS element in output: %s", rendered)
 	}
-	if !strings.Contains(rendered, `/static/vorma_out/client-entry.js`) {
+	if !strings.Contains(rendered, `/static`+testWaveOutURLPath("client-entry.js")) {
 		t.Fatalf("missing body scripts in output: %s", rendered)
 	}
 	if !strings.Contains(rendered, `buildID: "build-123",`) {

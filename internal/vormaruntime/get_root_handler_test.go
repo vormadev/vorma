@@ -23,7 +23,7 @@ import (
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
-	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 type testCustomJSONMarshaler struct {
@@ -102,13 +102,13 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ErrorBoundary",
 			Deps: []string{
-				"vorma_out/chunk-items.js",
-				"vorma_out/chunk-shared.js",
-				"vorma_out/chunk-items.js",
+				testWaveOutPath("chunk-items.js"),
+				testWaveOutPath("chunk-shared.js"),
+				testWaveOutPath("chunk-items.js"),
 			},
 		},
 	}
@@ -117,19 +117,19 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		Stage:             "stage-two",
 		BuildID:           "build-new",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:    "vorma_out/client-entry.js",
-		ClientEntryDeps:   []string{"vorma_out/chunk-shared.js"},
+		ClientEntryOut:    testWaveOutPath("client-entry.js"),
+		ClientEntryDeps:   []string{testWaveOutPath("chunk-shared.js")},
 		Paths:             toRuntimePathsRouteMap(paths),
-		RouteManifestFile: "vorma_out/route-manifest.js",
+		RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/client-entry.js": {"vorma_out/client-entry.css"},
-			"vorma_out/chunk-shared.js": {"vorma_out/chunk-shared.css"},
-			"vorma_out/chunk-items.js": {
-				"vorma_out/chunk-items.css",
-				"vorma_out/chunk-shared.css",
+			testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
+			testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
+			testWaveOutPath("chunk-items.js"): {
+				testWaveOutPath("chunk-items.css"),
+				testWaveOutPath("chunk-shared.css"),
 			},
-			"vorma_out/unused-chunk.js":  {"vorma_out/unused.css"},
-			"vorma_out/unused-client.js": {"vorma_out/unused-client.css"},
+			testWaveOutPath("unused-chunk.js"):  {testWaveOutPath("unused.css")},
+			testWaveOutPath("unused-client.js"): {testWaveOutPath("unused-client.css")},
 		},
 	}
 
@@ -173,8 +173,8 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 				"build-new",
 			)
 		}
-		if got := rec.Header().Get("X-Vorma-Reload"); got != "/items/42?foo=bar" {
-			t.Fatalf("X-Vorma-Reload = %q, want %q", got, "/items/42?foo=bar")
+		if got := rec.Header().Get("X-Wave-Framework-Reload"); got != "/items/42?foo=bar" {
+			t.Fatalf("X-Wave-Framework-Reload = %q, want %q", got, "/items/42?foo=bar")
 		}
 		if got, want := rec.Header().Get("Cache-Control"), "private, max-age=0, must-revalidate, no-cache"; got != want {
 			t.Fatalf("Cache-Control = %q, want %q", got, want)
@@ -205,16 +205,16 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 			}
 
-			raw := rec.Header().Get("X-Vorma-Reload")
+			raw := rec.Header().Get("X-Wave-Framework-Reload")
 			if raw == "" {
 				t.Fatal(
-					"X-Vorma-Reload header should be set for stale build request",
+					"X-Wave-Framework-Reload header should be set for stale build request",
 				)
 			}
 
 			u, err := url.Parse(raw)
 			if err != nil {
-				t.Fatalf("parse X-Vorma-Reload header %q: %v", raw, err)
+				t.Fatalf("parse X-Wave-Framework-Reload header %q: %v", raw, err)
 			}
 			if got, want := u.Path, "/items/42"; got != want {
 				t.Fatalf("reload path = %q, want %q", got, want)
@@ -301,17 +301,17 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 		}
 
 		wantDeps := []string{
-			"/vorma_out/chunk-shared.js",
-			"/vorma_out/chunk-items.js",
+			testWaveOutURLPath("chunk-shared.js"),
+			testWaveOutURLPath("chunk-items.js"),
 		}
 		if !reflect.DeepEqual(routeData.Deps, wantDeps) {
 			t.Fatalf("Deps = %#v, want %#v", routeData.Deps, wantDeps)
 		}
 
 		wantCSSBundles := []string{
-			"/vorma_out/client-entry.css",
-			"/vorma_out/chunk-shared.css",
-			"/vorma_out/chunk-items.css",
+			testWaveOutURLPath("client-entry.css"),
+			testWaveOutURLPath("chunk-shared.css"),
+			testWaveOutURLPath("chunk-items.css"),
 		}
 		if !reflect.DeepEqual(routeData.CSSBundles, wantCSSBundles) {
 			t.Fatalf(
@@ -321,7 +321,7 @@ func TestLoadersHandler_JSONBuildAndRouteDataBehavior(t *testing.T) {
 			)
 		}
 
-		wantImportURLs := []string{"/vorma_out/routes/items.$id.js"}
+		wantImportURLs := []string{testWaveOutURLPath("routes/items.$id.js")}
 		if !reflect.DeepEqual(routeData.ImportURLs, wantImportURLs) {
 			t.Fatalf(
 				"ImportURLs = %#v, want %#v",
@@ -337,7 +337,7 @@ func TestLoadersHandler_MissingTasksCtxDoesNotPanicAndReturns500(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -397,13 +397,13 @@ func TestLoadersHandler_HasRootDataAndSplatValuesContracts(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         "vorma_out/routes/root.js",
+			OutPath:         testWaveOutPath("routes/root.js"),
 			ExportKey:       "default",
 		},
 		"/files/*": {
 			OriginalPattern: "/files/*",
 			SrcPath:         "frontend/src/routes/files.splat.tsx",
-			OutPath:         "vorma_out/routes/files.splat.js",
+			OutPath:         testWaveOutPath("routes/files.splat.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -530,7 +530,7 @@ func TestLoadersHandler_NotFoundAndHTMLResponseHeaders(t *testing.T) {
 		"/known": {
 			OriginalPattern: "/known",
 			SrcPath:         "frontend/src/routes/known.tsx",
-			OutPath:         "vorma_out/routes/known.js",
+			OutPath:         testWaveOutPath("routes/known.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -628,13 +628,13 @@ func TestLoadersHandler_ProxyRedirectAndErrorShortCircuit(t *testing.T) {
 		"/redirect": {
 			OriginalPattern: "/redirect",
 			SrcPath:         "frontend/src/routes/redirect.tsx",
-			OutPath:         "vorma_out/routes/redirect.js",
+			OutPath:         testWaveOutPath("routes/redirect.js"),
 			ExportKey:       "default",
 		},
 		"/blocked": {
 			OriginalPattern: "/blocked",
 			SrcPath:         "frontend/src/routes/blocked.tsx",
-			OutPath:         "vorma_out/routes/blocked.js",
+			OutPath:         testWaveOutPath("routes/blocked.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -821,13 +821,13 @@ func TestLoadersHandler_DefaultHeadErrorsDoNotOverrideShortCircuitResponses(
 		"/redirect": {
 			OriginalPattern: "/redirect",
 			SrcPath:         "frontend/src/routes/redirect.tsx",
-			OutPath:         "vorma_out/routes/redirect.js",
+			OutPath:         testWaveOutPath("routes/redirect.js"),
 			ExportKey:       "default",
 		},
 		"/blocked": {
 			OriginalPattern: "/blocked",
 			SrcPath:         "frontend/src/routes/blocked.tsx",
-			OutPath:         "vorma_out/routes/blocked.js",
+			OutPath:         testWaveOutPath("routes/blocked.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -921,7 +921,7 @@ func TestLoadersHandler_DefaultHeadAndStageOneRunInParallel(
 		"/parallel": {
 			OriginalPattern: "/parallel",
 			SrcPath:         "frontend/src/routes/parallel.tsx",
-			OutPath:         "vorma_out/routes/parallel.js",
+			OutPath:         testWaveOutPath("routes/parallel.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -984,14 +984,14 @@ func TestLoadersHandler_LoaderErrorContract(t *testing.T) {
 		"/items": {
 			OriginalPattern: "/items",
 			SrcPath:         "frontend/src/routes/items.tsx",
-			OutPath:         "vorma_out/routes/items.js",
+			OutPath:         testWaveOutPath("routes/items.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemsErrorBoundary",
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
 		},
@@ -1091,18 +1091,18 @@ func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(
 		"/items": {
 			OriginalPattern: "/items",
 			SrcPath:         "frontend/src/routes/items.tsx",
-			OutPath:         "vorma_out/routes/items.js",
+			OutPath:         testWaveOutPath("routes/items.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemsErrorBoundary",
-			Deps:            []string{"vorma_out/items.js"},
+			Deps:            []string{testWaveOutPath("items.js")},
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
-			Deps:            []string{"vorma_out/item-detail.js"},
+			Deps:            []string{testWaveOutPath("item-detail.js")},
 		},
 	})
 
@@ -1165,7 +1165,7 @@ func TestLoadersHandler_LoaderErrorDepsAreTrimmedToOutermostBoundary(
 		)
 	}
 
-	wantDeps := []string{"/vorma_out/client-shared.js", "/vorma_out/items.js"}
+	wantDeps := []string{testWaveOutURLPath("client-shared.js"), testWaveOutURLPath("items.js")}
 	if !reflect.DeepEqual(routeData.Deps, wantDeps) {
 		t.Fatalf("Deps = %#v, want %#v", routeData.Deps, wantDeps)
 	}
@@ -1176,7 +1176,7 @@ func TestLoadersHandler_WrappedLoaderErrorPreservesClientMessage(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
 		},
@@ -1243,7 +1243,7 @@ func TestLoadersHandler_EmptyLoaderErrorClientMessageFallsBackToGeneric(
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items.$id.tsx",
-				OutPath:         "vorma_out/routes/items.$id.js",
+				OutPath:         testWaveOutPath("routes/items.$id.js"),
 				ExportKey:       "default",
 				ErrorExportKey:  "ItemErrorBoundary",
 			},
@@ -1306,14 +1306,14 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(
 		"/items": {
 			OriginalPattern: "/items",
 			SrcPath:         "frontend/src/routes/items.tsx",
-			OutPath:         "vorma_out/routes/items.js",
+			OutPath:         testWaveOutPath("routes/items.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemsErrorBoundary",
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
 		},
@@ -1381,7 +1381,7 @@ func TestLoadersHandler_GenericLoaderErrorDoesNotLeakInternalMessage(
 	}
 	if !reflect.DeepEqual(
 		routeData.ImportURLs,
-		[]string{"/vorma_out/routes/items.js"},
+		[]string{testWaveOutURLPath("routes/items.js")},
 	) {
 		t.Fatalf(
 			"ImportURLs = %#v, want only parent import URL",
@@ -1416,14 +1416,14 @@ func TestLoadersHandler_HTMLExcludesFailingRouteHeadElementsOnLoaderError(
 		"/items": {
 			OriginalPattern: "/items",
 			SrcPath:         "frontend/src/routes/items.tsx",
-			OutPath:         "vorma_out/routes/items.js",
+			OutPath:         testWaveOutPath("routes/items.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemsErrorBoundary",
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
 		},
@@ -1491,7 +1491,7 @@ func TestLoadersHandler_DefaultHeadAndRootTemplateDataErrorsReturn500(
 		"/hooks": {
 			OriginalPattern: "/hooks",
 			SrcPath:         "frontend/src/routes/hooks.tsx",
-			OutPath:         "vorma_out/routes/hooks.js",
+			OutPath:         testWaveOutPath("routes/hooks.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1574,7 +1574,7 @@ func TestLoadersHandler_HeadRenderingAndTemplateExecutionFailuresReturn500(
 		"/hooks": {
 			OriginalPattern: "/hooks",
 			SrcPath:         "frontend/src/routes/hooks.tsx",
-			OutPath:         "vorma_out/routes/hooks.js",
+			OutPath:         testWaveOutPath("routes/hooks.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1652,7 +1652,7 @@ func TestLoadersHandler_NilRootTemplateDataMapDoesNotPanic(t *testing.T) {
 		"/hooks": {
 			OriginalPattern: "/hooks",
 			SrcPath:         "frontend/src/routes/hooks.tsx",
-			OutPath:         "vorma_out/routes/hooks.js",
+			OutPath:         testWaveOutPath("routes/hooks.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1695,7 +1695,7 @@ func TestLoadersHandler_RuntimeDoesNotMutateAppTemplateDataMap(t *testing.T) {
 		"/hooks": {
 			OriginalPattern: "/hooks",
 			SrcPath:         "frontend/src/routes/hooks.tsx",
-			OutPath:         "vorma_out/routes/hooks.js",
+			OutPath:         testWaveOutPath("routes/hooks.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1769,7 +1769,7 @@ func TestLoadersHandler_UsesConfiguredTemplateDataKeysAndRootElementID(
 		"/keys": {
 			OriginalPattern: "/keys",
 			SrcPath:         "frontend/src/routes/keys.tsx",
-			OutPath:         "vorma_out/routes/keys.js",
+			OutPath:         testWaveOutPath("routes/keys.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1824,7 +1824,7 @@ func TestLoadersHandler_NonSerializableLoaderDataReturns500(t *testing.T) {
 		"/bad": {
 			OriginalPattern: "/bad",
 			SrcPath:         "frontend/src/routes/bad.tsx",
-			OutPath:         "vorma_out/routes/bad.js",
+			OutPath:         testWaveOutPath("routes/bad.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1884,7 +1884,7 @@ func TestLoadersHandler_CustomJSONMarshalerLoaderDataIsAccepted(t *testing.T) {
 		"/custom": {
 			OriginalPattern: "/custom",
 			SrcPath:         "frontend/src/routes/custom.tsx",
-			OutPath:         "vorma_out/routes/custom.js",
+			OutPath:         testWaveOutPath("routes/custom.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1969,15 +1969,15 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 
 	stageA := makeStage(
 		"shared-build",
-		"vorma_out/routes/shared-a.js",
+		testWaveOutPath("routes/shared-a.js"),
 		"frontend/src/routes/shared-a.tsx",
-		"vorma_out/chunk-a.js",
+		testWaveOutPath("chunk-a.js"),
 	)
 	stageB := makeStage(
 		"shared-build",
-		"vorma_out/routes/shared-b.js",
+		testWaveOutPath("routes/shared-b.js"),
 		"frontend/src/routes/shared-b.tsx",
-		"vorma_out/chunk-b.js",
+		testWaveOutPath("chunk-b.js"),
 	)
 
 	fixtureA := newTestFixture(
@@ -2028,25 +2028,25 @@ func TestLoadersHandler_CacheIsolatedAcrossAppsAndDevMode(t *testing.T) {
 
 	if !reflect.DeepEqual(
 		resultA.ImportURLs,
-		[]string{"/vorma_out/routes/shared-a.js"},
+		[]string{testWaveOutURLPath("routes/shared-a.js")},
 	) {
 		t.Fatalf("appA ImportURLs = %#v", resultA.ImportURLs)
 	}
 	if !reflect.DeepEqual(
 		resultB.ImportURLs,
-		[]string{"/vorma_out/routes/shared-b.js"},
+		[]string{testWaveOutURLPath("routes/shared-b.js")},
 	) {
 		t.Fatalf("appB ImportURLs = %#v", resultB.ImportURLs)
 	}
 	if !reflect.DeepEqual(
 		resultA.Deps,
-		[]string{"/vorma_out/client-shared.js", "/vorma_out/chunk-a.js"},
+		[]string{testWaveOutURLPath("client-shared.js"), testWaveOutURLPath("chunk-a.js")},
 	) {
 		t.Fatalf("appA Deps = %#v", resultA.Deps)
 	}
 	if !reflect.DeepEqual(
 		resultB.Deps,
-		[]string{"/vorma_out/client-shared.js", "/vorma_out/chunk-b.js"},
+		[]string{testWaveOutURLPath("client-shared.js"), testWaveOutURLPath("chunk-b.js")},
 	) {
 		t.Fatalf("appB Deps = %#v", resultB.Deps)
 	}
@@ -2069,42 +2069,42 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 		Stage:           "stage-two",
 		BuildID:         "shared-old-build",
 		ClientEntrySrc:  "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:  "vorma_out/client-entry.js",
-		ClientEntryDeps: []string{"vorma_out/shared.js"},
+		ClientEntryOut:  testWaveOutPath("client-entry.js"),
+		ClientEntryDeps: []string{testWaveOutPath("shared.js")},
 		Paths: toRuntimePathsRouteMap(map[string]*Path{
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items_old.$id.tsx",
-				OutPath:         "vorma_out/routes/items_old.$id.js",
+				OutPath:         testWaveOutPath("routes/items_old.$id.js"),
 				ExportKey:       "default",
-				Deps:            []string{"vorma_out/shared.js"},
+				Deps:            []string{testWaveOutPath("shared.js")},
 			},
 		}),
-		RouteManifestFile: "vorma_out/route-manifest.js",
+		RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/client-entry.js": {"vorma_out/client.css"},
-			"vorma_out/shared.js":       {"vorma_out/shared.css"},
+			testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
+			testWaveOutPath("shared.js"):       {testWaveOutPath("shared.css")},
 		},
 	}
 	stageNewA := &runtimepaths.PathsFile{
 		Stage:           "stage-one",
 		BuildID:         "app-a-new-build",
 		ClientEntrySrc:  "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:  "vorma_out/client-entry.js",
-		ClientEntryDeps: []string{"vorma_out/shared.js"},
+		ClientEntryOut:  testWaveOutPath("client-entry.js"),
+		ClientEntryDeps: []string{testWaveOutPath("shared.js")},
 		Paths: toRuntimePathsRouteMap(map[string]*Path{
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items_new.$id.tsx",
-				OutPath:         "vorma_out/routes/items_new.$id.js",
+				OutPath:         testWaveOutPath("routes/items_new.$id.js"),
 				ExportKey:       "default",
-				Deps:            []string{"vorma_out/shared.js"},
+				Deps:            []string{testWaveOutPath("shared.js")},
 			},
 		}),
-		RouteManifestFile: "vorma_out/route-manifest.js",
+		RouteManifestFile: testWaveOutPath("route-manifest.js"),
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/client-entry.js": {"vorma_out/client.css"},
-			"vorma_out/shared.js":       {"vorma_out/shared.css"},
+			testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
+			testWaveOutPath("shared.js"):       {testWaveOutPath("shared.css")},
 		},
 	}
 
@@ -2158,13 +2158,13 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 	oldB := getJSON(t, handlerB, "/items/2?vorma_json="+appB.BuildID())
 	if !reflect.DeepEqual(
 		oldA.ImportURLs,
-		[]string{"/vorma_out/routes/items_old.$id.js"},
+		[]string{testWaveOutURLPath("routes/items_old.$id.js")},
 	) {
 		t.Fatalf("appA old importURLs = %#v", oldA.ImportURLs)
 	}
 	if !reflect.DeepEqual(
 		oldB.ImportURLs,
-		[]string{"/vorma_out/routes/items_old.$id.js"},
+		[]string{testWaveOutURLPath("routes/items_old.$id.js")},
 	) {
 		t.Fatalf("appB old importURLs = %#v", oldB.ImportURLs)
 	}
@@ -2174,7 +2174,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 		t,
 		filepath.Join(
 			fixtureA.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		),
 		stageNewA,
@@ -2196,7 +2196,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 	}
 	if !reflect.DeepEqual(
 		newA.ImportURLs,
-		[]string{"/vorma_out/routes/items_new.$id.js"},
+		[]string{testWaveOutURLPath("routes/items_new.$id.js")},
 	) {
 		t.Fatalf(
 			"appA new importURLs = %#v, want new route output",
@@ -2205,7 +2205,7 @@ func TestLoadersHandler_ReloadIsolationAcrossApps(t *testing.T) {
 	}
 	if !reflect.DeepEqual(
 		stillB.ImportURLs,
-		[]string{"/vorma_out/routes/items_old.$id.js"},
+		[]string{testWaveOutURLPath("routes/items_old.$id.js")},
 	) {
 		t.Fatalf(
 			"appB importURLs leaked reload from appA: %#v",
@@ -2219,7 +2219,7 @@ func TestLoadersHandler_HeadDedupeRulesAreScopedPerApp(t *testing.T) {
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.tsx",
-			OutPath:         "vorma_out/routes/page.js",
+			OutPath:         testWaveOutPath("routes/page.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2301,19 +2301,19 @@ func TestLoadersHandler_HTMLHeadDedupeAndAssetLinks(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				"vorma_out/chunk-items.js",
-				"vorma_out/chunk-shared.js",
+				testWaveOutPath("chunk-items.js"),
+				testWaveOutPath("chunk-shared.js"),
 			},
 		},
 	})
-	stage.ClientEntryDeps = []string{"vorma_out/chunk-shared.js"}
+	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry.js": {"vorma_out/client-entry.css"},
-		"vorma_out/chunk-shared.js": {"vorma_out/chunk-shared.css"},
-		"vorma_out/chunk-items.js":  {"vorma_out/chunk-items.css"},
+		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
+		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
+		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -2375,8 +2375,8 @@ func TestLoadersHandler_HTMLHeadDedupeAndAssetLinks(t *testing.T) {
 	}
 
 	for _, dep := range []string{
-		"vorma_out/chunk-shared.js",
-		"vorma_out/chunk-items.js",
+		testWaveOutPath("chunk-shared.js"),
+		testWaveOutPath("chunk-items.js"),
 	} {
 		if !strings.Contains(body, `rel="modulepreload"`) ||
 			!strings.Contains(body, `href="/static/`+dep+`"`) {
@@ -2385,9 +2385,9 @@ func TestLoadersHandler_HTMLHeadDedupeAndAssetLinks(t *testing.T) {
 	}
 
 	for _, bundle := range []string{
-		"vorma_out/client-entry.css",
-		"vorma_out/chunk-shared.css",
-		"vorma_out/chunk-items.css",
+		testWaveOutPath("client-entry.css"),
+		testWaveOutPath("chunk-shared.css"),
+		testWaveOutPath("chunk-items.css"),
 	} {
 		if !strings.Contains(body, `data-vorma-css-bundle="/static/`+bundle+`"`) {
 			t.Fatalf("expected css bundle marker for %q, body=%q", bundle, body)
@@ -2399,7 +2399,9 @@ func TestLoadersHandler_HTMLHeadDedupeAndAssetLinks(t *testing.T) {
 
 	if !strings.Contains(
 		body,
-		`<script type="module" src="/static/vorma_out/client-entry.js"></script>`,
+		`<script type="module" src="/static`+
+			testWaveOutURLPath("client-entry.js")+
+			`"></script>`,
 	) {
 		t.Fatalf("missing production client entry script tag, body=%q", body)
 	}
@@ -2410,7 +2412,7 @@ func TestLoadersHandler_RespectsExistingCacheControlHeader(t *testing.T) {
 		"/cache": {
 			OriginalPattern: "/cache",
 			SrcPath:         "frontend/src/routes/cache.tsx",
-			OutPath:         "vorma_out/routes/cache.js",
+			OutPath:         testWaveOutPath("routes/cache.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2450,7 +2452,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         "vorma_out/routes/hello.js",
+			OutPath:         testWaveOutPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2458,13 +2460,13 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         "vorma_out/routes/hello.js",
+			OutPath:         testWaveOutPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         "vorma_out/routes/new.js",
+			OutPath:         testWaveOutPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2485,7 +2487,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 			t,
 			filepath.Join(
 				fixture.privateDir,
-				runtimepaths.VormaOutDirname,
+				runtimepaths.VormaInternalDirname,
 				runtimepaths.VormaPathsStageOneJSONFileName,
 			),
 			stageNew,
@@ -2629,7 +2631,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 			} {
 				req := httptest.NewRequest(http.MethodPost, path, nil)
 				req.Header.Set(
-					wave.FrameworkRuntimeReloadExpectedBuildIDHeaderName,
+					waveframework.FrameworkRuntimeReloadExpectedBuildIDHeaderName,
 					"build-mismatch",
 				)
 				rec := httptest.NewRecorder()
@@ -2689,7 +2691,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 	t.Run("reload_routes_error", func(t *testing.T) {
 		stageOnePath := filepath.Join(
 			fixture.privateDir,
-			runtimepaths.VormaOutDirname,
+			runtimepaths.VormaInternalDirname,
 			runtimepaths.VormaPathsStageOneJSONFileName,
 		)
 		if err := os.Remove(stageOnePath); err != nil {

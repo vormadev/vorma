@@ -16,7 +16,8 @@ vercel-install-go:
 	@curl -L https://go.dev/dl/go1.24.0.linux-amd64.tar.gz | tar -C /tmp -xz
 
 vercel-install: vercel-install-go
-	@cd ../.. && make tsinstall
+	@export PATH=/tmp/go/bin:$$PATH && \
+		cd ../.. && make tsinstall
 	@pnpm i
 
 outer-npmbuild:

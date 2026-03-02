@@ -1,16 +1,57 @@
 // @vitest-environment node
 
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import { describe, expect, it } from "vitest";
 import vormaVitePlugin from "./vite.ts";
 
-function buildPluginConfig() {
+function createCanonicalPublicFileMapFixture(map: Record<string, string>): {
+	distDir: string;
+} {
+	const fixtureRoot = mkdtempSync(join(tmpdir(), "vorma-vite-plugin-test-"));
+	const distDir = join(fixtureRoot, "backend", "dist");
+	const staticPublicOutDir = join(distDir, "static", "assets", "public");
+	const staticInternalOutDir = join(distDir, "static", "internal");
+	mkdirSync(staticPublicOutDir, { recursive: true });
+	mkdirSync(staticInternalOutDir, { recursive: true });
+
+	const canonicalPublicFileMapPath =
+		"wave_out_wave_owned_public_filemap_test.json";
+	const canonicalPublicFileMapPayload: Record<
+		string,
+		{ dist: string; hash: string; prehashed: boolean }
+	> = {};
+	for (const [sourcePath, distPath] of Object.entries(map)) {
+		canonicalPublicFileMapPayload[sourcePath] = {
+			dist: distPath,
+			hash: `hash_${sourcePath}`,
+			prehashed: false,
+		};
+	}
+	writeFileSync(
+		join(staticPublicOutDir, canonicalPublicFileMapPath),
+		JSON.stringify(canonicalPublicFileMapPayload),
+	);
+
+	const publicFileMapRefPath = join(
+		staticInternalOutDir,
+		"public_file_map_file_ref.txt",
+	);
+	writeFileSync(publicFileMapRefPath, canonicalPublicFileMapPath);
+
+	return { distDir };
+}
+
+function buildPluginConfig(map: Record<string, string> = {}) {
+	const canonicalPublicFileMapFixture =
+		createCanonicalPublicFileMapFixture(map);
 	return {
 		rollupInput: ["frontend/src/vorma.entry.tsx", "frontend/src/admin.tsx"],
 		publicPathPrefix: "/static/",
-		staticPublicAssetMap: {},
 		buildtimePublicURLFuncName: "waveBuildtimeURL",
-		filemapJSONPath: "backend/dist/static/vorma.gen/public_filemap.json",
+		distDir: canonicalPublicFileMapFixture.distDir,
 		ignoredPatterns: ["**/.DS_Store", "**/*~"],
 		dedupeList: ["react", "react-dom"],
 	};
@@ -215,12 +256,11 @@ describe("vorma vite plugin config merge behavior", () => {
 
 describe("vorma vite plugin static public URL transform behavior", () => {
 	it("replaces mapped buildtime public URL calls", async () => {
-		const plugin = vormaVitePlugin({
-			...buildPluginConfig(),
-			staticPublicAssetMap: {
-				"images/logo.svg": "vorma_out_images_logo_deadbeef.svg",
-			},
-		});
+		const plugin = vormaVitePlugin(
+			buildPluginConfig({
+				"images/logo.svg": "wave_out_images_logo_deadbeef.svg",
+			}),
+		);
 
 		const transformed = await invokePluginTransform(
 			plugin,
@@ -228,15 +268,12 @@ describe("vorma vite plugin static public URL transform behavior", () => {
 		);
 		const transformedCode = getTransformedCode(transformed);
 		expect(transformedCode).toContain(
-			`const logoURL = "/static/vorma_out_images_logo_deadbeef.svg";`,
+			`const logoURL = "/static/wave_out_images_logo_deadbeef.svg";`,
 		);
 	});
 
 	it("throws when a buildtime public URL lookup is missing from the file map", async () => {
-		const plugin = vormaVitePlugin({
-			...buildPluginConfig(),
-			staticPublicAssetMap: {},
-		});
+		const plugin = vormaVitePlugin(buildPluginConfig({}));
 
 		await expect(
 			invokePluginTransform(

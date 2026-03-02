@@ -14,9 +14,9 @@ export const useSplatClientLoaderData = addClientLoader({
 	clientLoader: async (props) => {
 		// This is pointless -- just an example of how to use a client loader
 		// await new Promise((r) => setTimeout(r, 1_000));
-		// console.log(`Client loader '/*' started at ${Date.now()}`);
+		console.log(`Client loader '/*' started at ${Date.now()}`);
 		const { loaderData } = await props.serverDataPromise;
-		// console.log("Server data promise resolved at ", Date.now(), loaderData);
+		console.log("Server data promise resolved at ", Date.now(), loaderData);
 
 		// This is how you pass an abort signal to your API calls,
 		// so that if the navigation aborts, the downstream requests
@@ -36,7 +36,7 @@ export function MD(props: RouteProps<"/*">) {
 
 	const splatClientLoaderData = useSplatClientLoaderData(props);
 	const _y = useRootClientLoaderData();
-	// console.log("_y", _y());
+	console.log("_y", _y());
 
 	return (
 		<div class="flex flex-col gap-6" id="md-route">

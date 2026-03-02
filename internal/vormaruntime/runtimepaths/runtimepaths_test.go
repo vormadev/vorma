@@ -9,10 +9,10 @@ import (
 )
 
 func TestVormaPathsStageFiles(t *testing.T) {
-	if got, want := GetVormaPathsStageOneJSONPath(), "vorma_out/vorma_paths_stage_1.json"; got != want {
+	if got, want := GetVormaPathsStageOneJSONPath(), "vorma_owned/vorma_paths_stage_1.json"; got != want {
 		t.Fatalf("GetVormaPathsStageOneJSONPath() = %q, want %q", got, want)
 	}
-	if got, want := GetVormaPathsStageTwoJSONPath(), "vorma_out/vorma_paths_stage_2.json"; got != want {
+	if got, want := GetVormaPathsStageTwoJSONPath(), "vorma_owned/vorma_paths_stage_2.json"; got != want {
 		t.Fatalf("GetVormaPathsStageTwoJSONPath() = %q, want %q", got, want)
 	}
 }
@@ -282,21 +282,21 @@ func TestBuildRuntimePathsFileSnapshot(t *testing.T) {
 		pathsFile := &PathsFile{
 			BuildID:        "build-artifacts",
 			ClientEntrySrc: "frontend/src/vorma.entry.tsx",
-			ClientEntryOut: "vorma_out/client-entry.js",
+			ClientEntryOut: testWaveOutPath("client-entry.js"),
 			ClientEntryDeps: []string{
-				"vorma_out/chunk-client.js",
+				testWaveOutPath("chunk-client.js"),
 			},
 			DepToCSSBundleMap: map[string][]string{
-				"vorma_out/chunk-client.js": {"vorma_out/chunk-client.css"},
+				testWaveOutPath("chunk-client.js"): {testWaveOutPath("chunk-client.css")},
 			},
-			RouteManifestFile: "vorma_out/route-manifest.js",
+			RouteManifestFile: testWaveOutPath("route-manifest.js"),
 			Paths: map[string]*RoutePath{
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.tsx",
-					OutPath:         "vorma_out/routes/products.$id.js",
+					OutPath:         testWaveOutPath("routes/products.$id.js"),
 					ExportKey:       "default",
-					Deps:            []string{"vorma_out/products.js"},
+					Deps:            []string{testWaveOutPath("products.js")},
 				},
 			},
 		}
@@ -329,17 +329,19 @@ func TestBuildRuntimePathsFileSnapshot(t *testing.T) {
 		) {
 			t.Fatalf("DepToCSSBundleMap = %#v, want %#v", got, want)
 		}
-		if got := snapshot.Paths["/products/:id"].Deps[0]; got != "vorma_out/products.js" {
+		if got := snapshot.Paths["/products/:id"].Deps[0]; got != testWaveOutPath("products.js") {
 			t.Fatalf(
-				"snapshot route deps[0] = %q, want vorma_out/products.js",
+				"snapshot route deps[0] = %q, want %q",
 				got,
+				testWaveOutPath("products.js"),
 			)
 		}
 		pathsFile.Paths["/products/:id"].Deps[0] = "mutated"
-		if got := snapshot.Paths["/products/:id"].Deps[0]; got != "vorma_out/products.js" {
+		if got := snapshot.Paths["/products/:id"].Deps[0]; got != testWaveOutPath("products.js") {
 			t.Fatalf(
-				"snapshot route deps[0] after source mutation = %q, want vorma_out/products.js",
+				"snapshot route deps[0] after source mutation = %q, want %q",
 				got,
+				testWaveOutPath("products.js"),
 			)
 		}
 	})
@@ -382,20 +384,20 @@ func TestLoadRouteArtifactsFromFS(t *testing.T) {
 			Stage:             stage,
 			BuildID:           buildID,
 			ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-			ClientEntryOut:    "vorma_out/client-entry.js",
-			ClientEntryDeps:   []string{"vorma_out/chunk-client.js"},
-			RouteManifestFile: "vorma_out/route-manifest.js",
+			ClientEntryOut:    testWaveOutPath("client-entry.js"),
+			ClientEntryDeps:   []string{testWaveOutPath("chunk-client.js")},
+			RouteManifestFile: testWaveOutPath("route-manifest.js"),
 			Paths: map[string]*RoutePath{
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.tsx",
 					ExportKey:       "default",
-					Deps:            []string{"vorma_out/chunk-products.js"},
+					Deps:            []string{testWaveOutPath("chunk-products.js")},
 				},
 			},
 		}
 		if includeOutPath {
-			pathsFile.Paths["/products/:id"].OutPath = "vorma_out/routes/products.$id.js"
+			pathsFile.Paths["/products/:id"].OutPath = testWaveOutPath("routes/products.$id.js")
 		}
 		b, err := json.Marshal(pathsFile)
 		if err != nil {
@@ -406,10 +408,10 @@ func TestLoadRouteArtifactsFromFS(t *testing.T) {
 
 	t.Run("loads_stage_one_in_dev_mode", func(t *testing.T) {
 		fsys := fstest.MapFS{
-			"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+			GetVormaPathsStageOneJSONPath(): &fstest.MapFile{
 				Data: makeStageFileBytes("build-dev", "stage-one", false),
 			},
-			"vorma_out/" + VormaPathsStageTwoJSONFileName: &fstest.MapFile{
+			GetVormaPathsStageTwoJSONPath(): &fstest.MapFile{
 				Data: makeStageFileBytes("build-prod", "stage-two", true),
 			},
 		}
@@ -428,10 +430,10 @@ func TestLoadRouteArtifactsFromFS(t *testing.T) {
 
 	t.Run("loads_stage_two_in_production_mode", func(t *testing.T) {
 		fsys := fstest.MapFS{
-			"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+			GetVormaPathsStageOneJSONPath(): &fstest.MapFile{
 				Data: makeStageFileBytes("build-dev", "stage-one", false),
 			},
-			"vorma_out/" + VormaPathsStageTwoJSONFileName: &fstest.MapFile{
+			GetVormaPathsStageTwoJSONPath(): &fstest.MapFile{
 				Data: makeStageFileBytes("build-prod", "stage-two", true),
 			},
 		}
@@ -450,7 +452,7 @@ func TestLoadRouteArtifactsFromFS(t *testing.T) {
 
 	t.Run("returns_decode_error_for_malformed_file", func(t *testing.T) {
 		fsys := fstest.MapFS{
-			"vorma_out/" + VormaPathsStageOneJSONFileName: &fstest.MapFile{
+			GetVormaPathsStageOneJSONPath(): &fstest.MapFile{
 				Data: []byte("{"),
 			},
 		}

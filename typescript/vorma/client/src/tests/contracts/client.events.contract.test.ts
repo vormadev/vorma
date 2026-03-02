@@ -39,7 +39,7 @@ describe("client events contracts", () => {
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse(
 				{ importURLs: [], cssBundles: [] },
-				{ headers: { "X-Vorma-Build-Id": "new-build-456" } },
+				{ headers: { "X-Wave-Framework-Build-Id": "new-build-456" } },
 			),
 		);
 
@@ -68,7 +68,7 @@ describe("client events contracts", () => {
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse(
 				{ importURLs: [], cssBundles: [] },
-				{ headers: { "X-Vorma-Build-Id": "new-build-789" } },
+				{ headers: { "X-Wave-Framework-Build-Id": "new-build-789" } },
 			),
 		);
 

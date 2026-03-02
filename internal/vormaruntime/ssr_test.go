@@ -15,13 +15,13 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
-			Deps:            []string{"vorma_out/chunk-items.js"},
+			Deps:            []string{testWaveOutPath("chunk-items.js")},
 		},
 	})
-	stage.RouteManifestFile = "vorma_out/route-manifest.js"
+	stage.RouteManifestFile = testWaveOutPath("route-manifest.js")
 
 	fixture := newTestFixture(t, testFixtureOptions{
 		stageOne:         stage,
@@ -37,14 +37,14 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 			ErrorExportKeys:      []string{"ItemErrorBoundary"},
 			MatchedPatterns:      []string{"/items/:id"},
 			LoadersData:          []any{map[string]any{"id": "42"}},
-			ImportURLs:           []string{"/vorma_out/routes/items.$id.js"},
+			ImportURLs:           []string{testWaveOutURLPath("routes/items.$id.js")},
 			ExportKeys:           []string{"default"},
 			HasRootData:          false,
 			Params:               mux.Params{"id": "42"},
 			SplatValues:          []string{"detail"},
-			Deps:                 []string{"vorma_out/chunk-items.js"},
+			Deps:                 []string{testWaveOutPath("chunk-items.js")},
 		},
-		CSSBundles: []string{"vorma_out/chunk-items.css"},
+		CSSBundles: []string{testWaveOutPath("chunk-items.css")},
 	}
 
 	out, err := buildSSRInnerHTMLFromAppAndRouteData(app, routeData)
@@ -67,9 +67,11 @@ func TestGetSSRInnerHTML_ContainsExpectedRuntimeFields(t *testing.T) {
 		`buildID: "build-ssr",`,
 		`rootElementID: "vorma-root",`,
 		`x.publicPathPrefix = "\/static\/";`,
-		`x.routeManifestURL = "/static/vorma_out/route-manifest.js";`,
+		`x.routeManifestURL = "/static` +
+			testWaveOutURLPath("route-manifest.js") +
+			`";`,
 		`matchedPatterns: ["/items/:id"],`,
-		`importURLs: ["/vorma_out/routes/items.$id.js"],`,
+		`importURLs: ["` + testWaveOutURLPath("routes/items.$id.js") + `"],`,
 	} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf(
@@ -89,7 +91,7 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         "vorma_out/root.js",
+			OutPath:         testWaveOutPath("root.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -103,19 +105,19 @@ func TestGetSSRInnerHTML_HashChangesWhenPayloadChanges(t *testing.T) {
 		RouteDataCore: &routepipeline.RouteDataCore{
 			MatchedPatterns: []string{"/"},
 			LoadersData:     []any{map[string]any{"ok": true}},
-			ImportURLs:      []string{"/vorma_out/root.js"},
+			ImportURLs:      []string{testWaveOutURLPath("root.js")},
 			ExportKeys:      []string{"default"},
 		},
-		CSSBundles: []string{"vorma_out/root.css"},
+		CSSBundles: []string{testWaveOutPath("root.css")},
 	}
 	mutated := &routepipeline.RouteDataFinal{
 		RouteDataCore: &routepipeline.RouteDataCore{
 			MatchedPatterns: []string{"/"},
 			LoadersData:     []any{map[string]any{"ok": false}},
-			ImportURLs:      []string{"/vorma_out/root.js"},
+			ImportURLs:      []string{testWaveOutURLPath("root.js")},
 			ExportKeys:      []string{"default"},
 		},
-		CSSBundles: []string{"vorma_out/root.css", "vorma_out/extra.css"},
+		CSSBundles: []string{testWaveOutPath("root.css"), testWaveOutPath("extra.css")},
 	}
 
 	out1, err := buildSSRInnerHTMLFromAppAndRouteData(app, base)
@@ -139,7 +141,7 @@ func TestGetSSRInnerHTML_VercelDeploymentIDGate(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         "vorma_out/root.js",
+			OutPath:         testWaveOutPath("root.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -174,7 +176,7 @@ func TestGetSSRInnerHTML_NilRouteDataReturnsError(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         "vorma_out/root.js",
+			OutPath:         testWaveOutPath("root.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -198,7 +200,7 @@ func TestGetSSRInnerHTML_NilRouteDataCoreReturnsError(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         "vorma_out/root.js",
+			OutPath:         testWaveOutPath("root.js"),
 			ExportKey:       "default",
 		},
 	})

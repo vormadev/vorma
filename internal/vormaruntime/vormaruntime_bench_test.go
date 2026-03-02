@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
+	"github.com/vormadev/vorma/internal/vormaruntime/routepublic"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 )
@@ -29,24 +30,24 @@ func BenchmarkLoadersHandler_JSONCurrentBuild(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				"vorma_out/chunk-items.js",
-				"vorma_out/chunk-shared.js",
-				"vorma_out/chunk-details.js",
+				testWaveOutPath("chunk-items.js"),
+				testWaveOutPath("chunk-shared.js"),
+				testWaveOutPath("chunk-details.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-build", paths)
-	stage.ClientEntryDeps = []string{"vorma_out/chunk-shared.js"}
+	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry.js": {"vorma_out/client-entry.css"},
-		"vorma_out/chunk-shared.js": {"vorma_out/chunk-shared.css"},
-		"vorma_out/chunk-items.js":  {"vorma_out/chunk-items.css"},
-		"vorma_out/chunk-details.js": {
-			"vorma_out/chunk-details.css",
-			"vorma_out/chunk-shared.css",
+		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
+		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
+		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
+		testWaveOutPath("chunk-details.js"): {
+			testWaveOutPath("chunk-details.css"),
+			testWaveOutPath("chunk-shared.css"),
 		},
 	}
 
@@ -96,29 +97,29 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			Deps: []string{
-				"vorma_out/chunk-a.js",
-				"vorma_out/chunk-b.js",
-				"vorma_out/chunk-c.js",
-				"vorma_out/chunk-a.js",
+				testWaveOutPath("chunk-a.js"),
+				testWaveOutPath("chunk-b.js"),
+				testWaveOutPath("chunk-c.js"),
+				testWaveOutPath("chunk-a.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-deps", paths)
 	stage.ClientEntryDeps = []string{
-		"vorma_out/chunk-root.js",
-		"vorma_out/chunk-b.js",
+		testWaveOutPath("chunk-root.js"),
+		testWaveOutPath("chunk-b.js"),
 	}
 	stage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry.js": {"vorma_out/client.css"},
-		"vorma_out/chunk-root.js":   {"vorma_out/root.css"},
-		"vorma_out/chunk-a.js":      {"vorma_out/a.css"},
-		"vorma_out/chunk-b.js": {
-			"vorma_out/b.css",
-			"vorma_out/shared.css",
+		testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
+		testWaveOutPath("chunk-root.js"):   {testWaveOutPath("root.css")},
+		testWaveOutPath("chunk-a.js"):      {testWaveOutPath("a.css")},
+		testWaveOutPath("chunk-b.js"): {
+			testWaveOutPath("b.css"),
+			testWaveOutPath("shared.css"),
 		},
-		"vorma_out/chunk-c.js": {
-			"vorma_out/c.css",
-			"vorma_out/shared.css",
+		testWaveOutPath("chunk-c.js"): {
+			testWaveOutPath("c.css"),
+			testWaveOutPath("shared.css"),
 		},
 	}
 
@@ -145,7 +146,7 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 	pathsSnapshot := app.Paths()
 	routePipelineSnapshot := routepipeline.BuildRuntimeSnapshotFromCore(
 		routepipeline.RuntimeSnapshotFromCoreInput{
-			Paths: toRuntimeCoreRoutePaths(pathsSnapshot),
+			Paths: routepublic.ToRuntimeCoreRoutePaths(pathsSnapshot),
 		},
 	)
 
@@ -173,24 +174,24 @@ func BenchmarkLoadersHandler_HTMLCurrentBuild(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				"vorma_out/chunk-items.js",
-				"vorma_out/chunk-shared.js",
-				"vorma_out/chunk-details.js",
+				testWaveOutPath("chunk-items.js"),
+				testWaveOutPath("chunk-shared.js"),
+				testWaveOutPath("chunk-details.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-html-build", paths)
-	stage.ClientEntryDeps = []string{"vorma_out/chunk-shared.js"}
+	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry.js": {"vorma_out/client-entry.css"},
-		"vorma_out/chunk-shared.js": {"vorma_out/chunk-shared.css"},
-		"vorma_out/chunk-items.js":  {"vorma_out/chunk-items.css"},
-		"vorma_out/chunk-details.js": {
-			"vorma_out/chunk-details.css",
-			"vorma_out/chunk-shared.css",
+		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
+		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
+		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
+		testWaveOutPath("chunk-details.js"): {
+			testWaveOutPath("chunk-details.css"),
+			testWaveOutPath("chunk-shared.css"),
 		},
 	}
 
@@ -240,24 +241,24 @@ func BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				"vorma_out/chunk-items.js",
-				"vorma_out/chunk-shared.js",
-				"vorma_out/chunk-details.js",
+				testWaveOutPath("chunk-items.js"),
+				testWaveOutPath("chunk-shared.js"),
+				testWaveOutPath("chunk-details.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-cold-build", paths)
-	stage.ClientEntryDeps = []string{"vorma_out/chunk-shared.js"}
+	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry.js": {"vorma_out/client-entry.css"},
-		"vorma_out/chunk-shared.js": {"vorma_out/chunk-shared.css"},
-		"vorma_out/chunk-items.js":  {"vorma_out/chunk-items.css"},
-		"vorma_out/chunk-details.js": {
-			"vorma_out/chunk-details.css",
-			"vorma_out/chunk-shared.css",
+		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
+		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
+		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
+		testWaveOutPath("chunk-details.js"): {
+			testWaveOutPath("chunk-details.css"),
+			testWaveOutPath("chunk-shared.css"),
 		},
 	}
 
@@ -311,13 +312,13 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         "vorma_out/routes/items.$id.js",
+			OutPath:         testWaveOutPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
-			Deps:            []string{"vorma_out/chunk-items.js"},
+			Deps:            []string{testWaveOutPath("chunk-items.js")},
 		},
 	})
-	stage.RouteManifestFile = "vorma_out/route-manifest.js"
+	stage.RouteManifestFile = testWaveOutPath("route-manifest.js")
 
 	fixture := newTestFixture(b, testFixtureOptions{
 		stageOne:         stage,
@@ -333,14 +334,14 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 			ErrorExportKeys:      []string{"ItemErrorBoundary"},
 			MatchedPatterns:      []string{"/items/:id"},
 			LoadersData:          []any{map[string]any{"id": "42"}},
-			ImportURLs:           []string{"/vorma_out/routes/items.$id.js"},
+			ImportURLs:           []string{testWaveOutURLPath("routes/items.$id.js")},
 			ExportKeys:           []string{"default"},
 			HasRootData:          false,
 			Params:               mux.Params{"id": "42"},
 			SplatValues:          []string{"detail"},
-			Deps:                 []string{"vorma_out/chunk-items.js"},
+			Deps:                 []string{testWaveOutPath("chunk-items.js")},
 		},
-		CSSBundles: []string{"vorma_out/chunk-items.css"},
+		CSSBundles: []string{testWaveOutPath("chunk-items.css")},
 	}
 
 	b.ReportAllocs()

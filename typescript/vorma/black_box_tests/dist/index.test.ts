@@ -15,8 +15,112 @@ import type { VormaAppBase, VormaAppConfig } from "vorma/client";
 import {
 	clearAllNavigationStateForTesting,
 	createIsolatedClientTestRuntime,
+	readRouterDataForTesting,
 	readScrollStateForTesting,
+	simulateViteAfterUpdateForTesting,
 } from "vorma/testing";
+
+type DistTypeGuardApp = {
+	appConfig: VormaAppConfig;
+	rootData: null;
+	routes: readonly [
+		{
+			_type: "loader";
+			pattern: "/users/:id";
+			params: readonly ["id"];
+			phantomOutputType: { id: string };
+		},
+		{
+			_type: "loader";
+			pattern: "/*";
+			isSplat: true;
+			phantomOutputType: { slug: string };
+		},
+	];
+};
+
+const DIST_TYPE_GUARD_VORMA_APP_CONFIG = {
+	actionsRouterMountRoot: "/api/",
+	actionsDynamicRune: ":",
+	actionsSplatRune: "*",
+	loadersDynamicRune: ":",
+	loadersSplatRune: "*",
+	loadersExplicitIndexSegmentIdentifier: "_index",
+	__phantom: undefined as unknown as DistTypeGuardApp,
+} as const satisfies VormaAppConfig;
+
+function assertDistApiTypeGuardrails(): void {
+	type ClientSurface = typeof import("vorma/client");
+	type PreactAdapterSurface =
+		typeof import("../../../../npm_dist/typescript/vorma/ui-adapters/preact/index.js");
+	type ReactAdapterSurface =
+		typeof import("../../../../npm_dist/typescript/vorma/ui-adapters/react/index.js");
+	type SolidAdapterSurface =
+		typeof import("../../../../npm_dist/typescript/vorma/ui-adapters/solid/index.js");
+
+	const clientSurface = null as unknown as ClientSurface;
+	const preactAdapterSurface = null as unknown as PreactAdapterSurface;
+	const reactAdapterSurface = null as unknown as ReactAdapterSurface;
+	const solidAdapterSurface = null as unknown as SolidAdapterSurface;
+
+	const typedNavigate = clientSurface.makeTypedNavigate(
+		DIST_TYPE_GUARD_VORMA_APP_CONFIG,
+	);
+	typedNavigate({
+		pattern: "/users/:id",
+		params: { id: "123" },
+	});
+	typedNavigate({
+		pattern: "/*",
+		splatValues: ["docs", "getting-started"],
+	});
+
+	// @ts-expect-error params are required for /users/:id.
+	typedNavigate({ pattern: "/users/:id" });
+	// @ts-expect-error params key must match route param names.
+	typedNavigate({ pattern: "/users/:id", params: { slug: "123" } });
+	// @ts-expect-error splatValues are required for splat routes.
+	typedNavigate({ pattern: "/*" });
+
+	const addSolidClientLoader = solidAdapterSurface.makeTypedAddClientLoader(
+		DIST_TYPE_GUARD_VORMA_APP_CONFIG,
+	);
+	const useSplatClientLoaderData = addSolidClientLoader({
+		pattern: "/*",
+		clientLoader: async () => "title",
+		reRunOnModuleChange: import.meta,
+	});
+	const maybeClientLoaderData = useSplatClientLoaderData();
+	const maybeTitle = maybeClientLoaderData();
+	if (maybeTitle !== undefined) {
+		const title: string = maybeTitle;
+		void title;
+	}
+
+	clientSurface.getHistoryInstance();
+
+	// @ts-expect-error raw React store helpers should remain internal-only.
+	reactAdapterSurface.useLoadersData;
+	// @ts-expect-error raw React store helpers should remain internal-only.
+	reactAdapterSurface.useClientLoadersData;
+	// @ts-expect-error raw React store helpers should remain internal-only.
+	reactAdapterSurface.useRouterData;
+
+	// @ts-expect-error raw Preact stores should remain internal-only.
+	preactAdapterSurface.loadersData;
+	// @ts-expect-error raw Preact stores should remain internal-only.
+	preactAdapterSurface.clientLoadersData;
+	// @ts-expect-error raw Preact stores should remain internal-only.
+	preactAdapterSurface.routerData;
+
+	// @ts-expect-error raw Solid stores should remain internal-only.
+	solidAdapterSurface.loadersData;
+	// @ts-expect-error raw Solid stores should remain internal-only.
+	solidAdapterSurface.clientLoadersData;
+	// @ts-expect-error raw Solid stores should remain internal-only.
+	solidAdapterSurface.routerData;
+}
+void assertDistApiTypeGuardrails;
 
 type DistTestLoaderRoute = {
 	_type: "loader";
@@ -100,7 +204,7 @@ function createRouteDataResponse(
 			status: init.status ?? 200,
 			headers: {
 				"Content-Type": "application/json",
-				"X-Vorma-Build-Id": "1",
+				"X-Wave-Framework-Build-Id": "1",
 				...init.headers,
 			},
 			...init,
@@ -2069,6 +2173,109 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 
 		expect(firstLoader).not.toHaveBeenCalled();
 		expect(secondLoader).toHaveBeenCalledTimes(1);
+	});
+
+	it("re-runs only opted-in matched client loaders after js HMR updates", async () => {
+		await initializeDistRuntimeStateForAdapters();
+		const client = await import("vorma/client");
+		const reactAdapter = await import("vorma/react");
+		const optedInLoader = vi.fn(async ({ serverDataPromise }) => {
+			await serverDataPromise;
+			return "opted-in";
+		});
+		const nonOptedLoader = vi.fn(async ({ serverDataPromise }) => {
+			await serverDataPromise;
+			return "non-opted";
+		});
+		const addClientLoader = reactAdapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		addClientLoader({
+			pattern: "/hmr-opted-in",
+			clientLoader: optedInLoader,
+			reRunOnModuleChange: {
+				url: "http://localhost:3000/src/routes/hmr-opted-in.tsx?t=1",
+			} as ImportMeta,
+		});
+		addClientLoader({
+			pattern: "/hmr-non-opted",
+			clientLoader: nonOptedLoader,
+		});
+		vi.spyOn(window, "fetch").mockResolvedValueOnce(
+			createRouteDataResponse({
+				matchedPatterns: ["/hmr-opted-in", "/hmr-non-opted"],
+				loadersData: [{ id: "a" }, { id: "b" }],
+				importURLs: ["/hmr-opted-in.js", "/hmr-non-opted.js"],
+				exportKeys: ["default", "default"],
+				errorExportKeys: ["", ""],
+			}),
+		);
+		vi.doMock("/hmr-opted-in.js", () => ({ default: () => null }));
+		vi.doMock("/hmr-non-opted.js", () => ({ default: () => null }));
+
+		await client.vormaNavigate("/hmr-opted-in");
+		await vi.runAllTimersAsync();
+		expect(optedInLoader).toHaveBeenCalledTimes(1);
+		expect(nonOptedLoader).toHaveBeenCalledTimes(1);
+
+		await simulateViteAfterUpdateForTesting({
+			updates: [
+				{
+					type: "js-update",
+					path: "/src/routes/hmr-opted-in.tsx?t=2",
+				},
+			],
+		});
+		await vi.runAllTimersAsync();
+
+		expect(optedInLoader).toHaveBeenCalledTimes(2);
+		expect(nonOptedLoader).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not re-run opted-in client loaders for css-only HMR updates", async () => {
+		await initializeDistRuntimeStateForAdapters();
+		const client = await import("vorma/client");
+		const reactAdapter = await import("vorma/react");
+		const optedInLoader = vi.fn(async ({ serverDataPromise }) => {
+			await serverDataPromise;
+			return "opted-in";
+		});
+		const addClientLoader = reactAdapter.makeTypedAddClientLoader(
+			DIST_TEST_VORMA_APP_CONFIG,
+		);
+		addClientLoader({
+			pattern: "/hmr-css",
+			clientLoader: optedInLoader,
+			reRunOnModuleChange: {
+				url: "http://localhost:3000/src/routes/hmr-css.tsx?t=1",
+			} as ImportMeta,
+		});
+		vi.spyOn(window, "fetch").mockResolvedValueOnce(
+			createRouteDataResponse({
+				matchedPatterns: ["/hmr-css"],
+				loadersData: [{ id: "css" }],
+				importURLs: ["/hmr-css.js"],
+				exportKeys: ["default"],
+				errorExportKeys: [""],
+			}),
+		);
+		vi.doMock("/hmr-css.js", () => ({ default: () => null }));
+
+		await client.vormaNavigate("/hmr-css");
+		await vi.runAllTimersAsync();
+		expect(optedInLoader).toHaveBeenCalledTimes(1);
+
+		await simulateViteAfterUpdateForTesting({
+			updates: [
+				{
+					type: "css-update",
+					path: "/src/routes/hmr-css.tsx?t=2",
+				},
+			],
+		});
+		await vi.runAllTimersAsync();
+
+		expect(optedInLoader).toHaveBeenCalledTimes(1);
 	});
 
 	it("react/preact/solid links strip navigation-only props from rendered anchors", async () => {
@@ -4575,7 +4782,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 			await client.vormaNavigate("/route-props-solid-c");
 			await waitForDOMCondition({
 				assertion: () => {
-					expect(solidAdapter.routerData().matchedPatterns[0]).toBe(
+					expect(readRouterDataForTesting().matchedPatterns[0]).toBe(
 						"/root",
 					);
 				},
@@ -9083,7 +9290,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "build-2",
+							"X-Wave-Framework-Build-Id": "build-2",
 						},
 					},
 				),
@@ -10999,7 +11206,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 		const client = await import("vorma/client");
 		const reactAdapter = await import("vorma/react");
 		window.history.replaceState({}, "", "/current-page");
-		client.getUnsafeHistoryInstance();
+		client.getHistoryInstance();
 		const beforeEntries = readScrollStateForTesting();
 		const { anchor, cleanup } = renderReactTypedLinkForTesting({
 			TypedLink: reactAdapter.VormaLink,
@@ -11068,7 +11275,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 					{
 						headers: {
 							"X-Client-Redirect": "/redirected-click",
-							"X-Vorma-Build-Id": "build-click-2",
+							"X-Wave-Framework-Build-Id": "build-click-2",
 						},
 					},
 				),
@@ -11078,7 +11285,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "build-click-2",
+							"X-Wave-Framework-Build-Id": "build-click-2",
 						},
 					},
 				),

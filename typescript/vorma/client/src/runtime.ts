@@ -465,6 +465,7 @@ export type VormaTypedAdapterAddClientLoaderProps<
 		LoaderData,
 		ResultData
 	>;
+	reRunOnModuleChange?: ImportMeta;
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -1843,10 +1844,10 @@ async function fetchRouteDataSnapshot(props: {
 		headers: requestHeaders,
 		signal: props.signal,
 	});
-	const hardReloadHeader = response.headers.get("X-Vorma-Reload");
+	const hardReloadHeader = response.headers.get("X-Wave-Framework-Reload");
 	const redirectHeader = response.headers.get("X-Client-Redirect");
 	const buildIDFromResponseHeader = response.headers.get(
-		"X-Vorma-Build-Id",
+		"X-Wave-Framework-Build-Id",
 	) as string;
 	if (hardReloadHeader) {
 		return {
@@ -2691,6 +2692,18 @@ export function registerClientLoaderForAdapter(
 	globalState.patternToWaitFnMap[props.pattern] =
 		props.clientLoader as ClientLoaderWaitFn;
 	registerPattern(globalState.patternRegistry, props.pattern);
+	if (import.meta.env.DEV && props.reRunOnModuleChange) {
+		void import("vorma/client/__internal/hmr_dev")
+			.then(
+				({ registerClientLoaderModuleForHMRRerunFromAdapterProps }) => {
+					registerClientLoaderModuleForHMRRerunFromAdapterProps({
+						pattern: props.pattern,
+						reRunOnModuleChange: props.reRunOnModuleChange,
+					});
+				},
+			)
+			.catch(() => undefined);
+	}
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -4231,9 +4244,11 @@ async function executeSubmitOperation<T>(props: {
 				submissionOperationID,
 			});
 		const buildIDFromResponseHeader = response.headers.get(
-			"X-Vorma-Build-Id",
+			"X-Wave-Framework-Build-Id",
 		) as string;
-		const hardReloadHeader = response.headers.get("X-Vorma-Reload");
+		const hardReloadHeader = response.headers.get(
+			"X-Wave-Framework-Reload",
+		);
 		const redirectHref = response.headers.get("X-Client-Redirect");
 		if (hardReloadHeader) {
 			if (!isCurrentSubmissionSideEffectOwner) {
@@ -4569,7 +4584,7 @@ export function getRootEl(): HTMLElement {
 	return rootElement;
 }
 
-export function getUnsafeHistoryInstance(): BrowserHistory {
+export function getHistoryInstance(): BrowserHistory {
 	return getOrCreateHistoryInstance();
 }
 
@@ -4719,17 +4734,29 @@ export function makeTypedAPIClient<C extends VormaAppConfig>(
 }
 
 export function makeTypedNavigate<C extends VormaAppConfig>(vormaAppConfig: C) {
-	return async (
-		props: PathResolutionProps,
+	type App = ExtractApp<C>;
+	type TypedNavigateOptions<Pattern extends VormaLoaderPattern<App>> =
+		PermissivePatternBasedProps<App, Pattern> & {
+			replace?: boolean;
+			scrollToTop?: boolean;
+			search?: string;
+			hash?: string;
+			state?: unknown;
+		};
+	return async <Pattern extends VormaLoaderPattern<App>>(
+		props: TypedNavigateOptions<Pattern>,
 	): Promise<{ didNavigate: boolean }> => {
+		const propsAny = props as AnyRecord;
 		const href = resolveAbsoluteHrefWithOptionalSearchAndHash({
 			href: resolveVormaPath({
 				vormaAppConfig,
 				type: "loader",
 				props: {
 					pattern: props.pattern,
-					params: props.params,
-					splatValues: props.splatValues,
+					params: propsAny.params as
+						| Record<string, string>
+						| undefined,
+					splatValues: propsAny.splatValues as string[] | undefined,
 				},
 			}),
 			search: props.search,
@@ -5655,7 +5682,7 @@ export async function initClient(options: InitClientInput): Promise<void> {
 		globalState,
 	});
 	if (import.meta.env.DEV) {
-		void import("./runtime_hmr_dev.ts").then(
+		void import("vorma/client/__internal/hmr_dev").then(
 			({ registerViteAfterUpdateListenerIfNeeded }) => {
 				registerViteAfterUpdateListenerIfNeeded({
 					hotRuntime: import.meta.hot,

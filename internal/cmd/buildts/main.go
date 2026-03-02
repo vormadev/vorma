@@ -308,6 +308,7 @@ func buildClient() error {
 			"./typescript/vorma/client/index.ts",
 			"./typescript/vorma/client/internal.ts",
 			"./typescript/vorma/client/buildtime.ts",
+			"./typescript/vorma/client/internal/hmr_dev.ts",
 			"./typescript/vorma/client/testing.ts",
 		},
 		External: []string{
@@ -334,7 +335,7 @@ func buildReact() error {
 		Splitting:   true,
 		Write:       true,
 		Bundle:      true,
-		EntryPoints: []string{"./typescript/vorma/ui-adapters/react/index.tsx"},
+		EntryPoints: []string{"./typescript/vorma/ui-adapters/react/index.ts"},
 		External: []string{
 			"vorma",
 			"react", "react-dom",
@@ -374,7 +375,7 @@ func buildPreact() error {
 		Splitting:   true,
 		Write:       true,
 		Bundle:      true,
-		EntryPoints: []string{"./typescript/vorma/ui-adapters/preact/index.tsx"},
+		EntryPoints: []string{"./typescript/vorma/ui-adapters/preact/index.ts"},
 		External: []string{
 			"vorma",
 			"preact", "preact/hooks",
@@ -898,11 +899,12 @@ func collectReachableClientChunks(
 	entryPaths := []string{
 		filepath.Join(clientDistPath, "index.js"),
 		filepath.Join(clientDistPath, "internal.js"),
+		filepath.Join(clientDistPath, "internal/hmr_dev.js"),
 		filepath.Join(clientDistPath, "buildtime.js"),
 	}
 
 	chunkImportPattern := regexp.MustCompile(
-		`(?:from\s+|import\()\s*["']\./(chunk-[^"']+\.js)["']`,
+		`(?:from\s+|import\()\s*["'](?:\./|\.\./)+(chunk-[^"']+\.js)["']`,
 	)
 	reachableChunks := make(map[string]struct{})
 	visitedScriptPaths := make(map[string]struct{})

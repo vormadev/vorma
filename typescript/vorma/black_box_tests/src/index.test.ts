@@ -143,7 +143,7 @@ function createRouteDataResponse(
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
-			"X-Vorma-Build-Id": "1",
+			"X-Wave-Framework-Build-Id": "1",
 			...init.headers,
 		},
 		...init,
@@ -322,7 +322,7 @@ type PublicClientAPI = Pick<
 	| "addStatusListener"
 	| "getBuildID"
 	| "getLocation"
-	| "getUnsafeHistoryInstance"
+	| "getHistoryInstance"
 	| "getStatus"
 	| "revalidate"
 	| "submit"
@@ -350,7 +350,7 @@ async function loadPublicClientAPI(): Promise<PublicClientAPI> {
 		addStatusListener: api.addStatusListener,
 		getBuildID: api.getBuildID,
 		getLocation: api.getLocation,
-		getUnsafeHistoryInstance: api.getUnsafeHistoryInstance,
+		getHistoryInstance: api.getHistoryInstance,
 		getStatus: api.getStatus,
 		revalidate: api.revalidate,
 		submit: api.submit,
@@ -1141,7 +1141,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("exposes a usable history instance", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		expect(typeof history.push).toBe("function");
 		expect(typeof history.replace).toBe("function");
 		expect(typeof history.listen).toBe("function");
@@ -1149,7 +1149,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("treats direct history pushes as outside vorma navigation lifecycle", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const fetchSpy = vi.spyOn(window, "fetch");
 
 		history.push("/history-direct-push");
@@ -1162,7 +1162,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("emits location events when history keys change via direct history pushes", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const observedPaths: string[] = [];
 		const cleanup = api.addLocationListener((event) => {
 			observedPaths.push(event.detail.pathname);
@@ -1182,7 +1182,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("reflects direct history push state through getLocation", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 
 		history.push("/history-state", {
 			source: "direct-push",
@@ -1203,7 +1203,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("treats direct history replace as outside navigation lifecycle", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const fetchSpy = vi.spyOn(window, "fetch");
 
 		history.replace("/history-direct-replace", {
@@ -1221,7 +1221,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("applies hash-element scroll on same-document POP transitions", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const sectionElement = document.createElement("div");
 		sectionElement.id = "same-pop-section";
 		const scrollIntoViewSpy = vi.fn();
@@ -1249,7 +1249,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("applies coordinate and hash-based scroll states on same-document POP transitions", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const coordinateScrollSpy = vi.spyOn(window, "scrollTo");
 		const hashElement = document.createElement("div");
 		hashElement.id = "scroll-hash-target";
@@ -1292,7 +1292,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("includes restored scroll state in browser-history route-change events", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const routeChangeDetails: Array<unknown> = [];
 		const removeRouteChangeListener = api.addRouteChangeListener(
 			(event) => {
@@ -1334,7 +1334,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("uses one decode step when resolving same-document POP hash targets", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const percentLiteralElement = document.createElement("div");
 		percentLiteralElement.id = "%20-literal";
 		const scrollIntoViewSpy = vi.fn();
@@ -1362,7 +1362,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("resolves encoded unicode hash targets on same-document POP transitions", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const checkmarkElement = document.createElement("div");
 		checkmarkElement.id = "✓";
 		const scrollIntoViewSpy = vi.fn();
@@ -1390,7 +1390,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("falls back to raw hash fragments when decode fails during same-document POP", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const invalidEncodedHashFragment = "%E0%A4%A";
 		const rawFragmentElement = document.createElement("div");
 		rawFragmentElement.id = invalidEncodedHashFragment;
@@ -1419,7 +1419,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("does not re-scroll when same-document POP hash targets are encoding-equivalent", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const tildeElement = document.createElement("div");
 		tildeElement.id = "~";
 		const scrollIntoViewSpy = vi.fn();
@@ -1446,7 +1446,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("fetches and commits route data for cross-document POP transitions", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
 				loadersData: [],
@@ -1477,7 +1477,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("follows cross-document POP redirects and commits redirected destination", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const fetchSpy = vi
 			.spyOn(window, "fetch")
 			.mockResolvedValueOnce(
@@ -1485,7 +1485,7 @@ describe("authoritative black-box contracts", () => {
 					status: 302,
 					headers: {
 						"X-Client-Redirect": "/pop-redirect-destination",
-						"X-Vorma-Build-Id": "2",
+						"X-Wave-Framework-Build-Id": "2",
 					},
 				}),
 			)
@@ -1499,7 +1499,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "2",
+							"X-Wave-Framework-Build-Id": "2",
 						},
 					},
 				),
@@ -1529,7 +1529,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("uses the POP listener payload URL as fetch source-of-truth", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
 				loadersData: [],
@@ -1559,7 +1559,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("treats query-order changes as different POP targets", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
 				loadersData: [],
@@ -1585,7 +1585,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("reloads the browser when cross-document POP navigation fails in client runtime", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const hardRedirectSpy = vi.fn();
 		setHardRedirectHandlerForTesting((href) => {
 			hardRedirectSpy(href);
@@ -1624,7 +1624,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("logs when hard-reload fallback fails after cross-document POP navigation errors", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		setHardRedirectHandlerForTesting(() => {
 			throw new Error("reload-failed");
 		});
@@ -1659,7 +1659,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("saves outgoing scroll state before cross-document POP commits", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		vi.spyOn(window, "fetch").mockImplementation(() =>
 			Promise.resolve(
 				createRouteDataResponse({
@@ -1688,7 +1688,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("ignores malformed session-stored scroll entries and persists fresh valid state", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		history.push("/malformed-scroll-map-source");
 		await vi.runAllTimersAsync();
 		const sourceHistoryKey = history.location.key;
@@ -1736,7 +1736,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("keeps scroll-state storage at 50 entries with oldest-first eviction", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		seedScrollStateForTesting([]);
 		vi.spyOn(window, "fetch").mockImplementation(() =>
 			Promise.resolve(
@@ -1771,7 +1771,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("restores saved scroll coordinates when same-document POP removes a hash", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		history.push("/hash-remove-target");
 		await vi.runAllTimersAsync();
 		const targetHistoryKey = history.location.key;
@@ -1795,7 +1795,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("falls back to origin scroll when same-document POP removes hash without stored state", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		history.push("/hash-remove-origin-target");
 		await vi.runAllTimersAsync();
 		history.push("/hash-remove-origin-target#section");
@@ -1811,7 +1811,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("restores saved scroll coordinates when same-document POP targets empty fragment '#'", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		history.push("/hash-empty-fragment-target#");
 		await vi.runAllTimersAsync();
 		const targetHistoryKey = history.location.key;
@@ -1835,7 +1835,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("saves outgoing scroll state before programmatic navigation pushes a new history entry", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		history.push("/navigate-scroll-source");
 		await vi.runAllTimersAsync();
 		const sourceHistoryKey = history.location.key;
@@ -2475,7 +2475,7 @@ describe("authoritative black-box contracts", () => {
 			}),
 		);
 
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -2496,7 +2496,7 @@ describe("authoritative black-box contracts", () => {
 			.spyOn(window, "fetch")
 			.mockResolvedValue(createRouteDataResponse());
 
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 
@@ -2672,7 +2672,7 @@ describe("authoritative black-box contracts", () => {
 	it("does not mutate history when hash target is encoding-equivalent", async () => {
 		window.history.replaceState({}, "", "/history-same-hash#~");
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
@@ -2688,7 +2688,7 @@ describe("authoritative black-box contracts", () => {
 	it("pushes history when hash target changes", async () => {
 		window.history.replaceState({}, "", "/history-hash-change#first");
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const pushSpy = vi.spyOn(history, "push");
 		const replaceSpy = vi.spyOn(history, "replace");
 		vi.spyOn(window, "fetch").mockResolvedValue(createRouteDataResponse());
@@ -3197,7 +3197,7 @@ describe("authoritative black-box contracts", () => {
 					status: 302,
 					headers: {
 						"X-Client-Redirect": "/revalidate-target",
-						"X-Vorma-Build-Id": "2",
+						"X-Wave-Framework-Build-Id": "2",
 					},
 				}),
 			)
@@ -3284,7 +3284,7 @@ describe("authoritative black-box contracts", () => {
 						},
 						{
 							headers: {
-								"X-Vorma-Build-Id": "winner-build-id",
+								"X-Wave-Framework-Build-Id": "winner-build-id",
 							},
 						},
 					),
@@ -3302,8 +3302,9 @@ describe("authoritative black-box contracts", () => {
 				new Response("", {
 					status: 200,
 					headers: {
-						"X-Vorma-Reload": "/revalidate-stale-hard-reload",
-						"X-Vorma-Build-Id": "stale-build-id",
+						"X-Wave-Framework-Reload":
+							"/revalidate-stale-hard-reload",
+						"X-Wave-Framework-Build-Id": "stale-build-id",
 					},
 				}),
 			);
@@ -3415,7 +3416,8 @@ describe("authoritative black-box contracts", () => {
 				},
 				{
 					headers: {
-						"X-Vorma-Build-Id": "stale-revalidate-build-id",
+						"X-Wave-Framework-Build-Id":
+							"stale-revalidate-build-id",
 					},
 				},
 			),
@@ -3445,8 +3447,10 @@ describe("authoritative black-box contracts", () => {
 				new Response("", {
 					status: 200,
 					headers: {
-						"X-Vorma-Reload": "/revalidate-stale-hard-reload",
-						"X-Vorma-Build-Id": "stale-hard-reload-build-id",
+						"X-Wave-Framework-Reload":
+							"/revalidate-stale-hard-reload",
+						"X-Wave-Framework-Build-Id":
+							"stale-hard-reload-build-id",
 					},
 				}),
 			);
@@ -4124,7 +4128,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "build-2",
+							"X-Wave-Framework-Build-Id": "build-2",
 						},
 					},
 				),
@@ -4136,7 +4140,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "build-3",
+							"X-Wave-Framework-Build-Id": "build-3",
 						},
 					},
 				),
@@ -7516,8 +7520,10 @@ describe("authoritative black-box contracts", () => {
 					new Response("", {
 						status: 200,
 						headers: {
-							"X-Vorma-Reload": "/dedupe-stale-hard-target",
-							"X-Vorma-Build-Id": "stale-dedupe-build-id",
+							"X-Wave-Framework-Reload":
+								"/dedupe-stale-hard-target",
+							"X-Wave-Framework-Build-Id":
+								"stale-dedupe-build-id",
 						},
 					}),
 				);
@@ -7953,9 +7959,10 @@ describe("authoritative black-box contracts", () => {
 					new Response("", {
 						status: 200,
 						headers: {
-							"X-Vorma-Reload":
+							"X-Wave-Framework-Reload":
 								"/submit-stale-hard-reload-target",
-							"X-Vorma-Build-Id": "stale-submit-build-id",
+							"X-Wave-Framework-Build-Id":
+								"stale-submit-build-id",
 						},
 					}),
 				);
@@ -8020,7 +8027,8 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "user-navigation-winner-build",
+							"X-Wave-Framework-Build-Id":
+								"user-navigation-winner-build",
 						},
 					},
 				),
@@ -8037,7 +8045,8 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "submit-redirect-stale-build",
+							"X-Wave-Framework-Build-Id":
+								"submit-redirect-stale-build",
 						},
 					},
 				),
@@ -8509,7 +8518,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "build-2",
+							"X-Wave-Framework-Build-Id": "build-2",
 						},
 					},
 				),
@@ -8548,7 +8557,7 @@ describe("authoritative black-box contracts", () => {
 						},
 						{
 							headers: {
-								"X-Vorma-Build-Id": "1",
+								"X-Wave-Framework-Build-Id": "1",
 							},
 						},
 					),
@@ -8560,7 +8569,7 @@ describe("authoritative black-box contracts", () => {
 						},
 						{
 							headers: {
-								"X-Vorma-Build-Id": "build-2",
+								"X-Wave-Framework-Build-Id": "build-2",
 							},
 						},
 					),
@@ -8603,7 +8612,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "build-9",
+							"X-Wave-Framework-Build-Id": "build-9",
 						},
 					},
 				),
@@ -8638,7 +8647,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "listener-build-a",
+							"X-Wave-Framework-Build-Id": "listener-build-a",
 						},
 					},
 				),
@@ -8650,7 +8659,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "listener-build-b",
+							"X-Wave-Framework-Build-Id": "listener-build-b",
 						},
 					},
 				),
@@ -8729,7 +8738,7 @@ describe("authoritative black-box contracts", () => {
 				},
 				{
 					headers: {
-						"X-Vorma-Build-Id": "build-id-getter-check",
+						"X-Wave-Framework-Build-Id": "build-id-getter-check",
 					},
 				},
 			),
@@ -8909,7 +8918,7 @@ describe("authoritative black-box contracts", () => {
 					status: 200,
 					headers: {
 						"X-Client-Redirect": "/redirect-final",
-						"X-Vorma-Build-Id": "redirect-1",
+						"X-Wave-Framework-Build-Id": "redirect-1",
 					},
 				}),
 			)
@@ -8921,7 +8930,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "redirect-2",
+							"X-Wave-Framework-Build-Id": "redirect-2",
 						},
 					},
 				),
@@ -9050,7 +9059,8 @@ describe("authoritative black-box contracts", () => {
 					status: 200,
 					headers: {
 						"X-Client-Redirect": "/redirect-before-loader-ready",
-						"X-Vorma-Build-Id": "redirect-before-loader-build",
+						"X-Wave-Framework-Build-Id":
+							"redirect-before-loader-build",
 					},
 				}),
 			)
@@ -9205,7 +9215,7 @@ describe("authoritative black-box contracts", () => {
 					status: 500,
 					headers: {
 						"X-Client-Redirect": "/redirect-non-ok",
-						"X-Vorma-Build-Id": "redirect-non-ok-1",
+						"X-Wave-Framework-Build-Id": "redirect-non-ok-1",
 					},
 				}),
 			)
@@ -9233,7 +9243,7 @@ describe("authoritative black-box contracts", () => {
 					status: 200,
 					headers: {
 						"X-Client-Redirect": "child/final",
-						"X-Vorma-Build-Id": "relative-redirect-build",
+						"X-Wave-Framework-Build-Id": "relative-redirect-build",
 					},
 				}),
 			)
@@ -9298,7 +9308,7 @@ describe("authoritative black-box contracts", () => {
 						status: 200,
 						headers: {
 							"X-Client-Redirect": "/redirect-build-target",
-							"X-Vorma-Build-Id": "redirect-build-1",
+							"X-Wave-Framework-Build-Id": "redirect-build-1",
 						},
 					}),
 				)
@@ -9312,7 +9322,7 @@ describe("authoritative black-box contracts", () => {
 						},
 						{
 							headers: {
-								"X-Vorma-Build-Id": "redirect-build-1",
+								"X-Wave-Framework-Build-Id": "redirect-build-1",
 							},
 						},
 					),
@@ -9362,7 +9372,7 @@ describe("authoritative black-box contracts", () => {
 		}
 	});
 
-	it("performs hard reload redirect for navigation X-Vorma-Reload responses", async () => {
+	it("performs hard reload redirect for navigation X-Wave-Framework-Reload responses", async () => {
 		const api = await loadPublicClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 		try {
@@ -9371,8 +9381,8 @@ describe("authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-nav",
-							"X-Vorma-Build-Id": "reload-nav-build-1",
+							"X-Wave-Framework-Reload": "/force-reload-nav",
+							"X-Wave-Framework-Build-Id": "reload-nav-build-1",
 						},
 					},
 				),
@@ -9392,7 +9402,7 @@ describe("authoritative black-box contracts", () => {
 		}
 	});
 
-	it("resolves relative X-Vorma-Reload targets against redirecting request URL path", async () => {
+	it("resolves relative X-Wave-Framework-Reload targets against redirecting request URL path", async () => {
 		window.history.replaceState({}, "", "/current-parent/");
 		const api = await loadPublicClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
@@ -9402,8 +9412,9 @@ describe("authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "child-reload",
-							"X-Vorma-Build-Id": "relative-reload-build-1",
+							"X-Wave-Framework-Reload": "child-reload",
+							"X-Wave-Framework-Build-Id":
+								"relative-reload-build-1",
 						},
 					},
 				),
@@ -9422,7 +9433,7 @@ describe("authoritative black-box contracts", () => {
 		}
 	});
 
-	it("prioritizes X-Vorma-Reload over X-Client-Redirect for navigation", async () => {
+	it("prioritizes X-Wave-Framework-Reload over X-Client-Redirect for navigation", async () => {
 		const api = await loadPublicClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 		try {
@@ -9431,9 +9442,10 @@ describe("authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-nav-priority",
+							"X-Wave-Framework-Reload":
+								"/force-reload-nav-priority",
 							"X-Client-Redirect": "/ignored-soft-nav",
-							"X-Vorma-Build-Id": "priority-nav-build-1",
+							"X-Wave-Framework-Build-Id": "priority-nav-build-1",
 						},
 					},
 				),
@@ -9712,7 +9724,8 @@ describe("authoritative black-box contracts", () => {
 						headers: {
 							"X-Client-Redirect":
 								"/submit-redirect-build-target",
-							"X-Vorma-Build-Id": "submit-redirect-build-1",
+							"X-Wave-Framework-Build-Id":
+								"submit-redirect-build-1",
 						},
 					}),
 				)
@@ -9727,7 +9740,8 @@ describe("authoritative black-box contracts", () => {
 						},
 						{
 							headers: {
-								"X-Vorma-Build-Id": "submit-redirect-build-1",
+								"X-Wave-Framework-Build-Id":
+									"submit-redirect-build-1",
 							},
 						},
 					),
@@ -9786,7 +9800,7 @@ describe("authoritative black-box contracts", () => {
 		expectStatusIdle(api.getStatus());
 	});
 
-	it("performs hard reload redirect when submit response includes X-Vorma-Reload", async () => {
+	it("performs hard reload redirect when submit response includes X-Wave-Framework-Reload", async () => {
 		const api = await loadPublicClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 		try {
@@ -9795,8 +9809,9 @@ describe("authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-submit",
-							"X-Vorma-Build-Id": "reload-submit-build-1",
+							"X-Wave-Framework-Reload": "/force-reload-submit",
+							"X-Wave-Framework-Build-Id":
+								"reload-submit-build-1",
 						},
 					},
 				),
@@ -9844,7 +9859,7 @@ describe("authoritative black-box contracts", () => {
 		}
 	});
 
-	it("prioritizes X-Vorma-Reload over X-Client-Redirect for submit", async () => {
+	it("prioritizes X-Wave-Framework-Reload over X-Client-Redirect for submit", async () => {
 		const api = await loadPublicClientAPI();
 		const locationHrefStub = stubWindowLocationHref();
 		try {
@@ -9853,9 +9868,11 @@ describe("authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/force-reload-submit-priority",
+							"X-Wave-Framework-Reload":
+								"/force-reload-submit-priority",
 							"X-Client-Redirect": "/ignored-soft-submit",
-							"X-Vorma-Build-Id": "priority-submit-build-1",
+							"X-Wave-Framework-Build-Id":
+								"priority-submit-build-1",
 						},
 					},
 				),
@@ -9992,7 +10009,7 @@ describe("authoritative black-box contracts", () => {
 						status: 200,
 						headers: {
 							"X-Client-Redirect": "/redirect-mid",
-							"X-Vorma-Build-Id": "redirect-build-1",
+							"X-Wave-Framework-Build-Id": "redirect-build-1",
 						},
 					}),
 				)
@@ -10001,7 +10018,7 @@ describe("authoritative black-box contracts", () => {
 						status: 200,
 						headers: {
 							"X-Client-Redirect": "/redirect-final-chain",
-							"X-Vorma-Build-Id": "redirect-build-2",
+							"X-Wave-Framework-Build-Id": "redirect-build-2",
 						},
 					}),
 				)
@@ -10015,7 +10032,7 @@ describe("authoritative black-box contracts", () => {
 						},
 						{
 							headers: {
-								"X-Vorma-Build-Id": "redirect-build-3",
+								"X-Wave-Framework-Build-Id": "redirect-build-3",
 							},
 						},
 					),
@@ -10172,7 +10189,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "winner-build-id",
+							"X-Wave-Framework-Build-Id": "winner-build-id",
 						},
 					},
 				),
@@ -10198,7 +10215,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-build-id",
+							"X-Wave-Framework-Build-Id": "stale-build-id",
 						},
 					},
 				),
@@ -10381,7 +10398,8 @@ describe("authoritative black-box contracts", () => {
 							status: 200,
 							headers: {
 								"X-Client-Redirect": "/redirect-race-target",
-								"X-Vorma-Build-Id": "redirect-race-build-1",
+								"X-Wave-Framework-Build-Id":
+									"redirect-race-build-1",
 							},
 						}),
 					);
@@ -10442,7 +10460,7 @@ describe("authoritative black-box contracts", () => {
 			{},
 			{
 				headers: {
-					"X-Vorma-Build-Id": "stale-native-nav-build",
+					"X-Wave-Framework-Build-Id": "stale-native-nav-build",
 				},
 			},
 		);
@@ -10503,7 +10521,7 @@ describe("authoritative black-box contracts", () => {
 
 	it("does not let a stale browser-history POP completion override a newer user navigation", async () => {
 		const api = await loadPublicClientAPI();
-		const history = api.getUnsafeHistoryInstance();
+		const history = api.getHistoryInstance();
 		const stalePOPDeferred = createDeferred<Response>();
 		const buildIDEvents: Array<{ newID: string; oldID: string }> = [];
 		const removeBuildIDListener = api.addBuildIDListener((event) => {
@@ -10546,7 +10564,7 @@ describe("authoritative black-box contracts", () => {
 					},
 					{
 						headers: {
-							"X-Vorma-Build-Id": "stale-pop-build",
+							"X-Wave-Framework-Build-Id": "stale-pop-build",
 						},
 					},
 				),
@@ -10608,7 +10626,7 @@ describe("authoritative black-box contracts", () => {
 					{
 						headers: {
 							"X-Client-Redirect": "/stale-soft-target",
-							"X-Vorma-Build-Id": "stale-soft-nav-build",
+							"X-Wave-Framework-Build-Id": "stale-soft-nav-build",
 						},
 					},
 				),
@@ -10663,8 +10681,8 @@ describe("authoritative black-box contracts", () => {
 					{},
 					{
 						headers: {
-							"X-Vorma-Reload": "/stale-hard-redirect",
-							"X-Vorma-Build-Id": "stale-hard-nav-build",
+							"X-Wave-Framework-Reload": "/stale-hard-redirect",
+							"X-Wave-Framework-Build-Id": "stale-hard-nav-build",
 						},
 					},
 				),

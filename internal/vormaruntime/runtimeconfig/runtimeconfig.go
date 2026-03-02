@@ -7,6 +7,7 @@
 package runtimeconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -47,6 +48,83 @@ const (
 	// UnresolvedRoutePolicyError fails build/runtime flows on unresolved routes.
 	UnresolvedRoutePolicyError = "error"
 )
+
+// UIVariant identifies the runtime UI adapter variant.
+type UIVariant string
+
+const (
+	// UIVariantReact configures React runtime adapters.
+	UIVariantReact UIVariant = "react"
+	// UIVariantPreact configures Preact runtime adapters.
+	UIVariantPreact UIVariant = "preact"
+	// UIVariantSolid configures Solid runtime adapters.
+	UIVariantSolid UIVariant = "solid"
+)
+
+// VormaConfig holds Vorma-specific configuration.
+type VormaConfig struct {
+	IncludeDefaults               *bool    `json:"IncludeDefaults,omitempty"`
+	MainBuildEntry                string   `json:"MainBuildEntry"`
+	UIVariant                     string   `json:"UIVariant"`
+	HTMLTemplateLocation          string   `json:"HTMLTemplateLocation"`
+	ClientEntry                   string   `json:"ClientEntry"`
+	ClientRouteDefinitionPatterns []string `json:"ClientRouteDefinitionPatterns"`
+	ServerRouteDefinitionPatterns []string `json:"ServerRouteDefinitionPatterns,omitempty"`
+	TSGenOutDir                   string   `json:"TSGenOutDir"`
+	BuildtimePublicURLFuncName    string   `json:"BuildtimePublicURLFuncName,omitempty"`
+	UnresolvedRoutePolicy         string   `json:"UnresolvedRoutePolicy,omitempty"`
+	DevReloadRoutesEndpointPath   string   `json:"DevReloadRoutesEndpointPath,omitempty"`
+	DevReloadTemplateEndpointPath string   `json:"DevReloadTemplateEndpointPath,omitempty"`
+	TemplateDataKeyHeadElements   string   `json:"TemplateDataKeyHeadElements,omitempty"`
+	TemplateDataKeyBodyScripts    string   `json:"TemplateDataKeyBodyScripts,omitempty"`
+	TemplateDataKeySSRScript      string   `json:"TemplateDataKeySSRScript,omitempty"`
+	TemplateDataKeySSRScriptHash  string   `json:"TemplateDataKeySSRScriptHash,omitempty"`
+	TemplateDataKeyRootElementID  string   `json:"TemplateDataKeyRootElementID,omitempty"`
+	ClientRootElementID           string   `json:"ClientRootElementID,omitempty"`
+}
+
+type configWrapper struct {
+	Vorma *VormaConfig `json:"Vorma,omitempty"`
+}
+
+// ParseAndValidateVormaConfig parses the Vorma config block from one Wave
+// config payload, applies defaults, and validates runtime invariants.
+func ParseAndValidateVormaConfig(
+	rawWaveConfigJSON []byte,
+) (*VormaConfig, error) {
+	var wrapper configWrapper
+	if err := json.Unmarshal(rawWaveConfigJSON, &wrapper); err != nil {
+		return nil, fmt.Errorf("failed to parse Vorma config: %w", err)
+	}
+	if wrapper.Vorma == nil {
+		wrapper.Vorma = &VormaConfig{}
+	}
+
+	if err := NormalizeAndValidateMutableConfig(
+		MutableValidationConfig{
+			MainBuildEntry:                &wrapper.Vorma.MainBuildEntry,
+			UIVariant:                     &wrapper.Vorma.UIVariant,
+			HTMLTemplateLocation:          &wrapper.Vorma.HTMLTemplateLocation,
+			ClientEntry:                   &wrapper.Vorma.ClientEntry,
+			ClientRouteDefinitionPatterns: &wrapper.Vorma.ClientRouteDefinitionPatterns,
+			TSGenOutDir:                   &wrapper.Vorma.TSGenOutDir,
+			BuildtimePublicURLFuncName:    &wrapper.Vorma.BuildtimePublicURLFuncName,
+			UnresolvedRoutePolicy:         &wrapper.Vorma.UnresolvedRoutePolicy,
+			DevReloadRoutesEndpointPath:   &wrapper.Vorma.DevReloadRoutesEndpointPath,
+			DevReloadTemplateEndpointPath: &wrapper.Vorma.DevReloadTemplateEndpointPath,
+			TemplateDataKeyHeadElements:   &wrapper.Vorma.TemplateDataKeyHeadElements,
+			TemplateDataKeyBodyScripts:    &wrapper.Vorma.TemplateDataKeyBodyScripts,
+			TemplateDataKeySSRScript:      &wrapper.Vorma.TemplateDataKeySSRScript,
+			TemplateDataKeySSRScriptHash:  &wrapper.Vorma.TemplateDataKeySSRScriptHash,
+			TemplateDataKeyRootElementID:  &wrapper.Vorma.TemplateDataKeyRootElementID,
+			ClientRootElementID:           &wrapper.Vorma.ClientRootElementID,
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	return wrapper.Vorma, nil
+}
 
 // MutableValidationConfig provides pointer access to mutable config fields that
 // are normalized and validated together.

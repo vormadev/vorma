@@ -38,7 +38,8 @@ wrapped := etag.Auto(&etag.Config{
 
 - hashes buffered response body (default hash function: SHA-1)
 - defaults to weak ETags (`W/"..."`)
-- if response has header `X-Vorma-Build-Id`, that value is included in ETag hash
+- if response has header `X-Wave-Framework-Build-Id`, that value is included in
+  ETag hash
 - only emits ETags for `200 OK` responses with non-empty body
 - skips ETag when:
 - request method is not `GET` or `HEAD`

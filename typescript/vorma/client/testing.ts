@@ -31,10 +31,24 @@ type TestingRuntimeGlobalState = {
 	routeManifest?: unknown;
 	isTouchInputModalityActive?: unknown;
 	runtimeRouteSnapshot?: {
+		buildID?: unknown;
 		importURLs?: unknown;
+		matchedPatterns?: unknown;
+		splatValues?: unknown;
+		params?: unknown;
+		hasRootData?: unknown;
+		loadersData?: unknown;
 	};
 	windowEventListenersByEventName?: Map<string, Set<EventListener>>;
 	hardRedirectForTesting?: ((href: string) => void) | undefined;
+};
+
+export type TestingRouterData = {
+	buildID: string;
+	matchedPatterns: string[];
+	splatValues: string[];
+	params: Record<string, string>;
+	rootData: unknown;
 };
 
 export type TestingStoredScrollStateEntry = {
@@ -289,6 +303,46 @@ export function clearAllNavigationStateForTesting(): void {
 	createVormaRuntimeContext().navigationStateManager.clearAll();
 }
 
+export function readRouterDataForTesting(): TestingRouterData {
+	createVormaRuntimeContext();
+	const runtimeGlobal = (globalThis as TestingGlobalRecord)[
+		VORMA_TESTING_SYMBOL
+	] as TestingRuntimeGlobalState | undefined;
+	if (
+		!runtimeGlobal ||
+		typeof runtimeGlobal !== "object" ||
+		!runtimeGlobal.runtimeRouteSnapshot ||
+		typeof runtimeGlobal.runtimeRouteSnapshot !== "object"
+	) {
+		throw new Error(
+			"Vorma runtime must be initialized before reading router data.",
+		);
+	}
+	const runtimeSnapshot = runtimeGlobal.runtimeRouteSnapshot;
+	if (
+		typeof runtimeSnapshot.buildID !== "string" ||
+		!Array.isArray(runtimeSnapshot.matchedPatterns) ||
+		!Array.isArray(runtimeSnapshot.splatValues) ||
+		!runtimeSnapshot.params ||
+		typeof runtimeSnapshot.params !== "object" ||
+		!Array.isArray(runtimeSnapshot.loadersData) ||
+		typeof runtimeSnapshot.hasRootData !== "boolean"
+	) {
+		throw new Error(
+			"Vorma runtime route snapshot must be initialized before reading router data.",
+		);
+	}
+	return {
+		buildID: runtimeSnapshot.buildID,
+		matchedPatterns: runtimeSnapshot.matchedPatterns as string[],
+		splatValues: runtimeSnapshot.splatValues as string[],
+		params: runtimeSnapshot.params as Record<string, string>,
+		rootData: runtimeSnapshot.hasRootData
+			? runtimeSnapshot.loadersData[0]
+			: null,
+	};
+}
+
 export async function simulateViteAfterUpdateForTesting(props: {
 	updates: Array<{ type: string; path: string }>;
 }): Promise<void> {
@@ -301,20 +355,34 @@ export async function simulateViteAfterUpdateForTesting(props: {
 			"Vorma runtime must be initialized before simulating Vite updates.",
 		);
 	}
-	const currentImportURLs = Array.isArray(
-		runtimeGlobal.runtimeRouteSnapshot?.importURLs,
-	)
-		? (runtimeGlobal.runtimeRouteSnapshot?.importURLs as string[])
-		: [];
-	const { applyViteAfterUpdatePayload } =
-		await import("./src/runtime_hmr_dev.ts");
-	applyViteAfterUpdatePayload({
-		updates: props.updates,
-		currentImportURLs,
-		triggerRevalidate: () => {
-			void revalidate().catch(() => undefined);
-		},
+	const runtimeSnapshot = runtimeGlobal.runtimeRouteSnapshot as
+		| {
+				matchedPatterns?: string[];
+		  }
+		| undefined;
+	const {
+		resolveMatchedPatternsToRefreshForHMRUpdate,
+		refreshCurrentClientLoadersAfterHMRUpdate,
+	} = await import("vorma/client/__internal/hmr_dev");
+	const matchedPatternsToRefresh =
+		resolveMatchedPatternsToRefreshForHMRUpdate({
+			updates: props.updates,
+			currentMatchedPatterns: Array.isArray(
+				runtimeSnapshot?.matchedPatterns,
+			)
+				? (runtimeSnapshot?.matchedPatterns as string[])
+				: [],
+		});
+	if (matchedPatternsToRefresh.length === 0) {
+		return;
+	}
+	const didRefresh = await refreshCurrentClientLoadersAfterHMRUpdate({
+		matchedPatternsToRefresh,
 	});
+	if (!didRefresh) {
+		await revalidate().catch(() => undefined);
+		return;
+	}
 }
 
 export function seedScrollStateForTesting(

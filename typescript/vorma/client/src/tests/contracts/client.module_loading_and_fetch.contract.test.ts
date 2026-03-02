@@ -12,14 +12,16 @@ describe("client module-loading and fetch contracts", () => {
 	it("includes current build ID in navigation fetch URL", async () => {
 		installContractVormaGlobal({ buildID: "test-build-123" });
 		const api = await loadClientAPI();
-		const fetchSpy = vi
-			.spyOn(window, "fetch")
-			.mockResolvedValue(
-				createRouteDataResponse(
-					{},
-					{ headers: { "X-Vorma-Build-Id": "test-build-123" } },
-				),
-			);
+		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse(
+				{},
+				{
+					headers: {
+						"X-Wave-Framework-Build-Id": "test-build-123",
+					},
+				},
+			),
+		);
 
 		await api.vormaNavigate("/test-url");
 		await vi.runAllTimersAsync();
@@ -459,7 +461,7 @@ describe("client module-loading and fetch contracts", () => {
 					exportKeys: ["default"],
 					cssBundles: ["/prefetch-mismatch.css"],
 				},
-				{ headers: { "X-Vorma-Build-Id": "build-2" } },
+				{ headers: { "X-Wave-Framework-Build-Id": "build-2" } },
 			),
 		);
 

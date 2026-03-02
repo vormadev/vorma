@@ -18,18 +18,18 @@ func TestGetterSnapshotsAreDefensiveCopies(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         "vorma_out/root.js",
+			OutPath:         testWaveOutPath("root.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/root-dep.js"},
+			Deps:            []string{testWaveOutPath("root-dep.js")},
 		},
 	})
 	stage.ClientEntryDeps = []string{
-		"vorma_out/client-a.js",
-		"vorma_out/client-b.js",
+		testWaveOutPath("client-a.js"),
+		testWaveOutPath("client-b.js"),
 	}
 	stage.DepToCSSBundleMap = map[string][]string{
-		"vorma_out/client-entry.js": {"vorma_out/client.css"},
-		"vorma_out/client-a.js":     {"vorma_out/client-a.css"},
+		testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
+		testWaveOutPath("client-a.js"):     {testWaveOutPath("client-a.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -46,7 +46,7 @@ func TestGetterSnapshotsAreDefensiveCopies(t *testing.T) {
 	if _, ok := pathsB["/new"]; ok {
 		t.Fatal("Paths leaked caller mutation into runtime state")
 	}
-	if got, want := pathsB["/"].Deps[0], "vorma_out/root-dep.js"; got != want {
+	if got, want := pathsB["/"].Deps[0], testWaveOutPath("root-dep.js"); got != want {
 		t.Fatalf(
 			"path deps mutated through snapshot: got %q want %q",
 			got,
@@ -57,7 +57,7 @@ func TestGetterSnapshotsAreDefensiveCopies(t *testing.T) {
 	entryDepsA := app.ClientEntryDeps()
 	entryDepsA[0] = "mutated-client-dep.js"
 	entryDepsB := app.ClientEntryDeps()
-	if got, want := entryDepsB[0], "vorma_out/client-a.js"; got != want {
+	if got, want := entryDepsB[0], testWaveOutPath("client-a.js"); got != want {
 		t.Fatalf(
 			"client entry deps mutated through getter: got %q want %q",
 			got,
@@ -66,18 +66,18 @@ func TestGetterSnapshotsAreDefensiveCopies(t *testing.T) {
 	}
 
 	cssMapA := app.DepToCSSBundleMap()
-	cssMapA["vorma_out/client-entry.js"][0] = "mutated.css"
-	cssMapA["vorma_out/new.js"] = []string{"new.css"}
+	cssMapA[testWaveOutPath("client-entry.js")][0] = "mutated.css"
+	cssMapA[testWaveOutPath("new.js")] = []string{"new.css"}
 
 	cssMapB := app.DepToCSSBundleMap()
-	if got, want := cssMapB["vorma_out/client-entry.js"][0], "vorma_out/client.css"; got != want {
+	if got, want := cssMapB[testWaveOutPath("client-entry.js")][0], testWaveOutPath("client.css"); got != want {
 		t.Fatalf(
 			"dep->css map mutated through getter: got %q want %q",
 			got,
 			want,
 		)
 	}
-	if _, ok := cssMapB["vorma_out/new.js"]; ok {
+	if _, ok := cssMapB[testWaveOutPath("new.js")]; ok {
 		t.Fatal("dep->css map leaked caller-added key into runtime state")
 	}
 }
@@ -133,7 +133,7 @@ func TestLockedVormaGettersAndSetters(t *testing.T) {
 			"/locked": {
 				OriginalPattern: "/locked",
 				SrcPath:         "frontend/src/routes/locked.tsx",
-				OutPath:         "vorma_out/routes/locked.js",
+				OutPath:         testWaveOutPath("routes/locked.js"),
 				ExportKey:       "default",
 			},
 		})
@@ -224,9 +224,9 @@ func TestLockedVormaGetPaths_DoesNotExposeMutableInternalState(t *testing.T) {
 		"/locked": {
 			OriginalPattern: "/locked",
 			SrcPath:         "frontend/src/routes/locked.tsx",
-			OutPath:         "vorma_out/routes/locked.js",
+			OutPath:         testWaveOutPath("routes/locked.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-locked.js"},
+			Deps:            []string{testWaveOutPath("chunk-locked.js")},
 		},
 	})
 
@@ -243,7 +243,7 @@ func TestLockedVormaGetPaths_DoesNotExposeMutableInternalState(t *testing.T) {
 
 	leakedPaths["/new"] = &Path{OriginalPattern: "/new"}
 	leakedPaths["/locked"].SrcPath = "frontend/src/routes/mutated.tsx"
-	leakedPaths["/locked"].Deps[0] = "vorma_out/chunk-mutated.js"
+	leakedPaths["/locked"].Deps[0] = testWaveOutPath("chunk-mutated.js")
 
 	pathsSnapshot := app.Paths()
 	if _, exists := pathsSnapshot["/new"]; exists {
@@ -259,7 +259,7 @@ func TestLockedVormaGetPaths_DoesNotExposeMutableInternalState(t *testing.T) {
 			want,
 		)
 	}
-	if got, want := pathsSnapshot["/locked"].Deps[0], "vorma_out/chunk-locked.js"; got != want {
+	if got, want := pathsSnapshot["/locked"].Deps[0], testWaveOutPath("chunk-locked.js"); got != want {
 		t.Fatalf(
 			"LockedVorma.GetPaths leaked deps mutation: got %q want %q",
 			got,
@@ -275,9 +275,9 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         "vorma_out/routes/products.$id.old.js",
+			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-old.js"},
+			Deps:            []string{testWaveOutPath("chunk-old.js")},
 		},
 	})
 
@@ -318,13 +318,13 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if got, want := oldData.ImportURLs, []string{"/vorma_out/routes/products.$id.old.js"}; !reflect.DeepEqual(
+	if got, want := oldData.ImportURLs, []string{testWaveOutURLPath("routes/products.$id.old.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, "/vorma_out/chunk-old.js") {
+	if !containsString(oldData.Deps, testWaveOutURLPath("chunk-old.js")) {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -332,9 +332,9 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         "vorma_out/routes/products.$id.new.js",
+			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{"vorma_out/chunk-new.js"},
+			Deps:            []string{testWaveOutPath("chunk-new.js")},
 		},
 	}
 
@@ -343,8 +343,8 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 	})
 
 	updatedPaths["/products/:id"].SrcPath = "frontend/src/routes/products.$id.mutated.tsx"
-	updatedPaths["/products/:id"].OutPath = "vorma_out/routes/products.$id.mutated.js"
-	updatedPaths["/products/:id"].Deps[0] = "vorma_out/chunk-mutated.js"
+	updatedPaths["/products/:id"].OutPath = testWaveOutPath("routes/products.$id.mutated.js")
+	updatedPaths["/products/:id"].Deps[0] = testWaveOutPath("chunk-mutated.js")
 
 	reqNew := httptest.NewRequest(
 		http.MethodGet,
@@ -365,19 +365,19 @@ func TestLockedVormaSetPaths_InvalidatesRouteDataCacheAndClonesInput(
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
-	if got, want := newData.ImportURLs, []string{"/vorma_out/routes/products.$id.new.js"}; !reflect.DeepEqual(
+	if got, want := newData.ImportURLs, []string{testWaveOutURLPath("routes/products.$id.new.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, "/vorma_out/chunk-new.js") {
+	if !containsString(newData.Deps, testWaveOutURLPath("chunk-new.js")) {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "/vorma_out/chunk-old.js") {
+	if containsString(newData.Deps, testWaveOutURLPath("chunk-old.js")) {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, "/vorma_out/chunk-mutated.js") {
+	if containsString(newData.Deps, testWaveOutURLPath("chunk-mutated.js")) {
 		t.Fatalf(
 			"new Deps should not include post-set caller mutation: %#v",
 			newData.Deps,

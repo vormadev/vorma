@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/kit/lockfile"
 )
 
 func TestRun_RequiresKey(t *testing.T) {
@@ -465,6 +467,128 @@ func TestRun_CleansUpInvalidStateFileForOtherKeys(t *testing.T) {
 	}
 	if _, statLockError := os.Stat(invalidKeyLockPath); !os.IsNotExist(statLockError) {
 		t.Fatalf("expected invalid lock file cleanup, stat error=%v", statLockError)
+	}
+}
+
+func TestWaitForOwnerCompletion_JoinsWhenDoneStateChangesWithoutObservedRunningState(t *testing.T) {
+	stateRootDirectoryPath := t.TempDir()
+	runStatePath, runLockPath := buildRunFilePaths(stateRootDirectoryPath, "buildts")
+
+	ownerLock := lockfile.NewPIDLock(runLockPath)
+	if acquireOwnerLockError := ownerLock.Acquire(); acquireOwnerLockError != nil {
+		t.Fatalf("acquire owner lock: %v", acquireOwnerLockError)
+	}
+
+	initialDoneState := runStateFile{
+		SchemaVersion: runStateSchemaVersion,
+		Key:           "buildts",
+		RunID:         "stale-run-id",
+		OwnerPID:      1234,
+		Status:        runStateStatusDone,
+		StartedAtUTC:  time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano),
+		FinishedAtUTC: time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano),
+	}
+	if writeInitialStateError := writeRunStateFile(
+		runStatePath,
+		initialDoneState,
+	); writeInitialStateError != nil {
+		t.Fatalf("write initial done state: %v", writeInitialStateError)
+	}
+
+	ownerTransitionErrorChannel := make(chan error, 1)
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+
+		currentDoneState := initialDoneState
+		currentDoneState.RunID = "current-owner-run-id"
+		currentDoneState.StartedAtUTC = time.Now().UTC().Add(-200 * time.Millisecond).Format(time.RFC3339Nano)
+		currentDoneState.FinishedAtUTC = time.Now().UTC().Format(time.RFC3339Nano)
+		currentDoneState.OwnerErrorMessage = "synthetic-owner-failure"
+
+		if writeCurrentStateError := writeRunStateFile(
+			runStatePath,
+			currentDoneState,
+		); writeCurrentStateError != nil {
+			ownerTransitionErrorChannel <- writeCurrentStateError
+			return
+		}
+
+		ownerTransitionErrorChannel <- ownerLock.Release()
+	}()
+
+	waitResult, waitError := waitForOwnerCompletion(waitForOwnerCompletionInput{
+		runStatePath:             runStatePath,
+		runLock:                  lockfile.NewPIDLock(runLockPath),
+		ownerWaitPollingInterval: 5 * time.Millisecond,
+	})
+	if waitError != nil {
+		t.Fatalf("wait for owner completion: %v", waitError)
+	}
+
+	if ownerTransitionError := <-ownerTransitionErrorChannel; ownerTransitionError != nil {
+		t.Fatalf("owner transition: %v", ownerTransitionError)
+	}
+
+	if !waitResult.joined {
+		t.Fatal("expected joiner to treat changed done state as owner completion")
+	}
+	if waitResult.ownerError == nil {
+		t.Fatal("expected joiner to observe owner error")
+	}
+	if !strings.Contains(waitResult.ownerError.Error(), "synthetic-owner-failure") {
+		t.Fatalf("expected owner error message, got %v", waitResult.ownerError)
+	}
+}
+
+func TestWaitForOwnerCompletion_DoesNotJoinUnchangedDoneStateWithoutObservedRunningState(t *testing.T) {
+	stateRootDirectoryPath := t.TempDir()
+	runStatePath, runLockPath := buildRunFilePaths(stateRootDirectoryPath, "buildts")
+
+	ownerLock := lockfile.NewPIDLock(runLockPath)
+	if acquireOwnerLockError := ownerLock.Acquire(); acquireOwnerLockError != nil {
+		t.Fatalf("acquire owner lock: %v", acquireOwnerLockError)
+	}
+
+	unchangedDoneState := runStateFile{
+		SchemaVersion: runStateSchemaVersion,
+		Key:           "buildts",
+		RunID:         "stale-run-id",
+		OwnerPID:      1234,
+		Status:        runStateStatusDone,
+		StartedAtUTC:  time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano),
+		FinishedAtUTC: time.Now().UTC().Add(-2 * time.Minute).Format(time.RFC3339Nano),
+	}
+	if writeStateError := writeRunStateFile(
+		runStatePath,
+		unchangedDoneState,
+	); writeStateError != nil {
+		t.Fatalf("write unchanged done state: %v", writeStateError)
+	}
+
+	ownerReleaseErrorChannel := make(chan error, 1)
+	go func() {
+		time.Sleep(40 * time.Millisecond)
+		ownerReleaseErrorChannel <- ownerLock.Release()
+	}()
+
+	waitResult, waitError := waitForOwnerCompletion(waitForOwnerCompletionInput{
+		runStatePath:             runStatePath,
+		runLock:                  lockfile.NewPIDLock(runLockPath),
+		ownerWaitPollingInterval: 5 * time.Millisecond,
+	})
+	if waitError != nil {
+		t.Fatalf("wait for owner completion: %v", waitError)
+	}
+
+	if ownerReleaseError := <-ownerReleaseErrorChannel; ownerReleaseError != nil {
+		t.Fatalf("release owner lock: %v", ownerReleaseError)
+	}
+
+	if waitResult.joined {
+		t.Fatal("expected unchanged done state to remain non-joinable")
+	}
+	if waitResult.ownerError != nil {
+		t.Fatalf("expected nil owner error when not joined, got %v", waitResult.ownerError)
 	}
 }
 

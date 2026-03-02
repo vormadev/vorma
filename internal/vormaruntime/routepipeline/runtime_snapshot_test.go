@@ -22,20 +22,20 @@ func TestBuildRuntimeSnapshotFromCore_PreservesCoreFields(t *testing.T) {
 			"/products/:id": {
 				OriginalPattern: "/products/:id",
 				SrcPath:         "frontend/src/routes/products.$id.tsx",
-				OutPath:         "vorma_out/routes/products.$id.js",
+				OutPath:         testWaveOutPath("routes/products.$id.js"),
 				ExportKey:       "default",
 				ErrorExportKey:  "ProductErrorBoundary",
-				Deps:            []string{"vorma_out/chunk-products.js"},
+				Deps:            []string{testWaveOutPath("chunk-products.js")},
 			},
 			"/nil": nil,
 		},
-		ClientEntryDeps: []string{"vorma_out/chunk-client.js"},
-		ClientEntryOut:  "vorma_out/client-entry.js",
+		ClientEntryDeps: []string{testWaveOutPath("chunk-client.js")},
+		ClientEntryOut:  testWaveOutPath("client-entry.js"),
 		DepToCSSBundleMap: map[string][]string{
-			"vorma_out/chunk-client.js": {"vorma_out/chunk-client.css"},
+			testWaveOutPath("chunk-client.js"): {testWaveOutPath("chunk-client.css")},
 		},
 		RootTemplate:             rootTemplate,
-		RouteManifestFile:        "vorma_out/route-manifest.js",
+		RouteManifestFile:        testWaveOutPath("route-manifest.js"),
 		RouteDataSnapshotVersion: 12,
 		RouteDataCache:           routeDataCache,
 	})
@@ -46,7 +46,7 @@ func TestBuildRuntimeSnapshotFromCore_PreservesCoreFields(t *testing.T) {
 	if got, want := snapshot.IsDev, true; got != want {
 		t.Fatalf("IsDev = %v, want %v", got, want)
 	}
-	if got, want := snapshot.RouteManifestFile, "vorma_out/route-manifest.js"; got != want {
+	if got, want := snapshot.RouteManifestFile, testWaveOutPath("route-manifest.js"); got != want {
 		t.Fatalf("RouteManifestFile = %q, want %q", got, want)
 	}
 	if snapshot.RouteDataCache != routeDataCache {
@@ -66,10 +66,10 @@ func TestBuildRuntimeSnapshotFromCore_PreservesRuntimeCorePathsReference(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.tsx",
-			OutPath:         "vorma_out/routes/products.$id.js",
+			OutPath:         testWaveOutPath("routes/products.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ProductErrorBoundary",
-			Deps:            []string{"vorma_out/chunk-products.js"},
+			Deps:            []string{testWaveOutPath("chunk-products.js")},
 		},
 		"/nil": nil,
 	}
@@ -87,7 +87,7 @@ func TestBuildRuntimeSnapshotFromCore_PreservesRuntimeCorePathsReference(
 	if got, want := gotPath.SrcPath, "frontend/src/routes/products.$id.tsx"; got != want {
 		t.Fatalf("SrcPath = %q, want %q", got, want)
 	}
-	if got, want := gotPath.OutPath, "vorma_out/routes/products.$id.js"; got != want {
+	if got, want := gotPath.OutPath, testWaveOutPath("routes/products.$id.js"); got != want {
 		t.Fatalf("OutPath = %q, want %q", got, want)
 	}
 	if got, want := gotPath.ExportKey, "default"; got != want {
@@ -96,7 +96,7 @@ func TestBuildRuntimeSnapshotFromCore_PreservesRuntimeCorePathsReference(
 	if got, want := gotPath.ErrorExportKey, "ProductErrorBoundary"; got != want {
 		t.Fatalf("ErrorExportKey = %q, want %q", got, want)
 	}
-	if got, want := gotPath.Deps, []string{"vorma_out/chunk-products.js"}; !reflect.DeepEqual(
+	if got, want := gotPath.Deps, []string{testWaveOutPath("chunk-products.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {

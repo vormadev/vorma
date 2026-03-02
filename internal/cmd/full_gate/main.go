@@ -38,6 +38,7 @@ var releaseGateStages = []releaseGateStage{
 		targetNames: []string{
 			"gotest",
 			"staticcheck",
+			"runtime-deps-check",
 		},
 	},
 	{
