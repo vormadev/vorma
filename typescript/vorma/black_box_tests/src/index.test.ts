@@ -6906,6 +6906,54 @@ describe("authoritative black-box contracts", () => {
 		expectStatusIdle(api.getStatus());
 	});
 
+	it("keeps css bundle stylesheets after rest-head reconciliation clears managed rest blocks", async () => {
+		const api = await loadPublicClientAPI();
+		const existingStylesheet = document.createElement("link");
+		existingStylesheet.setAttribute("rel", "stylesheet");
+		existingStylesheet.setAttribute("data-vorma-css-bundle", "/keep.css");
+		existingStylesheet.setAttribute("href", "/keep.css");
+		insertHeadSectionElement({
+			type: "rest",
+			element: existingStylesheet,
+		});
+
+		vi.spyOn(window, "fetch").mockResolvedValue(
+			createRouteDataResponse({
+				loadersData: [],
+				cssBundles: ["/keep.css"],
+				restHeadEls: [],
+			}),
+		);
+
+		const appendChild = document.head.appendChild.bind(document.head);
+		vi.spyOn(document.head, "appendChild").mockImplementation((node) => {
+			if (
+				node instanceof HTMLLinkElement &&
+				node.rel === "preload" &&
+				node.getAttribute("as") === "style"
+			) {
+				void Promise.resolve().then(() =>
+					node.dispatchEvent(new Event("load")),
+				);
+			}
+			return appendChild(node);
+		});
+
+		await api.vormaNavigate("/keep-css-bundle");
+		await vi.runAllTimersAsync();
+
+		expect(
+			document.querySelector(
+				'link[rel="stylesheet"][data-vorma-css-bundle="/keep.css"]',
+			),
+		).not.toBeNull();
+		expect(
+			getElementsBetweenHeadSectionMarkers({
+				type: "rest",
+			}),
+		).toHaveLength(0);
+	});
+
 	it("deduplicates stylesheet application for repeated css bundles", async () => {
 		const api = await loadPublicClientAPI();
 		vi.spyOn(window, "fetch")

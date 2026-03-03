@@ -3577,8 +3577,8 @@ async function commitSuccessfulNavigation(props: {
 	runNavigationCommitSideEffectsWithOptionalViewTransition({
 		shouldUseViewTransition: props.intent === "navigate",
 		runCommitSideEffects: () => {
-			applyCommittedCSSBundlesFromRouteDataSnapshot(committedSnapshot);
 			applyRouteHeadAndTitle(committedSnapshot);
+			applyCommittedCSSBundlesFromRouteDataSnapshot(committedSnapshot);
 
 			if (props.shouldCommitHistory && props.intent === "navigate") {
 				runHistoryCommit({
