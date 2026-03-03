@@ -107,14 +107,40 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 				content,
 			)
 		}
+		currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+		if currentWorkingDirectoryError != nil {
+			t.Fatalf(
+				"resolve current working directory: %v",
+				currentWorkingDirectoryError,
+			)
+		}
+		currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+			currentWorkingDirectory,
+			app.Wave.DistDir(),
+		)
+		if distDirError != nil {
+			t.Fatalf(
+				"normalize dist dir for generated TypeScript assertion: %v",
+				distDirError,
+			)
+		}
 		if !strings.Contains(
 			content,
 			fmt.Sprintf(
 				`distDir: "%s"`,
-				app.Wave.DistDir(),
+				currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript,
 			),
 		) {
 			t.Fatalf("rollup options missing dist dir:\n%s", content)
+		}
+		if strings.Contains(
+			content,
+			filepath.ToSlash(filepath.Clean(currentWorkingDirectory)),
+		) {
+			t.Fatalf(
+				"rollup options leaked current working directory absolute path:\n%s",
+				content,
+			)
 		}
 		if !strings.Contains(content, `"react"`) ||
 			!strings.Contains(content, `"react-dom"`) {
@@ -371,7 +397,16 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 		"frontend/src/vorma.entry.tsx",
 		"frontend/src/routes/home.tsx",
 	}
-	data := buildVitePluginTemplateData(app, entrypoints)
+	data, buildVitePluginTemplateDataError := buildVitePluginTemplateData(
+		app,
+		entrypoints,
+	)
+	if buildVitePluginTemplateDataError != nil {
+		t.Fatalf(
+			"buildVitePluginTemplateData returned error: %v",
+			buildVitePluginTemplateDataError,
+		)
+	}
 
 	if !slices.Equal(data.Entrypoints, entrypoints) {
 		t.Fatalf("Entrypoints = %#v, want %#v", data.Entrypoints, entrypoints)
@@ -390,11 +425,28 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 			app.Config.BuildtimePublicURLFuncName,
 		)
 	}
-	if data.DistDir != app.Wave.DistDir() {
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		t.Fatalf(
+			"resolve current working directory: %v",
+			currentWorkingDirectoryError,
+		)
+	}
+	currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+		currentWorkingDirectory,
+		app.Wave.DistDir(),
+	)
+	if distDirError != nil {
+		t.Fatalf(
+			"normalize dist dir for generated TypeScript assertion: %v",
+			distDirError,
+		)
+	}
+	if data.DistDir != currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript {
 		t.Fatalf(
 			"DistDir = %q, want %q",
 			data.DistDir,
-			app.Wave.DistDir(),
+			currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript,
 		)
 	}
 	if !slices.Equal(data.DedupeList, reactDedupeList) {
@@ -405,7 +457,7 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	}
 }
 
-func TestBuildViteIgnoredPatterns_PanicsForInvalidRouteDefinitionPatterns(
+func TestBuildViteIgnoredPatterns_ErrorsForInvalidRouteDefinitionPatterns(
 	t *testing.T,
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
@@ -417,50 +469,96 @@ func TestBuildViteIgnoredPatterns_PanicsForInvalidRouteDefinitionPatterns(
 		"\nfrontend/src/routes/extra.vorma.routes.ts\n",
 	}
 
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			t.Fatal(
-				"expected panic for invalid client route definition patterns",
-			)
-		}
-		recoveredMessage := fmt.Sprint(recovered)
-		if !strings.Contains(
-			recoveredMessage,
-			"must not contain surrounding whitespace",
-		) {
-			t.Fatalf(
-				"panic = %q, expected surrounding-whitespace validation message",
-				recoveredMessage,
-			)
-		}
-	}()
-
-	_ = buildViteIgnoredPatterns(app)
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		t.Fatalf(
+			"resolve current working directory: %v",
+			currentWorkingDirectoryError,
+		)
+	}
+	_, buildViteIgnoredPatternsError := buildViteIgnoredPatterns(
+		app,
+		currentWorkingDirectory,
+	)
+	if buildViteIgnoredPatternsError == nil {
+		t.Fatal(
+			"expected error for invalid client route definition patterns",
+		)
+	}
+	if !strings.Contains(
+		buildViteIgnoredPatternsError.Error(),
+		"must not contain surrounding whitespace",
+	) {
+		t.Fatalf(
+			"error = %q, expected surrounding-whitespace validation message",
+			buildViteIgnoredPatternsError.Error(),
+		)
+	}
 }
 
 func TestFormatConfigFilePatternForViteIgnore(t *testing.T) {
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		t.Fatalf(
+			"resolve current working directory: %v",
+			currentWorkingDirectoryError,
+		)
+	}
+
 	absoluteConfigFilePath := filepath.Join(
-		t.TempDir(),
-		"backend",
+		currentWorkingDirectory,
+		"tmp",
+		"config-test",
 		"wave.config.json",
 	)
 
-	if got, want := formatConfigFilePatternForViteIgnore("backend/wave.config.json"), filepath.ToSlash(path.Join("**", "backend/wave.config.json")); got != want {
+	gotFromRelativePattern, relativePatternError := formatConfigFilePatternForViteIgnore(
+		currentWorkingDirectory,
+		"backend/wave.config.json",
+	)
+	if relativePatternError != nil {
+		t.Fatalf(
+			"formatConfigFilePatternForViteIgnore(relative) returned error: %v",
+			relativePatternError,
+		)
+	}
+	if got, want := gotFromRelativePattern, filepath.ToSlash(path.Join("**", "backend/wave.config.json")); got != want {
 		t.Fatalf(
 			"formatConfigFilePatternForViteIgnore(relative) = %q, want %q",
 			got,
 			want,
 		)
 	}
-	if got, want := formatConfigFilePatternForViteIgnore(absoluteConfigFilePath), filepath.ToSlash(absoluteConfigFilePath); got != want {
+
+	gotFromAbsolutePattern, absolutePatternError := formatConfigFilePatternForViteIgnore(
+		currentWorkingDirectory,
+		absoluteConfigFilePath,
+	)
+	if absolutePatternError != nil {
+		t.Fatalf(
+			"formatConfigFilePatternForViteIgnore(absolute) returned error: %v",
+			absolutePatternError,
+		)
+	}
+	if got, want := gotFromAbsolutePattern, filepath.ToSlash(path.Join("**", "tmp/config-test/wave.config.json")); got != want {
 		t.Fatalf(
 			"formatConfigFilePatternForViteIgnore(absolute) = %q, want %q",
 			got,
 			want,
 		)
 	}
-	if got := formatConfigFilePatternForViteIgnore("   "); got != "" {
+
+	gotFromEmptyPattern, emptyPatternError := formatConfigFilePatternForViteIgnore(
+		currentWorkingDirectory,
+		"   ",
+	)
+	if emptyPatternError != nil {
+		t.Fatalf(
+			"formatConfigFilePatternForViteIgnore(empty) returned error: %v",
+			emptyPatternError,
+		)
+	}
+	if got := gotFromEmptyPattern; got != "" {
 		t.Fatalf(
 			"formatConfigFilePatternForViteIgnore(empty) = %q, want empty",
 			got,

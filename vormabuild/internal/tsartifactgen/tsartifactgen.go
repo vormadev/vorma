@@ -759,8 +759,19 @@ func generateRollupOptionsForEntrypoints(
 	sb.Write(tsgen.Comment("Vorma Vite Config:"))
 	sb.Return()
 
+	vitePluginTemplateData, vitePluginTemplateDataError := buildVitePluginTemplateData(
+		v,
+		entrypoints,
+	)
+	if vitePluginTemplateDataError != nil {
+		return "", fmt.Errorf(
+			"build vite plugin template data: %w",
+			vitePluginTemplateDataError,
+		)
+	}
+
 	renderedViteConfig, err := renderVitePluginConfig(
-		buildVitePluginTemplateData(v, entrypoints),
+		vitePluginTemplateData,
 	)
 	if err != nil {
 		return "", fmt.Errorf("render vite plugin config: %w", err)
@@ -772,15 +783,45 @@ func generateRollupOptionsForEntrypoints(
 func buildVitePluginTemplateData(
 	v *vormaruntime.Vorma,
 	entrypoints []string,
-) vitePluginTemplateData {
+) (vitePluginTemplateData, error) {
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		return vitePluginTemplateData{}, fmt.Errorf(
+			"resolve current working directory: %w",
+			currentWorkingDirectoryError,
+		)
+	}
+
+	currentWorkingDirectoryRelativeDistDir, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+		currentWorkingDirectory,
+		v.Wave.DistDir(),
+	)
+	if distDirError != nil {
+		return vitePluginTemplateData{}, fmt.Errorf(
+			"normalize DistDir for generated TypeScript: %w",
+			distDirError,
+		)
+	}
+
+	ignoredPatterns, ignoredPatternsError := buildViteIgnoredPatterns(
+		v,
+		currentWorkingDirectory,
+	)
+	if ignoredPatternsError != nil {
+		return vitePluginTemplateData{}, fmt.Errorf(
+			"build Vite ignored patterns: %w",
+			ignoredPatternsError,
+		)
+	}
+
 	return vitePluginTemplateData{
 		Entrypoints:      entrypoints,
 		PublicPathPrefix: v.Wave.PublicPathPrefix(),
 		FuncName:         v.Config.BuildtimePublicURLFuncName,
-		DistDir:          v.Wave.DistDir(),
-		IgnoredPatterns:  buildViteIgnoredPatterns(v),
+		DistDir:          currentWorkingDirectoryRelativeDistDir,
+		IgnoredPatterns:  ignoredPatterns,
 		DedupeList:       dedupeListForUIVariant(v.Config.UIVariant),
-	}
+	}, nil
 }
 
 func dedupeListForUIVariant(uiVariant string) []string {
@@ -796,15 +837,62 @@ func dedupeListForUIVariant(uiVariant string) []string {
 	}
 }
 
-func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
-	ignoredPatterns := []string{
-		"**/*.go",
-		path.Join("**", v.Wave.DistDir()+"/**/*"),
-		path.Join("**", v.Wave.PrivateStaticDir()+"/**/*"),
-		path.Join("**", v.Config.TSGenOutDir+"/**/*"),
+func buildViteIgnoredPatterns(
+	v *vormaruntime.Vorma,
+	currentWorkingDirectory string,
+) ([]string, error) {
+	currentWorkingDirectoryRelativeDistDir, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+		currentWorkingDirectory,
+		v.Wave.DistDir(),
+	)
+	if distDirError != nil {
+		return nil, fmt.Errorf(
+			"normalize DistDir for ignored patterns: %w",
+			distDirError,
+		)
 	}
 
-	if configFileIgnoredPattern := formatConfigFilePatternForViteIgnore(v.Wave.ConfigFile()); configFileIgnoredPattern != "" {
+	currentWorkingDirectoryRelativePrivateStaticDir, privateStaticDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+		currentWorkingDirectory,
+		v.Wave.PrivateStaticDir(),
+	)
+	if privateStaticDirError != nil {
+		return nil, fmt.Errorf(
+			"normalize private static dir for ignored patterns: %w",
+			privateStaticDirError,
+		)
+	}
+
+	currentWorkingDirectoryRelativeTSGenOutDir, tsGenOutDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+		currentWorkingDirectory,
+		v.Config.TSGenOutDir,
+	)
+	if tsGenOutDirError != nil {
+		return nil, fmt.Errorf(
+			"normalize TSGenOutDir for ignored patterns: %w",
+			tsGenOutDirError,
+		)
+	}
+
+	ignoredPatterns := []string{
+		"**/*.go",
+		path.Join("**", currentWorkingDirectoryRelativeDistDir, "**/*"),
+		path.Join(
+			"**",
+			currentWorkingDirectoryRelativePrivateStaticDir,
+			"**/*",
+		),
+		path.Join("**", currentWorkingDirectoryRelativeTSGenOutDir, "**/*"),
+	}
+
+	configFileIgnoredPattern, configFileIgnoredPatternError := formatConfigFilePatternForViteIgnore(
+		currentWorkingDirectory,
+		v.Wave.ConfigFile(),
+	)
+	if configFileIgnoredPatternError != nil {
+		return nil, configFileIgnoredPatternError
+	}
+	if configFileIgnoredPattern != "" {
 		ignoredPatterns = append(ignoredPatterns, configFileIgnoredPattern)
 	}
 
@@ -812,8 +900,9 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 		v.Config.ClientRouteDefinitionPatterns,
 	)
 	if err != nil {
-		panic(
-			fmt.Sprintf("normalize client route definition patterns: %v", err),
+		return nil, fmt.Errorf(
+			"normalize client route definition patterns: %w",
+			err,
 		)
 	}
 	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
@@ -822,20 +911,76 @@ func buildViteIgnoredPatterns(v *vormaruntime.Vorma) []string {
 			path.Join("**", routeDefinitionPattern),
 		)
 	}
-	return ignoredPatterns
+	return ignoredPatterns, nil
 }
 
-func formatConfigFilePatternForViteIgnore(configFilePattern string) string {
+func pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+	currentWorkingDirectory string,
+	pathToNormalize string,
+) (string, error) {
+	trimmedPathToNormalize := strings.TrimSpace(pathToNormalize)
+	if trimmedPathToNormalize == "" {
+		return "", nil
+	}
+
+	if !filepath.IsAbs(trimmedPathToNormalize) {
+		return filepath.ToSlash(filepath.Clean(trimmedPathToNormalize)), nil
+	}
+
+	currentWorkingDirectoryRelativePath, relativePathError := filepath.Rel(
+		currentWorkingDirectory,
+		trimmedPathToNormalize,
+	)
+	if relativePathError != nil {
+		return "", fmt.Errorf(
+			"make %q relative to current working directory %q: %w",
+			trimmedPathToNormalize,
+			currentWorkingDirectory,
+			relativePathError,
+		)
+	}
+
+	normalizedCurrentWorkingDirectoryRelativePath := filepath.Clean(
+		currentWorkingDirectoryRelativePath,
+	)
+	if normalizedCurrentWorkingDirectoryRelativePath == ".." ||
+		strings.HasPrefix(
+			normalizedCurrentWorkingDirectoryRelativePath,
+			".."+string(filepath.Separator),
+		) {
+		return "", fmt.Errorf(
+			"path %q is outside current working directory %q",
+			trimmedPathToNormalize,
+			currentWorkingDirectory,
+		)
+	}
+
+	return filepath.ToSlash(normalizedCurrentWorkingDirectoryRelativePath), nil
+}
+
+func formatConfigFilePatternForViteIgnore(
+	currentWorkingDirectory string,
+	configFilePattern string,
+) (string, error) {
 	trimmedPattern := strings.TrimSpace(configFilePattern)
 	if trimmedPattern == "" {
-		return ""
+		return "", nil
 	}
 
-	if filepath.IsAbs(trimmedPattern) {
-		return filepath.ToSlash(trimmedPattern)
+	currentWorkingDirectoryRelativeConfigFilePattern, configFilePatternError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+		currentWorkingDirectory,
+		trimmedPattern,
+	)
+	if configFilePatternError != nil {
+		return "", fmt.Errorf(
+			"normalize config file pattern for Vite ignore: %w",
+			configFilePatternError,
+		)
 	}
 
-	return filepath.ToSlash(path.Join("**", trimmedPattern))
+	return filepath.ToSlash(
+		path.Join("**", currentWorkingDirectoryRelativeConfigFilePattern),
+	), nil
 }
 
 func renderVitePluginConfig(

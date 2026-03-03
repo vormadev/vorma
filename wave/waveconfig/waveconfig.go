@@ -67,11 +67,6 @@ func parseWaveConfigJSON[T any](data []byte) (*T, error) {
 	); finalizeError != nil {
 		return nil, finalizeError
 	}
-	if finalizeFilesystemPathsError := finalizeWaveFilesystemConfigPaths(
-		reflect.ValueOf(&parsedConfig).Elem(),
-	); finalizeFilesystemPathsError != nil {
-		return nil, finalizeFilesystemPathsError
-	}
 	return &parsedConfig, nil
 }
 
@@ -247,131 +242,6 @@ func finalizeWaveDistLayout(parsedValue reflect.Value) error {
 		)
 	}
 	rootField.SetString(filepath.Clean(distDirField.String()))
-	return nil
-}
-
-func finalizeWaveFilesystemConfigPaths(parsedValue reflect.Value) error {
-	coreField := parsedValue.FieldByName("Core")
-	if !coreField.IsValid() {
-		return fmt.Errorf("config: Core section is required")
-	}
-	resolvedCoreField := dereferenceValueForSelectorTraversal(coreField)
-	if !resolvedCoreField.IsValid() ||
-		resolvedCoreField.Kind() != reflect.Struct {
-		return fmt.Errorf("config: Core section is required")
-	}
-	if finalizeError := absolutizeFilesystemPathStructField(
-		resolvedCoreField,
-		"DistDir",
-	); finalizeError != nil {
-		return finalizeError
-	}
-
-	staticAssetDirsField := resolvedCoreField.FieldByName("StaticAssetDirs")
-	resolvedStaticAssetDirsField := dereferenceValueForSelectorTraversal(
-		staticAssetDirsField,
-	)
-	if resolvedStaticAssetDirsField.IsValid() &&
-		resolvedStaticAssetDirsField.Kind() == reflect.Struct {
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedStaticAssetDirsField,
-			"Private",
-		); finalizeError != nil {
-			return finalizeError
-		}
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedStaticAssetDirsField,
-			"Public",
-		); finalizeError != nil {
-			return finalizeError
-		}
-	}
-
-	cssEntryFilesField := resolvedCoreField.FieldByName("CSSEntryFiles")
-	resolvedCSSEntryFilesField := dereferenceValueForSelectorTraversal(
-		cssEntryFilesField,
-	)
-	if resolvedCSSEntryFilesField.IsValid() &&
-		resolvedCSSEntryFilesField.Kind() == reflect.Struct {
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedCSSEntryFilesField,
-			"Critical",
-		); finalizeError != nil {
-			return finalizeError
-		}
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedCSSEntryFilesField,
-			"NonCritical",
-		); finalizeError != nil {
-			return finalizeError
-		}
-	}
-
-	viteField := parsedValue.FieldByName("Vite")
-	resolvedViteField := dereferenceValueForSelectorTraversal(viteField)
-	if resolvedViteField.IsValid() &&
-		resolvedViteField.Kind() == reflect.Struct {
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedViteField,
-			"JSPackageManagerCmdDir",
-		); finalizeError != nil {
-			return finalizeError
-		}
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedViteField,
-			"ViteConfigFile",
-		); finalizeError != nil {
-			return finalizeError
-		}
-	}
-
-	watchField := parsedValue.FieldByName("Watch")
-	resolvedWatchField := dereferenceValueForSelectorTraversal(watchField)
-	if resolvedWatchField.IsValid() &&
-		resolvedWatchField.Kind() == reflect.Struct {
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedWatchField,
-			"WatchRoot",
-		); finalizeError != nil {
-			return finalizeError
-		}
-	}
-
-	distField := parsedValue.FieldByName("Dist")
-	resolvedDistField := dereferenceValueForSelectorTraversal(distField)
-	if resolvedDistField.IsValid() &&
-		resolvedDistField.Kind() == reflect.Struct {
-		if finalizeError := absolutizeFilesystemPathStructField(
-			resolvedDistField,
-			"Root",
-		); finalizeError != nil {
-			return finalizeError
-		}
-	}
-
-	return nil
-}
-
-func absolutizeFilesystemPathStructField(
-	structFieldValue reflect.Value,
-	fieldName string,
-) error {
-	field := structFieldValue.FieldByName(fieldName)
-	if !field.IsValid() || field.Kind() != reflect.String {
-		return nil
-	}
-	if !field.CanSet() {
-		return fmt.Errorf(
-			"config parser target field %s is not settable",
-			fieldName,
-		)
-	}
-
-	trimmedValue := strings.TrimSpace(field.String())
-	if trimmedValue == "" {
-		return nil
-	}
-	field.SetString(waveenv.Absolute(trimmedValue))
 	return nil
 }
 
@@ -728,7 +598,7 @@ func ParseConfigFile(path string) (*ParsedConfig, error) {
 		return nil, err
 	}
 
-	cfg.Core.ConfigLocation = waveenv.Absolute(configFilePath)
+	cfg.Core.ConfigLocation = filepath.Clean(configFilePath)
 	return cfg, nil
 }
 
@@ -777,7 +647,9 @@ func cloneWatchConfig(watchConfig *WatchConfig) *WatchConfig {
 	return &clonedWatchConfig
 }
 
-func cloneWatchedFiles(watchedFiles []wavewatch.WatchedFile) []wavewatch.WatchedFile {
+func cloneWatchedFiles(
+	watchedFiles []wavewatch.WatchedFile,
+) []wavewatch.WatchedFile {
 	if len(watchedFiles) == 0 {
 		return nil
 	}
@@ -808,7 +680,9 @@ func cloneWatchedFile(
 	return clonedWatchedFile
 }
 
-func cloneSortedHooks(sortedHooks *wavewatch.SortedHooks) *wavewatch.SortedHooks {
+func cloneSortedHooks(
+	sortedHooks *wavewatch.SortedHooks,
+) *wavewatch.SortedHooks {
 	if sortedHooks == nil {
 		return nil
 	}

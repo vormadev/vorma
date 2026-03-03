@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveframework"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/waveframework"
 
 	"github.com/vormadev/vorma/internal/testpath"
 	"github.com/vormadev/vorma/wave/buildtime/internal/devserver/restartengine"
@@ -1507,7 +1508,9 @@ func main() {
 				5*time.Second,
 			)
 			if firstWatcher == nil {
-				t.Fatal("timed out waiting for initial watcher before config-error run sequence")
+				t.Fatal(
+					"timed out waiting for initial watcher before config-error run sequence",
+				)
 			}
 
 			if writeError := writeToolingConfigForMainEntryAndWatchRoot(
@@ -1516,7 +1519,10 @@ func main() {
 				goMainPath+"2",
 				cfg.Watch.WatchRoot,
 			); writeError != nil {
-				t.Fatalf("failed writing broken main entry config: %v", writeError)
+				t.Fatalf(
+					"failed writing broken main entry config: %v",
+					writeError,
+				)
 			}
 
 			if !waitForWaitingForBuildRetryFlag(
@@ -1524,7 +1530,9 @@ func main() {
 				true,
 				5*time.Second,
 			) {
-				t.Fatal("timed out waiting for build-retry state after main entry typo")
+				t.Fatal(
+					"timed out waiting for build-retry state after main entry typo",
+				)
 			}
 
 			testCase.writeConfigError(t, cfg)
@@ -1541,7 +1549,9 @@ func main() {
 					t.Fatalf("unexpected Run error: %v", runError)
 				}
 			case <-time.After(8 * time.Second):
-				t.Fatal("timed out waiting for run failure after config error event")
+				t.Fatal(
+					"timed out waiting for run failure after config error event",
+				)
 			}
 
 			runLogOutput := runLogBuffer.String()
@@ -1580,7 +1590,9 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
-	configFromDisk, parseError := waveconfig.ParseConfigFile(cfg.Core.ConfigLocation)
+	configFromDisk, parseError := waveconfig.ParseConfigFile(
+		cfg.Core.ConfigLocation,
+	)
 	if parseError != nil {
 		t.Fatalf("parse initial tooling config from disk: %v", parseError)
 	}
@@ -2003,7 +2015,10 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 					[]byte("{ invalid config payload"),
 					0o644,
 				); writeError != nil {
-					t.Fatalf("write invalid syntax config payload: %v", writeError)
+					t.Fatalf(
+						"write invalid syntax config payload: %v",
+						writeError,
+					)
 				}
 			},
 		},
@@ -2017,7 +2032,10 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 					"",
 					cfg.Watch.WatchRoot,
 				); writeError != nil {
-					t.Fatalf("write invalid semantic config payload: %v", writeError)
+					t.Fatalf(
+						"write invalid semantic config payload: %v",
+						writeError,
+					)
 				}
 			},
 		},
@@ -2036,7 +2054,10 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 				cfg,
 				cfg.Watch.WatchRoot,
 			); writeError != nil {
-				t.Fatalf("failed writing initial tooling config: %v", writeError)
+				t.Fatalf(
+					"failed writing initial tooling config: %v",
+					writeError,
+				)
 			}
 
 			serverForTest := &Server{
@@ -2052,7 +2073,11 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 				runErrCh <- serverForTest.Run()
 			}()
 
-			firstWatcher := waitForWatcherPointer(serverForTest, nil, 4*time.Second)
+			firstWatcher := waitForWatcherPointer(
+				serverForTest,
+				nil,
+				4*time.Second,
+			)
 			if firstWatcher == nil {
 				t.Fatal("timed out waiting for initial watcher setup")
 			}
@@ -2079,7 +2104,9 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 					t.Fatalf("unexpected Run error: %v", runError)
 				}
 			case <-time.After(6 * time.Second):
-				t.Fatal("timed out waiting for run failure after config reload error")
+				t.Fatal(
+					"timed out waiting for run failure after config reload error",
+				)
 			}
 		})
 	}
@@ -2132,13 +2159,20 @@ func TestServerRun_InvalidConfigWriteTriggersConfigRestartAndTerminatesRun(
 	select {
 	case runError := <-runErrCh:
 		if runError == nil {
-			t.Fatal("expected run to exit on config reload failure after watcher-side invalid write")
+			t.Fatal(
+				"expected run to exit on config reload failure after watcher-side invalid write",
+			)
 		}
-		if !strings.Contains(runError.Error(), "reload config during cycle prepare") {
+		if !strings.Contains(
+			runError.Error(),
+			"reload config during cycle prepare",
+		) {
 			t.Fatalf("unexpected Run error: %v", runError)
 		}
 	case <-time.After(6 * time.Second):
-		t.Fatal("timed out waiting for run failure after watcher-side invalid write")
+		t.Fatal(
+			"timed out waiting for run failure after watcher-side invalid write",
+		)
 	}
 }
 
@@ -2157,7 +2191,9 @@ func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
 		t.Fatalf("failed to write updated tooling config: %v", writeError)
 	}
 
-	reloadedConfig, parseError := waveconfig.ParseConfigFile(cfg.Core.ConfigLocation)
+	reloadedConfig, parseError := waveconfig.ParseConfigFile(
+		cfg.Core.ConfigLocation,
+	)
 	if parseError != nil {
 		t.Fatalf("failed to parse updated config: %v", parseError)
 	}
@@ -2169,7 +2205,23 @@ func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
 			cfg.Watch.WatchRoot,
 		)
 	}
-	expectedUpdatedWatchRoot := filepath.Clean(updatedWatchRoot)
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		t.Fatalf(
+			"resolve current working directory: %v",
+			currentWorkingDirectoryError,
+		)
+	}
+	expectedUpdatedWatchRoot, expectedUpdatedWatchRootError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
+		currentWorkingDirectory,
+		updatedWatchRoot,
+	)
+	if expectedUpdatedWatchRootError != nil {
+		t.Fatalf(
+			"normalize expected updated watch root: %v",
+			expectedUpdatedWatchRootError,
+		)
+	}
 	if reloadedConfig.Watch == nil ||
 		reloadedConfig.Watch.WatchRoot != expectedUpdatedWatchRoot {
 		t.Fatalf(

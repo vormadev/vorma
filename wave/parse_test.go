@@ -21,7 +21,9 @@ func TestParseConfigRejectsInvalidJSON(t *testing.T) {
 }
 
 func TestParseConfigRequiresCoreSection(t *testing.T) {
-	_, err := waveconfig.ParseConfigJSON([]byte(`{"Vite":{"DefaultPort":5173}}`))
+	_, err := waveconfig.ParseConfigJSON(
+		[]byte(`{"Vite":{"DefaultPort":5173}}`),
+	)
 	if err == nil {
 		t.Fatal("expected parseConfig to fail when Core section is missing")
 	}
@@ -31,7 +33,9 @@ func TestParseConfigRequiresCoreSection(t *testing.T) {
 }
 
 func TestParseConfigSetsCleanDistRoot(t *testing.T) {
-	raw := []byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"./dist/../dist/."}}`)
+	raw := []byte(
+		`{"Core":{"MainAppEntry":"cmd/app","DistDir":"./dist/../dist/."}}`,
+	)
 
 	cfg, err := waveconfig.ParseConfigJSON(raw)
 	if err != nil {
@@ -39,14 +43,10 @@ func TestParseConfigSetsCleanDistRoot(t *testing.T) {
 	}
 
 	expectedDist := filepath.Clean("./dist/../dist/.")
-	expectedAbsoluteDist, expectedAbsoluteDistError := filepath.Abs(expectedDist)
-	if expectedAbsoluteDistError != nil {
-		t.Fatalf("resolve absolute expected dist path: %v", expectedAbsoluteDistError)
-	}
-	if cfg.Dist.Root != expectedAbsoluteDist {
+	if cfg.Dist.Root != expectedDist {
 		t.Fatalf(
-			"expected cleaned absolute Dist root %q, got %q",
-			expectedAbsoluteDist,
+			"expected cleaned Dist root %q, got %q",
+			expectedDist,
 			cfg.Dist.Root,
 		)
 	}
@@ -206,7 +206,10 @@ func TestParseConfigPanicsOnMachineAbsoluteFilesystemConfigPaths(t *testing.T) {
 			defer func() {
 				recoveredPanic := recover()
 				if recoveredPanic == nil {
-					t.Fatalf("expected parseConfig to panic for %s", testCase.expectedFieldPath)
+					t.Fatalf(
+						"expected parseConfig to panic for %s",
+						testCase.expectedFieldPath,
+					)
 				}
 				panicMessage := fmt.Sprint(recoveredPanic)
 				if !strings.Contains(panicMessage, testCase.expectedFieldPath) {

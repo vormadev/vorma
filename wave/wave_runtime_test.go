@@ -14,6 +14,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/vormadev/vorma/internal/testpath"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave/internal/wavefilemap"
 	"github.com/vormadev/vorma/wave/waveartifacts"
@@ -854,11 +855,15 @@ func TestConfigAccessorMethods(t *testing.T) {
 	if w.PublicPathPrefix() != "/assets/" {
 		t.Fatalf("unexpected public path prefix: %q", w.PublicPathPrefix())
 	}
-	expectedDistDir := filepath.Clean(fixture.cfg.Core.DistDir)
+	expectedDistDir := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		fixture.cfg.Core.DistDir,
+	)
 	if w.DistDir() != expectedDistDir {
 		t.Fatalf("unexpected dist dir: %q", w.DistDir())
 	}
-	expectedPublicStaticDir := filepath.Clean(
+	expectedPublicStaticDir := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
 		fixture.cfg.Core.StaticAssetDirs.Public,
 	)
 	if w.runtime.PublicStaticDir() != expectedPublicStaticDir {
@@ -867,13 +872,15 @@ func TestConfigAccessorMethods(t *testing.T) {
 			w.runtime.PublicStaticDir(),
 		)
 	}
-	expectedPrivateStaticDir := filepath.Clean(
+	expectedPrivateStaticDir := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
 		fixture.cfg.Core.StaticAssetDirs.Private,
 	)
 	if w.PrivateStaticDir() != expectedPrivateStaticDir {
 		t.Fatalf("unexpected private static dir: %q", w.PrivateStaticDir())
 	}
-	expectedViteManifestLocation := filepath.Clean(
+	expectedViteManifestLocation := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
 		fixture.cfg.ViteManifestPath(),
 	)
 	if w.ViteManifestLocation() != expectedViteManifestLocation {
@@ -882,11 +889,15 @@ func TestConfigAccessorMethods(t *testing.T) {
 			w.ViteManifestLocation(),
 		)
 	}
-	expectedViteOutDir := filepath.Clean(fixture.cfg.Dist.StaticPublic())
+	expectedViteOutDir := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
+		fixture.cfg.Dist.StaticPublic(),
+	)
 	if w.runtime.ViteOutDir() != expectedViteOutDir {
 		t.Fatalf("unexpected Vite out dir: %q", w.runtime.ViteOutDir())
 	}
-	expectedStaticPrivateOutDir := filepath.Clean(
+	expectedStaticPrivateOutDir := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
 		fixture.cfg.Dist.StaticPrivate(),
 	)
 	if w.StaticPrivateOutDir() != expectedStaticPrivateOutDir {
@@ -895,7 +906,8 @@ func TestConfigAccessorMethods(t *testing.T) {
 			w.StaticPrivateOutDir(),
 		)
 	}
-	expectedStaticPublicOutDir := filepath.Clean(
+	expectedStaticPublicOutDir := testpath.PathRelativeToCurrentWorkingDirectory(
+		t,
 		fixture.cfg.Dist.StaticPublic(),
 	)
 	if w.StaticPublicOutDir() != expectedStaticPublicOutDir {

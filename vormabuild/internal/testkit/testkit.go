@@ -53,7 +53,9 @@ func NewBuildTestFixture(
 	t.Helper()
 
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormabuild-fixture-")
-	distDir := filepath.Join(rootDir, "dist")
+	t.Chdir(rootDir)
+	distDirectoryName := "dist-" + filepath.Base(rootDir)
+	distDir := filepath.Join(rootDir, distDirectoryName)
 	staticDir := filepath.Join(distDir, "static")
 	privateDir := filepath.Join(
 		staticDir,
