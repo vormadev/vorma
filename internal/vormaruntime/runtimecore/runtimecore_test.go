@@ -1,6 +1,7 @@
 package runtimecore
 
 import (
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"reflect"
 	"sync"
 	"testing"
@@ -20,21 +21,21 @@ func TestBuildRuntimeRouteArtifacts(t *testing.T) {
 		pathsFile := &RuntimePathsFileSnapshot{
 			BuildID:        "build-artifacts",
 			ClientEntrySrc: "frontend/src/main.tsx",
-			ClientEntryOut: testWaveOutPath("main.js"),
+			ClientEntryOut: waveoutputtest.TestWaveOutputPath("main.js"),
 			ClientEntryDeps: []string{
-				testWaveOutPath("chunk-shared.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-shared.js"),
 			},
 			DepToCSSBundleMap: map[string][]string{
-				testWaveOutPath("main.js"): {testWaveOutPath("main.css")},
+				waveoutputtest.TestWaveOutputPath("main.js"): {waveoutputtest.TestWaveOutputPath("main.css")},
 			},
-			RouteManifestFile: testWaveOutPath("route-manifest.js"),
+			RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 			Paths: map[string]*RoutePath{
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.tsx",
-					OutPath:         testWaveOutPath("routes/products.$id.js"),
+					OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 					ExportKey:       "default",
-					Deps:            []string{testWaveOutPath("products.js")},
+					Deps:            []string{waveoutputtest.TestWaveOutputPath("products.js")},
 				},
 			},
 		}
@@ -81,12 +82,12 @@ func TestApplyRuntimeRouteArtifactsMetadata(t *testing.T) {
 	ApplyRuntimeRouteArtifactsMetadata(state, &RuntimeRouteArtifacts{
 		BuildID:         "build-new",
 		ClientEntrySrc:  "frontend/src/main.tsx",
-		ClientEntryOut:  testWaveOutPath("main.js"),
-		ClientEntryDeps: []string{testWaveOutPath("chunk-shared.js")},
+		ClientEntryOut:  waveoutputtest.TestWaveOutputPath("main.js"),
+		ClientEntryDeps: []string{waveoutputtest.TestWaveOutputPath("chunk-shared.js")},
 		DepToCSSBundleMap: map[string][]string{
-			testWaveOutPath("main.js"): {testWaveOutPath("main.css")},
+			waveoutputtest.TestWaveOutputPath("main.js"): {waveoutputtest.TestWaveOutputPath("main.css")},
 		},
-		RouteManifestFile: testWaveOutPath("route-manifest.js"),
+		RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 	})
 
 	if got, want := state.BuildID, "build-new"; got != want {
@@ -94,7 +95,7 @@ func TestApplyRuntimeRouteArtifactsMetadata(t *testing.T) {
 	}
 	if got := state.ClientEntryDeps; !reflect.DeepEqual(
 		got,
-		[]string{testWaveOutPath("chunk-shared.js")},
+		[]string{waveoutputtest.TestWaveOutputPath("chunk-shared.js")},
 	) {
 		t.Fatalf("ClientEntryDeps = %#v", got)
 	}
@@ -135,9 +136,9 @@ func TestSyncPathsFromDevReload_MergesServerRoutesAndClones(t *testing.T) {
 		"/client": {
 			OriginalPattern: "/client",
 			SrcPath:         "frontend/src/routes/client.tsx",
-			OutPath:         testWaveOutPath("routes/client.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/client.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-client.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-client.js")},
 		},
 	}
 
@@ -154,7 +155,7 @@ func TestSyncPathsFromDevReload_MergesServerRoutesAndClones(t *testing.T) {
 	if got := merged["/client"].SrcPath; got != "frontend/src/routes/client.tsx" {
 		t.Fatalf("SrcPath = %q, want original value", got)
 	}
-	if got := merged["/client"].Deps[0]; got != testWaveOutPath("chunk-client.js") {
+	if got := merged["/client"].Deps[0]; got != waveoutputtest.TestWaveOutputPath("chunk-client.js") {
 		t.Fatalf("Deps[0] = %q, want original value", got)
 	}
 }
@@ -163,18 +164,18 @@ func TestReplaceParsedPathsForInit_Clones(t *testing.T) {
 	input := map[string]*RoutePath{
 		"/docs": {
 			OriginalPattern: "/docs",
-			OutPath:         testWaveOutPath("routes/docs.js"),
-			Deps:            []string{testWaveOutPath("chunk-docs.js")},
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/docs.js"),
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-docs.js")},
 		},
 	}
 	cloned := ReplaceParsedPathsForInit(input)
 	input["/docs"].OutPath = "MUTATED"
 	input["/docs"].Deps[0] = "MUTATED_DEP"
 
-	if got := cloned["/docs"].OutPath; got != testWaveOutPath("routes/docs.js") {
+	if got := cloned["/docs"].OutPath; got != waveoutputtest.TestWaveOutputPath("routes/docs.js") {
 		t.Fatalf("OutPath = %q, want original value", got)
 	}
-	if got := cloned["/docs"].Deps[0]; got != testWaveOutPath("chunk-docs.js") {
+	if got := cloned["/docs"].Deps[0]; got != waveoutputtest.TestWaveOutputPath("chunk-docs.js") {
 		t.Fatalf("Deps[0] = %q, want original value", got)
 	}
 }
@@ -188,10 +189,10 @@ func TestCloneRoutePathAndRouteMaps_NilAndDeepCopySemantics(t *testing.T) {
 		"/pricing": {
 			OriginalPattern: "/pricing",
 			SrcPath:         "frontend/src/routes/pricing.tsx",
-			OutPath:         testWaveOutPath("routes/pricing.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/pricing.js"),
 			ExportKey:       "Pricing",
 			ErrorExportKey:  "PricingError",
-			Deps:            []string{testWaveOutPath("chunk-pricing.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-pricing.js")},
 		},
 	}
 
@@ -205,7 +206,7 @@ func TestCloneRoutePathAndRouteMaps_NilAndDeepCopySemantics(t *testing.T) {
 	if got, want := clonedPaths["/pricing"].SrcPath, "frontend/src/routes/pricing.tsx"; got != want {
 		t.Fatalf("cloned SrcPath = %q, want %q", got, want)
 	}
-	if got, want := clonedPaths["/pricing"].Deps[0], testWaveOutPath("chunk-pricing.js"); got != want {
+	if got, want := clonedPaths["/pricing"].Deps[0], waveoutputtest.TestWaveOutputPath("chunk-pricing.js"); got != want {
 		t.Fatalf("cloned Deps[0] = %q, want %q", got, want)
 	}
 
@@ -234,11 +235,11 @@ func TestCloneStringAndBundleMaps_NilAndDeepCopySemantics(t *testing.T) {
 	}
 
 	originalBundleMap := map[string][]string{
-		testWaveOutPath("main.js"): {testWaveOutPath("main.css")},
+		waveoutputtest.TestWaveOutputPath("main.js"): {waveoutputtest.TestWaveOutputPath("main.css")},
 	}
 	clonedBundleMap := CloneDepToCSSBundleMapOrNil(originalBundleMap)
-	originalBundleMap[testWaveOutPath("main.js")][0] = "MUTATED"
-	if got, want := clonedBundleMap[testWaveOutPath("main.js")][0], testWaveOutPath("main.css"); got != want {
+	originalBundleMap[waveoutputtest.TestWaveOutputPath("main.js")][0] = "MUTATED"
+	if got, want := clonedBundleMap[waveoutputtest.TestWaveOutputPath("main.js")][0], waveoutputtest.TestWaveOutputPath("main.css"); got != want {
 		t.Fatalf("cloned bundle map first value = %q, want %q", got, want)
 	}
 }
@@ -292,9 +293,9 @@ func TestSyncRouteStateFromDevReload(t *testing.T) {
 			"/old-client": {
 				OriginalPattern: "/old-client",
 				SrcPath:         "frontend/src/routes/old-client.tsx",
-				OutPath:         testWaveOutPath("routes/old-client.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("routes/old-client.js"),
 				ExportKey:       "default",
-				Deps:            []string{testWaveOutPath("chunk-old.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 			},
 		},
 		RouteDataSnapshotVersion: 10,
@@ -306,9 +307,9 @@ func TestSyncRouteStateFromDevReload(t *testing.T) {
 		"/fresh-client": {
 			OriginalPattern: "/fresh-client",
 			SrcPath:         "frontend/src/routes/fresh-client.tsx",
-			OutPath:         testWaveOutPath("routes/fresh-client.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/fresh-client.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-fresh.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-fresh.js")},
 		},
 	}
 
@@ -360,7 +361,7 @@ func TestSyncRouteStateFromDevReload(t *testing.T) {
 	}
 
 	parsedClientPaths["/fresh-client"].Deps[0] = "MUTATED_DEP"
-	if got, want := state.Paths["/fresh-client"].Deps[0], testWaveOutPath("chunk-fresh.js"); got != want {
+	if got, want := state.Paths["/fresh-client"].Deps[0], waveoutputtest.TestWaveOutputPath("chunk-fresh.js"); got != want {
 		t.Fatalf("state deps = %q, want %q", got, want)
 	}
 }
@@ -380,9 +381,9 @@ func TestReplaceRouteStateForInit(t *testing.T) {
 			"/docs": {
 				OriginalPattern: "/docs",
 				SrcPath:         "frontend/src/routes/docs.tsx",
-				OutPath:         testWaveOutPath("routes/docs.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("routes/docs.js"),
 				ExportKey:       "default",
-				Deps:            []string{testWaveOutPath("chunk-docs.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-docs.js")},
 			},
 		}
 		ReplaceRouteStateForInit(
@@ -404,7 +405,7 @@ func TestReplaceRouteStateForInit(t *testing.T) {
 			t.Fatal("expected /docs path after replace")
 		}
 		parsedPaths["/docs"].OutPath = "MUTATED_OUT"
-		if got, want := state.Paths["/docs"].OutPath, testWaveOutPath("routes/docs.js"); got != want {
+		if got, want := state.Paths["/docs"].OutPath, waveoutputtest.TestWaveOutputPath("routes/docs.js"); got != want {
 			t.Fatalf("state OutPath = %q, want %q", got, want)
 		}
 	})

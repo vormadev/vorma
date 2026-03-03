@@ -3,6 +3,7 @@ package vormaruntime
 import (
 	"encoding/json"
 	"errors"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,22 +42,22 @@ func TestHTTPContractMatrix_LoadersAndActions(t *testing.T) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         testWaveOutPath("routes/items.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemsErrorBoundary",
-			Deps:            []string{testWaveOutPath("chunk-items.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-items.js")},
 		},
 		"/error": {
 			OriginalPattern: "/error",
 			SrcPath:         "frontend/src/routes/error.tsx",
-			OutPath:         testWaveOutPath("routes/error.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/error.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "RouteErrorBoundary",
 		},
 		"/cache": {
 			OriginalPattern: "/cache",
 			SrcPath:         "frontend/src/routes/cache.tsx",
-			OutPath:         testWaveOutPath("routes/cache.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/cache.js"),
 			ExportKey:       "default",
 		},
 	})

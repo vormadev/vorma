@@ -2,7 +2,6 @@ import { createPatternRegistry } from "vorma/kit/matcher/register";
 import {
 	createVormaRuntimeContext,
 	registerClientLoaderForAdapter,
-	revalidate,
 } from "./src/runtime.ts";
 
 /**
@@ -291,12 +290,10 @@ export function readIsTouchInputModalityActiveForTesting(): boolean {
 export function registerClientLoaderForTesting(props: {
 	pattern: string;
 	clientLoader: (input: unknown) => Promise<unknown>;
+	reRunOnModuleChange?: ImportMeta;
 }): void {
 	createVormaRuntimeContext();
-	registerClientLoaderForAdapter({
-		pattern: props.pattern,
-		clientLoader: props.clientLoader,
-	});
+	registerClientLoaderForAdapter(props);
 }
 
 export function clearAllNavigationStateForTesting(): void {
@@ -343,9 +340,9 @@ export function readRouterDataForTesting(): TestingRouterData {
 	};
 }
 
-export async function simulateViteAfterUpdateForTesting(props: {
-	updates: Array<{ type: string; path: string }>;
-}): Promise<void> {
+export async function simulateViteAfterUpdateForTesting(
+	updates: Array<{ type: string; path: string }>,
+): Promise<void> {
 	createVormaRuntimeContext();
 	const runtimeGlobal = (globalThis as TestingGlobalRecord)[
 		VORMA_TESTING_SYMBOL
@@ -355,34 +352,9 @@ export async function simulateViteAfterUpdateForTesting(props: {
 			"Vorma runtime must be initialized before simulating Vite updates.",
 		);
 	}
-	const runtimeSnapshot = runtimeGlobal.runtimeRouteSnapshot as
-		| {
-				matchedPatterns?: string[];
-		  }
-		| undefined;
-	const {
-		resolveMatchedPatternsToRefreshForHMRUpdate,
-		refreshCurrentClientLoadersAfterHMRUpdate,
-	} = await import("vorma/client/__internal/hmr_dev");
-	const matchedPatternsToRefresh =
-		resolveMatchedPatternsToRefreshForHMRUpdate({
-			updates: props.updates,
-			currentMatchedPatterns: Array.isArray(
-				runtimeSnapshot?.matchedPatterns,
-			)
-				? (runtimeSnapshot?.matchedPatterns as string[])
-				: [],
-		});
-	if (matchedPatternsToRefresh.length === 0) {
-		return;
-	}
-	const didRefresh = await refreshCurrentClientLoadersAfterHMRUpdate({
-		matchedPatternsToRefresh,
-	});
-	if (!didRefresh) {
-		await revalidate().catch(() => undefined);
-		return;
-	}
+	const { applyViteAfterUpdatePayload } =
+		await import("vorma/client/__internal/hmr_dev");
+	applyViteAfterUpdatePayload(updates);
 }
 
 export function seedScrollStateForTesting(

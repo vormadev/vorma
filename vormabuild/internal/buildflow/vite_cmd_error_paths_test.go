@@ -2,6 +2,7 @@ package buildflow
 
 import (
 	"errors"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"strings"
 	"testing"
 
@@ -47,12 +48,12 @@ func TestPostViteProdBuild_ErrorWrapping(t *testing.T) {
 			viteutil.Manifest{
 				"frontend/src/vorma.entry.tsx": {
 					Src:     "frontend/src/vorma.entry.tsx",
-					File:    testWaveOutAssetPath("entry.js"),
+					File:    waveoutputtest.TestWaveOutputAssetPath("entry.js"),
 					IsEntry: true,
 				},
 				"frontend/src/routes/root.tsx": {
 					Src:  "frontend/src/routes/root.tsx",
-					File: testWaveOutAssetPath("root.js"),
+					File: waveoutputtest.TestWaveOutputAssetPath("root.js"),
 				},
 			},
 		)

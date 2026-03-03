@@ -3,6 +3,7 @@ package vormaruntime
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
@@ -56,7 +57,7 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 					"/products/:id": {
 						OriginalPattern: "/products/:id",
 						SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-						OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+						OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 						ExportKey:       "default",
 					},
 				},
@@ -85,7 +86,7 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 			}
 			if !strings.Contains(
 				recBefore.Body.String(),
-				testWaveOutURLPath("routes/products.$id.old.js"),
+				waveoutputtest.TestWaveOutputURLPath("routes/products.$id.old.js"),
 			) {
 				t.Fatalf(
 					"before failed init body missing old import URL, body=%q",
@@ -99,7 +100,7 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 					"/products/:id": {
 						OriginalPattern: "/products/:id",
 						SrcPath:         "frontend/src/routes/products.$id.invalid.tsx",
-						OutPath:         testWaveOutPath("routes/products.$id.invalid.js"),
+						OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.invalid.js"),
 						ExportKey:       "default",
 					},
 				},
@@ -155,7 +156,7 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 			}
 			if !strings.Contains(
 				recAfter.Body.String(),
-				testWaveOutURLPath("routes/products.$id.old.js"),
+				waveoutputtest.TestWaveOutputURLPath("routes/products.$id.old.js"),
 			) {
 				t.Fatalf(
 					"after failed init body missing old import URL, body=%q",
@@ -164,7 +165,7 @@ func TestInit_ReinitSemanticArtifactValidationFailuresDoNotMutateRuntimeState(
 			}
 			if strings.Contains(
 				recAfter.Body.String(),
-				testWaveOutURLPath("routes/products.$id.invalid.js"),
+				waveoutputtest.TestWaveOutputURLPath("routes/products.$id.invalid.js"),
 			) {
 				t.Fatalf(
 					"after failed init body leaked invalid import URL, body=%q",
@@ -180,13 +181,13 @@ func TestValidateAndDecorateNestedRouter(t *testing.T) {
 		"/": {
 			OriginalPattern: "/",
 			SrcPath:         "frontend/src/routes/root.tsx",
-			OutPath:         testWaveOutPath("root.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("root.js"),
 			ExportKey:       "default",
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         testWaveOutPath("items.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("items.$id.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -327,10 +328,10 @@ func TestInitInner_NormalizesNilStageCollections(t *testing.T) {
 		Stage:             "stage-two",
 		BuildID:           "nil-collections-build",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:    testWaveOutPath("client-entry.js"),
+		ClientEntryOut:    waveoutputtest.TestWaveOutputPath("client-entry.js"),
 		ClientEntryDeps:   nil,
 		Paths:             nil,
-		RouteManifestFile: testWaveOutPath("route-manifest.js"),
+		RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		DepToCSSBundleMap: nil,
 	}
 
@@ -423,7 +424,7 @@ func TestInit_ReinitReplacesRemovedClientRoutes(t *testing.T) {
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         testWaveOutPath("routes/old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -453,7 +454,7 @@ func TestInit_ReinitReplacesRemovedClientRoutes(t *testing.T) {
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         testWaveOutPath("routes/new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -525,7 +526,7 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(
 		"/items": {
 			OriginalPattern: "/items",
 			SrcPath:         "frontend/src/routes/items.v1.tsx",
-			OutPath:         testWaveOutPath("routes/items.v1.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.v1.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -548,7 +549,7 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(
 	if v1Rec.Code != http.StatusOK {
 		t.Fatalf("v1 /items status = %d, want %d", v1Rec.Code, http.StatusOK)
 	}
-	if !strings.Contains(v1Rec.Body.String(), testWaveOutURLPath("routes/items.v1.js")) {
+	if !strings.Contains(v1Rec.Body.String(), waveoutputtest.TestWaveOutputURLPath("routes/items.v1.js")) {
 		t.Fatalf(
 			"v1 body missing expected import URL, body=%q",
 			v1Rec.Body.String(),
@@ -564,7 +565,7 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(
 		"/items": {
 			OriginalPattern: "/items",
 			SrcPath:         "frontend/src/routes/items.v2.tsx",
-			OutPath:         testWaveOutPath("routes/items.v2.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.v2.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -590,11 +591,11 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(
 			pathsAfterReinit,
 		)
 	}
-	if itemsPath.OutPath != testWaveOutPath("routes/items.v2.js") {
+	if itemsPath.OutPath != waveoutputtest.TestWaveOutputPath("routes/items.v2.js") {
 		t.Fatalf(
 			"post-reinit /items outPath = %q, want %q",
 			itemsPath.OutPath,
-			testWaveOutPath("routes/items.v2.js"),
+			waveoutputtest.TestWaveOutputPath("routes/items.v2.js"),
 		)
 	}
 
@@ -608,13 +609,13 @@ func TestInit_ReinitInvalidatesRouteDataCacheWhenBuildIDUnchanged(
 	if v2Rec.Code != http.StatusOK {
 		t.Fatalf("v2 /items status = %d, want %d", v2Rec.Code, http.StatusOK)
 	}
-	if strings.Contains(v2Rec.Body.String(), testWaveOutURLPath("routes/items.v1.js")) {
+	if strings.Contains(v2Rec.Body.String(), waveoutputtest.TestWaveOutputURLPath("routes/items.v1.js")) {
 		t.Fatalf(
 			"v2 body leaked stale import URL, body=%q",
 			v2Rec.Body.String(),
 		)
 	}
-	if !strings.Contains(v2Rec.Body.String(), testWaveOutURLPath("routes/items.v2.js")) {
+	if !strings.Contains(v2Rec.Body.String(), waveoutputtest.TestWaveOutputURLPath("routes/items.v2.js")) {
 		t.Fatalf(
 			"v2 body missing updated import URL, body=%q",
 			v2Rec.Body.String(),
@@ -629,7 +630,7 @@ func TestInit_ReinitPreservesServerOnlyHandlerRoutes(t *testing.T) {
 		"/client-old": {
 			OriginalPattern: "/client-old",
 			SrcPath:         "frontend/src/routes/client-old.tsx",
-			OutPath:         testWaveOutPath("routes/client-old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/client-old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -670,7 +671,7 @@ func TestInit_ReinitPreservesServerOnlyHandlerRoutes(t *testing.T) {
 		"/client-new": {
 			OriginalPattern: "/client-new",
 			SrcPath:         "frontend/src/routes/client-new.tsx",
-			OutPath:         testWaveOutPath("routes/client-new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/client-new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -746,7 +747,7 @@ func TestInit_ReinitFailureDoesNotPartiallyMutateRuntimeState(t *testing.T) {
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         testWaveOutPath("routes/old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -779,7 +780,7 @@ func TestInit_ReinitFailureDoesNotPartiallyMutateRuntimeState(t *testing.T) {
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         testWaveOutPath("routes/new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -848,7 +849,7 @@ func TestInit_ReinitMalformedStageFileDoesNotPartiallyMutateRuntimeState(
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         testWaveOutPath("routes/old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	})

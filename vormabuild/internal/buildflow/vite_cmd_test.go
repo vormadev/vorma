@@ -2,6 +2,7 @@ package buildflow
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,12 +32,12 @@ func TestPostViteProdBuild_WritesStageTwoPathsFile(t *testing.T) {
 	manifest := viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
 			Src:     "frontend/src/vorma.entry.tsx",
-			File:    testWaveOutAssetPath("entry.js"),
+			File:    waveoutputtest.TestWaveOutputAssetPath("entry.js"),
 			IsEntry: true,
 		},
 		"frontend/src/routes/root.tsx": {
 			Src:  "frontend/src/routes/root.tsx",
-			File: testWaveOutAssetPath("root.js"),
+			File: waveoutputtest.TestWaveOutputAssetPath("root.js"),
 		},
 	}
 	testkit.MustWriteJSONFile(t, app.Wave.ViteManifestLocation(), manifest)
@@ -101,12 +102,12 @@ func TestPostViteProdBuild_ReturnsErrorWhenTemplateMissing(t *testing.T) {
 	manifest := viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
 			Src:     "frontend/src/vorma.entry.tsx",
-			File:    testWaveOutAssetPath("entry.js"),
+			File:    waveoutputtest.TestWaveOutputAssetPath("entry.js"),
 			IsEntry: true,
 		},
 		"frontend/src/routes/root.tsx": {
 			Src:  "frontend/src/routes/root.tsx",
-			File: testWaveOutAssetPath("root.js"),
+			File: waveoutputtest.TestWaveOutputAssetPath("root.js"),
 		},
 	}
 	testkit.MustWriteJSONFile(t, app.Wave.ViteManifestLocation(), manifest)

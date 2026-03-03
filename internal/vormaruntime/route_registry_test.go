@@ -1,6 +1,7 @@
 package vormaruntime
 
 import (
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"sync"
 	"testing"
 
@@ -16,7 +17,7 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
 		"/old-client": {
 			OriginalPattern: "/old-client",
 			SrcPath:         "frontend/src/routes/old-client.tsx",
-			OutPath:         testWaveOutPath("routes/old-client.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old-client.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -54,7 +55,7 @@ func TestRouteRegistrySyncFromDevReload_ClearsCacheAndRebuildsPatterns(
 		"/fresh-client": {
 			OriginalPattern: "/fresh-client",
 			SrcPath:         "frontend/src/routes/fresh-client.tsx",
-			OutPath:         testWaveOutPath("routes/fresh-client.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/fresh-client.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -147,7 +148,7 @@ func TestRouteRegistrySyncFromDevReload_DoesNotEvictOtherAppCacheEntries(
 			"/fresh-client": {
 				OriginalPattern: "/fresh-client",
 				SrcPath:         "frontend/src/routes/fresh-client.tsx",
-				OutPath:         testWaveOutPath("routes/fresh-client.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("routes/fresh-client.js"),
 				ExportKey:       "default",
 			},
 		})
@@ -233,10 +234,10 @@ func TestRouteRegistrySyncFromDevReload_ClonesPathEntries(t *testing.T) {
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ProductsErrorBoundary",
-			Deps:            []string{testWaveOutPath("chunk-products.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-products.js")},
 		},
 	}
 
@@ -256,11 +257,11 @@ func TestRouteRegistrySyncFromDevReload_ClonesPathEntries(t *testing.T) {
 	if got.SrcPath != "frontend/src/routes/products.$id.tsx" {
 		t.Fatalf("SrcPath = %q, want original value", got.SrcPath)
 	}
-	if len(got.Deps) != 1 || got.Deps[0] != testWaveOutPath("chunk-products.js") {
+	if len(got.Deps) != 1 || got.Deps[0] != waveoutputtest.TestWaveOutputPath("chunk-products.js") {
 		t.Fatalf(
 			"Deps = %#v, want %#v",
 			got.Deps,
-			[]string{testWaveOutPath("chunk-products.js")},
+			[]string{waveoutputtest.TestWaveOutputPath("chunk-products.js")},
 		)
 	}
 }
@@ -275,9 +276,9 @@ func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(
 		"/docs": {
 			OriginalPattern: "/docs",
 			SrcPath:         "frontend/src/routes/docs.tsx",
-			OutPath:         testWaveOutPath("routes/docs.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/docs.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-docs.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-docs.js")},
 		},
 	}
 
@@ -294,14 +295,14 @@ func TestRouteRegistryReplaceParsedPathsForInit_ClonesPathEntries(
 	if got == nil {
 		t.Fatal("expected /docs in replaced paths")
 	}
-	if got.OutPath != testWaveOutPath("routes/docs.js") {
+	if got.OutPath != waveoutputtest.TestWaveOutputPath("routes/docs.js") {
 		t.Fatalf("OutPath = %q, want original value", got.OutPath)
 	}
-	if len(got.Deps) != 1 || got.Deps[0] != testWaveOutPath("chunk-docs.js") {
+	if len(got.Deps) != 1 || got.Deps[0] != waveoutputtest.TestWaveOutputPath("chunk-docs.js") {
 		t.Fatalf(
 			"Deps = %#v, want %#v",
 			got.Deps,
-			[]string{testWaveOutPath("chunk-docs.js")},
+			[]string{waveoutputtest.TestWaveOutputPath("chunk-docs.js")},
 		)
 	}
 }

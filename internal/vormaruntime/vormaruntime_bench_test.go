@@ -1,6 +1,7 @@
 package vormaruntime
 
 import (
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,24 +31,24 @@ func BenchmarkLoadersHandler_JSONCurrentBuild(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         testWaveOutPath("routes/items.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				testWaveOutPath("chunk-items.js"),
-				testWaveOutPath("chunk-shared.js"),
-				testWaveOutPath("chunk-details.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-items.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-shared.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-details.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-build", paths)
-	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
+	stage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
-		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
-		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
-		testWaveOutPath("chunk-details.js"): {
-			testWaveOutPath("chunk-details.css"),
-			testWaveOutPath("chunk-shared.css"),
+		waveoutputtest.TestWaveOutputPath("client-entry.js"): {waveoutputtest.TestWaveOutputPath("client-entry.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-shared.js"): {waveoutputtest.TestWaveOutputPath("chunk-shared.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-items.js"):  {waveoutputtest.TestWaveOutputPath("chunk-items.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-details.js"): {
+			waveoutputtest.TestWaveOutputPath("chunk-details.css"),
+			waveoutputtest.TestWaveOutputPath("chunk-shared.css"),
 		},
 	}
 
@@ -97,29 +98,29 @@ func BenchmarkRouteDepsAndCSSResolution(b *testing.B) {
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			Deps: []string{
-				testWaveOutPath("chunk-a.js"),
-				testWaveOutPath("chunk-b.js"),
-				testWaveOutPath("chunk-c.js"),
-				testWaveOutPath("chunk-a.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-a.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-b.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-c.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-a.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-deps", paths)
 	stage.ClientEntryDeps = []string{
-		testWaveOutPath("chunk-root.js"),
-		testWaveOutPath("chunk-b.js"),
+		waveoutputtest.TestWaveOutputPath("chunk-root.js"),
+		waveoutputtest.TestWaveOutputPath("chunk-b.js"),
 	}
 	stage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
-		testWaveOutPath("chunk-root.js"):   {testWaveOutPath("root.css")},
-		testWaveOutPath("chunk-a.js"):      {testWaveOutPath("a.css")},
-		testWaveOutPath("chunk-b.js"): {
-			testWaveOutPath("b.css"),
-			testWaveOutPath("shared.css"),
+		waveoutputtest.TestWaveOutputPath("client-entry.js"): {waveoutputtest.TestWaveOutputPath("client.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-root.js"):   {waveoutputtest.TestWaveOutputPath("root.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-a.js"):      {waveoutputtest.TestWaveOutputPath("a.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-b.js"): {
+			waveoutputtest.TestWaveOutputPath("b.css"),
+			waveoutputtest.TestWaveOutputPath("shared.css"),
 		},
-		testWaveOutPath("chunk-c.js"): {
-			testWaveOutPath("c.css"),
-			testWaveOutPath("shared.css"),
+		waveoutputtest.TestWaveOutputPath("chunk-c.js"): {
+			waveoutputtest.TestWaveOutputPath("c.css"),
+			waveoutputtest.TestWaveOutputPath("shared.css"),
 		},
 	}
 
@@ -174,24 +175,24 @@ func BenchmarkLoadersHandler_HTMLCurrentBuild(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         testWaveOutPath("routes/items.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				testWaveOutPath("chunk-items.js"),
-				testWaveOutPath("chunk-shared.js"),
-				testWaveOutPath("chunk-details.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-items.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-shared.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-details.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-html-build", paths)
-	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
+	stage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
-		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
-		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
-		testWaveOutPath("chunk-details.js"): {
-			testWaveOutPath("chunk-details.css"),
-			testWaveOutPath("chunk-shared.css"),
+		waveoutputtest.TestWaveOutputPath("client-entry.js"): {waveoutputtest.TestWaveOutputPath("client-entry.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-shared.js"): {waveoutputtest.TestWaveOutputPath("chunk-shared.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-items.js"):  {waveoutputtest.TestWaveOutputPath("chunk-items.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-details.js"): {
+			waveoutputtest.TestWaveOutputPath("chunk-details.css"),
+			waveoutputtest.TestWaveOutputPath("chunk-shared.css"),
 		},
 	}
 
@@ -241,24 +242,24 @@ func BenchmarkLoadersHandler_JSONCurrentBuild_ColdCache(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         testWaveOutPath("routes/items.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			Deps: []string{
-				testWaveOutPath("chunk-items.js"),
-				testWaveOutPath("chunk-shared.js"),
-				testWaveOutPath("chunk-details.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-items.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-shared.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-details.js"),
 			},
 		},
 	}
 	stage := defaultPathsFile("bench-cold-build", paths)
-	stage.ClientEntryDeps = []string{testWaveOutPath("chunk-shared.js")}
+	stage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("chunk-shared.js")}
 	stage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry.js"): {testWaveOutPath("client-entry.css")},
-		testWaveOutPath("chunk-shared.js"): {testWaveOutPath("chunk-shared.css")},
-		testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
-		testWaveOutPath("chunk-details.js"): {
-			testWaveOutPath("chunk-details.css"),
-			testWaveOutPath("chunk-shared.css"),
+		waveoutputtest.TestWaveOutputPath("client-entry.js"): {waveoutputtest.TestWaveOutputPath("client-entry.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-shared.js"): {waveoutputtest.TestWaveOutputPath("chunk-shared.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-items.js"):  {waveoutputtest.TestWaveOutputPath("chunk-items.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-details.js"): {
+			waveoutputtest.TestWaveOutputPath("chunk-details.css"),
+			waveoutputtest.TestWaveOutputPath("chunk-shared.css"),
 		},
 	}
 
@@ -312,13 +313,13 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			SrcPath:         "frontend/src/routes/items.$id.tsx",
-			OutPath:         testWaveOutPath("routes/items.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ItemErrorBoundary",
-			Deps:            []string{testWaveOutPath("chunk-items.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-items.js")},
 		},
 	})
-	stage.RouteManifestFile = testWaveOutPath("route-manifest.js")
+	stage.RouteManifestFile = waveoutputtest.TestWaveOutputPath("route-manifest.js")
 
 	fixture := newTestFixture(b, testFixtureOptions{
 		stageOne:         stage,
@@ -334,14 +335,14 @@ func BenchmarkSSRInnerHTMLGeneration(b *testing.B) {
 			ErrorExportKeys:      []string{"ItemErrorBoundary"},
 			MatchedPatterns:      []string{"/items/:id"},
 			LoadersData:          []any{map[string]any{"id": "42"}},
-			ImportURLs:           []string{testWaveOutURLPath("routes/items.$id.js")},
+			ImportURLs:           []string{waveoutputtest.TestWaveOutputURLPath("routes/items.$id.js")},
 			ExportKeys:           []string{"default"},
 			HasRootData:          false,
 			Params:               mux.Params{"id": "42"},
 			SplatValues:          []string{"detail"},
-			Deps:                 []string{testWaveOutPath("chunk-items.js")},
+			Deps:                 []string{waveoutputtest.TestWaveOutputPath("chunk-items.js")},
 		},
-		CSSBundles: []string{testWaveOutPath("chunk-items.css")},
+		CSSBundles: []string{waveoutputtest.TestWaveOutputPath("chunk-items.css")},
 	}
 
 	b.ReportAllocs()

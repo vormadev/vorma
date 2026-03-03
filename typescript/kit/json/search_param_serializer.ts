@@ -33,6 +33,7 @@ export function serializeToSearchParams(obj: unknown): URLSearchParams {
 			return;
 		}
 
+		// oxlint-disable-next-line no-base-to-string
 		params.append(key, String(value));
 	}
 

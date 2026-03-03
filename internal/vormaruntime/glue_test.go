@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"github.com/vormadev/vorma/wave/waveartifacts"
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
@@ -1027,7 +1028,7 @@ func TestInitWithDefaultRouter_Integration(t *testing.T) {
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         testWaveOutPath("routes/hello.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1104,7 +1105,7 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         testWaveOutPath("routes/hello.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1112,13 +1113,13 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         testWaveOutPath("routes/hello.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         testWaveOutPath("routes/new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -1474,7 +1475,7 @@ func TestInitWithDefaultRouter_LoadersHeadContracts(t *testing.T) {
 		"/hello": {
 			OriginalPattern: "/hello",
 			SrcPath:         "frontend/src/routes/hello.tsx",
-			OutPath:         testWaveOutPath("routes/hello.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/hello.js"),
 			ExportKey:       "default",
 		},
 	})

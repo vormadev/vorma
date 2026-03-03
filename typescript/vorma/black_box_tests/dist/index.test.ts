@@ -66,21 +66,21 @@ function assertDistApiTypeGuardrails(): void {
 	const typedNavigate = clientSurface.makeTypedNavigate(
 		DIST_TYPE_GUARD_VORMA_APP_CONFIG,
 	);
-	typedNavigate({
+	void typedNavigate({
 		pattern: "/users/:id",
 		params: { id: "123" },
 	});
-	typedNavigate({
+	void typedNavigate({
 		pattern: "/*",
 		splatValues: ["docs", "getting-started"],
 	});
 
 	// @ts-expect-error params are required for /users/:id.
-	typedNavigate({ pattern: "/users/:id" });
+	void typedNavigate({ pattern: "/users/:id" });
 	// @ts-expect-error params key must match route param names.
-	typedNavigate({ pattern: "/users/:id", params: { slug: "123" } });
+	void typedNavigate({ pattern: "/users/:id", params: { slug: "123" } });
 	// @ts-expect-error splatValues are required for splat routes.
-	typedNavigate({ pattern: "/*" });
+	void typedNavigate({ pattern: "/*" });
 
 	const addSolidClientLoader = solidAdapterSurface.makeTypedAddClientLoader(
 		DIST_TYPE_GUARD_VORMA_APP_CONFIG,
@@ -100,25 +100,25 @@ function assertDistApiTypeGuardrails(): void {
 	clientSurface.getHistoryInstance();
 
 	// @ts-expect-error raw React store helpers should remain internal-only.
-	reactAdapterSurface.useLoadersData;
+	void reactAdapterSurface.useLoadersData;
 	// @ts-expect-error raw React store helpers should remain internal-only.
-	reactAdapterSurface.useClientLoadersData;
+	void reactAdapterSurface.useClientLoadersData;
 	// @ts-expect-error raw React store helpers should remain internal-only.
-	reactAdapterSurface.useRouterData;
+	void reactAdapterSurface.useRouterData;
 
 	// @ts-expect-error raw Preact stores should remain internal-only.
-	preactAdapterSurface.loadersData;
+	void preactAdapterSurface.loadersData;
 	// @ts-expect-error raw Preact stores should remain internal-only.
-	preactAdapterSurface.clientLoadersData;
+	void preactAdapterSurface.clientLoadersData;
 	// @ts-expect-error raw Preact stores should remain internal-only.
-	preactAdapterSurface.routerData;
+	void preactAdapterSurface.routerData;
 
 	// @ts-expect-error raw Solid stores should remain internal-only.
-	solidAdapterSurface.loadersData;
+	void solidAdapterSurface.loadersData;
 	// @ts-expect-error raw Solid stores should remain internal-only.
-	solidAdapterSurface.clientLoadersData;
+	void solidAdapterSurface.clientLoadersData;
 	// @ts-expect-error raw Solid stores should remain internal-only.
-	solidAdapterSurface.routerData;
+	void solidAdapterSurface.routerData;
 }
 void assertDistApiTypeGuardrails;
 
@@ -184,6 +184,13 @@ function createRouteDataResponse(
 	overrides: Record<string, unknown> = {},
 	init: ResponseInit = {},
 ): Response {
+	const responseHeaders = new Headers({
+		"Content-Type": "application/json",
+		"X-Wave-Framework-Build-Id": "1",
+	});
+	new Headers(init.headers ?? undefined).forEach((value, key) => {
+		responseHeaders.set(key, value);
+	});
 	return new Response(
 		JSON.stringify({
 			matchedPatterns: [],
@@ -202,11 +209,7 @@ function createRouteDataResponse(
 		}),
 		{
 			status: init.status ?? 200,
-			headers: {
-				"Content-Type": "application/json",
-				"X-Wave-Framework-Build-Id": "1",
-				...init.headers,
-			},
+			headers: responseHeaders,
 			...init,
 		},
 	);
@@ -2218,14 +2221,12 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 		expect(optedInLoader).toHaveBeenCalledTimes(1);
 		expect(nonOptedLoader).toHaveBeenCalledTimes(1);
 
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "js-update",
-					path: "/src/routes/hmr-opted-in.tsx?t=2",
-				},
-			],
-		});
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "js-update",
+				path: "/src/routes/hmr-opted-in.tsx?t=2",
+			},
+		]);
 		await vi.runAllTimersAsync();
 
 		expect(optedInLoader).toHaveBeenCalledTimes(2);
@@ -2265,14 +2266,12 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 		await vi.runAllTimersAsync();
 		expect(optedInLoader).toHaveBeenCalledTimes(1);
 
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "css-update",
-					path: "/src/routes/hmr-css.tsx?t=2",
-				},
-			],
-		});
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "css-update",
+				path: "/src/routes/hmr-css.tsx?t=2",
+			},
+		]);
 		await vi.runAllTimersAsync();
 
 		expect(optedInLoader).toHaveBeenCalledTimes(1);
@@ -9225,7 +9224,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 				node.rel === "preload" &&
 				node.getAttribute("as") === "style"
 			) {
-				Promise.resolve().then(() =>
+				void Promise.resolve().then(() =>
 					node.dispatchEvent(new Event("load")),
 				);
 			}
@@ -9312,7 +9311,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 				node.rel === "preload" &&
 				node.getAttribute("as") === "style"
 			) {
-				Promise.resolve().then(() =>
+				void Promise.resolve().then(() =>
 					node.dispatchEvent(new Event("load")),
 				);
 			}

@@ -30,6 +30,7 @@ import {
 	createRouteOutletAdapterSyncHost,
 	createTypedAdapterLinkFactory,
 	createTypedAdapterValueHookFactories,
+	formatOutermostErrorForRendering,
 	renderRouteOutletAdapterRenderModel,
 	resolveRouteOutletAdapterRenderModel,
 	type RouteOutletStoreState,
@@ -342,7 +343,9 @@ export function VormaRootOutlet(
 			return <ErrorBoundaryComponent error={props.outermostError} />;
 		},
 		renderErrorWithoutBoundary: (props) => {
-			return <>Error: {String(props.outermostError ?? "unknown")}</>;
+			return (
+				<>{formatOutermostErrorForRendering(props.outermostError)}</>
+			);
 		},
 		renderComponent: (props) => {
 			return (

@@ -352,6 +352,14 @@ function terminateAllTrackedRuntimeCommandsSync(): void {
 		} catch {
 			// Process may have already exited.
 		}
+		try {
+			terminateProcessGroup({
+				child: spawnedCommand.child,
+				signal: "SIGKILL",
+			});
+		} catch {
+			// Process may have already exited.
+		}
 	}
 }
 

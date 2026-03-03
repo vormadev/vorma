@@ -173,10 +173,11 @@ func runInstallSequence(repositoryRootPath string) error {
 		return createInstallError
 	}
 
+	e2eDirectoryPath := filepath.Join(repositoryRootPath, "internal/e2e")
 	if e2eInstallError := runCommand(runCommandInput{
-		workingDirectoryPath: repositoryRootPath,
-		commandPath:          "go",
-		commandArguments:     []string{"run", "./internal/cmd/e2e", "install"},
+		workingDirectoryPath: e2eDirectoryPath,
+		commandPath:          "pnpm",
+		commandArguments:     []string{"i"},
 	}); e2eInstallError != nil {
 		return e2eInstallError
 	}

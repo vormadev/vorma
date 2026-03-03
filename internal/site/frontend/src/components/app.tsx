@@ -14,7 +14,7 @@ const theme_to_label_map = {
 };
 
 for (const url of Object.values(theme_to_label_map)) {
-	preload_img(url);
+	void preload_img(url);
 }
 
 function preload_img(url: string) {

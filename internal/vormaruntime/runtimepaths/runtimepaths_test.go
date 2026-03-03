@@ -2,6 +2,7 @@ package runtimepaths
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"reflect"
 	"strings"
 	"testing"
@@ -282,21 +283,21 @@ func TestBuildRuntimePathsFileSnapshot(t *testing.T) {
 		pathsFile := &PathsFile{
 			BuildID:        "build-artifacts",
 			ClientEntrySrc: "frontend/src/vorma.entry.tsx",
-			ClientEntryOut: testWaveOutPath("client-entry.js"),
+			ClientEntryOut: waveoutputtest.TestWaveOutputPath("client-entry.js"),
 			ClientEntryDeps: []string{
-				testWaveOutPath("chunk-client.js"),
+				waveoutputtest.TestWaveOutputPath("chunk-client.js"),
 			},
 			DepToCSSBundleMap: map[string][]string{
-				testWaveOutPath("chunk-client.js"): {testWaveOutPath("chunk-client.css")},
+				waveoutputtest.TestWaveOutputPath("chunk-client.js"): {waveoutputtest.TestWaveOutputPath("chunk-client.css")},
 			},
-			RouteManifestFile: testWaveOutPath("route-manifest.js"),
+			RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 			Paths: map[string]*RoutePath{
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.tsx",
-					OutPath:         testWaveOutPath("routes/products.$id.js"),
+					OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 					ExportKey:       "default",
-					Deps:            []string{testWaveOutPath("products.js")},
+					Deps:            []string{waveoutputtest.TestWaveOutputPath("products.js")},
 				},
 			},
 		}
@@ -329,19 +330,19 @@ func TestBuildRuntimePathsFileSnapshot(t *testing.T) {
 		) {
 			t.Fatalf("DepToCSSBundleMap = %#v, want %#v", got, want)
 		}
-		if got := snapshot.Paths["/products/:id"].Deps[0]; got != testWaveOutPath("products.js") {
+		if got := snapshot.Paths["/products/:id"].Deps[0]; got != waveoutputtest.TestWaveOutputPath("products.js") {
 			t.Fatalf(
 				"snapshot route deps[0] = %q, want %q",
 				got,
-				testWaveOutPath("products.js"),
+				waveoutputtest.TestWaveOutputPath("products.js"),
 			)
 		}
 		pathsFile.Paths["/products/:id"].Deps[0] = "mutated"
-		if got := snapshot.Paths["/products/:id"].Deps[0]; got != testWaveOutPath("products.js") {
+		if got := snapshot.Paths["/products/:id"].Deps[0]; got != waveoutputtest.TestWaveOutputPath("products.js") {
 			t.Fatalf(
 				"snapshot route deps[0] after source mutation = %q, want %q",
 				got,
-				testWaveOutPath("products.js"),
+				waveoutputtest.TestWaveOutputPath("products.js"),
 			)
 		}
 	})
@@ -384,20 +385,20 @@ func TestLoadRouteArtifactsFromFS(t *testing.T) {
 			Stage:             stage,
 			BuildID:           buildID,
 			ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-			ClientEntryOut:    testWaveOutPath("client-entry.js"),
-			ClientEntryDeps:   []string{testWaveOutPath("chunk-client.js")},
-			RouteManifestFile: testWaveOutPath("route-manifest.js"),
+			ClientEntryOut:    waveoutputtest.TestWaveOutputPath("client-entry.js"),
+			ClientEntryDeps:   []string{waveoutputtest.TestWaveOutputPath("chunk-client.js")},
+			RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 			Paths: map[string]*RoutePath{
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.tsx",
 					ExportKey:       "default",
-					Deps:            []string{testWaveOutPath("chunk-products.js")},
+					Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-products.js")},
 				},
 			},
 		}
 		if includeOutPath {
-			pathsFile.Paths["/products/:id"].OutPath = testWaveOutPath("routes/products.$id.js")
+			pathsFile.Paths["/products/:id"].OutPath = waveoutputtest.TestWaveOutputPath("routes/products.$id.js")
 		}
 		b, err := json.Marshal(pathsFile)
 		if err != nil {

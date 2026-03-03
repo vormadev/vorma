@@ -1,6 +1,7 @@
 package vormaruntime
 
 import (
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime/routepublic"
@@ -10,10 +11,10 @@ func TestRuntimeRoutePathConversionHelpers(t *testing.T) {
 	pathValue := &Path{
 		OriginalPattern: "/products/:id",
 		SrcPath:         "frontend/src/routes/products.$id.tsx",
-		OutPath:         testWaveOutPath("routes/products.$id.js"),
+		OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 		ExportKey:       "default",
 		ErrorExportKey:  "ProductErrorBoundary",
-		Deps:            []string{testWaveOutPath("products.js")},
+		Deps:            []string{waveoutputtest.TestWaveOutputPath("products.js")},
 	}
 
 	runtimeCorePath := routepublic.ToRuntimeCoreRoutePath(pathValue)
@@ -21,7 +22,7 @@ func TestRuntimeRoutePathConversionHelpers(t *testing.T) {
 		t.Fatal("routepublic.ToRuntimeCoreRoutePath returned nil")
 	}
 	pathValue.Deps[0] = "mutated"
-	if got, want := runtimeCorePath.Deps[0], testWaveOutPath("products.js"); got != want {
+	if got, want := runtimeCorePath.Deps[0], waveoutputtest.TestWaveOutputPath("products.js"); got != want {
 		t.Fatalf("runtimecore deps = %q, want %q", got, want)
 	}
 
@@ -30,7 +31,7 @@ func TestRuntimeRoutePathConversionHelpers(t *testing.T) {
 		t.Fatal("routepublic.FromRuntimeCoreRoutePath returned nil")
 	}
 	runtimeCorePath.Deps[0] = "runtimecore-mutated"
-	if got, want := convertedBack.Deps[0], testWaveOutPath("products.js"); got != want {
+	if got, want := convertedBack.Deps[0], waveoutputtest.TestWaveOutputPath("products.js"); got != want {
 		t.Fatalf("converted-back deps = %q, want %q", got, want)
 	}
 }
@@ -40,9 +41,9 @@ func TestRuntimeRoutePathMapConversionHelpers(t *testing.T) {
 		"/a": {
 			OriginalPattern: "/a",
 			SrcPath:         "frontend/src/routes/a.tsx",
-			OutPath:         testWaveOutPath("routes/a.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/a.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("a.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("a.js")},
 		},
 		"/nil": nil,
 	}
@@ -58,7 +59,7 @@ func TestRuntimeRoutePathMapConversionHelpers(t *testing.T) {
 		)
 	}
 	paths["/a"].Deps[0] = "mutated"
-	if got, want := runtimeCorePaths["/a"].Deps[0], testWaveOutPath("a.js"); got != want {
+	if got, want := runtimeCorePaths["/a"].Deps[0], waveoutputtest.TestWaveOutputPath("a.js"); got != want {
 		t.Fatalf("runtimecore deps = %q, want %q", got, want)
 	}
 
@@ -67,7 +68,7 @@ func TestRuntimeRoutePathMapConversionHelpers(t *testing.T) {
 		t.Fatal("routepublic.FromRuntimeCoreRoutePaths returned nil")
 	}
 	runtimeCorePaths["/a"].Deps[0] = "runtimecore-mutated"
-	if got, want := convertedBack["/a"].Deps[0], testWaveOutPath("a.js"); got != want {
+	if got, want := convertedBack["/a"].Deps[0], waveoutputtest.TestWaveOutputPath("a.js"); got != want {
 		t.Fatalf("converted-back deps = %q, want %q", got, want)
 	}
 }
@@ -77,9 +78,9 @@ func TestClonePathsMapHelpers(t *testing.T) {
 		"/a": {
 			OriginalPattern: "/a",
 			SrcPath:         "frontend/src/routes/a.tsx",
-			OutPath:         testWaveOutPath("routes/a.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/a.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("a.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("a.js")},
 		},
 	}
 
@@ -88,7 +89,7 @@ func TestClonePathsMapHelpers(t *testing.T) {
 		t.Fatalf("cloned original pattern = %q, want %q", got, want)
 	}
 	paths["/a"].Deps[0] = "mutated"
-	if got, want := cloned["/a"].Deps[0], testWaveOutPath("a.js"); got != want {
+	if got, want := cloned["/a"].Deps[0], waveoutputtest.TestWaveOutputPath("a.js"); got != want {
 		t.Fatalf("cloned deps = %q, want %q", got, want)
 	}
 

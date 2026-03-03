@@ -226,6 +226,7 @@ func reusableFixtureRequiredEntryRelativePaths() []string {
 		"backend/wave.config.json",
 		"package.json",
 		"node_modules",
+		"node_modules/caniuse-lite/dist/unpacker/agents.js",
 		"node_modules/vite/bin/vite.js",
 		"node_modules/vite/dist/node/cli.js",
 		"node_modules/vite/dist/node/chunks/chunk.js",

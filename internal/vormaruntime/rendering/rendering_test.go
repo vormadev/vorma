@@ -1,6 +1,7 @@
 package rendering
 
 import (
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"html/template"
 	"strings"
 	"testing"
@@ -242,7 +243,7 @@ func TestBuildSSRInnerHTMLFromRuntimeState_ValidatesLoadersDataJSON(
 			BuildID:           `"build"`,
 			RootElementID:     "root",
 			PublicPathPrefix:  "/static/",
-			RouteManifestFile: testWaveOutPath("route-manifest.js"),
+			RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		},
 		SSRRouteData{
 			LoadersData: []any{make(chan int)},
@@ -268,7 +269,7 @@ func TestBuildSSRInnerHTMLFromRuntimeState_LoadersDataJSONEscapesScriptTerminato
 			BuildID:           `"build-escape"`,
 			RootElementID:     "root",
 			PublicPathPrefix:  "/static/",
-			RouteManifestFile: testWaveOutPath("route-manifest.js"),
+			RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		},
 		SSRRouteData{
 			MatchedPatterns: []string{"/"},
@@ -320,7 +321,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 				BuildID:           "build-123",
 				RootElementID:     "root",
 				PublicPathPrefix:  "/static/",
-				RouteManifestFile: testWaveOutPath("route-manifest.js"),
+				RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 			},
 			SSRRouteData: SSRRouteData{
 				ViteDevURL:           `"http://localhost:5173"`,
@@ -340,7 +341,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 			BodyScriptsInput: BodyScriptsInput{
 				RenderSnapshot: LoadersHTMLRenderSnapshot{
 					IsDevMode:      false,
-					ClientEntryOut: testWaveOutPath("client-entry.js"),
+					ClientEntryOut: waveoutputtest.TestWaveOutputPath("client-entry.js"),
 					RootTemplate:   rootTemplate,
 				},
 				PublicPathPrefix: "/static/",
@@ -358,7 +359,7 @@ func TestBuildLoadersHTMLResponseBytes_RendersDocument(t *testing.T) {
 	if !strings.Contains(rendered, `id="critical"`) {
 		t.Fatalf("missing critical CSS element in output: %s", rendered)
 	}
-	if !strings.Contains(rendered, `/static`+testWaveOutURLPath("client-entry.js")) {
+	if !strings.Contains(rendered, `/static`+waveoutputtest.TestWaveOutputURLPath("client-entry.js")) {
 		t.Fatalf("missing body scripts in output: %s", rendered)
 	}
 	if !strings.Contains(rendered, `buildID: "build-123",`) {

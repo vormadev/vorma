@@ -5,5 +5,5 @@
 		"paths": {},
 		"noImplicitAny": false
 	},
-	"include": ["./**/*.ts", "./**/*.tsx", "./ambient_modules.d.ts"]
+	"include": ["./**/*.ts", "./**/*.tsx"]
 }

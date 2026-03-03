@@ -59,7 +59,7 @@ export function MD(props: RouteProps<"/*">) {
 						onClick={async () => {
 							const ld = loaderData();
 							const markdown = `# ${ld.Title}\n\n${htmlToMarkdown(ld.Content ?? "")}\n`;
-							navigator.clipboard.writeText(markdown);
+							void navigator.clipboard.writeText(markdown);
 						}}
 					>
 						✨ Copy as Markdown

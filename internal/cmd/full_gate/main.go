@@ -48,19 +48,31 @@ var releaseGateStages = []releaseGateStage{
 		},
 	},
 	{
-		stageName: "typescript",
+		stageName: "typescript-build",
 		targetNames: []string{
-			"tstest-source",
-			"tslint",
-			"tscheck",
 			"npmbuild",
 		},
 		dependencyTargetNames: []string{"tsreset"},
 	},
 	{
-		stageName: "distribution-and-e2e",
+		stageName: "typescript",
+		targetNames: []string{
+			"tstest-source",
+			"tslint",
+			"tscheck",
+		},
+		dependencyTargetNames: []string{"npmbuild"},
+	},
+	{
+		stageName: "distribution",
 		targetNames: []string{
 			"tstest-dist",
+		},
+		dependencyTargetNames: []string{"npmbuild"},
+	},
+	{
+		stageName: "e2e",
+		targetNames: []string{
 			"e2e-test",
 		},
 		dependencyTargetNames: []string{"npmbuild"},
@@ -98,7 +110,10 @@ func runReleaseGateProcess() int {
 	resultsByTargetName := make(map[string]gateTargetResult)
 
 	for _, stage := range releaseGateStages {
-		dependencyFailureReason := findDependencyFailureReason(stage, resultsByTargetName)
+		dependencyFailureReason := findDependencyFailureReason(
+			stage,
+			resultsByTargetName,
+		)
 		if dependencyFailureReason != "" {
 			skippedResults := runSkippedStage(stage, dependencyFailureReason)
 			printStageResults(stage, skippedResults)
@@ -115,7 +130,9 @@ func runReleaseGateProcess() int {
 		}
 	}
 
-	failedTargetResults := collectFailedTargetResultsInOrder(resultsByTargetName)
+	failedTargetResults := collectFailedTargetResultsInOrder(
+		resultsByTargetName,
+	)
 	if len(failedTargetResults) > 0 {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "RELEASE GATE: FAIL")
@@ -130,7 +147,9 @@ func runReleaseGateProcess() int {
 		return failedTargetResults[0].exitCode
 	}
 
-	skippedTargetResults := collectSkippedTargetResultsInOrder(resultsByTargetName)
+	skippedTargetResults := collectSkippedTargetResultsInOrder(
+		resultsByTargetName,
+	)
 	if len(skippedTargetResults) > 0 {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, "RELEASE GATE: FAIL")
@@ -154,10 +173,13 @@ func resolveMaxParallelTargets() int {
 	const defaultMaxParallelTargets = 3
 	const minimumMaxParallelTargets = 1
 	const maximumMaxParallelTargets = 4
-	parallelTargetsSetting := strings.TrimSpace(os.Getenv("VORMA_FULL_GATE_PARALLEL"))
+	parallelTargetsSetting := strings.TrimSpace(
+		os.Getenv("VORMA_FULL_GATE_PARALLEL"),
+	)
 	if parallelTargetsSetting != "" {
 		parsedParallelTargets, parseErr := strconv.Atoi(parallelTargetsSetting)
-		if parseErr != nil || parsedParallelTargets < minimumMaxParallelTargets {
+		if parseErr != nil ||
+			parsedParallelTargets < minimumMaxParallelTargets {
 			fmt.Fprintf(
 				os.Stderr,
 				"invalid VORMA_FULL_GATE_PARALLEL=%q; using default=%d\n",
@@ -186,7 +208,10 @@ func runStageInParallel(
 	stage releaseGateStage,
 	maxParallelTargets int,
 ) map[string]gateTargetResult {
-	resultsByTargetName := make(map[string]gateTargetResult, len(stage.targetNames))
+	resultsByTargetName := make(
+		map[string]gateTargetResult,
+		len(stage.targetNames),
+	)
 	var resultsLock sync.Mutex
 	var waitGroup sync.WaitGroup
 	parallelismLimiter := make(chan struct{}, maxParallelTargets)
@@ -241,7 +266,11 @@ func runStageInParallel(
 					runningTargetsLock.Unlock()
 					continue
 				}
-				runningTargetDescriptions := make([]string, 0, len(runningTargetsStartedAt))
+				runningTargetDescriptions := make(
+					[]string,
+					0,
+					len(runningTargetsStartedAt),
+				)
 				for targetName, startedAt := range runningTargetsStartedAt {
 					runningTargetDescriptions = append(
 						runningTargetDescriptions,
@@ -293,7 +322,10 @@ func runSkippedStage(
 	stage releaseGateStage,
 	dependencyFailureReason string,
 ) map[string]gateTargetResult {
-	resultsByTargetName := make(map[string]gateTargetResult, len(stage.targetNames))
+	resultsByTargetName := make(
+		map[string]gateTargetResult,
+		len(stage.targetNames),
+	)
 	for _, targetName := range stage.targetNames {
 		resultsByTargetName[targetName] = gateTargetResult{
 			targetName:    targetName,
@@ -356,7 +388,11 @@ func printStageResults(
 	fmt.Printf("\n=== stage: %s ===\n", stage.stageName)
 	for _, targetName := range stage.targetNames {
 		targetResult := resultsByTargetName[targetName]
-		fmt.Printf("\n--- target: %s (%s) ---\n", targetResult.targetName, targetResult.duration.Round(time.Millisecond))
+		fmt.Printf(
+			"\n--- target: %s (%s) ---\n",
+			targetResult.targetName,
+			targetResult.duration.Round(time.Millisecond),
+		)
 		if targetResult.skippedReason != "" {
 			fmt.Printf("skipped: %s\n", targetResult.skippedReason)
 			continue
@@ -368,7 +404,11 @@ func printStageResults(
 			fmt.Println(trimmedOutput)
 		}
 		if targetResult.executionErr != nil {
-			fmt.Printf("target failed: %s (exit=%d)\n", targetResult.targetName, targetResult.exitCode)
+			fmt.Printf(
+				"target failed: %s (exit=%d)\n",
+				targetResult.targetName,
+				targetResult.exitCode,
+			)
 		}
 	}
 }
@@ -402,7 +442,10 @@ func collectSkippedTargetResultsInOrder(
 				continue
 			}
 			if targetResult.skippedReason != "" {
-				skippedTargetResults = append(skippedTargetResults, targetResult)
+				skippedTargetResults = append(
+					skippedTargetResults,
+					targetResult,
+				)
 			}
 		}
 	}

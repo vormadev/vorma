@@ -3,6 +3,7 @@ package runtimehttp
 import (
 	"errors"
 	"fmt"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -289,9 +290,9 @@ func TestPrepareExecutionInputs(t *testing.T) {
 			t.Fatalf("Cached.ImportURLs = %#v, want %#v", got, want)
 		}
 		if got, want := inputs.Cached.Deps, []string{
-			testWaveOutPath("chunk-client.js"),
-			testWaveOutPath("chunk-root.js"),
-			testWaveOutPath("chunk-items.js"),
+			waveoutputtest.TestWaveOutputPath("chunk-client.js"),
+			waveoutputtest.TestWaveOutputPath("chunk-root.js"),
+			waveoutputtest.TestWaveOutputPath("chunk-items.js"),
 		}; !reflect.DeepEqual(got, want) {
 			t.Fatalf("Cached.Deps = %#v, want %#v", got, want)
 		}
@@ -348,9 +349,9 @@ func TestBuildExecutionInputsFromMatchResults_FallbacksMatchedPatternsWhenMissin
 		ExportKeys:      []string{"Root", "ItemRoute"},
 		ErrorExportKeys: []string{"RootErrorBoundary", "ItemErrorBoundary"},
 		Deps: []string{
-			testWaveOutPath("chunk-client.js"),
-			testWaveOutPath("chunk-root.js"),
-			testWaveOutPath("chunk-items.js"),
+			waveoutputtest.TestWaveOutputPath("chunk-client.js"),
+			waveoutputtest.TestWaveOutputPath("chunk-root.js"),
+			waveoutputtest.TestWaveOutputPath("chunk-items.js"),
 		},
 	}
 	routeDataCache.Store(cacheKey, cachedWithoutMatchedPatterns)
@@ -478,33 +479,33 @@ func runtimeSnapshotForRuntimeHTTPTests() routepipeline.RuntimeSnapshot {
 			"": {
 				OriginalPattern: "",
 				SrcPath:         "frontend/src/routes/root.tsx",
-				OutPath:         testWaveOutPath("routes/root.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("routes/root.js"),
 				ExportKey:       "Root",
 				ErrorExportKey:  "RootErrorBoundary",
-				Deps:            []string{testWaveOutPath("chunk-root.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-root.js")},
 			},
 			"/items/:id": {
 				OriginalPattern: "/items/:id",
 				SrcPath:         "frontend/src/routes/items.$id.tsx",
-				OutPath:         testWaveOutPath("routes/items.$id.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("routes/items.$id.js"),
 				ExportKey:       "ItemRoute",
 				ErrorExportKey:  "ItemErrorBoundary",
-				Deps:            []string{testWaveOutPath("chunk-items.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-items.js")},
 			},
 		},
-		ClientEntryDeps: []string{testWaveOutPath("chunk-client.js")},
-		ClientEntryOut:  testWaveOutPath("client-entry.js"),
+		ClientEntryDeps: []string{waveoutputtest.TestWaveOutputPath("chunk-client.js")},
+		ClientEntryOut:  waveoutputtest.TestWaveOutputPath("client-entry.js"),
 		DepToCSSBundleMap: map[string][]string{
-			testWaveOutPath("client-entry.js"): {testWaveOutPath("client.css")},
-			testWaveOutPath("chunk-client.js"): {testWaveOutPath("chunk-client.css")},
-			testWaveOutPath("chunk-root.js"):   {testWaveOutPath("chunk-root.css")},
-			testWaveOutPath("chunk-items.js"):  {testWaveOutPath("chunk-items.css")},
+			waveoutputtest.TestWaveOutputPath("client-entry.js"): {waveoutputtest.TestWaveOutputPath("client.css")},
+			waveoutputtest.TestWaveOutputPath("chunk-client.js"): {waveoutputtest.TestWaveOutputPath("chunk-client.css")},
+			waveoutputtest.TestWaveOutputPath("chunk-root.js"):   {waveoutputtest.TestWaveOutputPath("chunk-root.css")},
+			waveoutputtest.TestWaveOutputPath("chunk-items.js"):  {waveoutputtest.TestWaveOutputPath("chunk-items.css")},
 		},
 		HTMLRenderSnapshot: rendering.LoadersHTMLRenderSnapshot{
 			IsDevMode:      true,
-			ClientEntryOut: testWaveOutPath("client-entry.js"),
+			ClientEntryOut: waveoutputtest.TestWaveOutputPath("client-entry.js"),
 		},
-		RouteManifestFile:        testWaveOutPath("route-manifest.js"),
+		RouteManifestFile:        waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		RouteDataSnapshotVersion: 5,
 	}
 }

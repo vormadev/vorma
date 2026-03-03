@@ -2239,33 +2239,6 @@ func waitForWaitingForBuildRetryFlag(
 	return false
 }
 
-func waitForServerConfigWatchRoot(
-	serverForTest *Server,
-	expectedWatchRoot string,
-	timeout time.Duration,
-) bool {
-	if serverForTest == nil {
-		return false
-	}
-
-	expectedWatchRoot = filepath.Clean(expectedWatchRoot)
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		serverForTest.Mu.Lock()
-		currentWatchRoot := ""
-		if serverForTest.Cfg != nil && serverForTest.Cfg.Watch != nil {
-			currentWatchRoot = serverForTest.Cfg.Watch.WatchRoot
-		}
-		serverForTest.Mu.Unlock()
-
-		if filepath.Clean(currentWatchRoot) == expectedWatchRoot {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return false
-}
-
 func writeGoMainFileForDevserverRunTests(
 	goMainPath string,
 	fileContents string,

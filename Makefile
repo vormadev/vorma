@@ -34,10 +34,10 @@ gobench:
 
 tstest: tstest-source tstest-dist
 
-tstest-source:
+tstest-source: npmbuild
 	@pnpm vitest run --exclude "typescript/vorma/black_box_tests/dist/**"
 
-tstest-dist:
+tstest-dist: npmbuild
 	@pnpm vitest --run --config typescript/vorma/black_box_tests/dist/vitest.config.ts
 
 tstestwatch:
@@ -104,13 +104,13 @@ e2e-install-browsers:
 
 e2e-setup: e2e-install e2e-install-browsers
 
-e2e-test: npmbuild
+e2e-test: npmbuild e2e-setup
 	@go run ./internal/cmd/e2e test $(PLAYWRIGHT_ARGS)
 
-e2e-test-dev: npmbuild
+e2e-test-dev: npmbuild e2e-setup
 	@go run ./internal/cmd/e2e test-dev $(PLAYWRIGHT_ARGS)
 
-e2e-test-prod: npmbuild
+e2e-test-prod: npmbuild e2e-setup
 	@go run ./internal/cmd/e2e test-prod $(PLAYWRIGHT_ARGS)
 
 #####################################################################

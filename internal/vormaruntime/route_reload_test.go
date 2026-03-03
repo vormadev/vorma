@@ -3,6 +3,7 @@ package vormaruntime
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         testWaveOutPath("routes/old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -71,7 +72,7 @@ func TestDevReloadRoutesFromDisk_UpdatesBuildAndPreservesServerRoutes(
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         testWaveOutPath("routes/new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -153,36 +154,36 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.old.tsx",
-			OutPath:         testWaveOutPath("routes/page.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/page.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("route-dep-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("route-dep-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.ClientEntryOut = testWaveOutPath("client-entry-old.js")
-	oldStage.ClientEntryDeps = []string{testWaveOutPath("client-dep-old.js")}
+	oldStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-entry-old.js")
+	oldStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("client-dep-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry-old.js"): {testWaveOutPath("client-entry-old.css")},
-		testWaveOutPath("client-dep-old.js"):   {testWaveOutPath("client-dep-old.css")},
-		testWaveOutPath("route-dep-old.js"):    {testWaveOutPath("route-dep-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-entry-old.js"): {waveoutputtest.TestWaveOutputPath("client-entry-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-dep-old.js"):   {waveoutputtest.TestWaveOutputPath("client-dep-old.css")},
+		waveoutputtest.TestWaveOutputPath("route-dep-old.js"):    {waveoutputtest.TestWaveOutputPath("route-dep-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.new.tsx",
-			OutPath:         testWaveOutPath("routes/page.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/page.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("route-dep-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("route-dep-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.ClientEntryOut = testWaveOutPath("client-entry-new.js")
-	newStage.ClientEntryDeps = []string{testWaveOutPath("client-dep-new.js")}
+	newStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-entry-new.js")
+	newStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("client-dep-new.js")}
 	newStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry-new.js"): {testWaveOutPath("client-entry-new.css")},
-		testWaveOutPath("client-dep-new.js"):   {testWaveOutPath("client-dep-new.css")},
-		testWaveOutPath("route-dep-new.js"):    {testWaveOutPath("route-dep-new.css")},
+		waveoutputtest.TestWaveOutputPath("client-entry-new.js"): {waveoutputtest.TestWaveOutputPath("client-entry-new.css")},
+		waveoutputtest.TestWaveOutputPath("client-dep-new.js"):   {waveoutputtest.TestWaveOutputPath("client-dep-new.css")},
+		waveoutputtest.TestWaveOutputPath("route-dep-new.js"):    {waveoutputtest.TestWaveOutputPath("route-dep-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -219,10 +220,10 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if !containsString(oldData.Deps, testWaveOutURLPath("client-dep-old.js")) {
+	if !containsString(oldData.Deps, waveoutputtest.TestWaveOutputURLPath("client-dep-old.js")) {
 		t.Fatalf("old deps missing old client dep: %#v", oldData.Deps)
 	}
-	if !containsString(oldData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
+	if !containsString(oldData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"old css bundles missing old client-entry css: %#v",
 			oldData.CSSBundles,
@@ -245,12 +246,12 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 	if got, want := app.BuildID(), "build-new"; got != want {
 		t.Fatalf("build ID = %q, want %q", got, want)
 	}
-	if got, want := app.ClientEntryOut(), testWaveOutPath("client-entry-new.js"); got != want {
+	if got, want := app.ClientEntryOut(), waveoutputtest.TestWaveOutputPath("client-entry-new.js"); got != want {
 		t.Fatalf("client entry out = %q, want %q", got, want)
 	}
 	if got := app.ClientEntryDeps(); !containsString(
 		got,
-		testWaveOutPath("client-dep-new.js"),
+		waveoutputtest.TestWaveOutputPath("client-dep-new.js"),
 	) {
 		t.Fatalf("client entry deps = %#v, expected new client dep", got)
 	}
@@ -271,22 +272,22 @@ func TestDevReloadRoutesFromDisk_UpdatesClientEntryDepsAndCSSArtifacts(
 		t.Fatalf("decode new route data: %v", err)
 	}
 
-	if !containsString(newData.Deps, testWaveOutURLPath("client-dep-new.js")) {
+	if !containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("client-dep-new.js")) {
 		t.Fatalf("new deps missing new client dep: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, testWaveOutURLPath("client-dep-old.js")) {
+	if containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("client-dep-old.js")) {
 		t.Fatalf(
 			"new deps should not include old client dep: %#v",
 			newData.Deps,
 		)
 	}
-	if !containsString(newData.CSSBundles, testWaveOutURLPath("client-entry-new.css")) {
+	if !containsString(newData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("client-entry-new.css")) {
 		t.Fatalf(
 			"new css bundles missing new client-entry css: %#v",
 			newData.CSSBundles,
 		)
 	}
-	if containsString(newData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
+	if containsString(newData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"new css bundles should not include old client-entry css: %#v",
 			newData.CSSBundles,
@@ -301,28 +302,28 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.old.tsx",
-			OutPath:         testWaveOutPath("routes/page.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/page.old.js"),
 			ExportKey:       "default",
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.ClientEntryOut = testWaveOutPath("client-entry-old.js")
-	oldStage.ClientEntryDeps = []string{testWaveOutPath("client-dep-old.js")}
+	oldStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-entry-old.js")
+	oldStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("client-dep-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-entry-old.js"): {testWaveOutPath("client-entry-old.css")},
-		testWaveOutPath("client-dep-old.js"):   {testWaveOutPath("client-dep-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-entry-old.js"): {waveoutputtest.TestWaveOutputPath("client-entry-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-dep-old.js"):   {waveoutputtest.TestWaveOutputPath("client-dep-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.new.tsx",
-			OutPath:         testWaveOutPath("routes/page.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/page.new.js"),
 			ExportKey:       "default",
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.ClientEntryOut = testWaveOutPath("client-entry-new.js")
+	newStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-entry-new.js")
 	newStage.ClientEntryDeps = nil
 	newStage.DepToCSSBundleMap = nil
 
@@ -360,10 +361,10 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recOld.Body.Bytes(), &oldData); err != nil {
 		t.Fatalf("decode old route data: %v", err)
 	}
-	if !containsString(oldData.Deps, testWaveOutURLPath("client-dep-old.js")) {
+	if !containsString(oldData.Deps, waveoutputtest.TestWaveOutputURLPath("client-dep-old.js")) {
 		t.Fatalf("old deps missing old client dep: %#v", oldData.Deps)
 	}
-	if !containsString(oldData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
+	if !containsString(oldData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"old css bundles missing old client-entry css: %#v",
 			oldData.CSSBundles,
@@ -412,13 +413,13 @@ func TestDevReloadRoutesFromDisk_ClearsOmittedClientEntryDepsAndCSSArtifacts(
 	if err := json.Unmarshal(recNew.Body.Bytes(), &newData); err != nil {
 		t.Fatalf("decode new route data: %v", err)
 	}
-	if containsString(newData.Deps, testWaveOutURLPath("client-dep-old.js")) {
+	if containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("client-dep-old.js")) {
 		t.Fatalf(
 			"new deps should not include old client dep: %#v",
 			newData.Deps,
 		)
 	}
-	if containsString(newData.CSSBundles, testWaveOutURLPath("client-entry-old.css")) {
+	if containsString(newData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("client-entry-old.css")) {
 		t.Fatalf(
 			"new css bundles should not include old client-entry css: %#v",
 			newData.CSSBundles,
@@ -433,7 +434,7 @@ func TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState(
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         testWaveOutPath("routes/old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	}
@@ -474,7 +475,7 @@ func TestDevReloadRoutesFromDisk_InvalidPathsFileDoesNotMutateRuntimeState(
 		[]byte(
 			fmt.Sprintf(
 				`{"stage":"stage-one","buildID":"build-new-invalid","clientEntrySrc":"frontend/src/vorma.entry.tsx","paths":{"/bad":null},"routeManifestFile":%q}`,
-				testWaveOutPath("route-manifest.js"),
+				waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 			),
 		),
 	)
@@ -537,9 +538,9 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-					OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+					OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 					ExportKey:       "default",
-					Deps:            []string{testWaveOutPath("chunk-old.js")},
+					Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 				},
 			})
 			initialStage.Stage = "stage-one"
@@ -581,9 +582,9 @@ func TestDevReloadRoutesFromDisk_SemanticValidationFailuresDoNotMutateRuntimeSta
 				"/products/:id": {
 					OriginalPattern: "/products/:id",
 					SrcPath:         "frontend/src/routes/products.$id.invalid.tsx",
-					OutPath:         testWaveOutPath("routes/products.$id.invalid.js"),
+					OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.invalid.js"),
 					ExportKey:       "default",
-					Deps:            []string{testWaveOutPath("chunk-invalid.js")},
+					Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-invalid.js")},
 				},
 			})
 			invalidStage.Stage = "stage-one"
@@ -657,7 +658,7 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 		"/client-old": {
 			OriginalPattern: "/client-old",
 			SrcPath:         "frontend/src/routes/client-old.tsx",
-			OutPath:         testWaveOutPath("routes/client-old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/client-old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -701,10 +702,10 @@ func TestDevReloadRoutesFromDisk_NilPathsClearsClientRoutesAndPreservesServerHan
 		Stage:             "stage-one",
 		BuildID:           "build-new",
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:    testWaveOutPath("client-entry.js"),
+		ClientEntryOut:    waveoutputtest.TestWaveOutputPath("client-entry.js"),
 		ClientEntryDeps:   nil,
 		Paths:             nil,
-		RouteManifestFile: testWaveOutPath("route-manifest.js"),
+		RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		DepToCSSBundleMap: nil,
 	}
 	mustWriteJSONFile(
@@ -760,7 +761,7 @@ func TestDevReloadTemplateFromDisk_UsesUpdatedTemplate(t *testing.T) {
 		"/template": {
 			OriginalPattern: "/template",
 			SrcPath:         "frontend/src/routes/template.tsx",
-			OutPath:         testWaveOutPath("routes/template.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/template.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -822,7 +823,7 @@ func TestDevReloadTemplateFromDisk_ParseFailureDoesNotMutateTemplate(
 		"/template": {
 			OriginalPattern: "/template",
 			SrcPath:         "frontend/src/routes/template.tsx",
-			OutPath:         testWaveOutPath("routes/template.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/template.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -897,18 +898,18 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 
@@ -952,7 +953,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, testWaveOutURLPath("chunk-old.js")) {
+	if !containsString(oldData.Deps, waveoutputtest.TestWaveOutputURLPath("chunk-old.js")) {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -990,10 +991,10 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataForSamePatternAcrossBuilds(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, testWaveOutURLPath("chunk-new.js")) {
+	if !containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("chunk-new.js")) {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, testWaveOutURLPath("chunk-old.js")) {
+	if containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("chunk-old.js")) {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
 }
@@ -1005,9 +1006,9 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
@@ -1016,9 +1017,9 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
@@ -1067,7 +1068,7 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	) {
 		t.Fatalf("old ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(oldData.Deps, testWaveOutURLPath("chunk-old.js")) {
+	if !containsString(oldData.Deps, waveoutputtest.TestWaveOutputURLPath("chunk-old.js")) {
 		t.Fatalf("old Deps missing old chunk: %#v", oldData.Deps)
 	}
 
@@ -1112,10 +1113,10 @@ func TestDevReloadRoutesFromDisk_RebuildsRouteDataWhenBuildIDUnchanged(
 	) {
 		t.Fatalf("new ImportURLs = %#v, want %#v", got, want)
 	}
-	if !containsString(newData.Deps, testWaveOutURLPath("chunk-new.js")) {
+	if !containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("chunk-new.js")) {
 		t.Fatalf("new Deps missing new chunk: %#v", newData.Deps)
 	}
-	if containsString(newData.Deps, testWaveOutURLPath("chunk-old.js")) {
+	if containsString(newData.Deps, waveoutputtest.TestWaveOutputURLPath("chunk-old.js")) {
 		t.Fatalf("new Deps should not include old chunk: %#v", newData.Deps)
 	}
 }
@@ -1127,18 +1128,18 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_OnlyServeCoherentArtifactSet
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 
@@ -1318,30 +1319,30 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
-	oldStage.ClientEntryOut = testWaveOutPath("client-old.js")
+	oldStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-old.js")
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-old.js"): {testWaveOutPath("client-old.css")},
-		testWaveOutPath("chunk-old.js"):  {testWaveOutPath("chunk-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-old.js"): {waveoutputtest.TestWaveOutputPath("client-old.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-old.js"):  {waveoutputtest.TestWaveOutputPath("chunk-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
-	newStage.ClientEntryOut = testWaveOutPath("client-new.js")
+	newStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-new.js")
 	newStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-new.js"): {testWaveOutPath("client-new.css")},
-		testWaveOutPath("chunk-new.js"):  {testWaveOutPath("chunk-new.css")},
+		waveoutputtest.TestWaveOutputPath("client-new.js"): {waveoutputtest.TestWaveOutputPath("client-new.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-new.js"):  {waveoutputtest.TestWaveOutputPath("chunk-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -1407,7 +1408,7 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.Deps, []string{testWaveOutURLPath("client-shared.js"), testWaveOutURLPath("chunk-old.js")}; !slicesEqual(
+	if got, want := routeData.Deps, []string{waveoutputtest.TestWaveOutputURLPath("client-shared.js"), waveoutputtest.TestWaveOutputURLPath("chunk-old.js")}; !slicesEqual(
 		got,
 		want,
 	) {
@@ -1415,19 +1416,19 @@ func TestLoadersHandler_ReloadDuringRequest_DoesNotMixCSSFromNewBuild(
 	}
 
 	wantCSSBundles := []string{
-		testWaveOutURLPath("client-old.css"),
-		testWaveOutURLPath("chunk-old.css"),
+		waveoutputtest.TestWaveOutputURLPath("client-old.css"),
+		waveoutputtest.TestWaveOutputURLPath("chunk-old.css"),
 	}
 	if got := routeData.CSSBundles; !slicesEqual(got, wantCSSBundles) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, wantCSSBundles)
 	}
-	if containsString(routeData.CSSBundles, testWaveOutURLPath("client-new.css")) {
+	if containsString(routeData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("client-new.css")) {
 		t.Fatalf(
 			"CSSBundles should not include new-build client CSS: %#v",
 			routeData.CSSBundles,
 		)
 	}
-	if containsString(routeData.CSSBundles, testWaveOutURLPath("chunk-new.css")) {
+	if containsString(routeData.CSSBundles, waveoutputtest.TestWaveOutputURLPath("chunk-new.css")) {
 		t.Fatalf(
 			"CSSBundles should not include new-build route CSS: %#v",
 			routeData.CSSBundles,
@@ -1442,38 +1443,38 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.RouteManifestFile = testWaveOutPath("route-manifest-old.js")
-	oldStage.ClientEntryOut = testWaveOutPath("client-old.js")
-	oldStage.ClientEntryDeps = []string{testWaveOutPath("shared-old.js")}
+	oldStage.RouteManifestFile = waveoutputtest.TestWaveOutputPath("route-manifest-old.js")
+	oldStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-old.js")
+	oldStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("shared-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-old.js"): {testWaveOutPath("client-old.css")},
-		testWaveOutPath("shared-old.js"): {testWaveOutPath("shared-old.css")},
-		testWaveOutPath("chunk-old.js"):  {testWaveOutPath("chunk-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-old.js"): {waveoutputtest.TestWaveOutputPath("client-old.css")},
+		waveoutputtest.TestWaveOutputPath("shared-old.js"): {waveoutputtest.TestWaveOutputPath("shared-old.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-old.js"):  {waveoutputtest.TestWaveOutputPath("chunk-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.RouteManifestFile = testWaveOutPath("route-manifest-new.js")
-	newStage.ClientEntryOut = testWaveOutPath("client-new.js")
-	newStage.ClientEntryDeps = []string{testWaveOutPath("shared-new.js")}
+	newStage.RouteManifestFile = waveoutputtest.TestWaveOutputPath("route-manifest-new.js")
+	newStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-new.js")
+	newStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("shared-new.js")}
 	newStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-new.js"): {testWaveOutPath("client-new.css")},
-		testWaveOutPath("shared-new.js"): {testWaveOutPath("shared-new.css")},
-		testWaveOutPath("chunk-new.js"):  {testWaveOutPath("chunk-new.css")},
+		waveoutputtest.TestWaveOutputPath("client-new.js"): {waveoutputtest.TestWaveOutputPath("client-new.css")},
+		waveoutputtest.TestWaveOutputPath("shared-new.js"): {waveoutputtest.TestWaveOutputPath("shared-new.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-new.js"):  {waveoutputtest.TestWaveOutputPath("chunk-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -1528,7 +1529,7 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 	body := rec.Body.String()
 	expectedOldFragments := []string{
 		`buildID: "build-old",`,
-		`x.routeManifestURL = "` + testWaveOutURLPath("route-manifest-old.js") + `";`,
+		`x.routeManifestURL = "` + waveoutputtest.TestWaveOutputURLPath("route-manifest-old.js") + `";`,
 		"/frontend/src/routes/products.$id.old.tsx",
 	}
 	for _, expectedOldFragment := range expectedOldFragments {
@@ -1543,7 +1544,7 @@ func TestLoadersHandler_ReloadDuringHTMLRequest_KeepsBuildHeaderAndSSRPayloadGen
 
 	unexpectedNewFragments := []string{
 		`buildID: "build-new",`,
-		`x.routeManifestURL = "` + testWaveOutURLPath("route-manifest-new.js") + `";`,
+		`x.routeManifestURL = "` + waveoutputtest.TestWaveOutputURLPath("route-manifest-new.js") + `";`,
 		"/frontend/src/routes/products.$id.new.tsx",
 	}
 	for _, unexpectedNewFragment := range unexpectedNewFragments {
@@ -1564,36 +1565,36 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	oldStage.Stage = "stage-one"
-	oldStage.ClientEntryOut = testWaveOutPath("client-old.js")
-	oldStage.ClientEntryDeps = []string{testWaveOutPath("shared-old.js")}
+	oldStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-old.js")
+	oldStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("shared-old.js")}
 	oldStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-old.js"): {testWaveOutPath("client-old.css")},
-		testWaveOutPath("shared-old.js"): {testWaveOutPath("shared-old.css")},
-		testWaveOutPath("chunk-old.js"):  {testWaveOutPath("chunk-old.css")},
+		waveoutputtest.TestWaveOutputPath("client-old.js"): {waveoutputtest.TestWaveOutputPath("client-old.css")},
+		waveoutputtest.TestWaveOutputPath("shared-old.js"): {waveoutputtest.TestWaveOutputPath("shared-old.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-old.js"):  {waveoutputtest.TestWaveOutputPath("chunk-old.css")},
 	}
 
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 	newStage.Stage = "stage-one"
-	newStage.ClientEntryOut = testWaveOutPath("client-new.js")
-	newStage.ClientEntryDeps = []string{testWaveOutPath("shared-new.js")}
+	newStage.ClientEntryOut = waveoutputtest.TestWaveOutputPath("client-new.js")
+	newStage.ClientEntryDeps = []string{waveoutputtest.TestWaveOutputPath("shared-new.js")}
 	newStage.DepToCSSBundleMap = map[string][]string{
-		testWaveOutPath("client-new.js"): {testWaveOutPath("client-new.css")},
-		testWaveOutPath("shared-new.js"): {testWaveOutPath("shared-new.css")},
-		testWaveOutPath("chunk-new.js"):  {testWaveOutPath("chunk-new.css")},
+		waveoutputtest.TestWaveOutputPath("client-new.js"): {waveoutputtest.TestWaveOutputPath("client-new.css")},
+		waveoutputtest.TestWaveOutputPath("shared-new.js"): {waveoutputtest.TestWaveOutputPath("shared-new.css")},
+		waveoutputtest.TestWaveOutputPath("chunk-new.js"):  {waveoutputtest.TestWaveOutputPath("chunk-new.css")},
 	}
 
 	fixture := newTestFixture(t, testFixtureOptions{
@@ -1648,15 +1649,15 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, testWaveOutURLPath("routes/products.$id.old.js")) {
+	if !strings.Contains(body, waveoutputtest.TestWaveOutputURLPath("routes/products.$id.old.js")) {
 		t.Fatalf("body missing old route import URL, body=%q", body)
 	}
-	if strings.Contains(body, testWaveOutURLPath("routes/products.$id.new.js")) {
+	if strings.Contains(body, waveoutputtest.TestWaveOutputURLPath("routes/products.$id.new.js")) {
 		t.Fatalf("body leaked new route import URL, body=%q", body)
 	}
 	if !strings.Contains(
 		body,
-		`<script type="module" src="`+testWaveOutURLPath("client-old.js")+`"></script>`,
+		`<script type="module" src="`+waveoutputtest.TestWaveOutputURLPath("client-old.js")+`"></script>`,
 	) {
 		t.Fatalf(
 			"body missing old-generation client entry script, body=%q",
@@ -1665,7 +1666,7 @@ func TestLoadersHandler_ProdHTMLReloadDuringRequest_UsesMatchingClientEntryScrip
 	}
 	if strings.Contains(
 		body,
-		`<script type="module" src="`+testWaveOutURLPath("client-new.js")+`"></script>`,
+		`<script type="module" src="`+waveoutputtest.TestWaveOutputURLPath("client-new.js")+`"></script>`,
 	) {
 		t.Fatalf(
 			"body leaked new-generation client entry script, body=%q",
@@ -1681,18 +1682,18 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_DoNotSilentlyServeN
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 
@@ -1856,18 +1857,18 @@ func TestLoadersHandler_ConcurrentReloadAndStaleJSONRequests_WithRedirectingLoad
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	})
 	newStage := defaultPathsFile("build-new", map[string]*Path{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	})
 
@@ -2025,7 +2026,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithRouteShapeChanges(
 		"/alpha": {
 			OriginalPattern: "/alpha",
 			SrcPath:         "frontend/src/routes/alpha.old.tsx",
-			OutPath:         testWaveOutPath("routes/alpha.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/alpha.old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2033,7 +2034,7 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithRouteShapeChanges(
 		"/beta": {
 			OriginalPattern: "/beta",
 			SrcPath:         "frontend/src/routes/beta.new.tsx",
-			OutPath:         testWaveOutPath("routes/beta.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/beta.new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2189,13 +2190,13 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithNestedParamShapeChanges(
 		"/catalog/:catalogID/items/:itemID": {
 			OriginalPattern: "/catalog/:catalogID/items/:itemID",
 			SrcPath:         "frontend/src/routes/catalog.$catalogID.items.$itemID.old.tsx",
-			OutPath:         testWaveOutPath("routes/catalog.$catalogID.items.$itemID.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/catalog.$catalogID.items.$itemID.old.js"),
 			ExportKey:       "default",
 		},
 		"/catalog/:catalogID/items/:itemID/reviews/:reviewID": {
 			OriginalPattern: "/catalog/:catalogID/items/:itemID/reviews/:reviewID",
 			SrcPath:         "frontend/src/routes/catalog.$catalogID.items.$itemID.reviews.$reviewID.old.tsx",
-			OutPath:         testWaveOutPath("routes/catalog.$catalogID.items.$itemID.reviews.$reviewID.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/catalog.$catalogID.items.$itemID.reviews.$reviewID.old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2203,13 +2204,13 @@ func TestLoadersHandler_ConcurrentReloadAndRequests_WithNestedParamShapeChanges(
 		"/orgs/:orgID/repos/:repoID": {
 			OriginalPattern: "/orgs/:orgID/repos/:repoID",
 			SrcPath:         "frontend/src/routes/orgs.$orgID.repos.$repoID.new.tsx",
-			OutPath:         testWaveOutPath("routes/orgs.$orgID.repos.$repoID.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/orgs.$orgID.repos.$repoID.new.js"),
 			ExportKey:       "default",
 		},
 		"/orgs/:orgID/repos/:repoID/issues/:issueID": {
 			OriginalPattern: "/orgs/:orgID/repos/:repoID/issues/:issueID",
 			SrcPath:         "frontend/src/routes/orgs.$orgID.repos.$repoID.issues.$issueID.new.tsx",
-			OutPath:         testWaveOutPath("routes/orgs.$orgID.repos.$repoID.issues.$issueID.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/orgs.$orgID.repos.$repoID.issues.$issueID.new.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2409,7 +2410,7 @@ func TestDevReloadMethods_FailOutsideDevMode(t *testing.T) {
 		"/page": {
 			OriginalPattern: "/page",
 			SrcPath:         "frontend/src/routes/page.tsx",
-			OutPath:         testWaveOutPath("routes/page.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/page.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2434,7 +2435,7 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 		"/old": {
 			OriginalPattern: "/old",
 			SrcPath:         "frontend/src/routes/old.tsx",
-			OutPath:         testWaveOutPath("routes/old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/old.js"),
 			ExportKey:       "default",
 		},
 	})
@@ -2442,7 +2443,7 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 		"/new": {
 			OriginalPattern: "/new",
 			SrcPath:         "frontend/src/routes/new.tsx",
-			OutPath:         testWaveOutPath("routes/new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/new.js"),
 			ExportKey:       "default",
 		},
 	})

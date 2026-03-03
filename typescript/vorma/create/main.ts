@@ -218,7 +218,7 @@ async function main() {
 			s.stop("Go module initialized");
 		} catch (error) {
 			s.stop("Failed to initialize module");
-			cancel(`Error: ${error}`);
+			cancel(`Error: ${String(error)}`);
 			process.exit(1);
 		}
 	}
@@ -375,7 +375,7 @@ func main() {
 			throw error;
 		}
 	} catch (error) {
-		cancel(`Error: ${error}`);
+		cancel(`Error: ${String(error)}`);
 		process.exit(1);
 	} finally {
 		// Clean up temp directory

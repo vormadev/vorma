@@ -12,6 +12,7 @@ export {
 	createTypedAdapterLinkFactory,
 	createTypedAdapterValueHookFactories,
 	createVormaRuntimeContext,
+	formatOutermostErrorForRendering,
 	getDefaultVormaRuntimeContext,
 	makeFinalLinkProps,
 	navigationInternalLinkPropKeysForAnchors,

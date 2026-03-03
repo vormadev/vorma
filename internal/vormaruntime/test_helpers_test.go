@@ -2,6 +2,7 @@ package vormaruntime
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"github.com/vormadev/vorma/wave/waveartifacts"
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
@@ -129,7 +130,7 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		mustWriteFile(
 			tb,
 			filepath.Join(internalDir, waveartifacts.NormalCSSRefFileName),
-			[]byte(testWaveOutPrefixedFileName("styles.css")),
+			[]byte(waveoutputtest.TestWaveOutputPrefixedFileName("styles.css")),
 		)
 	}
 
@@ -195,7 +196,7 @@ func defaultPathsFile(
 			"/": {
 				OriginalPattern: "/",
 				SrcPath:         "frontend/src/routes/root.tsx",
-				OutPath:         testWaveOutPath("root.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("root.js"),
 				ExportKey:       "default",
 			},
 		}
@@ -204,13 +205,13 @@ func defaultPathsFile(
 		Stage:             "stage-two",
 		BuildID:           buildID,
 		ClientEntrySrc:    "frontend/src/vorma.entry.tsx",
-		ClientEntryOut:    testWaveOutPath("client-entry.js"),
-		ClientEntryDeps:   []string{testWaveOutPath("client-shared.js")},
+		ClientEntryOut:    waveoutputtest.TestWaveOutputPath("client-entry.js"),
+		ClientEntryDeps:   []string{waveoutputtest.TestWaveOutputPath("client-shared.js")},
 		Paths:             toRuntimePathsRouteMap(paths),
-		RouteManifestFile: testWaveOutPath("route-manifest.js"),
+		RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		DepToCSSBundleMap: map[string][]string{
-			testWaveOutPath("client-entry.js"):  {testWaveOutPath("client-entry.css")},
-			testWaveOutPath("client-shared.js"): {testWaveOutPath("client-shared.css")},
+			waveoutputtest.TestWaveOutputPath("client-entry.js"):  {waveoutputtest.TestWaveOutputPath("client-entry.css")},
+			waveoutputtest.TestWaveOutputPath("client-shared.js"): {waveoutputtest.TestWaveOutputPath("client-shared.css")},
 		},
 	}
 }

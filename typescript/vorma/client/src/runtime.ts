@@ -195,16 +195,14 @@ export type HasParams<App extends VormaAppBase, Pattern extends string> =
 export type IsSplat<App extends VormaAppBase, Pattern extends string> =
 	RouteMetadata<App, Pattern> extends { isSplat: true } ? true : false;
 
-export type IsEmptyInput<T> = [T] extends [null | undefined | never]
-	? true
-	: false;
+export type IsEmptyInput<T> = [T] extends [null | undefined] ? true : false;
 
 export type QueryInputContractViolation = {
 	__queryInputContractViolation: "Query input root must be an object, null, or undefined.";
 };
 
 export type EnforceQueryInputRootContract<Input> = [Input] extends [
-	null | undefined | never,
+	null | undefined,
 ]
 	? Input
 	: Input extends Record<string, unknown>
@@ -602,7 +600,7 @@ type ClientLoaderWaitFn = (props: {
 		buildID: string;
 	}>;
 	signal: AbortSignal;
-}) => Promise<unknown> | unknown;
+}) => Promise<unknown>;
 
 type PatternToWaitFnMap = Record<string, ClientLoaderWaitFn>;
 
@@ -4557,6 +4555,23 @@ export function defaultErrorBoundary(props: { error: unknown }): string {
 	return `Route Error: ${String(props.error)}`;
 }
 
+export function formatOutermostErrorForRendering(
+	outermostError: unknown,
+): string {
+	let e = "unknown";
+	if (outermostError instanceof Error) {
+		e = outermostError.message || "unknown";
+	} else if (typeof outermostError === "string") {
+		e = outermostError;
+	} else if (outermostError != null) {
+		const serializedOutermostError = JSON.stringify(outermostError);
+		if (serializedOutermostError !== undefined) {
+			e = serializedOutermostError;
+		}
+	}
+	return "Error: " + e;
+}
+
 export function getStatus(): StatusEventDetail {
 	return getDefaultVormaRuntimeContext().navigationStateManager.getStatus();
 }
@@ -5419,7 +5434,7 @@ type InitClientOptions = {
 	publicPathPrefix?: string;
 	vormaAppConfig?: VormaAppConfig;
 	routeManifestURL?: string;
-	renderFn?: () => Promise<unknown> | unknown;
+	renderFn?: () => void | Promise<void>;
 	defaultErrorBoundary?: typeof defaultErrorBoundary;
 	useViewTransitions?: boolean;
 	rootElementID?: string;
@@ -5684,14 +5699,7 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	if (import.meta.env.DEV) {
 		void import("vorma/client/__internal/hmr_dev").then(
 			({ registerViteAfterUpdateListenerIfNeeded }) => {
-				registerViteAfterUpdateListenerIfNeeded({
-					hotRuntime: import.meta.hot,
-					getCurrentImportURLs: () =>
-						getRuntimeRouteSnapshot().importURLs,
-					triggerRevalidate: () => {
-						void revalidate().catch(() => undefined);
-					},
-				});
+				registerViteAfterUpdateListenerIfNeeded(import.meta.hot);
 			},
 		);
 	}

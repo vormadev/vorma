@@ -1,6 +1,7 @@
 package buildlifecycle
 
 import (
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
@@ -20,7 +21,7 @@ func TestCaptureRouteBuildRuntimeState(t *testing.T) {
 				OriginalPattern: "/before",
 				SrcPath:         "frontend/src/routes/before.tsx",
 				ExportKey:       "default",
-				Deps:            []string{testWaveOutPath("chunk-before.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-before.js")},
 			},
 		})
 
@@ -30,7 +31,7 @@ func TestCaptureRouteBuildRuntimeState(t *testing.T) {
 		l.SetRouteManifestFile("route-manifest-after.json")
 		paths := l.Paths()
 		paths["/before"].SrcPath = "frontend/src/routes/after.tsx"
-		paths["/before"].Deps[0] = testWaveOutPath("chunk-after.js")
+		paths["/before"].Deps[0] = waveoutputtest.TestWaveOutputPath("chunk-after.js")
 	})
 
 	if runtimeStateSnapshot.BuildID != "build-before" {
@@ -63,11 +64,11 @@ func TestCaptureRouteBuildRuntimeState(t *testing.T) {
 		)
 	}
 	if len(beforePath.Deps) != 1 ||
-		beforePath.Deps[0] != testWaveOutPath("chunk-before.js") {
+		beforePath.Deps[0] != waveoutputtest.TestWaveOutputPath("chunk-before.js") {
 		t.Fatalf(
 			"snapshot /before deps = %#v, want %#v",
 			beforePath.Deps,
-			[]string{testWaveOutPath("chunk-before.js")},
+			[]string{waveoutputtest.TestWaveOutputPath("chunk-before.js")},
 		)
 	}
 }

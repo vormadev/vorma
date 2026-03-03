@@ -4,7 +4,7 @@ export function addOnWindowFocusListener(callback: () => void): () => void {
 	const debouncedCallback = debounce(callback, 30);
 	const ifVisibleCallback = () => {
 		if (document.visibilityState === "visible") {
-			debouncedCallback();
+			void debouncedCallback();
 		}
 	};
 	window.addEventListener("focus", debouncedCallback);

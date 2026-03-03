@@ -316,16 +316,14 @@ export function resolveMatchedPatternsToRefreshForHMRUpdate(props: {
 	return Array.from(matchedPatternsToRefresh);
 }
 
-export function applyViteAfterUpdatePayload(props: {
-	updates: Array<ViteHMRUpdate>;
-	currentImportURLs: string[];
-	triggerRevalidate: () => void;
-}): void {
+export function applyViteAfterUpdatePayload(
+	updates: Array<ViteHMRUpdate>,
+): void {
 	const runtimeSnapshot =
 		resolveRuntimeGlobalForHMRRefresh()?.runtimeRouteSnapshot;
 	const matchedPatternsToRefresh =
 		resolveMatchedPatternsToRefreshForHMRUpdate({
-			updates: props.updates,
+			updates,
 			currentMatchedPatterns: runtimeSnapshot?.matchedPatterns ?? [],
 		});
 	if (matchedPatternsToRefresh.length === 0) {
@@ -333,31 +331,23 @@ export function applyViteAfterUpdatePayload(props: {
 	}
 	void refreshCurrentClientLoadersAfterHMRUpdate({
 		matchedPatternsToRefresh,
-	}).catch(() => {
-		props.triggerRevalidate();
-	});
+	}).catch(() => undefined);
 }
 
-export function registerViteAfterUpdateListenerIfNeeded(props: {
-	hotRuntime: ImportMetaHot | undefined;
-	getCurrentImportURLs: () => string[];
-	triggerRevalidate: () => void;
-}): void {
+export function registerViteAfterUpdateListenerIfNeeded(
+	hotRuntime: ImportMetaHot | undefined,
+): void {
 	if (!import.meta.env.DEV) {
 		return;
 	}
-	if (!props.hotRuntime) {
+	if (!hotRuntime) {
 		return;
 	}
-	if (registeredViteHotRuntimes.has(props.hotRuntime)) {
+	if (registeredViteHotRuntimes.has(hotRuntime)) {
 		return;
 	}
-	props.hotRuntime.on("vite:afterUpdate", ({ updates }) => {
-		applyViteAfterUpdatePayload({
-			updates,
-			currentImportURLs: props.getCurrentImportURLs(),
-			triggerRevalidate: props.triggerRevalidate,
-		});
+	hotRuntime.on("vite:afterUpdate", ({ updates }) => {
+		applyViteAfterUpdatePayload(updates);
 	});
-	registeredViteHotRuntimes.add(props.hotRuntime);
+	registeredViteHotRuntimes.add(hotRuntime);
 }

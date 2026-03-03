@@ -3,6 +3,7 @@ package routepipeline
 import (
 	"encoding/json"
 	"errors"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -95,7 +96,7 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_ErrorAtPrefixRouteTruncatesPayl
 	if got, want := len(result.Core.LoadersData), 1; got != want {
 		t.Fatalf("len(LoadersData) = %d, want %d", got, want)
 	}
-	if got, want := result.Core.Deps, []string{testWaveOutPath("client-shared.js"), testWaveOutPath("products.js")}; !reflect.DeepEqual(
+	if got, want := result.Core.Deps, []string{waveoutputtest.TestWaveOutputPath("client-shared.js"), waveoutputtest.TestWaveOutputPath("products.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
@@ -105,9 +106,9 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_ErrorAtPrefixRouteTruncatesPayl
 		t.Fatalf("len(HeadElements) = %d, want %d", got, want)
 	}
 	if got, want := result.CSSBundles, []string{
-		testWaveOutPath("client-entry.css"),
-		testWaveOutPath("client-shared.css"),
-		testWaveOutPath("products.css"),
+		waveoutputtest.TestWaveOutputPath("client-entry.css"),
+		waveoutputtest.TestWaveOutputPath("client-shared.css"),
+		waveoutputtest.TestWaveOutputPath("products.css"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
 	}
@@ -143,27 +144,27 @@ func TestPlanRouteResultFromResolvedTaskOutcomes_SuccessBuildsFullRouteCoreAndAs
 		t.Fatalf("MatchedPatterns = %#v, want %#v", got, want)
 	}
 	if got, want := result.Core.Deps, []string{
-		testWaveOutPath("client-shared.js"),
-		testWaveOutPath("products.js"),
-		testWaveOutPath("product-details.js"),
+		waveoutputtest.TestWaveOutputPath("client-shared.js"),
+		waveoutputtest.TestWaveOutputPath("products.js"),
+		waveoutputtest.TestWaveOutputPath("product-details.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
 	if got, want := result.CSSBundles, []string{
-		testWaveOutPath("client-entry.css"),
-		testWaveOutPath("client-shared.css"),
-		testWaveOutPath("products.css"),
-		testWaveOutPath("product-details.css"),
+		waveoutputtest.TestWaveOutputPath("client-entry.css"),
+		waveoutputtest.TestWaveOutputPath("client-shared.css"),
+		waveoutputtest.TestWaveOutputPath("products.css"),
+		waveoutputtest.TestWaveOutputPath("product-details.css"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
 	}
 	if got, want := len(result.HeadElements), 2; got != want {
 		t.Fatalf("len(HeadElements) = %d, want %d", got, want)
 	}
-	if got, want := result.RouteManifestFileSnapshot, testWaveOutPath("route-manifest.js"); got != want {
+	if got, want := result.RouteManifestFileSnapshot, waveoutputtest.TestWaveOutputPath("route-manifest.js"); got != want {
 		t.Fatalf("RouteManifestFileSnapshot = %q, want %q", got, want)
 	}
-	if got, want := result.HTMLRenderSnapshot.ClientEntryOut, testWaveOutPath("client-entry.js"); got != want {
+	if got, want := result.HTMLRenderSnapshot.ClientEntryOut, waveoutputtest.TestWaveOutputPath("client-entry.js"); got != want {
 		t.Fatalf("HTMLRenderSnapshot.ClientEntryOut = %q, want %q", got, want)
 	}
 	if !result.IsDev {
@@ -187,21 +188,21 @@ func TestLoadOrBuildCachedItemSubset_DoesNotStoreWhenSnapshotVersionIsStale(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.old.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.old.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.old.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-old.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-old.js")},
 		},
 	}
 	newPaths := map[string]*PathData{
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.new.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.new.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.new.js"),
 			ExportKey:       "default",
-			Deps:            []string{testWaveOutPath("chunk-new.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-new.js")},
 		},
 	}
-	clientEntryDeps := []string{testWaveOutPath("client-shared.js")}
+	clientEntryDeps := []string{waveoutputtest.TestWaveOutputPath("client-shared.js")}
 
 	staleCached := LoadOrBuildCachedItemSubset(
 		cacheKey,
@@ -277,15 +278,15 @@ func TestGetDepsFromData_ClientEntryFirstAndDeduped(t *testing.T) {
 		"": {
 			OriginalPattern: "",
 			Deps: []string{
-				testWaveOutPath("root.js"),
-				testWaveOutPath("shared.js"),
+				waveoutputtest.TestWaveOutputPath("root.js"),
+				waveoutputtest.TestWaveOutputPath("shared.js"),
 			},
 		},
 		"/items/:id": {
 			OriginalPattern: "/items/:id",
 			Deps: []string{
-				testWaveOutPath("item.js"),
-				testWaveOutPath("shared.js"),
+				waveoutputtest.TestWaveOutputPath("item.js"),
+				waveoutputtest.TestWaveOutputPath("shared.js"),
 			},
 		},
 	}
@@ -299,13 +300,13 @@ func TestGetDepsFromData_ClientEntryFirstAndDeduped(t *testing.T) {
 	deps := GetDepsFromData(
 		matchResults.Matches,
 		paths,
-		[]string{testWaveOutPath("client.js"), testWaveOutPath("shared.js")},
+		[]string{waveoutputtest.TestWaveOutputPath("client.js"), waveoutputtest.TestWaveOutputPath("shared.js")},
 	)
 	want := []string{
-		testWaveOutPath("client.js"),
-		testWaveOutPath("shared.js"),
-		testWaveOutPath("root.js"),
-		testWaveOutPath("item.js"),
+		waveoutputtest.TestWaveOutputPath("client.js"),
+		waveoutputtest.TestWaveOutputPath("shared.js"),
+		waveoutputtest.TestWaveOutputPath("root.js"),
+		waveoutputtest.TestWaveOutputPath("item.js"),
 	}
 	if !reflect.DeepEqual(deps, want) {
 		t.Fatalf("deps = %#v, want %#v", deps, want)
@@ -314,25 +315,25 @@ func TestGetDepsFromData_ClientEntryFirstAndDeduped(t *testing.T) {
 
 func TestGetCSSBundles_DedupedAndClientEntryFirst(t *testing.T) {
 	css := GetCSSBundles(
-		[]string{testWaveOutPath("shared.js"), testWaveOutPath("item.js")},
-		testWaveOutPath("client-entry.js"),
+		[]string{waveoutputtest.TestWaveOutputPath("shared.js"), waveoutputtest.TestWaveOutputPath("item.js")},
+		waveoutputtest.TestWaveOutputPath("client-entry.js"),
 		map[string][]string{
-			testWaveOutPath("client-entry.js"): {
-				testWaveOutPath("client.css"),
-				testWaveOutPath("shared.css"),
+			waveoutputtest.TestWaveOutputPath("client-entry.js"): {
+				waveoutputtest.TestWaveOutputPath("client.css"),
+				waveoutputtest.TestWaveOutputPath("shared.css"),
 			},
-			testWaveOutPath("shared.js"): {
-				testWaveOutPath("shared.css"),
-				testWaveOutPath("layout.css"),
+			waveoutputtest.TestWaveOutputPath("shared.js"): {
+				waveoutputtest.TestWaveOutputPath("shared.css"),
+				waveoutputtest.TestWaveOutputPath("layout.css"),
 			},
-			testWaveOutPath("item.js"): {testWaveOutPath("item.css")},
+			waveoutputtest.TestWaveOutputPath("item.js"): {waveoutputtest.TestWaveOutputPath("item.css")},
 		},
 	)
 	want := []string{
-		testWaveOutPath("client.css"),
-		testWaveOutPath("shared.css"),
-		testWaveOutPath("layout.css"),
-		testWaveOutPath("item.css"),
+		waveoutputtest.TestWaveOutputPath("client.css"),
+		waveoutputtest.TestWaveOutputPath("shared.css"),
+		waveoutputtest.TestWaveOutputPath("layout.css"),
+		waveoutputtest.TestWaveOutputPath("item.css"),
 	}
 	if !reflect.DeepEqual(css, want) {
 		t.Fatalf("css bundles = %#v, want %#v", css, want)
@@ -429,9 +430,9 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 	core := &RouteDataCore{
 		MatchedPatterns: []string{"/docs"},
 		LoadersData:     []any{"data"},
-		ImportURLs:      []string{testWaveOutPath("routes/docs.js")},
+		ImportURLs:      []string{waveoutputtest.TestWaveOutputPath("routes/docs.js")},
 		ExportKeys:      []string{"default"},
-		Deps:            []string{testWaveOutPath("chunk-layout.js")},
+		Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-layout.js")},
 	}
 	titleEl := &htmlutil.Element{Tag: "title", TextContent: "Docs"}
 	metaEl := &htmlutil.Element{
@@ -453,8 +454,8 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 			Meta:  []*htmlutil.Element{metaEl},
 			Rest:  []*htmlutil.Element{restEl},
 		},
-		Deps:       []string{testPublicWaveOutURLPath("chunk-layout.js")},
-		CSSBundles: []string{testPublicWaveOutURLPath("docs.css")},
+		Deps:       []string{waveoutputtest.TestPublicWaveOutputURLPath("chunk-layout.js")},
+		CSSBundles: []string{waveoutputtest.TestPublicWaveOutputURLPath("docs.css")},
 	}
 
 	routeData := BuildRouteDataFinal(
@@ -484,19 +485,19 @@ func TestBuildRouteDataFinal_MapsCoreAndAssets(t *testing.T) {
 	) {
 		t.Fatalf("RestHeadEls = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.RouteDataCore.ImportURLs, []string{testPublicWaveOutURLPath("routes/docs.js")}; !reflect.DeepEqual(
+	if got, want := routeData.RouteDataCore.ImportURLs, []string{waveoutputtest.TestPublicWaveOutputURLPath("routes/docs.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.RouteDataCore.Deps, []string{testPublicWaveOutURLPath("chunk-layout.js")}; !reflect.DeepEqual(
+	if got, want := routeData.RouteDataCore.Deps, []string{waveoutputtest.TestPublicWaveOutputURLPath("chunk-layout.js")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
-	if got, want := routeData.CSSBundles, []string{testPublicWaveOutURLPath("docs.css")}; !reflect.DeepEqual(
+	if got, want := routeData.CSSBundles, []string{waveoutputtest.TestPublicWaveOutputURLPath("docs.css")}; !reflect.DeepEqual(
 		got,
 		want,
 	) {
@@ -510,28 +511,28 @@ func TestBuildRouteDataFinal_UsesCoreDepsWhenAssetsAreMissing(t *testing.T) {
 			Core: &RouteDataCore{
 				MatchedPatterns: []string{"/docs"},
 				LoadersData:     []any{"data"},
-				ImportURLs:      []string{testWaveOutPath("routes/docs.js")},
+				ImportURLs:      []string{waveoutputtest.TestWaveOutputPath("routes/docs.js")},
 				ExportKeys:      []string{"default"},
-				Deps:            []string{testWaveOutPath("chunk-layout.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-layout.js")},
 			},
-			CSSBundles: []string{testWaveOutPath("docs.css")},
+			CSSBundles: []string{waveoutputtest.TestWaveOutputPath("docs.css")},
 			IsDev:      false,
 		},
 		"/public/",
 	)
 
 	if got, want := routeData.RouteDataCore.ImportURLs, []string{
-		testPublicWaveOutURLPath("routes/docs.js"),
+		waveoutputtest.TestPublicWaveOutputURLPath("routes/docs.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
 	}
 	if got, want := routeData.RouteDataCore.Deps, []string{
-		testPublicWaveOutURLPath("chunk-layout.js"),
+		waveoutputtest.TestPublicWaveOutputURLPath("chunk-layout.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
 	if got, want := routeData.CSSBundles, []string{
-		testPublicWaveOutURLPath("docs.css"),
+		waveoutputtest.TestPublicWaveOutputURLPath("docs.css"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("CSSBundles = %#v, want %#v", got, want)
 	}
@@ -863,12 +864,12 @@ func TestBuildRouteAssets(t *testing.T) {
 				RouteResult: &RouteResult{
 					Core: &RouteDataCore{
 						Deps: []string{
-							testWaveOutPath("chunk-layout.js"),
-							testWaveOutPath("chunk-items.js"),
+							waveoutputtest.TestWaveOutputPath("chunk-layout.js"),
+							waveoutputtest.TestWaveOutputPath("chunk-items.js"),
 						},
 					},
 					HeadElements: routeHeadEls,
-					CSSBundles:   []string{testWaveOutPath("chunk-items.css")},
+					CSSBundles:   []string{waveoutputtest.TestWaveOutputPath("chunk-items.css")},
 					IsDev:        false,
 				},
 				DefaultHeadElements: defaultHeadEls,
@@ -888,15 +889,15 @@ func TestBuildRouteAssets(t *testing.T) {
 				t.Fatal("expected route assets to use callback sorting output")
 			}
 			if got, want := assets.Deps, []string{
-				testPublicWaveOutURLPath("chunk-layout.js"),
-				testPublicWaveOutURLPath("chunk-items.js"),
+				waveoutputtest.TestPublicWaveOutputURLPath("chunk-layout.js"),
+				waveoutputtest.TestPublicWaveOutputURLPath("chunk-items.js"),
 			}; !reflect.DeepEqual(
 				got,
 				want,
 			) {
 				t.Fatalf("Deps = %#v, want %#v", got, want)
 			}
-			if got, want := assets.CSSBundles, []string{testPublicWaveOutURLPath("chunk-items.css")}; !reflect.DeepEqual(
+			if got, want := assets.CSSBundles, []string{waveoutputtest.TestPublicWaveOutputURLPath("chunk-items.css")}; !reflect.DeepEqual(
 				got,
 				want,
 			) {
@@ -920,19 +921,19 @@ func TestBuildRouteAssets(t *testing.T) {
 			if got, want := callbackInput[2].AttributesKnownSafe["rel"], "modulepreload"; got != want {
 				t.Fatalf("first preload rel = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[2].AttributesKnownSafe["href"], testPublicWaveOutURLPath("chunk-layout.js"); got != want {
+			if got, want := callbackInput[2].AttributesKnownSafe["href"], waveoutputtest.TestPublicWaveOutputURLPath("chunk-layout.js"); got != want {
 				t.Fatalf("first preload href = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[3].AttributesKnownSafe["href"], testPublicWaveOutURLPath("chunk-items.js"); got != want {
+			if got, want := callbackInput[3].AttributesKnownSafe["href"], waveoutputtest.TestPublicWaveOutputURLPath("chunk-items.js"); got != want {
 				t.Fatalf("second preload href = %q, want %q", got, want)
 			}
 			if got, want := callbackInput[4].AttributesKnownSafe["rel"], "stylesheet"; got != want {
 				t.Fatalf("stylesheet rel = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[4].AttributesKnownSafe["href"], testPublicWaveOutURLPath("chunk-items.css"); got != want {
+			if got, want := callbackInput[4].AttributesKnownSafe["href"], waveoutputtest.TestPublicWaveOutputURLPath("chunk-items.css"); got != want {
 				t.Fatalf("stylesheet href = %q, want %q", got, want)
 			}
-			if got, want := callbackInput[4].Attributes["data-vorma-css-bundle"], testPublicWaveOutURLPath("chunk-items.css"); got != want {
+			if got, want := callbackInput[4].Attributes["data-vorma-css-bundle"], waveoutputtest.TestPublicWaveOutputURLPath("chunk-items.css"); got != want {
 				t.Fatalf("data-vorma-css-bundle = %q, want %q", got, want)
 			}
 		},
@@ -962,12 +963,12 @@ func TestBuildRouteAssets(t *testing.T) {
 				_, err := BuildRouteAssets(BuildRouteAssetsInput{
 					RouteResult: &RouteResult{
 						Core: &RouteDataCore{
-							Deps: []string{testWaveOutPath("chunk.js")},
+							Deps: []string{waveoutputtest.TestWaveOutputPath("chunk.js")},
 						},
 						HeadElements: []*htmlutil.Element{
 							{Tag: "title", TextContent: "Route"},
 						},
-						CSSBundles: []string{testWaveOutPath("chunk.css")},
+						CSSBundles: []string{waveoutputtest.TestWaveOutputPath("chunk.css")},
 						IsDev:      testCase.isDev,
 					},
 					DefaultHeadElements: []*htmlutil.Element{
@@ -1013,11 +1014,11 @@ func TestBuildRouteAssets(t *testing.T) {
 				Cached: cached,
 				Core: &RouteDataCore{
 					Deps: []string{
-						testWaveOutPath("chunk-layout.js"),
-						testWaveOutPath("chunk-items.js"),
+						waveoutputtest.TestWaveOutputPath("chunk-layout.js"),
+						waveoutputtest.TestWaveOutputPath("chunk-items.js"),
 					},
 				},
-				CSSBundles: []string{testWaveOutPath("chunk-items.css")},
+				CSSBundles: []string{waveoutputtest.TestWaveOutputPath("chunk-items.css")},
 				IsDev:      false,
 			}
 
@@ -1077,17 +1078,17 @@ func TestBuildRouteAssets(t *testing.T) {
 			routeResultA := &RouteResult{
 				Cached: cached,
 				Core: &RouteDataCore{
-					Deps: []string{testWaveOutPath("chunk-a.js")},
+					Deps: []string{waveoutputtest.TestWaveOutputPath("chunk-a.js")},
 				},
-				CSSBundles: []string{testWaveOutPath("chunk-a.css")},
+				CSSBundles: []string{waveoutputtest.TestWaveOutputPath("chunk-a.css")},
 				IsDev:      false,
 			}
 			routeResultB := &RouteResult{
 				Cached: cached,
 				Core: &RouteDataCore{
-					Deps: []string{testWaveOutPath("chunk-b.js")},
+					Deps: []string{waveoutputtest.TestWaveOutputPath("chunk-b.js")},
 				},
-				CSSBundles: []string{testWaveOutPath("chunk-b.css")},
+				CSSBundles: []string{waveoutputtest.TestWaveOutputPath("chunk-b.css")},
 				IsDev:      false,
 			}
 
@@ -1151,22 +1152,22 @@ func TestBuildCachedItemSubset_UsesOutPathAndHandlesMissingRouteMetadata(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 			ExportKey:       "ProductRoute",
 			ErrorExportKey:  "ProductErrorBoundary",
-			Deps:            []string{testWaveOutPath("chunk-products.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-products.js")},
 		},
 	}
 
 	cached := BuildCachedItemSubset(
 		matchResults.Matches,
 		paths,
-		[]string{testWaveOutPath("chunk-client.js")},
+		[]string{waveoutputtest.TestWaveOutputPath("chunk-client.js")},
 		false,
 	)
 
 	if got, want := cached.ImportURLs, []string{
-		testWaveOutURLPath("routes/products.$id.js"),
+		waveoutputtest.TestWaveOutputURLPath("routes/products.$id.js"),
 		"",
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("ImportURLs = %#v, want %#v", got, want)
@@ -1190,8 +1191,8 @@ func TestBuildCachedItemSubset_UsesOutPathAndHandlesMissingRouteMetadata(
 		t.Fatalf("ErrorExportKeys = %#v, want %#v", got, want)
 	}
 	if got, want := cached.Deps, []string{
-		testWaveOutPath("chunk-client.js"),
-		testWaveOutPath("chunk-products.js"),
+		waveoutputtest.TestWaveOutputPath("chunk-client.js"),
+		waveoutputtest.TestWaveOutputPath("chunk-products.js"),
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Deps = %#v, want %#v", got, want)
 	}
@@ -1211,12 +1212,12 @@ func TestLoadOrBuildCachedItemSubset_NoCacheMap(t *testing.T) {
 			"/products/:id": {
 				OriginalPattern: "/products/:id",
 				SrcPath:         "frontend/src/routes/products.$id.tsx",
-				OutPath:         testWaveOutPath("routes/products.$id.js"),
+				OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 				ExportKey:       "default",
-				Deps:            []string{testWaveOutPath("chunk-products.js")},
+				Deps:            []string{waveoutputtest.TestWaveOutputPath("chunk-products.js")},
 			},
 		},
-		[]string{testWaveOutPath("chunk-client.js")},
+		[]string{waveoutputtest.TestWaveOutputPath("chunk-client.js")},
 		true,
 		1,
 		nil,
@@ -1347,21 +1348,21 @@ func newRouteStageOnePlannerInputFixture(
 		"/products/:id": {
 			OriginalPattern: "/products/:id",
 			SrcPath:         "frontend/src/routes/products.$id.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ProductsErrorBoundary",
-			Deps:            []string{testWaveOutPath("products.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("products.js")},
 		},
 		"/products/:id/details": {
 			OriginalPattern: "/products/:id/details",
 			SrcPath:         "frontend/src/routes/products.$id.details.tsx",
-			OutPath:         testWaveOutPath("routes/products.$id.details.js"),
+			OutPath:         waveoutputtest.TestWaveOutputPath("routes/products.$id.details.js"),
 			ExportKey:       "default",
 			ErrorExportKey:  "ProductDetailsErrorBoundary",
-			Deps:            []string{testWaveOutPath("product-details.js")},
+			Deps:            []string{waveoutputtest.TestWaveOutputPath("product-details.js")},
 		},
 	}
-	clientEntryDeps := []string{testWaveOutPath("client-shared.js")}
+	clientEntryDeps := []string{waveoutputtest.TestWaveOutputPath("client-shared.js")}
 	cached := BuildCachedItemSubset(matches, paths, clientEntryDeps, true)
 
 	parentHeadEls := headels.New()
@@ -1387,20 +1388,20 @@ func newRouteStageOnePlannerInputFixture(
 			IsDev:           true,
 			Paths:           paths,
 			ClientEntryDeps: clientEntryDeps,
-			ClientEntryOut:  testWaveOutPath("client-entry.js"),
+			ClientEntryOut:  waveoutputtest.TestWaveOutputPath("client-entry.js"),
 			DepToCSSBundleMap: map[string][]string{
-				testWaveOutPath("client-entry.js"):  {testWaveOutPath("client-entry.css")},
-				testWaveOutPath("client-shared.js"): {testWaveOutPath("client-shared.css")},
-				testWaveOutPath("products.js"):      {testWaveOutPath("products.css")},
-				testWaveOutPath("product-details.js"): {
-					testWaveOutPath("product-details.css"),
+				waveoutputtest.TestWaveOutputPath("client-entry.js"):  {waveoutputtest.TestWaveOutputPath("client-entry.css")},
+				waveoutputtest.TestWaveOutputPath("client-shared.js"): {waveoutputtest.TestWaveOutputPath("client-shared.css")},
+				waveoutputtest.TestWaveOutputPath("products.js"):      {waveoutputtest.TestWaveOutputPath("products.css")},
+				waveoutputtest.TestWaveOutputPath("product-details.js"): {
+					waveoutputtest.TestWaveOutputPath("product-details.css"),
 				},
 			},
 			HTMLRenderSnapshot: rendering.LoadersHTMLRenderSnapshot{
 				IsDevMode:      true,
-				ClientEntryOut: testWaveOutPath("client-entry.js"),
+				ClientEntryOut: waveoutputtest.TestWaveOutputPath("client-entry.js"),
 			},
-			RouteManifestFile: testWaveOutPath("route-manifest.js"),
+			RouteManifestFile: waveoutputtest.TestWaveOutputPath("route-manifest.js"),
 		},
 		ResponseProxies: []*response.Proxy{parentProxy, childProxy},
 		MergedResponseProxy: response.MergeProxyResponses(

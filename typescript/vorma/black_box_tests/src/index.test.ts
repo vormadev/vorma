@@ -139,13 +139,16 @@ function createRouteDataResponse(
 	overrides: RouteDataOverride = {},
 	init: ResponseInit = {},
 ): Response {
+	const responseHeaders = new Headers({
+		"Content-Type": "application/json",
+		"X-Wave-Framework-Build-Id": "1",
+	});
+	new Headers(init.headers ?? undefined).forEach((value, key) => {
+		responseHeaders.set(key, value);
+	});
 	return new Response(JSON.stringify(createRouteData(overrides)), {
 		status: 200,
-		headers: {
-			"Content-Type": "application/json",
-			"X-Wave-Framework-Build-Id": "1",
-			...init.headers,
-		},
+		headers: responseHeaders,
 		...init,
 	});
 }
@@ -399,23 +402,41 @@ function stubWindowLocationHref(initialHref = window.location.href): {
 } {
 	const originalLocation = window.location;
 	let locationHref = initialHref;
+	const resolveCurrentURL = (): URL => {
+		return new URL(locationHref, originalLocation.href);
+	};
+	const locationStub = {
+		get href() {
+			return locationHref;
+		},
+		set href(value: string) {
+			locationHref = new URL(String(value), locationHref).href;
+		},
+		get origin() {
+			return resolveCurrentURL().origin;
+		},
+		get pathname() {
+			return resolveCurrentURL().pathname;
+		},
+		get search() {
+			return resolveCurrentURL().search;
+		},
+		get hash() {
+			return resolveCurrentURL().hash;
+		},
+		assign(value: string | URL): void {
+			locationHref = new URL(String(value), locationHref).href;
+		},
+		replace(value: string | URL): void {
+			locationHref = new URL(String(value), locationHref).href;
+		},
+		toString(): string {
+			return locationHref;
+		},
+	} as Location;
 
 	Object.defineProperty(window, "location", {
-		value: {
-			...originalLocation,
-			get href() {
-				return locationHref;
-			},
-			set href(value) {
-				locationHref = String(value);
-			},
-			assign(value: string | URL) {
-				locationHref = new URL(String(value), locationHref).href;
-			},
-			replace(value: string | URL) {
-				locationHref = new URL(String(value), locationHref).href;
-			},
-		},
+		value: locationStub,
 		configurable: true,
 	});
 
@@ -4377,11 +4398,14 @@ describe("authoritative black-box contracts", () => {
 				headers: expect.any(Headers),
 			}),
 		);
+		const mutationRequestInit = fetchSpy.mock.calls[1]?.[1] as
+			| RequestInit
+			| undefined;
+		const mutationHeaders = mutationRequestInit?.headers;
 		expect(
-			(fetchSpy.mock.calls[1]?.[1] as RequestInit).headers &&
-				new Headers(
-					(fetchSpy.mock.calls[1]?.[1] as RequestInit).headers,
-				).get("X-Decorator"),
+			mutationHeaders
+				? new Headers(mutationHeaders).get("X-Decorator")
+				: null,
 		).toBe("1");
 	});
 
@@ -4852,51 +4876,103 @@ describe("authoritative black-box contracts", () => {
 		cleanupRouteChangeListener();
 	});
 
-	it("revalidates after matching HMR js updates", async () => {
+	it("does not ever trigger revalidate() call from an HMR update", async () => {
 		const api = await loadPublicClientAPI();
-		vi.doMock("/src/routes/hmr-match.tsx", () => ({
+		const optedInLoader = vi.fn(async ({ serverDataPromise }) => {
+			await serverDataPromise;
+			return "opted-in";
+		});
+		const nonOptedLoader = vi.fn(async ({ serverDataPromise }) => {
+			await serverDataPromise;
+			return "non-opted";
+		});
+
+		registerClientLoaderForTesting({
+			pattern: "/hmr-opted-in",
+			clientLoader: optedInLoader,
+			reRunOnModuleChange: {
+				url: "http://localhost:3000/src/routes/hmr-opted-in.tsx?t=1",
+			} as ImportMeta,
+		});
+		registerClientLoaderForTesting({
+			pattern: "/hmr-non-opted",
+			clientLoader: nonOptedLoader,
+		});
+
+		vi.doMock("/src/routes/hmr-opted-in.tsx", () => ({
 			default: () => null,
 		}));
+		vi.doMock("/src/routes/hmr-non-opted.tsx", () => ({
+			default: () => null,
+		}));
+
 		seedRuntimeRouteSnapshotForTesting({
-			matchedPatterns: ["/hmr-match"],
-			loadersData: [{ from: "initial" }],
-			importURLs: ["/src/routes/hmr-match.tsx"],
-			exportKeys: ["default"],
-			errorExportKeys: [""],
-			hasRootData: true,
-		});
-		await api.initClient({});
-		const routeChangeListener = vi.fn();
-		const removeRouteChangeListener =
-			api.addRouteChangeListener(routeChangeListener);
-		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-			createRouteDataResponse({
-				matchedPatterns: ["/hmr-match"],
-				loadersData: [{ from: "hmr-update" }],
-				importURLs: ["/src/routes/hmr-match.tsx"],
-				exportKeys: ["default"],
-				errorExportKeys: [""],
-				hasRootData: true,
-			}),
-		);
-
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "js-update",
-					path: "/src/routes/hmr-match.tsx?t=2",
-				},
+			matchedPatterns: ["/hmr-opted-in", "/hmr-non-opted"],
+			loadersData: [{ id: "a" }, { id: "b" }],
+			importURLs: [
+				"/src/routes/hmr-opted-in.tsx",
+				"/src/routes/hmr-non-opted.tsx",
 			],
+			exportKeys: ["default", "default"],
+			errorExportKeys: ["", ""],
 		});
-		await vi.runAllTimersAsync();
-		await Promise.resolve();
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		await api.initClient({});
+		expect(optedInLoader).toHaveBeenCalledTimes(1);
+		expect(nonOptedLoader).toHaveBeenCalledTimes(1);
+
+		const routeChangeListener = vi.fn();
+		const cleanupRouteChangeListener =
+			api.addRouteChangeListener(routeChangeListener);
+		const sawRevalidatingStatus = vi.fn();
+		const cleanupStatusListener = api.addStatusListener((statusEvent) => {
+			if (statusEvent.detail.isRevalidating) {
+				sawRevalidatingStatus();
+			}
+		});
+		const fetchSpy = vi.spyOn(window, "fetch");
+
+		const simulateUpdate = async (update: {
+			type: string;
+			path: string;
+		}): Promise<void> => {
+			await simulateViteAfterUpdateForTesting([update]);
+			await vi.runAllTimersAsync();
+			await Promise.resolve();
+		};
+
+		await simulateUpdate({
+			type: "js-update",
+			path: "/src/routes/non-matching.tsx?t=2",
+		});
+		await simulateUpdate({
+			type: "css-update",
+			path: "/src/routes/hmr-opted-in.tsx?t=3",
+		});
+		await simulateUpdate({
+			type: "not-supported",
+			path: "/src/routes/hmr-opted-in.tsx?t=4",
+		});
+		await simulateUpdate({
+			type: "js-update",
+			path: "/src/routes/hmr-non-opted.tsx?t=5",
+		});
+		await simulateUpdate({
+			type: "js-update",
+			path: "/src/routes/hmr-opted-in.tsx?t=6",
+		});
+
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(sawRevalidatingStatus).not.toHaveBeenCalled();
+		expect(optedInLoader).toHaveBeenCalledTimes(2);
+		expect(nonOptedLoader).toHaveBeenCalledTimes(1);
 		expect(routeChangeListener).toHaveBeenCalledTimes(1);
-		removeRouteChangeListener();
+
+		cleanupStatusListener();
+		cleanupRouteChangeListener();
 	});
 
-	it("does not revalidate for css-only HMR updates", async () => {
+	it("does not trigger server-loader revalidation for css-only HMR updates", async () => {
 		const api = await loadPublicClientAPI();
 		vi.doMock("/src/routes/hmr-css-only.tsx", () => ({
 			default: () => null,
@@ -4912,21 +4988,19 @@ describe("authoritative black-box contracts", () => {
 		await api.initClient({});
 		const fetchSpy = vi.spyOn(window, "fetch");
 
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "css-update",
-					path: "/src/routes/hmr-css-only.tsx?t=2",
-				},
-			],
-		});
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "css-update",
+				path: "/src/routes/hmr-css-only.tsx?t=2",
+			},
+		]);
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
 
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("does not revalidate for non-matching HMR js updates", async () => {
+	it("does not trigger server-loader revalidation for non-matching HMR js updates", async () => {
 		const api = await loadPublicClientAPI();
 		vi.doMock("/src/routes/hmr-current.tsx", () => ({
 			default: () => null,
@@ -4942,21 +5016,19 @@ describe("authoritative black-box contracts", () => {
 		await api.initClient({});
 		const fetchSpy = vi.spyOn(window, "fetch");
 
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "js-update",
-					path: "/src/routes/other.tsx?t=3",
-				},
-			],
-		});
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "js-update",
+				path: "/src/routes/other.tsx?t=3",
+			},
+		]);
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
 
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("ignores malformed HMR update payloads without throwing or revalidating", async () => {
+	it("ignores malformed HMR update payloads without throwing or server-loader revalidation", async () => {
 		const api = await loadPublicClientAPI();
 		vi.doMock("/src/routes/hmr-invalid.tsx", () => ({
 			default: () => null,
@@ -4973,14 +5045,12 @@ describe("authoritative black-box contracts", () => {
 		const fetchSpy = vi.spyOn(window, "fetch");
 
 		await expect(
-			simulateViteAfterUpdateForTesting({
-				updates: [
-					{
-						type: "not-supported",
-						path: "/src/routes/hmr-invalid.tsx?t=99",
-					},
-				],
-			}),
+			simulateViteAfterUpdateForTesting([
+				{
+					type: "not-supported",
+					path: "/src/routes/hmr-invalid.tsx?t=99",
+				},
+			]),
 		).resolves.toBeUndefined();
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
@@ -4988,20 +5058,18 @@ describe("authoritative black-box contracts", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("does not throw or revalidate when no matched import URLs are available for HMR updates", async () => {
+	it("does not throw or trigger server-loader revalidation when no matched import URLs are available for HMR updates", async () => {
 		const api = await loadPublicClientAPI();
 		await api.initClient({});
 		const fetchSpy = vi.spyOn(window, "fetch");
 
 		await expect(
-			simulateViteAfterUpdateForTesting({
-				updates: [
-					{
-						type: "js-update",
-						path: "/src/routes/any.tsx?t=1",
-					},
-				],
-			}),
+			simulateViteAfterUpdateForTesting([
+				{
+					type: "js-update",
+					path: "/src/routes/any.tsx?t=1",
+				},
+			]),
 		).resolves.toBeUndefined();
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
@@ -5009,7 +5077,7 @@ describe("authoritative black-box contracts", () => {
 		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("revalidates when any matched route shares the updated module path", async () => {
+	it("does not trigger server-loader revalidation when matched routes share the updated module path", async () => {
 		const api = await loadPublicClientAPI();
 		vi.doMock("/src/routes/hmr-shared.tsx", () => ({
 			default: () => null,
@@ -5025,31 +5093,21 @@ describe("authoritative black-box contracts", () => {
 			errorExportKeys: ["", ""],
 		});
 		await api.initClient({});
-		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-			createRouteDataResponse({
-				matchedPatterns: ["/hmr-second"],
-				loadersData: [{ route: "second-next" }],
-				importURLs: ["/src/routes/hmr-shared.tsx"],
-				exportKeys: ["default"],
-				errorExportKeys: [""],
-			}),
-		);
+		const fetchSpy = vi.spyOn(window, "fetch");
 
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "js-update",
-					path: "/src/routes/hmr-shared.tsx?t=9",
-				},
-			],
-		});
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "js-update",
+				path: "/src/routes/hmr-shared.tsx?t=9",
+			},
+		]);
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
 
-		expect(fetchSpy).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("preserves HMR refresh behavior across repeated init calls for the same route module path", async () => {
+	it("preserves HMR no-op behavior across repeated init calls when no opted-in client-loader modules exist", async () => {
 		const api = await loadPublicClientAPI();
 		vi.doMock("/src/routes/hmr-reinit.tsx", () => ({
 			default: () => null,
@@ -5066,43 +5124,31 @@ describe("authoritative black-box contracts", () => {
 		const routeChangeListener = vi.fn();
 		const cleanupRouteChangeListener =
 			api.addRouteChangeListener(routeChangeListener);
-		const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-			createRouteDataResponse({
-				matchedPatterns: ["/hmr-reinit"],
-				loadersData: [{ from: "update" }],
-				importURLs: ["/src/routes/hmr-reinit.tsx"],
-				exportKeys: ["default"],
-				errorExportKeys: [""],
-				hasRootData: true,
-			}),
-		);
+		const fetchSpy = vi.spyOn(window, "fetch");
 
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "js-update",
-					path: "/src/routes/hmr-reinit.tsx?t=1",
-				},
-			],
-		});
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "js-update",
+				path: "/src/routes/hmr-reinit.tsx?t=1",
+			},
+		]);
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
-		expect(fetchSpy).toHaveBeenCalledTimes(1);
-		expect(routeChangeListener).toHaveBeenCalledTimes(1);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(routeChangeListener).not.toHaveBeenCalled();
 
 		await api.initClient({});
-		await simulateViteAfterUpdateForTesting({
-			updates: [
-				{
-					type: "js-update",
-					path: "/src/routes/hmr-reinit.tsx?t=2",
-				},
-			],
-		});
+		routeChangeListener.mockClear();
+		await simulateViteAfterUpdateForTesting([
+			{
+				type: "js-update",
+				path: "/src/routes/hmr-reinit.tsx?t=2",
+			},
+		]);
 		await vi.runAllTimersAsync();
 		await Promise.resolve();
-		expect(fetchSpy).toHaveBeenCalledTimes(2);
-		expect(routeChangeListener).toHaveBeenCalledTimes(2);
+		expect(fetchSpy).not.toHaveBeenCalled();
+		expect(routeChangeListener).not.toHaveBeenCalled();
 
 		cleanupRouteChangeListener();
 	});
@@ -5229,10 +5275,9 @@ describe("authoritative black-box contracts", () => {
 			(call) => call[0] === "Failed to load route manifest:",
 		);
 		expect(manifestWarningCall).toBeDefined();
-		expect(manifestWarningCall?.[1]).toBeInstanceOf(Error);
-		expect((manifestWarningCall?.[1] as Error).message).toContain(
-			"status 503",
-		);
+		const manifestWarningError = manifestWarningCall?.[1];
+		expect(manifestWarningError).toBeInstanceOf(Error);
+		expect((manifestWarningError as Error).message).toContain("status 503");
 	});
 
 	it("ignores stale older progressive manifest responses after a newer init", async () => {
@@ -5594,7 +5639,12 @@ describe("authoritative black-box contracts", () => {
 
 	it("does not throw when sessionStorage getItem fails for scroll-state reads", async () => {
 		const api = await loadPublicClientAPI();
-		const originalGetItem = Storage.prototype.getItem;
+		const callOriginalGetItem = (
+			storage: Storage,
+			key: string,
+		): string | null => {
+			return Storage.prototype.getItem.call(storage, key);
+		};
 		vi.spyOn(Storage.prototype, "getItem").mockImplementation(function (
 			this: Storage,
 			key: string,
@@ -5602,7 +5652,7 @@ describe("authoritative black-box contracts", () => {
 			if (isScrollStateStorageKeyForTesting(key)) {
 				throw new Error("getItem failed");
 			}
-			return originalGetItem.call(this, key);
+			return callOriginalGetItem(this, key);
 		});
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
@@ -5620,8 +5670,19 @@ describe("authoritative black-box contracts", () => {
 
 	it("does not throw when sessionStorage set/remove fails for scroll persistence", async () => {
 		const api = await loadPublicClientAPI();
-		const originalSetItem = Storage.prototype.setItem;
-		const originalRemoveItem = Storage.prototype.removeItem;
+		const callOriginalSetItem = (
+			storage: Storage,
+			key: string,
+			value: string,
+		): void => {
+			Storage.prototype.setItem.call(storage, key, value);
+		};
+		const callOriginalRemoveItem = (
+			storage: Storage,
+			key: string,
+		): void => {
+			Storage.prototype.removeItem.call(storage, key);
+		};
 		vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
 			this: Storage,
 			key: string,
@@ -5633,7 +5694,7 @@ describe("authoritative black-box contracts", () => {
 			) {
 				throw new Error("setItem failed");
 			}
-			return originalSetItem.call(this, key, value);
+			return callOriginalSetItem(this, key, value);
 		});
 		vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (
 			this: Storage,
@@ -5642,7 +5703,7 @@ describe("authoritative black-box contracts", () => {
 			if (isPageRefreshScrollStateStorageKeyForTesting(key)) {
 				throw new Error("removeItem failed");
 			}
-			return originalRemoveItem.call(this, key);
+			return callOriginalRemoveItem(this, key);
 		});
 		vi.spyOn(window, "fetch").mockResolvedValue(
 			createRouteDataResponse({
@@ -6760,7 +6821,7 @@ describe("authoritative black-box contracts", () => {
 				node.rel === "preload" &&
 				node.getAttribute("as") === "style"
 			) {
-				Promise.resolve().then(() =>
+				void Promise.resolve().then(() =>
 					node.dispatchEvent(new Event("load")),
 				);
 			}
@@ -6800,7 +6861,7 @@ describe("authoritative black-box contracts", () => {
 				node.rel === "preload" &&
 				node.getAttribute("as") === "style"
 			) {
-				Promise.resolve().then(() =>
+				void Promise.resolve().then(() =>
 					node.dispatchEvent(new Event("load")),
 				);
 			}
@@ -6868,7 +6929,7 @@ describe("authoritative black-box contracts", () => {
 				node.rel === "preload" &&
 				node.getAttribute("as") === "style"
 			) {
-				Promise.resolve().then(() =>
+				void Promise.resolve().then(() =>
 					node.dispatchEvent(new Event("load")),
 				);
 			}

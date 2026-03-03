@@ -2,6 +2,7 @@ package routeartifacts
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -22,7 +23,7 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(
 
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetBuildID("build-before-stage-two")
-		l.SetRouteManifestFile(testWaveOutPrefixedFileName("route_manifest.json"))
+		l.SetRouteManifestFile(waveoutputtest.TestWaveOutputPrefixedFileName("route_manifest.json"))
 		l.SetPaths(map[string]*vormaruntime.Path{
 			"/users/:id": {
 				OriginalPattern: "/users/:id",
@@ -41,19 +42,19 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(
 	manifest := viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
 			Src:     "frontend/src/vorma.entry.tsx",
-			File:    testWaveOutAssetPath("entry-abc.js"),
-			CSS:     []string{testWaveOutAssetPath("entry.css")},
+			File:    waveoutputtest.TestWaveOutputAssetPath("entry-abc.js"),
+			CSS:     []string{waveoutputtest.TestWaveOutputAssetPath("entry.css")},
 			IsEntry: true,
 			Imports: []string{"shared-chunk.js"},
 		},
 		"shared-chunk.js": {
-			File: testWaveOutAssetPath("shared.js"),
-			CSS:  []string{testWaveOutAssetPath("shared.css")},
+			File: waveoutputtest.TestWaveOutputAssetPath("shared.js"),
+			CSS:  []string{waveoutputtest.TestWaveOutputAssetPath("shared.css")},
 		},
 		"frontend/src/routes/users.tsx": {
 			Src:     "frontend/src/routes/users.tsx",
-			File:    testWaveOutAssetPath("users.js"),
-			CSS:     []string{testWaveOutAssetPath("users.css")},
+			File:    waveoutputtest.TestWaveOutputAssetPath("users.js"),
+			CSS:     []string{waveoutputtest.TestWaveOutputAssetPath("users.css")},
 			Imports: []string{"shared-chunk.js"},
 		},
 	}
@@ -111,11 +112,11 @@ func TestToPathsFileStageTwo_TransformsManifestWithoutMutatingBuildID(
 		t.Fatalf("users css = %#v, want %#v", usersCSS, []string{"users.css"})
 	}
 
-	if pathsFile.RouteManifestFile != testWaveOutPrefixedFileName("route_manifest.json") {
+	if pathsFile.RouteManifestFile != waveoutputtest.TestWaveOutputPrefixedFileName("route_manifest.json") {
 		t.Fatalf(
 			"route manifest file = %q, want %q",
 			pathsFile.RouteManifestFile,
-			testWaveOutPrefixedFileName("route_manifest.json"),
+			waveoutputtest.TestWaveOutputPrefixedFileName("route_manifest.json"),
 		)
 	}
 	if pathsFile.BuildID == "" {
@@ -151,19 +152,19 @@ func TestApplyViteManifestToPaths_UpdatesClientEntryAndRoutePaths(
 	manifest := viteutil.Manifest{
 		"frontend/src/vorma.entry.tsx": {
 			Src:     "frontend/src/vorma.entry.tsx",
-			File:    testWaveOutAssetPath("entry.js"),
+			File:    waveoutputtest.TestWaveOutputAssetPath("entry.js"),
 			IsEntry: true,
 			Imports: []string{"shared.js"},
-			CSS:     []string{testWaveOutAssetPath("entry.css")},
+			CSS:     []string{waveoutputtest.TestWaveOutputAssetPath("entry.css")},
 		},
 		"shared.js": {
-			File: testWaveOutAssetPath("shared.js"),
+			File: waveoutputtest.TestWaveOutputAssetPath("shared.js"),
 		},
 		"frontend/src/routes/home.tsx": {
 			Src:     "frontend/src/routes/home.tsx",
-			File:    testWaveOutAssetPath("home.js"),
+			File:    waveoutputtest.TestWaveOutputAssetPath("home.js"),
 			Imports: []string{"shared.js"},
-			CSS:     []string{testWaveOutAssetPath("home.css")},
+			CSS:     []string{waveoutputtest.TestWaveOutputAssetPath("home.css")},
 		},
 	}
 	paths := map[string]*vormaruntime.Path{
@@ -237,7 +238,7 @@ func TestApplyViteManifestToPaths_UpdatesAllRoutesSharingSameSourcePath(
 	manifest := viteutil.Manifest{
 		"frontend/src/routes/shared.tsx": {
 			Src:  "frontend/src/routes/shared.tsx",
-			File: testWaveOutAssetPath("shared-route.js"),
+			File: waveoutputtest.TestWaveOutputAssetPath("shared-route.js"),
 		},
 	}
 	paths := map[string]*vormaruntime.Path{

@@ -24,51 +24,10 @@ type filesystemPathField struct {
 	ConfiguredPath string
 }
 
-// parseOptions controls JSON parsing and path-invariant enforcement.
-type parseOptions[T any] struct {
-	ValidateRequiredSections func(*T) error
-	FilesystemPathSelectors  []string
-	PanicMachineAbsolutePath func(filesystemPathField)
-}
-
 type untypedOptions struct {
 	ValidateRequiredSections func(reflect.Value) error
 	FilesystemPathSelectors  []string
 	PanicMachineAbsolutePath func(filesystemPathField)
-}
-
-// parseJSONWithFilesystemPathRules unmarshals JSON into T and enforces
-// machine-absolute filesystem path invariants for selected fields.
-func parseJSONWithFilesystemPathRules[T any](
-	data []byte,
-	options parseOptions[T],
-) (*T, error) {
-	var parsedConfig T
-	parseError := parseJSONWithFilesystemPathRulesIntoTarget(
-		data,
-		&parsedConfig,
-		untypedOptions{
-			ValidateRequiredSections: func(parsedValue reflect.Value) error {
-				if options.ValidateRequiredSections == nil {
-					return nil
-				}
-				typedConfigPointer, typeAssertionOK := parsedValue.Addr().Interface().(*T)
-				if !typeAssertionOK {
-					return fmt.Errorf(
-						"config parser type mismatch: expected %T",
-						new(T),
-					)
-				}
-				return options.ValidateRequiredSections(typedConfigPointer)
-			},
-			FilesystemPathSelectors:  options.FilesystemPathSelectors,
-			PanicMachineAbsolutePath: options.PanicMachineAbsolutePath,
-		},
-	)
-	if parseError != nil {
-		return nil, parseError
-	}
-	return &parsedConfig, nil
 }
 
 var waveFilesystemPathSelectors = []string{
