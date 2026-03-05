@@ -6,11 +6,14 @@ package runloop
 
 import (
 	"context"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
@@ -144,16 +147,25 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 	executionInput := eventpipeline.BuildWatcherEventExecutionInputFromPlanningResult(
 		executionPlanningResult,
 	)
+	watcherLogEntries := deriveWatcherLogEntriesForBatch(
+		executionInput.WatcherEventLogPayloads,
+	)
+	engine.logWatcherBatch(
+		watcherLogEntries,
+	)
 	flowDecision := executionInput.FlowDecision
 
 	if flowDecision.TriggerConfigRestart {
 		engine.broadcastRebuilding()
-		engine.logDebug("configuration changed; scheduling config restart")
+		engine.logInfo("Restarting dev server (config change)")
 		engine.triggerConfigRestart()
 		return
 	}
 
 	if len(executionInput.EventsWithHooks) == 0 {
+		if len(watcherLogEntries) > 0 {
+			engine.logInfo("No reload needed for this change")
+		}
 		return
 	}
 
@@ -161,17 +173,8 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 		engine.broadcastRebuilding()
 	}
 
-	for _, logPayload := range executionInput.WatcherEventLogPayloads {
-		engine.logInfo("[watcher]", "op", logPayload.Operation, "filename", logPayload.FilePath)
-	}
 	if engine.isWaitingForBuildRetry() {
-		engine.logDebug(
-			"waiting for build retry; queuing restart from watcher batch",
-			"cycle_id",
-			traceContext.CycleID,
-			"batch_id",
-			traceContext.BatchID,
-		)
+		engine.logInfo("Build is failing; queued rebuild retry")
 		engine.triggerRestart()
 		return
 	}
@@ -183,6 +186,10 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 		work,
 		watcher,
 	)
+	if !didRunUserFacingBatchAction(flowDecision.BehavioralDecision, work) &&
+		len(watcherLogEntries) > 0 {
+		engine.logInfo("No reload needed for this change")
+	}
 
 	watcher.RemoveStale()
 }
@@ -496,7 +503,10 @@ func (engine *Engine) RunConcurrentHooksForEventsWithContextAndErrors(
 ) ([]wavewatch.RefreshAction, []error) {
 	descriptors := hooks.DeriveHookStageExecutionDescriptors(eventsWithHooks)
 	traceContext := engine.currentWatcherExecutionTraceContext()
-	actionsByDescriptorIndex := make([][]wavewatch.RefreshAction, len(descriptors))
+	actionsByDescriptorIndex := make(
+		[][]wavewatch.RefreshAction,
+		len(descriptors),
+	)
 	executionErrorsByDescriptorIndex := make([]error, len(descriptors))
 	var concurrentHooksGroup errgroup.Group
 
@@ -1112,4 +1122,85 @@ func (engine *Engine) logError(message string, arguments ...any) {
 		return
 	}
 	engine.dependencies.Log.Error(message, arguments...)
+}
+
+func (engine *Engine) logWatcherBatch(entries []watcherLogEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	if len(entries) > 1 {
+		engine.logInfo("[watcher]", "files_changed", len(entries))
+		return
+	}
+	entry := entries[0]
+	engine.logInfo("[watcher]",
+		"op", entry.Operation,
+		"filename",
+		watcherLogPathRelativeToCurrentWorkingDirectory(entry.FilePath),
+	)
+}
+
+type watcherLogEntry struct {
+	Operation string
+	FilePath  string
+}
+
+func deriveWatcherLogEntriesForBatch(
+	watcherEventLogPayloads []eventpipeline.WatcherEventLogPayload,
+) []watcherLogEntry {
+	if len(watcherEventLogPayloads) == 0 {
+		return nil
+	}
+
+	entries := make([]watcherLogEntry, 0, len(watcherEventLogPayloads))
+	for _, watcherEventLogPayload := range watcherEventLogPayloads {
+		entries = append(entries, watcherLogEntry{
+			Operation: watcherEventLogPayload.Operation,
+			FilePath:  watcherEventLogPayload.FilePath,
+		})
+	}
+	return entries
+}
+
+func watcherLogPathRelativeToCurrentWorkingDirectory(path string) string {
+	cleanedPath := filepath.Clean(strings.TrimSpace(path))
+	if cleanedPath == "" {
+		return ""
+	}
+	if !filepath.IsAbs(cleanedPath) {
+		return filepath.ToSlash(cleanedPath)
+	}
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		return filepath.ToSlash(filepath.Base(cleanedPath))
+	}
+	relativePath, relativePathError := filepath.Rel(
+		currentWorkingDirectory,
+		cleanedPath,
+	)
+	if relativePathError != nil {
+		return filepath.ToSlash(filepath.Base(cleanedPath))
+	}
+	return filepath.ToSlash(filepath.Clean(relativePath))
+}
+
+func didRunUserFacingBatchAction(
+	behavioralDecision eventpipeline.EventExecutionPlanBehavioralDecision,
+	work *eventpipeline.WorkSet,
+) bool {
+	if behavioralDecision.AppStopStrategy != eventpipeline.AppStopStrategyNone {
+		return true
+	}
+	if work == nil {
+		return false
+	}
+	if work.Restart.RestartApp ||
+		work.Browser.Action != eventpipeline.BrowserPhaseActionNone {
+		return true
+	}
+	return work.Build.CompileGo ||
+		work.Build.BuildCriticalCSS ||
+		work.Build.BuildNormalCSS ||
+		work.Build.ProcessPublicFiles ||
+		work.Build.ProcessPrivateFiles
 }

@@ -206,16 +206,18 @@ type DevReloadActionEndpointsInput struct {
 	Request        *http.Request
 	IsDevMode      bool
 
-	RoutesEndpointPath   string
-	TemplateEndpointPath string
+	RoutesEndpointPath        string
+	TemplateEndpointPath      string
+	PublicFileMapEndpointPath string
 
 	ValidateExpectedBuildIDOrWriteConflict func(
 		responseWriter http.ResponseWriter,
 		request *http.Request,
 	) bool
-	ReloadRoutesFromDisk   func() error
-	ReloadTemplateFromDisk func() error
-	Log                    *slog.Logger
+	ReloadRoutesFromDisk        func() error
+	ReloadTemplateFromDisk      func() error
+	ReloadPublicFileMapFromDisk func() error
+	Log                         *slog.Logger
 }
 
 // HandleDevReloadActionEndpoints dispatches dev-reload action endpoints and
@@ -247,6 +249,17 @@ func HandleDevReloadActionEndpoints(
 				ValidateExpectedBuildIDOrWriteConflict: input.ValidateExpectedBuildIDOrWriteConflict,
 				ReloadFromDisk:                         input.ReloadTemplateFromDisk,
 				LogErrorPrefix:                         "template reload failed",
+				Log:                                    input.Log,
+			},
+		)
+	case input.PublicFileMapEndpointPath:
+		return handleSingleDevReloadActionEndpoint(
+			handleSingleDevReloadActionEndpointInput{
+				ResponseWriter:                         input.ResponseWriter,
+				Request:                                input.Request,
+				ValidateExpectedBuildIDOrWriteConflict: input.ValidateExpectedBuildIDOrWriteConflict,
+				ReloadFromDisk:                         input.ReloadPublicFileMapFromDisk,
+				LogErrorPrefix:                         "public filemap reload failed",
 				Log:                                    input.Log,
 			},
 		)
@@ -1039,13 +1052,15 @@ type BuildActionsHandlerInput struct {
 	IsDevMode                              func() bool
 	RoutesEndpointPath                     func() string
 	TemplateEndpointPath                   func() string
+	PublicFileMapEndpointPath              func() string
 	ValidateExpectedBuildIDOrWriteConflict func(
 		http.ResponseWriter,
 		*http.Request,
 	) bool
-	ReloadRoutesFromDisk   func() error
-	ReloadTemplateFromDisk func() error
-	Log                    *slog.Logger
+	ReloadRoutesFromDisk        func() error
+	ReloadTemplateFromDisk      func() error
+	ReloadPublicFileMapFromDisk func() error
+	Log                         *slog.Logger
 }
 
 // BuildActionsHandler constructs the top-level actions handler.
@@ -1056,13 +1071,18 @@ func BuildActionsHandler(
 		func(w http.ResponseWriter, r *http.Request) {
 			res := response.New(w)
 			res.SetHeader("X-Wave-Framework-Build-Id", input.CurrentBuildID())
+			publicFileMapEndpointPath := ""
+			if input.PublicFileMapEndpointPath != nil {
+				publicFileMapEndpointPath = input.PublicFileMapEndpointPath()
+			}
 			handled := HandleDevReloadActionEndpoints(
 				DevReloadActionEndpointsInput{
-					ResponseWriter:       w,
-					Request:              r,
-					IsDevMode:            input.IsDevMode(),
-					RoutesEndpointPath:   input.RoutesEndpointPath(),
-					TemplateEndpointPath: input.TemplateEndpointPath(),
+					ResponseWriter:            w,
+					Request:                   r,
+					IsDevMode:                 input.IsDevMode(),
+					RoutesEndpointPath:        input.RoutesEndpointPath(),
+					TemplateEndpointPath:      input.TemplateEndpointPath(),
+					PublicFileMapEndpointPath: publicFileMapEndpointPath,
 					ValidateExpectedBuildIDOrWriteConflict: func(
 						responseWriter http.ResponseWriter,
 						request *http.Request,
@@ -1072,9 +1092,10 @@ func BuildActionsHandler(
 							request,
 						)
 					},
-					ReloadRoutesFromDisk:   input.ReloadRoutesFromDisk,
-					ReloadTemplateFromDisk: input.ReloadTemplateFromDisk,
-					Log:                    input.Log,
+					ReloadRoutesFromDisk:        input.ReloadRoutesFromDisk,
+					ReloadTemplateFromDisk:      input.ReloadTemplateFromDisk,
+					ReloadPublicFileMapFromDisk: input.ReloadPublicFileMapFromDisk,
+					Log:                         input.Log,
 				},
 			)
 			if handled {

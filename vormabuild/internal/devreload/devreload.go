@@ -625,9 +625,6 @@ func (executor reloadActionExecutor) getDeferredFrameworkRuntimeReloadAction(
 		trimmedEndpoint = "/" + trimmedEndpoint
 	}
 	normalizedExpectedBuildID := strings.TrimSpace(expectedBuildID)
-	if normalizedExpectedBuildID == "" && v != nil {
-		normalizedExpectedBuildID = strings.TrimSpace(v.BuildID())
-	}
 
 	reloadAction := newReloadBrowserAndWaitAction()
 	reloadAction.FrameworkRuntimeReloadRequest = &wavewatch.FrameworkRuntimeReloadRequest{

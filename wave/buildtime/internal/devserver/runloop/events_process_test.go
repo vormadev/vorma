@@ -184,9 +184,9 @@ func setupConfigEventTestConfigForRunloopProcessTests(
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"ProjectID": "test-project",
-			"MainAppEntry":        "cmd/app",
-			"ServerOnlyMode":      true,
+			"ProjectID":      "test-project",
+			"MainAppEntry":   "cmd/app",
+			"ServerOnlyMode": true,
 			"StaticAssetDirs": map[string]any{
 				"Public": filepath.Join("static", waveartifacts.PublicDirname),
 				"Private": filepath.Join(
@@ -721,7 +721,30 @@ func TestProcessEvents_LogsWatcherEventsWithOperationAndPathFields(
 			logOutput,
 		)
 	}
-	if !strings.Contains(logOutput, "filename="+watchedTextFilePath) {
+	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		t.Fatalf(
+			"resolve current working directory for watcher log assertion: %v",
+			currentWorkingDirectoryError,
+		)
+	}
+	expectedPathRelativeToCurrentWorkingDirectory, relativePathError := filepath.Rel(
+		currentWorkingDirectory,
+		watchedTextFilePath,
+	)
+	if relativePathError != nil {
+		t.Fatalf(
+			"resolve watched file path relative to current working directory: %v",
+			relativePathError,
+		)
+	}
+	expectedPathRelativeToCurrentWorkingDirectory = filepath.ToSlash(
+		filepath.Clean(expectedPathRelativeToCurrentWorkingDirectory),
+	)
+	if !strings.Contains(
+		logOutput,
+		"filename="+expectedPathRelativeToCurrentWorkingDirectory,
+	) {
 		t.Fatalf(
 			"expected watcher event log to include filename field, got %q",
 			logOutput,

@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -15,8 +17,9 @@ import (
 )
 
 const (
-	testHelperProcessEnv = "VITECMD_TEST_HELPER_PROCESS"
-	testHelperModeEnv    = "VITECMD_TEST_HELPER_MODE"
+	testHelperProcessEnv  = "VITECMD_TEST_HELPER_PROCESS"
+	testHelperModeEnv     = "VITECMD_TEST_HELPER_MODE"
+	testHelperChildPIDEnv = "VITECMD_TEST_HELPER_CHILD_PID_FILE"
 )
 
 // TestBuildCtxHelperProcess is executed in a subprocess to emulate vite command behavior.
@@ -28,6 +31,8 @@ func TestBuildCtxHelperProcess(t *testing.T) {
 	switch os.Getenv(testHelperModeEnv) {
 	case "block_until_terminated":
 		waitForTerminationSignalAndExit()
+	case "spawn_child_and_wait":
+		runWrapperProcessWithChildAndWaitForTerminationAndExit()
 	case "exit_immediately":
 		os.Exit(0)
 	case "prod_success":
@@ -359,6 +364,48 @@ func TestDevBuild_RestartsAfterPriorProcessExited(t *testing.T) {
 	}
 }
 
+func TestCleanupWithError_TerminatesWrapperChildProcessTree(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group tree termination behavior is Unix-specific")
+	}
+
+	t.Setenv(testHelperProcessEnv, "1")
+	t.Setenv(testHelperModeEnv, "spawn_child_and_wait")
+	childPIDFilePath := filepath.Join(t.TempDir(), "child_pid.txt")
+	t.Setenv(testHelperChildPIDEnv, childPIDFilePath)
+
+	stubInitPort(t, func(port int) (int, error) {
+		return port, nil
+	})
+
+	ctx := NewBuildCtx(&BuildCtxOptions{
+		JSPackageManagerBaseCmd: helperBaseCommand(t),
+		DefaultPort:             5199,
+	})
+
+	if devBuildError := ctx.DevBuild(); devBuildError != nil {
+		t.Fatalf("DevBuild() error = %v", devBuildError)
+	}
+	t.Cleanup(ctx.Cleanup)
+
+	wrapperProcessID := processPID(t, ctx)
+	childProcessID := waitForChildProcessID(t, childPIDFilePath)
+	if !isProcessAlive(childProcessID) {
+		t.Fatalf("expected helper child process %d to be alive before cleanup", childProcessID)
+	}
+
+	if cleanupError := ctx.CleanupWithError(); cleanupError != nil {
+		t.Fatalf("CleanupWithError() returned error: %v", cleanupError)
+	}
+
+	waitForCondition(t, 2*time.Second, func() bool {
+		return !isProcessAlive(childProcessID)
+	}, "helper child process remained alive after cleanup")
+	waitForCondition(t, 2*time.Second, func() bool {
+		return !isProcessAlive(wrapperProcessID)
+	}, "helper wrapper process remained alive after cleanup")
+}
+
 func TestProdBuild_WritesManifestAndLeavesParentEnvUnchanged(t *testing.T) {
 	t.Setenv(testHelperProcessEnv, "1")
 	t.Setenv(testHelperModeEnv, "prod_success")
@@ -466,6 +513,46 @@ func runProdBuildHelperAndExit(exitCode int) {
 	}
 
 	os.Exit(0)
+}
+
+func runWrapperProcessWithChildAndWaitForTerminationAndExit() {
+	executablePath, executableError := os.Executable()
+	if executableError != nil {
+		fmt.Fprintln(os.Stderr, executableError)
+		os.Exit(2)
+	}
+
+	childCommand := exec.Command(
+		executablePath,
+		"-test.run=^TestBuildCtxHelperProcess$",
+		"--",
+	)
+	childCommand.Stdout = os.Stdout
+	childCommand.Stderr = os.Stderr
+	childCommand.Env = append(
+		os.Environ(),
+		testHelperProcessEnv+"=1",
+		testHelperModeEnv+"=block_until_terminated",
+	)
+	if startChildError := childCommand.Start(); startChildError != nil {
+		fmt.Fprintln(os.Stderr, startChildError)
+		os.Exit(2)
+	}
+
+	childPIDFilePath := strings.TrimSpace(os.Getenv(testHelperChildPIDEnv))
+	if childPIDFilePath != "" {
+		writeChildPIDError := os.WriteFile(
+			childPIDFilePath,
+			[]byte(strconv.Itoa(childCommand.Process.Pid)),
+			0o644,
+		)
+		if writeChildPIDError != nil {
+			fmt.Fprintln(os.Stderr, writeChildPIDError)
+			os.Exit(2)
+		}
+	}
+
+	waitForTerminationSignalAndExit()
 }
 
 func runProdBuildHelperRequiringAbsoluteOutDirAndExit(exitCode int) {
@@ -609,4 +696,37 @@ func processPID(t *testing.T, ctx *BuildCtx) int {
 	}
 
 	return ctx.cmd.Process.Pid
+}
+
+func waitForChildProcessID(t *testing.T, childPIDFilePath string) int {
+	t.Helper()
+
+	var childPID int
+	waitForCondition(t, 2*time.Second, func() bool {
+		childPIDFileContents, readFileError := os.ReadFile(childPIDFilePath)
+		if readFileError != nil {
+			return false
+		}
+		parsedChildPID, parseChildPIDError := strconv.Atoi(
+			strings.TrimSpace(string(childPIDFileContents)),
+		)
+		if parseChildPIDError != nil || parsedChildPID <= 0 {
+			return false
+		}
+		childPID = parsedChildPID
+		return true
+	}, "timed out waiting for helper child PID file")
+
+	return childPID
+}
+
+func isProcessAlive(processID int) bool {
+	if processID <= 0 {
+		return false
+	}
+	killError := syscall.Kill(processID, 0)
+	if killError == nil {
+		return true
+	}
+	return !errors.Is(killError, syscall.ESRCH)
 }

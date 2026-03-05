@@ -71,6 +71,8 @@ const fixtureTemplateCacheVersion = "v5";
 const outputLineLimit = 800;
 const readinessTimeoutMS = 240_000;
 const shutdownTimeoutMS = 12_000;
+const fixtureDisposeMaxRetries = 24;
+const fixtureDisposeRetryDelayMS = 50;
 const runtimeStartupPortRetryCount = 3;
 const wavePortPinnedEnvironmentVariableName = "__WAVE_PORT_HAS_BEEN_SET";
 const lanePortFamilyStride = 2_000;
@@ -411,12 +413,23 @@ async function stopManagedCommand(props: {
 	if (child.exitCode !== null || child.signalCode !== null) {
 		return;
 	}
+	const childPID = child.pid;
+	const descendantProcessIDs =
+		childPID === undefined
+			? []
+			: await listDescendantProcessIDs({
+					rootProcessID: childPID,
+				});
 
 	try {
 		terminateProcessGroup({ child, signal: "SIGTERM" });
 	} catch {
 		// Best-effort graceful stop; fallback to SIGKILL below if needed.
 	}
+	terminateProcessIDs({
+		processIDs: descendantProcessIDs,
+		signal: "SIGTERM",
+	});
 
 	const gracefulExit = await Promise.race([
 		waitForChildExit({ child }),
@@ -431,6 +444,10 @@ async function stopManagedCommand(props: {
 	} catch {
 		// Process may have exited between timeout and forced kill.
 	}
+	terminateProcessIDs({
+		processIDs: descendantProcessIDs,
+		signal: "SIGKILL",
+	});
 	await waitForChildExit({ child });
 }
 
@@ -452,12 +469,22 @@ async function prepareFixtureVariantForAdapter(props: {
 		fixtureRootDir: isolatedFixtureRootDir,
 		frontendSourceDir: path.join(isolatedFixtureRootDir, "frontend", "src"),
 		dispose: async () => {
-			await fs.promises.rm(isolatedFixtureRootDir, {
-				recursive: true,
-				force: true,
+			await removeFixtureRootDirectory({
+				fixtureRootDir: isolatedFixtureRootDir,
 			});
 		},
 	};
+}
+
+async function removeFixtureRootDirectory(props: {
+	fixtureRootDir: string;
+}): Promise<void> {
+	await fs.promises.rm(props.fixtureRootDir, {
+		recursive: true,
+		force: true,
+		maxRetries: fixtureDisposeMaxRetries,
+		retryDelay: fixtureDisposeRetryDelayMS,
+	});
 }
 
 /** Generates a temp fixture app with fully prepared dependencies. */
@@ -1004,6 +1031,132 @@ function terminateProcessGroup(props: {
 	}
 
 	process.kill(-childPID, props.signal);
+}
+
+function terminateProcessIDs(props: {
+	processIDs: number[];
+	signal: NodeJS.Signals;
+}): void {
+	for (const processID of props.processIDs) {
+		if (processID <= 0) {
+			continue;
+		}
+		try {
+			process.kill(processID, props.signal);
+		} catch (error) {
+			const errorCode = (error as NodeJS.ErrnoException | undefined)
+				?.code;
+			if (errorCode === "ESRCH") {
+				continue;
+			}
+			throw error;
+		}
+	}
+}
+
+async function listDescendantProcessIDs(props: {
+	rootProcessID: number;
+}): Promise<number[]> {
+	if (process.platform === "win32") {
+		return [];
+	}
+	try {
+		const processTableSnapshot = await readCommandStdout({
+			command: "ps",
+			args: ["-Ao", "pid=,ppid="],
+		});
+		return parseDescendantProcessIDsFromProcessTableSnapshot({
+			rootProcessID: props.rootProcessID,
+			processTableSnapshot,
+		});
+	} catch {
+		return [];
+	}
+}
+
+async function readCommandStdout(props: {
+	command: string;
+	args: string[];
+}): Promise<string> {
+	return await new Promise((resolve, reject) => {
+		const commandOutputChunks: Buffer[] = [];
+		const commandErrorChunks: Buffer[] = [];
+		const commandProcess = spawn(props.command, props.args, {
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		commandProcess.stdout?.on("data", (chunk: Buffer) => {
+			commandOutputChunks.push(chunk);
+		});
+		commandProcess.stderr?.on("data", (chunk: Buffer) => {
+			commandErrorChunks.push(chunk);
+		});
+		commandProcess.once("error", (error) => {
+			reject(error);
+		});
+		commandProcess.once("close", (exitCode) => {
+			if (exitCode !== 0) {
+				const commandErrorOutput = Buffer.concat(commandErrorChunks)
+					.toString("utf8")
+					.trim();
+				reject(
+					new Error(
+						`command failed: ${props.command} ${props.args.join(" ")} (exit=${exitCode}); stderr=${commandErrorOutput}`,
+					),
+				);
+				return;
+			}
+			resolve(Buffer.concat(commandOutputChunks).toString("utf8"));
+		});
+	});
+}
+
+function parseDescendantProcessIDsFromProcessTableSnapshot(props: {
+	rootProcessID: number;
+	processTableSnapshot: string;
+}): number[] {
+	const childProcessIDsByParentProcessID = new Map<number, number[]>();
+	for (const snapshotLine of props.processTableSnapshot.split(/\r?\n/)) {
+		const lineMatch = snapshotLine.match(/^\s*(\d+)\s+(\d+)\s*$/);
+		if (lineMatch === null) {
+			continue;
+		}
+		const processID = Number.parseInt(lineMatch[1], 10);
+		const parentProcessID = Number.parseInt(lineMatch[2], 10);
+		if (
+			!Number.isInteger(processID) ||
+			!Number.isInteger(parentProcessID)
+		) {
+			continue;
+		}
+		const existingChildProcessIDs =
+			childProcessIDsByParentProcessID.get(parentProcessID) ?? [];
+		existingChildProcessIDs.push(processID);
+		childProcessIDsByParentProcessID.set(
+			parentProcessID,
+			existingChildProcessIDs,
+		);
+	}
+
+	const discoveredDescendantProcessIDs = new Set<number>();
+	const pendingParentProcessIDs: number[] = [props.rootProcessID];
+
+	while (pendingParentProcessIDs.length > 0) {
+		const parentProcessID = pendingParentProcessIDs.shift();
+		if (parentProcessID === undefined) {
+			continue;
+		}
+		for (const childProcessID of childProcessIDsByParentProcessID.get(
+			parentProcessID,
+		) ?? []) {
+			if (discoveredDescendantProcessIDs.has(childProcessID)) {
+				continue;
+			}
+			discoveredDescendantProcessIDs.add(childProcessID);
+			pendingParentProcessIDs.push(childProcessID);
+		}
+	}
+
+	return [...discoveredDescendantProcessIDs];
 }
 
 /** Returns captured command output in a compact diagnostic format. */

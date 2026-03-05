@@ -94,9 +94,10 @@ func TestValidateExpectedBuildIDOrWriteConflict(t *testing.T) {
 
 func TestHandleDevReloadActionEndpoints(t *testing.T) {
 	baseInput := DevReloadActionEndpointsInput{
-		IsDevMode:            true,
-		RoutesEndpointPath:   "/__reload-routes",
-		TemplateEndpointPath: "/__reload-template",
+		IsDevMode:                 true,
+		RoutesEndpointPath:        "/__reload-routes",
+		TemplateEndpointPath:      "/__reload-template",
+		PublicFileMapEndpointPath: "/__reload-public-filemap",
 	}
 
 	t.Run("returns_false_when_not_dev_mode", func(t *testing.T) {
@@ -108,11 +109,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            false,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 false,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 			},
 		)
 		if handled {
@@ -129,11 +131,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            baseInput.IsDevMode,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 			},
 		)
 		if handled {
@@ -150,11 +153,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            baseInput.IsDevMode,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 			},
 		)
 		if !handled {
@@ -178,11 +182,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		reloadCalled := false
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            baseInput.IsDevMode,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 				ValidateExpectedBuildIDOrWriteConflict: func(
 					responseWriter http.ResponseWriter,
 					_ *http.Request,
@@ -223,11 +228,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		reloadErr := errors.New("reload failed")
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            baseInput.IsDevMode,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 				ReloadRoutesFromDisk: func() error {
 					return reloadErr
 				},
@@ -257,11 +263,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		reloadCalled := false
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            baseInput.IsDevMode,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 				ReloadRoutesFromDisk: func() error {
 					reloadCalled = true
 					return nil
@@ -292,11 +299,12 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		reloadCalled := false
 		handled := HandleDevReloadActionEndpoints(
 			DevReloadActionEndpointsInput{
-				ResponseWriter:       recorder,
-				Request:              request,
-				IsDevMode:            baseInput.IsDevMode,
-				RoutesEndpointPath:   baseInput.RoutesEndpointPath,
-				TemplateEndpointPath: baseInput.TemplateEndpointPath,
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
 				ReloadTemplateFromDisk: func() error {
 					reloadCalled = true
 					return nil
@@ -308,6 +316,42 @@ func TestHandleDevReloadActionEndpoints(t *testing.T) {
 		}
 		if !reloadCalled {
 			t.Fatal("expected template-reload operation to run")
+		}
+		if got, want := recorder.Code, http.StatusOK; got != want {
+			t.Fatalf("status = %d, want %d", got, want)
+		}
+		if got, want := recorder.Body.String(), "ok"; got != want {
+			t.Fatalf("body = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("public_filemap_reload_success_writes_ok", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"http://example.com/__reload-public-filemap",
+			nil,
+		)
+		recorder := httptest.NewRecorder()
+		reloadCalled := false
+		handled := HandleDevReloadActionEndpoints(
+			DevReloadActionEndpointsInput{
+				ResponseWriter:            recorder,
+				Request:                   request,
+				IsDevMode:                 baseInput.IsDevMode,
+				RoutesEndpointPath:        baseInput.RoutesEndpointPath,
+				TemplateEndpointPath:      baseInput.TemplateEndpointPath,
+				PublicFileMapEndpointPath: baseInput.PublicFileMapEndpointPath,
+				ReloadPublicFileMapFromDisk: func() error {
+					reloadCalled = true
+					return nil
+				},
+			},
+		)
+		if !handled {
+			t.Fatal("expected public-filemap-reload request to be handled")
+		}
+		if !reloadCalled {
+			t.Fatal("expected public-filemap-reload operation to run")
 		}
 		if got, want := recorder.Code, http.StatusOK; got != want {
 			t.Fatalf("status = %d, want %d", got, want)

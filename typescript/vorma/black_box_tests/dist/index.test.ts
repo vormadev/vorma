@@ -10704,6 +10704,15 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 		window.history.replaceState({}, "", "/react-hash-noop/42#details");
 		const reactAdapter = await import("vorma/react");
 		const fetchSpy = vi.spyOn(window, "fetch");
+		const hashTarget = document.createElement("section");
+		hashTarget.id = "details";
+		const hashScrollSpy = vi.fn();
+		Object.defineProperty(hashTarget, "scrollIntoView", {
+			value: hashScrollSpy,
+			writable: true,
+			configurable: true,
+		});
+		document.body.appendChild(hashTarget);
 		const beforeBegin = vi.fn();
 		const beforeRender = vi.fn();
 		const afterRender = vi.fn();
@@ -10736,10 +10745,12 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 			expect(fetchSpy).toHaveBeenCalledTimes(0);
 			expect(window.location.pathname).toBe("/react-hash-noop/42");
 			expect(window.location.hash).toBe("#details");
+			expect(hashScrollSpy).toHaveBeenCalledTimes(1);
 			expect(beforeBegin).toHaveBeenCalledTimes(0);
 			expect(beforeRender).toHaveBeenCalledTimes(0);
 			expect(afterRender).toHaveBeenCalledTimes(0);
 		} finally {
+			hashTarget.remove();
 			cleanup();
 		}
 	});
@@ -10749,6 +10760,7 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 		window.history.replaceState({}, "", "/react-noop-no-hash/42");
 		const reactAdapter = await import("vorma/react");
 		const fetchSpy = vi.spyOn(window, "fetch");
+		const scrollToSpy = vi.spyOn(window, "scrollTo");
 		const TypedLink = reactAdapter.makeTypedLink(
 			DIST_TEST_VORMA_APP_CONFIG,
 			{},
@@ -10774,6 +10786,45 @@ describe("npm_dist adapter authoritative black-box contracts", () => {
 			expect(fetchSpy).toHaveBeenCalledTimes(0);
 			expect(window.location.pathname).toBe("/react-noop-no-hash/42");
 			expect(window.location.hash).toBe("");
+			expect(scrollToSpy).toHaveBeenCalledWith(0, 0);
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("react typed links keep scroll position for same-document no-op links without hash when scrollToTop=false", async () => {
+		await initializeDistRuntimeStateForAdapters();
+		window.history.replaceState({}, "", "/react-noop-no-hash/42");
+		const reactAdapter = await import("vorma/react");
+		const fetchSpy = vi.spyOn(window, "fetch");
+		const scrollToSpy = vi.spyOn(window, "scrollTo");
+		const TypedLink = reactAdapter.makeTypedLink(
+			DIST_TEST_VORMA_APP_CONFIG,
+			{},
+		);
+		const { anchor, cleanup } = renderReactTypedLinkForTesting({
+			TypedLink,
+			linkProps: {
+				pattern: "/react-noop-no-hash/:id",
+				params: { id: "42" },
+				scrollToTop: false,
+				children: "React No-op Link No Scroll",
+			},
+		});
+		try {
+			const clickEvent = new MouseEvent("click", {
+				bubbles: true,
+				cancelable: true,
+				button: 0,
+			});
+			anchor.dispatchEvent(clickEvent);
+			await vi.runAllTimersAsync();
+
+			expect(clickEvent.defaultPrevented).toBe(true);
+			expect(fetchSpy).toHaveBeenCalledTimes(0);
+			expect(window.location.pathname).toBe("/react-noop-no-hash/42");
+			expect(window.location.hash).toBe("");
+			expect(scrollToSpy).toHaveBeenCalledTimes(0);
 		} finally {
 			cleanup();
 		}

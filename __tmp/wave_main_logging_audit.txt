@@ -1,0 +1,1263 @@
+Wave Main KI Logging Audit
+Generated: 2026-03-05T13:49:15Z
+Source: git show main:wave/internal/ki/*
+
+Notes
+- This is a literal callsite map from main.
+- Direct emitters include: c.Logger.Info/Warn/Error, log.Panicf, fmt.Println, console.log/error/warn.
+- Indirect emitters include every c.panic(...) callsite, because c.panic logs via c.Logger.Error before panic.
+- Indirect emitters also include every must_reload_broadcast_opts.message callsite, because must_reload_broadcast logs c.Logger.Info(opts.message).
+
+must_reload_broadcast sink (main:wave/internal/ki/dumb_little_helpers.go:227)
+   213	func (c *Config) must_reload_broadcast(rfp refreshFilePayload, opts must_reload_broadcast_opts) {
+   214		if !c.is_using_browser() {
+   215			return
+   216		}
+   217		if opts.wait_for_app {
+   218			if ok := c.wait_for_app_readiness(); !ok {
+   219				c.panic("app server never became ready", nil)
+   220			}
+   221		}
+   222		if opts.wait_for_vite {
+   223			if ok := c.wait_for_vite_readiness(); !ok {
+   224				c.panic("vite never became ready", nil)
+   225			}
+   226		}
+   227		c.Logger.Info(opts.message)
+   228		c.browserTabManager.broadcast <- rfp
+   229	}
+
+c.panic sink (main:wave/internal/ki/dumb_little_helpers.go:20-23)
+    20	func (c *Config) panic(msg string, err error) {
+    21		errMsg := fmt.Sprintf("error: %s: %v", msg, err)
+    22		c.Logger.Error(errMsg)
+    23		panic(err)
+
+====================
+DIRECT LOG EMITTERS
+====================
+
+---
+wave/internal/ki/build.go:81
+call: 		c.Logger.Info("START building Wave",
+context:
+    79	
+    80		if !opts.just_run_simple_file_build {
+    81			c.Logger.Info("START building Wave",
+    82				"recompile_go_binary", opts.RecompileGoBinary,
+    83				"is_dev_rebuild", opts.is_dev_rebuild,
+    84			)
+    85		}
+
+---
+wave/internal/ki/build.go:139
+call: 	c.Logger.Info("DONE building Wave",
+context:
+   137		total_duration := time.Since(a)
+   138	
+   139		c.Logger.Info("DONE building Wave",
+   140			"total_duration", total_duration,
+   141			"hook_duration", hook_duration,
+   142			"go_compile_duration", go_compile_duration,
+   143			"wave_build_duration", total_duration-hook_duration-go_compile_duration,
+
+---
+wave/internal/ki/css.go:49
+call: 		c.Logger.Error(fmt.Sprintf("error getting FS: %v", err))
+context:
+    47		base_fs, err := c.GetBaseFS()
+    48		if err != nil {
+    49			c.Logger.Error(fmt.Sprintf("error getting FS: %v", err))
+    50			return "", err
+    51		}
+    52	
+    53		dist_wave_internal := c._dist.S().Static.S().Internal
+
+---
+wave/internal/ki/css.go:61
+call: 		c.Logger.Error(fmt.Sprintf("error reading normal CSS URL: %v", err))
+context:
+    59		))
+    60		if err != nil {
+    61			c.Logger.Error(fmt.Sprintf("error reading normal CSS URL: %v", err))
+    62			return "", err
+    63		}
+    64	
+    65		return matcher.EnsureLeadingSlash(
+
+---
+wave/internal/ki/css.go:99
+call: 		c.Logger.Error(fmt.Sprintf("error getting FS: %v", err))
+context:
+    97		base_fs, err := c.GetBaseFS()
+    98		if err != nil {
+    99			c.Logger.Error(fmt.Sprintf("error getting FS: %v", err))
+   100			return nil, err
+   101		}
+   102	
+   103		dist_wave_internal := c._dist.S().Static.S().Internal
+
+---
+wave/internal/ki/css.go:116
+call: 			c.Logger.Error(fmt.Sprintf("error reading critical CSS: %v", err))
+context:
+   114	
+   115			if !result.no_such_file {
+   116				c.Logger.Error(fmt.Sprintf("error reading critical CSS: %v", err))
+   117				return nil, err
+   118			}
+   119			return result, nil
+   120		}
+
+---
+wave/internal/ki/css.go:132
+call: 		c.Logger.Error(fmt.Sprintf("error handling CSP: %v", err))
+context:
+   130		sha256Hash, err := htmlutil.AddSha256HashInline(&el)
+   131		if err != nil {
+   132			c.Logger.Error(fmt.Sprintf("error handling CSP: %v", err))
+   133			return nil, err
+   134		}
+   135		result.sha_256_hash = sha256Hash
+   136	
+
+---
+wave/internal/ki/css.go:139
+call: 		c.Logger.Error(fmt.Sprintf("error rendering element: %v", err))
+context:
+   137		tpmlRes, err := htmlutil.RenderElement(&el)
+   138		if err != nil {
+   139			c.Logger.Error(fmt.Sprintf("error rendering element: %v", err))
+   140			return nil, err
+   141		}
+   142	
+   143		result.style_el = tpmlRes
+
+---
+wave/internal/ki/dev_core.go:92
+call: 			c.Logger.Error(fmt.Sprintf("watcher error: %v", err))
+context:
+    90				debouncer.add_evt(evt)
+    91			case err := <-c.watcher.Errors:
+    92				c.Logger.Error(fmt.Sprintf("watcher error: %v", err))
+    93			}
+    94		}
+    95	}
+
+---
+wave/internal/ki/dev_events.go:31
+call: 				c.Logger.Info("[watcher]", "op", evt.Op.String(), "filename", evt.Name)
+context:
+    29				isWriteOrCreate := evt.Has(fsnotify.Write) || evt.Has(fsnotify.Create)
+    30				if isConfig && isWriteOrCreate {
+    31					c.Logger.Info("[watcher]", "op", evt.Op.String(), "filename", evt.Name)
+    32					c.MustStartDev(must_start_dev_opts{
+    33						is_rebuild:   true,
+    34						recompile_go: true,
+    35					})
+
+---
+wave/internal/ki/dev_events.go:47
+call: 					c.Logger.Error(fmt.Sprintf("error: failed to add directory to watcher: %v", err))
+context:
+    45				if evt.Has(fsnotify.Create) || evt.Has(fsnotify.Rename) {
+    46					if err := c.add_directory_to_watcher(evt.Name); err != nil {
+    47						c.Logger.Error(fmt.Sprintf("error: failed to add directory to watcher: %v", err))
+    48						continue
+    49					}
+    50				}
+    51				continue
+
+---
+wave/internal/ki/dev_events.go:120
+call: 			c.Logger.Info("Shutting down running app")
+context:
+   118		if hasMultipleEvents && isGoOrNeedsHardReloadEvenIfNonGo {
+   119			eg.Go(func() error {
+   120				c.Logger.Info("Shutting down running app")
+   121				c.kill_running_go_binary()
+   122				return nil
+   123			})
+   124		}
+
+---
+wave/internal/ki/dev_events.go:127
+call: 		c.Logger.Info("[watcher]", "op", evtDetails.evt.Op.String(), "filename", evtDetails.evt.Name)
+context:
+   125	
+   126		for _, evtDetails := range relevantFileChanges {
+   127			c.Logger.Info("[watcher]", "op", evtDetails.evt.Op.String(), "filename", evtDetails.evt.Name)
+   128	
+   129			if evtDetails.is_full_dev_reset {
+   130				c.MustStartDev(must_start_dev_opts{is_rebuild: true})
+   131				return
+
+---
+wave/internal/ki/dev_events.go:136
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to handle file change: %v", err))
+context:
+   134			err := c.mustHandleFileChange(evtDetails, hasMultipleEvents)
+   135			if err != nil {
+   136				c.Logger.Error(fmt.Sprintf("error: failed to handle file change: %v", err))
+   137				return
+   138			}
+   139		}
+   140	
+
+---
+wave/internal/ki/dev_events.go:143
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to kill app: %v", err))
+context:
+   141		if hasMultipleEvents && isGoOrNeedsHardReloadEvenIfNonGo {
+   142			if err := eg.Wait(); err != nil {
+   143				c.Logger.Error(fmt.Sprintf("error: failed to kill app: %v", err))
+   144				return
+   145			}
+   146			c.Logger.Info("Restarting app")
+   147			c.run_go_binary()
+
+---
+wave/internal/ki/dev_events.go:146
+call: 		c.Logger.Info("Restarting app")
+context:
+   144				return
+   145			}
+   146			c.Logger.Info("Restarting app")
+   147			c.run_go_binary()
+   148		}
+   149	
+   150		if hasMultipleEvents {
+
+---
+wave/internal/ki/dev_events.go:199
+call: 			c.Logger.Info("Terminating running app")
+context:
+   197		if needsKillAndRestart {
+   198			killAndRestartEG.Go(func() error {
+   199				c.Logger.Info("Terminating running app")
+   200				c.kill_running_go_binary()
+   201				return nil
+   202			})
+   203		}
+
+---
+wave/internal/ki/dev_events.go:216
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+context:
+   214	
+   215			if err := c.simpleRunOnChangeCallbacks(sortedOnChanges.stratPre, evtDetails.evt.Name); err != nil {
+   216				c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+   217				return err
+   218			}
+   219	
+   220			if wfc.RunOnChangeOnly {
+
+---
+wave/internal/ki/dev_events.go:221
+call: 			c.Logger.Info("ran applicable onChange callbacks")
+context:
+   219	
+   220			if wfc.RunOnChangeOnly {
+   221				c.Logger.Info("ran applicable onChange callbacks")
+   222				return nil
+   223			}
+   224	
+   225			eg := errgroup.Group{}
+
+---
+wave/internal/ki/dev_events.go:232
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+context:
+   230	
+   231			if err := c.runConcurrentOnChangeCallbacks(sortedOnChanges.stratConcurrent, evtDetails.evt.Name, true); err != nil {
+   232				c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+   233				return err
+   234			}
+   235	
+   236			if err := eg.Wait(); err != nil {
+
+---
+wave/internal/ki/dev_events.go:237
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+context:
+   235	
+   236			if err := eg.Wait(); err != nil {
+   237				c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+   238				return err
+   239			}
+   240		}
+   241	
+
+---
+wave/internal/ki/dev_events.go:244
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+context:
+   242		if !sortedOnChanges.exists {
+   243			if err := c.callback(wfc, evtDetails); err != nil {
+   244				c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+   245				return err
+   246			}
+   247		}
+   248	
+
+---
+wave/internal/ki/dev_events.go:250
+call: 		c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+context:
+   248	
+   249		if err := c.simpleRunOnChangeCallbacks(sortedOnChanges.stratPost, evtDetails.evt.Name); err != nil {
+   250			c.Logger.Error(fmt.Sprintf("error: failed to build: %v", err))
+   251			return err
+   252		}
+   253	
+   254		if needsKillAndRestart {
+
+---
+wave/internal/ki/dev_events.go:256
+call: 			c.Logger.Error(fmt.Sprintf("error: failed to kill app: %v", err))
+context:
+   254		if needsKillAndRestart {
+   255			if err := killAndRestartEG.Wait(); err != nil {
+   256				c.Logger.Error(fmt.Sprintf("error: failed to kill app: %v", err))
+   257				return err
+   258			}
+   259			c.Logger.Info("Restarting app")
+   260			c.run_go_binary()
+
+---
+wave/internal/ki/dev_events.go:259
+call: 		c.Logger.Info("Restarting app")
+context:
+   257				return err
+   258			}
+   259			c.Logger.Info("Restarting app")
+   260			c.run_go_binary()
+   261		}
+   262	
+   263		if !c.is_using_browser() || isPartOfBatch {
+
+---
+wave/internal/ki/dev_events.go:345
+call: 		c.Logger.Error(msg)
+context:
+   343		if err != nil {
+   344			msg := fmt.Sprintf("error: failed to build app: %v", err)
+   345			c.Logger.Error(msg)
+   346			return errors.New(msg)
+   347		}
+   348		return nil
+   349	}
+
+---
+wave/internal/ki/dumb_little_helpers.go:22
+call: 	c.Logger.Error(errMsg)
+context:
+    20	func (c *Config) panic(msg string, err error) {
+    21		errMsg := fmt.Sprintf("error: %s: %v", msg, err)
+    22		c.Logger.Error(errMsg)
+    23		panic(err)
+    24	}
+    25	
+    26	/////////////////////////////////////////////////////////////////////
+
+---
+wave/internal/ki/dumb_little_helpers.go:57
+call: 		c.Logger.Info("Starting sidecar refresh server...", "port", getRefreshServerPort())
+context:
+    55	
+    56		go func() {
+    57			c.Logger.Info("Starting sidecar refresh server...", "port", getRefreshServerPort())
+    58			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+    59				c.panic("Failed to start refresh server", err)
+    60			}
+    61			close(shutdownComplete)
+
+---
+wave/internal/ki/dumb_little_helpers.go:65
+call: 	c.Logger.Info("Shutting down sidecar refresh server...")
+context:
+    63	
+    64		<-c._rebuild_cleanup_chan
+    65		c.Logger.Info("Shutting down sidecar refresh server...")
+    66	
+    67		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    68		defer cancel()
+    69	
+
+---
+wave/internal/ki/dumb_little_helpers.go:75
+call: 	c.Logger.Info("DONE shutting down sidecar refresh server")
+context:
+    73	
+    74		<-shutdownComplete
+    75		c.Logger.Info("DONE shutting down sidecar refresh server")
+    76	}
+    77	
+    78	func (c *Config) kill_browser_refresh_mux() {
+    79		if c._rebuild_cleanup_chan != nil {
+
+---
+wave/internal/ki/dumb_little_helpers.go:170
+call: 		c.Logger.Info("Terminated previous process", "pid", c.lastBuildCmd.Process.Pid)
+context:
+   168				c.panic("failed to terminate process", err)
+   169			}
+   170			c.Logger.Info("Terminated previous process", "pid", c.lastBuildCmd.Process.Pid)
+   171			c.lastBuildCmd = nil
+   172		}
+   173	}
+   174	
+
+---
+wave/internal/ki/dumb_little_helpers.go:188
+call: 	c.Logger.Info("Running app binary...", "pid", c.lastBuildCmd.Process.Pid)
+context:
+   186			c.panic("failed to start app binary", err)
+   187		}
+   188		c.Logger.Info("Running app binary...", "pid", c.lastBuildCmd.Process.Pid)
+   189	}
+   190	
+   191	/////////////////////////////////////////////////////////////////////
+   192	/////// SEND REBUILDING SIGNAL
+
+---
+wave/internal/ki/dumb_little_helpers.go:227
+call: 	c.Logger.Info(opts.message)
+context:
+   225			}
+   226		}
+   227		c.Logger.Info(opts.message)
+   228		c.browserTabManager.broadcast <- rfp
+   229	}
+   230	
+   231	/////////////////////////////////////////////////////////////////////
+
+---
+wave/internal/ki/dumb_little_helpers.go:245
+call: 	c.Logger.Info("Compiling Go binary...")
+context:
+   243	func (c *Config) compile_go_binary(isDev bool) error {
+   244		a := time.Now()
+   245		c.Logger.Info("Compiling Go binary...")
+   246		buildDest := c.get_binary_output_path()
+   247		in := fmt.Sprintf(".%c%s", filepath.Separator, filepath.Clean(c._uc.Core.MainAppEntry))
+   248		buildCmd := exec.Command("go", "build", "-o", buildDest, in)
+   249		if !isDev {
+
+---
+wave/internal/ki/dumb_little_helpers.go:258
+call: 	c.Logger.Info("DONE compiling Go binary", "duration", time.Since(a))
+context:
+   256			return fmt.Errorf("error compiling binary: %w", err)
+   257		}
+   258		c.Logger.Info("DONE compiling Go binary", "duration", time.Since(a))
+   259		return nil
+   260	}
+
+---
+wave/internal/ki/evt_utils.go:98
+call: 		c.Logger.Error(fmt.Sprintf("error: failed to open file: %v", err))
+context:
+    96		file, err := os.Open(evt.Name)
+    97		if err != nil {
+    98			c.Logger.Error(fmt.Sprintf("error: failed to open file: %v", err))
+    99			return false
+   100		}
+   101		defer file.Close()
+   102		stat, err := file.Stat()
+
+---
+wave/internal/ki/evt_utils.go:104
+call: 		c.Logger.Error(fmt.Sprintf("error: failed to get file stats: %v", err))
+context:
+   102		stat, err := file.Stat()
+   103		if err != nil {
+   104			c.Logger.Error(fmt.Sprintf("error: failed to get file stats: %v", err))
+   105			return false
+   106		}
+   107		return stat.Size() == 0
+   108	}
+
+---
+wave/internal/ki/filemap.go:160
+call: 		c.Logger.Error(fmt.Sprintf("error getting FS: %v", err))
+context:
+   158		baseFS, err := c.GetBaseFS()
+   159		if err != nil {
+   160			c.Logger.Error(fmt.Sprintf("error getting FS: %v", err))
+   161			return "", err
+   162		}
+   163	
+   164		distWaveInternal := c._dist.S().Static.S().Internal
+
+---
+wave/internal/ki/filemap.go:173
+call: 		c.Logger.Error(fmt.Sprintf("error reading publicFileMapFileRefFile: %v", err))
+context:
+   171			))
+   172		if err != nil {
+   173			c.Logger.Error(fmt.Sprintf("error reading publicFileMapFileRefFile: %v", err))
+   174			return "", err
+   175		}
+   176	
+   177		return matcher.EnsureLeadingSlash(
+
+---
+wave/internal/ki/main_init.go:39
+call: 			c.Logger.Info("Reloading config from disk", "path", configFileLocation)
+context:
+    37			configFileLocation := c.GetConfigFile()
+    38			if configFileLocation != "" {
+    39				c.Logger.Info("Reloading config from disk", "path", configFileLocation)
+    40				newConfigBytes, err := os.ReadFile(configFileLocation)
+    41				if err != nil {
+    42					c.panic("failed to re-read config file on rebuild", err)
+    43				}
+
+---
+wave/internal/ki/on_change.go:75
+call: 					c.Logger.Error(fmt.Sprintf("error running on-change callback: %v", err))
+context:
+    73					err := executil.RunCmd(strings.Fields(c.resolveCmd(o.Cmd))...)
+    74					if err != nil {
+    75						c.Logger.Error(fmt.Sprintf("error running on-change callback: %v", err))
+    76						return err
+    77					}
+    78					return nil
+    79				})
+
+---
+wave/internal/ki/on_change.go:104
+call: 			c.Logger.Error(fmt.Sprintf("error running on-change callback: %v", err))
+context:
+   102			err := executil.RunCmd(strings.Fields(c.resolveCmd(o.Cmd))...)
+   103			if err != nil {
+   104				c.Logger.Error(fmt.Sprintf("error running on-change callback: %v", err))
+   105				return err
+   106			}
+   107		}
+   108		return nil
+
+---
+wave/internal/ki/pattern_utils.go:24
+call: 		c.Logger.Error(fmt.Sprintf("error: failed to match file: %v", err))
+context:
+    22		matches, err := doublestar.Match(k.pattern, normalizedPath)
+    23		if err != nil {
+    24			c.Logger.Error(fmt.Sprintf("error: failed to match file: %v", err))
+    25			return false, err
+    26		}
+    27	
+    28		return matches, nil
+
+---
+wave/internal/ki/port.go:24
+call: 		log.Panicf("error: failed to get free port: %v", err)
+context:
+    22		port, err := netutil.GetFreePort(defaultPort)
+    23		if err != nil {
+    24			log.Panicf("error: failed to get free port: %v", err)
+    25		}
+    26	
+    27		setPort(port)
+    28		setPortHasBeenSet()
+
+---
+wave/internal/ki/refresh.go:126
+call: 		console.log("Wave: Rebuilding server...");
+context:
+   124		const { changeType, criticalCSS, normalCSSURL } = JSON.parse(e.data);
+   125		if (changeType == "rebuilding") {
+   126			console.log("Wave: Rebuilding server...");
+   127			const currentEl = getCurrentEl();
+   128			if (!currentEl) {
+   129				const el = document.createElement("div");
+   130				el.innerHTML = "Rebuilding...";
+
+---
+wave/internal/ki/refresh.go:179
+call: 		console.log("Wave: Revalidating...");
+context:
+   177		}
+   178		if (changeType == "revalidate") {
+   179			console.log("Wave: Revalidating...");
+   180			const el = getCurrentEl();
+   181			if ("__waveRevalidate" in window) {
+   182				window.__waveRevalidate().then(() => {
+   183					console.log("Wave: Revalidated");
+
+---
+wave/internal/ki/refresh.go:183
+call: 				console.log("Wave: Revalidated");
+context:
+   181			if ("__waveRevalidate" in window) {
+   182				window.__waveRevalidate().then(() => {
+   183					console.log("Wave: Revalidated");
+   184					el?.remove();
+   185				});
+   186			} else {
+   187				console.error("No __waveRevalidate() found");
+
+---
+wave/internal/ki/refresh.go:187
+call: 			console.error("No __waveRevalidate() found");
+context:
+   185				});
+   186			} else {
+   187				console.error("No __waveRevalidate() found");
+   188				el?.remove();
+   189			}
+   190		}
+   191	};
+
+---
+wave/internal/ki/refresh.go:193
+call: 	console.log("Wave: WebSocket closed");
+context:
+   191	};
+   192	ws.onclose = () => {
+   193		console.log("Wave: WebSocket closed");
+   194		window.location.reload();
+   195	};
+   196	ws.onerror = (e) => {
+   197		console.log("Wave: WebSocket error", e);
+
+---
+wave/internal/ki/refresh.go:197
+call: 	console.log("Wave: WebSocket error", e);
+context:
+   195	};
+   196	ws.onerror = (e) => {
+   197		console.log("Wave: WebSocket error", e);
+   198		ws.close();
+   199		window.location.reload();
+   200	};
+   201	window.addEventListener("beforeunload", () => {
+
+---
+wave/internal/ki/refresh.go:220
+call: 			fmt.Println("error: failed to upgrade ws connection:", err)
+context:
+   218			conn, err := upgrader.Upgrade(w, r, nil)
+   219			if err != nil {
+   220				fmt.Println("error: failed to upgrade ws connection:", err)
+   221				return
+   222			}
+   223	
+   224			msg := make(chan refreshFilePayload, 1)
+
+---
+wave/internal/ki/static_assets.go:27
+call: 		c.Logger.Error(wrapped.Error())
+context:
+    25		if err != nil {
+    26			wrapped := fmt.Errorf("error getting public FS: %w", err)
+    27			c.Logger.Error(wrapped.Error())
+    28			return nil, wrapped
+    29		}
+    30		if addImmutableCacheHeaders {
+    31			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+---
+wave/internal/ki/static_assets.go:50
+call: 		c.Logger.Error(fmt.Sprintf(
+context:
+    48		fileMapFromGob, err := c.getInitialPublicFileMapFromGobBuildtime()
+    49		if err != nil {
+    50			c.Logger.Error(fmt.Sprintf(
+    51				"error getting public file map from gob (buildtime) for originalPublicURL %s: %v", originalPublicURL, err,
+    52			))
+    53			panic(err)
+    54		}
+
+---
+wave/internal/ki/static_assets.go:58
+call: 		c.Logger.Error(fmt.Sprintf(
+context:
+    56		url, err := c.getInitialPublicURLInner(originalPublicURL, fileMapFromGob)
+    57		if err != nil {
+    58			c.Logger.Error(fmt.Sprintf(
+    59				"error getting initial public URL (buildtime) for originalPublicURL %s: %v", originalPublicURL, err,
+    60			))
+    61			panic(err)
+    62		}
+
+---
+wave/internal/ki/static_assets.go:70
+call: 		c.Logger.Error(fmt.Sprintf(
+context:
+    68		fileMapFromGob, err := c.runtime_cache.public_filemap_from_gob.Get()
+    69		if err != nil {
+    70			c.Logger.Error(fmt.Sprintf(
+    71				"error getting public file map from gob for originalPublicURL %s: %v", originalPublicURL, err,
+    72			))
+    73			return matcher.EnsureLeadingSlash(
+    74				path.Join(
+
+---
+wave/internal/ki/static_assets.go:96
+call: 	c.Logger.Warn(fmt.Sprintf(
+context:
+    94	
+    95		// If no hashed URL found, return the original URL
+    96		c.Logger.Warn(fmt.Sprintf(
+    97			"GetPublicURL: no hashed URL found for %s, returning original URL",
+    98			originalPublicURL,
+    99		))
+   100	
+
+---
+wave/internal/ki/static_assets.go:120
+call: 		c.Logger.Error(fmt.Sprintf("error getting serve static handler: %v", err))
+context:
+   118		handler, err := c.GetServeStaticHandler(addImmutableCacheHeaders)
+   119		if err != nil {
+   120			c.Logger.Error(fmt.Sprintf("error getting serve static handler: %v", err))
+   121			panic(err)
+   122		}
+   123		return func(next http.Handler) http.Handler {
+   124			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+---
+wave/internal/ki/universal_fs.go:29
+call: 		c.Logger.Error(wrapped.Error())
+context:
+    27		if err != nil {
+    28			wrapped := fmt.Errorf("error getting %s FS: %w", subDir, err)
+    29			c.Logger.Error(wrapped.Error())
+    30			return nil, wrapped
+    31		}
+    32		subFS, err := fs.Sub(baseFS, _path)
+    33		if err != nil {
+
+---
+wave/internal/ki/universal_fs.go:35
+call: 		c.Logger.Error(wrapped.Error())
+context:
+    33		if err != nil {
+    34			wrapped := fmt.Errorf("error getting %s FS: %w", subDir, err)
+    35			c.Logger.Error(wrapped.Error())
+    36			return nil, wrapped
+    37		}
+    38		return subFS, nil
+    39	}
+
+==========================================
+INDIRECT LOG EMITTERS VIA opts.message
+==========================================
+These callsites set the string that must_reload_broadcast logs via c.Logger.Info(opts.message).
+
+---
+wave/internal/ki/dev_core.go:69
+call: 		c.must_reload_broadcast(
+logged_message: Hard reloading browser
+context:
+    67	
+    68		if opts.is_rebuild {
+    69			c.must_reload_broadcast(
+    70				refreshFilePayload{ChangeType: changeTypeOther},
+    71				must_reload_broadcast_opts{
+    72					wait_for_app:  true,
+    73					wait_for_vite: c.isUsingVite(),
+    74					message:       "Hard reloading browser",
+    75				},
+    76			)
+    77	
+    78			return
+    79		}
+    80	
+    81		defer c.kill_running_go_binary()
+    82	
+    83		debouncer := new_debouncer(30*time.Millisecond, func(events []fsnotify.Event) {
+    84			c.process_batched_events(events)
+    85		})
+    86	
+    87		for {
+
+---
+wave/internal/ki/dev_events.go:151
+call: 		c.must_reload_broadcast(
+logged_message: Hard reloading browser
+context:
+   149	
+   150		if hasMultipleEvents {
+   151			c.must_reload_broadcast(
+   152				refreshFilePayload{ChangeType: changeTypeOther},
+   153				must_reload_broadcast_opts{
+   154					wait_for_app:  true,
+   155					wait_for_vite: c.isUsingVite(),
+   156					message:       "Hard reloading browser",
+   157				},
+   158			)
+   159		}
+   160	
+   161		// Periodically clean up watchers for renamed/deleted directories
+   162		c.watchedDirs.Range(func(path, _ any) bool {
+   163			if pathStr, ok := path.(string); ok {
+   164				if _, err := os.Stat(pathStr); os.IsNotExist(err) {
+   165					c.watcher.Remove(pathStr)
+   166					c.watchedDirs.Delete(pathStr)
+   167				}
+   168			}
+   169			return true
+
+---
+wave/internal/ki/dev_events.go:268
+call: 		c.must_reload_broadcast(
+logged_message: Running client-defined revalidate function
+context:
+   266	
+   267		if wfc.OnlyRunClientDefinedRevalidateFunc {
+   268			c.must_reload_broadcast(
+   269				refreshFilePayload{ChangeType: changeTypeRevalidate},
+   270				must_reload_broadcast_opts{
+   271					wait_for_app:  true,
+   272					wait_for_vite: c.isUsingVite(),
+   273					message:       "Running client-defined revalidate function",
+   274				},
+   275			)
+   276			return nil
+   277		}
+   278	
+   279		if !evtDetails.isWaveCSS || needsHardReloadEvenIfNonGo {
+   280			c.must_reload_broadcast(
+   281				refreshFilePayload{ChangeType: changeTypeOther},
+   282				must_reload_broadcast_opts{
+   283					wait_for_app:  true,
+   284					wait_for_vite: c.isUsingVite(),
+   285					message:       "Hard reloading browser",
+   286				},
+
+---
+wave/internal/ki/dev_events.go:280
+call: 		c.must_reload_broadcast(
+logged_message: Hard reloading browser
+context:
+   278	
+   279		if !evtDetails.isWaveCSS || needsHardReloadEvenIfNonGo {
+   280			c.must_reload_broadcast(
+   281				refreshFilePayload{ChangeType: changeTypeOther},
+   282				must_reload_broadcast_opts{
+   283					wait_for_app:  true,
+   284					wait_for_vite: c.isUsingVite(),
+   285					message:       "Hard reloading browser",
+   286				},
+   287			)
+   288			return nil
+   289		}
+   290		// At this point, we know it's a CSS file
+   291	
+   292		cssType := changeTypeNormalCSS
+   293		if evtDetails.isCriticalCSS {
+   294			cssType = changeTypeCriticalCSS
+   295		}
+   296	
+   297		rfp := refreshFilePayload{
+   298			ChangeType: cssType,
+
+---
+wave/internal/ki/dev_events.go:304
+call: 	c.must_reload_broadcast(rfp, must_reload_broadcast_opts{
+logged_message: Hot reloading browser (CSS)
+context:
+   302			NormalCSSURL: c.GetStyleSheetURL(),
+   303		}
+   304		c.must_reload_broadcast(rfp, must_reload_broadcast_opts{
+   305			wait_for_app:  false,
+   306			wait_for_vite: false,
+   307			message:       "Hot reloading browser (CSS)",
+   308		})
+   309	
+   310		return nil
+   311	}
+   312	
+   313	func (c *Config) callback(wfc *WatchedFile, evtDetails *EvtDetails) error {
+   314		if evtDetails.isGo {
+   315			return c.compile_go_binary(true)
+   316		}
+   317	
+   318		if evtDetails.isWaveCSS {
+   319			if getNeedsHardReloadEvenIfNonGo(wfc) {
+   320				return c.runOtherFileBuild(wfc, evtDetails)
+   321			}
+   322			if evtDetails.isCriticalCSS {
+
+==============================
+INDIRECT EMITTERS VIA c.panic
+==============================
+
+---
+wave/internal/ki/dev_core.go:33
+call: 		c.panic("failed to get free port", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    31		refresh_server_port, err := netutil.GetFreePort(default_refresh_server_port)
+    32		if err != nil {
+    33			c.panic("failed to get free port", err)
+    34		}
+    35		set_refresh_server_port(refresh_server_port)
+    36	
+    37		// build without binary
+
+---
+wave/internal/ki/dev_core.go:44
+call: 		c.panic("failed to build app", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    42		})
+    43		if err != nil {
+    44			c.panic("failed to build app", err)
+    45		}
+    46	
+    47		if c.isUsingVite() {
+    48			if c._vite_dev_ctx != nil {
+
+---
+wave/internal/ki/dev_core.go:53
+call: 			c.panic("failed to start vite dev server", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    51			c._vite_dev_ctx, err = c.viteDevBuild()
+    52			if err != nil {
+    53				c.panic("failed to start vite dev server", err)
+    54			}
+    55			go c._vite_dev_ctx.Wait()
+    56		}
+    57	
+
+---
+wave/internal/ki/dev_core.go:61
+call: 			c.panic("failed to compile go binary", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    59			// compile go binary now because we didn't above
+    60			if err := c.compile_go_binary(true); err != nil {
+    61				c.panic("failed to compile go binary", err)
+    62			}
+    63		}
+    64	
+    65		go c.run_go_binary()
+
+---
+wave/internal/ki/dumb_little_helpers.go:59
+call: 			c.panic("Failed to start refresh server", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    57			c.Logger.Info("Starting sidecar refresh server...", "port", getRefreshServerPort())
+    58			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+    59				c.panic("Failed to start refresh server", err)
+    60			}
+    61			close(shutdownComplete)
+    62		}()
+    63	
+
+---
+wave/internal/ki/dumb_little_helpers.go:71
+call: 		c.panic("Failed to shutdown sidecar refresh server", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    69	
+    70		if err := server.Shutdown(ctx); err != nil {
+    71			c.panic("Failed to shutdown sidecar refresh server", err)
+    72		}
+    73	
+    74		<-shutdownComplete
+    75		c.Logger.Info("DONE shutting down sidecar refresh server")
+
+---
+wave/internal/ki/dumb_little_helpers.go:168
+call: 			c.panic("failed to terminate process", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   166		if c.lastBuildCmd != nil {
+   167			if err := grace.TerminateProcess(c.lastBuildCmd.Process, 5*time.Second, c.Logger); err != nil {
+   168				c.panic("failed to terminate process", err)
+   169			}
+   170			c.Logger.Info("Terminated previous process", "pid", c.lastBuildCmd.Process.Pid)
+   171			c.lastBuildCmd = nil
+   172		}
+
+---
+wave/internal/ki/dumb_little_helpers.go:186
+call: 		c.panic("failed to start app binary", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   184		c.lastBuildCmd.Stderr = os.Stderr
+   185		if err := c.lastBuildCmd.Start(); err != nil {
+   186			c.panic("failed to start app binary", err)
+   187		}
+   188		c.Logger.Info("Running app binary...", "pid", c.lastBuildCmd.Process.Pid)
+   189	}
+   190	
+
+---
+wave/internal/ki/dumb_little_helpers.go:219
+call: 			c.panic("app server never became ready", nil)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   217		if opts.wait_for_app {
+   218			if ok := c.wait_for_app_readiness(); !ok {
+   219				c.panic("app server never became ready", nil)
+   220			}
+   221		}
+   222		if opts.wait_for_vite {
+   223			if ok := c.wait_for_vite_readiness(); !ok {
+
+---
+wave/internal/ki/dumb_little_helpers.go:224
+call: 			c.panic("vite never became ready", nil)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   222		if opts.wait_for_vite {
+   223			if ok := c.wait_for_vite_readiness(); !ok {
+   224				c.panic("vite never became ready", nil)
+   225			}
+   226		}
+   227		c.Logger.Info(opts.message)
+   228		c.browserTabManager.broadcast <- rfp
+
+---
+wave/internal/ki/main_init.go:42
+call: 				c.panic("failed to re-read config file on rebuild", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    40				newConfigBytes, err := os.ReadFile(configFileLocation)
+    41				if err != nil {
+    42					c.panic("failed to re-read config file on rebuild", err)
+    43				}
+    44				c.WaveConfigJSON = newConfigBytes
+    45			}
+    46		}
+
+---
+wave/internal/ki/main_init.go:51
+call: 		c.panic("Config Error: ConfigBytes cannot be nil or empty. A valid wave.config.json must be provided.", nil)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    49	
+    50		if len(c.WaveConfigJSON) == 0 {
+    51			c.panic("Config Error: ConfigBytes cannot be nil or empty. A valid wave.config.json must be provided.", nil)
+    52		}
+    53	
+    54		// USER CONFIG
+    55		c._uc = new(UserConfig)
+
+---
+wave/internal/ki/main_init.go:57
+call: 		c.panic("failed to unmarshal user config", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+    55		c._uc = new(UserConfig)
+    56		if err := json.Unmarshal(c.WaveConfigJSON, c._uc); err != nil {
+    57			c.panic("failed to unmarshal user config", err)
+    58		}
+    59	
+    60		c.validateUserConfig()
+    61	
+
+---
+wave/internal/ki/main_init.go:141
+call: 			c.panic("failed to get relative path for ClientRouteDefsFile", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   139			relClientRouteDefsFile, err := filepath.Rel(c.cleanWatchRoot, c._uc.Vorma.ClientRouteDefsFile)
+   140			if err != nil {
+   141				c.panic("failed to get relative path for ClientRouteDefsFile", err)
+   142			}
+   143	
+   144			c.defaultWatchedFiles = append(c.defaultWatchedFiles, WatchedFile{
+   145				Pattern:       filepath.Join(c.cleanSources.PrivateStatic, c._uc.Vorma.HTMLTemplateLocation),
+
+---
+wave/internal/ki/main_init.go:161
+call: 			c.panic("failed to get relative path for HTMLTemplateLocation", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   159			relHTMLTemplateLocation, err := filepath.Rel(c.cleanWatchRoot, c._uc.Vorma.HTMLTemplateLocation)
+   160			if err != nil {
+   161				c.panic("failed to get relative path for HTMLTemplateLocation", err)
+   162			}
+   163	
+   164			c.defaultWatchedFiles = append(c.defaultWatchedFiles, WatchedFile{
+   165				Pattern:    filepath.ToSlash(relHTMLTemplateLocation),
+
+---
+wave/internal/ki/main_init.go:171
+call: 			c.panic("failed to get relative path for TSGenOutPath", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   169			relTSGenOutPath, err := filepath.Rel(c.cleanWatchRoot, c._uc.Vorma.TSGenOutPath)
+   170			if err != nil {
+   171				c.panic("failed to get relative path for TSGenOutPath", err)
+   172			}
+   173	
+   174			c.ignoredFilePatterns = append(
+   175				c.ignoredFilePatterns,
+
+---
+wave/internal/ki/main_init.go:197
+call: 			c.panic("failed to close watcher", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   195		if c.watcher != nil {
+   196			if err := c.watcher.Close(); err != nil {
+   197				c.panic("failed to close watcher", err)
+   198			}
+   199			c.watcher = nil
+   200		}
+   201	
+
+---
+wave/internal/ki/main_init.go:204
+call: 		c.panic("failed to create watcher", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   202		watcher, err := fsnotify.NewWatcher()
+   203		if err != nil {
+   204			c.panic("failed to create watcher", err)
+   205		}
+   206	
+   207		c.watcher = watcher
+   208	
+
+---
+wave/internal/ki/main_init.go:210
+call: 		c.panic("failed to add directory to watcher", err)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   208	
+   209		if err := c.add_directory_to_watcher(c.cleanWatchRoot); err != nil {
+   210			c.panic("failed to add directory to watcher", err)
+   211		}
+   212	}
+   213	
+   214	var ErrConfigValidation = errors.New("config validation error")
+
+---
+wave/internal/ki/main_init.go:219
+call: 		c.panic("Config Error: Core.MainAppEntry is required and cannot be an empty string.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   217		// Validate top-level required fields in [Core].
+   218		if c._uc.Core.MainAppEntry == "" {
+   219			c.panic("Config Error: Core.MainAppEntry is required and cannot be an empty string.", ErrConfigValidation)
+   220		}
+   221		if c._uc.Core.DistDir == "" {
+   222			c.panic("Config Error: Core.DistDir is required and cannot be an empty string.", ErrConfigValidation)
+   223		}
+
+---
+wave/internal/ki/main_init.go:222
+call: 		c.panic("Config Error: Core.DistDir is required and cannot be an empty string.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   220		}
+   221		if c._uc.Core.DistDir == "" {
+   222			c.panic("Config Error: Core.DistDir is required and cannot be an empty string.", ErrConfigValidation)
+   223		}
+   224	
+   225		// Validate conditionally required fields.
+   226		if !c._uc.Core.ServerOnlyMode {
+
+---
+wave/internal/ki/main_init.go:228
+call: 			c.panic("Config Error: Core.StaticAssetDirs.Private is required and cannot be empty when not in ServerOnlyMode.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   226		if !c._uc.Core.ServerOnlyMode {
+   227			if c._uc.Core.StaticAssetDirs.Private == "" {
+   228				c.panic("Config Error: Core.StaticAssetDirs.Private is required and cannot be empty when not in ServerOnlyMode.", ErrConfigValidation)
+   229			}
+   230			if c._uc.Core.StaticAssetDirs.Public == "" {
+   231				c.panic("Config Error: Core.StaticAssetDirs.Public is required and cannot be empty when not in ServerOnlyMode.", ErrConfigValidation)
+   232			}
+
+---
+wave/internal/ki/main_init.go:231
+call: 			c.panic("Config Error: Core.StaticAssetDirs.Public is required and cannot be empty when not in ServerOnlyMode.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   229			}
+   230			if c._uc.Core.StaticAssetDirs.Public == "" {
+   231				c.panic("Config Error: Core.StaticAssetDirs.Public is required and cannot be empty when not in ServerOnlyMode.", ErrConfigValidation)
+   232			}
+   233		}
+   234	
+   235		// Validate required fields within optional blocks.
+
+---
+wave/internal/ki/main_init.go:238
+call: 			c.panic("Config Error: Vorma.UIVariant is required when the [Vorma] block is present.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   236		if c._uc.Vorma != nil {
+   237			if c._uc.Vorma.UIVariant == "" {
+   238				c.panic("Config Error: Vorma.UIVariant is required when the [Vorma] block is present.", ErrConfigValidation)
+   239			}
+   240			if c._uc.Vorma.HTMLTemplateLocation == "" {
+   241				c.panic("Config Error: Vorma.HTMLTemplateLocation is required when the [Vorma] block is present.", ErrConfigValidation)
+   242			}
+
+---
+wave/internal/ki/main_init.go:241
+call: 			c.panic("Config Error: Vorma.HTMLTemplateLocation is required when the [Vorma] block is present.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   239			}
+   240			if c._uc.Vorma.HTMLTemplateLocation == "" {
+   241				c.panic("Config Error: Vorma.HTMLTemplateLocation is required when the [Vorma] block is present.", ErrConfigValidation)
+   242			}
+   243			if c._uc.Vorma.ClientEntry == "" {
+   244				c.panic("Config Error: Vorma.ClientEntry is required when the [Vorma] block is present.", ErrConfigValidation)
+   245			}
+
+---
+wave/internal/ki/main_init.go:244
+call: 			c.panic("Config Error: Vorma.ClientEntry is required when the [Vorma] block is present.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   242			}
+   243			if c._uc.Vorma.ClientEntry == "" {
+   244				c.panic("Config Error: Vorma.ClientEntry is required when the [Vorma] block is present.", ErrConfigValidation)
+   245			}
+   246			if c._uc.Vorma.ClientRouteDefsFile == "" {
+   247				c.panic("Config Error: Vorma.ClientRouteDefsFile is required when the [Vorma] block is present.", ErrConfigValidation)
+   248			}
+
+---
+wave/internal/ki/main_init.go:247
+call: 			c.panic("Config Error: Vorma.ClientRouteDefsFile is required when the [Vorma] block is present.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   245			}
+   246			if c._uc.Vorma.ClientRouteDefsFile == "" {
+   247				c.panic("Config Error: Vorma.ClientRouteDefsFile is required when the [Vorma] block is present.", ErrConfigValidation)
+   248			}
+   249			if c._uc.Vorma.TSGenOutPath == "" {
+   250				c.panic("Config Error: Vorma.TSGenOutPath is required when the [Vorma] block is present.", ErrConfigValidation)
+   251			}
+
+---
+wave/internal/ki/main_init.go:250
+call: 			c.panic("Config Error: Vorma.TSGenOutPath is required when the [Vorma] block is present.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   248			}
+   249			if c._uc.Vorma.TSGenOutPath == "" {
+   250				c.panic("Config Error: Vorma.TSGenOutPath is required when the [Vorma] block is present.", ErrConfigValidation)
+   251			}
+   252		}
+   253	
+   254		if c._uc.Vite != nil {
+
+---
+wave/internal/ki/main_init.go:256
+call: 			c.panic("Config Error: Vite.JSPackageManagerBaseCmd is required when the [Vite] block is present.", ErrConfigValidation)
+effective log format from c.panic: error: <msg>: <err>
+context:
+   254		if c._uc.Vite != nil {
+   255			if c._uc.Vite.JSPackageManagerBaseCmd == "" {
+   256				c.panic("Config Error: Vite.JSPackageManagerBaseCmd is required when the [Vite] block is present.", ErrConfigValidation)
+   257			}
+   258		}
+   259	}

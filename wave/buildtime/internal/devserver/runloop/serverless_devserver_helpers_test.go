@@ -366,12 +366,16 @@ func runNoWaitHookWithConcurrencyLimitForRunloopTests(
 }
 
 type runloopTestServer struct {
-	Cfg            waveconfig.ParsedConfig
-	ConfigFilePath string
-	Log            *slog.Logger
-	Mu             sync.Mutex
-	Builder        *builder.Builder
-	Watcher        *watch.Watcher
+	Cfg                                               waveconfig.ParsedConfig
+	ConfigFilePath                                    string
+	Log                                               *slog.Logger
+	Mu                                                sync.Mutex
+	Builder                                           *builder.Builder
+	Watcher                                           *watch.Watcher
+	CallFrameworkRuntimeReloadEndpointWithContextFunc func(
+		context.Context,
+		wavewatch.FrameworkRuntimeReloadRequest,
+	) error
 
 	RestartIntents *restartengine.RestartIntentAccumulator
 
@@ -491,6 +495,20 @@ func (server *runloopTestServer) TriggerConfigRestart() {
 			RecompileGo:     true,
 			IsConfigRestart: true,
 		},
+	)
+}
+
+func (server *runloopTestServer) CallFrameworkRuntimeReloadEndpointWithContext(
+	reloadContext context.Context,
+	reloadRequest wavewatch.FrameworkRuntimeReloadRequest,
+) error {
+	if server == nil ||
+		server.CallFrameworkRuntimeReloadEndpointWithContextFunc == nil {
+		return nil
+	}
+	return server.CallFrameworkRuntimeReloadEndpointWithContextFunc(
+		reloadContext,
+		reloadRequest,
 	)
 }
 
@@ -717,6 +735,35 @@ func (server *runloopTestServer) ExecuteBuildPhase(
 
 	if buildError := buildGroup.Wait(); buildError != nil {
 		return buildError
+	}
+
+	if shouldTrackPublicFileMapArtifacts &&
+		publicFileMapArtifactsChangedOrRepaired {
+		frameworkState := waveframework.StateForConfig(server.Cfg)
+		publicFileMapReloadEndpointPath := ""
+		if frameworkState != nil {
+			publicFileMapReloadEndpointPath = strings.TrimSpace(
+				frameworkState.PublicFileMapReloadEndpointPath,
+			)
+		}
+		if publicFileMapReloadEndpointPath != "" {
+			if frameworkRuntimeReloadError := server.CallFrameworkRuntimeReloadEndpointWithContext(
+				server.CurrentRunCycleContextOrBackground(),
+				wavewatch.FrameworkRuntimeReloadRequest{
+					EndpointPath:  publicFileMapReloadEndpointPath,
+					ReloadTrigger: "public-filemap-artifacts-changed",
+				},
+			); frameworkRuntimeReloadError != nil {
+				return frameworkRuntimeReloadError
+			}
+		} else if frameworkState != nil && frameworkState.RunBuildHook != nil {
+			if frameworkBuildHookError := frameworkState.RunBuildHook(
+				server.CurrentRunCycleContextOrBackground(),
+				true,
+			); frameworkBuildHookError != nil {
+				return frameworkBuildHookError
+			}
+		}
 	}
 
 	if shouldTrackPublicFileMapArtifacts &&

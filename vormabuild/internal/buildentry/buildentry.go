@@ -5,6 +5,7 @@
 package buildentry
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -16,24 +17,30 @@ import (
 	"github.com/vormadev/vorma/vormabuild/internal/buildenv"
 	"github.com/vormadev/vorma/vormabuild/internal/buildflow"
 	"github.com/vormadev/vorma/vormabuild/internal/buildinner"
+	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 // Options configures one vormabuild execution.
 type Options struct {
 	Dev               bool
 	HookOnly          bool
+	HookExecutionOnly bool
 	SkipGoBinaryBuild bool
 }
 
 type buildCommandOptions struct {
 	runInDevelopmentMode  bool
 	runHookOnly           bool
+	runHookExecutionOnly  bool
 	skipGoBinaryBuildStep bool
 }
 
 type buildCommandHooks struct {
 	configureBuildEnvironment func(*vormaruntime.Vorma)
-	runBuildHook              func(*vormaruntime.Vorma, bool) error
+	// runBuildHook executes canonical hook orchestration (outer hook mode).
+	runBuildHook func(*vormaruntime.Vorma, bool) error
+	// runHookExecutionOnly executes hook build logic directly (inner hook mode).
+	runHookExecutionOnly      func(*vormaruntime.Vorma, bool) error
 	runProdHookPostProcessing func(*vormaruntime.Vorma) error
 	runFullBuild              func(*vormaruntime.Vorma, bool, bool) error
 }
@@ -48,12 +55,27 @@ func defaultBuildCommandHooks() buildCommandHooks {
 		configureBuildEnvironment: func(v *vormaruntime.Vorma) {
 			_ = buildenv.Configure(v)
 		},
-		runBuildHook: func(v *vormaruntime.Vorma, isDev bool) error {
+		runBuildHook: runConfiguredFrameworkBuildHookRunner,
+		runHookExecutionOnly: func(v *vormaruntime.Vorma, isDev bool) error {
 			return buildinner.Run(v, &buildinner.RunOptions{IsDev: isDev})
 		},
 		runProdHookPostProcessing: buildflow.RunProdHookPostProcessing,
 		runFullBuild:              buildflow.RunFullRuntimeBuild,
 	}
+}
+
+func runConfiguredFrameworkBuildHookRunner(
+	v *vormaruntime.Vorma,
+	runInDevelopmentMode bool,
+) error {
+	if v == nil || v.Wave == nil || v.Wave.ParsedConfig() == nil {
+		return errors.New("vorma runtime/config is required")
+	}
+	runBuildHook := waveframework.StateForConfig(v.Wave.ParsedConfig()).RunBuildHook
+	if runBuildHook == nil {
+		return errors.New("framework build hook runner is not configured")
+	}
+	return runBuildHook(context.Background(), runInDevelopmentMode)
 }
 
 // ParseCommandOptions parses CLI flags into build options.
@@ -67,6 +89,7 @@ func ParseCommandOptions(
 	return Options{
 		Dev:               parsedOptions.runInDevelopmentMode,
 		HookOnly:          parsedOptions.runHookOnly,
+		HookExecutionOnly: parsedOptions.runHookExecutionOnly,
 		SkipGoBinaryBuild: parsedOptions.skipGoBinaryBuildStep,
 	}, nil
 }
@@ -83,6 +106,7 @@ func RunWithOptions(v *vormaruntime.Vorma, options Options) error {
 	return commandExecutor.run(buildCommandOptions{
 		runInDevelopmentMode:  options.Dev,
 		runHookOnly:           options.HookOnly,
+		runHookExecutionOnly:  options.HookExecutionOnly,
 		skipGoBinaryBuildStep: options.SkipGoBinaryBuild,
 	})
 }
@@ -107,6 +131,12 @@ func parseBuildCommandOptions(
 		"run build hook only (internal use)",
 	)
 	flagSet.BoolVar(
+		&options.runHookExecutionOnly,
+		"hook-inner",
+		false,
+		"run build hook execution only (internal use)",
+	)
+	flagSet.BoolVar(
 		&options.skipGoBinaryBuildStep,
 		"no-binary",
 		false,
@@ -119,6 +149,11 @@ func parseBuildCommandOptions(
 		return buildCommandOptions{}, fmt.Errorf(
 			"unexpected positional arguments: %s",
 			strings.Join(remainingArgs, ", "),
+		)
+	}
+	if options.runHookOnly && options.runHookExecutionOnly {
+		return buildCommandOptions{}, errors.New(
+			"build flags --hook and --hook-inner cannot be combined",
 		)
 	}
 
@@ -155,6 +190,9 @@ func validateBuildCommandHooks(hooks buildCommandHooks) error {
 	if hooks.runBuildHook == nil {
 		return errors.New("build command hook runBuildHook is required")
 	}
+	if hooks.runHookExecutionOnly == nil {
+		return errors.New("build command hook runHookExecutionOnly is required")
+	}
 	if hooks.runProdHookPostProcessing == nil {
 		return errors.New(
 			"build command hook runProdHookPostProcessing is required",
@@ -179,6 +217,12 @@ func newBuildCommandExecutor(
 func (commandExecutor buildCommandExecutor) run(
 	options buildCommandOptions,
 ) error {
+	if options.runHookOnly && options.runHookExecutionOnly {
+		return errors.New("build flags --hook and --hook-inner cannot be combined")
+	}
+	if options.runHookExecutionOnly {
+		return commandExecutor.runHookExecutionOnly(options.runInDevelopmentMode)
+	}
 	if options.runHookOnly {
 		return commandExecutor.runHookOnly(options.runInDevelopmentMode)
 	}
@@ -193,8 +237,20 @@ func (commandExecutor buildCommandExecutor) runHookOnly(
 	runInDevelopmentMode bool,
 ) error {
 	commandExecutor.hooks.configureBuildEnvironment(commandExecutor.vorma)
-
 	if err := commandExecutor.hooks.runBuildHook(commandExecutor.vorma, runInDevelopmentMode); err != nil {
+		return fmt.Errorf("build hook failed: %w", err)
+	}
+	return nil
+}
+
+func (commandExecutor buildCommandExecutor) runHookExecutionOnly(
+	runInDevelopmentMode bool,
+) error {
+	commandExecutor.hooks.configureBuildEnvironment(commandExecutor.vorma)
+	if err := commandExecutor.hooks.runHookExecutionOnly(
+		commandExecutor.vorma,
+		runInDevelopmentMode,
+	); err != nil {
 		return fmt.Errorf("build hook failed: %w", err)
 	}
 	if runInDevelopmentMode {

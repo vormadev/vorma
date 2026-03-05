@@ -128,6 +128,9 @@ func mustParsedVormaConfigForRouteParseTests(
 		if overrides.DevReloadTemplateEndpointPath != "" {
 			rawConfig.DevReloadTemplateEndpointPath = overrides.DevReloadTemplateEndpointPath
 		}
+		if overrides.DevReloadPublicFileMapEndpointPath != "" {
+			rawConfig.DevReloadPublicFileMapEndpointPath = overrides.DevReloadPublicFileMapEndpointPath
+		}
 		if overrides.TemplateDataKeyHeadElements != "" {
 			rawConfig.TemplateDataKeyHeadElements = overrides.TemplateDataKeyHeadElements
 		}

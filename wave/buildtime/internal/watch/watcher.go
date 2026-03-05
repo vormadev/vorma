@@ -274,9 +274,16 @@ func (watcher *Watcher) IsIgnoredDirectory(directoryPath string) bool {
 		normalizedPath,
 		watcher.cfg,
 	)
+	normalizedDistRootPath := normalizePath(watcher.cfg.Dist().Root())
 	normalizedDistStaticPath := normalizePath(watcher.cfg.Dist().Static())
 	for _, pathCandidate := range pathCandidates {
 		// Never watch dist output roots to avoid self-trigger loops.
+		if normalizedDistRootPath == pathCandidate {
+			return true
+		}
+		if strings.HasPrefix(pathCandidate, normalizedDistRootPath+"/") {
+			return true
+		}
 		if normalizedDistStaticPath == pathCandidate {
 			return true
 		}
@@ -521,6 +528,7 @@ func buildExcludeDirectoryPatterns(cfg waveconfig.ParsedConfig) []string {
 	for _, pattern := range waveframework.StateForConfig(cfg).IgnoredPatterns {
 		appendDirectoryPattern(pattern)
 	}
+	appendDirectoryPattern(cfg.Dist().Root())
 
 	resolveRoot := cfg.ResolveRoot()
 	if strings.TrimSpace(resolveRoot) == "" {

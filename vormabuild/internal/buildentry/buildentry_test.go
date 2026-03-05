@@ -1,6 +1,7 @@
 package buildentry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/vormabuild/internal/testkit"
+	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 func TestParseBuildCommandOptions(t *testing.T) {
@@ -22,12 +24,15 @@ func TestParseBuildCommandOptions(t *testing.T) {
 		if options.runHookOnly {
 			t.Fatal("expected runHookOnly to default to false")
 		}
+		if options.runHookExecutionOnly {
+			t.Fatal("expected runHookExecutionOnly to default to false")
+		}
 		if options.skipGoBinaryBuildStep {
 			t.Fatal("expected skipGoBinaryBuildStep to default to false")
 		}
 	})
 
-	t.Run("parses all supported flags", func(t *testing.T) {
+	t.Run("parses hook flags", func(t *testing.T) {
 		options, err := parseBuildCommandOptions([]string{
 			"--dev",
 			"--hook",
@@ -42,8 +47,27 @@ func TestParseBuildCommandOptions(t *testing.T) {
 		if !options.runHookOnly {
 			t.Fatal("expected runHookOnly to be true")
 		}
+		if options.runHookExecutionOnly {
+			t.Fatal("expected runHookExecutionOnly to be false")
+		}
 		if !options.skipGoBinaryBuildStep {
 			t.Fatal("expected skipGoBinaryBuildStep to be true")
+		}
+	})
+
+	t.Run("parses hook-inner flag", func(t *testing.T) {
+		options, err := parseBuildCommandOptions([]string{"--dev", "--hook-inner"})
+		if err != nil {
+			t.Fatalf("parseBuildCommandOptions returned error: %v", err)
+		}
+		if !options.runInDevelopmentMode {
+			t.Fatal("expected runInDevelopmentMode to be true")
+		}
+		if options.runHookOnly {
+			t.Fatal("expected runHookOnly to be false")
+		}
+		if !options.runHookExecutionOnly {
+			t.Fatal("expected runHookExecutionOnly to be true")
 		}
 	})
 
@@ -73,6 +97,36 @@ func TestParseBuildCommandOptions(t *testing.T) {
 				"error = %q, expected positional-argument parse message",
 				err,
 			)
+		}
+	})
+
+	t.Run("returns parse error when hook flags are combined", func(t *testing.T) {
+		_, err := parseBuildCommandOptions(
+			[]string{"--hook", "--hook-inner"},
+		)
+		if err == nil {
+			t.Fatal("expected parse error for combined --hook and --hook-inner")
+		}
+		if !strings.Contains(err.Error(), "cannot be combined") {
+			t.Fatalf("error = %q, expected combined-hook flag error", err)
+		}
+	})
+}
+
+func TestParseCommandOptions(t *testing.T) {
+	t.Run("maps --hook-inner to public options", func(t *testing.T) {
+		options, err := ParseCommandOptions([]string{"--dev", "--hook-inner"})
+		if err != nil {
+			t.Fatalf("ParseCommandOptions returned error: %v", err)
+		}
+		if !options.Dev {
+			t.Fatal("expected Dev=true")
+		}
+		if options.HookOnly {
+			t.Fatal("expected HookOnly=false")
+		}
+		if !options.HookExecutionOnly {
+			t.Fatal("expected HookExecutionOnly=true")
 		}
 	})
 }
@@ -110,6 +164,18 @@ func TestValidateBuildCommandHooks(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "runBuildHook is required") {
 			t.Fatalf("error = %q, expected missing-build-hook message", err)
+		}
+	})
+
+	t.Run("execution-only hook is required", func(t *testing.T) {
+		invalidHooks := validHooks
+		invalidHooks.runHookExecutionOnly = nil
+		err := validateBuildCommandHooks(invalidHooks)
+		if err == nil {
+			t.Fatal("expected error for missing runHookExecutionOnly hook")
+		}
+		if !strings.Contains(err.Error(), "runHookExecutionOnly is required") {
+			t.Fatalf("error = %q, expected missing-execution-hook message", err)
 		}
 	})
 
@@ -179,7 +245,7 @@ func TestRunBuildCommand(t *testing.T) {
 	})
 
 	t.Run(
-		"parses flags and executes through provided hooks",
+		"parses flags and executes full build through provided hooks",
 		func(t *testing.T) {
 			var runFullBuildCalled bool
 			err := runBuildCommand(
@@ -193,6 +259,10 @@ func TestRunBuildCommand(t *testing.T) {
 					},
 					runBuildHook: func(*vormaruntime.Vorma, bool) error {
 						t.Fatal("did not expect runBuildHook in non-hook mode")
+						return nil
+					},
+					runHookExecutionOnly: func(*vormaruntime.Vorma, bool) error {
+						t.Fatal("did not expect runHookExecutionOnly in non-hook mode")
 						return nil
 					},
 					runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
@@ -241,35 +311,69 @@ func TestRunBuildCommand(t *testing.T) {
 	})
 }
 
-func TestDefaultBuildCommandHooks_RunBuildHookUsesBuildInner(t *testing.T) {
-	fixture := testkit.NewBuildTestFixture(t, nil)
-	app := fixture.App
+func TestDefaultBuildCommandHooks(t *testing.T) {
+	t.Run("runBuildHook uses framework runner", func(t *testing.T) {
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
 
-	t.Chdir(fixture.RootDir)
-	testkit.WriteBootstrapStyleRoutesFixtureFiles(t)
+		hooks := defaultBuildCommandHooks()
+		hooks.configureBuildEnvironment(app)
 
-	hooks := defaultBuildCommandHooks()
-	if err := hooks.runBuildHook(app, true); err != nil {
-		t.Fatalf("default runBuildHook returned error: %v", err)
-	}
+		frameworkRunnerCalled := false
+		waveframework.StateForConfig(app.Wave.ParsedConfig()).RunBuildHook = func(
+			commandExecutionContext context.Context,
+			runInDevelopmentMode bool,
+		) error {
+			frameworkRunnerCalled = true
+			if commandExecutionContext == nil {
+				t.Fatal("expected non-nil command execution context")
+			}
+			if !runInDevelopmentMode {
+				t.Fatal("expected runInDevelopmentMode=true")
+			}
+			return nil
+		}
 
-	if !app.IsDevMode() {
-		t.Fatal("expected default runBuildHook to set app to dev mode")
-	}
-	if app.BuildID() == "" {
-		t.Fatal("expected default runBuildHook to assign a build ID")
-	}
+		if err := hooks.runBuildHook(app, true); err != nil {
+			t.Fatalf("default runBuildHook returned error: %v", err)
+		}
+		if !frameworkRunnerCalled {
+			t.Fatal("expected default runBuildHook to call framework runner")
+		}
+	})
+
+	t.Run("runHookExecutionOnly uses buildinner", func(t *testing.T) {
+		fixture := testkit.NewBuildTestFixture(t, nil)
+		app := fixture.App
+
+		t.Chdir(fixture.RootDir)
+		testkit.WriteBootstrapStyleRoutesFixtureFiles(t)
+
+		hooks := defaultBuildCommandHooks()
+		if err := hooks.runHookExecutionOnly(app, true); err != nil {
+			t.Fatalf("default runHookExecutionOnly returned error: %v", err)
+		}
+
+		if !app.IsDevMode() {
+			t.Fatal("expected default runHookExecutionOnly to set app to dev mode")
+		}
+		if app.BuildID() == "" {
+			t.Fatal("expected default runHookExecutionOnly to assign a build ID")
+		}
+	})
 }
 
 func TestBuildCommandExecutorRun(t *testing.T) {
 	type observedCalls struct {
-		configureCalled               bool
-		runBuildHookCalled            bool
-		runBuildHookDevelopmentMode   bool
-		runProdHookPostProcessingCall bool
-		runFullBuildCalled            bool
-		runFullBuildDevelopmentMode   bool
-		runFullBuildSkipGoBinaryBuild bool
+		configureCalled                     bool
+		runBuildHookCalled                  bool
+		runBuildHookDevelopmentMode         bool
+		runHookExecutionOnlyCalled          bool
+		runHookExecutionOnlyDevelopmentMode bool
+		runProdHookPostProcessingCalled     bool
+		runFullBuildCalled                  bool
+		runFullBuildDevelopmentMode         bool
+		runFullBuildSkipGoBinaryBuild       bool
 	}
 
 	newHooks := func(calls *observedCalls) buildCommandHooks {
@@ -282,8 +386,13 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 				calls.runBuildHookDevelopmentMode = isDev
 				return nil
 			},
+			runHookExecutionOnly: func(_ *vormaruntime.Vorma, isDev bool) error {
+				calls.runHookExecutionOnlyCalled = true
+				calls.runHookExecutionOnlyDevelopmentMode = isDev
+				return nil
+			},
 			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-				calls.runProdHookPostProcessingCall = true
+				calls.runProdHookPostProcessingCalled = true
 				return nil
 			},
 			runFullBuild: func(_ *vormaruntime.Vorma, isDev bool, skipBinary bool) error {
@@ -300,97 +409,103 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 		return commandExecutor.run(options)
 	}
 
-	t.Run(
-		"hook dev mode runs configure and build hook only",
-		func(t *testing.T) {
-			var calls observedCalls
-			err := runWithOptions(
-				buildCommandOptions{
-					runInDevelopmentMode: true,
-					runHookOnly:          true,
-				},
-				newHooks(&calls),
-			)
-			if err != nil {
-				t.Fatalf("runBuildCommandWithOptions returned error: %v", err)
-			}
-			if !calls.configureCalled {
-				t.Fatal("expected configureBuildEnvironment to be called")
-			}
-			if !calls.runBuildHookCalled {
-				t.Fatal("expected runBuildHook to be called")
-			}
-			if !calls.runBuildHookDevelopmentMode {
-				t.Fatal(
-					"expected runBuildHook to receive development mode = true",
-				)
-			}
-			if calls.runProdHookPostProcessingCall {
-				t.Fatal(
-					"did not expect runProdHookPostProcessing in dev hook mode",
-				)
-			}
-			if calls.runFullBuildCalled {
-				t.Fatal("did not expect runFullBuild in hook mode")
-			}
-		},
-	)
-
-	t.Run(
-		"hook prod mode runs configure, build hook, and post processing",
-		func(t *testing.T) {
-			var calls observedCalls
-			err := runWithOptions(
-				buildCommandOptions{
-					runInDevelopmentMode: false,
-					runHookOnly:          true,
-				},
-				newHooks(&calls),
-			)
-			if err != nil {
-				t.Fatalf("runBuildCommandWithOptions returned error: %v", err)
-			}
-			if !calls.configureCalled || !calls.runBuildHookCalled ||
-				!calls.runProdHookPostProcessingCall {
-				t.Fatalf("unexpected hook call sequence: %#v", calls)
-			}
-			if calls.runBuildHookDevelopmentMode {
-				t.Fatal(
-					"expected runBuildHook to receive development mode = false",
-				)
-			}
-			if calls.runFullBuildCalled {
-				t.Fatal("did not expect runFullBuild in hook mode")
-			}
-		},
-	)
-
-	t.Run("hook prod mode returns post-processing error", func(t *testing.T) {
-		expectedErr := errors.New("post-processing failed")
-		hooks := buildCommandHooks{
-			configureBuildEnvironment: func(*vormaruntime.Vorma) {},
-			runBuildHook: func(*vormaruntime.Vorma, bool) error {
-				return nil
-			},
-			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-				return expectedErr
-			},
-			runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
-				t.Fatal("did not expect runFullBuild in hook mode")
-				return nil
-			},
-		}
+	t.Run("hook mode runs configure and build hook only", func(t *testing.T) {
+		var calls observedCalls
 		err := runWithOptions(
 			buildCommandOptions{
-				runHookOnly: true,
+				runInDevelopmentMode: true,
+				runHookOnly:          true,
 			},
-			hooks,
+			newHooks(&calls),
+		)
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+		if !calls.configureCalled {
+			t.Fatal("expected configureBuildEnvironment to be called")
+		}
+		if !calls.runBuildHookCalled {
+			t.Fatal("expected runBuildHook to be called")
+		}
+		if !calls.runBuildHookDevelopmentMode {
+			t.Fatal("expected runBuildHook to receive development mode=true")
+		}
+		if calls.runHookExecutionOnlyCalled {
+			t.Fatal("did not expect runHookExecutionOnly in outer hook mode")
+		}
+		if calls.runProdHookPostProcessingCalled {
+			t.Fatal("did not expect post processing in outer hook mode")
+		}
+		if calls.runFullBuildCalled {
+			t.Fatal("did not expect runFullBuild in hook mode")
+		}
+	})
+
+	t.Run("hook-inner dev mode skips post processing", func(t *testing.T) {
+		var calls observedCalls
+		err := runWithOptions(
+			buildCommandOptions{
+				runInDevelopmentMode: true,
+				runHookExecutionOnly: true,
+			},
+			newHooks(&calls),
+		)
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+		if !calls.configureCalled {
+			t.Fatal("expected configureBuildEnvironment to be called")
+		}
+		if calls.runBuildHookCalled {
+			t.Fatal("did not expect runBuildHook in hook-inner mode")
+		}
+		if !calls.runHookExecutionOnlyCalled {
+			t.Fatal("expected runHookExecutionOnly to be called")
+		}
+		if !calls.runHookExecutionOnlyDevelopmentMode {
+			t.Fatal(
+				"expected runHookExecutionOnly to receive development mode=true",
+			)
+		}
+		if calls.runProdHookPostProcessingCalled {
+			t.Fatal("did not expect post processing in hook-inner dev mode")
+		}
+		if calls.runFullBuildCalled {
+			t.Fatal("did not expect runFullBuild in hook-inner mode")
+		}
+	})
+
+	t.Run("hook-inner prod mode runs post processing", func(t *testing.T) {
+		var calls observedCalls
+		err := runWithOptions(
+			buildCommandOptions{
+				runHookExecutionOnly: true,
+			},
+			newHooks(&calls),
+		)
+		if err != nil {
+			t.Fatalf("run returned error: %v", err)
+		}
+		if !calls.runHookExecutionOnlyCalled ||
+			!calls.runProdHookPostProcessingCalled {
+			t.Fatalf("unexpected call sequence: %#v", calls)
+		}
+	})
+
+	t.Run("returns error when both hook flags are enabled", func(t *testing.T) {
+		var calls observedCalls
+		err := runWithOptions(
+			buildCommandOptions{
+				runHookOnly:          true,
+				runHookExecutionOnly: true,
+			},
+			newHooks(&calls),
 		)
 		if err == nil {
-			t.Fatal("expected post-processing error")
+			t.Fatal("expected conflict error")
 		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped post-processing error", err)
+		if !strings.Contains(err.Error(), "cannot be combined") {
+			t.Fatalf("error=%q, expected combined hook-flag error", err)
 		}
 	})
 
@@ -401,6 +516,10 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 			runBuildHook: func(*vormaruntime.Vorma, bool) error {
 				return expectedErr
 			},
+			runHookExecutionOnly: func(*vormaruntime.Vorma, bool) error {
+				t.Fatal("did not expect runHookExecutionOnly")
+				return nil
+			},
 			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
 				t.Fatal("did not expect post processing when build hook fails")
 				return nil
@@ -410,20 +529,75 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 				return nil
 			},
 		}
-		err := runWithOptions(
-			buildCommandOptions{
-				runHookOnly: true,
-			},
-			hooks,
-		)
+		err := runWithOptions(buildCommandOptions{runHookOnly: true}, hooks)
 		if err == nil {
 			t.Fatal("expected hook error")
 		}
 		if !strings.Contains(err.Error(), "build hook failed") {
 			t.Fatalf("error = %q, expected build-hook context", err)
 		}
-		if !strings.Contains(err.Error(), expectedErr.Error()) {
-			t.Fatalf("error = %q, expected wrapped hook error", err)
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped hook error", err)
+		}
+	})
+
+	t.Run("hook-inner mode wraps execution errors", func(t *testing.T) {
+		expectedErr := errors.New("hook execution failed")
+		hooks := buildCommandHooks{
+			configureBuildEnvironment: func(*vormaruntime.Vorma) {},
+			runBuildHook: func(*vormaruntime.Vorma, bool) error {
+				t.Fatal("did not expect runBuildHook")
+				return nil
+			},
+			runHookExecutionOnly: func(*vormaruntime.Vorma, bool) error {
+				return expectedErr
+			},
+			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
+				t.Fatal("did not expect post processing when execution hook fails")
+				return nil
+			},
+			runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
+				t.Fatal("did not expect full build in hook-inner mode")
+				return nil
+			},
+		}
+		err := runWithOptions(buildCommandOptions{runHookExecutionOnly: true}, hooks)
+		if err == nil {
+			t.Fatal("expected hook execution error")
+		}
+		if !strings.Contains(err.Error(), "build hook failed") {
+			t.Fatalf("error = %q, expected build-hook context", err)
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped execution hook error", err)
+		}
+	})
+
+	t.Run("hook-inner prod mode wraps post-processing errors", func(t *testing.T) {
+		expectedErr := errors.New("post-processing failed")
+		hooks := buildCommandHooks{
+			configureBuildEnvironment: func(*vormaruntime.Vorma) {},
+			runBuildHook: func(*vormaruntime.Vorma, bool) error {
+				t.Fatal("did not expect runBuildHook")
+				return nil
+			},
+			runHookExecutionOnly: func(*vormaruntime.Vorma, bool) error {
+				return nil
+			},
+			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
+				return expectedErr
+			},
+			runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
+				t.Fatal("did not expect full build in hook-inner mode")
+				return nil
+			},
+		}
+		err := runWithOptions(buildCommandOptions{runHookExecutionOnly: true}, hooks)
+		if err == nil {
+			t.Fatal("expected post-processing error")
+		}
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped post-processing error", err)
 		}
 	})
 
@@ -437,24 +611,22 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 			newHooks(&calls),
 		)
 		if err != nil {
-			t.Fatalf("runBuildCommandWithOptions returned error: %v", err)
+			t.Fatalf("run returned error: %v", err)
 		}
 		if calls.configureCalled {
-			t.Fatal(
-				"did not expect configureBuildEnvironment in full build mode",
-			)
+			t.Fatal("did not expect configureBuildEnvironment in full build mode")
 		}
-		if calls.runBuildHookCalled || calls.runProdHookPostProcessingCall {
+		if calls.runBuildHookCalled || calls.runHookExecutionOnlyCalled || calls.runProdHookPostProcessingCalled {
 			t.Fatal("did not expect hook callbacks in full build mode")
 		}
 		if !calls.runFullBuildCalled {
 			t.Fatal("expected runFullBuild to be called")
 		}
 		if !calls.runFullBuildDevelopmentMode {
-			t.Fatal("expected runFullBuild to receive development mode = true")
+			t.Fatal("expected runFullBuild to receive development mode=true")
 		}
 		if !calls.runFullBuildSkipGoBinaryBuild {
-			t.Fatal("expected runFullBuild to receive skipGoBinaryBuild = true")
+			t.Fatal("expected runFullBuild to receive skipGoBinaryBuild=true")
 		}
 	})
 
@@ -462,18 +634,18 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 		expectedErr := errors.New("full build failed")
 		hooks := buildCommandHooks{
 			configureBuildEnvironment: func(*vormaruntime.Vorma) {
-				t.Fatal(
-					"did not expect configureBuildEnvironment in full build mode",
-				)
+				t.Fatal("did not expect configureBuildEnvironment in full build mode")
 			},
 			runBuildHook: func(*vormaruntime.Vorma, bool) error {
 				t.Fatal("did not expect runBuildHook in full build mode")
 				return nil
 			},
+			runHookExecutionOnly: func(*vormaruntime.Vorma, bool) error {
+				t.Fatal("did not expect runHookExecutionOnly in full build mode")
+				return nil
+			},
 			runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-				t.Fatal(
-					"did not expect runProdHookPostProcessing in full build mode",
-				)
+				t.Fatal("did not expect runProdHookPostProcessing in full build mode")
 				return nil
 			},
 			runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
@@ -487,8 +659,8 @@ func TestBuildCommandExecutorRun(t *testing.T) {
 		if !strings.Contains(err.Error(), "build failed") {
 			t.Fatalf("error = %q, expected build failure context", err)
 		}
-		if !strings.Contains(err.Error(), expectedErr.Error()) {
-			t.Fatalf("error = %q, expected wrapped full-build error", err)
+		if !errors.Is(err, expectedErr) {
+			t.Fatalf("error = %v, expected wrapped full-build error", err)
 		}
 	})
 }
@@ -522,12 +694,9 @@ func TestBuildEntrypoint(t *testing.T) {
 			t.Fatal("expected runBuildCommandFromCLI to be called")
 		}
 		if fatalCalled {
-			t.Fatal(
-				"did not expect fatalfForBuildCommand on successful build command",
-			)
+			t.Fatal("did not expect fatalfForBuildCommand on successful build command")
 		}
-		if len(capturedArgs) != 2 || capturedArgs[0] != "--dev" ||
-			capturedArgs[1] != "--hook" {
+		if len(capturedArgs) != 2 || capturedArgs[0] != "--dev" || capturedArgs[1] != "--hook" {
 			t.Fatalf("captured args = %#v, want [--dev --hook]", capturedArgs)
 		}
 	})
@@ -563,147 +732,4 @@ func TestBuildEntrypoint(t *testing.T) {
 			}
 		},
 	)
-}
-
-func TestRunHookOnlyBuildCommand(t *testing.T) {
-	t.Run("development mode skips post processing", func(t *testing.T) {
-		var configureCalled bool
-		var runBuildHookCalled bool
-		var runProdHookPostProcessingCalled bool
-
-		commandExecutor := newBuildCommandExecutor(
-			&vormaruntime.Vorma{},
-			buildCommandHooks{
-				configureBuildEnvironment: func(*vormaruntime.Vorma) {
-					configureCalled = true
-				},
-				runBuildHook: func(*vormaruntime.Vorma, bool) error {
-					runBuildHookCalled = true
-					return nil
-				},
-				runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-					runProdHookPostProcessingCalled = true
-					return nil
-				},
-				runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
-					t.Fatal("did not expect runFullBuild in hook-only mode")
-					return nil
-				},
-			},
-		)
-		err := commandExecutor.runHookOnly(true)
-		if err != nil {
-			t.Fatalf("runHookOnly returned error: %v", err)
-		}
-		if !configureCalled {
-			t.Fatal("expected configureBuildEnvironment to be called")
-		}
-		if !runBuildHookCalled {
-			t.Fatal("expected runBuildHook to be called")
-		}
-		if runProdHookPostProcessingCalled {
-			t.Fatal(
-				"did not expect runProdHookPostProcessing in hook-only dev mode",
-			)
-		}
-	})
-
-	t.Run("production mode executes post processing", func(t *testing.T) {
-		var runProdHookPostProcessingCalled bool
-		commandExecutor := newBuildCommandExecutor(
-			&vormaruntime.Vorma{},
-			buildCommandHooks{
-				configureBuildEnvironment: func(*vormaruntime.Vorma) {},
-				runBuildHook: func(*vormaruntime.Vorma, bool) error {
-					return nil
-				},
-				runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-					runProdHookPostProcessingCalled = true
-					return nil
-				},
-				runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
-					t.Fatal("did not expect runFullBuild in hook-only mode")
-					return nil
-				},
-			},
-		)
-		err := commandExecutor.runHookOnly(false)
-		if err != nil {
-			t.Fatalf("runHookOnly returned error: %v", err)
-		}
-		if !runProdHookPostProcessingCalled {
-			t.Fatal(
-				"expected runProdHookPostProcessing in hook-only production mode",
-			)
-		}
-	})
-}
-
-func TestRunFullBuildCommand(t *testing.T) {
-	t.Run("passes options to full build hook", func(t *testing.T) {
-		var observedDevMode bool
-		var observedSkipBinary bool
-		commandExecutor := newBuildCommandExecutor(
-			&vormaruntime.Vorma{},
-			buildCommandHooks{
-				configureBuildEnvironment: func(*vormaruntime.Vorma) {
-					t.Fatal(
-						"did not expect configureBuildEnvironment in full build mode",
-					)
-				},
-				runBuildHook: func(*vormaruntime.Vorma, bool) error {
-					t.Fatal("did not expect runBuildHook in full build mode")
-					return nil
-				},
-				runProdHookPostProcessing: func(*vormaruntime.Vorma) error {
-					t.Fatal(
-						"did not expect runProdHookPostProcessing in full build mode",
-					)
-					return nil
-				},
-				runFullBuild: func(_ *vormaruntime.Vorma, isDev bool, skipBinary bool) error {
-					observedDevMode = isDev
-					observedSkipBinary = skipBinary
-					return nil
-				},
-			},
-		)
-		err := commandExecutor.runFullBuild(true, true)
-		if err != nil {
-			t.Fatalf("runFullBuild returned error: %v", err)
-		}
-		if !observedDevMode {
-			t.Fatal("expected runFullBuild to receive development mode=true")
-		}
-		if !observedSkipBinary {
-			t.Fatal(
-				"expected runFullBuild to receive skipGoBinaryBuildStep=true",
-			)
-		}
-	})
-
-	t.Run("wraps full build errors", func(t *testing.T) {
-		expectedErr := errors.New("full build failed")
-		commandExecutor := newBuildCommandExecutor(
-			&vormaruntime.Vorma{},
-			buildCommandHooks{
-				configureBuildEnvironment: func(*vormaruntime.Vorma) {},
-				runBuildHook:              func(*vormaruntime.Vorma, bool) error { return nil },
-				runProdHookPostProcessing: func(*vormaruntime.Vorma) error { return nil },
-				runFullBuild: func(*vormaruntime.Vorma, bool, bool) error {
-					return expectedErr
-				},
-			},
-		)
-		err := commandExecutor.runFullBuild(false, false)
-		if err == nil {
-			t.Fatal("expected runFullBuild to return error")
-		}
-		if !strings.Contains(err.Error(), "build failed") {
-			t.Fatalf("error = %q, expected build-failed context", err)
-		}
-		if !errors.Is(err, expectedErr) {
-			t.Fatalf("error = %v, expected wrapped full-build error", err)
-		}
-	})
 }

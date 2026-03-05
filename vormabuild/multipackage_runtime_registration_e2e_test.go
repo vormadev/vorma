@@ -232,7 +232,7 @@ import (
 
 func main() {
 	for _, arg := range os.Args[1:] {
-		if arg == "--hook" {
+		if arg == "--hook" || arg == "--hook-inner" {
 			return
 		}
 	}

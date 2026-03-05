@@ -146,12 +146,35 @@ func (processor *Processor) WriteCanonicalPublicFileMapJSONAndRef() error {
 	)
 	outputPath := filepath.Join(processor.cfg.Dist().StaticPublic(), fileName)
 	refPath := processor.cfg.Dist().PublicFileMapRef()
+	previousCanonicalOutputPath := ""
+	refBytesBeforeWrite, readRefBeforeWriteError := os.ReadFile(refPath)
+	if readRefBeforeWriteError == nil {
+		refTargetBeforeWrite := strings.TrimSpace(string(refBytesBeforeWrite))
+		if refTargetBeforeWrite != "" {
+			resolvedCanonicalOutputPathBeforeWrite, resolveOutputPathBeforeWriteError := resolveCanonicalPublicFileMapOutputPath(
+				processor.cfg.Dist().StaticPublic(),
+				refTargetBeforeWrite,
+			)
+			if resolveOutputPathBeforeWriteError == nil {
+				previousCanonicalOutputPath = resolvedCanonicalOutputPathBeforeWrite
+			}
+		}
+	} else if !errors.Is(readRefBeforeWriteError, os.ErrNotExist) {
+		return readRefBeforeWriteError
+	}
 
 	if writeError := artifactio.WriteFileAtomically(outputPath, serializedFileMap, 0o644); writeError != nil {
 		return writeError
 	}
 	if writeRefError := artifactio.WriteFileAtomically(refPath, []byte(fileName), 0o644); writeRefError != nil {
 		return writeRefError
+	}
+	if previousCanonicalOutputPath != "" &&
+		filepath.Clean(previousCanonicalOutputPath) != filepath.Clean(outputPath) {
+		if removePreviousOutputError := os.Remove(previousCanonicalOutputPath); removePreviousOutputError != nil &&
+			!errors.Is(removePreviousOutputError, os.ErrNotExist) {
+			return removePreviousOutputError
+		}
 	}
 
 	processor.log.Debug(
@@ -549,20 +572,20 @@ func (processor *Processor) processFullScan(
 				len(nextFileMap),
 			)
 			return nil
-			}
-			processor.log.Debug(
-				"processed private static files (full scan)",
-				"changed_paths",
-				0,
-				"updated_entries",
-				0,
-				"removed_entries",
-				0,
-				"entries",
-				len(nextFileMap),
-			)
-			return nil
 		}
+		processor.log.Debug(
+			"processed private static files (full scan)",
+			"changed_paths",
+			0,
+			"updated_entries",
+			0,
+			"removed_entries",
+			0,
+			"entries",
+			len(nextFileMap),
+		)
+		return nil
+	}
 
 	if saveError := saveFileMap(store.gobPath, nextFileMap); saveError != nil {
 		return saveError

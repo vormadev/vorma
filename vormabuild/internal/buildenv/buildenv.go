@@ -125,6 +125,7 @@ func configureInConfigWithFrameworkBuildHookExecutor(
 		v,
 		frameworkBuildHookExecutor,
 	)
+	injectFrameworkPublicFileMapReloadEndpointInConfig(cfg, v)
 	devreload.InjectDefaultWatchPatternsInConfig(cfg, v)
 	injectFrameworkBuildHooksInConfig(cfg, v)
 	injectFrameworkBuildHookRunnerInConfig(
@@ -140,6 +141,20 @@ func configureInConfigWithFrameworkBuildHookExecutor(
 		frameworkBuildHookExecutor,
 	)
 	return cfg
+}
+
+func injectFrameworkPublicFileMapReloadEndpointInConfig(
+	cfg waveconfig.ParsedConfig,
+	v *vormaruntime.Vorma,
+) {
+	if cfg == nil || v == nil {
+		return
+	}
+	if v.Config == nil {
+		return
+	}
+	waveframework.StateForConfig(cfg).PublicFileMapReloadEndpointPath = v.
+		DevReloadPublicFileMapEndpointPath()
 }
 
 func injectFrameworkToolingReloadConfiguratorInConfig(
@@ -285,7 +300,7 @@ func injectFrameworkBuildHookRunnerInConfig(
 		if runInDevelopmentMode {
 			goRunArgs = append(goRunArgs, "--dev")
 		}
-		goRunArgs = append(goRunArgs, "--hook")
+		goRunArgs = append(goRunArgs, "--hook-inner")
 
 		runHookCommandErr := frameworkBuildHookExecutor.dependencies.runGoCommandWithContext(
 			commandExecutionContext,
@@ -394,43 +409,45 @@ var vormaSchema = jsonschema.OptionalObject(jsonschema.Def{
 		"TSGenOutDir",
 	},
 	Properties: struct {
-		IncludeDefaults               jsonschema.Entry
-		MainBuildEntry                jsonschema.Entry
-		UIVariant                     jsonschema.Entry
-		HTMLTemplateLocation          jsonschema.Entry
-		ClientEntry                   jsonschema.Entry
-		ClientRouteDefinitionPatterns jsonschema.Entry
-		ServerRouteDefinitionPatterns jsonschema.Entry
-		TSGenOutDir                   jsonschema.Entry
-		BuildtimePublicURLFuncName    jsonschema.Entry
-		UnresolvedRoutePolicy         jsonschema.Entry
-		DevReloadRoutesEndpointPath   jsonschema.Entry
-		DevReloadTemplateEndpointPath jsonschema.Entry
-		TemplateDataKeyHeadElements   jsonschema.Entry
-		TemplateDataKeyBodyScripts    jsonschema.Entry
-		TemplateDataKeySSRScript      jsonschema.Entry
-		TemplateDataKeySSRScriptHash  jsonschema.Entry
-		TemplateDataKeyRootElementID  jsonschema.Entry
-		ClientRootElementID           jsonschema.Entry
+		IncludeDefaults                    jsonschema.Entry
+		MainBuildEntry                     jsonschema.Entry
+		UIVariant                          jsonschema.Entry
+		HTMLTemplateLocation               jsonschema.Entry
+		ClientEntry                        jsonschema.Entry
+		ClientRouteDefinitionPatterns      jsonschema.Entry
+		ServerRouteDefinitionPatterns      jsonschema.Entry
+		TSGenOutDir                        jsonschema.Entry
+		BuildtimePublicURLFuncName         jsonschema.Entry
+		UnresolvedRoutePolicy              jsonschema.Entry
+		DevReloadRoutesEndpointPath        jsonschema.Entry
+		DevReloadTemplateEndpointPath      jsonschema.Entry
+		DevReloadPublicFileMapEndpointPath jsonschema.Entry
+		TemplateDataKeyHeadElements        jsonschema.Entry
+		TemplateDataKeyBodyScripts         jsonschema.Entry
+		TemplateDataKeySSRScript           jsonschema.Entry
+		TemplateDataKeySSRScriptHash       jsonschema.Entry
+		TemplateDataKeyRootElementID       jsonschema.Entry
+		ClientRootElementID                jsonschema.Entry
 	}{
-		IncludeDefaults:               includeDefaultsSchema,
-		MainBuildEntry:                mainBuildEntrySchema,
-		UIVariant:                     uiVariantSchema,
-		HTMLTemplateLocation:          htmlTemplateLocationSchema,
-		ClientEntry:                   clientEntrySchema,
-		ClientRouteDefinitionPatterns: clientRouteDefinitionPatternsSchema,
-		ServerRouteDefinitionPatterns: serverRouteDefinitionPatternsSchema,
-		TSGenOutDir:                   tsGenOutDirSchema,
-		BuildtimePublicURLFuncName:    buildtimePublicURLFuncNameSchema,
-		UnresolvedRoutePolicy:         unresolvedRoutePolicySchema,
-		DevReloadRoutesEndpointPath:   devReloadRoutesEndpointPathSchema,
-		DevReloadTemplateEndpointPath: devReloadTemplateEndpointPathSchema,
-		TemplateDataKeyHeadElements:   templateDataKeyHeadElementsSchema,
-		TemplateDataKeyBodyScripts:    templateDataKeyBodyScriptsSchema,
-		TemplateDataKeySSRScript:      templateDataKeySSRScriptSchema,
-		TemplateDataKeySSRScriptHash:  templateDataKeySSRScriptHashSchema,
-		TemplateDataKeyRootElementID:  templateDataKeyRootElementIDSchema,
-		ClientRootElementID:           clientRootElementIDSchema,
+		IncludeDefaults:                    includeDefaultsSchema,
+		MainBuildEntry:                     mainBuildEntrySchema,
+		UIVariant:                          uiVariantSchema,
+		HTMLTemplateLocation:               htmlTemplateLocationSchema,
+		ClientEntry:                        clientEntrySchema,
+		ClientRouteDefinitionPatterns:      clientRouteDefinitionPatternsSchema,
+		ServerRouteDefinitionPatterns:      serverRouteDefinitionPatternsSchema,
+		TSGenOutDir:                        tsGenOutDirSchema,
+		BuildtimePublicURLFuncName:         buildtimePublicURLFuncNameSchema,
+		UnresolvedRoutePolicy:              unresolvedRoutePolicySchema,
+		DevReloadRoutesEndpointPath:        devReloadRoutesEndpointPathSchema,
+		DevReloadTemplateEndpointPath:      devReloadTemplateEndpointPathSchema,
+		DevReloadPublicFileMapEndpointPath: devReloadPublicFileMapEndpointPathSchema,
+		TemplateDataKeyHeadElements:        templateDataKeyHeadElementsSchema,
+		TemplateDataKeyBodyScripts:         templateDataKeyBodyScriptsSchema,
+		TemplateDataKeySSRScript:           templateDataKeySSRScriptSchema,
+		TemplateDataKeySSRScriptHash:       templateDataKeySSRScriptHashSchema,
+		TemplateDataKeyRootElementID:       templateDataKeyRootElementIDSchema,
+		ClientRootElementID:                clientRootElementIDSchema,
 	},
 })
 
@@ -508,6 +525,14 @@ var devReloadTemplateEndpointPathSchema = jsonschema.OptionalString(
 		Description: `Dev-only endpoint path that triggers in-process template reload.`,
 		Default:     "/__vorma_internal/reload-template",
 		Examples:    []string{"/__vorma_internal/reload-template"},
+	},
+)
+
+var devReloadPublicFileMapEndpointPathSchema = jsonschema.OptionalString(
+	jsonschema.Def{
+		Description: `Dev-only endpoint path that rewrites generated TypeScript public filemap output from Wave canonical artifacts.`,
+		Default:     "/__vorma_internal/reload-public-filemap",
+		Examples:    []string{"/__vorma_internal/reload-public-filemap"},
 	},
 )
 

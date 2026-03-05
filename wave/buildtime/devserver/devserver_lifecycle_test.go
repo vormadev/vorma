@@ -1102,7 +1102,31 @@ func TestCycleVite_NoOpWhenViteEnabledButNotStarted(t *testing.T) {
 	s.CycleVite()
 }
 
-func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
+func TestStartVite_FailureRetainsViteContextForDiagnostics(t *testing.T) {
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	ensureViteConfigForToolingTests(t, cfg)
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "command_that_does_not_exist_for_wave_cycle_test")
+	wavetest.SetViteDefaultPort(cfg, 5203)
+
+	builder := builder.NewBuilder(cfg, newDiscardLogger())
+	defer builder.Close()
+
+	s := &Server{
+		Cfg:     cfg,
+		Log:     newDiscardLogger(),
+		Builder: builder,
+	}
+
+	startViteError := s.StartVite()
+	if startViteError == nil {
+		t.Fatal("expected startVite to fail for invalid package-manager command")
+	}
+	if s.ViteContext == nil {
+		t.Fatal("expected startVite failure to retain vite context for diagnostics/retry")
+	}
+}
+
+func TestCycleVite_StartFailureAfterStopRetainsViteContextForDiagnostics(t *testing.T) {
 	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
 	ensureViteConfigForToolingTests(t, cfg)
 	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "command_that_does_not_exist_for_wave_cycle_test")
@@ -1122,9 +1146,9 @@ func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
 
 	s.CycleVite()
 
-	if s.ViteContext != nil {
+	if s.ViteContext == nil {
 		t.Fatal(
-			"expected cycleVite start failure to leave vite context cleared",
+			"expected cycleVite start failure to retain vite context for diagnostics/retry",
 		)
 	}
 }

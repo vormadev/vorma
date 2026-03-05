@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/internal/outputprefix"
+	"github.com/vormadev/vorma/internal/vormapublicfilemap"
 	"github.com/vormadev/vorma/internal/vormaruntime/rendering"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepublic"
@@ -151,6 +152,17 @@ func (v *Vorma) DevReloadTemplateEndpointPath() string {
 	}
 	return runtimeconfig.ResolveDevReloadTemplateEndpointPath(
 		v.Config.DevReloadTemplateEndpointPath(),
+	)
+}
+
+// DevReloadPublicFileMapEndpointPath returns the configured (or default) dev
+// public-filemap reload endpoint path.
+func (v *Vorma) DevReloadPublicFileMapEndpointPath() string {
+	if v == nil || v.Config == nil {
+		return runtimeconfig.DefaultDevReloadPublicFileMapEndpointPath
+	}
+	return runtimeconfig.ResolveDevReloadPublicFileMapEndpointPath(
+		v.Config.DevReloadPublicFileMapEndpointPath(),
 	)
 }
 
@@ -294,6 +306,9 @@ func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
 				TemplateEndpointPath: func() string {
 					return v.DevReloadTemplateEndpointPath()
 				},
+				PublicFileMapEndpointPath: func() string {
+					return v.DevReloadPublicFileMapEndpointPath()
+				},
 				ValidateExpectedBuildIDOrWriteConflict: func(
 					responseWriter http.ResponseWriter,
 					request *http.Request,
@@ -309,9 +324,10 @@ func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
 						},
 					)
 				},
-				ReloadRoutesFromDisk:   v.devReloadRoutesFromDisk,
-				ReloadTemplateFromDisk: v.devReloadTemplateFromDisk,
-				Log:                    v.Log,
+				ReloadRoutesFromDisk:        v.devReloadRoutesFromDisk,
+				ReloadTemplateFromDisk:      v.devReloadTemplateFromDisk,
+				ReloadPublicFileMapFromDisk: v.devReloadPublicFileMapFromDisk,
+				Log:                         v.Log,
 			},
 		)
 	})
@@ -1282,6 +1298,30 @@ func (v *Vorma) devReloadTemplateFromDisk() error {
 	return nil
 }
 
+// devReloadPublicFileMapFromDisk rewrites generated TypeScript public-filemap
+// output from Wave's canonical public-filemap artifacts.
+func (v *Vorma) devReloadPublicFileMapFromDisk() error {
+	v.mu.RLock()
+	isDev := v._isDev
+	waveBuildConfig := v.Wave.ParsedConfig()
+	tsGenOutDir := v.Config.TSGenOutDir()
+	v.mu.RUnlock()
+
+	if err := guardDevOnlyReload(isDev, "public filemap reload"); err != nil {
+		return err
+	}
+
+	if writeError := vormapublicfilemap.WriteTypeScriptFromCanonicalWaveOutput(
+		waveBuildConfig,
+		tsGenOutDir,
+	); writeError != nil {
+		return writeError
+	}
+
+	v.Log.Info("Public filemap TypeScript reloaded from disk")
+	return nil
+}
+
 func guardDevOnlyReload(
 	isDevMode bool,
 	operation string,
@@ -1322,6 +1362,11 @@ func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
 		r.AddHTTPHandler(
 			http.MethodPost,
 			v.DevReloadTemplateEndpointPath(),
+			actions.Handler(),
+		)
+		r.AddHTTPHandler(
+			http.MethodPost,
+			v.DevReloadPublicFileMapEndpointPath(),
 			actions.Handler(),
 		)
 	}

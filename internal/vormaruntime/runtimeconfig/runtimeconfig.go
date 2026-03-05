@@ -23,6 +23,9 @@ const (
 	// DefaultDevReloadTemplateEndpointPath is the default dev endpoint for root
 	// template reloading.
 	DefaultDevReloadTemplateEndpointPath = "/__vorma_internal/reload-template"
+	// DefaultDevReloadPublicFileMapEndpointPath is the default dev endpoint for
+	// generated TypeScript public filemap reloading.
+	DefaultDevReloadPublicFileMapEndpointPath = "/__vorma_internal/reload-public-filemap"
 	// DefaultTemplateDataKeyHeadElements is the default key for rendered head
 	// elements in template data.
 	DefaultTemplateDataKeyHeadElements = "VormaHeadEls"
@@ -92,6 +95,9 @@ type VormaConfigJSON struct {
 	DevReloadRoutesEndpointPath string `json:"DevReloadRoutesEndpointPath,omitempty"`
 	// DevReloadTemplateEndpointPath is raw endpoint path before defaulting/validation.
 	DevReloadTemplateEndpointPath string `json:"DevReloadTemplateEndpointPath,omitempty"`
+	// DevReloadPublicFileMapEndpointPath is raw endpoint path before
+	// defaulting/validation.
+	DevReloadPublicFileMapEndpointPath string `json:"DevReloadPublicFileMapEndpointPath,omitempty"`
 	// TemplateDataKeyHeadElements is raw template key before defaulting/validation.
 	TemplateDataKeyHeadElements string `json:"TemplateDataKeyHeadElements,omitempty"`
 	// TemplateDataKeyBodyScripts is raw template key before defaulting/validation.
@@ -140,6 +146,8 @@ type VormaConfig interface {
 	DevReloadRoutesEndpointPath() string
 	// DevReloadTemplateEndpointPath returns a normalized absolute path.
 	DevReloadTemplateEndpointPath() string
+	// DevReloadPublicFileMapEndpointPath returns a normalized absolute path.
+	DevReloadPublicFileMapEndpointPath() string
 	// TemplateDataKeyHeadElements returns a normalized template-data key.
 	TemplateDataKeyHeadElements() string
 	// TemplateDataKeyBodyScripts returns a normalized template-data key.
@@ -189,6 +197,8 @@ type vormaConfig struct {
 	devReloadRoutesEndpointPath string
 	// devReloadTemplateEndpointPath is normalized absolute-path endpoint.
 	devReloadTemplateEndpointPath string
+	// devReloadPublicFileMapEndpointPath is normalized absolute-path endpoint.
+	devReloadPublicFileMapEndpointPath string
 	// templateDataKeyHeadElements is normalized parser output.
 	templateDataKeyHeadElements string
 	// templateDataKeyBodyScripts is normalized parser output.
@@ -290,6 +300,13 @@ func (config *vormaConfig) DevReloadTemplateEndpointPath() string {
 	return config.devReloadTemplateEndpointPath
 }
 
+func (config *vormaConfig) DevReloadPublicFileMapEndpointPath() string {
+	if config == nil {
+		return ""
+	}
+	return config.devReloadPublicFileMapEndpointPath
+}
+
 func (config *vormaConfig) TemplateDataKeyHeadElements() string {
 	if config == nil {
 		return ""
@@ -388,12 +405,14 @@ func ParseVormaConfigJSON(
 			UnresolvedRoutePolicy:         &wrapper.Vorma.UnresolvedRoutePolicy,
 			DevReloadRoutesEndpointPath:   &wrapper.Vorma.DevReloadRoutesEndpointPath,
 			DevReloadTemplateEndpointPath: &wrapper.Vorma.DevReloadTemplateEndpointPath,
-			TemplateDataKeyHeadElements:   &wrapper.Vorma.TemplateDataKeyHeadElements,
-			TemplateDataKeyBodyScripts:    &wrapper.Vorma.TemplateDataKeyBodyScripts,
-			TemplateDataKeySSRScript:      &wrapper.Vorma.TemplateDataKeySSRScript,
-			TemplateDataKeySSRScriptHash:  &wrapper.Vorma.TemplateDataKeySSRScriptHash,
-			TemplateDataKeyRootElementID:  &wrapper.Vorma.TemplateDataKeyRootElementID,
-			ClientRootElementID:           &wrapper.Vorma.ClientRootElementID,
+			DevReloadPublicFileMapEndpointPath: &wrapper.Vorma.
+				DevReloadPublicFileMapEndpointPath,
+			TemplateDataKeyHeadElements:  &wrapper.Vorma.TemplateDataKeyHeadElements,
+			TemplateDataKeyBodyScripts:   &wrapper.Vorma.TemplateDataKeyBodyScripts,
+			TemplateDataKeySSRScript:     &wrapper.Vorma.TemplateDataKeySSRScript,
+			TemplateDataKeySSRScriptHash: &wrapper.Vorma.TemplateDataKeySSRScriptHash,
+			TemplateDataKeyRootElementID: &wrapper.Vorma.TemplateDataKeyRootElementID,
+			ClientRootElementID:          &wrapper.Vorma.ClientRootElementID,
 		},
 	); err != nil {
 		return nil, err
@@ -418,12 +437,14 @@ func ParseVormaConfigJSON(
 		unresolvedRoutePolicy:         wrapper.Vorma.UnresolvedRoutePolicy,
 		devReloadRoutesEndpointPath:   wrapper.Vorma.DevReloadRoutesEndpointPath,
 		devReloadTemplateEndpointPath: wrapper.Vorma.DevReloadTemplateEndpointPath,
-		templateDataKeyHeadElements:   wrapper.Vorma.TemplateDataKeyHeadElements,
-		templateDataKeyBodyScripts:    wrapper.Vorma.TemplateDataKeyBodyScripts,
-		templateDataKeySSRScript:      wrapper.Vorma.TemplateDataKeySSRScript,
-		templateDataKeySSRScriptHash:  wrapper.Vorma.TemplateDataKeySSRScriptHash,
-		templateDataKeyRootElementID:  wrapper.Vorma.TemplateDataKeyRootElementID,
-		clientRootElementID:           wrapper.Vorma.ClientRootElementID,
+		devReloadPublicFileMapEndpointPath: wrapper.Vorma.
+			DevReloadPublicFileMapEndpointPath,
+		templateDataKeyHeadElements:  wrapper.Vorma.TemplateDataKeyHeadElements,
+		templateDataKeyBodyScripts:   wrapper.Vorma.TemplateDataKeyBodyScripts,
+		templateDataKeySSRScript:     wrapper.Vorma.TemplateDataKeySSRScript,
+		templateDataKeySSRScriptHash: wrapper.Vorma.TemplateDataKeySSRScriptHash,
+		templateDataKeyRootElementID: wrapper.Vorma.TemplateDataKeyRootElementID,
+		clientRootElementID:          wrapper.Vorma.ClientRootElementID,
 	}, nil
 }
 
@@ -576,22 +597,23 @@ func NormalizePathOrPatternToResolveRootRelative(
 // MutableValidationConfig provides pointer access to mutable config fields that
 // are normalized and validated together.
 type MutableValidationConfig struct {
-	MainBuildEntry                *string
-	UIVariant                     *string
-	HTMLTemplateLocation          *string
-	ClientEntry                   *string
-	ClientRouteDefinitionPatterns *[]string
-	TSGenOutDir                   *string
-	BuildtimePublicURLFuncName    *string
-	UnresolvedRoutePolicy         *string
-	DevReloadRoutesEndpointPath   *string
-	DevReloadTemplateEndpointPath *string
-	TemplateDataKeyHeadElements   *string
-	TemplateDataKeyBodyScripts    *string
-	TemplateDataKeySSRScript      *string
-	TemplateDataKeySSRScriptHash  *string
-	TemplateDataKeyRootElementID  *string
-	ClientRootElementID           *string
+	MainBuildEntry                     *string
+	UIVariant                          *string
+	HTMLTemplateLocation               *string
+	ClientEntry                        *string
+	ClientRouteDefinitionPatterns      *[]string
+	TSGenOutDir                        *string
+	BuildtimePublicURLFuncName         *string
+	UnresolvedRoutePolicy              *string
+	DevReloadRoutesEndpointPath        *string
+	DevReloadTemplateEndpointPath      *string
+	DevReloadPublicFileMapEndpointPath *string
+	TemplateDataKeyHeadElements        *string
+	TemplateDataKeyBodyScripts         *string
+	TemplateDataKeySSRScript           *string
+	TemplateDataKeySSRScriptHash       *string
+	TemplateDataKeyRootElementID       *string
+	ClientRootElementID                *string
 }
 
 // ResolveDevReloadRoutesEndpointPath resolves configured endpoint path fallback.
@@ -608,6 +630,16 @@ func ResolveDevReloadTemplateEndpointPath(configuredPath string) string {
 	configuredPath = strings.TrimSpace(configuredPath)
 	if configuredPath == "" {
 		return DefaultDevReloadTemplateEndpointPath
+	}
+	return configuredPath
+}
+
+// ResolveDevReloadPublicFileMapEndpointPath resolves configured endpoint path
+// fallback.
+func ResolveDevReloadPublicFileMapEndpointPath(configuredPath string) string {
+	configuredPath = strings.TrimSpace(configuredPath)
+	if configuredPath == "" {
+		return DefaultDevReloadPublicFileMapEndpointPath
 	}
 	return configuredPath
 }
@@ -766,9 +798,14 @@ func NormalizeAndValidateMutableConfig(config MutableValidationConfig) error {
 		config.DevReloadTemplateEndpointPath,
 		DefaultDevReloadTemplateEndpointPath,
 	)
+	applyDefaultConfigStringValue(
+		config.DevReloadPublicFileMapEndpointPath,
+		DefaultDevReloadPublicFileMapEndpointPath,
+	)
 
 	trimConfigStringValue(config.DevReloadRoutesEndpointPath)
 	trimConfigStringValue(config.DevReloadTemplateEndpointPath)
+	trimConfigStringValue(config.DevReloadPublicFileMapEndpointPath)
 	if !strings.HasPrefix(*config.DevReloadRoutesEndpointPath, "/") {
 		return fmt.Errorf(
 			"config: Vorma.DevReloadRoutesEndpointPath must start with '/'",
@@ -779,9 +816,24 @@ func NormalizeAndValidateMutableConfig(config MutableValidationConfig) error {
 			"config: Vorma.DevReloadTemplateEndpointPath must start with '/'",
 		)
 	}
+	if !strings.HasPrefix(*config.DevReloadPublicFileMapEndpointPath, "/") {
+		return fmt.Errorf(
+			"config: Vorma.DevReloadPublicFileMapEndpointPath must start with '/'",
+		)
+	}
 	if *config.DevReloadRoutesEndpointPath == *config.DevReloadTemplateEndpointPath {
 		return fmt.Errorf(
 			"config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ",
+		)
+	}
+	if *config.DevReloadRoutesEndpointPath == *config.DevReloadPublicFileMapEndpointPath {
+		return fmt.Errorf(
+			"config: Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadPublicFileMapEndpointPath must differ",
+		)
+	}
+	if *config.DevReloadTemplateEndpointPath == *config.DevReloadPublicFileMapEndpointPath {
+		return fmt.Errorf(
+			"config: Vorma.DevReloadTemplateEndpointPath and Vorma.DevReloadPublicFileMapEndpointPath must differ",
 		)
 	}
 
@@ -877,6 +929,11 @@ func validateMutableConfigPointers(config MutableValidationConfig) error {
 	if config.DevReloadTemplateEndpointPath == nil {
 		return fmt.Errorf(
 			"config pointer for DevReloadTemplateEndpointPath is required",
+		)
+	}
+	if config.DevReloadPublicFileMapEndpointPath == nil {
+		return fmt.Errorf(
+			"config pointer for DevReloadPublicFileMapEndpointPath is required",
 		)
 	}
 	if config.TemplateDataKeyHeadElements == nil {

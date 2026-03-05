@@ -85,6 +85,9 @@ func TestDevReloadEndpointPaths_DefaultAndCustom(t *testing.T) {
 	if got, want := defaultApp.DevReloadTemplateEndpointPath(), runtimeconfig.DefaultDevReloadTemplateEndpointPath; got != want {
 		t.Fatalf("default template endpoint path = %q, want %q", got, want)
 	}
+	if got, want := defaultApp.DevReloadPublicFileMapEndpointPath(), runtimeconfig.DefaultDevReloadPublicFileMapEndpointPath; got != want {
+		t.Fatalf("default public-filemap endpoint path = %q, want %q", got, want)
+	}
 
 	customFixture := newTestFixture(t, testFixtureOptions{})
 	customApp := customFixture.app
@@ -94,6 +97,7 @@ func TestDevReloadEndpointPaths_DefaultAndCustom(t *testing.T) {
 		func(config *VormaConfigJSON) {
 			config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
 			config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
+			config.DevReloadPublicFileMapEndpointPath = "/__custom_internal/reload-public-filemap"
 		},
 	)
 	if got, want := customApp.DevReloadRoutesEndpointPath(), "/__custom_internal/reload-routes"; got != want {
@@ -101,6 +105,9 @@ func TestDevReloadEndpointPaths_DefaultAndCustom(t *testing.T) {
 	}
 	if got, want := customApp.DevReloadTemplateEndpointPath(), "/__custom_internal/reload-template"; got != want {
 		t.Fatalf("custom template endpoint path = %q, want %q", got, want)
+	}
+	if got, want := customApp.DevReloadPublicFileMapEndpointPath(), "/__custom_internal/reload-public-filemap"; got != want {
+		t.Fatalf("custom public-filemap endpoint path = %q, want %q", got, want)
 	}
 }
 
@@ -2601,10 +2608,54 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 		}
 	})
 
+	t.Run("reload_public_filemap_success", func(t *testing.T) {
+		canonicalMapRefName := "wave_public_file_map_test.json"
+		mustWriteFile(
+			t,
+			app.Wave.ParsedConfig().Dist().PublicFileMapRef(),
+			[]byte(canonicalMapRefName),
+		)
+		mustWriteFile(
+			t,
+			filepath.Join(
+				app.Wave.ParsedConfig().Dist().StaticPublic(),
+				canonicalMapRefName,
+			),
+			[]byte(`{"logo.png":{"dist":"logo.hash.png"}}`),
+		)
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			app.DevReloadPublicFileMapEndpointPath(),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		actionsHandler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if body := strings.TrimSpace(rec.Body.String()); body != "ok" {
+			t.Fatalf("body = %q, want %q", body, "ok")
+		}
+		generatedFileMapTypeScriptPath := filepath.Join(
+			fixture.rootDir,
+			app.Config.TSGenOutDir(),
+			runtimepaths.GeneratedTypeScriptPublicFileMapFileName,
+		)
+		if _, statError := os.Stat(generatedFileMapTypeScriptPath); statError != nil {
+			t.Fatalf(
+				"expected generated public filemap TypeScript output, stat error: %v",
+				statError,
+			)
+		}
+	})
+
 	t.Run("reload_endpoints_require_post", func(t *testing.T) {
 		for _, path := range []string{
 			app.DevReloadRoutesEndpointPath(),
 			app.DevReloadTemplateEndpointPath(),
+			app.DevReloadPublicFileMapEndpointPath(),
 		} {
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			rec := httptest.NewRecorder()
@@ -2635,6 +2686,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 			for _, path := range []string{
 				app.DevReloadRoutesEndpointPath(),
 				app.DevReloadTemplateEndpointPath(),
+				app.DevReloadPublicFileMapEndpointPath(),
 			} {
 				req := httptest.NewRequest(http.MethodPost, path, nil)
 				req.Header.Set(
@@ -2672,6 +2724,7 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 			for _, path := range []string{
 				app.DevReloadRoutesEndpointPath(),
 				app.DevReloadTemplateEndpointPath(),
+				app.DevReloadPublicFileMapEndpointPath(),
 			} {
 				req := httptest.NewRequest(http.MethodPost, path, nil)
 				rec := httptest.NewRecorder()
@@ -2747,6 +2800,30 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 			)
 		}
 	})
+
+	t.Run("reload_public_filemap_error", func(t *testing.T) {
+		if removeRefError := os.Remove(
+			app.Wave.ParsedConfig().Dist().PublicFileMapRef(),
+		); removeRefError != nil {
+			t.Fatalf("remove public filemap ref: %v", removeRefError)
+		}
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			app.DevReloadPublicFileMapEndpointPath(),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		actionsHandler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf(
+				"status = %d, want %d",
+				rec.Code,
+				http.StatusInternalServerError,
+			)
+		}
+	})
 }
 
 func TestActionsHandler_DevReloadEndpointsNotExposedInProd(t *testing.T) {
@@ -2758,6 +2835,7 @@ func TestActionsHandler_DevReloadEndpointsNotExposedInProd(t *testing.T) {
 	for _, path := range []string{
 		app.DevReloadRoutesEndpointPath(),
 		app.DevReloadTemplateEndpointPath(),
+		app.DevReloadPublicFileMapEndpointPath(),
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()

@@ -92,6 +92,43 @@ func TestWatcherRemoveStale_RemovesDeletedDirectoriesFromWatchSet(
 	}
 }
 
+func TestWatcherAddDir_SkipsDistRootDirectory(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+
+	contentDirectory := filepath.Join(root, "content")
+	if err := os.MkdirAll(contentDirectory, 0o755); err != nil {
+		t.Fatalf("failed creating content dir: %v", err)
+	}
+	distRootDirectory := cfg.Dist().Root()
+	if err := os.MkdirAll(filepath.Join(distRootDirectory, "static"), 0o755); err != nil {
+		t.Fatalf("failed creating dist root dir: %v", err)
+	}
+
+	watcher, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
+	if err != nil {
+		t.Fatalf("newWatcher returned error: %v", err)
+	}
+	defer watcher.Close()
+
+	if err := watcher.AddDir(root); err != nil {
+		t.Fatalf("AddDir returned error: %v", err)
+	}
+
+	if !watcher.IsWatchingDir(contentDirectory) {
+		t.Fatalf("expected content directory to be watched: %s", contentDirectory)
+	}
+	if watcher.IsWatchingDir(distRootDirectory) {
+		t.Fatalf(
+			"did not expect dist root directory to be watched: %s",
+			distRootDirectory,
+		)
+	}
+}
+
 func TestWatcherAddDir_FailsWhenNestedDirectoryIsNotReadable(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("chmod-based unreadable directory test is unix-specific")

@@ -172,12 +172,35 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 			wantMsg: "Vorma.DevReloadTemplateEndpointPath must start with '/'",
 		},
 		{
+			name: "DevReloadPublicFileMapEndpointPath_MissingLeadingSlash",
+			mutate: func(c *VormaConfigJSON) {
+				c.DevReloadPublicFileMapEndpointPath = "reload-public-filemap"
+			},
+			wantMsg: "Vorma.DevReloadPublicFileMapEndpointPath must start with '/'",
+		},
+		{
 			name: "DevReloadEndpoints_MustDiffer",
 			mutate: func(c *VormaConfigJSON) {
 				c.DevReloadRoutesEndpointPath = "/__same"
 				c.DevReloadTemplateEndpointPath = "/__same"
 			},
 			wantMsg: "Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadTemplateEndpointPath must differ",
+		},
+		{
+			name: "DevReloadRoutesAndPublicFileMapEndpoints_MustDiffer",
+			mutate: func(c *VormaConfigJSON) {
+				c.DevReloadRoutesEndpointPath = "/__same"
+				c.DevReloadPublicFileMapEndpointPath = "/__same"
+			},
+			wantMsg: "Vorma.DevReloadRoutesEndpointPath and Vorma.DevReloadPublicFileMapEndpointPath must differ",
+		},
+		{
+			name: "DevReloadTemplateAndPublicFileMapEndpoints_MustDiffer",
+			mutate: func(c *VormaConfigJSON) {
+				c.DevReloadTemplateEndpointPath = "/__same"
+				c.DevReloadPublicFileMapEndpointPath = "/__same"
+			},
+			wantMsg: "Vorma.DevReloadTemplateEndpointPath and Vorma.DevReloadPublicFileMapEndpointPath must differ",
 		},
 		{
 			name: "TemplateDataKeys_MustBeNonEmpty",
@@ -290,6 +313,13 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 			"expected default template reload endpoint path %q, got %q",
 			runtimeconfig.DefaultDevReloadTemplateEndpointPath,
 			app.Config.DevReloadTemplateEndpointPath(),
+		)
+	}
+	if app.Config.DevReloadPublicFileMapEndpointPath() != runtimeconfig.DefaultDevReloadPublicFileMapEndpointPath {
+		t.Fatalf(
+			"expected default public-filemap reload endpoint path %q, got %q",
+			runtimeconfig.DefaultDevReloadPublicFileMapEndpointPath,
+			app.Config.DevReloadPublicFileMapEndpointPath(),
 		)
 	}
 	if app.Config.TemplateDataKeyHeadElements() != runtimeconfig.DefaultTemplateDataKeyHeadElements {
@@ -1205,6 +1235,49 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreMountedAsActions(
 			t.Fatalf("BuildID() = %q, want %q", got, "build-new")
 		}
 	})
+
+	t.Run("reload_public_filemap_endpoint", func(t *testing.T) {
+		canonicalMapRefName := "wave_public_file_map_test.json"
+		mustWriteFile(
+			t,
+			app.Wave.ParsedConfig().Dist().PublicFileMapRef(),
+			[]byte(canonicalMapRefName),
+		)
+		mustWriteFile(
+			t,
+			filepath.Join(
+				app.Wave.ParsedConfig().Dist().StaticPublic(),
+				canonicalMapRefName,
+			),
+			[]byte(`{"logo.png":{"dist":"logo.hash.png"}}`),
+		)
+
+		req := httptest.NewRequest(
+			http.MethodPost,
+			app.DevReloadPublicFileMapEndpointPath(),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		if body := strings.TrimSpace(rec.Body.String()); body != "ok" {
+			t.Fatalf("body = %q, want %q", body, "ok")
+		}
+		if _, statError := os.Stat(
+			filepath.Join(
+				fixture.rootDir,
+				"frontend",
+				"src",
+				"vorma.gen",
+				runtimepaths.GeneratedTypeScriptPublicFileMapFileName,
+			),
+		); statError != nil {
+			t.Fatalf("expected generated public filemap TypeScript output, stat error: %v", statError)
+		}
+	})
 }
 
 func TestInitWithDefaultRouter_DevReloadEndpointsAreNotMountedInProd(
@@ -1218,6 +1291,7 @@ func TestInitWithDefaultRouter_DevReloadEndpointsAreNotMountedInProd(
 	for _, path := range []string{
 		app.DevReloadRoutesEndpointPath(),
 		app.DevReloadTemplateEndpointPath(),
+		app.DevReloadPublicFileMapEndpointPath(),
 	} {
 		req := httptest.NewRequest(http.MethodPost, path, nil)
 		rec := httptest.NewRecorder()

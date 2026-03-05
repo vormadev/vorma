@@ -3,6 +3,7 @@
 package vitecmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,7 +15,6 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/grace"
 	"github.com/vormadev/vorma/lab/viteutil"
 )
 
@@ -109,6 +109,11 @@ func (c *BuildCtx) prep_cmd() error {
 
 	c.cmd = exec.Command(split_cmd[0], split_cmd[1:]...)
 	c.cmd.Stdout, c.cmd.Stderr = os.Stdout, os.Stderr
+	if runtime.GOOS != "windows" {
+		// Launch Vite wrapper command in its own process group so stop/restart can
+		// terminate the whole wrapper-child tree atomically.
+		c.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
 
 	if c.opts.JSPackageManagerCmdDir != "" {
 		c.cmd.Dir = c.opts.JSPackageManagerCmdDir
@@ -205,19 +210,26 @@ func (c *BuildCtx) Wait() {
 }
 
 func (c *BuildCtx) Cleanup() {
+	cleanupError := c.CleanupWithError()
+	if cleanupError != nil {
+		log.Info(fmt.Sprintf("viteutil: BuildCtx: Cleanup: %s", cleanupError))
+	}
+}
+
+func (c *BuildCtx) CleanupWithError() error {
 	c.mu.Lock()
-	err := c.terminateProcessLockedAndWait()
+	terminateError := c.terminateProcessLockedAndWait()
 	cmd := c.cmd
 	c.mu.Unlock()
 
-	if err != nil {
-		log.Info(fmt.Sprintf("viteutil: BuildCtx: Cleanup: %s", err))
-		return
+	if terminateError != nil {
+		return terminateError
 	}
 
 	if cmd != nil && cmd.Process != nil {
 		log.Info("Cleanup: Terminated vite process", "pid", cmd.Process.Pid)
 	}
+	return nil
 }
 
 func (c *BuildCtx) ProdBuild() error {
@@ -283,14 +295,131 @@ func (c *BuildCtx) ProdBuild() error {
 	return nil
 }
 
-func signalProcessTerminationWithoutWaiting(process *os.Process) error {
+func shouldIgnoreProcessTerminationError(
+	processTerminationError error,
+) bool {
+	if processTerminationError == nil {
+		return true
+	}
+	if errors.Is(processTerminationError, os.ErrProcessDone) {
+		return true
+	}
+	if errors.Is(processTerminationError, syscall.ESRCH) {
+		return true
+	}
+	errorString := strings.ToLower(processTerminationError.Error())
+	if strings.Contains(errorString, "process already finished") {
+		return true
+	}
+	return false
+}
+
+func shouldIgnoreProcessWaitError(
+	processWaitError error,
+) bool {
+	if processWaitError == nil {
+		return true
+	}
+	var exitError *exec.ExitError
+	if errors.As(processWaitError, &exitError) {
+		errorString := strings.ToLower(processWaitError.Error())
+		if strings.Contains(errorString, "signal: terminated") ||
+			strings.Contains(errorString, "signal: killed") {
+			return true
+		}
+	}
+	errorString := strings.ToLower(processWaitError.Error())
+	if strings.Contains(errorString, "waitid: no child processes") {
+		return true
+	}
+	return false
+}
+
+func signalProcessTerminationWithoutWaiting(
+	process *os.Process,
+) error {
 	if process == nil {
 		return nil
 	}
 	if runtime.GOOS == "windows" {
 		return process.Kill()
 	}
+
+	processGroupID, getProcessGroupIDError := syscall.Getpgid(process.Pid)
+	if getProcessGroupIDError == nil && processGroupID > 0 {
+		currentProcessGroupID := syscall.Getpgrp()
+		if currentProcessGroupID != processGroupID {
+			return syscall.Kill(-processGroupID, syscall.SIGTERM)
+		}
+	}
 	return process.Signal(syscall.SIGTERM)
+}
+
+func signalProcessKillWithoutWaiting(
+	process *os.Process,
+) error {
+	if process == nil {
+		return nil
+	}
+	if runtime.GOOS == "windows" {
+		return process.Kill()
+	}
+
+	processGroupID, getProcessGroupIDError := syscall.Getpgid(process.Pid)
+	if getProcessGroupIDError == nil && processGroupID > 0 {
+		currentProcessGroupID := syscall.Getpgrp()
+		if currentProcessGroupID != processGroupID {
+			return syscall.Kill(-processGroupID, syscall.SIGKILL)
+		}
+	}
+	return process.Kill()
+}
+
+func waitForViteProcessExitWithKillFallback(
+	waitResultChannel chan error,
+	process *os.Process,
+	gracefulStopTimeout time.Duration,
+	signalTerminationError error,
+) error {
+	if gracefulStopTimeout <= 0 {
+		gracefulStopTimeout = 3 * time.Second
+	}
+	if shouldIgnoreProcessTerminationError(signalTerminationError) {
+		signalTerminationError = nil
+	}
+
+	select {
+	case waitError := <-waitResultChannel:
+		if !shouldIgnoreProcessWaitError(waitError) {
+			return waitError
+		}
+		return signalTerminationError
+	case <-time.After(gracefulStopTimeout):
+	}
+
+	killError := signalProcessKillWithoutWaiting(process)
+	if shouldIgnoreProcessTerminationError(killError) {
+		killError = nil
+	}
+
+	select {
+	case waitError := <-waitResultChannel:
+		if !shouldIgnoreProcessWaitError(waitError) {
+			return waitError
+		}
+		if signalTerminationError != nil {
+			return signalTerminationError
+		}
+		return killError
+	case <-time.After(gracefulStopTimeout):
+		if signalTerminationError != nil {
+			return signalTerminationError
+		}
+		if killError != nil {
+			return killError
+		}
+		return fmt.Errorf("timed out waiting for vite process to exit")
+	}
 }
 
 // terminateProcessLockedAndWait assumes c.mu is locked on entry.
@@ -323,7 +452,17 @@ func (c *BuildCtx) terminateProcessLockedAndWait() error {
 	process := c.cmd.Process
 
 	c.mu.Unlock()
-	err := grace.TerminateProcess(process, 3*time.Second, nil)
+	waitResultChannel := make(chan error, 1)
+	go func() {
+		waitResultChannel <- c.cmd.Wait()
+	}()
+
+	err := waitForViteProcessExitWithKillFallback(
+		waitResultChannel,
+		process,
+		3*time.Second,
+		signalProcessTerminationWithoutWaiting(process),
+	)
 	c.mu.Lock()
 
 	c.waitInProgress = false

@@ -2,19 +2,19 @@ package main
 
 import (
 	"site/backend/internal/docsync"
-	"site/backend/src/router"
+	"site/backend/src/app"
 
 	"github.com/vormadev/vorma/vormabuild"
 )
 
 func main() {
-	app := router.App
+	appRuntime := app.App
 
 	if _, err := docsync.SyncAndResolvePublicURLs(
-		app.Wave.ParsedConfig(),
-		app.Logger(),
+		appRuntime.Wave.ParsedConfig(),
+		appRuntime.Logger(),
 	); err != nil {
 		panic(err)
 	}
-	vormabuild.Build(app)
+	vormabuild.Build(appRuntime)
 }

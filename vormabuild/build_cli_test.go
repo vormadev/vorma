@@ -15,7 +15,7 @@ func TestBuildWithOptions(t *testing.T) {
 		}
 	})
 
-	t.Run("runs hook-only dev mode through public facade", func(t *testing.T) {
+	t.Run("runs hook-inner dev mode through public facade", func(t *testing.T) {
 		fixture := testkit.NewBuildTestFixture(t, nil)
 		t.Chdir(fixture.RootDir)
 		testkit.WriteBootstrapStyleRoutesFixtureFiles(t)
@@ -27,15 +27,15 @@ func TestBuildWithOptions(t *testing.T) {
 		err := BuildWithOptions(
 			app,
 			BuildOptions{
-				Dev:      true,
-				HookOnly: true,
+				Dev:               true,
+				HookExecutionOnly: true,
 			},
 		)
 		if err != nil {
 			t.Fatalf("BuildWithOptions returned error: %v", err)
 		}
 		if app.BuildID() == "" {
-			t.Fatal("expected BuildWithOptions hook-only dev mode to assign a build ID")
+			t.Fatal("expected BuildWithOptions hook-inner dev mode to assign a build ID")
 		}
 	})
 }

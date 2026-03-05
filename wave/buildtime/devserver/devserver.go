@@ -949,7 +949,12 @@ func (server *runtimeServer) prepareRunCycle(firstRun bool) error {
 		server.MustGetPort()
 	}
 	server.cancelConcurrentNoWaitHookLifecycleContext()
-	_ = server.StopVite()
+	if stopViteError := server.StopVite(); stopViteError != nil {
+		return fmt.Errorf(
+			"stop vite during cycle prepare: %w",
+			stopViteError,
+		)
+	}
 
 	if !firstRun && strings.TrimSpace(server.resolvedConfigFilePath()) != "" {
 		if _, reloadConfigError := server.ReloadConfig(); reloadConfigError != nil {
@@ -1228,7 +1233,6 @@ func (server *runtimeServer) StartVite() error {
 		})
 	}
 	if viteBuildError := server.ViteContext.DevBuild(); viteBuildError != nil {
-		server.ViteContext = nil
 		return viteBuildError
 	}
 	return nil
@@ -1238,12 +1242,20 @@ func (server *runtimeServer) StartVite() error {
 func (server *runtimeServer) StopVite() error {
 	server.Mu.Lock()
 	viteContext := server.ViteContext
-	server.ViteContext = nil
 	server.Mu.Unlock()
 	if viteContext == nil {
 		return nil
 	}
-	viteContext.Cleanup()
+
+	if cleanupError := viteContext.CleanupWithError(); cleanupError != nil {
+		return cleanupError
+	}
+
+	server.Mu.Lock()
+	if server.ViteContext == viteContext {
+		server.ViteContext = nil
+	}
+	server.Mu.Unlock()
 	return nil
 }
 
@@ -1257,7 +1269,9 @@ func (server *runtimeServer) CycleVite() {
 }
 
 func (server *runtimeServer) cycleViteWithError() error {
-	_ = server.StopVite()
+	if stopViteError := server.StopVite(); stopViteError != nil {
+		return stopViteError
+	}
 	if startViteError := server.StartVite(); startViteError != nil {
 		return startViteError
 	}
@@ -1516,6 +1530,13 @@ func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 			server.Cfg.UsingVite(),
 		) {
 			if server.currentViteContext() != nil {
+				if server.Log != nil {
+					server.Log.Info(
+						describeUserFacingBrowserActionForLog(
+							eventpipeline.BrowserPhaseActionInvalidateVite,
+						),
+					)
+				}
 				server.executeInvalidateViteBrowserPhaseAsync(browserDecision)
 				return
 			}
@@ -1542,6 +1563,11 @@ func (server *runtimeServer) ExecuteBrowserPhase(work *eventpipeline.WorkSet) {
 		)
 		if !hasReloadOptions {
 			return
+		}
+		if server.Log != nil {
+			server.Log.Info(
+				describeUserFacingBrowserActionForLog(browserDecision.Action),
+			)
 		}
 		reloadOptions.FrameworkRuntimeReloadRequests = append(
 			[]wavewatch.FrameworkRuntimeReloadRequest(nil),
@@ -1591,6 +1617,13 @@ func (server *runtimeServer) executeHotReloadCSSBrowserPhase(
 	if len(payloads) == 0 {
 		return
 	}
+	if server.Log != nil {
+		server.Log.Info(
+			describeUserFacingBrowserActionForLog(
+				eventpipeline.BrowserPhaseActionHotReloadCSS,
+			),
+		)
+	}
 
 	refreshManager := server.currentRefreshManager()
 	if refreshManager == nil {
@@ -1599,6 +1632,23 @@ func (server *runtimeServer) executeHotReloadCSSBrowserPhase(
 
 	for _, payload := range payloads {
 		refreshManager.Broadcast(payload)
+	}
+}
+
+func describeUserFacingBrowserActionForLog(
+	action eventpipeline.BrowserPhaseAction,
+) string {
+	switch action {
+	case eventpipeline.BrowserPhaseActionHotReloadCSS:
+		return "Hot reloading browser (CSS)"
+	case eventpipeline.BrowserPhaseActionRevalidate:
+		return "Running client-defined revalidate function"
+	case eventpipeline.BrowserPhaseActionHardReload:
+		return "Hard reloading browser"
+	case eventpipeline.BrowserPhaseActionInvalidateVite:
+		return "Public file map changed, notifying Vite"
+	default:
+		return "Refreshing browser"
 	}
 }
 
@@ -1691,6 +1741,43 @@ func (server *runtimeServer) ExecuteBuildPhase(
 
 	if buildError := buildGroup.Wait(); buildError != nil {
 		return buildError
+	}
+
+	if shouldTrackPublicFileMapArtifacts &&
+		publicFileMapArtifactsChangedOrRepaired {
+		frameworkState := waveframework.StateForConfig(server.Cfg)
+		publicFileMapReloadEndpointPath := ""
+		if frameworkState != nil {
+			publicFileMapReloadEndpointPath = strings.TrimSpace(
+				frameworkState.PublicFileMapReloadEndpointPath,
+			)
+		}
+		if publicFileMapReloadEndpointPath != "" {
+			if server.Log != nil {
+				server.Log.Info(
+					"Public file map changed, notifying framework runtime",
+				)
+			}
+			if frameworkRuntimeReloadError := server.CallFrameworkRuntimeReloadEndpointWithContext(
+				server.CurrentRunCycleContextOrBackground(),
+				wavewatch.FrameworkRuntimeReloadRequest{
+					EndpointPath:  publicFileMapReloadEndpointPath,
+					ReloadTrigger: "public-filemap-artifacts-changed",
+				},
+			); frameworkRuntimeReloadError != nil {
+				return fmt.Errorf(
+					"notify framework runtime public filemap reload endpoint: %w",
+					frameworkRuntimeReloadError,
+				)
+			}
+		} else if frameworkState != nil && frameworkState.RunBuildHook != nil {
+			if frameworkBuildHookError := frameworkState.RunBuildHook(
+				server.CurrentRunCycleContextOrBackground(),
+				true,
+			); frameworkBuildHookError != nil {
+				return frameworkBuildHookError
+			}
+		}
 	}
 
 	if shouldTrackPublicFileMapArtifacts &&

@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"site/backend/src/router"
+	"site/backend/src/server"
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
@@ -15,7 +15,7 @@ import (
 var Log = colorlog.New("site")
 
 func main() {
-	addr, handler := router.Init()
+	addr, handler := server.Init()
 	url := "http://localhost" + addr
 
 	server := &http.Server{

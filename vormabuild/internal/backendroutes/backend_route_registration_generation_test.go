@@ -559,7 +559,7 @@ type Ctx struct {
 
 func Define[O any](
 	pattern string,
-	loaderFunc func(*Ctx) (O, error),
+	loaderFunc vorma.LoaderFunc[Ctx, O],
 ) *vorma.Loader[O] {
 	return vorma.DefineLoaderForRegistration(
 		appcfg.App,
@@ -669,6 +669,196 @@ func main() {}
 					"go build with discovered wrapper overlay failed: %v\n%s",
 					buildErr,
 					buildOutput,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"registers discovered wrappers when build entry omits explicit route package imports",
+		func(t *testing.T) {
+			repositoryRootDir := testkit.MustResolveRepositoryRootDir(t)
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.RootDir)
+
+			testkit.MustWriteFile(t, "go.mod", []byte(fmt.Sprintf(`
+module wrappertest
+
+go 1.24
+
+require github.com/vormadev/vorma v0.0.0
+
+replace github.com/vormadev/vorma => %s
+`, filepath.ToSlash(repositoryRootDir))))
+
+			testkit.MustWriteFile(t, "backend/wave.go", []byte(`
+package backend
+
+import (
+	"os"
+
+	"github.com/vormadev/vorma/wave"
+)
+
+var Wave = wave.New(wave.Config{
+	FS:         os.DirFS("."),
+	ConfigPath: "wave.config.json",
+})
+`))
+
+			testkit.MustWriteFile(t, "backend/src/app/app.go", []byte(`
+package app
+
+import (
+	"wrappertest/backend"
+
+	"github.com/vormadev/vorma"
+)
+
+var App = vorma.NewVormaApp(vorma.VormaAppConfig{
+	Wave: backend.Wave,
+})
+`))
+
+			testkit.MustWriteFile(
+				t,
+				"backend/src/define/loader/loader.go",
+				[]byte(`
+package loader
+
+import (
+	appcfg "wrappertest/backend/src/app"
+
+	"github.com/vormadev/vorma"
+)
+
+type Ctx struct {
+	*vorma.LoaderReqData
+}
+
+func Define[O any](
+	pattern string,
+	loaderFunc func(*Ctx) (O, error),
+) *vorma.Loader[O] {
+	return vorma.DefineLoaderForRegistration(
+		appcfg.App,
+		pattern,
+		loaderFunc,
+		func(rd *vorma.LoaderReqData) *Ctx {
+			return &Ctx{LoaderReqData: rd}
+		},
+	)
+}
+`),
+			)
+
+			testkit.MustWriteFile(t, "backend/src/content/routes.go", []byte(`
+package content
+
+import loaderhelpers "wrappertest/backend/src/define/loader"
+
+var _ = loaderhelpers.Define(
+	"/cross-package",
+	func(*loaderhelpers.Ctx) (string, error) {
+		return "ok", nil
+	},
+)
+`))
+
+			testkit.MustWriteFile(t, "backend/cmd/build/main.go", []byte(`
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"wrappertest/backend/src/app"
+)
+
+func main() {
+	if !app.App.HasRegisteredLoaderTask("/cross-package") {
+		fmt.Println("missing discovered route registration")
+		os.Exit(1)
+	}
+	fmt.Println("registered")
+}
+`))
+
+			overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.App)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if overlay == nil {
+				t.Fatal("expected overlay for discovered registrations")
+			}
+
+			generatedRouteRegistrarSource := readOverlayReplacementSourceForGeneratedTargetPath(
+				t,
+				overlay,
+				filepath.Join(
+					fixture.RootDir,
+					"backend/src/content",
+					registraroverlay.GeneratedFilename,
+				),
+			)
+			if !strings.Contains(
+				generatedRouteRegistrarSource,
+				`vorma.RegisterDiscoveredLoaderTask(appcfg.App, "/cross-package",`,
+			) {
+				t.Fatalf(
+					"overlay source missing discovered registration call:\n%s",
+					generatedRouteRegistrarSource,
+				)
+			}
+
+			compiledBinaryPath := filepath.Join(
+				fixture.RootDir,
+				"backend",
+				"dist",
+				"check_wrapper_registration_without_import",
+			)
+			if runtime.GOOS == "windows" {
+				compiledBinaryPath += ".exe"
+			}
+			buildOutput, buildErr := testkit.RunCommandAndCaptureOutput(
+				fixture.RootDir,
+				"go",
+				"build",
+				"-mod=mod",
+				"-overlay="+overlay.GoOverlayConfigPath(),
+				"-o",
+				compiledBinaryPath,
+				"./backend/cmd/build",
+			)
+			if cleanupErr := overlay.Cleanup(); cleanupErr != nil {
+				t.Fatalf("cleanup discovered overlay: %v", cleanupErr)
+			}
+			if buildErr != nil {
+				t.Fatalf(
+					"go build with discovered wrapper overlay failed: %v\n%s",
+					buildErr,
+					buildOutput,
+				)
+			}
+
+			runtimeOutput, runtimeErr := testkit.RunCommandAndCaptureOutput(
+				fixture.RootDir,
+				compiledBinaryPath,
+			)
+			if runtimeErr != nil {
+				t.Fatalf(
+					"compiled runtime check failed: %v\n%s",
+					runtimeErr,
+					runtimeOutput,
+				)
+			}
+			if !strings.Contains(runtimeOutput, "registered") {
+				t.Fatalf(
+					"runtime output = %q, expected registration marker",
+					runtimeOutput,
 				)
 			}
 		},

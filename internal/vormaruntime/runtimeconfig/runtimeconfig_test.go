@@ -23,6 +23,13 @@ func TestResolveDefaultsAndTrimmedValues(t *testing.T) {
 			"/reload-template",
 		)
 	}
+	if got := ResolveDevReloadPublicFileMapEndpointPath("  /reload-public-filemap "); got != "/reload-public-filemap" {
+		t.Fatalf(
+			"ResolveDevReloadPublicFileMapEndpointPath(trimmed) = %q, want %q",
+			got,
+			"/reload-public-filemap",
+		)
+	}
 	if got := ResolveTemplateDataKeyHeadElements("  HeadKey  "); got != "HeadKey" {
 		t.Fatalf(
 			"ResolveTemplateDataKeyHeadElements(trimmed) = %q, want %q",
@@ -172,6 +179,7 @@ func TestNormalizeAndValidateMutableConfig_AppliesDefaultsAndValidation(
 	unresolvedRoutePolicy := " WARN "
 	devReloadRoutesEndpointPath := ""
 	devReloadTemplateEndpointPath := ""
+	devReloadPublicFileMapEndpointPath := ""
 	templateDataKeyHeadElements := ""
 	templateDataKeyBodyScripts := ""
 	templateDataKeySSRScript := ""
@@ -180,22 +188,23 @@ func TestNormalizeAndValidateMutableConfig_AppliesDefaultsAndValidation(
 	clientRootElementID := ""
 
 	config := MutableValidationConfig{
-		MainBuildEntry:                &mainBuildEntry,
-		UIVariant:                     &uiVariant,
-		HTMLTemplateLocation:          &htmlTemplateLocation,
-		ClientEntry:                   &clientEntry,
-		ClientRouteDefinitionPatterns: &clientRouteDefinitionPatterns,
-		TSGenOutDir:                   &tsGenOutDir,
-		BuildtimePublicURLFuncName:    &buildtimePublicURLFuncName,
-		UnresolvedRoutePolicy:         &unresolvedRoutePolicy,
-		DevReloadRoutesEndpointPath:   &devReloadRoutesEndpointPath,
-		DevReloadTemplateEndpointPath: &devReloadTemplateEndpointPath,
-		TemplateDataKeyHeadElements:   &templateDataKeyHeadElements,
-		TemplateDataKeyBodyScripts:    &templateDataKeyBodyScripts,
-		TemplateDataKeySSRScript:      &templateDataKeySSRScript,
-		TemplateDataKeySSRScriptHash:  &templateDataKeySSRScriptHash,
-		TemplateDataKeyRootElementID:  &templateDataKeyRootElementID,
-		ClientRootElementID:           &clientRootElementID,
+		MainBuildEntry:                     &mainBuildEntry,
+		UIVariant:                          &uiVariant,
+		HTMLTemplateLocation:               &htmlTemplateLocation,
+		ClientEntry:                        &clientEntry,
+		ClientRouteDefinitionPatterns:      &clientRouteDefinitionPatterns,
+		TSGenOutDir:                        &tsGenOutDir,
+		BuildtimePublicURLFuncName:         &buildtimePublicURLFuncName,
+		UnresolvedRoutePolicy:              &unresolvedRoutePolicy,
+		DevReloadRoutesEndpointPath:        &devReloadRoutesEndpointPath,
+		DevReloadTemplateEndpointPath:      &devReloadTemplateEndpointPath,
+		DevReloadPublicFileMapEndpointPath: &devReloadPublicFileMapEndpointPath,
+		TemplateDataKeyHeadElements:        &templateDataKeyHeadElements,
+		TemplateDataKeyBodyScripts:         &templateDataKeyBodyScripts,
+		TemplateDataKeySSRScript:           &templateDataKeySSRScript,
+		TemplateDataKeySSRScriptHash:       &templateDataKeySSRScriptHash,
+		TemplateDataKeyRootElementID:       &templateDataKeyRootElementID,
+		ClientRootElementID:                &clientRootElementID,
 	}
 
 	if err := NormalizeAndValidateMutableConfig(config); err != nil {
@@ -228,6 +237,13 @@ func TestNormalizeAndValidateMutableConfig_AppliesDefaultsAndValidation(
 			"DevReloadTemplateEndpointPath = %q, want %q",
 			devReloadTemplateEndpointPath,
 			DefaultDevReloadTemplateEndpointPath,
+		)
+	}
+	if devReloadPublicFileMapEndpointPath != DefaultDevReloadPublicFileMapEndpointPath {
+		t.Fatalf(
+			"DevReloadPublicFileMapEndpointPath = %q, want %q",
+			devReloadPublicFileMapEndpointPath,
+			DefaultDevReloadPublicFileMapEndpointPath,
 		)
 	}
 	if templateDataKeyHeadElements != DefaultTemplateDataKeyHeadElements {
@@ -312,6 +328,17 @@ func TestNormalizeAndValidateMutableConfig_ReturnsValidationErrors(
 		}
 	})
 
+	t.Run("public filemap reload endpoint needs leading slash", func(t *testing.T) {
+		config := validMutableValidationConfig()
+		*config.DevReloadPublicFileMapEndpointPath = "reload-public-filemap"
+
+		if err := NormalizeAndValidateMutableConfig(config); err == nil {
+			t.Fatal(
+				"expected NormalizeAndValidateMutableConfig to reject non-absolute public filemap reload endpoint",
+			)
+		}
+	})
+
 	t.Run(
 		"duplicate client route definition patterns rejected",
 		func(t *testing.T) {
@@ -374,6 +401,7 @@ func validMutableValidationConfig() MutableValidationConfig {
 	unresolvedRoutePolicy := UnresolvedRoutePolicyWarn
 	devReloadRoutesEndpointPath := DefaultDevReloadRoutesEndpointPath
 	devReloadTemplateEndpointPath := DefaultDevReloadTemplateEndpointPath
+	devReloadPublicFileMapEndpointPath := DefaultDevReloadPublicFileMapEndpointPath
 	templateDataKeyHeadElements := DefaultTemplateDataKeyHeadElements
 	templateDataKeyBodyScripts := DefaultTemplateDataKeyBodyScripts
 	templateDataKeySSRScript := DefaultTemplateDataKeySSRScript
@@ -382,21 +410,22 @@ func validMutableValidationConfig() MutableValidationConfig {
 	clientRootElementID := DefaultClientRootElementID
 
 	return MutableValidationConfig{
-		MainBuildEntry:                &mainBuildEntry,
-		UIVariant:                     &uiVariant,
-		HTMLTemplateLocation:          &htmlTemplateLocation,
-		ClientEntry:                   &clientEntry,
-		ClientRouteDefinitionPatterns: &clientRouteDefinitionPatterns,
-		TSGenOutDir:                   &tsGenOutDir,
-		BuildtimePublicURLFuncName:    &buildtimePublicURLFuncName,
-		UnresolvedRoutePolicy:         &unresolvedRoutePolicy,
-		DevReloadRoutesEndpointPath:   &devReloadRoutesEndpointPath,
-		DevReloadTemplateEndpointPath: &devReloadTemplateEndpointPath,
-		TemplateDataKeyHeadElements:   &templateDataKeyHeadElements,
-		TemplateDataKeyBodyScripts:    &templateDataKeyBodyScripts,
-		TemplateDataKeySSRScript:      &templateDataKeySSRScript,
-		TemplateDataKeySSRScriptHash:  &templateDataKeySSRScriptHash,
-		TemplateDataKeyRootElementID:  &templateDataKeyRootElementID,
-		ClientRootElementID:           &clientRootElementID,
+		MainBuildEntry:                     &mainBuildEntry,
+		UIVariant:                          &uiVariant,
+		HTMLTemplateLocation:               &htmlTemplateLocation,
+		ClientEntry:                        &clientEntry,
+		ClientRouteDefinitionPatterns:      &clientRouteDefinitionPatterns,
+		TSGenOutDir:                        &tsGenOutDir,
+		BuildtimePublicURLFuncName:         &buildtimePublicURLFuncName,
+		UnresolvedRoutePolicy:              &unresolvedRoutePolicy,
+		DevReloadRoutesEndpointPath:        &devReloadRoutesEndpointPath,
+		DevReloadTemplateEndpointPath:      &devReloadTemplateEndpointPath,
+		DevReloadPublicFileMapEndpointPath: &devReloadPublicFileMapEndpointPath,
+		TemplateDataKeyHeadElements:        &templateDataKeyHeadElements,
+		TemplateDataKeyBodyScripts:         &templateDataKeyBodyScripts,
+		TemplateDataKeySSRScript:           &templateDataKeySSRScript,
+		TemplateDataKeySSRScriptHash:       &templateDataKeySSRScriptHash,
+		TemplateDataKeyRootElementID:       &templateDataKeyRootElementID,
+		ClientRootElementID:                &clientRootElementID,
 	}
 }

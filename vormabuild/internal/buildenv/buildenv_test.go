@@ -60,6 +60,13 @@ func TestConfigure_WiresHooksAndDefaults(t *testing.T) {
 			len(waveframework.StateForConfig(parsedCfg).WatchPatterns),
 		)
 	}
+	if got, want := waveframework.StateForConfig(parsedCfg).PublicFileMapReloadEndpointPath, runtimeconfig.DefaultDevReloadPublicFileMapEndpointPath; got != want {
+		t.Fatalf(
+			"PublicFileMapReloadEndpointPath = %q, want %q",
+			got,
+			want,
+		)
+	}
 
 	if waveframework.StateForConfig(parsedCfg).RunBuildHook == nil {
 		t.Fatal("expected Configure to wire framework build hook runner")
@@ -213,7 +220,7 @@ func TestConfigure_FrameworkBuildHookRunner_ExecutesHookCommand(
 		"-overlay=/tmp/vorma-test-overlay.json",
 		"./backend/cmd/build",
 		"--dev",
-		"--hook",
+		"--hook-inner",
 	}
 	if len(capturedGoRunArgs) != len(expectedGoRunArgs) {
 		t.Fatalf(

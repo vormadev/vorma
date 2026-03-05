@@ -2428,6 +2428,11 @@ func TestDevReloadMethods_FailOutsideDevMode(t *testing.T) {
 	if err := app.devReloadTemplateFromDisk(); err == nil {
 		t.Fatal("expected devReloadTemplateFromDisk to fail outside dev mode")
 	}
+	if err := app.devReloadPublicFileMapFromDisk(); err == nil {
+		t.Fatal(
+			"expected devReloadPublicFileMapFromDisk to fail outside dev mode",
+		)
+	}
 }
 
 func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
@@ -2481,6 +2486,47 @@ func TestDevReloadMethods_SucceedInDevMode(t *testing.T) {
 	)
 	if err := app.devReloadTemplateFromDisk(); err != nil {
 		t.Fatalf("devReloadTemplateFromDisk returned error: %v", err)
+	}
+
+	canonicalMapRefName := "wave_public_file_map_test.json"
+	mustWriteFile(
+		t,
+		app.Wave.ParsedConfig().Dist().PublicFileMapRef(),
+		[]byte(canonicalMapRefName),
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(
+			app.Wave.ParsedConfig().Dist().StaticPublic(),
+			canonicalMapRefName,
+		),
+		[]byte(`{"logo.png":{"dist":"logo.hash.png"}}`),
+	)
+	if err := app.devReloadPublicFileMapFromDisk(); err != nil {
+		t.Fatalf("devReloadPublicFileMapFromDisk returned error: %v", err)
+	}
+	publicFileMapTypeScriptPath := filepath.Join(
+		fixture.rootDir,
+		app.Config.TSGenOutDir(),
+		runtimepaths.GeneratedTypeScriptPublicFileMapFileName,
+	)
+	publicFileMapTypeScriptBytes, readPublicFileMapTypeScriptError := os.ReadFile(
+		publicFileMapTypeScriptPath,
+	)
+	if readPublicFileMapTypeScriptError != nil {
+		t.Fatalf(
+			"read generated public filemap TypeScript output: %v",
+			readPublicFileMapTypeScriptError,
+		)
+	}
+	if !strings.Contains(
+		string(publicFileMapTypeScriptBytes),
+		`"logo.png": "logo.hash.png"`,
+	) {
+		t.Fatalf(
+			"generated public filemap TypeScript missing expected mapping, content=%q",
+			string(publicFileMapTypeScriptBytes),
+		)
 	}
 }
 

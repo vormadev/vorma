@@ -1294,6 +1294,84 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	}
 }
 
+func TestProcessPublicFilesOnly_ReplacesCanonicalPublicFileMapArtifactAndRemovesOldOutput(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
+	builder := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForStaticProcessingTests(),
+	)
+	defer builder.Close()
+
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	publicFilePath := filepath.Join(publicDir, "logo.png")
+	if err := os.WriteFile(publicFilePath, []byte("logo-v1"), 0o644); err != nil {
+		t.Fatalf("failed writing initial public file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	initialRefBytes, initialReadRefError := os.ReadFile(cfg.Dist().PublicFileMapRef())
+	if initialReadRefError != nil {
+		t.Fatalf("read initial public filemap ref: %v", initialReadRefError)
+	}
+	initialRefTarget := strings.TrimSpace(string(initialRefBytes))
+	if initialRefTarget == "" {
+		t.Fatal("expected non-empty initial public filemap ref target")
+	}
+	initialCanonicalPath := filepath.Join(cfg.Dist().StaticPublic(), initialRefTarget)
+	if _, statInitialCanonicalError := os.Stat(initialCanonicalPath); statInitialCanonicalError != nil {
+		t.Fatalf(
+			"expected initial canonical public filemap artifact to exist: %v",
+			statInitialCanonicalError,
+		)
+	}
+
+	if err := os.WriteFile(publicFilePath, []byte("logo-v2"), 0o644); err != nil {
+		t.Fatalf("failed writing updated public file: %v", err)
+	}
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("second ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	updatedRefBytes, updatedReadRefError := os.ReadFile(cfg.Dist().PublicFileMapRef())
+	if updatedReadRefError != nil {
+		t.Fatalf("read updated public filemap ref: %v", updatedReadRefError)
+	}
+	updatedRefTarget := strings.TrimSpace(string(updatedRefBytes))
+	if updatedRefTarget == "" {
+		t.Fatal("expected non-empty updated public filemap ref target")
+	}
+	if updatedRefTarget == initialRefTarget {
+		t.Fatalf(
+			"expected canonical public filemap ref target to change after public asset content change, got %q",
+			updatedRefTarget,
+		)
+	}
+	updatedCanonicalPath := filepath.Join(cfg.Dist().StaticPublic(), updatedRefTarget)
+	if _, statUpdatedCanonicalError := os.Stat(updatedCanonicalPath); statUpdatedCanonicalError != nil {
+		t.Fatalf(
+			"expected updated canonical public filemap artifact to exist: %v",
+			statUpdatedCanonicalError,
+		)
+	}
+	if _, statOldCanonicalError := os.Stat(initialCanonicalPath); !os.IsNotExist(
+		statOldCanonicalError,
+	) {
+		t.Fatalf(
+			"expected old canonical public filemap artifact to be removed, stat error: %v",
+			statOldCanonicalError,
+		)
+	}
+}
+
 func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(
 	t *testing.T,
 ) {

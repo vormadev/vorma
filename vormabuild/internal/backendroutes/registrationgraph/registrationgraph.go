@@ -25,8 +25,9 @@ import (
 )
 
 type RouteRegistrarSource struct {
-	PackageDir  string
-	SourceBytes []byte
+	PackageDir        string
+	PackageImportPath string
+	SourceBytes       []byte
 }
 type parsedServerRouteFile struct {
 	path           string
@@ -2061,8 +2062,9 @@ func (analysis *PackageAnalysis) DiscoverRouteRegistrarSource() (*RouteRegistrar
 	}
 
 	return &RouteRegistrarSource{
-		PackageDir:  analysis.packageDir,
-		SourceBytes: generatedSource,
+		PackageDir:        analysis.packageDir,
+		PackageImportPath: analysis.packageImportPath,
+		SourceBytes:       generatedSource,
 	}, nil
 }
 

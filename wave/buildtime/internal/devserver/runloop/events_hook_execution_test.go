@@ -3,6 +3,7 @@ package runloop_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
@@ -2912,6 +2913,85 @@ func TestExecuteBuildPhase_NoPublicFileMapArtifactChangeClearsInvalidateViteActi
 	if work.Browser.Action != eventpipeline.BrowserPhaseActionNone {
 		t.Fatalf(
 			"expected browser action to downgrade to none when public filemap artifacts are unchanged, got %v",
+			work.Browser.Action,
+		)
+	}
+}
+
+func TestExecuteBuildPhase_PublicFileMapArtifactChangeCallsFrameworkRuntimeReloadEndpoint(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	changedPublicFilePath := filepath.Join(publicDir, "logo.png")
+	if err := os.WriteFile(changedPublicFilePath, []byte("logo-before"), 0o644); err != nil {
+		t.Fatalf("failed writing public source file: %v", err)
+	}
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	defer builderForTest.Close()
+	if processError := builderForTest.ProcessPublicFilesOnly(); processError != nil {
+		t.Fatalf("seed public file map: %v", processError)
+	}
+
+	var frameworkReloadCallCount int32
+	waveframework.StateForConfig(cfg).PublicFileMapReloadEndpointPath = "/__framework/reload-public-filemap"
+
+	if err := os.WriteFile(changedPublicFilePath, []byte("logo-after"), 0o644); err != nil {
+		t.Fatalf("failed updating public source file: %v", err)
+	}
+
+	serverForTest := newRunloopTestServer(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
+	)
+	serverForTest.Builder = builderForTest
+	serverForTest.CallFrameworkRuntimeReloadEndpointWithContextFunc = func(
+		commandExecutionContext context.Context,
+		reloadRequest wavewatch.FrameworkRuntimeReloadRequest,
+	) error {
+		if commandExecutionContext == nil {
+			return errors.New("framework runtime reload execution context is nil")
+		}
+		if got, want := reloadRequest.EndpointPath, "/__framework/reload-public-filemap"; got != want {
+			return fmt.Errorf("reload endpoint path = %q, want %q", got, want)
+		}
+		if got, want := reloadRequest.ReloadTrigger, "public-filemap-artifacts-changed"; got != want {
+			return fmt.Errorf("reload trigger = %q, want %q", got, want)
+		}
+		atomic.AddInt32(&frameworkReloadCallCount, 1)
+		return nil
+	}
+
+	work := &eventpipeline.WorkSet{
+		Build: eventpipeline.BuildPhaseDecision{
+			ProcessPublicFiles:           true,
+			PublicStaticChangedFilePaths: []string{changedPublicFilePath},
+		},
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+		},
+	}
+	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
+		t.Fatalf("ExecuteBuildPhase returned error: %v", executeBuildPhaseError)
+	}
+
+	if got := atomic.LoadInt32(&frameworkReloadCallCount); got != 1 {
+		t.Fatalf("framework runtime reload call count = %d, want 1", got)
+	}
+	if work.Browser.Action != eventpipeline.BrowserPhaseActionInvalidateVite {
+		t.Fatalf(
+			"expected browser action to keep invalidate-vite when public filemap artifacts change, got %v",
 			work.Browser.Action,
 		)
 	}

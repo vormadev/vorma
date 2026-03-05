@@ -1,7 +1,9 @@
-package router
+package server
 
 import (
 	"net/http"
+	"site/backend/src/app"
+	"site/backend/src/markdown"
 
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/vormadev/vorma/kit/middleware/etag"
@@ -11,20 +13,20 @@ import (
 )
 
 func Init() (addr string, handler http.Handler) {
-	r := App.MustInitWithDefaultRouter()
+	r := app.App.MustInitWithDefaultRouter()
 
 	r.AddGlobalHTTPMiddleware(chimw.Logger)
 	r.AddGlobalHTTPMiddleware(chimw.Recoverer)
 	r.AddGlobalHTTPMiddleware(etag.Auto())
 	r.AddGlobalHTTPMiddleware(chimw.Compress(5))
-	r.AddGlobalHTTPMiddleware(App.MustStaticMiddleware())
+	r.AddGlobalHTTPMiddleware(app.App.MustStaticMiddleware())
 	r.AddGlobalHTTPMiddleware(secureheaders.Middleware)
 	r.AddGlobalHTTPMiddleware(healthcheck.Healthz)
 	r.AddGlobalHTTPMiddleware(robotstxt.Allow)
-	r.AddGlobalHTTPMiddleware(Markdown.PlainTextMiddleware(
+	r.AddGlobalHTTPMiddleware(markdown.Markdown.PlainTextMiddleware(
 		"/docs", "/docs/*",
 		"/blog", "/blog/*",
 	))
 
-	return App.ServerAddr(), r
+	return app.App.ServerAddr(), r
 }

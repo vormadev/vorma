@@ -412,6 +412,44 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 	)
 }
 
+func TestRouteDefinitionsOnChangeCallback_UnknownPreRebuildBuildIDStaysEmpty(
+	t *testing.T,
+) {
+	fixture := testkit.NewBuildTestFixture(t, nil)
+	app := fixture.App
+
+	t.Chdir(fixture.RootDir)
+	testkit.WriteBootstrapStyleRoutesFixtureFiles(t)
+	app.SetIsDev(true)
+	app.WithLock(func(lockedVorma *vormaruntime.LockedVorma) {
+		lockedVorma.SetBuildID("")
+	})
+
+	hook := routeDefinitionsOnChangeCallback(app)
+	action, err := hook(&wavewatch.HookContext{AppStoppedForBatch: false})
+	if err != nil {
+		t.Fatalf("route callback returned error: %v", err)
+	}
+	if action == nil || action.FrameworkRuntimeReloadRequest == nil {
+		t.Fatalf(
+			"expected deferred framework runtime reload request, got %#v",
+			action,
+		)
+	}
+	if got := action.FrameworkRuntimeReloadRequest.ExpectedBuildID; got != "" {
+		t.Fatalf(
+			"expected empty expected build ID when pre-rebuild build ID is unknown, got %q",
+			got,
+		)
+	}
+	if !strings.HasPrefix(app.BuildID(), "dev_fast_") {
+		t.Fatalf(
+			"expected fast route rebuild to set dev_fast build ID, got %q",
+			app.BuildID(),
+		)
+	}
+}
+
 func findWatchHookByPattern(
 	t *testing.T,
 	patterns []wavewatch.WatchedFile,

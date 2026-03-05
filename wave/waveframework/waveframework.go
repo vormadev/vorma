@@ -54,6 +54,7 @@ type ConfigState struct {
 	RunBuildHook                         func(context.Context, bool) error
 	PrepareGoBuildOverlay                func() (*GoBuildOverlay, error)
 	ConfigureForToolingReload            func(waveconfig.ParsedConfig, []byte) error
+	PublicFileMapReloadEndpointPath      string
 	BrowserRuntimeNamespace              string
 	BrowserPublicURLResolverFunctionName string
 	BrowserRevalidateFunctionName        string

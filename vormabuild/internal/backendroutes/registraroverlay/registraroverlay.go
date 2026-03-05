@@ -202,6 +202,11 @@ func DiscoveryCacheKey(v *vormaruntime.Vorma) string {
 	if v == nil || v.Wave == nil || v.Config == nil {
 		return "<nil-vorma>"
 	}
+	mainAppEntry := ""
+	if parsedWaveConfig := v.Wave.ParsedConfig(); parsedWaveConfig != nil &&
+		parsedWaveConfig.Core() != nil {
+		mainAppEntry = strings.TrimSpace(parsedWaveConfig.Core().MainAppEntry())
+	}
 
 	normalizedServerRoutePatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
 		v.Config.ServerRouteDefinitionPatterns(),
@@ -217,6 +222,7 @@ func DiscoveryCacheKey(v *vormaruntime.Vorma) string {
 			filepath.ToSlash(filepath.Clean(v.Wave.DistDir())),
 			filepath.ToSlash(filepath.Clean(v.Wave.StaticPrivateOutDir())),
 			filepath.ToSlash(filepath.Clean(v.Wave.StaticPublicOutDir())),
+			mainAppEntry,
 			strings.TrimSpace(v.Config.MainBuildEntry()),
 			strings.Join(normalizedServerRoutePatterns, ","),
 		},

@@ -17,13 +17,14 @@ import (
 type BuildOptions struct {
 	Dev               bool
 	HookOnly          bool
+	HookExecutionOnly bool
 	SkipGoBinaryBuild bool
 }
 
 // Build parses CLI flags from os.Args and executes vormabuild.
 //
 // Supported flags:
-// --dev, --hook, --no-binary.
+// --dev, --hook, --hook-inner, --no-binary.
 func Build(v *vorma.Vorma) {
 	parsedOptions, parseError := buildentry.ParseCommandOptions(os.Args[1:])
 	if parseError != nil {
@@ -34,6 +35,7 @@ func Build(v *vorma.Vorma) {
 		BuildOptions{
 			Dev:               parsedOptions.Dev,
 			HookOnly:          parsedOptions.HookOnly,
+			HookExecutionOnly: parsedOptions.HookExecutionOnly,
 			SkipGoBinaryBuild: parsedOptions.SkipGoBinaryBuild,
 		},
 	); runError != nil {
@@ -51,6 +53,7 @@ func BuildWithOptions(v *vorma.Vorma, options BuildOptions) error {
 		buildentry.Options{
 			Dev:               options.Dev,
 			HookOnly:          options.HookOnly,
+			HookExecutionOnly: options.HookExecutionOnly,
 			SkipGoBinaryBuild: options.SkipGoBinaryBuild,
 		},
 	)

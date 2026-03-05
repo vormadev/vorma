@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/vormabuild/internal/backendroutes/registraroverlay"
@@ -186,6 +187,8 @@ type backendRouteRegistrarOverlayExecutor struct {
 	routeDiscoveryExecutor backendRouteDiscoveryExecutor
 }
 
+const discoveredRouteRegistrarSideEffectImportsFilename = "vorma_discovered_route_imports.gen.go"
+
 var defaultBackendRouteRegistrarOverlayExecutor = newBackendRouteRegistrarOverlayExecutor(
 	backendRouteRegistrarOverlayDependencies{},
 	backendRouteDiscoveryExecutor{},
@@ -320,6 +323,7 @@ func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegis
 	)
 	if !hasCachedArtifacts {
 		discoveredRegistrarArtifacts, err = executor.discoverRouteRegistrarSourceArtifacts(
+			v,
 			serverRouteDefinitionFiles,
 		)
 		if err != nil {
@@ -338,8 +342,13 @@ func (executor backendRouteRegistrarOverlayExecutor) prepareDiscoveredRouteRegis
 }
 
 func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourceArtifacts(
+	v *vormaruntime.Vorma,
 	serverRouteDefinitionFiles []string,
 ) ([]registraroverlay.SourceArtifact, error) {
+	if v == nil || v.Wave == nil || v.Wave.ParsedConfig() == nil || v.Config == nil {
+		return nil, fmt.Errorf("vorma runtime/config is required")
+	}
+
 	packageAnalyses, err := executor.routeDiscoveryExecutor.parseServerRouteFilesIntoPackageAnalyses(
 		serverRouteDefinitionFiles,
 	)
@@ -348,6 +357,7 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 	}
 
 	discoveredRegistrarArtifacts := make([]registraroverlay.SourceArtifact, 0)
+	discoveredRegistrationPackageImportPathSet := map[string]struct{}{}
 	for _, packageAnalysis := range packageAnalyses {
 		routeRegistrarSource, err := packageAnalysis.DiscoverRouteRegistrarSource()
 		if err != nil {
@@ -381,9 +391,145 @@ func (executor backendRouteRegistrarOverlayExecutor) discoverRouteRegistrarSourc
 				SourceBytes: routeRegistrarSource.SourceBytes,
 			},
 		)
+		trimmedPackageImportPath := strings.TrimSpace(
+			routeRegistrarSource.PackageImportPath,
+		)
+		if trimmedPackageImportPath != "" {
+			discoveredRegistrationPackageImportPathSet[trimmedPackageImportPath] = struct{}{}
+		}
 	}
+
+	discoveredRegistrationPackageImportPaths := make(
+		[]string,
+		0,
+		len(discoveredRegistrationPackageImportPathSet),
+	)
+	for discoveredRegistrationPackageImportPath := range discoveredRegistrationPackageImportPathSet {
+		discoveredRegistrationPackageImportPaths = append(
+			discoveredRegistrationPackageImportPaths,
+			discoveredRegistrationPackageImportPath,
+		)
+	}
+	sort.Strings(discoveredRegistrationPackageImportPaths)
+
+	mainEntryPackageDirectories, err := resolveMainEntryPackageDirectoriesForDiscoveredRouteImports(
+		v,
+		executor.dependencies.absolutePath,
+	)
+	if err != nil {
+		return nil, err
+	}
+	sideEffectImportsSourceBytes := renderDiscoveredRouteRegistrarSideEffectImportsSource(
+		discoveredRegistrationPackageImportPaths,
+	)
+	if len(sideEffectImportsSourceBytes) > 0 {
+		for _, mainEntryPackageDirectory := range mainEntryPackageDirectories {
+			discoveredRegistrarArtifacts = append(
+				discoveredRegistrarArtifacts,
+				registraroverlay.SourceArtifact{
+					TargetFilePath: filepath.ToSlash(
+						filepath.Clean(
+							filepath.Join(
+								mainEntryPackageDirectory,
+								discoveredRouteRegistrarSideEffectImportsFilename,
+							),
+						),
+					),
+					SourceBytes: sideEffectImportsSourceBytes,
+				},
+			)
+		}
+	}
+
 	sort.Slice(discoveredRegistrarArtifacts, func(i int, j int) bool {
 		return discoveredRegistrarArtifacts[i].TargetFilePath < discoveredRegistrarArtifacts[j].TargetFilePath
 	})
 	return discoveredRegistrarArtifacts, nil
+}
+
+func resolveMainEntryPackageDirectoriesForDiscoveredRouteImports(
+	v *vormaruntime.Vorma,
+	absolutePath func(string) (string, error),
+) ([]string, error) {
+	if v == nil || v.Wave == nil || v.Wave.ParsedConfig() == nil || v.Config == nil {
+		return nil, fmt.Errorf("vorma runtime/config is required")
+	}
+	if absolutePath == nil {
+		absolutePath = filepath.Abs
+	}
+
+	resolveRoot := strings.TrimSpace(v.Wave.ParsedConfig().ResolveRoot())
+	if resolveRoot == "" {
+		resolveRoot = "."
+	}
+	mainEntryCandidates := []string{
+		strings.TrimSpace(v.Config.MainBuildEntry()),
+		strings.TrimSpace(v.Wave.ParsedConfig().Core().MainAppEntry()),
+	}
+
+	mainEntryDirectorySet := map[string]struct{}{}
+	for _, mainEntryCandidate := range mainEntryCandidates {
+		if mainEntryCandidate == "" {
+			continue
+		}
+
+		mainEntryPathForAbsoluteResolution := mainEntryCandidate
+		if !filepath.IsAbs(mainEntryPathForAbsoluteResolution) {
+			mainEntryPathForAbsoluteResolution = filepath.Join(
+				resolveRoot,
+				mainEntryPathForAbsoluteResolution,
+			)
+		}
+		absoluteMainEntryPath, absoluteMainEntryPathError := absolutePath(
+			filepath.FromSlash(
+				mainEntryPathForAbsoluteResolution,
+			),
+		)
+		if absoluteMainEntryPathError != nil {
+			return nil, fmt.Errorf(
+				"resolve absolute main entry path %q for discovered route import overlay: %w",
+				mainEntryPathForAbsoluteResolution,
+				absoluteMainEntryPathError,
+			)
+		}
+		mainEntryDirectorySet[filepath.ToSlash(filepath.Clean(absoluteMainEntryPath))] = struct{}{}
+	}
+
+	mainEntryDirectories := make([]string, 0, len(mainEntryDirectorySet))
+	for mainEntryDirectory := range mainEntryDirectorySet {
+		mainEntryDirectories = append(mainEntryDirectories, mainEntryDirectory)
+	}
+	sort.Strings(mainEntryDirectories)
+	return mainEntryDirectories, nil
+}
+
+func renderDiscoveredRouteRegistrarSideEffectImportsSource(
+	importPaths []string,
+) []byte {
+	if len(importPaths) == 0 {
+		return nil
+	}
+
+	sanitizedImportPaths := make([]string, 0, len(importPaths))
+	for _, importPath := range importPaths {
+		trimmedImportPath := strings.TrimSpace(importPath)
+		if trimmedImportPath == "" {
+			continue
+		}
+		sanitizedImportPaths = append(sanitizedImportPaths, trimmedImportPath)
+	}
+	if len(sanitizedImportPaths) == 0 {
+		return nil
+	}
+	sort.Strings(sanitizedImportPaths)
+
+	var sourceBuilder strings.Builder
+	sourceBuilder.WriteString("package main\n\nimport (\n")
+	for _, importPath := range sanitizedImportPaths {
+		sourceBuilder.WriteString(
+			fmt.Sprintf("\t_ %q\n", importPath),
+		)
+	}
+	sourceBuilder.WriteString(")\n")
+	return []byte(sourceBuilder.String())
 }

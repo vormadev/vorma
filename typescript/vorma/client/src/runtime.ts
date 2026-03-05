@@ -3688,6 +3688,25 @@ function resolveNavigationScrollStateForTargetHref(
 	return resolveStoredScrollStateForCurrentHistoryKeyOrTop();
 }
 
+function resolveScrollStateForSameDocumentNoopLinkClick(props: {
+	targetHref: string;
+	scrollToTop?: boolean;
+}): ScrollState | undefined {
+	const targetHash = new URL(props.targetHref, window.location.href).hash;
+	if (normalizeHashForElementLookup(targetHash).length > 0) {
+		return {
+			hash: targetHash,
+		};
+	}
+	if (props.scrollToTop === false) {
+		return undefined;
+	}
+	return {
+		x: 0,
+		y: 0,
+	};
+}
+
 function clearOperation(props: {
 	store: NavigationRuntimeStore;
 	operation: NavigationOperation;
@@ -5233,6 +5252,12 @@ export function makeFinalLinkProps<LinkEvent>(
 					});
 				if (targetClassification === "same-document-noop") {
 					clickEvent.preventDefault?.();
+					applyScrollState(
+						resolveScrollStateForSameDocumentNoopLinkClick({
+							targetHref: href,
+							scrollToTop: linkProps.scrollToTop,
+						}),
+					);
 					return;
 				}
 				if (targetClassification === "same-document-hash-change") {
