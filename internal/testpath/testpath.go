@@ -67,3 +67,75 @@ func PathRelativeToConfiguredWorkingDirectory(
 	}
 	return filepath.ToSlash(filepath.Clean(relativePath)), nil
 }
+
+// MustPathRelativeToConfiguredWorkingDirectory returns configuredPath as a path
+// relative to currentWorkingDirectory and fails the test on conversion errors.
+func MustPathRelativeToConfiguredWorkingDirectory(
+	tb testing.TB,
+	currentWorkingDirectory string,
+	configuredPath string,
+) string {
+	tb.Helper()
+
+	relativePath, relativePathError := PathRelativeToConfiguredWorkingDirectory(
+		currentWorkingDirectory,
+		configuredPath,
+	)
+	if relativePathError != nil {
+		tb.Fatalf(
+			"convert %q to path relative to %q: %v",
+			configuredPath,
+			currentWorkingDirectory,
+			relativePathError,
+		)
+	}
+	return relativePath
+}
+
+// PathRelativeToRootForJSON normalizes configuredPath for JSON fixture payloads
+// that are rooted at root.
+func PathRelativeToRootForJSON(
+	tb testing.TB,
+	root string,
+	configuredPath string,
+) string {
+	tb.Helper()
+
+	trimmedConfiguredPath := strings.TrimSpace(configuredPath)
+	if trimmedConfiguredPath == "" {
+		return ""
+	}
+	trimmedConfiguredPath = filepath.Clean(trimmedConfiguredPath)
+	if trimmedConfiguredPath == "." {
+		return "."
+	}
+	if !filepath.IsAbs(trimmedConfiguredPath) {
+		return filepath.ToSlash(trimmedConfiguredPath)
+	}
+
+	relativePathFromRoot, relativePathError := filepath.Rel(
+		root,
+		trimmedConfiguredPath,
+	)
+	if relativePathError != nil {
+		tb.Fatalf(
+			"resolve path %q relative to root %q: %v",
+			trimmedConfiguredPath,
+			root,
+			relativePathError,
+		)
+	}
+	normalizedRelativePathFromRoot := filepath.ToSlash(
+		filepath.Clean(relativePathFromRoot),
+	)
+	if normalizedRelativePathFromRoot == ".." ||
+		strings.HasPrefix(normalizedRelativePathFromRoot, "../") {
+		tb.Fatalf(
+			"path %q escapes root %q after normalization: %q",
+			trimmedConfiguredPath,
+			root,
+			normalizedRelativePathFromRoot,
+		)
+	}
+	return normalizedRelativePathFromRoot
+}

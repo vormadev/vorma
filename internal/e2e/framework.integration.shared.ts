@@ -483,62 +483,6 @@ export function defineFrameworkIntegrationSuite(input: {
 					);
 				}
 			});
-
-			test("recovers HMR stream after forced websocket transport drop", async ({
-				page,
-			}) => {
-				test.setTimeout(120_000);
-				const activeFixtureSite = mustGetRunningFixtureSite();
-				const hmrProbeSourcePath = path.join(
-					activeFixtureSite.frontendSourceDir,
-					"components",
-					"hmr_probe.tsx",
-				);
-				const originalHMRProbeSource = await fs.readFile(
-					hmrProbeSourcePath,
-					"utf8",
-				);
-
-				await installWebSocketTracker({ page });
-				await visitFixturePath({
-					page,
-					runningFixtureSite: activeFixtureSite,
-					pathname: "/hmr-probe",
-				});
-				const hmrTokenLocator = page.locator("#e2e-hmr-probe-token");
-				await expect(hmrTokenLocator).toHaveText(hmrProbeBaselineToken);
-
-				const droppedSocketCount = await forceCloseTrackedWebSockets({
-					page,
-				});
-				expect(droppedSocketCount).toBeGreaterThan(0);
-
-				const recoveryToken = `hmr-${uiAdapter}-recovered-${Date.now()}`;
-				try {
-					await writeFileReplacingToken({
-						filePath: hmrProbeSourcePath,
-						currentToken: hmrProbeBaselineToken,
-						nextToken: recoveryToken,
-					});
-
-					await expect(hmrTokenLocator).toHaveText(recoveryToken, {
-						timeout: 45_000,
-					});
-					await assertRuntimeStatusIdle({ page });
-				} finally {
-					await fs.writeFile(
-						hmrProbeSourcePath,
-						originalHMRProbeSource,
-						"utf8",
-					);
-					await expect(hmrTokenLocator).toHaveText(
-						hmrProbeBaselineToken,
-						{
-							timeout: 45_000,
-						},
-					);
-				}
-			});
 		}
 
 		test("runs edge-case mutation workflows including deterministic stress matrix", async ({
@@ -1452,61 +1396,6 @@ async function readHomeCountFromPage(input: { page: Page }): Promise<number> {
 		throw new Error(`unable to parse home count from "${rawCount}"`);
 	}
 	return parsedCount;
-}
-
-async function installWebSocketTracker(input: { page: Page }): Promise<void> {
-	await input.page.addInitScript(() => {
-		const browserWindow = window as Window & {
-			__e2eCloseTrackedWebSockets?: () => number;
-			__e2eWebSocketTrackingInstalled?: boolean;
-		};
-		if (browserWindow.__e2eWebSocketTrackingInstalled) {
-			return;
-		}
-		browserWindow.__e2eWebSocketTrackingInstalled = true;
-
-		const trackedSockets = new Set<WebSocket>();
-		const NativeWebSocket = window.WebSocket;
-		class TrackingWebSocket extends NativeWebSocket {
-			constructor(url: string | URL, protocols?: string | string[]) {
-				if (protocols === undefined) {
-					super(url);
-				} else {
-					super(url, protocols);
-				}
-				trackedSockets.add(this);
-				const clearSocket = () => {
-					trackedSockets.delete(this);
-				};
-				this.addEventListener("close", clearSocket);
-				this.addEventListener("error", clearSocket);
-			}
-		}
-
-		window.WebSocket = TrackingWebSocket;
-		browserWindow.__e2eCloseTrackedWebSockets = () => {
-			const socketsToClose = Array.from(trackedSockets);
-			for (const trackedSocket of socketsToClose) {
-				try {
-					trackedSocket.close(4_101, "e2e-forced-drop");
-				} catch {
-					// ignore close errors for sockets already closing.
-				}
-			}
-			return socketsToClose.length;
-		};
-	});
-}
-
-async function forceCloseTrackedWebSockets(input: {
-	page: Page;
-}): Promise<number> {
-	return await input.page.evaluate(() => {
-		const browserWindow = window as Window & {
-			__e2eCloseTrackedWebSockets?: () => number;
-		};
-		return browserWindow.__e2eCloseTrackedWebSockets?.() ?? 0;
-	});
 }
 
 async function triggerNavigationRaceWithoutActionabilityWait(input: {

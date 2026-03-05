@@ -587,7 +587,8 @@ func NormalizeWatcherEventPathForDeduplication(
 	}
 
 	if IsAbsolutePathForWatcherEventDeduplication(cleanedEventPath) {
-		return waveenv.Absolute(cleanedEventPath)
+		cleanedEventPathMachineAbsolute := waveenv.Absolute(cleanedEventPath)
+		return cleanedEventPathMachineAbsolute
 	}
 
 	return cleanedEventPath

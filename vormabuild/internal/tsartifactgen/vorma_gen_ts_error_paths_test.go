@@ -65,8 +65,8 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 			generateTypeScript: func(tsGenInput) (string, error) {
 				return "type A = 1;", nil
 			},
-			getEntrypoints: func(*vormaruntime.LockedVorma) []string {
-				return []string{"frontend/src/vorma.entry.tsx"}
+			getEntrypoints: func(*vormaruntime.LockedVorma) ([]string, error) {
+				return []string{"frontend/src/vorma.entry.tsx"}, nil
 			},
 			generateRollupInput: func(*vormaruntime.LockedVorma, []string) (string, error) {
 				return "", expectedErr
@@ -109,8 +109,8 @@ func TestGenerateAndAssembleTSContent_ErrorWrappingAndAssembly(t *testing.T) {
 				generateTypeScript: func(tsGenInput) (string, error) {
 					return "TS_OUTPUT", nil
 				},
-				getEntrypoints: func(*vormaruntime.LockedVorma) []string {
-					return []string{"frontend/src/vorma.entry.tsx"}
+				getEntrypoints: func(*vormaruntime.LockedVorma) ([]string, error) {
+					return []string{"frontend/src/vorma.entry.tsx"}, nil
 				},
 				generateRollupInput: func(*vormaruntime.LockedVorma, []string) (string, error) {
 					return "ROLLUP_OUTPUT", nil
@@ -202,8 +202,8 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 			generateTypeScript: func(tsGenInput) (string, error) {
 				return "type A = 1;", nil
 			},
-			getEntrypointsForPaths: func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) []string {
-				return []string{"frontend/src/vorma.entry.tsx"}
+			getEntrypointsForPaths: func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) ([]string, error) {
+				return []string{"frontend/src/vorma.entry.tsx"}, nil
 			},
 			generateRollupInputForEntrypoints: func(*vormaruntime.Vorma, []string) (string, error) {
 				return "", expectedErr
@@ -244,8 +244,8 @@ func TestGenerateAndAssembleTSContentForRouteBuildRuntimeStateSnapshot_ErrorWrap
 				generateTypeScript: func(tsGenInput) (string, error) {
 					return "TS_OUTPUT", nil
 				},
-				getEntrypointsForPaths: func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) []string {
-					return []string{"frontend/src/vorma.entry.tsx"}
+				getEntrypointsForPaths: func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) ([]string, error) {
+					return []string{"frontend/src/vorma.entry.tsx"}, nil
 				},
 				generateRollupInputForEntrypoints: func(*vormaruntime.Vorma, []string) (string, error) {
 					return "ROLLUP_OUTPUT", nil
@@ -293,8 +293,7 @@ func TestWriteGeneratedTS_DelegationAndErrors(t *testing.T) {
 				) error {
 					writeCalled = true
 					expectedTargetPath := filepath.Join(
-						".",
-						app.Config.TSGenOutDir,
+						app.Config.TSGenOutDir(),
 						"index.ts",
 					)
 					if targetPath != expectedTargetPath {
@@ -415,8 +414,7 @@ func TestWriteGeneratedTSForRouteBuildRuntimeStateSnapshot_DelegationAndErrors(
 				) error {
 					writeCalled = true
 					expectedTargetPath := filepath.Join(
-						".",
-						app.Config.TSGenOutDir,
+						app.Config.TSGenOutDir(),
 						"index.ts",
 					)
 					if targetPath != expectedTargetPath {
@@ -727,9 +725,12 @@ func TestBuildGeneratedTypeScriptBlock_AppendsExtraTSCodeAndNullRootData(
 		tsGenInput{
 			LoadersRouter: loadersRouter,
 			ActionsRouter: actionsRouter,
-			Config: &vormaruntime.VormaConfig{
-				UIVariant: string(vormaruntime.UIVariantReact),
-			},
+			Config: mustParsedVormaConfigForTSArtifactGenerationTests(
+				t,
+				&vormaruntime.VormaConfigJSON{
+					UIVariant: string(vormaruntime.UIVariantReact),
+				},
+			),
 			ExtraTSCode: "export const extraCode = true;",
 		},
 		false,

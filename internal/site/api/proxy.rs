@@ -18,16 +18,8 @@ const PORT: u16 = 8080;
 
 #[derive(Deserialize)]
 struct Config {
-    #[serde(rename = "Core")]
-    core: CoreConfig,
     #[serde(rename = "Watch")]
     watch: WatchConfig,
-}
-
-#[derive(Deserialize)]
-struct CoreConfig {
-    #[serde(rename = "DistDir")]
-    dist_dir: String,
 }
 
 #[derive(Deserialize)]
@@ -86,7 +78,7 @@ async fn ensure_ready() -> Result<(), String> {
     kill_child();
 
     let cfg = config().await;
-    let go_path = format!("./{}/main", cfg.core.dist_dir);
+    let go_path = "./.wavedist/main".to_string();
     let health = &cfg.watch.healthcheck_endpoint;
     let start = Instant::now();
 

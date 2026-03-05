@@ -3,9 +3,7 @@
 package waveframework
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -55,6 +53,7 @@ type ConfigState struct {
 	ProdBuildHook                        string
 	RunBuildHook                         func(context.Context, bool) error
 	PrepareGoBuildOverlay                func() (*GoBuildOverlay, error)
+	ConfigureForToolingReload            func(waveconfig.ParsedConfig, []byte) error
 	BrowserRuntimeNamespace              string
 	BrowserPublicURLResolverFunctionName string
 	BrowserRevalidateFunctionName        string
@@ -65,14 +64,8 @@ type ConfigState struct {
 
 var configStateByParsedConfig sync.Map
 
-var parsedConfigCache struct {
-	mu            sync.RWMutex
-	rawConfigJSON []byte
-	parsedConfig  *waveconfig.ParsedConfig
-}
-
 // StateForConfig returns mutable framework state for one parsed config.
-func StateForConfig(parsedConfig *waveconfig.ParsedConfig) *ConfigState {
+func StateForConfig(parsedConfig waveconfig.ParsedConfig) *ConfigState {
 	if parsedConfig == nil {
 		return nil
 	}
@@ -100,8 +93,8 @@ func StateForConfig(parsedConfig *waveconfig.ParsedConfig) *ConfigState {
 // CopyRuntimeStateForToolingReload transfers framework state from source to
 // target when config is reparsed from disk.
 func CopyRuntimeStateForToolingReload(
-	target *waveconfig.ParsedConfig,
-	source *waveconfig.ParsedConfig,
+	target waveconfig.ParsedConfig,
+	source waveconfig.ParsedConfig,
 ) {
 	if target == nil || source == nil || target == source {
 		return
@@ -113,16 +106,94 @@ func CopyRuntimeStateForToolingReload(
 	statePointer, _ := storedState.(*ConfigState)
 	if statePointer == nil {
 		configStateByParsedConfig.Delete(target)
-		configStateByParsedConfig.Delete(source)
 		return
 	}
-	configStateByParsedConfig.Store(target, statePointer)
-	configStateByParsedConfig.Delete(source)
+	configStateByParsedConfig.Store(target, cloneConfigState(statePointer))
+}
+
+// ConfigureReloadedConfigForTooling applies framework-specific config reload
+// wiring for one parsed config reload transition when configured by the
+// framework.
+func ConfigureReloadedConfigForTooling(
+	source waveconfig.ParsedConfig,
+	target waveconfig.ParsedConfig,
+	rawConfigJSON []byte,
+) error {
+	if source == nil || target == nil {
+		return nil
+	}
+	configState := StateForConfig(source)
+	if configState == nil || configState.ConfigureForToolingReload == nil {
+		return nil
+	}
+	return configState.ConfigureForToolingReload(target, rawConfigJSON)
+}
+
+func cloneConfigState(source *ConfigState) *ConfigState {
+	if source == nil {
+		return nil
+	}
+	clonedState := *source
+	clonedState.WatchPatterns = cloneWatchedFiles(source.WatchPatterns)
+	clonedState.IgnoredPatterns = append([]string(nil), source.IgnoredPatterns...)
+	if source.SchemaExtensions != nil {
+		clonedState.SchemaExtensions = make(
+			map[string]jsonschema.Entry,
+			len(source.SchemaExtensions),
+		)
+		for schemaExtensionKey, schemaExtensionEntry := range source.SchemaExtensions {
+			clonedState.SchemaExtensions[schemaExtensionKey] = schemaExtensionEntry
+		}
+	}
+	return &clonedState
+}
+
+func cloneWatchedFiles(source []wavewatch.WatchedFile) []wavewatch.WatchedFile {
+	if len(source) == 0 {
+		return nil
+	}
+	clonedWatchPatterns := make([]wavewatch.WatchedFile, 0, len(source))
+	for _, watchedFile := range source {
+		clonedWatchPatterns = append(clonedWatchPatterns, cloneWatchedFile(watchedFile))
+	}
+	return clonedWatchPatterns
+}
+
+func cloneWatchedFile(source wavewatch.WatchedFile) wavewatch.WatchedFile {
+	clonedWatchPattern := source
+	clonedWatchPattern.OnChangeHooks = cloneOnChangeHooks(source.OnChangeHooks)
+	clonedWatchPattern.SortedHooks = cloneSortedHooks(source.SortedHooks)
+	return clonedWatchPattern
+}
+
+func cloneOnChangeHooks(source []wavewatch.OnChangeHook) []wavewatch.OnChangeHook {
+	if len(source) == 0 {
+		return nil
+	}
+	clonedHooks := make([]wavewatch.OnChangeHook, 0, len(source))
+	for _, sourceHook := range source {
+		clonedHook := sourceHook
+		clonedHook.Exclude = append([]string(nil), sourceHook.Exclude...)
+		clonedHooks = append(clonedHooks, clonedHook)
+	}
+	return clonedHooks
+}
+
+func cloneSortedHooks(source *wavewatch.SortedHooks) *wavewatch.SortedHooks {
+	if source == nil {
+		return nil
+	}
+	return &wavewatch.SortedHooks{
+		Pre:              cloneOnChangeHooks(source.Pre),
+		Concurrent:       cloneOnChangeHooks(source.Concurrent),
+		ConcurrentNoWait: cloneOnChangeHooks(source.ConcurrentNoWait),
+		Post:             cloneOnChangeHooks(source.Post),
+	}
 }
 
 // BrowserRuntimeNamespace returns the browser global namespace used by runtime
 // integration scripts.
-func BrowserRuntimeNamespace(parsedConfig *waveconfig.ParsedConfig) string {
+func BrowserRuntimeNamespace(parsedConfig waveconfig.ParsedConfig) string {
 	state := StateForConfig(parsedConfig)
 	if state == nil || strings.TrimSpace(state.BrowserRuntimeNamespace) == "" {
 		return defaultBrowserRuntimeNamespace
@@ -133,7 +204,7 @@ func BrowserRuntimeNamespace(parsedConfig *waveconfig.ParsedConfig) string {
 // BrowserPublicURLResolverFunctionName returns the browser helper function name
 // used for resolving public asset URLs.
 func BrowserPublicURLResolverFunctionName(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 ) string {
 	state := StateForConfig(parsedConfig)
 	if state == nil ||
@@ -146,7 +217,7 @@ func BrowserPublicURLResolverFunctionName(
 // BrowserRevalidateFunctionName returns the browser helper function name used
 // for route revalidation.
 func BrowserRevalidateFunctionName(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 ) string {
 	state := StateForConfig(parsedConfig)
 	if state == nil ||
@@ -159,7 +230,7 @@ func BrowserRevalidateFunctionName(
 // RefreshRebuildingOverlayElementID returns the DOM element id used for the
 // rebuild overlay during dev refresh cycles.
 func RefreshRebuildingOverlayElementID(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 ) string {
 	state := StateForConfig(parsedConfig)
 	if state == nil ||
@@ -171,7 +242,7 @@ func RefreshRebuildingOverlayElementID(
 
 // CriticalCSSStyleElementID returns the DOM element id used for injected
 // critical CSS.
-func CriticalCSSStyleElementID(parsedConfig *waveconfig.ParsedConfig) string {
+func CriticalCSSStyleElementID(parsedConfig waveconfig.ParsedConfig) string {
 	state := StateForConfig(parsedConfig)
 	if state == nil ||
 		strings.TrimSpace(state.CriticalCSSStyleElementID) == "" {
@@ -182,73 +253,11 @@ func CriticalCSSStyleElementID(parsedConfig *waveconfig.ParsedConfig) string {
 
 // NonCriticalCSSLinkElementID returns the DOM element id used for injected
 // non-critical stylesheet links.
-func NonCriticalCSSLinkElementID(parsedConfig *waveconfig.ParsedConfig) string {
+func NonCriticalCSSLinkElementID(parsedConfig waveconfig.ParsedConfig) string {
 	state := StateForConfig(parsedConfig)
 	if state == nil ||
 		strings.TrimSpace(state.NonCriticalCSSLinkElementID) == "" {
 		return defaultNonCriticalCSSLinkElementID
 	}
 	return state.NonCriticalCSSLinkElementID
-}
-
-// ParsedConfig returns the canonical parsed config reconstructed from raw Wave
-// config JSON.
-func ParsedConfig(
-	rawConfigJSON []byte,
-) *waveconfig.ParsedConfig {
-	return parseConfigFromRawJSON(rawConfigJSON)
-}
-
-// BuildtimeParsedConfig returns the canonical buildtime parsed config
-// reconstructed from raw config JSON.
-func BuildtimeParsedConfig(
-	rawConfigJSON []byte,
-) *waveconfig.ParsedConfig {
-	return parseConfigFromRawJSON(rawConfigJSON)
-}
-
-func parseConfigFromRawJSON(
-	rawConfigJSON []byte,
-) *waveconfig.ParsedConfig {
-	if len(rawConfigJSON) == 0 {
-		return nil
-	}
-
-	parsedConfigCache.mu.RLock()
-	if parsedConfigCache.parsedConfig != nil &&
-		bytes.Equal(parsedConfigCache.rawConfigJSON, rawConfigJSON) {
-		cachedParsedConfig := parsedConfigCache.parsedConfig
-		parsedConfigCache.mu.RUnlock()
-		return cachedParsedConfig
-	}
-	parsedConfigCache.mu.RUnlock()
-
-	parsedConfig, parseError := waveconfig.ParseConfigJSON(
-		rawConfigJSON,
-	)
-	if parseError != nil {
-		panic(
-			fmt.Sprintf(
-				"waveframework: parse runtime WaveConfigJSON: %v",
-				parseError,
-			),
-		)
-	}
-
-	parsedConfigCache.mu.Lock()
-	defer parsedConfigCache.mu.Unlock()
-	if parsedConfigCache.parsedConfig != nil &&
-		bytes.Equal(parsedConfigCache.rawConfigJSON, rawConfigJSON) {
-		return parsedConfigCache.parsedConfig
-	}
-	previousParsedConfig := parsedConfigCache.parsedConfig
-	if previousParsedConfig != nil {
-		configStateByParsedConfig.Delete(previousParsedConfig)
-	}
-	parsedConfigCache.rawConfigJSON = append(
-		parsedConfigCache.rawConfigJSON[:0],
-		rawConfigJSON...,
-	)
-	parsedConfigCache.parsedConfig = parsedConfig
-	return parsedConfig
 }

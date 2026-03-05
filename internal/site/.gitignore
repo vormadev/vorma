@@ -1,7 +1,7 @@
 # Wave
-backend/dist/static/*
-!backend/dist/static/.keep
-backend/dist/main*
+backend/.wavedist/static/*
+!backend/.wavedist/static/.keep
+backend/.wavedist/main*
 
 # Generated docs (from README sync)
 backend/assets/markdown/docs/~/

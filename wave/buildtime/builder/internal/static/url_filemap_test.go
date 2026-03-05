@@ -23,7 +23,7 @@ func testHashedOutputURL(fileName string) string {
 }
 
 func TestPublicURLBuildtime_ReturnsErrorWhenMapIsMissing(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -42,7 +42,7 @@ func TestPublicURLBuildtime_ReturnsErrorWhenMapIsMissing(t *testing.T) {
 }
 
 func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -54,7 +54,7 @@ func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
 			ContentHash: testHashedOutputName("images_logo_deadbeef.png"),
 		},
 	}
-	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -73,7 +73,7 @@ func TestPublicURLBuildtime_ReturnsErrorWhenLookupMisses(t *testing.T) {
 }
 
 func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -85,7 +85,7 @@ func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 			ContentHash: testHashedOutputName("images_logo_deadbeef.png"),
 		},
 	}
-	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -107,7 +107,7 @@ func TestPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 }
 
 func TestMustPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -125,7 +125,7 @@ func TestMustPublicURLBuildtime_PanicsWhenMapIsMissing(t *testing.T) {
 }
 
 func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -137,7 +137,7 @@ func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
 			ContentHash: testHashedOutputName("images_logo_deadbeef.png"),
 		},
 	}
-	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -153,7 +153,7 @@ func TestMustPublicURLBuildtime_PanicsWhenLookupMisses(t *testing.T) {
 }
 
 func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -165,7 +165,7 @@ func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 			ContentHash: testHashedOutputName("images_logo_deadbeef.png"),
 		},
 	}
-	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestMustPublicURLBuildtime_ResolvesMappedPath(t *testing.T) {
 }
 
 func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, t.TempDir())
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
@@ -197,7 +197,7 @@ func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
 			IsPrehashed: true,
 		},
 	}
-	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := staticProcessor.SaveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -225,14 +225,14 @@ func TestPublicFileMapViews_ExcludePrehashedEntries(t *testing.T) {
 
 func TestPublicFileMapKeys_BuildsFileMapWhenMissing(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForURLFileMapTestsAtRoot(root)
+	cfg := newParsedConfigForURLFileMapTestsAtRoot(t, root)
 	staticProcessor := static.NewProcessor(
 		cfg,
 		newDiscardLoggerForURLFileMapTests(),
 	)
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -263,6 +263,9 @@ func newDiscardLoggerForURLFileMapTests() *slog.Logger {
 	return wavetest.NewDiscardLogger()
 }
 
-func newParsedConfigForURLFileMapTestsAtRoot(root string) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+func newParsedConfigForURLFileMapTestsAtRoot(
+	t testing.TB,
+	root string,
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }

@@ -10,10 +10,10 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/artifactio"
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
-	"github.com/vormadev/vorma/internal/artifactio"
 	"github.com/vormadev/vorma/vormabuild/internal/buildlifecycle"
 	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
@@ -365,7 +365,7 @@ func TestWriteRouteArtifacts_ReturnsWrappedErrorForEachArtifactStep(
 		func(fixture *testkit.BuildTestFixture) {
 			testkit.MustWriteFile(
 				t,
-				fixture.App.Config.TSGenOutDir,
+				fixture.App.Config.TSGenOutDir(),
 				[]byte("file blocks tsgen out dir"),
 			)
 		},
@@ -598,7 +598,7 @@ func TestWriteRouteArtifacts_OnlyCommitsRouteManifestFileOnSuccess(
 		func(fixture *testkit.BuildTestFixture) {
 			testkit.MustWriteFile(
 				t,
-				fixture.App.Config.TSGenOutDir,
+				fixture.App.Config.TSGenOutDir(),
 				[]byte("file blocks tsgen out dir"),
 			)
 		},
@@ -846,7 +846,7 @@ func TestWriteRouteArtifacts_RestoresStageOnePathsArtifactAfterGeneratedTypeScri
 
 	testkit.MustWriteFile(
 		t,
-		app.Config.TSGenOutDir,
+		app.Config.TSGenOutDir(),
 		[]byte("file blocks tsgen out dir"),
 	)
 
@@ -902,7 +902,7 @@ func TestWriteRouteArtifacts_RemovesStageOnePathsArtifactWhenNoPreviousState(
 
 	testkit.MustWriteFile(
 		t,
-		app.Config.TSGenOutDir,
+		app.Config.TSGenOutDir(),
 		[]byte("file blocks tsgen out dir"),
 	)
 
@@ -955,7 +955,7 @@ func TestWriteRouteArtifacts_JoinsStageOnePathsCleanupErrorWithDownstreamWriteEr
 
 	testkit.MustWriteFile(
 		t,
-		app.Config.TSGenOutDir,
+		app.Config.TSGenOutDir(),
 		[]byte("file blocks tsgen out dir"),
 	)
 

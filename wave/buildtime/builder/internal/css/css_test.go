@@ -12,8 +12,11 @@ import (
 	"github.com/vormadev/vorma/wave/waveconfig"
 )
 
-func newParsedConfigForCSSPackageTestsAtRoot(root string) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+func newParsedConfigForCSSPackageTestsAtRoot(
+	t testing.TB,
+	root string,
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func TestValidateCSSConfig(t *testing.T) {
@@ -21,18 +24,18 @@ func TestValidateCSSConfig(t *testing.T) {
 		t.Fatal("expected ValidateCSSConfig(nil) to fail")
 	}
 
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, t.TempDir())
 	if validateError := css.ValidateCSSConfig(cfg); validateError != nil {
 		t.Fatalf("expected empty CSS config to validate: %v", validateError)
 	}
 
-	cfg.Core.CSSEntryFiles.Critical = "styles/main.txt"
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, "styles/main.txt")
 	if validateError := css.ValidateCSSConfig(cfg); validateError == nil {
 		t.Fatal("expected non-.css critical entry to fail validation")
 	}
 
-	cfg.Core.CSSEntryFiles.Critical = "styles/main.css"
-	cfg.Core.CSSEntryFiles.NonCritical = "styles/main.css"
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, "styles/main.css")
+	wavetest.SetCoreNonCriticalCSSEntryFile(cfg, "styles/main.css")
 	if validateError := css.ValidateCSSConfig(cfg); validateError == nil {
 		t.Fatal("expected critical/non-critical collision to fail validation")
 	}
@@ -40,19 +43,19 @@ func TestValidateCSSConfig(t *testing.T) {
 
 func TestProcessor_ReadHotReloadOutputs(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
-	cfg.Core.PublicPathPrefix = "/assets"
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, root)
+	wavetest.SetCorePublicPathPrefix(cfg, "/assets")
 
-	if mkdirError := os.MkdirAll(cfg.Dist.Static(), 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Dist().Static(), 0o755); mkdirError != nil {
 		t.Fatalf("mkdir dist static: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(filepath.Dir(cfg.Dist.CriticalCSS()), 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(filepath.Dir(cfg.Dist().CriticalCSS()), 0o755); mkdirError != nil {
 		t.Fatalf("mkdir critical css dir: %v", mkdirError)
 	}
-	if writeError := os.WriteFile(cfg.Dist.CriticalCSS(), []byte("body { color: blue; }"), 0o644); writeError != nil {
+	if writeError := os.WriteFile(cfg.Dist().CriticalCSS(), []byte("body { color: blue; }"), 0o644); writeError != nil {
 		t.Fatalf("write critical css: %v", writeError)
 	}
-	if writeError := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte("normal/main.css"), 0o644); writeError != nil {
+	if writeError := os.WriteFile(cfg.Dist().NormalCSSRef(), []byte("normal/main.css"), 0o644); writeError != nil {
 		t.Fatalf("write normal css ref: %v", writeError)
 	}
 
@@ -83,7 +86,7 @@ func TestProcessor_ReadHotReloadOutputs(t *testing.T) {
 }
 
 func TestProcessor_ListTrackedCriticalCSSImportPaths(t *testing.T) {
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, t.TempDir())
 	processor := css.NewProcessor(cfg, nil, nil)
 
 	firstPath := filepath.Join(t.TempDir(), "b.css")
@@ -101,8 +104,8 @@ func TestProcessor_ListTrackedCriticalCSSImportPaths(t *testing.T) {
 
 func TestProcessor_BuildCriticalAndNormalCSS(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
-	cfg.Core.PublicPathPrefix = "/assets"
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, root)
+	wavetest.SetCorePublicPathPrefix(cfg, "/assets")
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "src", waveartifacts.CriticalCSSFileName),
@@ -113,14 +116,14 @@ func TestProcessor_BuildCriticalAndNormalCSS(t *testing.T) {
 		t.Fatalf("mkdir src dir: %v", mkdirError)
 	}
 	if writeError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`body { background-image: url("images/logo.png"); }`),
 		0o644,
 	); writeError != nil {
 		t.Fatalf("write critical entry: %v", writeError)
 	}
 	if writeError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`.app { color: black; }`),
 		0o644,
 	); writeError != nil {
@@ -167,7 +170,7 @@ func TestProcessor_BuildCriticalAndNormalCSS(t *testing.T) {
 		)
 	}
 
-	refBytes, readRefError := os.ReadFile(cfg.Dist.NormalCSSRef())
+	refBytes, readRefError := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if readRefError != nil {
 		t.Fatalf("read normal CSS ref: %v", readRefError)
 	}
@@ -188,8 +191,8 @@ func TestProcessor_BuildCriticalCSSOnly_LeavesProtocolRelativeURLsUntouched(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
-	cfg.Core.PublicPathPrefix = "/assets"
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, root)
+	wavetest.SetCorePublicPathPrefix(cfg, "/assets")
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "src", waveartifacts.CriticalCSSFileName),
@@ -200,7 +203,7 @@ func TestProcessor_BuildCriticalCSSOnly_LeavesProtocolRelativeURLsUntouched(
 		t.Fatalf("mkdir src dir: %v", mkdirError)
 	}
 	if writeError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`body { background-image: url("//cdn.example.com/logo.png"); }`),
 		0o644,
 	); writeError != nil {
@@ -254,7 +257,7 @@ func TestProcessor_IsCSSFileAndImportTracking(t *testing.T) {
 		"normal_import.css",
 	)
 
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, root)
 	wavetest.SetCSSEntryFiles(cfg, criticalPath, normalPath)
 
 	processor := css.NewProcessor(cfg, nil, nil)
@@ -317,16 +320,16 @@ func TestProcessor_IsCSSFileAndImportTracking(t *testing.T) {
 
 func TestProcessor_ReloadCachedOutputs(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForCSSPackageTestsAtRoot(root)
-	cfg.Core.PublicPathPrefix = "/assets"
+	cfg := newParsedConfigForCSSPackageTestsAtRoot(t, root)
+	wavetest.SetCorePublicPathPrefix(cfg, "/assets")
 
-	if mkdirError := os.MkdirAll(filepath.Dir(cfg.Dist.CriticalCSS()), 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(filepath.Dir(cfg.Dist().CriticalCSS()), 0o755); mkdirError != nil {
 		t.Fatalf("mkdir critical css dir: %v", mkdirError)
 	}
-	if writeError := os.WriteFile(cfg.Dist.CriticalCSS(), []byte(".app { color: red; }"), 0o644); writeError != nil {
+	if writeError := os.WriteFile(cfg.Dist().CriticalCSS(), []byte(".app { color: red; }"), 0o644); writeError != nil {
 		t.Fatalf("write critical css output: %v", writeError)
 	}
-	if writeError := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte("css/app.css"), 0o644); writeError != nil {
+	if writeError := os.WriteFile(cfg.Dist().NormalCSSRef(), []byte("css/app.css"), 0o644); writeError != nil {
 		t.Fatalf("write normal css ref output: %v", writeError)
 	}
 

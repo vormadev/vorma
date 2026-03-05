@@ -27,7 +27,6 @@ import (
 	"github.com/vormadev/vorma/vormabuild/internal/routeparse"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
 	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 // RunOptions configures how a single build-inner run should execute.
@@ -668,7 +667,7 @@ func (executor buildInnerPublicFileMapExecutor) writePublicFileMapTypeScript(
 			if processPublicFilesError := writer.ProcessPublicFilesOnly(); processPublicFilesError != nil {
 				return processPublicFilesError
 			}
-			return writer.WritePublicFileMapTS(v.Config.TSGenOutDir)
+			return writer.WritePublicFileMapTS(v.Config.TSGenOutDir())
 		},
 	)
 }
@@ -744,12 +743,12 @@ func readCanonicalWavePublicFileMap(
 		return nil, errors.New("vorma runtime is nil")
 	}
 
-	parsedConfig := waveframework.BuildtimeParsedConfig(v.Wave.RawConfigJSON())
+	parsedConfig := v.Wave.ParsedConfig()
 	if parsedConfig == nil {
 		return nil, errors.New("wave build config is nil")
 	}
 
-	refFileBytes, readRefError := os.ReadFile(parsedConfig.Dist.PublicFileMapRef())
+	refFileBytes, readRefError := os.ReadFile(parsedConfig.Dist().PublicFileMapRef())
 	if readRefError != nil {
 		return nil, fmt.Errorf("read canonical public filemap ref: %w", readRefError)
 	}
@@ -769,11 +768,11 @@ func readCanonicalWavePublicFileMap(
 	}
 
 	canonicalJSONPath := filepath.Join(
-		parsedConfig.Dist.StaticPublic(),
+		parsedConfig.Dist().StaticPublic(),
 		filepath.FromSlash(referencedFileName),
 	)
 	relativePathFromPublicRoot, relativePathError := filepath.Rel(
-		parsedConfig.Dist.StaticPublic(),
+		parsedConfig.Dist().StaticPublic(),
 		canonicalJSONPath,
 	)
 	if relativePathError != nil {

@@ -250,6 +250,140 @@ var App = &vorma.Vorma{}
 	)
 
 	t.Run(
+		"ignores direct nestedmux/mux AddTaskHandler registrations",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.RootDir)
+
+			testkit.MustWriteFile(t, "backend/src/router/context.go", []byte(`
+package router
+
+import (
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
+)
+
+var LoadersRouter = nestedmux.NewRouter(nil)
+var ActionsRouter = mux.NewRouter()
+
+var LoaderHandler = mux.TaskHandlerFromFunc(func(*mux.ReqData[mux.None]) (string, error) {
+	return "", nil
+})
+
+var ActionHandler = mux.TaskHandlerFromFunc(func(*mux.ReqData[mux.None]) (string, error) {
+	return "", nil
+})
+`))
+
+			testkit.MustWriteFile(t, "backend/src/router/routes.go", []byte(`
+package router
+
+import (
+	"github.com/vormadev/vorma/kit/mux"
+	"github.com/vormadev/vorma/kit/nestedmux"
+)
+
+var _ = nestedmux.AddTaskHandler(
+	LoadersRouter,
+	"/nestedmux-direct",
+	LoaderHandler,
+)
+
+var _ = mux.AddTaskHandler(
+	ActionsRouter,
+	"POST",
+	"/mux-direct",
+	ActionHandler,
+)
+`))
+
+			overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.App)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if overlay != nil {
+				t.Fatal(
+					"expected no overlay when only direct mux/nestedmux registrations are present",
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"prepares overlay sources for route registrations outside router package",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.RootDir)
+
+			testkit.MustWriteFile(t, "backend/src/feature/routes.go", []byte(`
+package feature
+
+import "github.com/vormadev/vorma"
+
+var App = &vorma.Vorma{}
+
+func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
+	return rd
+}
+
+var _ = vorma.DefineLoaderForRegistration(App, "/outside-router", nil, decorateLoaderCtx)
+`))
+
+			overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.App)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if overlay == nil {
+				t.Fatal("expected overlay for discovered registrations")
+			}
+
+			generatedFilePath := filepath.Join(
+				fixture.RootDir,
+				"backend/src/feature",
+				registraroverlay.GeneratedFilename,
+			)
+			if _, err := os.Stat(generatedFilePath); !os.IsNotExist(err) {
+				t.Fatalf(
+					"expected no consumer-visible generated registrar file, stat err=%v",
+					err,
+				)
+			}
+
+			overlayReplacementSource := readOverlayReplacementSourceForGeneratedTargetPath(
+				t,
+				overlay,
+				generatedFilePath,
+			)
+			if !strings.Contains(
+				overlayReplacementSource,
+				`vormagogen.RegisterLoaderDiscoveredByBuild(App, "/outside-router", nil, decorateLoaderCtx)`,
+			) {
+				t.Fatalf(
+					"overlay source missing loader registration call:\n%s",
+					overlayReplacementSource,
+				)
+			}
+
+			overlayDirectoryPath := filepath.Dir(overlay.GoOverlayConfigPath())
+			if err := overlay.Cleanup(); err != nil {
+				t.Fatalf("cleanup overlay temporary files: %v", err)
+			}
+			if _, err := os.Stat(overlayDirectoryPath); !os.IsNotExist(err) {
+				t.Fatalf(
+					"expected overlay temp dir to be removed, stat err=%v",
+					err,
+				)
+			}
+		},
+	)
+
+	t.Run(
 		"prepares overlay sources without writing consumer registrar files",
 		func(t *testing.T) {
 			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
@@ -377,6 +511,164 @@ var _ = registerActionAtPath("POST", "/submit", nil)
 				t.Fatalf(
 					"expected overlay temp dir to be removed, stat err=%v",
 					err,
+				)
+			}
+		},
+	)
+
+	t.Run(
+		"prepares overlay for imported helper wrappers across packages",
+		func(t *testing.T) {
+			repositoryRootDir := testkit.MustResolveRepositoryRootDir(t)
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.RootDir)
+
+			testkit.MustWriteFile(t, "go.mod", []byte(fmt.Sprintf(`
+module wrappertest
+
+go 1.24
+
+require github.com/vormadev/vorma v0.0.0
+
+replace github.com/vormadev/vorma => %s
+`, filepath.ToSlash(repositoryRootDir))))
+
+			testkit.MustWriteFile(t, "backend/src/app/app.go", []byte(`
+package app
+
+import "github.com/vormadev/vorma"
+
+var App = &vorma.Vorma{}
+`))
+
+			testkit.MustWriteFile(
+				t,
+				"backend/src/define/loader/loader.go",
+				[]byte(`
+package loader
+
+import (
+	appcfg "wrappertest/backend/src/app"
+
+	"github.com/vormadev/vorma"
+)
+
+type Ctx struct {
+	*vorma.LoaderReqData
+}
+
+func Define[O any](
+	pattern string,
+	loaderFunc func(*Ctx) (O, error),
+) *vorma.Loader[O] {
+	return vorma.DefineLoaderForRegistration(
+		appcfg.App,
+		pattern,
+		loaderFunc,
+		func(rd *vorma.LoaderReqData) *Ctx {
+			return &Ctx{LoaderReqData: rd}
+		},
+	)
+}
+`),
+			)
+
+			testkit.MustWriteFile(t, "backend/src/content/routes.go", []byte(`
+package content
+
+import loaderhelpers "wrappertest/backend/src/define/loader"
+
+var _ = loaderhelpers.Define(
+	"/cross-package",
+	func(*loaderhelpers.Ctx) (string, error) {
+		return "ok", nil
+	},
+)
+`))
+			testkit.MustWriteFile(t, "backend/cmd/check/main.go", []byte(`
+package main
+
+import _ "wrappertest/backend/src/content"
+
+func main() {}
+`))
+
+			overlay, err := prepareDiscoveredRouteRegistrarOverlay(fixture.App)
+			if err != nil {
+				t.Fatalf(
+					"prepareDiscoveredRouteRegistrarOverlay returned error: %v",
+					err,
+				)
+			}
+			if overlay == nil {
+				t.Fatal("expected overlay for discovered registrations")
+			}
+
+			generatedFilePath := filepath.Join(
+				fixture.RootDir,
+				"backend/src/content",
+				registraroverlay.GeneratedFilename,
+			)
+			overlayReplacementSource := readOverlayReplacementSourceForGeneratedTargetPath(
+				t,
+				overlay,
+				generatedFilePath,
+			)
+			if !strings.Contains(
+				overlayReplacementSource,
+				`vorma.RegisterDiscoveredLoaderTask(appcfg.App, "/cross-package",`,
+			) {
+				t.Fatalf(
+					"overlay source missing cross-package discovered registration call:\n%s",
+					overlayReplacementSource,
+				)
+			}
+			if !strings.Contains(
+				overlayReplacementSource,
+				`loaderhelpers.Define(`,
+			) {
+				t.Fatalf(
+					"overlay source missing wrapper task expression:\n%s",
+					overlayReplacementSource,
+				)
+			}
+			if strings.Contains(
+				overlayReplacementSource,
+				`_ = vorma.RegisterDiscoveredLoaderTask(`,
+			) {
+				t.Fatalf(
+					"overlay source must emit direct discovered registration calls, found blank-identifier assignment:\n%s",
+					overlayReplacementSource,
+				)
+			}
+
+			compiledBinaryPath := filepath.Join(
+				fixture.RootDir,
+				"backend",
+				"dist",
+				"check_wrapper_registration",
+			)
+			if runtime.GOOS == "windows" {
+				compiledBinaryPath += ".exe"
+			}
+			buildOutput, buildErr := testkit.RunCommandAndCaptureOutput(
+				fixture.RootDir,
+				"go",
+				"build",
+				"-mod=mod",
+				"-overlay="+overlay.GoOverlayConfigPath(),
+				"-o",
+				compiledBinaryPath,
+				"./backend/cmd/check",
+			)
+			if cleanupErr := overlay.Cleanup(); cleanupErr != nil {
+				t.Fatalf("cleanup discovered overlay: %v", cleanupErr)
+			}
+			if buildErr != nil {
+				t.Fatalf(
+					"go build with discovered wrapper overlay failed: %v\n%s",
+					buildErr,
+					buildOutput,
 				)
 			}
 		},
@@ -678,38 +970,37 @@ package backend
 import (
 	"os"
 
-	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/wave"
 )
 
 var waveFS = os.DirFS(".")
 
 var Wave = wave.New(wave.Config{
-	WaveConfigJSON: fsutil.MustReadFile(waveFS, "backend/wave.config.json"),
-	DistStaticFS:   fsutil.MustSub(waveFS, "backend", "dist", "static"),
+	FS:         waveFS,
+	ConfigPath: "backend/wave.config.json",
 })
 `))
 
 			testkit.MustWriteFile(t, "backend/wave.config.json", []byte(`
 {
 	"Core": {
-		"MainAppEntry": "backend/cmd/check",
-		"DistDir": "backend/dist",
+		"ProjectID": "backend-route-registration-generation-test",
+		"MainAppEntry": "cmd/check",
 		"StaticAssetDirs": {
-			"Private": "backend/assets/private",
-			"Public": "backend/assets/public"
+			"Private": "assets/private",
+			"Public": "assets/public"
 		},
 		"PublicPathPrefix": "/",
 		"ServerOnlyMode": true
 	},
 	"Vorma": {
-		"MainBuildEntry": "backend/cmd/build",
+		"MainBuildEntry": "cmd/build",
 		"UIVariant": "react",
 		"HTMLTemplateLocation": "entry.go.html",
-		"ClientEntry": "frontend/src/vorma.entry.tsx",
-		"ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
-		"ServerRouteDefinitionPatterns": ["backend/src/router/**/*.go"],
-		"TSGenOutDir": "frontend/src/vorma.gen",
+		"ClientEntry": "../frontend/src/vorma.entry.tsx",
+		"ClientRouteDefinitionPatterns": ["../frontend/src/**/*vorma.routes.ts"],
+		"ServerRouteDefinitionPatterns": ["src/**/*.go"],
+		"TSGenOutDir": "../frontend/src/vorma.gen",
 		"BuildtimePublicURLFuncName": "waveBuildtimeURL"
 	}
 }
@@ -742,7 +1033,7 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 
 			testkit.MustWriteFile(
 				t,
-				"backend/src/lib/version/version.go",
+				"backend/lib/version/version.go",
 				[]byte(`
 package version
 
@@ -757,7 +1048,7 @@ package router
 
 import (
 	"cachee2e/backend/src/app"
-	"cachee2e/backend/src/lib/version"
+	"cachee2e/backend/lib/version"
 
 	"github.com/vormadev/vorma"
 )
@@ -914,7 +1205,7 @@ func main() {
 
 			testkit.MustWriteFile(
 				t,
-				"backend/src/lib/version/version.go",
+				"backend/lib/version/version.go",
 				[]byte(`
 package version
 

@@ -21,16 +21,31 @@ func newDiscardLoggerForBuilderBasicTests() *slog.Logger {
 }
 
 func newParsedConfigForBuilderBasicTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func ensureViteConfigForBuilderBasicTests(
 	t *testing.T,
-	config *waveconfig.ParsedConfig,
+	config waveconfig.ParsedConfig,
 ) {
 	wavetest.EnsureViteConfig(t, config)
+}
+
+func compileSuccessMainPackagePathForBuilderBasicTests(t *testing.T) string {
+	t.Helper()
+	compileSuccessMainPackagePath, compileSuccessMainPackagePathError := filepath.Abs(
+		filepath.Join("testdata", "compile_success_main"),
+	)
+	if compileSuccessMainPackagePathError != nil {
+		t.Fatalf(
+			"resolve compile-success package path: %v",
+			compileSuccessMainPackagePathError,
+		)
+	}
+	return compileSuccessMainPackagePath
 }
 
 func TestBuilderClose_ReturnsNil(t *testing.T) {
@@ -40,7 +55,7 @@ func TestBuilderClose_ReturnsNil(t *testing.T) {
 	}
 
 	builderForTest := NewBuilder(
-		newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir()),
+		newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir()),
 		newDiscardLoggerForBuilderBasicTests(),
 	)
 	if closeError := builderForTest.Close(); closeError != nil {
@@ -148,7 +163,7 @@ func TestBuildGoBuildCommand_IncludesOverlayArgumentWhenProvided(t *testing.T) {
 }
 
 func TestBuilderViteMethods_NoViteConfigured(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	builderForTest := NewBuilder(
 		config,
 		newDiscardLoggerForBuilderBasicTests(),
@@ -178,8 +193,8 @@ func TestBuilderViteMethods_NoViteConfigured(t *testing.T) {
 }
 
 func TestBuilderProcessFilesOnly_ServerOnlyMode(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	builderForTest := NewBuilder(
 		config,
@@ -195,8 +210,8 @@ func TestBuilderProcessFilesOnly_ServerOnlyMode(t *testing.T) {
 	}
 
 	requiredPaths := []string{
-		config.Dist.Static(),
-		config.Dist.Internal(),
+		config.Dist().Static(),
+		config.Dist().Internal(),
 	}
 	for _, requiredPath := range requiredPaths {
 		if _, statError := os.Stat(requiredPath); statError != nil {
@@ -209,25 +224,77 @@ func TestBuilderProcessFilesOnly_ServerOnlyMode(t *testing.T) {
 	}
 }
 
+func TestSetupDistDir_CreatesMissingDistRootAndKeepFile(
+	t *testing.T,
+) {
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+
+	if removeDistRootError := os.RemoveAll(config.Dist().Root()); removeDistRootError != nil {
+		t.Fatalf("remove dist root before setup: %v", removeDistRootError)
+	}
+
+	if setupError := SetupDistDir(config); setupError != nil {
+		t.Fatalf("SetupDistDir returned error: %v", setupError)
+	}
+
+	requiredPaths := []string{
+		config.Dist().Root(),
+		config.Dist().Static(),
+		config.Dist().Internal(),
+		config.Dist().StaticPublic(),
+		config.Dist().StaticPrivate(),
+		config.Dist().KeepFile(),
+	}
+	for _, requiredPath := range requiredPaths {
+		if _, statError := os.Stat(requiredPath); statError != nil {
+			t.Fatalf(
+				"expected dist setup path to exist: %q (error: %v)",
+				requiredPath,
+				statError,
+			)
+		}
+	}
+}
+
+func TestSetupDistDir_RecreatesKeepFileWhenMissing(
+	t *testing.T,
+) {
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+
+	if setupError := SetupDistDir(config); setupError != nil {
+		t.Fatalf("initial SetupDistDir returned error: %v", setupError)
+	}
+	if removeKeepFileError := os.Remove(config.Dist().KeepFile()); removeKeepFileError != nil {
+		t.Fatalf("remove keep file before repair test: %v", removeKeepFileError)
+	}
+
+	if setupError := SetupDistDir(config); setupError != nil {
+		t.Fatalf("repair SetupDistDir returned error: %v", setupError)
+	}
+	if _, keepFileStatError := os.Stat(config.Dist().KeepFile()); keepFileStatError != nil {
+		t.Fatalf("expected keep file to be recreated: %v", keepFileStatError)
+	}
+}
+
 func TestSetupDistDir_PreservesExistingPrivateOwnedOutputDirectories(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 
 	nonLegacyWaveOutDirectoryPath := filepath.Join(
-		config.Dist.StaticPrivate(),
+		config.Dist().StaticPrivate(),
 		waveartifacts.HashedOutputDirname,
 	)
 	legacyVormaOutDirectoryPath := filepath.Join(
-		config.Dist.StaticPrivate(),
+		config.Dist().StaticPrivate(),
 		"vorma_out",
 	)
 	currentWaveInternalDirectoryPath := filepath.Join(
-		config.Dist.StaticPrivate(),
+		config.Dist().StaticPrivate(),
 		waveartifacts.WaveInternalDirname,
 	)
 	currentVormaInternalDirectoryPath := filepath.Join(
-		config.Dist.StaticPrivate(),
+		config.Dist().StaticPrivate(),
 		"vorma_owned",
 	)
 
@@ -345,7 +412,7 @@ func TestSetupDistDir_PreservesExistingPrivateOwnedOutputDirectories(
 func TestBuilderIsCSSFile_ReturnsTrueForTrackedCriticalAndNormalImports(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	builderForTest := NewBuilder(
 		config,
 		newDiscardLoggerForBuilderBasicTests(),
@@ -393,7 +460,7 @@ func TestBuilderIsCSSFile_ReturnsTrueForTrackedCriticalAndNormalImports(
 func TestBuilderListTrackedCriticalCSSImportPaths_ReturnsSortedPaths(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	builderForTest := NewBuilder(
 		config,
 		newDiscardLoggerForBuilderBasicTests(),
@@ -416,10 +483,9 @@ func TestBuilderListTrackedCriticalCSSImportPaths_ReturnsSortedPaths(
 }
 
 func TestBuilderCompileGo_PropagatesCompilationError(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.MainAppEntry = "this/package/does/not/exist"
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreMainAppEntry(config, "this/package/does/not/exist")
 
 	builderForTest := NewBuilder(
 		config,
@@ -437,10 +503,12 @@ func TestBuilderCompileGo_PropagatesCompilationError(t *testing.T) {
 }
 
 func TestBuilderCompileGo_LogsInfoStartAndDoneOnSuccess(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.MainAppEntry = "./testdata/compile_success_main"
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreMainAppEntry(
+		config,
+		compileSuccessMainPackagePathForBuilderBasicTests(t),
+	)
 
 	var compileLogBuffer bytes.Buffer
 	builderForTest := NewBuilder(
@@ -476,10 +544,9 @@ func TestBuilderCompileGo_LogsInfoStartAndDoneOnSuccess(t *testing.T) {
 func TestBuilderCompileGo_UsesFrameworkOverlayPreparationAndCleanup(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.MainAppEntry = "this/package/does/not/exist"
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreMainAppEntry(config, "this/package/does/not/exist")
 
 	overlayConfigPath := filepath.Join(t.TempDir(), "go-overlay.json")
 	if writeOverlayError := os.WriteFile(
@@ -522,9 +589,8 @@ func TestBuilderCompileGo_UsesFrameworkOverlayPreparationAndCleanup(
 }
 
 func TestBuilderCompileGo_PropagatesOverlayPreparationError(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	expectedOverlayPreparationError := errors.New("prepare overlay boom")
 	waveframework.StateForConfig(config).PrepareGoBuildOverlay = func() (*waveframework.GoBuildOverlay, error) {
@@ -557,10 +623,9 @@ func TestBuilderCompileGo_PropagatesOverlayPreparationError(t *testing.T) {
 func TestBuilderCompileGo_CompileFailureIncludesOverlayCleanupFailure(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.MainAppEntry = "this/package/does/not/exist"
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreMainAppEntry(config, "this/package/does/not/exist")
 
 	waveframework.StateForConfig(config).PrepareGoBuildOverlay = func() (*waveframework.GoBuildOverlay, error) {
 		return &waveframework.GoBuildOverlay{
@@ -600,10 +665,12 @@ func TestBuilderCompileGo_CompileFailureIncludesOverlayCleanupFailure(
 func TestBuilderCompileGo_SuccessfulCompileStillReturnsOverlayCleanupFailure(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.MainAppEntry = "github.com/vormadev/vorma/internal/cmd/sum"
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreMainAppEntry(
+		config,
+		compileSuccessMainPackagePathForBuilderBasicTests(t),
+	)
 
 	waveframework.StateForConfig(config).PrepareGoBuildOverlay = func() (*waveframework.GoBuildOverlay, error) {
 		return &waveframework.GoBuildOverlay{
@@ -629,7 +696,7 @@ func TestBuilderCompileGo_SuccessfulCompileStillReturnsOverlayCleanupFailure(
 	) {
 		t.Fatalf("expected cleanup failure error, got: %v", compileError)
 	}
-	if _, statError := os.Stat(config.Dist.Binary()); statError != nil {
+	if _, statError := os.Stat(config.Dist().Binary()); statError != nil {
 		t.Fatalf(
 			"expected go binary to exist when compilation succeeds before cleanup failure, stat error: %v",
 			statError,
@@ -638,10 +705,9 @@ func TestBuilderCompileGo_SuccessfulCompileStillReturnsOverlayCleanupFailure(
 }
 
 func TestBuilderViteProdBuild_ErrorIsReturned(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	ensureViteConfigForBuilderBasicTests(t, config)
-	config.Vite.JSPackageManagerBaseCmd = "command_that_does_not_exist_for_wave_tests"
-	config.Dist.Root = config.Core.DistDir
+	wavetest.SetViteJSPackageManagerBaseCmd(config, "command_that_does_not_exist_for_wave_tests")
 
 	builderForTest := NewBuilder(
 		config,
@@ -658,11 +724,10 @@ func TestBuilderViteProdBuild_ErrorIsReturned(t *testing.T) {
 }
 
 func TestBuilderNewViteDevContext_WithViteEnabledReturnsContext(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	ensureViteConfigForBuilderBasicTests(t, config)
-	config.Vite.JSPackageManagerBaseCmd = "echo"
-	config.Vite.DefaultPort = 5199
-	config.Dist.Root = config.Core.DistDir
+	wavetest.SetViteJSPackageManagerBaseCmd(config, "echo")
+	wavetest.SetViteDefaultPort(config, 5199)
 
 	builderForTest := NewBuilder(
 		config,

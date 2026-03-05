@@ -9,7 +9,7 @@ It does not depend on `internal/site`.
 
 - Runs the same browser tests against:
     - `dev` mode (`go run ./backend/cmd/build --dev`)
-    - `prod` mode (build + compiled binary under `backend/dist/main`)
+    - `prod` mode (build + compiled binary under `backend/.wavedist/main`)
 - Runs across UI adapters:
     - `solid` (full stress suite)
     - `react` (full stress suite)

@@ -16,7 +16,6 @@ import (
 	"github.com/vormadev/vorma/wave/buildtime/builder"
 	"github.com/vormadev/vorma/wave/buildtime/devserver"
 	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 // Options configures one wavebuild execution.
@@ -54,7 +53,7 @@ func RunWithOptions(w *wave.Wave, options Options) error {
 		w.SetModeToDev()
 	}
 
-	buildtimeConfig := waveframework.BuildtimeParsedConfig(w.RawConfigJSON())
+	buildtimeConfig := w.ParsedConfig()
 	if buildtimeConfig == nil {
 		return errors.New("wave build config is required")
 	}
@@ -73,6 +72,7 @@ func RunWithOptions(w *wave.Wave, options Options) error {
 	if options.Dev {
 		if runDevelopmentError := devserver.RunDev(
 			buildtimeConfig,
+			w.ConfigFile(),
 			w.Logger(),
 		); runDevelopmentError != nil {
 			return fmt.Errorf(
@@ -130,7 +130,7 @@ func parseCommandOptions(commandLineArgs []string) (commandOptions, error) {
 }
 
 func runHookOnlyBuild(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 	runInDevelopmentMode bool,
 ) error {
@@ -140,7 +140,7 @@ func runHookOnlyBuild(
 }
 
 func runProductionBuild(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 	skipGoBinaryBuildStep bool,
 ) error {

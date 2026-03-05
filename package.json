@@ -136,7 +136,7 @@
 		"@types/node": "^22.19.11",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
-		"@typescript/native-preview": "7.0.0-dev.20250716.1",
+		"@typescript/native-preview": "7.0.0-dev.20260303.1",
 		"@vitest/coverage-v8": "^4.0.18",
 		"esbuild": "^0.25.12",
 		"esbuild-plugin-solid": "^0.6.0",

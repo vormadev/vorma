@@ -2,13 +2,18 @@ package runloop_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"github.com/vormadev/vorma/wave/waveframework"
 	"github.com/vormadev/vorma/wave/wavewatch"
-	"log/slog"
-	"strings"
-	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
@@ -23,13 +28,13 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-func isConfigFileForRunloopTests(cfg *waveconfig.ParsedConfig, path string) bool {
-	if cfg == nil || cfg.Core == nil {
+func isConfigFileForRunloopTests(configFilePath string, path string) bool {
+	if strings.TrimSpace(configFilePath) == "" {
 		return false
 	}
 	return classification.IsConfigurationPathChange(
 		path,
-		cfg.Core.ConfigLocation,
+		configFilePath,
 	)
 }
 
@@ -92,13 +97,13 @@ func classifyEventWithWatcherAndBuilderForRunloopTests(
 }
 
 func classifyWatcherEventsForProcessingForRunloopTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	watcherEvents []fsnotify.Event,
 	watcherForClassification *watch.Watcher,
 	builderForClassification *builder.Builder,
 ) ([]eventpipeline.ClassifiedEvent, bool) {
 	classifiedEvents, configChanged := classifyWatcherEventsFromPreClassificationPlanForRunloopTests(
-		cfg,
+		configFilePath,
 		watcherEvents,
 		watcherForClassification,
 		builderForClassification,
@@ -112,7 +117,7 @@ func classifyWatcherEventsForProcessingForRunloopTests(
 }
 
 func classifyWatcherEventsFromPreClassificationPlanForRunloopTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	watcherEvents []fsnotify.Event,
 	watcherForClassification *watch.Watcher,
 	builderForClassification *builder.Builder,
@@ -127,7 +132,7 @@ func classifyWatcherEventsFromPreClassificationPlanForRunloopTests(
 		len(deduplicatedEvents),
 	)
 	for _, watcherEvent := range deduplicatedEvents {
-		if isConfigFileForRunloopTests(cfg, watcherEvent.Name) &&
+		if isConfigFileForRunloopTests(configFilePath, watcherEvent.Name) &&
 			isConfigMutationWatcherEventForRunloopTests(watcherEvent) {
 			return nil, true
 		}
@@ -144,13 +149,13 @@ func classifyWatcherEventsFromPreClassificationPlanForRunloopTests(
 }
 
 func buildEventExecutionPlanForRunloopTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	watcherEvents []fsnotify.Event,
 	watcherForPlan *watch.Watcher,
 	builderForPlan *builder.Builder,
 ) eventpipeline.EventExecutionPlanningResult {
 	classifiedEvents, configChanged := classifyWatcherEventsForProcessingForRunloopTests(
-		cfg,
+		configFilePath,
 		watcherEvents,
 		watcherForPlan,
 		builderForPlan,
@@ -174,7 +179,7 @@ func buildEventExecutionPlanForRunloopTests(
 }
 
 func resolveHookCommandForRunloopTests(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 	hook wavewatch.OnChangeHook,
 ) string {
 	if !hook.RunCombinedDevBuildHookCommands {
@@ -194,7 +199,7 @@ func resolveHookCommandForRunloopTests(
 }
 
 func resolveHookExecutionPlanForRunloopTests(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 	hook wavewatch.OnChangeHook,
 ) hooks.HookExecutionPlan {
 	if !hook.RunCombinedDevBuildHookCommands || parsedConfig == nil ||
@@ -210,7 +215,9 @@ func resolveHookExecutionPlanForRunloopTests(
 		)
 	}
 
-	frameworkBuildHookRunner := waveframework.StateForConfig(parsedConfig).RunBuildHook
+	frameworkBuildHookRunner := waveframework.StateForConfig(
+		parsedConfig,
+	).RunBuildHook
 	userAndExplicitCommand := hooks.ResolveSequentialShellCommands(
 		hook.Cmd,
 		getUserDevBuildHookForRunloopTests(parsedConfig),
@@ -261,16 +268,16 @@ func resolveHookExecutionPlanForRunloopTests(
 }
 
 func getUserDevBuildHookForRunloopTests(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 ) string {
-	if parsedConfig == nil || parsedConfig.Core == nil {
+	if parsedConfig == nil || parsedConfig.Core() == nil {
 		return ""
 	}
-	return parsedConfig.Core.DevBuildHook
+	return parsedConfig.Core().DevBuildHook()
 }
 
 func getFrameworkDevBuildHookForRunloopTests(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 ) string {
 	if parsedConfig == nil {
 		return ""
@@ -359,11 +366,12 @@ func runNoWaitHookWithConcurrencyLimitForRunloopTests(
 }
 
 type runloopTestServer struct {
-	Cfg     *waveconfig.ParsedConfig
-	Log     *slog.Logger
-	Mu      sync.Mutex
-	Builder *builder.Builder
-	Watcher *watch.Watcher
+	Cfg            waveconfig.ParsedConfig
+	ConfigFilePath string
+	Log            *slog.Logger
+	Mu             sync.Mutex
+	Builder        *builder.Builder
+	Watcher        *watch.Watcher
 
 	RestartIntents *restartengine.RestartIntentAccumulator
 
@@ -379,15 +387,17 @@ type runloopTestServer struct {
 }
 
 func newRunloopTestServer(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
+	configFilePath string,
 ) *runloopTestServer {
 	if log == nil {
 		log = slog.Default()
 	}
 	return &runloopTestServer{
-		Cfg: cfg,
-		Log: log,
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            log,
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -501,7 +511,7 @@ func (server *runloopTestServer) BuildEventExecutionPlan(
 		return eventpipeline.EventExecutionPlanningResult{}
 	}
 	return buildEventExecutionPlanForRunloopTests(
-		server.Cfg,
+		server.ConfigFilePath,
 		events,
 		watcherForPlan,
 		builderForPlan,
@@ -643,6 +653,8 @@ func (server *runloopTestServer) ExecuteBuildPhase(
 	}
 
 	var buildGroup errgroup.Group
+	publicFileMapArtifactsChangedOrRepaired := false
+	shouldTrackPublicFileMapArtifacts := executionDecision.PublicStaticProcessing.ShouldProcess()
 
 	if executionDecision.CompileGo {
 		buildGroup.Go(func() error {
@@ -663,12 +675,34 @@ func (server *runloopTestServer) ExecuteBuildPhase(
 		executionDecision,
 	) {
 		buildGroup.Go(func() error {
+			publicFileMapArtifactSnapshotBefore := publicFileMapArtifactSnapshot{}
+			if shouldTrackPublicFileMapArtifacts {
+				snapshotBefore, snapshotBeforeError := snapshotPublicFileMapArtifactsForRunloopTests(
+					server.Cfg.Dist().PublicFileMapRef(),
+					server.Cfg.Dist().StaticPublic(),
+				)
+				if snapshotBeforeError != nil {
+					return snapshotBeforeError
+				}
+				publicFileMapArtifactSnapshotBefore = snapshotBefore
+			}
+
 			if publicProcessingError := eventpipeline.ExecuteStaticFileProcessingForBuildPhase(
 				builderInstance.ProcessPublicFilesOnly,
 				builderInstance.ProcessPublicFilesOnlyForChangedPaths,
 				executionDecision.PublicStaticProcessing,
 			); publicProcessingError != nil {
 				return publicProcessingError
+			}
+			if shouldTrackPublicFileMapArtifacts {
+				snapshotAfter, snapshotAfterError := snapshotPublicFileMapArtifactsForRunloopTests(
+					server.Cfg.Dist().PublicFileMapRef(),
+					server.Cfg.Dist().StaticPublic(),
+				)
+				if snapshotAfterError != nil {
+					return snapshotAfterError
+				}
+				publicFileMapArtifactsChangedOrRepaired = snapshotAfter != publicFileMapArtifactSnapshotBefore
 			}
 			if privateProcessingError := eventpipeline.ExecuteStaticFileProcessingForBuildPhase(
 				builderInstance.ProcessPrivateFilesOnly,
@@ -681,7 +715,98 @@ func (server *runloopTestServer) ExecuteBuildPhase(
 		})
 	}
 
-	return buildGroup.Wait()
+	if buildError := buildGroup.Wait(); buildError != nil {
+		return buildError
+	}
+
+	if shouldTrackPublicFileMapArtifacts &&
+		!publicFileMapArtifactsChangedOrRepaired &&
+		work.Browser.Action == eventpipeline.BrowserPhaseActionInvalidateVite {
+		work.Browser = eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionNone,
+		}
+	}
+
+	return nil
+}
+
+type publicFileMapArtifactSnapshot struct {
+	RefExists           bool
+	RefTarget           string
+	CanonicalJSONExists bool
+	CanonicalJSONHash   string
+}
+
+func snapshotPublicFileMapArtifactsForRunloopTests(
+	publicFileMapRefPath string,
+	staticPublicRootPath string,
+) (publicFileMapArtifactSnapshot, error) {
+	snapshot := publicFileMapArtifactSnapshot{}
+
+	refBytes, readRefError := os.ReadFile(publicFileMapRefPath)
+	if readRefError != nil {
+		if errors.Is(readRefError, os.ErrNotExist) {
+			return snapshot, nil
+		}
+		return snapshot, readRefError
+	}
+	snapshot.RefExists = true
+	snapshot.RefTarget = strings.TrimSpace(string(refBytes))
+
+	canonicalOutputPath, hasCanonicalOutputPath := resolvePublicOutputPathFromRefTargetForRunloopTests(
+		staticPublicRootPath,
+		snapshot.RefTarget,
+	)
+	if !hasCanonicalOutputPath {
+		return snapshot, nil
+	}
+
+	canonicalOutputBytes, readCanonicalOutputError := os.ReadFile(
+		canonicalOutputPath,
+	)
+	if readCanonicalOutputError != nil {
+		if errors.Is(readCanonicalOutputError, os.ErrNotExist) {
+			return snapshot, nil
+		}
+		return snapshot, readCanonicalOutputError
+	}
+	snapshot.CanonicalJSONExists = true
+	canonicalOutputHash := sha256.Sum256(canonicalOutputBytes)
+	snapshot.CanonicalJSONHash = hex.EncodeToString(canonicalOutputHash[:])
+	return snapshot, nil
+}
+
+func resolvePublicOutputPathFromRefTargetForRunloopTests(
+	staticPublicRootPath string,
+	refTarget string,
+) (string, bool) {
+	normalizedRefTarget := filepath.ToSlash(filepath.Clean(strings.TrimSpace(refTarget)))
+	if normalizedRefTarget == "" ||
+		normalizedRefTarget == "." ||
+		normalizedRefTarget == ".." ||
+		strings.HasPrefix(normalizedRefTarget, "../") {
+		return "", false
+	}
+
+	resolvedOutputPath := filepath.Join(
+		staticPublicRootPath,
+		filepath.FromSlash(normalizedRefTarget),
+	)
+	relativeOutputPathFromRoot, relativeOutputPathError := filepath.Rel(
+		staticPublicRootPath,
+		resolvedOutputPath,
+	)
+	if relativeOutputPathError != nil {
+		return "", false
+	}
+	normalizedRelativeOutputPath := filepath.ToSlash(relativeOutputPathFromRoot)
+	if normalizedRelativeOutputPath == "." ||
+		normalizedRelativeOutputPath == ".." ||
+		strings.HasPrefix(normalizedRelativeOutputPath, "../") {
+		return "", false
+	}
+
+	return resolvedOutputPath, true
 }
 
 func (server *runloopTestServer) BuildRunloopEngine() *runloop.Engine {

@@ -49,11 +49,11 @@ func TestWaveToolingViteHelperProcess(t *testing.T) {
 func TestCycleVite_RestartsRunningViteProcess(t *testing.T) {
 	t.Setenv(testViteHelperProcessEnv, "1")
 
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = helperViteBaseCommand(t)
-	cfg.Vite.DefaultPort = 5199
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, helperViteBaseCommand(t))
+	wavetest.SetViteDefaultPort(cfg, 5199)
 
 	builderForTest := builder.NewBuilder(
 		cfg,
@@ -103,11 +103,11 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(
 ) {
 	t.Setenv(testViteHelperProcessEnv, "1")
 
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = helperViteBaseCommand(t)
-	cfg.Vite.DefaultPort = 5199
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, helperViteBaseCommand(t))
+	wavetest.SetViteDefaultPort(cfg, 5199)
 
 	builderForTest := builder.NewBuilder(
 		cfg,
@@ -176,9 +176,9 @@ func TestBroadcastReload_WithCycleVite_RestartsThenBroadcastsOnce(
 }
 
 func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	appPort := mustConfigureAndGetWaveAppPortForRunloopTests(t)
 	appListener, listenError := net.Listen(
@@ -272,8 +272,8 @@ func TestBroadcastReload_WaitsForAppAndViteBeforeBroadcast(t *testing.T) {
 func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	occupiedListener, listenError := net.Listen("tcp", ":0")
 	if listenError != nil {
@@ -326,8 +326,8 @@ func TestStartRefreshServer_FallsBackWhenPreferredPortIsUnavailable(
 }
 
 func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	t.Setenv("__WAVE_REFRESH_SERVER_PORT", "")
 
@@ -366,8 +366,8 @@ func TestStartRefreshServer_NoOpWhenServerOnlyMode(t *testing.T) {
 }
 
 func TestStartRefreshServer_SetsAndClearsRefreshPortEnvironment(t *testing.T) {
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	t.Setenv("__WAVE_REFRESH_SERVER_PORT", "")
 
@@ -408,9 +408,12 @@ func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(
 	mustConfigureAndGetWaveAppPortForRunloopTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root")
+	missingResolveRoot := filepath.Join(root, "missing-resolve-root")
+	cfg := newParsedConfigForRunloopOrchestrationTestsAtRoot(
+		t,
+		missingResolveRoot,
+	)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	serverForTest := &Server{
 		Cfg: cfg,
@@ -422,7 +425,7 @@ func TestServerRun_BrowserModeInitWatcherFailureCleansRefreshResources(
 
 	runError := serverForTest.Run()
 	if runError == nil {
-		t.Fatal("expected Run to fail when watch root does not exist")
+		t.Fatal("expected Run to fail when resolve root does not exist")
 	}
 	if !strings.Contains(runError.Error(), "init watcher") {
 		t.Fatalf("unexpected Run error: %v", runError)
@@ -662,9 +665,10 @@ func setupRefreshWebsocketForRunloopOrchestrationTests(
 }
 
 func newParsedConfigForRunloopOrchestrationTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func mustConfigureAndGetWaveAppPortForRunloopTests(t *testing.T) int {

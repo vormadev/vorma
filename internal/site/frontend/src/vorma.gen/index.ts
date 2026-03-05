@@ -145,10 +145,10 @@ export const vormaViteConfig = {
 	],
 	publicPathPrefix,
 	buildtimePublicURLFuncName: "hashedURL",
-	distDir: "backend/dist",
+	distDir: "backend/.wavedist",
 	ignoredPatterns: [
 		"**/*.go",
-		"**/backend/dist/**/*",
+		"**/backend/.wavedist/**/*",
 		"**/backend/assets/**/*",
 		"**/frontend/src/vorma.gen/**/*",
 		"**/backend/wave.config.json",

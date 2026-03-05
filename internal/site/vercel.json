@@ -2,10 +2,10 @@
 	"$schema": "https://openapi.vercel.sh/vercel.json",
 	"installCommand": "make vercel-install",
 	"buildCommand": "make vercel-build",
-	"outputDirectory": "backend/dist/static/assets/public",
+	"outputDirectory": "backend/.wavedist/static/assets/public",
 	"functions": {
 		"api/proxy.rs": {
-			"includeFiles": "backend/{dist/main,wave.config.json}"
+			"includeFiles": "backend/{.wavedist/main,wave.config.json}"
 		}
 	},
 	"rewrites": [

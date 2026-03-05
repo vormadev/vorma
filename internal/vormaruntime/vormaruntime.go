@@ -139,7 +139,7 @@ func (v *Vorma) DevReloadRoutesEndpointPath() string {
 		return runtimeconfig.DefaultDevReloadRoutesEndpointPath
 	}
 	return runtimeconfig.ResolveDevReloadRoutesEndpointPath(
-		v.Config.DevReloadRoutesEndpointPath,
+		v.Config.DevReloadRoutesEndpointPath(),
 	)
 }
 
@@ -150,7 +150,7 @@ func (v *Vorma) DevReloadTemplateEndpointPath() string {
 		return runtimeconfig.DefaultDevReloadTemplateEndpointPath
 	}
 	return runtimeconfig.ResolveDevReloadTemplateEndpointPath(
-		v.Config.DevReloadTemplateEndpointPath,
+		v.Config.DevReloadTemplateEndpointPath(),
 	)
 }
 
@@ -161,7 +161,7 @@ func (v *Vorma) TemplateDataKeyHeadElements() string {
 		return runtimeconfig.DefaultTemplateDataKeyHeadElements
 	}
 	return runtimeconfig.ResolveTemplateDataKeyHeadElements(
-		v.Config.TemplateDataKeyHeadElements,
+		v.Config.TemplateDataKeyHeadElements(),
 	)
 }
 
@@ -172,7 +172,7 @@ func (v *Vorma) TemplateDataKeyBodyScripts() string {
 		return runtimeconfig.DefaultTemplateDataKeyBodyScripts
 	}
 	return runtimeconfig.ResolveTemplateDataKeyBodyScripts(
-		v.Config.TemplateDataKeyBodyScripts,
+		v.Config.TemplateDataKeyBodyScripts(),
 	)
 }
 
@@ -183,7 +183,7 @@ func (v *Vorma) TemplateDataKeySSRScript() string {
 		return runtimeconfig.DefaultTemplateDataKeySSRScript
 	}
 	return runtimeconfig.ResolveTemplateDataKeySSRScript(
-		v.Config.TemplateDataKeySSRScript,
+		v.Config.TemplateDataKeySSRScript(),
 	)
 }
 
@@ -194,7 +194,7 @@ func (v *Vorma) TemplateDataKeySSRScriptHash() string {
 		return runtimeconfig.DefaultTemplateDataKeySSRScriptHash
 	}
 	return runtimeconfig.ResolveTemplateDataKeySSRScriptHash(
-		v.Config.TemplateDataKeySSRScriptHash,
+		v.Config.TemplateDataKeySSRScriptHash(),
 	)
 }
 
@@ -205,7 +205,7 @@ func (v *Vorma) TemplateDataKeyRootElementID() string {
 		return runtimeconfig.DefaultTemplateDataKeyRootElementID
 	}
 	return runtimeconfig.ResolveTemplateDataKeyRootElementID(
-		v.Config.TemplateDataKeyRootElementID,
+		v.Config.TemplateDataKeyRootElementID(),
 	)
 }
 
@@ -215,7 +215,7 @@ func (v *Vorma) ClientRootElementID() string {
 		return runtimeconfig.DefaultClientRootElementID
 	}
 	return runtimeconfig.ResolveClientRootElementID(
-		v.Config.ClientRootElementID,
+		v.Config.ClientRootElementID(),
 	)
 }
 
@@ -242,9 +242,9 @@ func (v *Vorma) buildLoadersHTMLResponseBytes(
 			ClientRootElementID:          v.ClientRootElementID(),
 			PublicPathPrefix:             v.Wave.PublicPathPrefix(),
 			RefreshScript:                v.Wave.RefreshScript(),
-			ClientEntry:                  v.Config.ClientEntry,
+			ClientEntry:                  v.Config.ClientEntry(),
 			UseReactVariant: UIVariant(
-				v.Config.UIVariant,
+				v.Config.UIVariant(),
 			) == UIVariantReact,
 		},
 	)
@@ -370,8 +370,9 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 		v.Log = colorlog.New("vorma")
 	}
 
-	config, configErr := runtimeconfig.ParseAndValidateVormaConfig(
+	config, configErr := runtimeconfig.ParseVormaConfigJSON(
 		v.Wave.RawConfigJSON(),
+		v.Wave.ParsedConfig(),
 	)
 	if configErr != nil {
 		panic(configErr)
@@ -549,7 +550,7 @@ type (
 type Vorma struct {
 	*wave.Wave
 
-	Config *VormaConfig
+	Config VormaConfig
 	Log    *slog.Logger
 
 	actionsRouter *ActionsRouter
@@ -867,6 +868,9 @@ const (
 
 // VormaConfig aliases runtimeconfig Vorma config schema.
 type VormaConfig = runtimeconfig.VormaConfig
+
+// VormaConfigJSON aliases raw runtimeconfig Vorma JSON wire schema.
+type VormaConfigJSON = runtimeconfig.VormaConfigJSON
 
 // Output prefix constants.
 const (
@@ -1243,7 +1247,7 @@ func (v *Vorma) devReloadTemplateFromDisk() error {
 	v.mu.RLock()
 	isDev := v._isDev
 	privateFS := v._privateFS
-	rootTemplateLocation := v.Config.HTMLTemplateLocation
+	rootTemplateLocation := v.Config.HTMLTemplateLocation()
 	v.mu.RUnlock()
 
 	if err := guardDevOnlyReload(isDev, "template reload"); err != nil {
@@ -1356,7 +1360,7 @@ func (v *Vorma) initInner(isDev bool) error {
 	}
 	tmpl, err := runtimepaths.ParseRootTemplateFromFS(
 		privateFS,
-		v.Config.HTMLTemplateLocation,
+		v.Config.HTMLTemplateLocation(),
 	)
 	if err != nil {
 		return fmt.Errorf("error parsing root template: %w", err)

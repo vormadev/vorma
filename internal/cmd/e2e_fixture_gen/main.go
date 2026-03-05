@@ -14,6 +14,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/coalescepath"
 	"github.com/vormadev/vorma/lab/coalescecmd"
+	"github.com/vormadev/vorma/wave/waveconfig"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -218,7 +219,89 @@ func canReuseExistingFixtureProject(options commandOptions) (bool, error) {
 		}
 	}
 
+	waveConfigFilePath := filepath.Join(
+		options.outputDirectoryPath,
+		"backend",
+		"wave.config.json",
+	)
+	if _, parseWaveConfigError := waveconfig.ParseConfigFile(
+		waveConfigFilePath,
+	); parseWaveConfigError != nil {
+		return false, nil
+	}
+
+	fixtureHasRolldownBindingPackage, fixtureHasRolldownBindingPackageError :=
+		doesFixtureNodeModulesContainRolldownBindingPackage(options)
+	if fixtureHasRolldownBindingPackageError != nil {
+		return false, fixtureHasRolldownBindingPackageError
+	}
+	if !fixtureHasRolldownBindingPackage {
+		return false, nil
+	}
+
 	return true, nil
+}
+
+func doesFixtureNodeModulesContainRolldownBindingPackage(
+	options commandOptions,
+) (bool, error) {
+	rolldownBindingPackagePathMatches, globError := filepath.Glob(
+		filepath.Join(
+			options.outputDirectoryPath,
+			"node_modules",
+			"@rolldown",
+			"binding-*",
+		),
+	)
+	if globError != nil {
+		return false, fmt.Errorf(
+			"glob fixture rolldown binding package paths: %w",
+			globError,
+		)
+	}
+
+	for _, rolldownBindingPackagePath := range rolldownBindingPackagePathMatches {
+		rolldownBindingPackageInfo, statPackageError := os.Stat(
+			rolldownBindingPackagePath,
+		)
+		if statPackageError != nil {
+			if os.IsNotExist(statPackageError) {
+				continue
+			}
+			return false, fmt.Errorf(
+				"stat fixture rolldown binding package path %q: %w",
+				rolldownBindingPackagePath,
+				statPackageError,
+			)
+		}
+		if !rolldownBindingPackageInfo.IsDir() {
+			continue
+		}
+
+		rolldownBindingPackageManifestPath := filepath.Join(
+			rolldownBindingPackagePath,
+			"package.json",
+		)
+		rolldownBindingPackageManifestInfo, statManifestError := os.Stat(
+			rolldownBindingPackageManifestPath,
+		)
+		if statManifestError != nil {
+			if os.IsNotExist(statManifestError) {
+				continue
+			}
+			return false, fmt.Errorf(
+				"stat fixture rolldown binding package manifest %q: %w",
+				rolldownBindingPackageManifestPath,
+				statManifestError,
+			)
+		}
+		if rolldownBindingPackageManifestInfo.IsDir() {
+			continue
+		}
+		return true, nil
+	}
+
+	return false, nil
 }
 
 func reusableFixtureRequiredEntryRelativePaths() []string {

@@ -58,7 +58,7 @@ type CSSBuildOptions struct {
 
 // Builder owns build pipelines for go, CSS, static files, and schema output.
 type Builder struct {
-	cfg *waveconfig.ParsedConfig
+	cfg waveconfig.ParsedConfig
 	log *slog.Logger
 
 	cssProcessor    *css.Processor
@@ -69,7 +69,7 @@ type Builder struct {
 }
 
 // NewBuilder creates a build orchestrator for one parsed config.
-func NewBuilder(cfg *waveconfig.ParsedConfig, log *slog.Logger) *Builder {
+func NewBuilder(cfg waveconfig.ParsedConfig, log *slog.Logger) *Builder {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -92,27 +92,27 @@ func NewBuilder(cfg *waveconfig.ParsedConfig, log *slog.Logger) *Builder {
 	}
 }
 
-func newBuildLock(cfg *waveconfig.ParsedConfig) *wavelock.DevLock {
+func newBuildLock(cfg waveconfig.ParsedConfig) *wavelock.DevLock {
 	if cfg == nil {
 		return nil
 	}
-	return wavelock.NewBuildLock(cfg.Dist.Static())
+	return wavelock.NewBuildLock(cfg.Dist().Static())
 }
 
-func newBuildOutputLedger(cfg *waveconfig.ParsedConfig) *outputledger.Ledger {
+func newBuildOutputLedger(cfg waveconfig.ParsedConfig) *outputledger.Ledger {
 	if cfg == nil {
 		return nil
 	}
 	return outputledger.New(
-		cfg.Dist.Static(),
-		cfg.Dist.BuildOutputLedger(),
+		cfg.Dist().Static(),
+		cfg.Dist().BuildOutputLedger(),
 	)
 }
 
 // RecordBuildOutputPaths appends output file paths into the shared build
 // output ledger for the provided config.
 func RecordBuildOutputPaths(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	outputPaths []string,
 ) error {
 	if cfg == nil {
@@ -150,16 +150,16 @@ func resolveGoBuildEntryPath(entryPath string) string {
 }
 
 func (builder *Builder) viteBuildContext() *vitecmd.BuildCtx {
-	if builder == nil || builder.cfg == nil || builder.cfg.Vite == nil {
+	if builder == nil || builder.cfg == nil || builder.cfg.Vite() == nil {
 		return nil
 	}
 	return vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
-		JSPackageManagerBaseCmd: builder.cfg.Vite.JSPackageManagerBaseCmd,
-		JSPackageManagerCmdDir:  builder.cfg.Vite.JSPackageManagerCmdDir,
-		OutDir:                  builder.cfg.Dist.StaticPublic(),
+		JSPackageManagerBaseCmd: builder.cfg.Vite().JSPackageManagerBaseCmd(),
+		JSPackageManagerCmdDir:  builder.cfg.Vite().JSPackageManagerCmdDir(),
+		OutDir:                  builder.cfg.Dist().StaticPublic(),
 		ManifestOut:             builder.cfg.ViteManifestPath(),
-		DefaultPort:             builder.cfg.Vite.DefaultPort,
-		ViteConfigFile:          builder.cfg.Vite.ViteConfigFile,
+		DefaultPort:             builder.cfg.Vite().DefaultPort(),
+		ViteConfigFile:          builder.cfg.Vite().ViteConfigFile(),
 	})
 }
 
@@ -221,7 +221,7 @@ func (builder *Builder) processFiles(granular bool, isDev bool) error {
 	}
 
 	if !granular {
-		staticDirectoryPath := builder.cfg.Dist.Static()
+		staticDirectoryPath := builder.cfg.Dist().Static()
 		directoryEntries, readDirectoryError := os.ReadDir(staticDirectoryPath)
 		if readDirectoryError != nil &&
 			!errors.Is(readDirectoryError, os.ErrNotExist) {
@@ -449,8 +449,8 @@ func (builder *Builder) collectCurrentWaveOutputPathsForLedger() ([]string, erro
 	outputPaths := make([]string, 0, 32)
 
 	publicOutputs, publicOutputError := builder.collectStaticFileMapOutputsForLedger(
-		builder.cfg.Dist.PublicFileMapGob(),
-		builder.cfg.Dist.StaticPublic(),
+		builder.cfg.Dist().PublicFileMapGob(),
+		builder.cfg.Dist().StaticPublic(),
 	)
 	if publicOutputError != nil {
 		return nil, publicOutputError
@@ -458,8 +458,8 @@ func (builder *Builder) collectCurrentWaveOutputPathsForLedger() ([]string, erro
 	outputPaths = append(outputPaths, publicOutputs...)
 
 	privateOutputs, privateOutputError := builder.collectStaticFileMapOutputsForLedger(
-		builder.cfg.Dist.PrivateFileMapGob(),
-		builder.cfg.Dist.StaticPrivate(),
+		builder.cfg.Dist().PrivateFileMapGob(),
+		builder.cfg.Dist().StaticPrivate(),
 	)
 	if privateOutputError != nil {
 		return nil, privateOutputError
@@ -468,32 +468,32 @@ func (builder *Builder) collectCurrentWaveOutputPathsForLedger() ([]string, erro
 
 	outputPaths = appendFilePathIfExists(
 		outputPaths,
-		builder.cfg.Dist.PublicFileMapGob(),
+		builder.cfg.Dist().PublicFileMapGob(),
 	)
 	outputPaths = appendFilePathIfExists(
 		outputPaths,
-		builder.cfg.Dist.PrivateFileMapGob(),
+		builder.cfg.Dist().PrivateFileMapGob(),
 	)
 	outputPaths = appendFilePathIfExists(
 		outputPaths,
-		builder.cfg.Dist.CriticalCSS(),
+		builder.cfg.Dist().CriticalCSS(),
 	)
 	outputPaths = appendFilePathIfExists(
 		outputPaths,
-		builder.cfg.Dist.NormalCSSRef(),
+		builder.cfg.Dist().NormalCSSRef(),
 	)
 	outputPaths = appendFilePathIfExists(
 		outputPaths,
-		builder.cfg.Dist.PublicFileMapRef(),
+		builder.cfg.Dist().PublicFileMapRef(),
 	)
 	outputPaths = appendFilePathIfExists(
 		outputPaths,
-		filepath.Join(builder.cfg.Dist.Internal(), "schema.json"),
+		filepath.Join(builder.cfg.Dist().Internal(), "schema.json"),
 	)
 
 	normalCSSFromRef, resolveNormalCSSFromRefError := resolveReferencedPublicOutputPathFromRefFile(
-		builder.cfg.Dist.NormalCSSRef(),
-		builder.cfg.Dist.StaticPublic(),
+		builder.cfg.Dist().NormalCSSRef(),
+		builder.cfg.Dist().StaticPublic(),
 	)
 	if resolveNormalCSSFromRefError != nil {
 		return nil, resolveNormalCSSFromRefError
@@ -501,8 +501,8 @@ func (builder *Builder) collectCurrentWaveOutputPathsForLedger() ([]string, erro
 	outputPaths = appendFilePathIfExists(outputPaths, normalCSSFromRef)
 
 	publicFileMapFromRef, resolvePublicFileMapFromRefError := resolveReferencedPublicOutputPathFromRefFile(
-		builder.cfg.Dist.PublicFileMapRef(),
-		builder.cfg.Dist.StaticPublic(),
+		builder.cfg.Dist().PublicFileMapRef(),
+		builder.cfg.Dist().StaticPublic(),
 	)
 	if resolvePublicFileMapFromRefError != nil {
 		return nil, resolvePublicFileMapFromRefError
@@ -609,8 +609,8 @@ func (builder *Builder) sweepUnrecordedBuildOutputsFromLedger() error {
 		return errors.New("build output ledger is unavailable")
 	}
 	if sweepError := builder.outputLedger.SweepUnrecordedFiles([]string{
-		filepath.Join(builder.cfg.Dist.Static(), waveartifacts.AssetsDirname),
-		builder.cfg.Dist.Internal(),
+		filepath.Join(builder.cfg.Dist().Static(), waveartifacts.AssetsDirname),
+		builder.cfg.Dist().Internal(),
 	}); sweepError != nil {
 		return fmt.Errorf("sweep unrecorded build outputs: %w", sweepError)
 	}
@@ -690,7 +690,7 @@ func (builder *Builder) compileGoForMode(isDev bool) error {
 		}
 	}
 
-	binaryOutputPath := builder.cfg.Dist.Binary()
+	binaryOutputPath := builder.cfg.Dist().Binary()
 	if ensureDirectoryError := wavefs.EnsureDirectoryForFile(binaryOutputPath); ensureDirectoryError != nil {
 		if cleanupError := overlayCleanup(); cleanupError != nil {
 			return fmt.Errorf(
@@ -704,7 +704,7 @@ func (builder *Builder) compileGoForMode(isDev bool) error {
 
 	goBuildArguments := buildGoBuildArguments(
 		binaryOutputPath,
-		builder.cfg.Core.MainAppEntry,
+		builder.cfg.Core().MainAppEntry(),
 		isDev,
 		overlayConfigPath,
 	)
@@ -795,7 +795,7 @@ func (builder *Builder) LoadPublicFileMap() (wavefilemap.FileMap, error) {
 		return nil, errors.New("static processor is unavailable")
 	}
 	return builder.staticProcessor.LoadFileMapFromPath(
-		builder.cfg.Dist.PublicFileMapGob(),
+		builder.cfg.Dist().PublicFileMapGob(),
 	)
 }
 
@@ -865,24 +865,24 @@ func (builder *Builder) isCSSFile(path string) bool {
 
 // runBuildHooks executes configured user/framework build hooks.
 func (builder *Builder) runBuildHooks(isDev bool) error {
-	if builder == nil || builder.cfg == nil || builder.cfg.Core == nil {
+	if builder == nil || builder.cfg == nil || builder.cfg.Core() == nil {
 		return nil
 	}
 
 	userCommand := ""
 	frameworkCommand := ""
 	timeout := deriveBuildHookCommandTimeoutDuration(
-		builder.cfg.Core,
+		builder.cfg.Core(),
 		isDev,
 	)
 
 	if isDev {
-		userCommand = builder.cfg.Core.DevBuildHook
+		userCommand = builder.cfg.Core().DevBuildHook()
 		frameworkCommand = waveframework.StateForConfig(
 			builder.cfg,
 		).DevBuildHook
 	} else {
-		userCommand = builder.cfg.Core.ProdBuildHook
+		userCommand = builder.cfg.Core().ProdBuildHook()
 		frameworkCommand = waveframework.StateForConfig(builder.cfg).ProdBuildHook
 	}
 
@@ -935,25 +935,25 @@ func runBuildHookCommandWithTimeout(
 
 // deriveBuildHookCommandTimeoutDuration resolves build-hook timeout for mode.
 func deriveBuildHookCommandTimeoutDuration(
-	coreConfig *waveconfig.CoreConfig,
+	coreConfig waveconfig.CoreConfig,
 	isDev bool,
 ) time.Duration {
 	if coreConfig == nil {
 		return 0
 	}
 	if isDev {
-		if coreConfig.DevBuildHookTimeoutMilliseconds <= 0 {
+		if coreConfig.DevBuildHookTimeoutMilliseconds() <= 0 {
 			return 0
 		}
 		return time.Duration(
-			coreConfig.DevBuildHookTimeoutMilliseconds,
+			coreConfig.DevBuildHookTimeoutMilliseconds(),
 		) * time.Millisecond
 	}
-	if coreConfig.ProdBuildHookTimeoutMilliseconds <= 0 {
+	if coreConfig.ProdBuildHookTimeoutMilliseconds() <= 0 {
 		return 0
 	}
 	return time.Duration(
-		coreConfig.ProdBuildHookTimeoutMilliseconds,
+		coreConfig.ProdBuildHookTimeoutMilliseconds(),
 	) * time.Millisecond
 }
 
@@ -972,15 +972,27 @@ func deriveExecutionContextWithOptionalTimeout(
 }
 
 // SetupDistDir creates required dist directory structure and keep-file.
-func SetupDistDir(cfg *waveconfig.ParsedConfig) error {
+func SetupDistDir(cfg waveconfig.ParsedConfig) error {
 	if cfg == nil {
 		return errors.New("config is nil")
 	}
+	if cfg.Dist() == nil || strings.TrimSpace(cfg.Dist().Root()) == "" {
+		return errors.New("config: Dist.Root is required")
+	}
+
+	distRootPath := cfg.Dist().Root()
+	if mkdirDistRootError := os.MkdirAll(distRootPath, 0o755); mkdirDistRootError != nil {
+		return fmt.Errorf(
+			"create dist root directory %q: %w",
+			distRootPath,
+			mkdirDistRootError,
+		)
+	}
 
 	directories := []string{
-		cfg.Dist.Internal(),
-		cfg.Dist.StaticPublic(),
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().Internal(),
+		cfg.Dist().StaticPublic(),
+		cfg.Dist().StaticPrivate(),
 	}
 	for _, directoryPath := range directories {
 		if mkdirError := os.MkdirAll(directoryPath, 0o755); mkdirError != nil {
@@ -992,7 +1004,7 @@ func SetupDistDir(cfg *waveconfig.ParsedConfig) error {
 		}
 	}
 
-	keepPath := cfg.Dist.KeepFile()
+	keepPath := cfg.Dist().KeepFile()
 	if _, statError := os.Stat(keepPath); statError != nil {
 		if !errors.Is(statError, os.ErrNotExist) {
 			return statError
@@ -1013,76 +1025,79 @@ func (builder *Builder) ensureOutputDirectories() error {
 }
 
 // ValidateConfig validates configuration semantics needed by tooling build workflows.
-func ValidateConfig(cfg *waveconfig.ParsedConfig) error {
+func ValidateConfig(cfg waveconfig.ParsedConfig) error {
 	if cfg == nil {
 		return errors.New("config: parsed config is required")
 	}
-	if cfg.Core == nil {
+	if cfg.Core() == nil {
 		return errors.New("config: Core section is required")
 	}
-	if strings.TrimSpace(cfg.Core.MainAppEntry) == "" {
+	if strings.TrimSpace(cfg.Core().ProjectID()) == "" {
+		return errors.New("config: Core.ProjectID is required")
+	}
+	if strings.TrimSpace(cfg.Core().MainAppEntry()) == "" {
 		return errors.New("config: Core.MainAppEntry is required")
 	}
-	if strings.TrimSpace(cfg.Core.DistDir) == "" {
-		return errors.New("config: Core.DistDir is required")
+	if cfg.Dist() == nil || strings.TrimSpace(cfg.Dist().Root()) == "" {
+		return errors.New("config: Dist.Root is required")
 	}
 
 	if validateError := validateNonNegativeTimeoutFields(
 		[]timeoutFieldValidation{
 			{
 				fieldPath:           "Core.DevBuildHookTimeoutMilliseconds",
-				timeoutMilliseconds: cfg.Core.DevBuildHookTimeoutMilliseconds,
+				timeoutMilliseconds: cfg.Core().DevBuildHookTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Core.ProdBuildHookTimeoutMilliseconds",
-				timeoutMilliseconds: cfg.Core.ProdBuildHookTimeoutMilliseconds,
+				timeoutMilliseconds: cfg.Core().ProdBuildHookTimeoutMilliseconds(),
 			},
 		},
 	); validateError != nil {
 		return validateError
 	}
 
-	if !cfg.Core.ServerOnlyMode {
-		if strings.TrimSpace(cfg.Core.StaticAssetDirs.Private) == "" {
+	if !cfg.Core().ServerOnlyMode() {
+		if strings.TrimSpace(cfg.Core().StaticAssetDirsPrivate()) == "" {
 			return errors.New(
 				"config: Core.StaticAssetDirs.Private is required",
 			)
 		}
-		if strings.TrimSpace(cfg.Core.StaticAssetDirs.Public) == "" {
+		if strings.TrimSpace(cfg.Core().StaticAssetDirsPublic()) == "" {
 			return errors.New("config: Core.StaticAssetDirs.Public is required")
 		}
 	}
 
-	if cfg.Vite != nil &&
-		strings.TrimSpace(cfg.Vite.JSPackageManagerBaseCmd) == "" {
+	if cfg.Vite() != nil &&
+		strings.TrimSpace(cfg.Vite().JSPackageManagerBaseCmd()) == "" {
 		return errors.New("config: Vite.JSPackageManagerBaseCmd is required")
 	}
 
-	if validateError := validatePublicPathPrefix(cfg.Core.PublicPathPrefix); validateError != nil {
+	if validateError := validatePublicPathPrefix(cfg.Core().PublicPathPrefix()); validateError != nil {
 		return validateError
 	}
 	if validateError := css.ValidateCSSConfig(cfg); validateError != nil {
 		return validateError
 	}
 
-	if cfg.Watch == nil {
+	if cfg.Watch() == nil {
 		return nil
 	}
 
-	if validateError := validateHealthcheckEndpoint(cfg.Watch.HealthcheckEndpoint); validateError != nil {
+	if validateError := validateHealthcheckEndpoint(cfg.Watch().HealthcheckEndpoint()); validateError != nil {
 		return validateError
 	}
-	if validateError := validateHookStageFailurePolicy(cfg.Watch.HookStageFailurePolicy); validateError != nil {
+	if validateError := validateHookStageFailurePolicy(cfg.Watch().HookStageFailurePolicy()); validateError != nil {
 		return validateError
 	}
-	if validateError := validateHookCommandTimeoutConfig(cfg.Watch.HookCommandTimeouts); validateError != nil {
+	if validateError := validateHookCommandTimeoutConfig(cfg.Watch()); validateError != nil {
 		return validateError
 	}
-	if validateError := validateHookCallbackTimeoutConfig(cfg.Watch.HookCallbackTimeouts); validateError != nil {
+	if validateError := validateHookCallbackTimeoutConfig(cfg.Watch()); validateError != nil {
 		return validateError
 	}
 
-	for excludeDirectoryPatternIndex, excludeDirectoryPattern := range cfg.Watch.Exclude.Dirs {
+	for excludeDirectoryPatternIndex, excludeDirectoryPattern := range cfg.Watch().ExcludeDirs() {
 		if validateError := validateWatchGlobPattern(
 			fmt.Sprintf("Watch.Exclude.Dirs[%d]", excludeDirectoryPatternIndex),
 			excludeDirectoryPattern,
@@ -1090,7 +1105,7 @@ func ValidateConfig(cfg *waveconfig.ParsedConfig) error {
 			return validateError
 		}
 	}
-	for excludeFilePatternIndex, excludeFilePattern := range cfg.Watch.Exclude.Files {
+	for excludeFilePatternIndex, excludeFilePattern := range cfg.Watch().ExcludeFiles() {
 		if validateError := validateWatchGlobPattern(
 			fmt.Sprintf("Watch.Exclude.Files[%d]", excludeFilePatternIndex),
 			excludeFilePattern,
@@ -1099,7 +1114,7 @@ func ValidateConfig(cfg *waveconfig.ParsedConfig) error {
 		}
 	}
 
-	for includeWatchPatternIndex, watchedFile := range cfg.Watch.Include {
+	for includeWatchPatternIndex, watchedFile := range cfg.Watch().Include() {
 		if validateError := validateWatchedFile(
 			&watchedFile,
 			includeWatchPatternIndex,
@@ -1148,50 +1163,56 @@ func validateHookStageFailurePolicy(
 }
 
 func validateHookCommandTimeoutConfig(
-	hookCommandTimeouts waveconfig.HookCommandTimeoutConfig,
+	watchConfig waveconfig.WatchConfig,
 ) error {
+	if watchConfig == nil {
+		return nil
+	}
 	return validateNonNegativeTimeoutFields(
 		[]timeoutFieldValidation{
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.PreCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeouts.PreCommandTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.PreCommandTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.ConcurrentCommandTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.ConcurrentNoWaitCommandTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Watch.HookCommandTimeouts.PostCommandTimeoutMilliseconds",
-				timeoutMilliseconds: hookCommandTimeouts.PostCommandTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.PostCommandTimeoutMilliseconds(),
 			},
 		},
 	)
 }
 
 func validateHookCallbackTimeoutConfig(
-	hookCallbackTimeouts waveconfig.HookCallbackTimeoutConfig,
+	watchConfig waveconfig.WatchConfig,
 ) error {
+	if watchConfig == nil {
+		return nil
+	}
 	return validateNonNegativeTimeoutFields(
 		[]timeoutFieldValidation{
 			{
 				fieldPath:           "Watch.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeouts.PreCallbackTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.PreCallbackTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.ConcurrentCallbackTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Watch.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.ConcurrentNoWaitCallbackTimeoutMilliseconds(),
 			},
 			{
 				fieldPath:           "Watch.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds",
-				timeoutMilliseconds: hookCallbackTimeouts.PostCallbackTimeoutMilliseconds,
+				timeoutMilliseconds: watchConfig.PostCallbackTimeoutMilliseconds(),
 			},
 		},
 	)

@@ -3,8 +3,8 @@ package hooks_test
 import (
 	"context"
 	"errors"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"github.com/vormadev/vorma/wave/wavewatch"
 	"path/filepath"
 	"reflect"
@@ -789,20 +789,16 @@ func TestActionOrderingAndStageActionApplication(t *testing.T) {
 }
 
 func TestHookTimeoutResolutionPolicies_HooksPackage(t *testing.T) {
-	watchConfig := &waveconfig.WatchConfig{
-		HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-			PreCommandTimeoutMilliseconds:              111,
-			ConcurrentCommandTimeoutMilliseconds:       222,
-			ConcurrentNoWaitCommandTimeoutMilliseconds: 333,
-			PostCommandTimeoutMilliseconds:             444,
-		},
-		HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-			PreCallbackTimeoutMilliseconds:              555,
-			ConcurrentCallbackTimeoutMilliseconds:       666,
-			ConcurrentNoWaitCallbackTimeoutMilliseconds: 777,
-			PostCallbackTimeoutMilliseconds:             888,
-		},
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(cfg, 111)
+	wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(cfg, 222)
+	wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(cfg, 333)
+	wavetest.SetWatchPostCommandTimeoutMilliseconds(cfg, 444)
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(cfg, 555)
+	wavetest.SetWatchConcurrentCallbackTimeoutMilliseconds(cfg, 666)
+	wavetest.SetWatchConcurrentNoWaitCallbackTimeoutMilliseconds(cfg, 777)
+	wavetest.SetWatchPostCallbackTimeoutMilliseconds(cfg, 888)
+	watchConfig := cfg.Watch()
 
 	if got := hooks.DeriveHookCommandStageTimeoutMilliseconds(
 		watchConfig,
@@ -956,10 +952,10 @@ func TestHookTimeoutResolutionPolicies_HooksPackage(t *testing.T) {
 		)
 	}
 
-	coreConfig := &waveconfig.CoreConfig{
-		DevBuildHookTimeoutMilliseconds:  333,
-		ProdBuildHookTimeoutMilliseconds: 444,
-	}
+	coreConfigContainer := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetCoreDevBuildHookTimeoutMilliseconds(coreConfigContainer, 333)
+	wavetest.SetCoreProdBuildHookTimeoutMilliseconds(coreConfigContainer, 444)
+	coreConfig := coreConfigContainer.Core()
 	if got := hooks.DeriveBuildHookCommandTimeoutDuration(coreConfig, true); got != 333*time.Millisecond {
 		t.Fatalf("dev build timeout duration=%s, expected=333ms", got)
 	}

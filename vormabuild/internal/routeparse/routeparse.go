@@ -405,14 +405,14 @@ func (executor routeParsingExecutor) resolveClientRouteDefinitionFiles(
 	if v.Config == nil {
 		return nil, errors.New("vorma config is required")
 	}
-	if len(v.Config.ClientRouteDefinitionPatterns) == 0 {
+	if len(v.Config.ClientRouteDefinitionPatterns()) == 0 {
 		return nil, errors.New(
 			"Vorma.ClientRouteDefinitionPatterns is required",
 		)
 	}
 
 	normalizedRouteDefinitionPatterns, err := NormalizeRouteDefinitionPatternsInInputOrder(
-		v.Config.ClientRouteDefinitionPatterns,
+		v.Config.ClientRouteDefinitionPatterns(),
 	)
 	if err != nil {
 		return nil, err
@@ -632,7 +632,7 @@ func resolveUnresolvedRoutePolicy(v *vormaruntime.Vorma) (string, error) {
 		)
 	}
 
-	configuredPolicy := strings.TrimSpace(v.Config.UnresolvedRoutePolicy)
+	configuredPolicy := strings.TrimSpace(v.Config.UnresolvedRoutePolicy())
 	if configuredPolicy != "" {
 		switch configuredPolicy {
 		case vormaruntime.UnresolvedRoutePolicyWarn:
@@ -838,12 +838,21 @@ func (executor routeParsingExecutor) resolveRouteModulePath(
 	routeCall routeCall,
 ) string {
 	routeDefinitionsDirectory := filepath.Dir(routeDefinitionFile)
+	modulePathResolutionBasePath := "."
+	if v != nil &&
+		v.Wave != nil &&
+		v.Wave.ParsedConfig() != nil &&
+		strings.TrimSpace(v.Wave.ParsedConfig().ResolveRoot()) != "" {
+		modulePathResolutionBasePath = v.Wave.ParsedConfig().ResolveRoot()
+	}
 	resolvedModulePath, err := executor.dependencies.computeRelativeModulePath(
-		".",
+		modulePathResolutionBasePath,
 		filepath.Join(routeDefinitionsDirectory, routeCall.Module),
 	)
 	if err != nil {
-		v.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
+		if v != nil && v.Log != nil {
+			v.Log.Warn(fmt.Sprintf("could not make module path relative: %s", err))
+		}
 		resolvedModulePath = routeCall.Module
 	}
 	return filepath.ToSlash(resolvedModulePath)

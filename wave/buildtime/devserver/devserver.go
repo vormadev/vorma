@@ -8,13 +8,11 @@ package devserver
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveenv"
-	"github.com/vormadev/vorma/wave/waveframework"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,6 +22,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/waveenv"
+	"github.com/vormadev/vorma/wave/waveframework"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/lab/vitecmd"
@@ -69,8 +72,9 @@ func (transitionLogger runLifecycleTransitionDebugLogger) Info(
 
 // runtimeServer owns dev runtime orchestration and mutable lifecycle state.
 type runtimeServer struct {
-	Cfg *waveconfig.ParsedConfig
-	Log *slog.Logger
+	Cfg            waveconfig.ParsedConfig
+	Log            *slog.Logger
+	ConfigFilePath string
 
 	PortResolver *waveenv.Resolver
 	Lock         *wavelock.DevLock
@@ -108,8 +112,13 @@ type runtimeServer struct {
 	ConcurrentNoWaitHookLifecycleContextMutex sync.Mutex
 }
 
-// RunDev runs the devserver lifecycle for one parsed config.
-func RunDev(cfg *waveconfig.ParsedConfig, log *slog.Logger) error {
+// RunDev runs the devserver lifecycle for one parsed config and optional
+// config file path used for config-file watching/reload.
+func RunDev(
+	cfg waveconfig.ParsedConfig,
+	configFilePath string,
+	log *slog.Logger,
+) error {
 	if cfg == nil {
 		return errors.New("config is nil")
 	}
@@ -120,7 +129,7 @@ func RunDev(cfg *waveconfig.ParsedConfig, log *slog.Logger) error {
 		log = slog.Default()
 	}
 
-	lock := wavelock.NewDevLock(cfg.Dist.Static())
+	lock := wavelock.NewDevLock(cfg.Dist().Static())
 	if lockAcquireError := lock.Acquire(); lockAcquireError != nil {
 		return lockAcquireError
 	}
@@ -129,8 +138,12 @@ func RunDev(cfg *waveconfig.ParsedConfig, log *slog.Logger) error {
 	}()
 
 	server := &runtimeServer{
-		Cfg:          cfg,
-		Log:          log,
+		Cfg: cfg,
+		Log: log,
+		ConfigFilePath: func() string {
+			configFilePathMachineAbsolute := waveenv.Absolute(configFilePath)
+			return configFilePathMachineAbsolute
+		}(),
 		PortResolver: waveenv.NewResolverForMode(true),
 		Lock:         lock,
 		ConcurrentNoWaitHookExecutionLimiter: make(
@@ -142,6 +155,19 @@ func RunDev(cfg *waveconfig.ParsedConfig, log *slog.Logger) error {
 		make(chan restartengine.RestartRequest, 1),
 	)
 	return server.Run()
+}
+
+func (server *runtimeServer) resolvedConfigFilePath() string {
+	if server == nil {
+		return ""
+	}
+	if trimmedConfigFilePath := strings.TrimSpace(server.ConfigFilePath); trimmedConfigFilePath != "" {
+		resolvedConfigFilePathMachineAbsolute := waveenv.Absolute(
+			trimmedConfigFilePath,
+		)
+		return resolvedConfigFilePathMachineAbsolute
+	}
+	return ""
 }
 
 func deriveRunLifecycleTransitionLogger(
@@ -386,7 +412,7 @@ func (server *runtimeServer) StartApp() error {
 		previousProcessID = previousCommand.Process.Pid
 	}
 
-	command, startError := manager.StartApp(server.Cfg.Dist.Binary())
+	command, startError := manager.StartApp(server.Cfg.Dist().Binary())
 	if startError != nil {
 		return startError
 	}
@@ -465,7 +491,7 @@ func (server *runtimeServer) InitWatcher() error {
 // addConfigFileDirectory ensures configuration file directory is watched.
 func (server *runtimeServer) addConfigFileDirectory() error {
 	configurationDirectory := reloadwait.ResolveDirectoryPathFromFilePath(
-		server.Cfg.Core.ConfigLocation,
+		server.resolvedConfigFilePath(),
 	)
 	if strings.TrimSpace(configurationDirectory) == "" {
 		return nil
@@ -478,7 +504,7 @@ func (server *runtimeServer) addConfigFileDirectory() error {
 }
 
 // ReloadConfig reloads parsed config from disk and preserves runtime framework hooks.
-func (server *runtimeServer) ReloadConfig() (*waveconfig.ParsedConfig, error) {
+func (server *runtimeServer) ReloadConfig() (waveconfig.ParsedConfig, error) {
 	_, reloadError := server.ReloadConfigIfChanged()
 	if reloadError != nil {
 		return nil, reloadError
@@ -492,22 +518,32 @@ func (server *runtimeServer) ReloadConfigIfChanged() (bool, error) {
 	if server == nil || server.Cfg == nil {
 		return false, errors.New("server config unavailable")
 	}
-	if strings.TrimSpace(server.Cfg.Core.ConfigLocation) == "" {
+	currentConfig := server.Cfg
+	configFilePath := server.resolvedConfigFilePath()
+	if strings.TrimSpace(configFilePath) == "" {
 		return false, nil
 	}
 
-	newConfig, loadError := server.loadParsedConfigForReload(
-		server.Cfg.Core.ConfigLocation,
+	newConfig, rawConfigJSON, loadError := server.loadParsedConfigForReload(
+		configFilePath,
 	)
 	if loadError != nil {
 		return false, loadError
+	}
+	if !didConfigReloadChange(currentConfig, newConfig) {
+		return false, nil
 	}
 	if validationError := builder.ValidateConfig(newConfig); validationError != nil {
 		return false, validationError
 	}
 
-	if !didConfigReloadChange(server.Cfg, newConfig) {
-		return false, nil
+	waveframework.CopyRuntimeStateForToolingReload(newConfig, currentConfig)
+	if configureReloadedConfigError := waveframework.ConfigureReloadedConfigForTooling(
+		currentConfig,
+		newConfig,
+		rawConfigJSON,
+	); configureReloadedConfigError != nil {
+		return false, configureReloadedConfigError
 	}
 
 	server.Mu.Lock()
@@ -519,25 +555,39 @@ func (server *runtimeServer) ReloadConfigIfChanged() (bool, error) {
 // loadParsedConfigForReload loads parsed config while preserving framework runtime callbacks.
 func (server *runtimeServer) loadParsedConfigForReload(
 	configLocation string,
-) (*waveconfig.ParsedConfig, error) {
-	currentConfig := server.Cfg
-	newConfig, loadError := waveconfig.ParseConfigFile(configLocation)
-	if loadError != nil {
-		return nil, loadError
+) (waveconfig.ParsedConfig, []byte, error) {
+	configLocationMachineAbsolute := waveenv.Absolute(configLocation)
+	if strings.TrimSpace(configLocationMachineAbsolute) == "" {
+		return nil, nil, fmt.Errorf("config file path is required")
 	}
-	if currentConfig != nil {
-		waveframework.CopyRuntimeStateForToolingReload(
-			newConfig,
-			currentConfig,
-		)
+	rawConfigJSON, readError := os.ReadFile(configLocationMachineAbsolute)
+	if readError != nil {
+		return nil, nil, fmt.Errorf("read config file: %w", readError)
 	}
-	return newConfig, nil
+	newConfig, parseError := waveconfig.ParseConfigJSONWithConfigPath(
+		rawConfigJSON,
+		configLocationMachineAbsolute,
+	)
+	if parseError != nil {
+		return nil, nil, parseError
+	}
+	return newConfig, rawConfigJSON, nil
 }
 
 func didConfigReloadChange(
-	currentConfig *waveconfig.ParsedConfig,
-	nextConfig *waveconfig.ParsedConfig,
+	currentConfig waveconfig.ParsedConfig,
+	nextConfig waveconfig.ParsedConfig,
 ) bool {
+	if currentConfig != nil &&
+		nextConfig != nil &&
+		len(currentConfig.SemanticConfigJSON()) > 0 &&
+		len(nextConfig.SemanticConfigJSON()) > 0 {
+		return !bytes.Equal(
+			currentConfig.SemanticConfigJSON(),
+			nextConfig.SemanticConfigJSON(),
+		)
+	}
+
 	normalizedCurrentConfig := normalizeConfigForReloadComparison(
 		currentConfig,
 	)
@@ -554,31 +604,17 @@ func didConfigReloadChange(
 }
 
 func normalizeConfigForReloadComparison(
-	config *waveconfig.ParsedConfig,
-) *waveconfig.ParsedConfig {
+	config waveconfig.ParsedConfig,
+) waveconfig.ParsedConfig {
 	if config == nil {
 		return nil
 	}
 
-	normalizedConfig := *config
-	if config.Core != nil {
-		normalizedCore := *config.Core
-		normalizedCore.ConfigLocation = normalizeConfigLocationForReloadComparison(
-			normalizedCore.ConfigLocation,
-		)
-		normalizedConfig.Core = &normalizedCore
+	clonedConfig := config.Clone()
+	if clonedConfig == nil {
+		return nil
 	}
-	return &normalizedConfig
-}
-
-func normalizeConfigLocationForReloadComparison(
-	configLocation string,
-) string {
-	trimmedLocation := strings.TrimSpace(configLocation)
-	if trimmedLocation == "" {
-		return ""
-	}
-	return waveenv.Absolute(trimmedLocation)
+	return clonedConfig
 }
 
 // WaitForApp waits until app healthcheck becomes ready.
@@ -645,8 +681,8 @@ func (server *runtimeServer) MustGetPort() int {
 func (server *runtimeServer) StartRefreshServer(
 	preferredPort int,
 ) (int, error) {
-	if server != nil && server.Cfg != nil && server.Cfg.Core != nil &&
-		server.Cfg.Core.ServerOnlyMode {
+	if server != nil && server.Cfg != nil && server.Cfg.Core() != nil &&
+		server.Cfg.Core().ServerOnlyMode() {
 		return 0, nil
 	}
 	if preferredPort < 0 {
@@ -915,10 +951,12 @@ func (server *runtimeServer) prepareRunCycle(firstRun bool) error {
 	server.cancelConcurrentNoWaitHookLifecycleContext()
 	_ = server.StopVite()
 
-	if !firstRun && server.Cfg != nil && server.Cfg.Core != nil &&
-		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
+	if !firstRun && strings.TrimSpace(server.resolvedConfigFilePath()) != "" {
 		if _, reloadConfigError := server.ReloadConfig(); reloadConfigError != nil {
-			return fmt.Errorf("reload config during cycle prepare: %w", reloadConfigError)
+			return fmt.Errorf(
+				"reload config during cycle prepare: %w",
+				reloadConfigError,
+			)
 		}
 	}
 
@@ -944,7 +982,7 @@ func (server *runtimeServer) executeRunBuildForIntent(
 ) error {
 	orderingDecision := restartengine.DeriveRunBuildExecutionOrderingDecision(
 		intent.RecompileGo,
-		server.Cfg.Core.SequentialGoBuild,
+		server.Cfg.Core().SequentialGoBuild(),
 	)
 	builderInstance := server.BuilderInstance()
 	if builderInstance == nil {
@@ -1148,7 +1186,7 @@ func (server *runtimeServer) executeRunLifecycleCommandAwaitRestartRequest(
 	nextIntent := restartengine.DeriveRunIntentFromRestartRequest(
 		restartRequest,
 	)
-	server.Log.Info(
+	server.Log.Debug(
 		"restart requested",
 		"recompile_go",
 		restartRequest.RecompileGo,
@@ -1175,18 +1213,18 @@ func (server *runtimeServer) executeRunLifecycleCommandCleanupForNextCycle(
 func (server *runtimeServer) StartVite() error {
 	server.Mu.Lock()
 	defer server.Mu.Unlock()
-	if server.Cfg == nil || server.Cfg.Vite == nil {
+	if server.Cfg == nil || server.Cfg.Vite() == nil {
 		return nil
 	}
 
 	if server.ViteContext == nil {
 		server.ViteContext = vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
-			JSPackageManagerBaseCmd: server.Cfg.Vite.JSPackageManagerBaseCmd,
-			JSPackageManagerCmdDir:  server.Cfg.Vite.JSPackageManagerCmdDir,
-			OutDir:                  server.Cfg.Dist.StaticPublic(),
+			JSPackageManagerBaseCmd: server.Cfg.Vite().JSPackageManagerBaseCmd(),
+			JSPackageManagerCmdDir:  server.Cfg.Vite().JSPackageManagerCmdDir(),
+			OutDir:                  server.Cfg.Dist().StaticPublic(),
 			ManifestOut:             server.Cfg.ViteManifestPath(),
-			DefaultPort:             server.Cfg.Vite.DefaultPort,
-			ViteConfigFile:          server.Cfg.Vite.ViteConfigFile,
+			DefaultPort:             server.Cfg.Vite().DefaultPort(),
+			ViteConfigFile:          server.Cfg.Vite().ViteConfigFile(),
 		})
 	}
 	if viteBuildError := server.ViteContext.DevBuild(); viteBuildError != nil {
@@ -1597,6 +1635,8 @@ func (server *runtimeServer) ExecuteBuildPhase(
 	}
 
 	var buildGroup errgroup.Group
+	publicFileMapArtifactsChangedOrRepaired := false
+	shouldTrackPublicFileMapArtifacts := executionDecision.PublicStaticProcessing.ShouldProcess()
 
 	if executionDecision.CompileGo {
 		buildGroup.Go(func() error {
@@ -1617,8 +1657,30 @@ func (server *runtimeServer) ExecuteBuildPhase(
 		executionDecision,
 	) {
 		buildGroup.Go(func() error {
+			publicFileMapArtifactSnapshotBefore := publicFileMapArtifactSnapshot{}
+			if shouldTrackPublicFileMapArtifacts {
+				snapshotBefore, snapshotBeforeError := snapshotPublicFileMapArtifacts(
+					server.Cfg.Dist().PublicFileMapRef(),
+					server.Cfg.Dist().StaticPublic(),
+				)
+				if snapshotBeforeError != nil {
+					return snapshotBeforeError
+				}
+				publicFileMapArtifactSnapshotBefore = snapshotBefore
+			}
+
 			if publicProcessingError := server.executePublicStaticProcessingForBuildPhase(builderInstance, executionDecision.PublicStaticProcessing); publicProcessingError != nil {
 				return publicProcessingError
+			}
+			if shouldTrackPublicFileMapArtifacts {
+				snapshotAfter, snapshotAfterError := snapshotPublicFileMapArtifacts(
+					server.Cfg.Dist().PublicFileMapRef(),
+					server.Cfg.Dist().StaticPublic(),
+				)
+				if snapshotAfterError != nil {
+					return snapshotAfterError
+				}
+				publicFileMapArtifactsChangedOrRepaired = snapshotAfter != publicFileMapArtifactSnapshotBefore
 			}
 			if privateProcessingError := server.executePrivateStaticProcessingForBuildPhase(builderInstance, executionDecision.PrivateStaticProcessing); privateProcessingError != nil {
 				return privateProcessingError
@@ -1627,7 +1689,19 @@ func (server *runtimeServer) ExecuteBuildPhase(
 		})
 	}
 
-	return buildGroup.Wait()
+	if buildError := buildGroup.Wait(); buildError != nil {
+		return buildError
+	}
+
+	if shouldTrackPublicFileMapArtifacts &&
+		!publicFileMapArtifactsChangedOrRepaired &&
+		work.Browser.Action == eventpipeline.BrowserPhaseActionInvalidateVite {
+		work.Browser = eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionNone,
+		}
+	}
+
+	return nil
 }
 
 // executePublicStaticProcessingForBuildPhase executes public static processing decision.
@@ -1658,6 +1732,85 @@ func (server *runtimeServer) executePrivateStaticProcessingForBuildPhase(
 		builderInstance.ProcessPrivateFilesOnlyForChangedPaths,
 		privateStaticProcessingDecision,
 	)
+}
+
+type publicFileMapArtifactSnapshot struct {
+	RefExists           bool
+	RefTarget           string
+	CanonicalJSONExists bool
+	CanonicalJSONHash   string
+}
+
+func snapshotPublicFileMapArtifacts(
+	publicFileMapRefPath string,
+	staticPublicRootPath string,
+) (publicFileMapArtifactSnapshot, error) {
+	snapshot := publicFileMapArtifactSnapshot{}
+
+	refBytes, readRefError := os.ReadFile(publicFileMapRefPath)
+	if readRefError != nil {
+		if errors.Is(readRefError, os.ErrNotExist) {
+			return snapshot, nil
+		}
+		return snapshot, readRefError
+	}
+	snapshot.RefExists = true
+	snapshot.RefTarget = strings.TrimSpace(string(refBytes))
+
+	canonicalOutputPath, hasCanonicalOutputPath := resolvePublicOutputPathFromRefTarget(
+		staticPublicRootPath,
+		snapshot.RefTarget,
+	)
+	if !hasCanonicalOutputPath {
+		return snapshot, nil
+	}
+
+	canonicalOutputBytes, readCanonicalOutputError := os.ReadFile(
+		canonicalOutputPath,
+	)
+	if readCanonicalOutputError != nil {
+		if errors.Is(readCanonicalOutputError, os.ErrNotExist) {
+			return snapshot, nil
+		}
+		return snapshot, readCanonicalOutputError
+	}
+	snapshot.CanonicalJSONExists = true
+	canonicalOutputHash := sha256.Sum256(canonicalOutputBytes)
+	snapshot.CanonicalJSONHash = hex.EncodeToString(canonicalOutputHash[:])
+	return snapshot, nil
+}
+
+func resolvePublicOutputPathFromRefTarget(
+	staticPublicRootPath string,
+	refTarget string,
+) (string, bool) {
+	normalizedRefTarget := filepath.ToSlash(filepath.Clean(strings.TrimSpace(refTarget)))
+	if normalizedRefTarget == "" ||
+		normalizedRefTarget == "." ||
+		normalizedRefTarget == ".." ||
+		strings.HasPrefix(normalizedRefTarget, "../") {
+		return "", false
+	}
+
+	resolvedOutputPath := filepath.Join(
+		staticPublicRootPath,
+		filepath.FromSlash(normalizedRefTarget),
+	)
+	relativeOutputPathFromRoot, relativeOutputPathError := filepath.Rel(
+		staticPublicRootPath,
+		resolvedOutputPath,
+	)
+	if relativeOutputPathError != nil {
+		return "", false
+	}
+	normalizedRelativeOutputPath := filepath.ToSlash(relativeOutputPathFromRoot)
+	if normalizedRelativeOutputPath == "." ||
+		normalizedRelativeOutputPath == ".." ||
+		strings.HasPrefix(normalizedRelativeOutputPath, "../") {
+		return "", false
+	}
+
+	return resolvedOutputPath, true
 }
 
 // ClassifyWatcherEventsForProcessing classifies watcher events and handles config reload behavior.
@@ -1708,9 +1861,10 @@ func logNoopConfigReloadForWatcherEvent(
 	}
 
 	configDisplayPath := watcherEvent.Name
-	if server.Cfg != nil && server.Cfg.Core != nil &&
-		strings.TrimSpace(server.Cfg.Core.ConfigLocation) != "" {
-		configDisplayPath = server.Cfg.Core.ConfigLocation
+	if resolvedConfigFilePath := server.resolvedConfigFilePath(); strings.TrimSpace(
+		resolvedConfigFilePath,
+	) != "" {
+		configDisplayPath = resolvedConfigFilePath
 	}
 	configFileName := filepath.Base(configDisplayPath)
 	if strings.TrimSpace(configFileName) == "" {
@@ -1766,12 +1920,13 @@ func (server *runtimeServer) classifyWatcherEventsFromPreClassificationPlan(
 
 // IsConfigFile reports whether path matches active config file location.
 func (server *runtimeServer) IsConfigFile(path string) bool {
-	if server == nil || server.Cfg == nil || server.Cfg.Core == nil {
+	resolvedConfigFilePath := server.resolvedConfigFilePath()
+	if strings.TrimSpace(resolvedConfigFilePath) == "" {
 		return false
 	}
 	return classification.IsConfigurationPathChange(
 		path,
-		server.Cfg.Core.ConfigLocation,
+		resolvedConfigFilePath,
 	)
 }
 
@@ -1832,7 +1987,9 @@ func (server *runtimeServer) ResolveHookExecutionPlan(
 		)
 	}
 
-	frameworkBuildHookRunner := waveframework.StateForConfig(server.Cfg).RunBuildHook
+	frameworkBuildHookRunner := waveframework.StateForConfig(
+		server.Cfg,
+	).RunBuildHook
 	userAndExplicitCommand := hooks.ResolveSequentialShellCommands(
 		hook.Cmd,
 		getUserDevBuildHook(server.Cfg),
@@ -1883,7 +2040,9 @@ func (server *runtimeServer) ResolveHookExecutionPlan(
 }
 
 // ResolveHookCommand resolves configured command behavior for one hook.
-func (server *runtimeServer) ResolveHookCommand(hook wavewatch.OnChangeHook) string {
+func (server *runtimeServer) ResolveHookCommand(
+	hook wavewatch.OnChangeHook,
+) string {
 	if hook.RunCombinedDevBuildHookCommands {
 		if strings.TrimSpace(hook.Cmd) != "" {
 			return hooks.ResolveSequentialShellCommands(
@@ -1900,14 +2059,14 @@ func (server *runtimeServer) ResolveHookCommand(hook wavewatch.OnChangeHook) str
 	return hook.Cmd
 }
 
-func getUserDevBuildHook(parsedConfig *waveconfig.ParsedConfig) string {
-	if parsedConfig == nil || parsedConfig.Core == nil {
+func getUserDevBuildHook(parsedConfig waveconfig.ParsedConfig) string {
+	if parsedConfig == nil || parsedConfig.Core() == nil {
 		return ""
 	}
-	return parsedConfig.Core.DevBuildHook
+	return parsedConfig.Core().DevBuildHook()
 }
 
-func getFrameworkDevBuildHook(parsedConfig *waveconfig.ParsedConfig) string {
+func getFrameworkDevBuildHook(parsedConfig waveconfig.ParsedConfig) string {
 	if parsedConfig == nil {
 		return ""
 	}

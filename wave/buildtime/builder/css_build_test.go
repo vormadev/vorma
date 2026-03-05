@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/vormadev/vorma/wave/internal/wavefilemap"
 	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
 )
 
 func hashedOutputFileNameForCSSTests(fileName string) string {
@@ -19,20 +21,26 @@ func hashedOutputURLForCSSTests(fileName string) string {
 	return "/" + hashedOutputFileNameForCSSTests(fileName)
 }
 
+func setCSSEntryFilesForBuilderCSSTests(
+	cfg waveconfig.ParsedConfig,
+	cssEntryFiles cssEntryFilesForTests,
+) {
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, cssEntryFiles.Critical)
+	wavetest.SetCoreNonCriticalCSSEntryFile(cfg, cssEntryFiles.NonCritical)
+}
+
 func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().CriticalCSSEntryFile()), 0755); err != nil {
 		t.Fatalf("failed creating CSS entry parent dir: %v", err)
 	}
 	cssContent := `.hero{background-image:url("images/logo.png");}`
-	if err := os.WriteFile(cfg.Core.CSSEntryFiles.Critical, []byte(cssContent), 0644); err != nil {
+	if err := os.WriteFile(cfg.Core().CriticalCSSEntryFile(), []byte(cssContent), 0644); err != nil {
 		t.Fatalf("failed writing CSS entry file: %v", err)
 	}
 
@@ -45,7 +53,7 @@ func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 			ContentHash: hashedOutputFileNameForCSSTests("images_logo_deadbeef.png"),
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.saveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -53,7 +61,7 @@ func TestBuildCriticalCSS_ResolvesPublicURLTokensUsingFileMap(t *testing.T) {
 		t.Fatalf("buildCriticalCSS returned error: %v", err)
 	}
 
-	output, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	output, err := os.ReadFile(cfg.Dist().CriticalCSS())
 	if err != nil {
 		t.Fatalf("failed reading generated critical CSS: %v", err)
 	}
@@ -71,13 +79,11 @@ func TestBuildNormalCSS_BundlesImportsAndRewritesImportedAssetURLs(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "main.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
@@ -105,7 +111,7 @@ func TestBuildNormalCSS_BundlesImportsAndRewritesImportedAssetURLs(
 			ContentHash: hashedOutputFileNameForCSSTests("fonts_jetbrains_mono_deadbeef.woff2"),
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.saveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -113,12 +119,12 @@ func TestBuildNormalCSS_BundlesImportsAndRewritesImportedAssetURLs(
 		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
 	}
 
-	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	normalRefBytes, err := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if err != nil {
 		t.Fatalf("failed reading normal css ref: %v", err)
 	}
 	normalOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(normalRefBytes)),
 	)
 	normalOutputBytes, err := os.ReadFile(normalOutputPath)
@@ -154,13 +160,11 @@ func TestBuildNormalCSS_BundlesMultipleTopLevelImportsWithComments(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "main.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles", "fonts"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
@@ -207,7 +211,7 @@ func TestBuildNormalCSS_BundlesMultipleTopLevelImportsWithComments(
 			ContentHash: hashedOutputFileNameForCSSTests("fonts_jetbrains_mono_deadbeef.woff2"),
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.saveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -215,12 +219,12 @@ func TestBuildNormalCSS_BundlesMultipleTopLevelImportsWithComments(
 		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
 	}
 
-	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	normalRefBytes, err := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if err != nil {
 		t.Fatalf("failed reading normal css ref: %v", err)
 	}
 	normalOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(normalRefBytes)),
 	)
 	normalOutputBytes, err := os.ReadFile(normalOutputPath)
@@ -270,18 +274,16 @@ func TestBuildCriticalCSS_BundlesImportsAndRewritesImportedAssetURLs(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles", "fonts"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`@import url("./fonts.css"); .hero { color: black; }`),
 		0o644,
 	); err != nil {
@@ -304,7 +306,7 @@ func TestBuildCriticalCSS_BundlesImportsAndRewritesImportedAssetURLs(
 			ContentHash: hashedOutputFileNameForCSSTests("fonts_jetbrains_mono_deadbeef.woff2"),
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.saveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -312,7 +314,7 @@ func TestBuildCriticalCSS_BundlesImportsAndRewritesImportedAssetURLs(
 		t.Fatalf("BuildCSS(BuildCriticalCSS) returned error: %v", err)
 	}
 
-	criticalOutputBytes, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	criticalOutputBytes, err := os.ReadFile(cfg.Dist().CriticalCSS())
 	if err != nil {
 		t.Fatalf("failed reading generated critical css output: %v", err)
 	}
@@ -345,18 +347,16 @@ func TestBuildNormalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "main.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`.app{background-image:url("images/logo.png?v=1#hash");}`),
 		0o644,
 	); err != nil {
@@ -372,7 +372,7 @@ func TestBuildNormalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 				ContentHash: hashedOutputFileNameForCSSTests("images_logo_deadbeef.png"),
 			},
 		},
-		cfg.Dist.PublicFileMapGob(),
+		cfg.Dist().PublicFileMapGob(),
 	); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
@@ -381,12 +381,12 @@ func TestBuildNormalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
 	}
 
-	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	normalRefBytes, err := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if err != nil {
 		t.Fatalf("failed reading normal css ref: %v", err)
 	}
 	normalOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(normalRefBytes)),
 	)
 	normalOutputBytes, err := os.ReadFile(normalOutputPath)
@@ -408,18 +408,16 @@ func TestBuildCriticalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`.hero{background-image:url("images/logo.png?v=1#hash");}`),
 		0o644,
 	); err != nil {
@@ -435,7 +433,7 @@ func TestBuildCriticalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 				ContentHash: hashedOutputFileNameForCSSTests("images_logo_deadbeef.png"),
 			},
 		},
-		cfg.Dist.PublicFileMapGob(),
+		cfg.Dist().PublicFileMapGob(),
 	); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
@@ -444,7 +442,7 @@ func TestBuildCriticalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 		t.Fatalf("BuildCSS(BuildCriticalCSS) returned error: %v", err)
 	}
 
-	criticalOutputBytes, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	criticalOutputBytes, err := os.ReadFile(cfg.Dist().CriticalCSS())
 	if err != nil {
 		t.Fatalf("failed reading generated critical css output: %v", err)
 	}
@@ -459,28 +457,102 @@ func TestBuildCriticalCSS_RewritesRelativeURLTokenWithQueryAndFragmentSuffix(
 	}
 }
 
-func TestBuildNormalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
+func TestBuildNormalCSS_RewritesURLTokensResolvedThroughNestedRelativeTraversal(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
-		NonCritical: filepath.Join(root, "styles", "main.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetCoreStaticAssetDirsPublic(
+		cfg,
+		filepath.Join(root, "frontend", "assets"),
+	)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "frontend", "src", "styles", "main.css"),
+	})
 
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()), 0o755); err != nil {
+		t.Fatalf("failed creating styles directory: %v", err)
+	}
+	if err := os.MkdirAll(
+		filepath.Join(cfg.Core().StaticAssetDirsPublic(), "images"),
+		0o755,
+	); err != nil {
+		t.Fatalf("failed creating public images directory: %v", err)
+	}
+
+	if err := os.WriteFile(
+		cfg.Core().NonCriticalCSSEntryFile(),
+		[]byte(`.hero{background-image:url("../../assets/images/logo.png");}`),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing normal css entry file: %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(cfg.Core().StaticAssetDirsPublic(), "images", "logo.png"),
+		[]byte("logo"),
+		0o644,
+	); err != nil {
+		t.Fatalf("failed writing public image asset: %v", err)
+	}
+
+	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
+	defer builder.Close()
+
+	if buildError := builder.Build(
+		BuildOpts{
+			IsDev:     false,
+			CompileGo: false,
+		},
+	); buildError != nil {
+		t.Fatalf("Build returned error: %v", buildError)
+	}
+
+	normalRefBytes, err := os.ReadFile(cfg.Dist().NormalCSSRef())
+	if err != nil {
+		t.Fatalf("failed reading normal css ref: %v", err)
+	}
+	normalOutputPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, err := os.ReadFile(normalOutputPath)
+	if err != nil {
+		t.Fatalf("failed reading generated normal css output: %v", err)
+	}
+
+	if !strings.Contains(
+		string(normalOutputBytes),
+		waveartifacts.ApplyWaveFileOutputPrefix("images_logo_"),
+	) {
+		t.Fatalf(
+			"expected generated css to reference hashed public asset, got:\n%s",
+			string(normalOutputBytes),
+		)
+	}
+}
+
+func TestBuildNormalCSS_ExternalURLTokensDoNotRequireFileMap_RootSlashLookupHitRewrites_AndLookupMissStaysUnchanged(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
+		NonCritical: filepath.Join(root, "styles", "main.css"),
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`.external {
 	background-image: url("https://cdn.example.com/fonts.woff2");
 	background-image: url("HTTP://cdn.example.com/upper.woff2");
 	background-image: url("mailto:dev@example.com");
 	background-image: url("//cdn.example.com/image.png");
 	background-image: url("/fonts.css");
+	background-image: url("/app-owned.css");
 	background-image: url("?cache=1");
 	background-image: url("data:image/svg+xml;base64,PHN2Zz4=");
 	background-image: url("#sprite");
@@ -492,7 +564,18 @@ func TestBuildNormalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
-	if err := builder.saveFileMap(wavefilemap.FileMap{}, cfg.Dist.PublicFileMapGob()); err != nil {
+	testPublicFileMap := wavefilemap.FileMap{
+		"fonts.css": {
+			DistName: waveartifacts.ApplyWaveFileOutputPrefix(
+				"fonts_hashed.css",
+			),
+			ContentHash: "fonts-hash",
+		},
+	}
+	if err := builder.saveFileMap(
+		testPublicFileMap,
+		cfg.Dist().PublicFileMapGob(),
+	); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -500,12 +583,12 @@ func TestBuildNormalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 		t.Fatalf("BuildCSS(BuildNormalCSS) returned error: %v", err)
 	}
 
-	normalRefBytes, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	normalRefBytes, err := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if err != nil {
 		t.Fatalf("failed reading normal css ref: %v", err)
 	}
 	normalOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(normalRefBytes)),
 	)
 	normalOutputBytes, err := os.ReadFile(normalOutputPath)
@@ -519,7 +602,7 @@ func TestBuildNormalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 		"HTTP://cdn.example.com/upper.woff2",
 		"mailto:dev@example.com",
 		"//cdn.example.com/image.png",
-		"/fonts.css",
+		"/app-owned.css",
 		"?cache=1",
 		"data:image/svg+xml;base64,PHN2Zz4=",
 		"#sprite",
@@ -533,30 +616,49 @@ func TestBuildNormalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 			)
 		}
 	}
+	expectedResolvedFontsURL, hasExpectedResolvedFontsURL := testPublicFileMap.Lookup(
+		"/fonts.css",
+		cfg.PublicPathPrefix(),
+	)
+	if !hasExpectedResolvedFontsURL {
+		t.Fatal("expected test file map to resolve /fonts.css")
+	}
+	if !strings.Contains(normalOutputCSS, expectedResolvedFontsURL) {
+		t.Fatalf(
+			"expected normal css output to resolve /fonts.css to %q, got:\n%s",
+			expectedResolvedFontsURL,
+			normalOutputCSS,
+		)
+	}
+	if strings.Contains(normalOutputCSS, "/fonts.css") {
+		t.Fatalf(
+			"expected normal css output to avoid unresolved /fonts.css token, got:\n%s",
+			normalOutputCSS,
+		)
+	}
 }
 
-func TestBuildCriticalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
+func TestBuildCriticalCSS_ExternalURLTokensDoNotRequireFileMap_RootSlashLookupHitRewrites_AndLookupMissStaysUnchanged(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`.external {
 	background-image: url("https://cdn.example.com/fonts.woff2");
 	background-image: url("HTTP://cdn.example.com/upper.woff2");
 	background-image: url("mailto:dev@example.com");
 	background-image: url("//cdn.example.com/image.png");
 	background-image: url("/fonts.css");
+	background-image: url("/app-owned.css");
 	background-image: url("?cache=1");
 	background-image: url("data:image/svg+xml;base64,PHN2Zz4=");
 	background-image: url("#sprite");
@@ -568,7 +670,18 @@ func TestBuildCriticalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
-	if err := builder.saveFileMap(wavefilemap.FileMap{}, cfg.Dist.PublicFileMapGob()); err != nil {
+	testPublicFileMap := wavefilemap.FileMap{
+		"fonts.css": {
+			DistName: waveartifacts.ApplyWaveFileOutputPrefix(
+				"fonts_hashed.css",
+			),
+			ContentHash: "fonts-hash",
+		},
+	}
+	if err := builder.saveFileMap(
+		testPublicFileMap,
+		cfg.Dist().PublicFileMapGob(),
+	); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -576,7 +689,7 @@ func TestBuildCriticalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 		t.Fatalf("BuildCSS(BuildCriticalCSS) returned error: %v", err)
 	}
 
-	criticalOutputBytes, err := os.ReadFile(cfg.Dist.CriticalCSS())
+	criticalOutputBytes, err := os.ReadFile(cfg.Dist().CriticalCSS())
 	if err != nil {
 		t.Fatalf("failed reading generated critical css output: %v", err)
 	}
@@ -587,7 +700,7 @@ func TestBuildCriticalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 		"HTTP://cdn.example.com/upper.woff2",
 		"mailto:dev@example.com",
 		"//cdn.example.com/image.png",
-		"/fonts.css",
+		"/app-owned.css",
 		"?cache=1",
 		"data:image/svg+xml;base64,PHN2Zz4=",
 		"#sprite",
@@ -601,24 +714,42 @@ func TestBuildCriticalCSS_ExternalAndRootRelativeURLTokensDoNotRequireFileMap(
 			)
 		}
 	}
+	expectedResolvedFontsURL, hasExpectedResolvedFontsURL := testPublicFileMap.Lookup(
+		"/fonts.css",
+		cfg.PublicPathPrefix(),
+	)
+	if !hasExpectedResolvedFontsURL {
+		t.Fatal("expected test file map to resolve /fonts.css")
+	}
+	if !strings.Contains(criticalOutputCSS, expectedResolvedFontsURL) {
+		t.Fatalf(
+			"expected critical css output to resolve /fonts.css to %q, got:\n%s",
+			expectedResolvedFontsURL,
+			criticalOutputCSS,
+		)
+	}
+	if strings.Contains(criticalOutputCSS, "/fonts.css") {
+		t.Fatalf(
+			"expected critical css output to avoid unresolved /fonts.css token, got:\n%s",
+			criticalOutputCSS,
+		)
+	}
 }
 
-func TestBuildCriticalCSS_FailsWhenRelativeURLTokenMissingFromFileMap(
+func TestBuildCriticalCSS_UnresolvedRelativeURLTokenRemainsUnchangedWhenFileMapMissing(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`.hero{background-image:url("images/missing.png");}`),
 		0o644,
 	); err != nil {
@@ -628,43 +759,40 @@ func TestBuildCriticalCSS_FailsWhenRelativeURLTokenMissingFromFileMap(
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
-	if err := builder.saveFileMap(
-		wavefilemap.FileMap{},
-		cfg.Dist.PublicFileMapGob(),
-	); err != nil {
-		t.Fatalf("saveFileMap returned error: %v", err)
-	}
-
-	buildError := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true})
-	if buildError == nil {
-		t.Fatal(
-			"expected BuildCSS(BuildCriticalCSS) to fail on unresolved relative CSS url token",
+	if buildError := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); buildError != nil {
+		t.Fatalf(
+			"expected BuildCSS(BuildCriticalCSS) to keep unresolved CSS token unchanged, got error: %v",
+			buildError,
 		)
 	}
-	if !strings.Contains(buildError.Error(), "no hashed public asset found") {
+
+	criticalOutputBytes, readError := os.ReadFile(cfg.Dist().CriticalCSS())
+	if readError != nil {
+		t.Fatalf("failed reading generated critical css output: %v", readError)
+	}
+	criticalOutputCSS := string(criticalOutputBytes)
+	if !strings.Contains(criticalOutputCSS, "images/missing.png") {
 		t.Fatalf(
-			"expected unresolved-token error, got: %v",
-			buildError,
+			"expected unresolved relative CSS token to remain unchanged, got:\n%s",
+			criticalOutputCSS,
 		)
 	}
 }
 
-func TestBuildNormalCSS_FailsWhenImportedRelativeURLTokenMissingFromFileMap(
+func TestBuildNormalCSS_UnresolvedImportedRelativeURLTokenRemainsUnchangedWhenLookupMisses(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "main.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(filepath.Join(root, "styles"), 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`@import "./fonts.css"; .app { color: black; }`),
 		0o644,
 	); err != nil {
@@ -683,21 +811,35 @@ func TestBuildNormalCSS_FailsWhenImportedRelativeURLTokenMissingFromFileMap(
 
 	if err := builder.saveFileMap(
 		wavefilemap.FileMap{},
-		cfg.Dist.PublicFileMapGob(),
+		cfg.Dist().PublicFileMapGob(),
 	); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
-	buildError := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true})
-	if buildError == nil {
-		t.Fatal(
-			"expected BuildCSS(BuildNormalCSS) to fail on unresolved imported CSS url token",
+	if buildError := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); buildError != nil {
+		t.Fatalf(
+			"expected BuildCSS(BuildNormalCSS) to keep unresolved imported CSS token unchanged, got error: %v",
+			buildError,
 		)
 	}
-	if !strings.Contains(buildError.Error(), "no hashed public asset found") {
+
+	normalRefBytes, readRefError := os.ReadFile(cfg.Dist().NormalCSSRef())
+	if readRefError != nil {
+		t.Fatalf("failed reading normal css ref: %v", readRefError)
+	}
+	normalOutputPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		strings.TrimSpace(string(normalRefBytes)),
+	)
+	normalOutputBytes, readOutputError := os.ReadFile(normalOutputPath)
+	if readOutputError != nil {
+		t.Fatalf("failed reading generated normal css output: %v", readOutputError)
+	}
+	normalOutputCSS := string(normalOutputBytes)
+	if !strings.Contains(normalOutputCSS, "fonts/missing.woff2") {
 		t.Fatalf(
-			"expected unresolved-token error, got: %v",
-			buildError,
+			"expected unresolved imported CSS token to remain unchanged, got:\n%s",
+			normalOutputCSS,
 		)
 	}
 }
@@ -706,14 +848,12 @@ func TestBuildCSS_TracksImportedCSSFilesForWatcherClassification(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical:    filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
 		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	stylesDirectoryPath := filepath.Join(root, "styles")
 	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
@@ -725,14 +865,14 @@ func TestBuildCSS_TracksImportedCSSFilesForWatcherClassification(
 	)
 	normalImportPath := filepath.Join(stylesDirectoryPath, "normal_import.css")
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`@import "./critical_import.css"; body { color: red; }`),
 		0o644,
 	); err != nil {
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`@import "./normal_import.css"; body { color: blue; }`),
 		0o644,
 	); err != nil {
@@ -791,14 +931,12 @@ func TestBuildCSS_TracksImportedCSSFilesForWatcherClassificationWithRelativeEntr
 	root := t.TempDir()
 	t.Chdir(root)
 
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical:    filepath.Join("styles", waveartifacts.CriticalCSSFileName),
 		NonCritical: filepath.Join("styles", "normal.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	stylesDirectoryPath := filepath.Join(root, "styles")
 	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
@@ -859,7 +997,7 @@ func TestBuildCSS_TracksImportedCSSFilesForWatcherClassificationWithRelativeEntr
 func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
@@ -869,7 +1007,7 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 			ContentHash: hashedOutputFileNameForCSSTests("images_logo_deadbeef.png"),
 		},
 	}
-	if err := builder.saveFileMap(fileMap, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := builder.saveFileMap(fileMap, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("saveFileMap returned error: %v", err)
 	}
 
@@ -878,7 +1016,7 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 		t.Fatalf("unexpected first cached lookup result: %q", first)
 	}
 
-	if err := os.Remove(cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := os.Remove(cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("failed removing gob after initial cache load: %v", err)
 	}
 
@@ -893,7 +1031,7 @@ func TestPublicURLBuildtimeCached_UsesCachedFileMapAfterFirstLoad(
 }
 
 func TestPublicURLBuildtimeCached_MissingFileMapPanics(t *testing.T) {
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
@@ -909,10 +1047,10 @@ func TestPublicURLBuildtimeCached_MissingFileMapPanics(t *testing.T) {
 }
 
 func TestCSSBuildAll_ReturnsCriticalErrorWithContext(t *testing.T) {
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(t.TempDir(), "missing-critical.css"),
-	}
+	})
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
@@ -928,10 +1066,10 @@ func TestCSSBuildAll_ReturnsCriticalErrorWithContext(t *testing.T) {
 }
 
 func TestCSSBuildAll_ReturnsNormalErrorWithContext(t *testing.T) {
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(t.TempDir(), "missing-normal.css"),
-	}
+	})
 	builder := NewBuilder(cfg, newDiscardLoggerForBuilderBasicTests())
 	defer builder.Close()
 
@@ -948,18 +1086,16 @@ func TestCSSBuildAll_ReturnsNormalErrorWithContext(t *testing.T) {
 
 func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().CriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating CSS entry parent dir: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`body { color: red; }`),
 		0o644,
 	); err != nil {
@@ -973,7 +1109,7 @@ func TestBuildCriticalCSS_UnchangedInputDoesNotRewriteOutput(t *testing.T) {
 		t.Fatalf("initial buildCriticalCSS returned error: %v", err)
 	}
 
-	criticalOutputPath := cfg.Dist.CriticalCSS()
+	criticalOutputPath := cfg.Dist().CriticalCSS()
 	initialInfo, err := os.Stat(criticalOutputPath)
 	if err != nil {
 		t.Fatalf("stat critical output after initial Build: %v", err)
@@ -1002,18 +1138,16 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating CSS entry parent dir: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`body { color: blue; }`),
 		0o644,
 	); err != nil {
@@ -1027,13 +1161,13 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 		t.Fatalf("initial buildNormalCSS returned error: %v", err)
 	}
 
-	normalCSSRefPath := cfg.Dist.NormalCSSRef()
+	normalCSSRefPath := cfg.Dist().NormalCSSRef()
 	initialRefData, err := os.ReadFile(normalCSSRefPath)
 	if err != nil {
 		t.Fatalf("read normal css ref after initial Build: %v", err)
 	}
 	initialHashedOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(initialRefData)),
 	)
 
@@ -1079,18 +1213,16 @@ func TestBuildNormalCSS_UnchangedInputDoesNotRewriteOutputArtifacts(
 
 func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating CSS entry parent dir: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`body { color: blue; }`),
 		0o644,
 	); err != nil {
@@ -1104,18 +1236,18 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 		t.Fatalf("initial buildNormalCSS returned error: %v", err)
 	}
 
-	initialRefData, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	initialRefData, err := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if err != nil {
 		t.Fatalf("read normal css ref after initial Build: %v", err)
 	}
 	initialHashedOutputName := strings.TrimSpace(string(initialRefData))
 	initialHashedOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialHashedOutputName,
 	)
 
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`body { color: green; }`),
 		0o644,
 	); err != nil {
@@ -1126,13 +1258,13 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 		t.Fatalf("second buildNormalCSS returned error: %v", err)
 	}
 
-	updatedRefData, err := os.ReadFile(cfg.Dist.NormalCSSRef())
+	updatedRefData, err := os.ReadFile(cfg.Dist().NormalCSSRef())
 	if err != nil {
 		t.Fatalf("read normal css ref after second Build: %v", err)
 	}
 	updatedHashedOutputName := strings.TrimSpace(string(updatedRefData))
 	updatedHashedOutputPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		updatedHashedOutputName,
 	)
 
@@ -1160,18 +1292,16 @@ func TestBuildNormalCSS_ChangedInputReplacesHashedArtifact(t *testing.T) {
 
 func TestBuildCriticalCSS_EmptyEntryClearsTrackedImports(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().CriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating critical css entry parent dir: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`body { color: red; }`),
 		0o644,
 	); err != nil {
@@ -1190,7 +1320,7 @@ func TestBuildCriticalCSS_EmptyEntryClearsTrackedImports(t *testing.T) {
 		t.Fatal("expected critical css imports to be tracked after build")
 	}
 
-	cfg.Core.CSSEntryFiles.Critical = ""
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, "")
 	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err != nil {
 		t.Fatalf("buildCriticalCSS with empty entry returned error: %v", err)
 	}
@@ -1208,18 +1338,16 @@ func TestReadCriticalCSSForHotReload_RequiresFreshOutputAfterFailedRebuild(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().CriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating critical css entry parent dir: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`body { color: red; }`),
 		0o644,
 	); err != nil {
@@ -1243,11 +1371,11 @@ func TestReadCriticalCSSForHotReload_RequiresFreshOutputAfterFailedRebuild(
 		)
 	}
 
-	cfg.Core.CSSEntryFiles.Critical = filepath.Join(
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, filepath.Join(
 		root,
 		"styles",
 		"missing-critical.css",
-	)
+	))
 	if err := builder.BuildCSS(CSSBuildOptions{BuildCriticalCSS: true}); err == nil {
 		t.Fatal("expected buildCriticalCSS to fail when entry file is missing")
 	}
@@ -1280,18 +1408,16 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating normal css entry parent dir: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`body { color: blue; }`),
 		0o644,
 	); err != nil {
@@ -1315,11 +1441,11 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(
 		)
 	}
 
-	cfg.Core.CSSEntryFiles.NonCritical = filepath.Join(
+	wavetest.SetCoreNonCriticalCSSEntryFile(cfg, filepath.Join(
 		root,
 		"styles",
 		"missing-normal.css",
-	)
+	))
 	if err := builder.BuildCSS(CSSBuildOptions{BuildNormalCSS: true}); err == nil {
 		t.Fatal("expected buildNormalCSS to fail when entry file is missing")
 	}
@@ -1350,14 +1476,13 @@ func TestReadNormalCSSURLForHotReload_RequiresFreshOutputAfterFailedRebuild(
 
 func TestReadNormalCSSURLForHotReload_NormalizesRefFilePath(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.PublicPathPrefix = "/assets/"
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCorePublicPathPrefix(cfg, "/assets/")
 
 	if err := SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
-	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte(" ../outside.css \n"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Dist().NormalCSSRef(), []byte(" ../outside.css \n"), 0o644); err != nil {
 		t.Fatalf("failed writing normal css ref file: %v", err)
 	}
 
@@ -1395,14 +1520,13 @@ func TestReadNormalCSSURLForHotReload_WhitespaceOnlyRefReturnsEmptyURL(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.PublicPathPrefix = "/assets/"
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCorePublicPathPrefix(cfg, "/assets/")
 
 	if err := SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
-	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte(" \n\t "), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Dist().NormalCSSRef(), []byte(" \n\t "), 0o644); err != nil {
 		t.Fatalf("failed writing whitespace-only normal css ref file: %v", err)
 	}
 
@@ -1423,13 +1547,12 @@ func TestReadNormalCSSURLForHotReload_WhitespaceOnlyRefReturnsEmptyURL(
 
 func TestReadCriticalCSS_ReadsFromDist(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
 
 	if err := SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
-	if err := os.WriteFile(cfg.Dist.CriticalCSS(), []byte("body { color: navy; }"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Dist().CriticalCSS(), []byte("body { color: navy; }"), 0o644); err != nil {
 		t.Fatalf("failed writing critical css file: %v", err)
 	}
 
@@ -1447,21 +1570,19 @@ func TestReadCriticalCSS_ReadsFromDist(t *testing.T) {
 
 func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical:    filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
 		NonCritical: filepath.Join(root, "styles", "normal.css"),
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
-	if err := os.MkdirAll(filepath.Dir(cfg.Core.CSSEntryFiles.Critical), 0o755); err != nil {
+	})
+	if err := os.MkdirAll(filepath.Dir(cfg.Core().CriticalCSSEntryFile()), 0o755); err != nil {
 		t.Fatalf("failed creating css entry parent dir: %v", err)
 	}
-	if err := os.WriteFile(cfg.Core.CSSEntryFiles.Critical, []byte("body { color: red; }"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Core().CriticalCSSEntryFile(), []byte("body { color: red; }"), 0o644); err != nil {
 		t.Fatalf("failed writing critical css entry file: %v", err)
 	}
-	if err := os.WriteFile(cfg.Core.CSSEntryFiles.NonCritical, []byte("body { color: blue; }"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Core().NonCriticalCSSEntryFile(), []byte("body { color: blue; }"), 0o644); err != nil {
 		t.Fatalf("failed writing normal css entry file: %v", err)
 	}
 
@@ -1494,10 +1615,10 @@ func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 		)
 	}
 
-	if err := os.WriteFile(cfg.Dist.CriticalCSS(), []byte("body { color: green; }"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Dist().CriticalCSS(), []byte("body { color: green; }"), 0o644); err != nil {
 		t.Fatalf("failed writing overridden critical css dist file: %v", err)
 	}
-	if err := os.WriteFile(cfg.Dist.NormalCSSRef(), []byte("styles-overridden.css"), 0o644); err != nil {
+	if err := os.WriteFile(cfg.Dist().NormalCSSRef(), []byte("styles-overridden.css"), 0o644); err != nil {
 		t.Fatalf("failed writing overridden normal css ref file: %v", err)
 	}
 
@@ -1573,15 +1694,13 @@ func TestCSSHotReloadCaches_DoNotLeakAcrossBuilderReplacement(t *testing.T) {
 
 func TestIsCriticalCSSFile_RecognizesSymlinkAliasPath(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	stylesDirectoryPath := filepath.Join(root, "styles")
 	criticalEntryPath := filepath.Join(stylesDirectoryPath, waveartifacts.CriticalCSSFileName)
-	cfg.Core.CSSEntryFiles = cssEntryFilesForTests{
+	setCSSEntryFilesForBuilderCSSTests(cfg, cssEntryFilesForTests{
 		Critical: criticalEntryPath,
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
 		t.Fatalf("failed creating styles directory: %v", err)
 	}

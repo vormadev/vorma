@@ -3,10 +3,7 @@ package runloop_test
 import (
 	"context"
 	"errors"
-	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveframework"
-	"github.com/vormadev/vorma/wave/wavewatch"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,6 +12,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveframework"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/vormadev/vorma/kit/executil"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
@@ -38,8 +39,8 @@ func newEngineAndWatcherForHookExecutionTest(
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -55,6 +56,7 @@ func newEngineAndWatcherForHookExecutionTest(
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 	serverForTest.RestartIntents = restartAccumulator
 
@@ -149,7 +151,9 @@ func TestRunConcurrentHooks_RespectsExcludesAndCollectsActions(t *testing.T) {
 				{
 					Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						callbackCalled.Store(true)
-						return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+						return &wavewatch.RefreshAction{
+							ReloadBrowser: true,
+						}, nil
 					},
 				},
 				{
@@ -215,8 +219,8 @@ func TestRunConcurrentHooks_RunCombinedDevBuildHookCommands_UsesFrameworkBuildHo
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	harness.server.Cfg.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(
-		combinedExecutionLogPath,
+	wavetest.SetCoreDevBuildHook(harness.server.Cfg,
+		"printf 'user\\n' >> "+strconv.Quote(combinedExecutionLogPath),
 	)
 	waveframework.StateForConfig(harness.server.Cfg).DevBuildHook = "printf 'framework-command\\n' >> " + strconv.Quote(
 		frameworkCommandFallbackLogPath,
@@ -334,7 +338,9 @@ func TestRunConcurrentHooks_ReturnsActionsInHookOrder(t *testing.T) {
 				{
 					Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						time.Sleep(20 * time.Millisecond)
-						return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+						return &wavewatch.RefreshAction{
+							ReloadBrowser: true,
+						}, nil
 					},
 				},
 				{
@@ -398,7 +404,9 @@ func TestRunConcurrentHooks_AggregatesMultipleHookErrors(t *testing.T) {
 				},
 				{
 					Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
-						return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+						return &wavewatch.RefreshAction{
+							ReloadBrowser: true,
+						}, nil
 					},
 				},
 			},
@@ -462,7 +470,9 @@ func TestRunConcurrentHooksWithContext_CanceledContextSkipsHookExecution(
 				{
 					Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						callbackCalled.Store(true)
-						return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+						return &wavewatch.RefreshAction{
+							ReloadBrowser: true,
+						}, nil
 					},
 				},
 			},
@@ -574,7 +584,9 @@ func TestRunConcurrentHooksWithContext_CallbackCanObserveCancellation(
 					Callback: func(hookContext *wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						select {
 						case <-hookContext.ExecutionContext.Done():
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						case <-time.After(2 * time.Second):
 							return nil, os.ErrDeadlineExceeded
 						}
@@ -642,7 +654,9 @@ func TestRunConcurrentHooksForEvents_ReturnsActionsInEventOrder(t *testing.T) {
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							time.Sleep(20 * time.Millisecond)
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						},
 					},
 				},
@@ -724,7 +738,9 @@ func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							callbackCount.Add(1)
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						},
 					},
 				},
@@ -740,7 +756,9 @@ func TestRunConcurrentHooksForEventsWithContext_CanceledContextSkipsExecution(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							callbackCount.Add(1)
-							return &wavewatch.RefreshAction{WaitForApp: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForApp: true,
+							}, nil
 						},
 					},
 				},
@@ -831,9 +849,7 @@ func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCallbackTimeouts = waveconfig.HookCallbackTimeoutConfig{
-		PreCallbackTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(t.TempDir(), "pre-callback-timeout.txt")
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -847,7 +863,9 @@ func TestRunPreHooks_CallbackTimeoutUsesPreStageSetting(t *testing.T) {
 					Callback: func(hookContext *wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						select {
 						case <-hookContext.ExecutionContext.Done():
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						case <-time.After(2 * time.Second):
 							return nil, os.ErrDeadlineExceeded
 						}
@@ -957,9 +975,7 @@ func TestRunPreHooks_CommandTimeoutUsesPreStageSetting(t *testing.T) {
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		PreCommandTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(t.TempDir(), "pre-timeout.txt")
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -1016,9 +1032,7 @@ func TestRunConcurrentHooks_CommandTimeoutUsesConcurrentStageSetting(
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		ConcurrentCommandTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(t.TempDir(), "concurrent-timeout.txt")
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -1077,9 +1091,7 @@ func TestRunPostHooks_CommandTimeoutUsesPostStageSetting(t *testing.T) {
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		PostCommandTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchPostCommandTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(t.TempDir(), "post-timeout.txt")
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -1200,9 +1212,7 @@ func TestRunPreHooks_PerHookCommandTimeoutOverridesStageTimeout(t *testing.T) {
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		PreCommandTimeoutMilliseconds: 2000,
-	}
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(harness.server.Cfg, 2000)
 
 	changedPath := filepath.Join(t.TempDir(), "pre-timeout-override.txt")
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -1262,9 +1272,7 @@ func TestRunPreHooks_DisableStageCommandTimeoutBypassesStageTimeout(
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		PreCommandTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(t.TempDir(), "pre-timeout-disable.txt")
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -1306,9 +1314,7 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCallbackTimeouts = waveconfig.HookCallbackTimeoutConfig{
-		PreCallbackTimeoutMilliseconds: 2000,
-	}
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(harness.server.Cfg, 2000)
 
 	changedPath := filepath.Join(
 		t.TempDir(),
@@ -1326,7 +1332,9 @@ func TestRunPreHooks_PerHookCallbackTimeoutOverridesStageTimeout(t *testing.T) {
 					Callback: func(hookContext *wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						select {
 						case <-hookContext.ExecutionContext.Done():
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						case <-time.After(2 * time.Second):
 							return nil, os.ErrDeadlineExceeded
 						}
@@ -1368,9 +1376,7 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(
 	harness := newEngineAndWatcherForHookExecutionTest(t)
 	defer harness.watcher.Close()
 
-	harness.server.Cfg.Watch.HookCallbackTimeouts = waveconfig.HookCallbackTimeoutConfig{
-		PreCallbackTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(
 		t.TempDir(),
@@ -1390,7 +1396,9 @@ func TestRunPreHooks_DisableStageCallbackTimeoutBypassesStageTimeout(
 						case <-hookContext.ExecutionContext.Done():
 							return nil, os.ErrDeadlineExceeded
 						case <-time.After(300 * time.Millisecond):
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						}
 					},
 				},
@@ -1495,7 +1503,9 @@ func TestRunPostHooks_RunOnChangeOnlySkipsCommandAndKeepsCallback(
 					),
 					Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 						callbackCalled.Store(true)
-						return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+						return &wavewatch.RefreshAction{
+							ReloadBrowser: true,
+						}, nil
 					},
 				},
 			},
@@ -1784,12 +1794,8 @@ func TestFireNoWaitHooks_CallbackCanObserveExecutionContextCancellation(
 		t.Fatalf("failed writing changed file: %v", err)
 	}
 
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		ConcurrentNoWaitCommandTimeoutMilliseconds: 100,
-	}
-	harness.server.Cfg.Watch.HookCallbackTimeouts = waveconfig.HookCallbackTimeoutConfig{
-		ConcurrentNoWaitCallbackTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(harness.server.Cfg, 100)
+	wavetest.SetWatchConcurrentNoWaitCallbackTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	callbackDone := make(chan struct{}, 1)
 	eventWithHooks := eventpipeline.EventWithHooks{
@@ -1942,9 +1948,7 @@ func TestFireNoWaitHooks_CommandTimeoutUsesConcurrentNoWaitStageSetting(
 	defer harness.watcher.Close()
 
 	harness.server.ConcurrentNoWaitHookExecutionLimiter = make(chan struct{}, 1)
-	harness.server.Cfg.Watch.HookCommandTimeouts = waveconfig.HookCommandTimeoutConfig{
-		ConcurrentNoWaitCommandTimeoutMilliseconds: 100,
-	}
+	wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(harness.server.Cfg, 100)
 
 	changedPath := filepath.Join(t.TempDir(), "concurrent-no-wait-timeout.txt")
 	secondHookRanMarkerPath := filepath.Join(
@@ -2168,7 +2172,9 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&firstCallbackCount, 1)
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						},
 					},
 				},
@@ -2182,7 +2188,9 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&duplicateCallbackCount, 1)
-							return &wavewatch.RefreshAction{WaitForApp: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForApp: true,
+							}, nil
 						},
 					},
 				},
@@ -2196,7 +2204,9 @@ func TestRunPreHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&thirdCallbackCount, 1)
-							return &wavewatch.RefreshAction{WaitForVite: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForVite: true,
+							}, nil
 						},
 					},
 				},
@@ -2271,7 +2281,9 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&firstCallbackCount, 1)
 							time.Sleep(20 * time.Millisecond)
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						},
 					},
 				},
@@ -2285,7 +2297,9 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&duplicateCallbackCount, 1)
-							return &wavewatch.RefreshAction{WaitForApp: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForApp: true,
+							}, nil
 						},
 					},
 				},
@@ -2299,7 +2313,9 @@ func TestRunConcurrentHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&thirdCallbackCount, 1)
-							return &wavewatch.RefreshAction{WaitForVite: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForVite: true,
+							}, nil
 						},
 					},
 				},
@@ -2373,7 +2389,9 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&firstCallbackCount, 1)
-							return &wavewatch.RefreshAction{ReloadBrowser: true}, nil
+							return &wavewatch.RefreshAction{
+								ReloadBrowser: true,
+							}, nil
 						},
 					},
 				},
@@ -2387,7 +2405,9 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&duplicateCallbackCount, 1)
-							return &wavewatch.RefreshAction{WaitForApp: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForApp: true,
+							}, nil
 						},
 					},
 				},
@@ -2401,7 +2421,9 @@ func TestRunPostHooksForEvents_SkipsDuplicateHooksAndKeepsActionOrder(
 					{
 						Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 							atomic.AddInt32(&thirdCallbackCount, 1)
-							return &wavewatch.RefreshAction{WaitForVite: true}, nil
+							return &wavewatch.RefreshAction{
+								WaitForVite: true,
+							}, nil
 						},
 					},
 				},
@@ -2486,7 +2508,9 @@ func TestProcessSingleEvent_PrehookRestartShortCircuitsPipeline(t *testing.T) {
 			Pre: []wavewatch.OnChangeHook{
 				{
 					Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
-						return &wavewatch.RefreshAction{TriggerRestart: true}, nil
+						return &wavewatch.RefreshAction{
+							TriggerRestart: true,
+						}, nil
 					},
 				},
 			},
@@ -2568,17 +2592,16 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesCanonicalPublicFileMapOu
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	publicFile := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"logo.png",
 	)
 	privateFile := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"templates",
 		"home.html",
 	)
@@ -2605,6 +2628,7 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesCanonicalPublicFileMapOu
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 	serverForTest.Builder = builderForTest
 
@@ -2626,9 +2650,9 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesCanonicalPublicFileMapOu
 	}
 
 	requiredOutputs := []string{
-		cfg.Dist.PublicFileMapGob(),
-		cfg.Dist.PrivateFileMapGob(),
-		cfg.Dist.PublicFileMapRef(),
+		cfg.Dist().PublicFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
+		cfg.Dist().PublicFileMapRef(),
 	}
 	for _, output := range requiredOutputs {
 		if _, statError := os.Stat(output); statError != nil {
@@ -2640,12 +2664,12 @@ func TestExecuteBuildPhase_ProcessesStaticFilesAndWritesCanonicalPublicFileMapOu
 		}
 	}
 
-	refBytes, readRefError := os.ReadFile(cfg.Dist.PublicFileMapRef())
+	refBytes, readRefError := os.ReadFile(cfg.Dist().PublicFileMapRef())
 	if readRefError != nil {
 		t.Fatalf("failed reading public filemap ref: %v", readRefError)
 	}
 	referencedPublicFileMapPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		filepath.FromSlash(strings.TrimSpace(string(refBytes))),
 	)
 	if _, statError := os.Stat(referencedPublicFileMapPath); statError != nil {
@@ -2661,27 +2685,26 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	publicTrackedFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"tracked-logo.png",
 	)
 	privateTrackedFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"templates",
 		"tracked-home.html",
 	)
 	publicUnrelatedFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"unrelated-logo.png",
 	)
 	privateUnrelatedFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"templates",
 		"unrelated-home.html",
 	)
@@ -2730,6 +2753,7 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 	serverForTest.Builder = builderForTest
 
@@ -2757,11 +2781,11 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 	}
 	privateMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
 		t,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 
 	publicTrackedMapKey, publicTrackedRelError := filepath.Rel(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		publicTrackedFilePath,
 	)
 	if publicTrackedRelError != nil {
@@ -2771,7 +2795,7 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 		)
 	}
 	publicUnrelatedMapKey, publicUnrelatedRelError := filepath.Rel(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		publicUnrelatedFilePath,
 	)
 	if publicUnrelatedRelError != nil {
@@ -2781,7 +2805,7 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 		)
 	}
 	privateTrackedMapKey, privateTrackedRelError := filepath.Rel(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		privateTrackedFilePath,
 	)
 	if privateTrackedRelError != nil {
@@ -2791,7 +2815,7 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 		)
 	}
 	privateUnrelatedMapKey, privateUnrelatedRelError := filepath.Rel(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		privateUnrelatedFilePath,
 	)
 	if privateUnrelatedRelError != nil {
@@ -2836,31 +2860,184 @@ func TestExecuteBuildPhase_UsesChangedPathStaticProcessingWhenPathsProvided(
 	}
 }
 
+func TestExecuteBuildPhase_NoPublicFileMapArtifactChangeClearsInvalidateViteAction(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(publicDir, "logo.png"), []byte("logo"), 0o644); err != nil {
+		t.Fatalf("failed writing public source file: %v", err)
+	}
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	defer builderForTest.Close()
+	if processError := builderForTest.ProcessPublicFilesOnly(); processError != nil {
+		t.Fatalf("seed public file map: %v", processError)
+	}
+
+	ignoredPath := filepath.Join(publicDir, ".DS_Store")
+	if err := os.WriteFile(ignoredPath, []byte("ignored"), 0o644); err != nil {
+		t.Fatalf("failed writing ignored file: %v", err)
+	}
+
+	serverForTest := newRunloopTestServer(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
+	)
+	serverForTest.Builder = builderForTest
+
+	work := &eventpipeline.WorkSet{
+		Build: eventpipeline.BuildPhaseDecision{
+			ProcessPublicFiles:           true,
+			PublicStaticChangedFilePaths: []string{ignoredPath},
+		},
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+		},
+	}
+	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
+		t.Fatalf("ExecuteBuildPhase returned error: %v", executeBuildPhaseError)
+	}
+
+	if work.Browser.Action != eventpipeline.BrowserPhaseActionNone {
+		t.Fatalf(
+			"expected browser action to downgrade to none when public filemap artifacts are unchanged, got %v",
+			work.Browser.Action,
+		)
+	}
+}
+
+func TestExecuteBuildPhase_PublicFileMapArtifactRepairKeepsInvalidateViteAction(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(publicDir, "logo.png"), []byte("logo"), 0o644); err != nil {
+		t.Fatalf("failed writing public source file: %v", err)
+	}
+
+	builderForTest := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+	)
+	defer builderForTest.Close()
+	if processError := builderForTest.ProcessPublicFilesOnly(); processError != nil {
+		t.Fatalf("seed public file map: %v", processError)
+	}
+
+	refBytes, readRefError := os.ReadFile(cfg.Dist().PublicFileMapRef())
+	if readRefError != nil {
+		t.Fatalf("read public filemap ref before repair test: %v", readRefError)
+	}
+	refTarget := strings.TrimSpace(string(refBytes))
+	if refTarget == "" {
+		t.Fatal("expected non-empty public filemap ref before repair test")
+	}
+	missingCanonicalPath := filepath.Join(cfg.Dist().StaticPublic(), refTarget)
+	if removeError := os.Remove(missingCanonicalPath); removeError != nil {
+		t.Fatalf(
+			"remove canonical public filemap artifact before repair test: %v",
+			removeError,
+		)
+	}
+
+	ignoredPath := filepath.Join(publicDir, ".DS_Store")
+	if err := os.WriteFile(ignoredPath, []byte("ignored"), 0o644); err != nil {
+		t.Fatalf("failed writing ignored file: %v", err)
+	}
+
+	serverForTest := newRunloopTestServer(
+		cfg,
+		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
+	)
+	serverForTest.Builder = builderForTest
+
+	work := &eventpipeline.WorkSet{
+		Build: eventpipeline.BuildPhaseDecision{
+			ProcessPublicFiles:           true,
+			PublicStaticChangedFilePaths: []string{ignoredPath},
+		},
+		Browser: eventpipeline.BrowserPhaseDecision{
+			Action: eventpipeline.BrowserPhaseActionInvalidateVite,
+		},
+	}
+	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(work); executeBuildPhaseError != nil {
+		t.Fatalf("ExecuteBuildPhase returned error: %v", executeBuildPhaseError)
+	}
+
+	if work.Browser.Action != eventpipeline.BrowserPhaseActionInvalidateVite {
+		t.Fatalf(
+			"expected browser action to keep invalidate-vite when public filemap artifacts are repaired, got %v",
+			work.Browser.Action,
+		)
+	}
+
+	refBytesAfterRepair, readRefAfterRepairError := os.ReadFile(
+		cfg.Dist().PublicFileMapRef(),
+	)
+	if readRefAfterRepairError != nil {
+		t.Fatalf(
+			"read public filemap ref after repair test: %v",
+			readRefAfterRepairError,
+		)
+	}
+	refTargetAfterRepair := strings.TrimSpace(string(refBytesAfterRepair))
+	if refTargetAfterRepair == "" {
+		t.Fatal("expected non-empty public filemap ref after repair test")
+	}
+	canonicalPathAfterRepair := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		refTargetAfterRepair,
+	)
+	if _, statError := os.Stat(canonicalPathAfterRepair); statError != nil {
+		t.Fatalf(
+			"expected canonical public filemap artifact after repair path, stat error: %v",
+			statError,
+		)
+	}
+}
+
 func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	publicTrackedFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"tracked-logo.png",
 	)
 	privateTrackedFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"templates",
 		"tracked-home.html",
 	)
 	publicNewFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"new-logo.png",
 	)
 	privateNewFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"templates",
 		"new-home.html",
 	)
@@ -2908,6 +3085,7 @@ func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 	serverForTest.Builder = builderForTest
 
@@ -2930,18 +3108,18 @@ func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
 	}
 	privateMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
 		t,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 
 	publicNewMapKey, publicNewRelError := filepath.Rel(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		publicNewFilePath,
 	)
 	if publicNewRelError != nil {
 		t.Fatalf("derive new public static map key: %v", publicNewRelError)
 	}
 	privateNewMapKey, privateNewRelError := filepath.Rel(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		privateNewFilePath,
 	)
 	if privateNewRelError != nil {
@@ -2968,9 +3146,9 @@ func TestExecuteBuildPhase_UsesFullScanStaticProcessingWhenChangedPathsAbsent(
 }
 
 func TestExecuteBuildPhase_CompileGoErrorIsReturned(t *testing.T) {
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.MainAppEntry = "missing/package/for/compile"
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	wavetest.SetCoreMainAppEntry(cfg, "missing/package/for/compile")
 
 	builderForTest := builder.NewBuilder(
 		cfg,
@@ -2981,6 +3159,7 @@ func TestExecuteBuildPhase_CompileGoErrorIsReturned(t *testing.T) {
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 	serverForTest.Builder = builderForTest
 
@@ -2997,12 +3176,13 @@ func TestExecuteBuildPhase_CompileGoErrorIsReturned(t *testing.T) {
 }
 
 func TestExecuteBuildPhase_WithNilBuilderReturnsError(t *testing.T) {
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 
 	work := &eventpipeline.WorkSet{
@@ -3061,12 +3241,13 @@ func TestExecuteHookExecutionPlan_CallbackPanicReturnsErrorAndSkipsCommand(
 func TestExecuteBuildPhase_WithNilBuilderAndNoBuildWorkReturnsNil(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 
 	work := &eventpipeline.WorkSet{}
@@ -3081,12 +3262,13 @@ func TestExecuteBuildPhase_WithNilBuilderAndNoBuildWorkReturnsNil(
 }
 
 func TestExecuteBuildPhase_WithNilWorkSetReturnsNil(t *testing.T) {
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 
 	if executeBuildPhaseError := serverForTest.ExecuteBuildPhase(
@@ -3101,31 +3283,33 @@ func TestExecuteBuildPhase_WithNilWorkSetReturnsNil(t *testing.T) {
 
 func TestExecuteBuildPhase_SetupDistDirErrorIsReturned(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	if err := os.WriteFile(
-		cfg.Dist.Internal(),
+		cfg.Dist().Internal(),
 		[]byte("not-a-directory"),
 		0o644,
 	); err != nil {
-		if mkdirError := os.MkdirAll(filepath.Dir(cfg.Dist.Internal()), 0o755); mkdirError != nil {
+		if mkdirError := os.MkdirAll(filepath.Dir(cfg.Dist().Internal()), 0o755); mkdirError != nil {
 			t.Fatalf("failed creating dist-internal parent dir: %v", mkdirError)
 		}
 		if retryWriteError := os.WriteFile(
-			cfg.Dist.Internal(),
+			cfg.Dist().Internal(),
 			[]byte("not-a-directory"),
 			0o644,
 		); retryWriteError != nil {
-			t.Fatalf("failed writing dist-internal blocker file: %v", retryWriteError)
+			t.Fatalf(
+				"failed writing dist-internal blocker file: %v",
+				retryWriteError,
+			)
 		}
 	} else {
 		// no-op: blocker file created on first attempt.
 	}
 
 	publicFile := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"logo.png",
 	)
@@ -3145,6 +3329,7 @@ func TestExecuteBuildPhase_SetupDistDirErrorIsReturned(t *testing.T) {
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		"",
 	)
 	serverForTest.Builder = builderForTest
 
@@ -3159,7 +3344,7 @@ func TestExecuteBuildPhase_SetupDistDirErrorIsReturned(t *testing.T) {
 		t.Fatal("expected setup-dist error from build phase")
 	}
 
-	statInfo, statError := os.Stat(cfg.Dist.Internal())
+	statInfo, statError := os.Stat(cfg.Dist().Internal())
 	if statError != nil {
 		t.Fatalf("failed stating dist-internal blocker: %v", statError)
 	}

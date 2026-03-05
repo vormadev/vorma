@@ -82,11 +82,11 @@ func FuzzParseClientRoutes_IsSafeForRouteFileInputs(f *testing.F) {
 		mustWriteFile(t, "frontend/src/vorma.routes.ts", []byte(routeSource))
 
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 				ClientRouteDefinitionPatterns: []string{
 					"frontend/src/**/*vorma.routes.ts",
 				},
-			},
+			}),
 			Log: testLogger(),
 		}
 

@@ -2,7 +2,6 @@ package vormagogen
 
 import (
 	"encoding/json"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"os"
@@ -18,18 +17,14 @@ type discoveredRegistrationRuntimeFixture struct {
 	app *vorma.Vorma
 }
 
-type discoveredRegistrationStaticAssetDirs = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
-
 func newDiscoveredRegistrationRuntimeFixture(
 	t *testing.T,
 ) *discoveredRegistrationRuntimeFixture {
 	t.Helper()
 
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormagogen-fixture-")
-	distDir := filepath.Join(rootDir, "dist")
+	t.Chdir(rootDir)
+	distDir := filepath.Join(rootDir, ".wavedist")
 	staticDir := filepath.Join(distDir, "static")
 	privateDir := filepath.Join(staticDir, "assets", "private")
 	publicDir := filepath.Join(staticDir, "assets", "public")
@@ -48,7 +43,15 @@ func newDiscoveredRegistrationRuntimeFixture(
 	}
 
 	rawConfig := struct {
-		Core  waveconfig.CoreConfig `json:"Core"`
+		Core struct {
+			ProjectID       string `json:"ProjectID"`
+			MainAppEntry    string `json:"MainAppEntry"`
+			StaticAssetDirs struct {
+				Private string `json:"Private"`
+				Public  string `json:"Public"`
+			} `json:"StaticAssetDirs"`
+			PublicPathPrefix string `json:"PublicPathPrefix"`
+		} `json:"Core"`
 		Vorma struct {
 			MainBuildEntry                string   `json:"MainBuildEntry"`
 			UIVariant                     string   `json:"UIVariant"`
@@ -58,17 +61,16 @@ func newDiscoveredRegistrationRuntimeFixture(
 			TSGenOutDir                   string   `json:"TSGenOutDir"`
 			BuildtimePublicURLFuncName    string   `json:"BuildtimePublicURLFuncName"`
 		} `json:"Vorma"`
-	}{
-		Core: waveconfig.CoreConfig{
-			MainAppEntry: "backend/cmd/serve",
-			DistDir:      wavetest.MustCWDRelativePath(distDir),
-			StaticAssetDirs: discoveredRegistrationStaticAssetDirs{
-				Private: wavetest.MustCWDRelativePath(privateDir),
-				Public:  wavetest.MustCWDRelativePath(publicDir),
-			},
-			PublicPathPrefix: "/",
-		},
-	}
+	}{}
+	rawConfig.Core.ProjectID = "vormagogen-runtime-registration-test"
+	rawConfig.Core.MainAppEntry = "backend/cmd/serve"
+	rawConfig.Core.StaticAssetDirs.Private = filepath.ToSlash(
+		filepath.Join(".wavedist", "static", "assets", "private"),
+	)
+	rawConfig.Core.StaticAssetDirs.Public = filepath.ToSlash(
+		filepath.Join(".wavedist", "static", "assets", "public"),
+	)
+	rawConfig.Core.PublicPathPrefix = "/"
 	rawConfig.Vorma.MainBuildEntry = "backend/cmd/build"
 	rawConfig.Vorma.UIVariant = "react"
 	rawConfig.Vorma.HTMLTemplateLocation = "entry.go.html"
@@ -83,11 +85,18 @@ func newDiscoveredRegistrationRuntimeFixture(
 	if err != nil {
 		t.Fatalf("marshal test config: %v", err)
 	}
+	if err := os.WriteFile(
+		filepath.Join(rootDir, "wave.config.json"),
+		rawConfigBytes,
+		0o644,
+	); err != nil {
+		t.Fatalf("write wave config: %v", err)
+	}
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: rawConfigBytes,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         discoveredRegistrationTestLogger(),
+		FS:         os.DirFS(rootDir),
+		ConfigPath: "wave.config.json",
+		Logger:     discoveredRegistrationTestLogger(),
 	})
 	return &discoveredRegistrationRuntimeFixture{
 		app: vorma.NewVormaApp(vorma.VormaAppConfig{

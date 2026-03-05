@@ -5,6 +5,10 @@
 @import url("./hljs.css");
 @import url("./nprogress.css");
 
+.spot-check-is-hashed {
+	background: url(/vorma-banner.webp);
+}
+
 /* ============================================
    CSS VARIABLES
    ============================================ */

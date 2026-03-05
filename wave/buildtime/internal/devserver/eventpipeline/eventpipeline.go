@@ -874,7 +874,15 @@ func (work *WorkSet) ApplyImplicitWorkDecision(
 func normalizeChangedSourceFilePathForWorkSet(
 	filePath string,
 ) string {
-	return waveenv.Absolute(filePath)
+	trimmedFilePath := strings.TrimSpace(filePath)
+	if trimmedFilePath == "" {
+		return ""
+	}
+	cleanedFilePath := filepath.Clean(trimmedFilePath)
+	if cleanedFilePath == "." {
+		return ""
+	}
+	return cleanedFilePath
 }
 
 func appendNormalizedFilePathIfMissing(

@@ -51,9 +51,9 @@ func TestNormalizeGlobPatternForMatching_PreservesEscapedMetaCharacters(
 	t *testing.T,
 ) {
 	normalizedPattern := waveglob.NormalizeGlobPatternForMatching(
-		"/tmp/\\[watch-root\\]/**/*.txt",
+		"/tmp/\\[resolve-root\\]/**/*.txt",
 	)
-	if !strings.Contains(normalizedPattern, "\\[watch-root\\]") {
+	if !strings.Contains(normalizedPattern, "\\[resolve-root\\]") {
 		t.Fatalf(
 			"expected escaped metacharacters to be preserved, got pattern %q",
 			normalizedPattern,
@@ -61,13 +61,13 @@ func TestNormalizeGlobPatternForMatching_PreservesEscapedMetaCharacters(
 	}
 }
 
-func TestMatchPathAgainstGlob_WithEscapedWatchRootMetacharacters(t *testing.T) {
+func TestMatchPathAgainstGlob_WithEscapedResolveRootMetacharacters(t *testing.T) {
 	matched := waveglob.MatchPathAgainstGlob(
-		"/tmp/[watch-root]/notes.txt",
-		"/tmp/\\[watch-root\\]/**/*.txt",
+		"/tmp/[resolve-root]/notes.txt",
+		"/tmp/\\[resolve-root\\]/**/*.txt",
 	)
 	if !matched {
-		t.Fatal("expected escaped literal watch-root glob to match target path")
+		t.Fatal("expected escaped literal resolve-root glob to match target path")
 	}
 }
 

@@ -40,8 +40,8 @@ func newEventPipelineHarness(
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := wavetest.NewParsedConfigAtRoot(root)
-	cfg.Core.ServerOnlyMode = serverOnly
+	cfg := wavetest.NewParsedConfigAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, serverOnly)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,

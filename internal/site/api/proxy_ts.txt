@@ -11,7 +11,8 @@ logInfo("Initializing proxy...");
 const GO_APP_LOCATION = join(
 	process.cwd(),
 	"internal/site",
-	waveConfig.Core.DistDir,
+	"backend",
+	".wavedist",
 	"main",
 );
 const GO_APP_HEALTH_CHECK_ENDPOINT = waveConfig.Watch.HealthcheckEndpoint;

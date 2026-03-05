@@ -1,6 +1,8 @@
 package backendroutes
 
 import (
+	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,6 +26,150 @@ func TestParseBackendLoaderPatterns(t *testing.T) {
 					"loader patterns length = %d, want 0",
 					len(loaderPatterns),
 				)
+			}
+		},
+	)
+
+	t.Run(
+		"discovers route registrations in non-router packages under backend src",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.RootDir)
+
+			testkit.MustWriteFile(t, "backend/src/feature/routes.go", []byte(`
+package feature
+
+import "github.com/vormadev/vorma"
+
+var App = &vorma.Vorma{}
+
+func decorateLoaderCtx(rd *vorma.LoaderReqData) *vorma.LoaderReqData {
+	return rd
+}
+
+var _ = vorma.DefineLoaderForRegistration(App, "/outside-router", nil, decorateLoaderCtx)
+`))
+
+			loaderPatterns, err := parseBackendLoaderPatterns(fixture.App)
+			if err != nil {
+				t.Fatalf("parseBackendLoaderPatterns returned error: %v", err)
+			}
+
+			expectedLoaderPatterns := []string{"/outside-router"}
+			if len(loaderPatterns) != len(expectedLoaderPatterns) {
+				t.Fatalf(
+					"loader patterns length = %d, want %d (%#v)",
+					len(loaderPatterns),
+					len(expectedLoaderPatterns),
+					loaderPatterns,
+				)
+			}
+			for i, expectedPattern := range expectedLoaderPatterns {
+				if loaderPatterns[i] != expectedPattern {
+					t.Fatalf(
+						"loader pattern[%d] = %q, want %q",
+						i,
+						loaderPatterns[i],
+						expectedPattern,
+					)
+				}
+			}
+		},
+	)
+
+	t.Run(
+		"discovers patterns through imported helper wrappers across packages",
+		func(t *testing.T) {
+			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
+			t.Chdir(fixture.RootDir)
+
+			repositoryRootDir := testkit.MustResolveRepositoryRootDir(t)
+			testkit.MustWriteFile(t, "go.mod", []byte(fmt.Sprintf(`
+module wrappertest
+
+go 1.24
+
+require github.com/vormadev/vorma v0.0.0
+
+replace github.com/vormadev/vorma => %s
+`, filepath.ToSlash(repositoryRootDir))))
+
+			testkit.MustWriteFile(t, "backend/src/app/app.go", []byte(`
+package app
+
+import "github.com/vormadev/vorma"
+
+var App = &vorma.Vorma{}
+`))
+
+			testkit.MustWriteFile(
+				t,
+				"backend/src/define/loader/loader.go",
+				[]byte(`
+package loader
+
+import (
+	appcfg "wrappertest/backend/src/app"
+
+	"github.com/vormadev/vorma"
+)
+
+type Ctx struct {
+	*vorma.LoaderReqData
+}
+
+func Define[O any](
+	pattern string,
+	loaderFunc func(*Ctx) (O, error),
+) *vorma.Loader[O] {
+	return vorma.DefineLoaderForRegistration(
+		appcfg.App,
+		pattern,
+		loaderFunc,
+		func(rd *vorma.LoaderReqData) *Ctx {
+			return &Ctx{LoaderReqData: rd}
+		},
+	)
+}
+`),
+			)
+
+			testkit.MustWriteFile(t, "backend/src/content/routes.go", []byte(`
+package content
+
+import loaderhelpers "wrappertest/backend/src/define/loader"
+
+var _ = loaderhelpers.Define(
+	"/cross-package",
+	func(*loaderhelpers.Ctx) (string, error) {
+		return "ok", nil
+	},
+)
+`))
+
+			loaderPatterns, err := parseBackendLoaderPatterns(fixture.App)
+			if err != nil {
+				t.Fatalf("parseBackendLoaderPatterns returned error: %v", err)
+			}
+
+			expectedLoaderPatterns := []string{"/cross-package"}
+			if len(loaderPatterns) != len(expectedLoaderPatterns) {
+				t.Fatalf(
+					"loader patterns length = %d, want %d (%#v)",
+					len(loaderPatterns),
+					len(expectedLoaderPatterns),
+					loaderPatterns,
+				)
+			}
+			for i, expectedPattern := range expectedLoaderPatterns {
+				if loaderPatterns[i] != expectedPattern {
+					t.Fatalf(
+						"loader pattern[%d] = %q, want %q",
+						i,
+						loaderPatterns[i],
+						expectedPattern,
+					)
+				}
 			}
 		},
 	)
@@ -102,7 +248,7 @@ func notInitReachable() {
 	)
 
 	t.Run(
-		"discovers loader registrations via nestedmux.AddTaskHandler",
+		"ignores direct nestedmux.AddTaskHandler registrations",
 		func(t *testing.T) {
 			fixture := newBackendRouteDiscoveryFixtureWithServerPatterns(t)
 			t.Chdir(fixture.RootDir)
@@ -137,24 +283,13 @@ var _ = nestedmux.AddTaskHandler(
 			if err != nil {
 				t.Fatalf("parseBackendLoaderPatterns returned error: %v", err)
 			}
-			expectedLoaderPatterns := []string{"/nestedmux-discovered"}
-			if len(loaderPatterns) != len(expectedLoaderPatterns) {
+			if len(loaderPatterns) != 0 {
 				t.Fatalf(
 					"loader patterns length = %d, want %d (%#v)",
 					len(loaderPatterns),
-					len(expectedLoaderPatterns),
+					0,
 					loaderPatterns,
 				)
-			}
-			for i, expectedPattern := range expectedLoaderPatterns {
-				if loaderPatterns[i] != expectedPattern {
-					t.Fatalf(
-						"loader pattern[%d] = %q, want %q",
-						i,
-						loaderPatterns[i],
-						expectedPattern,
-					)
-				}
 			}
 		},
 	)
@@ -162,7 +297,7 @@ var _ = nestedmux.AddTaskHandler(
 	t.Run(
 		"discovers helper call chains defined in compiled same-package files outside matched roots",
 		func(t *testing.T) {
-			cfg := vormaruntime.VormaConfig{
+			cfg := vormaruntime.VormaConfigJSON{
 				MainBuildEntry:       "backend/cmd/build",
 				UIVariant:            string(vormaruntime.UIVariantReact),
 				HTMLTemplateLocation: "entry.go.html",
@@ -888,7 +1023,7 @@ func newBackendRouteDiscoveryFixtureWithServerPatterns(
 ) *testkit.BuildTestFixture {
 	t.Helper()
 
-	cfg := vormaruntime.VormaConfig{
+	cfg := vormaruntime.VormaConfigJSON{
 		MainBuildEntry:       "backend/cmd/build",
 		UIVariant:            string(vormaruntime.UIVariantReact),
 		HTMLTemplateLocation: "entry.go.html",
@@ -897,7 +1032,7 @@ func newBackendRouteDiscoveryFixtureWithServerPatterns(
 			"frontend/src/**/*vorma.routes.ts",
 		},
 		ServerRouteDefinitionPatterns: []string{
-			"backend/src/router/**/*.go",
+			"backend/src/**/*.go",
 		},
 		TSGenOutDir:                "frontend/src/vorma.gen",
 		BuildtimePublicURLFuncName: "waveBuildtimeURL",

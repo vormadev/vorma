@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
@@ -167,10 +168,7 @@ func TestRunWaveViteProductionBuild(t *testing.T) {
 }
 
 func TestRunWaveDevelopmentServer(t *testing.T) {
-	emptyMainAppEntry := ""
-	fixture := testkit.NewBuildTestFixture(t, &testkit.BuildTestFixtureOptions{
-		WaveMainAppEntry: &emptyMainAppEntry,
-	})
+	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
 
 	var developmentModeCalled bool
@@ -342,11 +340,12 @@ func TestRunWaveProductionBuild(t *testing.T) {
 }
 
 func TestRuntimeBuildToolingDefaultSteps(t *testing.T) {
-	emptyMainAppEntry := ""
-	fixture := testkit.NewBuildTestFixture(t, &testkit.BuildTestFixtureOptions{
-		WaveMainAppEntry: &emptyMainAppEntry,
-	})
+	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
+	wavetest.SetWatchHealthcheckEndpoint(
+		app.Wave.ParsedConfig(),
+		"invalid-healthcheck-endpoint",
+	)
 
 	dependencies := defaultRuntimeBuildToolingDependencies()
 

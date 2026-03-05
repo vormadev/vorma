@@ -26,7 +26,7 @@ import (
 
 // Processor builds and resolves CSS outputs for Wave build and dev workflows.
 type Processor struct {
-	cfg *waveconfig.ParsedConfig
+	cfg waveconfig.ParsedConfig
 	log *slog.Logger
 
 	mu sync.RWMutex
@@ -51,7 +51,7 @@ type BuildOptions struct {
 
 // NewProcessor creates a CSS processor for one config.
 func NewProcessor(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 	resolvePublicURL func(originalPath string) (string, bool, error),
 ) *Processor {
@@ -258,7 +258,7 @@ func (processor *Processor) ReadCriticalCSSHotReloadOutput(
 	}
 
 	criticalCSSBytes, readCriticalCSSError := os.ReadFile(
-		processor.cfg.Dist.CriticalCSS(),
+		processor.cfg.Dist().CriticalCSS(),
 	)
 	if readCriticalCSSError != nil {
 		return "", readCriticalCSSError
@@ -297,7 +297,7 @@ func (processor *Processor) ReadNormalCSSHotReloadURL(
 	}
 
 	normalRefBytes, readNormalRefError := os.ReadFile(
-		processor.cfg.Dist.NormalCSSRef(),
+		processor.cfg.Dist().NormalCSSRef(),
 	)
 	if readNormalRefError != nil {
 		return "", readNormalRefError
@@ -327,14 +327,14 @@ func (processor *Processor) ReloadCachedOutputs() {
 		return
 	}
 
-	if criticalCSSBytes, criticalReadError := os.ReadFile(processor.cfg.Dist.CriticalCSS()); criticalReadError == nil {
+	if criticalCSSBytes, criticalReadError := os.ReadFile(processor.cfg.Dist().CriticalCSS()); criticalReadError == nil {
 		processor.mu.Lock()
 		processor.cachedCriticalCSS = string(criticalCSSBytes)
 		processor.mu.Unlock()
 	}
 
 	normalRefBytes, normalRefReadError := os.ReadFile(
-		processor.cfg.Dist.NormalCSSRef(),
+		processor.cfg.Dist().NormalCSSRef(),
 	)
 	if normalRefReadError == nil {
 		normalRef := strings.TrimSpace(string(normalRefBytes))
@@ -353,7 +353,7 @@ func (processor *Processor) ReloadCachedOutputs() {
 // buildCriticalCSS builds the critical CSS pipeline and writes output file.
 func (processor *Processor) buildCriticalCSS() error {
 	entryPath := processor.cfg.CriticalCSSEntry()
-	outputPath := processor.cfg.Dist.CriticalCSS()
+	outputPath := processor.cfg.Dist().CriticalCSS()
 	if entryPath == "" {
 		processor.mu.Lock()
 		processor.cachedCriticalCSS = ""
@@ -378,6 +378,7 @@ func (processor *Processor) buildCriticalCSS() error {
 	buildOutput, buildError := buildSingleCSSEntry(
 		entryPath,
 		string(entrySourceBytes),
+		processor.cfg.Core().StaticAssetDirsPublic(),
 		processor.resolvePublicURL,
 	)
 	if buildError != nil {
@@ -429,8 +430,8 @@ func (processor *Processor) buildCriticalCSS() error {
 // buildNormalCSS builds non-critical CSS output and writes ref metadata.
 func (processor *Processor) buildNormalCSS() error {
 	entryPath := processor.cfg.NonCriticalCSSEntry()
-	refPath := processor.cfg.Dist.NormalCSSRef()
-	outputDirectoryPath := processor.cfg.Dist.StaticPublic()
+	refPath := processor.cfg.Dist().NormalCSSRef()
+	outputDirectoryPath := processor.cfg.Dist().StaticPublic()
 	if entryPath == "" {
 		processor.mu.Lock()
 		processor.cachedNormalURL = ""
@@ -455,6 +456,7 @@ func (processor *Processor) buildNormalCSS() error {
 	buildOutput, buildError := buildSingleCSSEntry(
 		entryPath,
 		string(entrySourceBytes),
+		processor.cfg.Core().StaticAssetDirsPublic(),
 		processor.resolvePublicURL,
 	)
 	if buildError != nil {
@@ -546,13 +548,17 @@ func (processor *Processor) BuildNormalCSSOnly() error {
 func buildSingleCSSEntry(
 	entryPath string,
 	entrySource string,
+	publicStaticSourceRootPath string,
 	resolvePublicURL func(originalPath string) (string, bool, error),
 ) (
 	singleCSSEntryBuildOutput,
 	error,
 ) {
 	buildPlugins := []api.Plugin{
-		buildPublicCSSURLResolverPlugin(resolvePublicURL),
+		buildPublicCSSURLResolverPlugin(
+			publicStaticSourceRootPath,
+			resolvePublicURL,
+		),
 	}
 	buildResult := api.Build(api.BuildOptions{
 		Bundle:            true,
@@ -610,6 +616,7 @@ func buildSingleCSSEntry(
 }
 
 func buildPublicCSSURLResolverPlugin(
+	publicStaticSourceRootPath string,
 	resolvePublicURL func(originalPath string) (string, bool, error),
 ) api.Plugin {
 	return api.Plugin{
@@ -629,6 +636,13 @@ func buildPublicCSSURLResolverPlugin(
 					}
 
 					cssPath := strings.TrimSpace(args.Path)
+					cssLookupPath, cssPathSuffix := splitCSSPathTokenForLookup(
+						cssPath,
+					)
+					if strings.TrimSpace(cssLookupPath) == "" {
+						cssLookupPath = cssPath
+					}
+
 					if shouldSkipPublicURLResolution(cssPath) {
 						return api.OnResolveResult{
 							Path:     cssPath,
@@ -636,27 +650,38 @@ func buildPublicCSSURLResolverPlugin(
 						}, nil
 					}
 
-					cssLookupPath, cssPathSuffix := splitCSSPathTokenForLookup(
-						cssPath,
-					)
-					if strings.TrimSpace(cssLookupPath) == "" {
-						cssLookupPath = cssPath
-					}
-					resolvedPublicURL, found, resolveError := resolvePublicURL(
-						cssLookupPath,
-					)
-					if resolveError != nil {
-						return api.OnResolveResult{}, fmt.Errorf(
-							"resolve css url token %q: %w",
-							cssPath,
-							resolveError,
+					cssLookupPathCandidates :=
+						resolveCSSURLTokenLookupPathCandidatesForPublicStaticFileMap(
+							args,
+							cssLookupPath,
+							publicStaticSourceRootPath,
 						)
+					resolvedPublicURL := ""
+					for _, cssLookupPathCandidate := range cssLookupPathCandidates {
+						candidateResolvedPublicURL, candidateFound, resolveError :=
+							resolvePublicURL(cssLookupPathCandidate)
+						if resolveError != nil {
+							if errors.Is(resolveError, os.ErrNotExist) {
+								continue
+							}
+							return api.OnResolveResult{}, fmt.Errorf(
+								"resolve css url token %q: %w",
+								cssPath,
+								resolveError,
+							)
+						}
+						if !candidateFound ||
+							strings.TrimSpace(candidateResolvedPublicURL) == "" {
+							continue
+						}
+						resolvedPublicURL = candidateResolvedPublicURL
+						break
 					}
-					if !found {
-						return api.OnResolveResult{}, fmt.Errorf(
-							"resolve css url token %q: no hashed public asset found",
-							cssPath,
-						)
+					if strings.TrimSpace(resolvedPublicURL) == "" {
+						return api.OnResolveResult{
+							Path:     cssPath,
+							External: true,
+						}, nil
 					}
 
 					return api.OnResolveResult{
@@ -862,15 +887,14 @@ func normalizeCSSFilePathForImportTracking(filePath string) string {
 	return filepath.Clean(absoluteFilePath)
 }
 
-func shouldSkipPublicURLResolution(cssPath string) bool {
+func shouldSkipPublicURLResolution(
+	cssPath string,
+) bool {
 	trimmedPath := strings.TrimSpace(cssPath)
 	if trimmedPath == "" {
 		return true
 	}
 	if strings.HasPrefix(trimmedPath, "//") {
-		return true
-	}
-	if strings.HasPrefix(trimmedPath, "/") {
 		return true
 	}
 	if strings.HasPrefix(trimmedPath, "?") {
@@ -887,6 +911,108 @@ func shouldSkipPublicURLResolution(cssPath string) bool {
 	}
 
 	return false
+}
+
+func resolveCSSURLTokenLookupPathCandidatesForPublicStaticFileMap(
+	args api.OnResolveArgs,
+	cssLookupPath string,
+	publicStaticSourceRootPath string,
+) []string {
+	normalizedLookupPath := strings.TrimSpace(cssLookupPath)
+	if normalizedLookupPath == "" {
+		return nil
+	}
+
+	candidateLookupPaths := []string{
+		normalizedLookupPath,
+	}
+	resolvedReferencedAssetPathRelativeToPublicStaticRoot, canResolveRelativeToPublicStaticRoot :=
+		resolveCSSURLTokenPathRelativeToPublicStaticSourceRoot(
+			args,
+			normalizedLookupPath,
+			publicStaticSourceRootPath,
+		)
+	if canResolveRelativeToPublicStaticRoot {
+		candidateLookupPaths = append(
+			candidateLookupPaths,
+			resolvedReferencedAssetPathRelativeToPublicStaticRoot,
+		)
+	}
+	return dedupeCSSURLTokenLookupPathCandidates(candidateLookupPaths)
+}
+
+func resolveCSSURLTokenPathRelativeToPublicStaticSourceRoot(
+	args api.OnResolveArgs,
+	cssLookupPath string,
+	publicStaticSourceRootPath string,
+) (string, bool) {
+	trimmedPublicStaticSourceRootPath := strings.TrimSpace(publicStaticSourceRootPath)
+	if trimmedPublicStaticSourceRootPath == "" {
+		return "", false
+	}
+
+	tokenFilesystemPath := filepath.Clean(filepath.FromSlash(cssLookupPath))
+	referencedAssetAbsolutePath := tokenFilesystemPath
+	if !filepath.IsAbs(referencedAssetAbsolutePath) {
+		referencedPathResolveDirectory := strings.TrimSpace(args.ResolveDir)
+		if referencedPathResolveDirectory == "" {
+			return "", false
+		}
+		referencedAssetAbsolutePath = filepath.Join(
+			referencedPathResolveDirectory,
+			tokenFilesystemPath,
+		)
+	}
+
+	referencedAssetAbsolutePath = waveenv.Absolute(referencedAssetAbsolutePath)
+	publicStaticSourceRootAbsolutePath := waveenv.Absolute(trimmedPublicStaticSourceRootPath)
+	if referencedAssetAbsolutePath == "" ||
+		publicStaticSourceRootAbsolutePath == "" {
+		return "", false
+	}
+
+	referencedAssetRelativeToPublicStaticRootPath, relativePathError := filepath.Rel(
+		publicStaticSourceRootAbsolutePath,
+		referencedAssetAbsolutePath,
+	)
+	if relativePathError != nil {
+		return "", false
+	}
+	normalizedReferencedAssetRelativeToPublicStaticRootPath := filepath.ToSlash(
+		filepath.Clean(referencedAssetRelativeToPublicStaticRootPath),
+	)
+	if normalizedReferencedAssetRelativeToPublicStaticRootPath == "." ||
+		normalizedReferencedAssetRelativeToPublicStaticRootPath == ".." ||
+		strings.HasPrefix(
+			normalizedReferencedAssetRelativeToPublicStaticRootPath,
+			"../",
+		) {
+		return "", false
+	}
+
+	return normalizedReferencedAssetRelativeToPublicStaticRootPath, true
+}
+
+func dedupeCSSURLTokenLookupPathCandidates(
+	candidateLookupPaths []string,
+) []string {
+	seenLookupPaths := make(map[string]struct{}, len(candidateLookupPaths))
+	deduplicatedLookupPaths := make([]string, 0, len(candidateLookupPaths))
+	for _, candidateLookupPath := range candidateLookupPaths {
+		normalizedLookupPath := strings.TrimSpace(candidateLookupPath)
+		if normalizedLookupPath == "" {
+			continue
+		}
+		if _, alreadySeenLookupPath := seenLookupPaths[normalizedLookupPath]; alreadySeenLookupPath {
+			continue
+		}
+		seenLookupPaths[normalizedLookupPath] = struct{}{}
+		deduplicatedLookupPaths = append(
+			deduplicatedLookupPaths,
+			normalizedLookupPath,
+		)
+	}
+	return deduplicatedLookupPaths
 }
 
 func splitCSSPathTokenForLookup(
@@ -963,8 +1089,8 @@ func normalizeNormalCSSRefPath(normalCSSRef string) string {
 }
 
 // ValidateCSSConfig validates CSS entry path configuration semantics.
-func ValidateCSSConfig(cfg *waveconfig.ParsedConfig) error {
-	if cfg == nil || cfg.Core == nil {
+func ValidateCSSConfig(cfg waveconfig.ParsedConfig) error {
+	if cfg == nil || cfg.Core() == nil {
 		return errors.New("config or core config is nil")
 	}
 

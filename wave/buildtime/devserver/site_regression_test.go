@@ -2,12 +2,9 @@ package devserver
 
 import (
 	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveframework"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"log/slog"
 	"net"
 	"net/http"
@@ -17,10 +14,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/waveenv"
+	"github.com/vormadev/vorma/wave/waveframework"
+	"github.com/vormadev/vorma/wave/wavewatch"
+
 	"github.com/fsnotify/fsnotify"
 	"github.com/gorilla/websocket"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
 	"github.com/vormadev/vorma/wave/buildtime/internal/broadcast"
+	"github.com/vormadev/vorma/wave/internal/wavefilemap"
 )
 
 type siteRegressionPathsForToolingTests struct {
@@ -291,13 +295,12 @@ func setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
 	}
 
 	watchConfigPayload := map[string]any{
-		"WatchRoot":           pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(t, workspaceRoot),
 		"HealthcheckEndpoint": "/healthz",
 	}
 	if includeMarkdownRevalidateWatchOverride {
 		watchConfigPayload["Include"] = []map[string]any{
 			{
-				"Pattern":                            "internal/site/backend/assets/markdown/**/*.md",
+				"Pattern":                            "assets/markdown/**/*.md",
 				"OnlyRunClientDefinedRevalidateFunc": true,
 				"SkipRebuildingNotification":         true,
 			},
@@ -306,15 +309,35 @@ func setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
 
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry": "backend/cmd/serve",
-			"DistDir":      "backend/dist",
+			"ProjectID": "test-project",
+			"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+				t,
+				paths.ConfigFilePath,
+				filepath.Join(appRoot, "backend", "cmd", "serve"),
+			),
 			"StaticAssetDirs": map[string]any{
-				"Public":  "frontend/assets",
-				"Private": "backend/assets",
+				"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					paths.ConfigFilePath,
+					filepath.Join(appRoot, "frontend", "assets"),
+				),
+				"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					paths.ConfigFilePath,
+					filepath.Join(appRoot, "backend", "assets"),
+				),
 			},
 			"CSSEntryFiles": map[string]any{
-				"Critical":    "frontend/src/styles/main.critical.css",
-				"NonCritical": "frontend/src/styles/main.css",
+				"Critical": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					paths.ConfigFilePath,
+					paths.CriticalCSSEntryPath,
+				),
+				"NonCritical": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					paths.ConfigFilePath,
+					paths.NormalCSSEntryPath,
+				),
 			},
 			"PublicPathPrefix": "/",
 		},
@@ -345,7 +368,7 @@ func setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
 	}
 	waveframework.StateForConfig(parsedConfig).WatchPatterns = []wavewatch.WatchedFile{
 		{
-			Pattern:                    "internal/site/frontend/src/**/*vorma.routes.ts",
+			Pattern:                    "../frontend/src/**/*vorma.routes.ts",
 			RunOnChangeOnly:            true,
 			SkipRebuildingNotification: true,
 			OnChangeHooks: []wavewatch.OnChangeHook{
@@ -356,7 +379,7 @@ func setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
 			},
 		},
 		{
-			Pattern:                    "internal/site/backend/assets/entry.go.html",
+			Pattern:                    "assets/entry.go.html",
 			SkipRebuildingNotification: true,
 			OnChangeHooks: []wavewatch.OnChangeHook{
 				{
@@ -369,11 +392,15 @@ func setupSiteRegressionHarnessForToolingTestsWithRuntimeOptions(
 	for watchedFileIndex := range waveframework.StateForConfig(parsedConfig).WatchPatterns {
 		waveframework.StateForConfig(parsedConfig).WatchPatterns[watchedFileIndex].Sort()
 	}
-	for watchedFileIndex := range parsedConfig.Watch.Include {
-		parsedConfig.Watch.Include[watchedFileIndex].Sort()
+	for watchedFileIndex := range parsedConfig.Watch().Include() {
+		parsedConfig.Watch().Include()[watchedFileIndex].Sort()
 	}
 
-	serverForTest := setupProcessEventsServerForToolingTests(t, parsedConfig)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		parsedConfig,
+		paths.ConfigFilePath,
+	)
 	if buildCSSError := serverForTest.Builder.BuildCSS(
 		builder.CSSBuildOptions{
 			BuildCriticalCSS: true,
@@ -489,7 +516,7 @@ func assertRebuildingThenHardReloadBroadcastPayloadsForSiteRegressionHarness(
 	)
 }
 
-func TestSiteRegression_CriticalCSSEditHotReloadsWhenWatchRootIsAncestor(
+func TestSiteRegression_CriticalCSSEditHotReloadsWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	workspaceRoot := t.TempDir()
@@ -533,22 +560,32 @@ func TestSiteRegression_CriticalCSSEditHotReloadsWhenWatchRootIsAncestor(
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry": "backend/cmd/serve",
-			"DistDir":      "backend/dist",
+			"ProjectID": "test-project",
+			"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+				t,
+				configFilePath,
+				filepath.Join(appRoot, "backend", "cmd", "serve"),
+			),
 			"StaticAssetDirs": map[string]any{
-				"Public":  "frontend/assets",
-				"Private": "backend/assets",
+				"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "frontend", "assets"),
+				),
+				"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "backend", "assets"),
+				),
 			},
 			"CSSEntryFiles": map[string]any{
-				"Critical": "frontend/src/styles/main.critical.css",
+				"Critical": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					criticalCSSEntryPath,
+				),
 			},
 			"PublicPathPrefix": "/",
-		},
-		"Watch": map[string]any{
-			"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				workspaceRoot,
-			),
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -568,7 +605,11 @@ func TestSiteRegression_CriticalCSSEditHotReloadsWhenWatchRootIsAncestor(
 		t.Fatalf("parse config payload: %v", parseError)
 	}
 
-	serverForTest := setupProcessEventsServerForToolingTests(t, parsedConfig)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		parsedConfig,
+		configFilePath,
+	)
 	if buildCSSError := serverForTest.Builder.BuildCSS(
 		builder.CSSBuildOptions{
 			BuildCriticalCSS: true,
@@ -615,7 +656,7 @@ func TestSiteRegression_CriticalCSSEditHotReloadsWhenWatchRootIsAncestor(
 	}
 }
 
-func TestSiteRegression_NormalCSSEditHotReloadsWhenWatchRootIsAncestor(
+func TestSiteRegression_NormalCSSEditHotReloadsWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	workspaceRoot := t.TempDir()
@@ -659,22 +700,32 @@ func TestSiteRegression_NormalCSSEditHotReloadsWhenWatchRootIsAncestor(
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry": "backend/cmd/serve",
-			"DistDir":      "backend/dist",
+			"ProjectID": "test-project",
+			"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+				t,
+				configFilePath,
+				filepath.Join(appRoot, "backend", "cmd", "serve"),
+			),
 			"StaticAssetDirs": map[string]any{
-				"Public":  "frontend/assets",
-				"Private": "backend/assets",
+				"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "frontend", "assets"),
+				),
+				"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "backend", "assets"),
+				),
 			},
 			"CSSEntryFiles": map[string]any{
-				"NonCritical": "frontend/src/styles/main.css",
+				"NonCritical": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					normalCSSEntryPath,
+				),
 			},
 			"PublicPathPrefix": "/",
-		},
-		"Watch": map[string]any{
-			"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				workspaceRoot,
-			),
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -694,7 +745,11 @@ func TestSiteRegression_NormalCSSEditHotReloadsWhenWatchRootIsAncestor(
 		t.Fatalf("parse config payload: %v", parseError)
 	}
 
-	serverForTest := setupProcessEventsServerForToolingTests(t, parsedConfig)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		parsedConfig,
+		configFilePath,
+	)
 	if buildCSSError := serverForTest.Builder.BuildCSS(
 		builder.CSSBuildOptions{
 			BuildNormalCSS: true,
@@ -747,7 +802,7 @@ func TestSiteRegression_NormalCSSEditHotReloadsWhenWatchRootIsAncestor(
 	}
 }
 
-func TestSiteRegression_CriticalCSSImportedFileEditHotReloadsWhenWatchRootIsAncestor(
+func TestSiteRegression_CriticalCSSImportedFileEditHotReloadsWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	harness := setupSiteRegressionHarnessForToolingTests(t, false)
@@ -785,7 +840,7 @@ func TestSiteRegression_CriticalCSSImportedFileEditHotReloadsWhenWatchRootIsAnce
 	}
 }
 
-func TestSiteRegression_NormalCSSImportedFileEditHotReloadsWhenWatchRootIsAncestor(
+func TestSiteRegression_NormalCSSImportedFileEditHotReloadsWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	harness := setupSiteRegressionHarnessForToolingTests(t, false)
@@ -847,16 +902,9 @@ func TestSiteRegression_PublicStaticWriteTriggersHardReloadWithoutRestart(
 		harness.Server,
 		"public static write",
 	)
-	assertExpectedBroadcastPayloadForSiteRegressionHarness(
+	assertRebuildingThenHardReloadBroadcastPayloadsForSiteRegressionHarness(
 		t,
 		harness.Connection,
-		broadcast.ChangeTypeRebuilding,
-		"public static write",
-	)
-	assertExpectedBroadcastPayloadForSiteRegressionHarness(
-		t,
-		harness.Connection,
-		broadcast.ChangeTypeOther,
 		"public static write",
 	)
 }
@@ -885,16 +933,9 @@ func TestSiteRegression_PrivateStaticWriteTriggersHardReloadWithoutRestart(
 		harness.Server,
 		"private static write",
 	)
-	assertExpectedBroadcastPayloadForSiteRegressionHarness(
+	assertRebuildingThenHardReloadBroadcastPayloadsForSiteRegressionHarness(
 		t,
 		harness.Connection,
-		broadcast.ChangeTypeRebuilding,
-		"private static write",
-	)
-	assertExpectedBroadcastPayloadForSiteRegressionHarness(
-		t,
-		harness.Connection,
-		broadcast.ChangeTypeOther,
 		"private static write",
 	)
 }
@@ -905,20 +946,20 @@ func TestSiteRegression_PublicStaticCreateTriggersHardReloadWithoutRestart(
 	harness := setupSiteRegressionHarnessForToolingTests(t, false)
 	defer harness.Cleanup()
 
-	addedPublicStaticPath := filepath.Join(
+	createdPublicStaticPath := filepath.Join(
 		filepath.Dir(harness.Paths.PublicStaticPath),
-		"added-logo.svg",
+		"created.svg",
 	)
 	if writeError := os.WriteFile(
-		addedPublicStaticPath,
-		[]byte("<svg><!--added--></svg>"),
+		createdPublicStaticPath,
+		[]byte("<svg><!--created--></svg>"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write added public static file: %v", writeError)
+		t.Fatalf("create public static file: %v", writeError)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
-		Name: addedPublicStaticPath,
+		Name: createdPublicStaticPath,
 		Op:   fsnotify.Create,
 	}})
 
@@ -934,18 +975,246 @@ func TestSiteRegression_PublicStaticCreateTriggersHardReloadWithoutRestart(
 	)
 }
 
+func loadPublicFileMapForSiteRegressionHarness(
+	t *testing.T,
+	harness siteRegressionHarnessForToolingTests,
+) wavefilemap.FileMap {
+	t.Helper()
+
+	publicFileMapGobBytes, readPublicFileMapGobError := os.ReadFile(
+		harness.Server.Cfg.Dist().PublicFileMapGob(),
+	)
+	if readPublicFileMapGobError != nil {
+		t.Fatalf("read public filemap gob: %v", readPublicFileMapGobError)
+	}
+	var publicFileMap wavefilemap.FileMap
+	if decodePublicFileMapError := gob.NewDecoder(
+		bytes.NewReader(publicFileMapGobBytes),
+	).Decode(&publicFileMap); decodePublicFileMapError != nil {
+		t.Fatalf("decode public filemap gob: %v", decodePublicFileMapError)
+	}
+	return publicFileMap
+}
+
+func derivePublicRelativePathForSiteRegressionHarness(
+	t *testing.T,
+	harness siteRegressionHarnessForToolingTests,
+	publicStaticSourcePath string,
+) string {
+	t.Helper()
+
+	publicRelativePath, publicRelativePathError := filepath.Rel(
+		waveenv.Absolute(harness.Server.Cfg.Core().StaticAssetDirsPublic()),
+		waveenv.Absolute(publicStaticSourcePath),
+	)
+	if publicRelativePathError != nil {
+		t.Fatalf("derive public relative path: %v", publicRelativePathError)
+	}
+	return filepath.ToSlash(publicRelativePath)
+}
+
+func assertPublicFileMapContainsBuiltArtifactForSiteRegressionHarness(
+	t *testing.T,
+	harness siteRegressionHarnessForToolingTests,
+	publicFileMap wavefilemap.FileMap,
+	publicRelativePath string,
+) {
+	t.Helper()
+
+	publicFileMapEntry, hasPublicFileMapEntry := publicFileMap[publicRelativePath]
+	if !hasPublicFileMapEntry {
+		t.Fatalf(
+			"expected public path %q in public filemap, map=%#v",
+			publicRelativePath,
+			publicFileMap,
+		)
+	}
+	if strings.TrimSpace(publicFileMapEntry.DistName) == "" {
+		t.Fatalf(
+			"expected non-empty dist name for public path %q, entry=%#v",
+			publicRelativePath,
+			publicFileMapEntry,
+		)
+	}
+
+	publicDistPath := filepath.Join(
+		harness.Server.Cfg.Dist().StaticPublic(),
+		publicFileMapEntry.DistName,
+	)
+	if _, statPublicDistError := os.Stat(publicDistPath); statPublicDistError != nil {
+		t.Fatalf(
+			"expected public dist artifact %q: %v",
+			publicDistPath,
+			statPublicDistError,
+		)
+	}
+}
+
+func assertCanonicalPublicFileMapArtifactsExistForSiteRegressionHarness(
+	t *testing.T,
+	harness siteRegressionHarnessForToolingTests,
+) {
+	t.Helper()
+
+	publicFileMapRefBytes, readPublicFileMapRefError := os.ReadFile(
+		harness.Server.Cfg.Dist().PublicFileMapRef(),
+	)
+	if readPublicFileMapRefError != nil {
+		t.Fatalf("read public filemap ref: %v", readPublicFileMapRefError)
+	}
+	publicFileMapRefTarget := strings.TrimSpace(string(publicFileMapRefBytes))
+	if publicFileMapRefTarget == "" {
+		t.Fatal("expected non-empty public filemap ref target")
+	}
+	canonicalPublicFileMapJSONPath := filepath.Join(
+		harness.Server.Cfg.Dist().StaticPublic(),
+		publicFileMapRefTarget,
+	)
+	if _, statCanonicalPublicFileMapJSONError := os.Stat(canonicalPublicFileMapJSONPath); statCanonicalPublicFileMapJSONError != nil {
+		t.Fatalf(
+			"expected canonical public filemap json %q: %v",
+			canonicalPublicFileMapJSONPath,
+			statCanonicalPublicFileMapJSONError,
+		)
+	}
+}
+
+func TestSiteRegression_PublicStaticCreateMutatesWavePublicOutputs(
+	t *testing.T,
+) {
+	harness := setupSiteRegressionHarnessForToolingTests(t, false)
+	defer harness.Cleanup()
+
+	createdPublicStaticPath := filepath.Join(
+		filepath.Dir(harness.Paths.PublicStaticPath),
+		"simple-created.svg",
+	)
+	if writeError := os.WriteFile(
+		createdPublicStaticPath,
+		[]byte("<svg><!--simple-created--></svg>"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("create public static file: %v", writeError)
+	}
+
+	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
+		Name: createdPublicStaticPath,
+		Op:   fsnotify.Create,
+	}})
+
+	assertNoRestartRequestForSiteRegressionHarness(
+		t,
+		harness.Server,
+		"public static create mutates wave outputs",
+	)
+
+	publicFileMap := loadPublicFileMapForSiteRegressionHarness(t, harness)
+	createdPublicRelativePath := derivePublicRelativePathForSiteRegressionHarness(
+		t,
+		harness,
+		createdPublicStaticPath,
+	)
+	assertPublicFileMapContainsBuiltArtifactForSiteRegressionHarness(
+		t,
+		harness,
+		publicFileMap,
+		createdPublicRelativePath,
+	)
+	assertCanonicalPublicFileMapArtifactsExistForSiteRegressionHarness(
+		t,
+		harness,
+	)
+}
+
+func TestSiteRegression_PublicStaticCreateAndRenameBatchMutatesWavePublicOutputs(
+	t *testing.T,
+) {
+	harness := setupSiteRegressionHarnessForToolingTests(t, false)
+	defer harness.Cleanup()
+
+	originalPublicStaticPath := harness.Paths.PublicStaticPath
+	renamedPublicStaticPath := filepath.Join(
+		filepath.Dir(originalPublicStaticPath),
+		"logo-renamed.svg",
+	)
+	if renameError := os.Rename(
+		originalPublicStaticPath,
+		renamedPublicStaticPath,
+	); renameError != nil {
+		t.Fatalf("rename public static file: %v", renameError)
+	}
+
+	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{
+		{
+			Name: renamedPublicStaticPath,
+			Op:   fsnotify.Create,
+		},
+		{
+			Name: originalPublicStaticPath,
+			Op:   fsnotify.Rename,
+		},
+	})
+
+	assertNoRestartRequestForSiteRegressionHarness(
+		t,
+		harness.Server,
+		"public static create+rename batch mutates wave outputs",
+	)
+
+	publicFileMap := loadPublicFileMapForSiteRegressionHarness(t, harness)
+	originalPublicRelativePath := derivePublicRelativePathForSiteRegressionHarness(
+		t,
+		harness,
+		originalPublicStaticPath,
+	)
+	if _, hasOriginalPublicPath := publicFileMap[originalPublicRelativePath]; hasOriginalPublicPath {
+		t.Fatalf(
+			"expected original renamed path %q to be removed from public filemap, map=%#v",
+			originalPublicRelativePath,
+			publicFileMap,
+		)
+	}
+
+	renamedPublicRelativePath := derivePublicRelativePathForSiteRegressionHarness(
+		t,
+		harness,
+		renamedPublicStaticPath,
+	)
+	assertPublicFileMapContainsBuiltArtifactForSiteRegressionHarness(
+		t,
+		harness,
+		publicFileMap,
+		renamedPublicRelativePath,
+	)
+	assertCanonicalPublicFileMapArtifactsExistForSiteRegressionHarness(
+		t,
+		harness,
+	)
+}
+
 func TestSiteRegression_PublicStaticRemoveTriggersHardReloadWithoutRestart(
 	t *testing.T,
 ) {
 	harness := setupSiteRegressionHarnessForToolingTests(t, false)
 	defer harness.Cleanup()
 
-	if removeError := os.Remove(harness.Paths.PublicStaticPath); removeError != nil {
-		t.Fatalf("remove public static file before event: %v", removeError)
+	removedPublicStaticPath := filepath.Join(
+		filepath.Dir(harness.Paths.PublicStaticPath),
+		"remove.svg",
+	)
+	if writeError := os.WriteFile(
+		removedPublicStaticPath,
+		[]byte("<svg><!--remove--></svg>"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("create removable public static file: %v", writeError)
+	}
+	if removeError := os.Remove(removedPublicStaticPath); removeError != nil {
+		t.Fatalf("remove public static file: %v", removeError)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
-		Name: harness.Paths.PublicStaticPath,
+		Name: removedPublicStaticPath,
 		Op:   fsnotify.Remove,
 	}})
 
@@ -969,17 +1238,25 @@ func TestSiteRegression_PublicStaticRenameTriggersHardReloadWithoutRestart(
 
 	renamedPublicStaticPath := filepath.Join(
 		filepath.Dir(harness.Paths.PublicStaticPath),
-		"renamed-logo.svg",
+		"rename.svg",
 	)
-	if renameError := os.Rename(
-		harness.Paths.PublicStaticPath,
+	if writeError := os.WriteFile(
 		renamedPublicStaticPath,
+		[]byte("<svg><!--rename--></svg>"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("create renamable public static file: %v", writeError)
+	}
+	renamedPublicStaticPathDestination := renamedPublicStaticPath + ".moved"
+	if renameError := os.Rename(
+		renamedPublicStaticPath,
+		renamedPublicStaticPathDestination,
 	); renameError != nil {
-		t.Fatalf("rename public static file before event: %v", renameError)
+		t.Fatalf("rename public static file: %v", renameError)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
-		Name: harness.Paths.PublicStaticPath,
+		Name: renamedPublicStaticPath,
 		Op:   fsnotify.Rename,
 	}})
 
@@ -1001,20 +1278,20 @@ func TestSiteRegression_PrivateStaticCreateTriggersHardReloadWithoutRestart(
 	harness := setupSiteRegressionHarnessForToolingTests(t, false)
 	defer harness.Cleanup()
 
-	addedPrivateStaticPath := filepath.Join(
+	createdPrivateStaticPath := filepath.Join(
 		filepath.Dir(harness.Paths.PrivateStaticPath),
-		"added-notes.txt",
+		"created.txt",
 	)
 	if writeError := os.WriteFile(
-		addedPrivateStaticPath,
-		[]byte("private note added"),
+		createdPrivateStaticPath,
+		[]byte("created private note"),
 		0o644,
 	); writeError != nil {
-		t.Fatalf("write added private static file: %v", writeError)
+		t.Fatalf("create private static file: %v", writeError)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
-		Name: addedPrivateStaticPath,
+		Name: createdPrivateStaticPath,
 		Op:   fsnotify.Create,
 	}})
 
@@ -1036,12 +1313,23 @@ func TestSiteRegression_PrivateStaticRemoveTriggersHardReloadWithoutRestart(
 	harness := setupSiteRegressionHarnessForToolingTests(t, false)
 	defer harness.Cleanup()
 
-	if removeError := os.Remove(harness.Paths.PrivateStaticPath); removeError != nil {
-		t.Fatalf("remove private static file before event: %v", removeError)
+	removedPrivateStaticPath := filepath.Join(
+		filepath.Dir(harness.Paths.PrivateStaticPath),
+		"remove.txt",
+	)
+	if writeError := os.WriteFile(
+		removedPrivateStaticPath,
+		[]byte("remove private note"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("create removable private static file: %v", writeError)
+	}
+	if removeError := os.Remove(removedPrivateStaticPath); removeError != nil {
+		t.Fatalf("remove private static file: %v", removeError)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
-		Name: harness.Paths.PrivateStaticPath,
+		Name: removedPrivateStaticPath,
 		Op:   fsnotify.Remove,
 	}})
 
@@ -1065,17 +1353,25 @@ func TestSiteRegression_PrivateStaticRenameTriggersHardReloadWithoutRestart(
 
 	renamedPrivateStaticPath := filepath.Join(
 		filepath.Dir(harness.Paths.PrivateStaticPath),
-		"renamed-notes.txt",
+		"rename.txt",
 	)
-	if renameError := os.Rename(
-		harness.Paths.PrivateStaticPath,
+	if writeError := os.WriteFile(
 		renamedPrivateStaticPath,
+		[]byte("rename private note"),
+		0o644,
+	); writeError != nil {
+		t.Fatalf("create renamable private static file: %v", writeError)
+	}
+	renamedPrivateStaticPathDestination := renamedPrivateStaticPath + ".moved"
+	if renameError := os.Rename(
+		renamedPrivateStaticPath,
+		renamedPrivateStaticPathDestination,
 	); renameError != nil {
-		t.Fatalf("rename private static file before event: %v", renameError)
+		t.Fatalf("rename private static file: %v", renameError)
 	}
 
 	harness.Server.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
-		Name: harness.Paths.PrivateStaticPath,
+		Name: renamedPrivateStaticPath,
 		Op:   fsnotify.Rename,
 	}})
 
@@ -1091,7 +1387,7 @@ func TestSiteRegression_PrivateStaticRenameTriggersHardReloadWithoutRestart(
 	)
 }
 
-func TestSiteRegression_UnmanagedTailwindCSSEditIsNoOpWhenWatchRootIsAncestor(
+func TestSiteRegression_UnmanagedTailwindCSSEditIsNoOpWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	workspaceRoot := t.TempDir()
@@ -1169,23 +1465,37 @@ func TestSiteRegression_UnmanagedTailwindCSSEditIsNoOpWhenWatchRootIsAncestor(
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry": "backend/cmd/serve",
-			"DistDir":      "backend/dist",
+			"ProjectID": "test-project",
+			"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+				t,
+				configFilePath,
+				filepath.Join(appRoot, "backend", "cmd", "serve"),
+			),
 			"StaticAssetDirs": map[string]any{
-				"Public":  "frontend/assets",
-				"Private": "backend/assets",
+				"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "frontend", "assets"),
+				),
+				"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "backend", "assets"),
+				),
 			},
 			"CSSEntryFiles": map[string]any{
-				"Critical":    "frontend/src/styles/main.critical.css",
-				"NonCritical": "frontend/src/styles/main.css",
+				"Critical": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					criticalCSSEntryPath,
+				),
+				"NonCritical": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					normalCSSEntryPath,
+				),
 			},
 			"PublicPathPrefix": "/",
-		},
-		"Watch": map[string]any{
-			"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				workspaceRoot,
-			),
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -1205,7 +1515,11 @@ func TestSiteRegression_UnmanagedTailwindCSSEditIsNoOpWhenWatchRootIsAncestor(
 		t.Fatalf("parse config payload: %v", parseError)
 	}
 
-	serverForTest := setupProcessEventsServerForToolingTests(t, parsedConfig)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		parsedConfig,
+		configFilePath,
+	)
 	if buildCSSError := serverForTest.Builder.BuildCSS(
 		builder.CSSBuildOptions{
 			BuildCriticalCSS: true,
@@ -1253,7 +1567,7 @@ func TestSiteRegression_UnmanagedTailwindCSSEditIsNoOpWhenWatchRootIsAncestor(
 	}
 }
 
-func TestSiteRegression_NoOpConfigWriteLogsAndSkipsRestartWhenWatchRootIsAncestor(
+func TestSiteRegression_NoOpConfigWriteSkipsRestartWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	workspaceRoot := t.TempDir()
@@ -1279,18 +1593,24 @@ func TestSiteRegression_NoOpConfigWriteLogsAndSkipsRestartWhenWatchRootIsAncesto
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry": "backend/cmd/serve",
-			"DistDir":      "backend/dist",
-			"StaticAssetDirs": map[string]any{
-				"Public":  "frontend/assets",
-				"Private": "backend/assets",
-			},
-		},
-		"Watch": map[string]any{
-			"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+			"ProjectID": "test-project",
+			"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 				t,
-				workspaceRoot,
+				configFilePath,
+				filepath.Join(appRoot, "backend", "cmd", "serve"),
 			),
+			"StaticAssetDirs": map[string]any{
+				"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "frontend", "assets"),
+				),
+				"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+					t,
+					configFilePath,
+					filepath.Join(appRoot, "backend", "assets"),
+				),
+			},
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -1310,7 +1630,11 @@ func TestSiteRegression_NoOpConfigWriteLogsAndSkipsRestartWhenWatchRootIsAncesto
 		t.Fatalf("parse config payload: %v", parseError)
 	}
 
-	serverForTest := setupProcessEventsServerForToolingTests(t, parsedConfig)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		parsedConfig,
+		configFilePath,
+	)
 	var logOutputBuffer bytes.Buffer
 	serverForTest.Log = slog.New(slog.NewTextHandler(&logOutputBuffer, nil))
 
@@ -1350,20 +1674,11 @@ func TestSiteRegression_NoOpConfigWriteLogsAndSkipsRestartWhenWatchRootIsAncesto
 	var receivedPayload broadcast.Payload
 	if readError := connection.ReadJSON(&receivedPayload); readError == nil {
 		t.Fatalf(
-			"expected no browser payload for no-op config write, got %#v",
+			"expected no broadcast payload for no-op config write, got %#v",
 			receivedPayload,
 		)
 	}
 
-	if !strings.Contains(
-		logOutputBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected no-op config write log message, got logs: %s",
-			logOutputBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_FrameworkRouteRegistryWriteTriggersHardReload(

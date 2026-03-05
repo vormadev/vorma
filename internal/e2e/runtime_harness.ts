@@ -67,11 +67,14 @@ const sharedFixtureTemplateDirectoryPrefix = path.join(
 	os.tmpdir(),
 	"wave-vorma-e2e-fixture-template-",
 );
-const fixtureTemplateCacheVersion = "v2";
+const fixtureTemplateCacheVersion = "v5";
 const outputLineLimit = 800;
 const readinessTimeoutMS = 240_000;
 const shutdownTimeoutMS = 12_000;
 const runtimeStartupPortRetryCount = 3;
+const wavePortPinnedEnvironmentVariableName = "__WAVE_PORT_HAS_BEEN_SET";
+const lanePortFamilyStride = 2_000;
+const lanePortFamilyMaxProbeCount = 16;
 
 const trackedLongLivedRuntimeCommands = new Set<SpawnedCommand>();
 let hasInstalledTrackedRuntimeCommandCleanupHooks = false;
@@ -86,7 +89,7 @@ export async function startFixtureSiteForE2E(props: {
 	uiAdapter: E2EUIAdapter;
 }): Promise<RunningFixtureSite> {
 	assertFixtureFilesExist();
-	const viteDefaultPort = resolvePreferredViteDefaultPortForLane({
+	const viteDefaultPort = await resolveViteDefaultPortForLane({
 		mode: props.mode,
 		uiAdapter: props.uiAdapter,
 	});
@@ -104,6 +107,7 @@ export async function startFixtureSiteForE2E(props: {
 		...process.env,
 		GOCACHE: process.env.GOCACHE ?? "/tmp/go-build",
 		VORMA_E2E_UI_ADAPTER: props.uiAdapter,
+		[wavePortPinnedEnvironmentVariableName]: "true",
 	};
 
 	let spawnedRuntimeCommand: SpawnedCommand | null = null;
@@ -766,14 +770,48 @@ async function resolvePortForLane(props: {
 		mode: props.mode,
 		uiAdapter: props.uiAdapter,
 	});
-	const canUsePreferredPort = await canBindLoopbackPort({
-		port: preferredPort,
+
+	return await resolveBindablePortFromLaneFamily({
+		preferredPort,
 	});
-	if (canUsePreferredPort) {
-		return preferredPort;
+}
+
+async function resolveViteDefaultPortForLane(props: {
+	mode: E2ERunMode;
+	uiAdapter: E2EUIAdapter;
+}): Promise<number> {
+	const preferredPort = resolvePreferredViteDefaultPortForLane({
+		mode: props.mode,
+		uiAdapter: props.uiAdapter,
+	});
+
+	return await resolveBindablePortFromLaneFamily({
+		preferredPort,
+	});
+}
+
+async function resolveBindablePortFromLaneFamily(props: {
+	preferredPort: number;
+}): Promise<number> {
+	for (
+		let probeIndex = 0;
+		probeIndex < lanePortFamilyMaxProbeCount;
+		probeIndex += 1
+	) {
+		const laneCandidatePort =
+			props.preferredPort + probeIndex * lanePortFamilyStride;
+		if (laneCandidatePort > 65_535) {
+			break;
+		}
+		const canBindCandidatePort = await canBindLoopbackPort({
+			port: laneCandidatePort,
+		});
+		if (canBindCandidatePort) {
+			return laneCandidatePort;
+		}
 	}
 
-	return reserveOpenPort();
+	return await reserveOpenPort();
 }
 
 /** Computes a stable non-overlapping port for each mode+adapter lane. */
@@ -911,8 +949,13 @@ function assertFixtureFilesExist(): void {
 function resolveProdBinaryPath(props: { fixtureRootDir: string }): string {
 	const binaryPath =
 		process.platform === "win32"
-			? path.join(props.fixtureRootDir, "backend", "dist", "main.exe")
-			: path.join(props.fixtureRootDir, "backend", "dist", "main");
+			? path.join(
+					props.fixtureRootDir,
+					"backend",
+					".wavedist",
+					"main.exe",
+				)
+			: path.join(props.fixtureRootDir, "backend", ".wavedist", "main");
 
 	if (!fs.existsSync(binaryPath)) {
 		throw new Error(

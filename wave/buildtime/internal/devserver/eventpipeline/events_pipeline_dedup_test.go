@@ -1,8 +1,6 @@
 package eventpipeline_test
 
 import (
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"log/slog"
 	"math/rand"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/internal/wavetest"
@@ -738,19 +739,20 @@ func newDiscardLoggerForEventPipelineDedupTests() *slog.Logger {
 }
 
 func newParsedConfigForEventPipelineDedupTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func TestClassifyWatcherEventsForProcessingDoesNotCollapseImplicitFileTypes(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
 
 	publicStaticFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		"logo.svg",
 	)
 	goFilePath := filepath.Join(root, "backend", "main.go")
@@ -784,7 +786,7 @@ func TestClassifyWatcherEventsForProcessingDoesNotCollapseImplicitFileTypes(
 	defer builderForTest.Close()
 
 	classifiedEvents, configChanged := classifyWatcherEventsForProcessingForEventPipelineTests(
-		cfg,
+		"",
 		[]fsnotify.Event{
 			{Name: publicStaticFilePath, Op: fsnotify.Write},
 			{Name: goFilePath, Op: fsnotify.Write},
@@ -823,13 +825,13 @@ func TestClassifyWatcherEventsForProcessingPreservesSharedPatternEvents(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*",
 			RunOnChangeOnly: true,
 		},
-	}
+	})
 
 	goFilePath := filepath.Join(root, "backend", "main.go")
 	textFilePath := filepath.Join(root, "backend", "notes.txt")
@@ -860,7 +862,7 @@ func TestClassifyWatcherEventsForProcessingPreservesSharedPatternEvents(
 	defer builderForTest.Close()
 
 	classifiedEvents, configChanged := classifyWatcherEventsForProcessingForEventPipelineTests(
-		cfg,
+		"",
 		[]fsnotify.Event{
 			{Name: goFilePath, Op: fsnotify.Write},
 			{Name: textFilePath, Op: fsnotify.Write},
@@ -1209,11 +1211,11 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var callbackCount int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*",
 			RunOnChangeOnly: true,
@@ -1226,9 +1228,7 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 				},
 			},
 		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	goFilePath := filepath.Join(root, "backend", "main.go")
 	textFilePath := filepath.Join(root, "backend", "notes.txt")
 
@@ -1258,6 +1258,7 @@ func TestProcessEvents_DeduplicatesHooksByPatternForMixedFileTypes(
 	defer builderForTest.Close()
 
 	engine := buildRunloopEngineForEventPipelineTests(
+		"",
 		cfg,
 		newDiscardLoggerForEventPipelineDedupTests(),
 		watcherForTest,
@@ -1280,8 +1281,8 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var preHookCount int32
 	var concurrentHookCount int32
@@ -1289,7 +1290,7 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 	var noWaitHookCount int32
 	noWaitDone := make(chan struct{}, 1)
 
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -1326,9 +1327,7 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 				},
 			},
 		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	firstTextFilePath := filepath.Join(root, "backend", "a.txt")
 	secondTextFilePath := filepath.Join(root, "backend", "b.txt")
 
@@ -1358,6 +1357,7 @@ func TestProcessEvents_DeduplicatesHooksByPatternAcrossAllHookStages(
 	defer builderForTest.Close()
 
 	engine := buildRunloopEngineForEventPipelineTests(
+		"",
 		cfg,
 		newDiscardLoggerForEventPipelineDedupTests(),
 		watcherForTest,

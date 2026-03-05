@@ -9,17 +9,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveframework"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/vormabuild/internal/backendroutes"
 	"github.com/vormadev/vorma/vormabuild/internal/backendroutes/registraroverlay"
 	"github.com/vormadev/vorma/vormabuild/internal/devreload"
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 type frameworkBuildHookExecutionDependencies struct {
@@ -83,14 +85,20 @@ func newFrameworkBuildHookExecutor(
 	}
 }
 
-func Configure(v *vormaruntime.Vorma) *waveconfig.ParsedConfig {
-	return ConfigureInConfig(v, waveframework.BuildtimeParsedConfig(v.Wave.RawConfigJSON()))
+func Configure(v *vormaruntime.Vorma) waveconfig.ParsedConfig {
+	if v == nil || v.Wave == nil {
+		return nil
+	}
+	return ConfigureInConfig(
+		v,
+		v.Wave.ParsedConfig(),
+	)
 }
 
 func ConfigureInConfig(
 	v *vormaruntime.Vorma,
-	cfg *waveconfig.ParsedConfig,
-) *waveconfig.ParsedConfig {
+	cfg waveconfig.ParsedConfig,
+) waveconfig.ParsedConfig {
 	return configureInConfigWithFrameworkBuildHookExecutor(
 		v,
 		cfg,
@@ -100,9 +108,9 @@ func ConfigureInConfig(
 
 func configureInConfigWithFrameworkBuildHookExecutor(
 	v *vormaruntime.Vorma,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	frameworkBuildHookExecutor frameworkBuildHookExecutor,
-) *waveconfig.ParsedConfig {
+) waveconfig.ParsedConfig {
 	if cfg == nil {
 		return nil
 	}
@@ -112,6 +120,11 @@ func configureInConfigWithFrameworkBuildHookExecutor(
 	)
 
 	registerVormaSchemaInConfig(cfg)
+	injectFrameworkToolingReloadConfiguratorInConfig(
+		cfg,
+		v,
+		frameworkBuildHookExecutor,
+	)
 	devreload.InjectDefaultWatchPatternsInConfig(cfg, v)
 	injectFrameworkBuildHooksInConfig(cfg, v)
 	injectFrameworkBuildHookRunnerInConfig(
@@ -129,7 +142,45 @@ func configureInConfigWithFrameworkBuildHookExecutor(
 	return cfg
 }
 
-func registerVormaSchemaInConfig(cfg *waveconfig.ParsedConfig) {
+func injectFrameworkToolingReloadConfiguratorInConfig(
+	cfg waveconfig.ParsedConfig,
+	v *vormaruntime.Vorma,
+	frameworkBuildHookExecutor frameworkBuildHookExecutor,
+) {
+	if cfg == nil || v == nil {
+		return
+	}
+	waveframework.StateForConfig(cfg).ConfigureForToolingReload = func(
+		reloadedParsedConfig waveconfig.ParsedConfig,
+		rawWaveConfigJSON []byte,
+	) error {
+		if reloadedParsedConfig == nil {
+			return errors.New("reloaded wave config is required")
+		}
+		if len(rawWaveConfigJSON) == 0 {
+			return errors.New("raw wave config JSON is required")
+		}
+		reloadedVormaConfig, parseError := runtimeconfig.ParseVormaConfigJSON(
+			rawWaveConfigJSON,
+			reloadedParsedConfig,
+		)
+		if parseError != nil {
+			return fmt.Errorf(
+				"parse Vorma config for tooling reload: %w",
+				parseError,
+			)
+		}
+		v.Config = reloadedVormaConfig
+		configureInConfigWithFrameworkBuildHookExecutor(
+			v,
+			reloadedParsedConfig,
+			frameworkBuildHookExecutor,
+		)
+		return nil
+	}
+}
+
+func registerVormaSchemaInConfig(cfg waveconfig.ParsedConfig) {
 	if cfg == nil {
 		return
 	}
@@ -140,28 +191,36 @@ func registerVormaSchemaInConfig(cfg *waveconfig.ParsedConfig) {
 }
 
 func injectFrameworkBuildHooksInConfig(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	v *vormaruntime.Vorma,
 ) {
 	if cfg == nil {
 		return
 	}
+	mainBuildEntryGoRunTarget, normalizeMainBuildEntryError := normalizeMainBuildEntryForGoRun(
+		cfg,
+		v.Config.MainBuildEntry(),
+	)
+	if normalizeMainBuildEntryError != nil {
+		trimmedMainBuildEntry := strings.TrimSpace(v.Config.MainBuildEntry())
+		mainBuildEntryGoRunTarget = strings.TrimPrefix(trimmedMainBuildEntry, "./")
+	}
 	if waveframework.StateForConfig(cfg).DevBuildHook == "" {
 		waveframework.StateForConfig(cfg).DevBuildHook = fmt.Sprintf(
 			"go run ./%s --dev --hook",
-			v.Config.MainBuildEntry,
+			mainBuildEntryGoRunTarget,
 		)
 	}
 	if waveframework.StateForConfig(cfg).ProdBuildHook == "" {
 		waveframework.StateForConfig(cfg).ProdBuildHook = fmt.Sprintf(
 			"go run ./%s --hook",
-			v.Config.MainBuildEntry,
+			mainBuildEntryGoRunTarget,
 		)
 	}
 }
 
 func injectFrameworkBuildHookRunnerInConfig(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	v *vormaruntime.Vorma,
 	discoveredRegistrarArtifactsCache *registraroverlay.DiscoveredRouteRegistrarArtifactCache,
 	frameworkBuildHookExecutor frameworkBuildHookExecutor,
@@ -183,7 +242,7 @@ func injectFrameworkBuildHookRunnerInConfig(
 		if v.Config == nil {
 			return errors.New("vorma config is required")
 		}
-		mainBuildEntry := strings.TrimSpace(v.Config.MainBuildEntry)
+		mainBuildEntry := strings.TrimSpace(v.Config.MainBuildEntry())
 		if mainBuildEntry == "" {
 			return errors.New("vorma config MainBuildEntry is required")
 		}
@@ -212,8 +271,17 @@ func injectFrameworkBuildHookRunnerInConfig(
 			)
 		}
 
-		trimmedMainBuildEntry := strings.TrimPrefix(mainBuildEntry, "./")
-		goRunArgs = append(goRunArgs, "./"+trimmedMainBuildEntry)
+		mainBuildEntryGoRunTarget, normalizeMainBuildEntryError := normalizeMainBuildEntryForGoRun(
+			cfg,
+			mainBuildEntry,
+		)
+		if normalizeMainBuildEntryError != nil {
+			return fmt.Errorf(
+				"normalize MainBuildEntry for go run: %w",
+				normalizeMainBuildEntryError,
+			)
+		}
+		goRunArgs = append(goRunArgs, "./"+mainBuildEntryGoRunTarget)
 		if runInDevelopmentMode {
 			goRunArgs = append(goRunArgs, "--dev")
 		}
@@ -250,8 +318,39 @@ func injectFrameworkBuildHookRunnerInConfig(
 	}
 }
 
+func normalizeMainBuildEntryForGoRun(
+	cfg waveconfig.ParsedConfig,
+	mainBuildEntry string,
+) (string, error) {
+	trimmedMainBuildEntry := strings.TrimSpace(mainBuildEntry)
+	if trimmedMainBuildEntry == "" {
+		return "", errors.New("main build entry is required")
+	}
+
+	resolveRootPath := ""
+	if cfg != nil {
+		resolveRootPath = cfg.ResolveRoot()
+	}
+	resolveRootRelativeMainBuildEntry, relativeMainBuildEntryError := runtimeconfig.NormalizePathOrPatternToResolveRootRelative(
+		resolveRootPath,
+		trimmedMainBuildEntry,
+	)
+	if relativeMainBuildEntryError != nil {
+		return "", relativeMainBuildEntryError
+	}
+
+	normalizedMainBuildEntry := filepath.ToSlash(
+		filepath.Clean(resolveRootRelativeMainBuildEntry),
+	)
+	normalizedMainBuildEntry = strings.TrimPrefix(normalizedMainBuildEntry, "./")
+	if normalizedMainBuildEntry == "" || normalizedMainBuildEntry == "." {
+		return "", errors.New("main build entry resolved to empty path")
+	}
+	return normalizedMainBuildEntry, nil
+}
+
 func injectFrameworkGoBuildOverlayPreparationInConfig(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	v *vormaruntime.Vorma,
 	discoveredRegistrarArtifactsCache *registraroverlay.DiscoveredRouteRegistrarArtifactCache,
 	frameworkBuildHookExecutor frameworkBuildHookExecutor,

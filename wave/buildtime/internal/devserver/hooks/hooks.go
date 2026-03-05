@@ -499,12 +499,13 @@ func NormalizeHookContextPathShape(path string) string {
 		return strings.ReplaceAll(cleanedPath, "\\", "/")
 	}
 
-	return strings.ReplaceAll(waveenv.Absolute(cleanedPath), "\\", "/")
+	hookContextPathMachineAbsolute := waveenv.Absolute(cleanedPath)
+	return strings.ReplaceAll(hookContextPathMachineAbsolute, "\\", "/")
 }
 
 // DeriveHookCommandStageTimeoutMilliseconds resolves stage command timeout override.
 func DeriveHookCommandStageTimeoutMilliseconds(
-	watchConfig *waveconfig.WatchConfig,
+	watchConfig waveconfig.WatchConfig,
 	stageType HookStageType,
 ) int {
 	if watchConfig == nil {
@@ -512,13 +513,13 @@ func DeriveHookCommandStageTimeoutMilliseconds(
 	}
 	switch stageType {
 	case HookStageTypePre:
-		return watchConfig.HookCommandTimeouts.PreCommandTimeoutMilliseconds
+		return watchConfig.PreCommandTimeoutMilliseconds()
 	case HookStageTypeConcurrent:
-		return watchConfig.HookCommandTimeouts.ConcurrentCommandTimeoutMilliseconds
+		return watchConfig.ConcurrentCommandTimeoutMilliseconds()
 	case HookStageTypeConcurrentNoWait:
-		return watchConfig.HookCommandTimeouts.ConcurrentNoWaitCommandTimeoutMilliseconds
+		return watchConfig.ConcurrentNoWaitCommandTimeoutMilliseconds()
 	case HookStageTypePost:
-		return watchConfig.HookCommandTimeouts.PostCommandTimeoutMilliseconds
+		return watchConfig.PostCommandTimeoutMilliseconds()
 	default:
 		return 0
 	}
@@ -526,7 +527,7 @@ func DeriveHookCommandStageTimeoutMilliseconds(
 
 // DeriveHookCallbackStageTimeoutMilliseconds resolves stage callback timeout override.
 func DeriveHookCallbackStageTimeoutMilliseconds(
-	watchConfig *waveconfig.WatchConfig,
+	watchConfig waveconfig.WatchConfig,
 	stageType HookStageType,
 ) int {
 	if watchConfig == nil {
@@ -534,13 +535,13 @@ func DeriveHookCallbackStageTimeoutMilliseconds(
 	}
 	switch stageType {
 	case HookStageTypePre:
-		return watchConfig.HookCallbackTimeouts.PreCallbackTimeoutMilliseconds
+		return watchConfig.PreCallbackTimeoutMilliseconds()
 	case HookStageTypeConcurrent:
-		return watchConfig.HookCallbackTimeouts.ConcurrentCallbackTimeoutMilliseconds
+		return watchConfig.ConcurrentCallbackTimeoutMilliseconds()
 	case HookStageTypeConcurrentNoWait:
-		return watchConfig.HookCallbackTimeouts.ConcurrentNoWaitCallbackTimeoutMilliseconds
+		return watchConfig.ConcurrentNoWaitCallbackTimeoutMilliseconds()
 	case HookStageTypePost:
-		return watchConfig.HookCallbackTimeouts.PostCallbackTimeoutMilliseconds
+		return watchConfig.PostCallbackTimeoutMilliseconds()
 	default:
 		return 0
 	}
@@ -566,7 +567,7 @@ func DeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
 
 // DeriveHookCommandTimeoutDurationForExecutionPlan resolves command timeout for plan.
 func DeriveHookCommandTimeoutDurationForExecutionPlan(
-	watchConfig *waveconfig.WatchConfig,
+	watchConfig waveconfig.WatchConfig,
 	stageType HookStageType,
 	executionPlan HookExecutionPlan,
 ) time.Duration {
@@ -579,7 +580,7 @@ func DeriveHookCommandTimeoutDurationForExecutionPlan(
 
 // DeriveHookCallbackTimeoutDurationForExecutionPlan resolves callback timeout for plan.
 func DeriveHookCallbackTimeoutDurationForExecutionPlan(
-	watchConfig *waveconfig.WatchConfig,
+	watchConfig waveconfig.WatchConfig,
 	stageType HookStageType,
 	executionPlan HookExecutionPlan,
 ) time.Duration {
@@ -592,25 +593,25 @@ func DeriveHookCallbackTimeoutDurationForExecutionPlan(
 
 // DeriveBuildHookCommandTimeoutDuration resolves build-hook command timeout.
 func DeriveBuildHookCommandTimeoutDuration(
-	coreConfig *waveconfig.CoreConfig,
+	coreConfig waveconfig.CoreConfig,
 	isDev bool,
 ) time.Duration {
 	if coreConfig == nil {
 		return 0
 	}
 	if isDev {
-		if coreConfig.DevBuildHookTimeoutMilliseconds <= 0 {
+		if coreConfig.DevBuildHookTimeoutMilliseconds() <= 0 {
 			return 0
 		}
 		return time.Duration(
-			coreConfig.DevBuildHookTimeoutMilliseconds,
+			coreConfig.DevBuildHookTimeoutMilliseconds(),
 		) * time.Millisecond
 	}
-	if coreConfig.ProdBuildHookTimeoutMilliseconds <= 0 {
+	if coreConfig.ProdBuildHookTimeoutMilliseconds() <= 0 {
 		return 0
 	}
 	return time.Duration(
-		coreConfig.ProdBuildHookTimeoutMilliseconds,
+		coreConfig.ProdBuildHookTimeoutMilliseconds(),
 	) * time.Millisecond
 }
 

@@ -3,8 +3,8 @@ package vormaruntime
 import (
 	"encoding/json"
 	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"os"
@@ -43,7 +43,7 @@ type testFixtureOptions struct {
 	loadersRouterOpts    LoadersRouterOptions
 	adHocTypes           []*tsgen.AdHocType
 	extraTSCode          string
-	configureVormaConfig func(*VormaConfig)
+	configureVormaConfig func(*VormaConfigJSON)
 }
 
 func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
@@ -55,7 +55,8 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	tb.Setenv("__VITE_PORT", "5173")
 
 	rootDir := wavetest.NewWorkspaceTempDir(tb, "vormaruntime-fixture-")
-	staticDir := filepath.Join(rootDir, "dist", "static")
+	mustChdirToRootForWaveNew(tb, rootDir)
+	staticDir := filepath.Join(rootDir, ".wavedist", "static")
 	privateDir := filepath.Join(
 		staticDir,
 		waveartifacts.AssetsDirname,
@@ -105,18 +106,18 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		stageTwo,
 	)
 
-	coreCfg := waveconfig.CoreConfig{
+	coreCfg := waveCoreConfigForGlueTests{
+		ProjectID:        "vormaruntime-test-helper",
 		MainAppEntry:     "backend/cmd/serve",
-		DistDir:          wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 		PublicPathPrefix: o.publicPathPrefix,
 	}
-	wavetest.SetCoreStaticAssetDirectories(&coreCfg, publicDir, privateDir)
+	coreCfg.StaticAssetDirs = staticAssetDirsForTests{
+		Public:  filepath.ToSlash(filepath.Join(".wavedist", "static", waveartifacts.AssetsDirname, waveartifacts.PublicDirname)),
+		Private: filepath.ToSlash(filepath.Join(".wavedist", "static", waveartifacts.AssetsDirname, waveartifacts.PrivateDirname)),
+	}
 	if o.enableCriticalCSS || o.enableNonCriticalCSS {
-		wavetest.SetCoreCSSEntryFiles(
-			&coreCfg,
-			"frontend/src/styles/main.critical.css",
-			"frontend/src/styles/main.css",
-		)
+		coreCfg.CSSEntryFiles.Critical = "frontend/src/styles/main.critical.css"
+		coreCfg.CSSEntryFiles.NonCritical = "frontend/src/styles/main.css"
 	}
 
 	if o.enableCriticalCSS {
@@ -135,11 +136,11 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	}
 
 	rawCfg := struct {
-		Core  waveconfig.CoreConfig `json:"Core"`
-		Vorma VormaConfig           `json:"Vorma"`
+		Core  waveCoreConfigForGlueTests `json:"Core"`
+		Vorma VormaConfigJSON            `json:"Vorma"`
 	}{
 		Core: coreCfg,
-		Vorma: VormaConfig{
+		Vorma: VormaConfigJSON{
 			MainBuildEntry:       "backend/cmd/build",
 			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
@@ -159,11 +160,12 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 	if err != nil {
 		tb.Fatalf("marshal config: %v", err)
 	}
+	mustWriteFile(tb, filepath.Join(rootDir, "wave.config.json"), cfgJSON)
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgJSON,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FS:         os.DirFS(rootDir),
+		ConfigPath: "wave.config.json",
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 
 	app := NewVormaApp(VormaAppConfig{
@@ -185,6 +187,49 @@ func newTestFixture(tb testing.TB, o testFixtureOptions) *testFixture {
 		staticDir:  staticDir,
 		privateDir: privateDir,
 	}
+}
+
+func mustMutateAppVormaConfig(
+	tb testing.TB,
+	app *Vorma,
+	mutate func(*VormaConfigJSON),
+) {
+	tb.Helper()
+	if app == nil {
+		tb.Fatal("app is required")
+		return
+	}
+	if app.Wave == nil {
+		tb.Fatal("app.Wave is required")
+		return
+	}
+	waveInstance := app.Wave
+
+	rawConfig := struct {
+		Vorma VormaConfigJSON `json:"Vorma"`
+	}{}
+	if unmarshalError := json.Unmarshal(
+		waveInstance.RawConfigJSON(),
+		&rawConfig,
+	); unmarshalError != nil {
+		tb.Fatalf("parse Wave raw config JSON for Vorma mutation: %v", unmarshalError)
+	}
+	if mutate != nil {
+		mutate(&rawConfig.Vorma)
+	}
+
+	mutatedVormaConfigPayload, marshalError := json.Marshal(rawConfig)
+	if marshalError != nil {
+		tb.Fatalf("marshal mutated Vorma config payload: %v", marshalError)
+	}
+	parsedConfig, parseError := runtimeconfig.ParseVormaConfigJSON(
+		mutatedVormaConfigPayload,
+		waveInstance.ParsedConfig(),
+	)
+	if parseError != nil {
+		tb.Fatalf("parse mutated Vorma config payload: %v", parseError)
+	}
+	app.Config = parsedConfig
 }
 
 func defaultPathsFile(
@@ -262,6 +307,27 @@ func mustMkdirAll(tb testing.TB, dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		tb.Fatalf("mkdir %s: %v", dir, err)
 	}
+}
+
+func mustChdirToRootForWaveNew(tb testing.TB, rootDir string) {
+	tb.Helper()
+	currentWorkingDirectoryPath, currentWorkingDirectoryError := os.Getwd()
+	if currentWorkingDirectoryError != nil {
+		tb.Fatalf("get working directory before chdir: %v", currentWorkingDirectoryError)
+	}
+	if chdirError := os.Chdir(rootDir); chdirError != nil {
+		tb.Fatalf("chdir to fixture root %q: %v", rootDir, chdirError)
+	}
+	tb.Cleanup(func() {
+		if restoreWorkingDirectoryError := os.Chdir(currentWorkingDirectoryPath); restoreWorkingDirectoryError != nil {
+			panic(
+				"restore working directory to " +
+					currentWorkingDirectoryPath +
+					": " +
+					restoreWorkingDirectoryError.Error(),
+			)
+		}
+	})
 }
 
 func routeDataSnapshotVersionForTest(app *Vorma) uint64 {

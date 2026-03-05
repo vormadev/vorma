@@ -1,6 +1,7 @@
 package wave
 
 import (
+	"encoding/json"
 	"path"
 	"strings"
 	"testing"
@@ -84,7 +85,23 @@ func FuzzPublicPathPrefixNormalization(f *testing.F) {
 	f.Add("/assets/")
 
 	f.Fuzz(func(t *testing.T, prefix string) {
-		cfg := &waveconfig.ParsedConfig{Core: &waveconfig.CoreConfig{PublicPathPrefix: prefix}}
+		rawConfigJSON, marshalError := json.Marshal(map[string]any{
+			"Core": map[string]any{
+			"ProjectID": "test-project",
+				"MainAppEntry":        "cmd/app",
+				"PublicPathPrefix":    prefix,
+			},
+		})
+		if marshalError != nil {
+			t.Fatalf("marshal fuzz config: %v", marshalError)
+		}
+		cfg, parseError := waveconfig.ParseConfigJSONWithConfigPath(
+			rawConfigJSON,
+			"wave.config.json",
+		)
+		if parseError != nil {
+			t.Fatalf("parse fuzz config: %v", parseError)
+		}
 		normalized := cfg.PublicPathPrefix()
 
 		if normalized == "" {

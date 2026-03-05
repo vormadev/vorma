@@ -5,26 +5,22 @@ package testkit
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/waveartifacts"
 )
-
-type staticAssetDirsForTests = struct {
-	Private string `json:"Private"`
-	Public  string `json:"Public"`
-}
 
 // BuildTestFixture captures common runtime + filesystem fixture state used by
 // vormabuild package tests.
@@ -39,7 +35,7 @@ type BuildTestFixture struct {
 
 // BuildTestFixtureOptions customizes NewBuildTestFixture behavior.
 type BuildTestFixtureOptions struct {
-	Config              *vormaruntime.VormaConfig
+	Config              *vormaruntime.VormaConfigJSON
 	LoadersRouterConfig vormaruntime.LoadersRouterOptions
 	ActionsRouterConfig vormaruntime.ActionsRouterOptions
 	WaveMainAppEntry    *string
@@ -54,7 +50,7 @@ func NewBuildTestFixture(
 
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormabuild-fixture-")
 	t.Chdir(rootDir)
-	distDirectoryName := "dist-" + filepath.Base(rootDir)
+	distDirectoryName := ".wavedist"
 	distDir := filepath.Join(rootDir, distDirectoryName)
 	staticDir := filepath.Join(distDir, "static")
 	privateDir := filepath.Join(
@@ -72,7 +68,7 @@ func NewBuildTestFixture(
 	MustMkdirAll(t, publicDir)
 	MustMkdirAll(t, filepath.Join(privateDir, runtimepaths.VormaInternalDirname))
 
-	cfg := vormaruntime.VormaConfig{
+	cfg := vormaruntime.VormaConfigJSON{
 		MainBuildEntry:       "backend/cmd/build",
 		UIVariant:            string(vormaruntime.UIVariantReact),
 		HTMLTemplateLocation: "entry.go.html",
@@ -94,20 +90,36 @@ func NewBuildTestFixture(
 	)
 
 	rawConfig := struct {
-		Core  waveconfig.CoreConfig    `json:"Core"`
-		Vorma vormaruntime.VormaConfig `json:"Vorma"`
-	}{
-		Core: waveconfig.CoreConfig{
-			MainAppEntry: "backend/cmd/serve",
-			DistDir:      wavetest.MustCWDRelativePath(distDir),
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: wavetest.MustCWDRelativePath(privateDir),
-				Public:  wavetest.MustCWDRelativePath(publicDir),
-			},
-			PublicPathPrefix: "/",
-		},
-		Vorma: cfg,
-	}
+		Core struct {
+			ProjectID       string `json:"ProjectID"`
+			MainAppEntry    string `json:"MainAppEntry"`
+			StaticAssetDirs struct {
+				Private string `json:"Private"`
+				Public  string `json:"Public"`
+			} `json:"StaticAssetDirs"`
+			PublicPathPrefix string `json:"PublicPathPrefix"`
+		} `json:"Core"`
+		Vorma vormaruntime.VormaConfigJSON `json:"Vorma"`
+	}{Vorma: cfg}
+	rawConfig.Core.ProjectID = "vormabuild-testkit-fixture"
+	rawConfig.Core.MainAppEntry = "backend/cmd/serve"
+	rawConfig.Core.StaticAssetDirs.Private = filepath.ToSlash(
+		filepath.Join(
+			distDirectoryName,
+			"static",
+			waveartifacts.AssetsDirname,
+			waveartifacts.PrivateDirname,
+		),
+	)
+	rawConfig.Core.StaticAssetDirs.Public = filepath.ToSlash(
+		filepath.Join(
+			distDirectoryName,
+			"static",
+			waveartifacts.AssetsDirname,
+			waveartifacts.PublicDirname,
+		),
+	)
+	rawConfig.Core.PublicPathPrefix = "/"
 	if options != nil && options.WaveMainAppEntry != nil {
 		rawConfig.Core.MainAppEntry = *options.WaveMainAppEntry
 	}
@@ -116,11 +128,12 @@ func NewBuildTestFixture(
 	if err != nil {
 		t.Fatalf("marshal test config: %v", err)
 	}
+	MustWriteFile(t, "wave.config.json", cfgJSON)
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgJSON,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         TestLogger(),
+		FS:         os.DirFS(rootDir),
+		ConfigPath: "wave.config.json",
+		Logger:     TestLogger(),
 	})
 
 	var loadersOpts vormaruntime.LoadersRouterOptions
@@ -145,6 +158,96 @@ func NewBuildTestFixture(
 		PrivateDir: privateDir,
 		PublicDir:  publicDir,
 	}
+}
+
+// MustMutateAppVormaConfig reparses Vorma config from Wave raw JSON after
+// applying one mutation callback, then installs the parsed config on the app.
+func MustMutateAppVormaConfig(
+	t *testing.T,
+	app *vormaruntime.Vorma,
+	mutate func(*vormaruntime.VormaConfigJSON),
+) {
+	t.Helper()
+	if app == nil {
+		t.Fatal("app is required")
+	}
+	if app.Wave == nil {
+		t.Fatal("app.Wave is required")
+	}
+
+	rawConfig := struct {
+		Vorma vormaruntime.VormaConfigJSON `json:"Vorma"`
+	}{}
+	if unmarshalError := json.Unmarshal(
+		app.Wave.RawConfigJSON(),
+		&rawConfig,
+	); unmarshalError != nil {
+		t.Fatalf("parse Wave raw config JSON for Vorma mutation: %v", unmarshalError)
+	}
+	if mutate != nil {
+		mutate(&rawConfig.Vorma)
+	}
+
+	mutatedVormaConfigPayload, marshalError := json.Marshal(rawConfig)
+	if marshalError != nil {
+		t.Fatalf("marshal mutated Vorma config payload: %v", marshalError)
+	}
+	parsedConfig, parseError := runtimeconfig.ParseVormaConfigJSON(
+		mutatedVormaConfigPayload,
+		app.Wave.ParsedConfig(),
+	)
+	if parseError != nil {
+		t.Fatalf("parse mutated Vorma config payload: %v", parseError)
+	}
+	if parsedConfig == nil {
+		t.Fatal("parsed mutated Vorma config payload returned nil config")
+	}
+	app.Config = parsedConfig
+}
+
+// MustParseVormaConfigJSONForTest parses one raw Vorma config fixture through
+// the real parser using a temporary Wave parsed config root.
+func MustParseVormaConfigJSONForTest(
+	tb testing.TB,
+	rawVormaConfig vormaruntime.VormaConfigJSON,
+) vormaruntime.VormaConfig {
+	tb.Helper()
+
+	currentWorkingDirectory, getwdError := os.Getwd()
+	if getwdError != nil {
+		tb.Fatalf("resolve current working directory for Vorma config parse fixture: %v", getwdError)
+	}
+	return MustParseVormaConfigJSONForRootForTest(tb, currentWorkingDirectory, rawVormaConfig)
+}
+
+// MustParseVormaConfigJSONForRootForTest parses one raw Vorma config fixture
+// through the real parser using the provided effective root.
+func MustParseVormaConfigJSONForRootForTest(
+	tb testing.TB,
+	rootDir string,
+	rawVormaConfig vormaruntime.VormaConfigJSON,
+) vormaruntime.VormaConfig {
+	tb.Helper()
+
+	parsedWaveConfig := wavetest.NewParsedConfigAtRoot(tb, rootDir)
+	rawVormaPayload, marshalError := json.Marshal(
+		struct {
+			Vorma vormaruntime.VormaConfigJSON `json:"Vorma"`
+		}{
+			Vorma: rawVormaConfig,
+		},
+	)
+	if marshalError != nil {
+		tb.Fatalf("marshal raw Vorma config fixture: %v", marshalError)
+	}
+	parsedVormaConfig, parseError := runtimeconfig.ParseVormaConfigJSON(
+		rawVormaPayload,
+		parsedWaveConfig,
+	)
+	if parseError != nil {
+		tb.Fatalf("parse raw Vorma config fixture: %v", parseError)
+	}
+	return parsedVormaConfig
 }
 
 // TestLogger returns a discard-backed logger suitable for deterministic tests.
@@ -187,12 +290,12 @@ func MustWriteJSONFile(t *testing.T, path string, value any) {
 func MustResolveRepositoryRootDir(t *testing.T) string {
 	t.Helper()
 
-	currentWorkingDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("resolve current working directory: %v", err)
+	_, currentSourceFilePath, currentSourceFileLine, currentSourceFileOK := runtime.Caller(0)
+	if !currentSourceFileOK {
+		t.Fatalf("resolve current source file path for repository-root lookup")
 	}
 
-	repositoryRootDir := currentWorkingDir
+	repositoryRootDir := filepath.Dir(currentSourceFilePath)
 	for {
 		if _, statError := os.Stat(
 			filepath.Join(repositoryRootDir, "go.mod"),
@@ -208,8 +311,9 @@ func MustResolveRepositoryRootDir(t *testing.T) string {
 	}
 
 	t.Fatalf(
-		"resolve repository root from %q: go.mod not found in ancestor directories",
-		currentWorkingDir,
+		"resolve repository root from %q:%d: go.mod not found in ancestor directories",
+		currentSourceFilePath,
+		currentSourceFileLine,
 	)
 	return ""
 }

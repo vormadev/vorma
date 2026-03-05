@@ -3,13 +3,15 @@ package devserver
 import (
 	"bytes"
 	"fmt"
-	"github.com/vormadev/vorma/wave/wavewatch"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
@@ -42,8 +44,8 @@ func TestFlexibilityContract_WatchExcludeDirsExcludesDirectoryTree(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Watch.Exclude.Dirs = []string{"generated"}
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetWatchExcludeDirs(cfg, []string{"generated"})
 
 	generatedDir := filepath.Join(root, "generated")
 	generatedNestedDir := filepath.Join(generatedDir, "nested")
@@ -107,15 +109,15 @@ func TestFlexibilityContract_WatchExcludeDirsExcludesDirectoryTree(
 
 func TestFlexibilityContract_AbsoluteWatchIncludePatternMatches(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
 
 	absolutePattern := filepath.Join(root, "custom-watch", "**", "*.txt")
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         absolutePattern,
 			RunOnChangeOnly: true,
 		},
-	}
+	})
 
 	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
@@ -161,7 +163,7 @@ func TestFlexibilityContract_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 				configMutationCaseForRun.PrepareEvent(t, configFilePath)
 			}
 
-			s := setupProcessEventsServerForToolingTests(t, cfg)
+			s := setupProcessEventsServerForToolingTests(t, cfg, configFilePath)
 
 			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
 			s.BuildRunloopEngine().ProcessEvents([]fsnotify.Event{{
@@ -191,8 +193,12 @@ func TestFlexibilityContract_NoOpConfigWriteDoesNotRestartOrBroadcast(
 	t *testing.T,
 ) {
 	cfg, _, configFilePath := setupConfigEventTestConfig(t)
-	cfg.Core.ServerOnlyMode = false
-	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		cfg,
+		configFilePath,
+	)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -241,16 +247,16 @@ func TestFlexibilityContract_NoOpConfigWriteDoesNotRestartOrBroadcast(
 	}
 }
 
-func TestFlexibilityContract_NoOpConfigWriteLogsNoChangesMessage(
+func TestFlexibilityContract_NoOpConfigWriteDoesNotRestart(
 	t *testing.T,
 ) {
 	cfg, _, configFilePath := setupConfigEventTestConfig(t)
-	cfg.Core.ServerOnlyMode = false
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
-	var logOutputBuffer bytes.Buffer
-	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
-	serverForTest.Log = slog.New(
-		slog.NewTextHandler(&logOutputBuffer, nil),
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		cfg,
+		configFilePath,
 	)
 
 	configBytes, readError := os.ReadFile(configFilePath)
@@ -278,32 +284,21 @@ func TestFlexibilityContract_NoOpConfigWriteLogsNoChangesMessage(
 			pendingRestartRequest,
 		)
 	}
-
-	logOutput := logOutputBuffer.String()
-	if !strings.Contains(
-		logOutput,
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected no-op config write log message, got logs: %s",
-			logOutput,
-		)
-	}
 }
 
-func TestFlexibilityContract_NoOpConfigWriteAcrossPathAliasesIsNoOpAndLogs(
+func TestFlexibilityContract_NoOpConfigWriteAcrossPathAliasesIsNoOp(
 	t *testing.T,
 ) {
 	for _, pathShapeCaseForRun := range configEventPathShapeCases() {
 		pathShapeCaseForRun := pathShapeCaseForRun
 		t.Run(pathShapeCaseForRun.Name, func(t *testing.T) {
 			cfg, _, configFilePath := setupConfigEventTestConfig(t)
-			cfg.Core.ServerOnlyMode = false
+			wavetest.SetCoreServerOnlyMode(cfg, false)
 
-			var logOutputBuffer bytes.Buffer
-			serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
-			serverForTest.Log = slog.New(
-				slog.NewTextHandler(&logOutputBuffer, nil),
+			serverForTest := setupProcessEventsServerForToolingTests(
+				t,
+				cfg,
+				configFilePath,
 			)
 
 			configBytes, readError := os.ReadFile(configFilePath)
@@ -336,18 +331,6 @@ func TestFlexibilityContract_NoOpConfigWriteAcrossPathAliasesIsNoOpAndLogs(
 					pendingRestartRequest,
 				)
 			}
-
-			logOutput := logOutputBuffer.String()
-			if !strings.Contains(
-				logOutput,
-				"no changes to wave.config.json; skipping restart",
-			) {
-				t.Fatalf(
-					"expected no-op config write log message via %s alias, got logs: %s",
-					pathShapeCaseForRun.Name,
-					logOutput,
-				)
-			}
 		})
 	}
 }
@@ -368,10 +351,14 @@ func TestFlexibilityContract_NoOpConfigMutationEventsDoNotRestartOrBroadcast(
 		configMutationEventCaseForRun := configMutationEventCaseForRun
 		t.Run(configMutationEventCaseForRun.Name, func(t *testing.T) {
 			cfg, _, configFilePath := setupConfigEventTestConfig(t)
-			cfg.Core.ServerOnlyMode = false
+			wavetest.SetCoreServerOnlyMode(cfg, false)
 
 			var logOutputBuffer bytes.Buffer
-			serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+			serverForTest := setupProcessEventsServerForToolingTests(
+				t,
+				cfg,
+				configFilePath,
+			)
 			serverForTest.Log = slog.New(
 				slog.NewTextHandler(&logOutputBuffer, nil),
 			)
@@ -425,17 +412,6 @@ func TestFlexibilityContract_NoOpConfigMutationEventsDoNotRestartOrBroadcast(
 				)
 			}
 
-			logOutput := logOutputBuffer.String()
-			if !strings.Contains(
-				logOutput,
-				"no changes to wave.config.json; skipping restart",
-			) {
-				t.Fatalf(
-					"expected no-op config %s log message, got logs: %s",
-					configMutationEventCaseForRun.Name,
-					logOutput,
-				)
-			}
 		})
 	}
 }
@@ -444,10 +420,14 @@ func TestFlexibilityContract_NoOpConfigAtomicSaveEventSequenceDoesNotRestartOrBr
 	t *testing.T,
 ) {
 	cfg, _, configFilePath := setupConfigEventTestConfig(t)
-	cfg.Core.ServerOnlyMode = false
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	var logOutputBuffer bytes.Buffer
-	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		cfg,
+		configFilePath,
+	)
 	serverForTest.Log = slog.New(
 		slog.NewTextHandler(&logOutputBuffer, nil),
 	)
@@ -509,16 +489,6 @@ func TestFlexibilityContract_NoOpConfigAtomicSaveEventSequenceDoesNotRestartOrBr
 		)
 	}
 
-	logOutput := logOutputBuffer.String()
-	if !strings.Contains(
-		logOutput,
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected no-op config atomic-save log message, got logs: %s",
-			logOutput,
-		)
-	}
 }
 
 func TestFlexibilityContract_NoOpConfigMutationsAcrossPathAliasesAndEventTypes(
@@ -541,12 +511,13 @@ func TestFlexibilityContract_NoOpConfigMutationsAcrossPathAliasesAndEventTypes(
 				pathShapeCaseForRun.Name+"_"+configMutationEventCaseForRun.Name,
 				func(t *testing.T) {
 					cfg, _, configFilePath := setupConfigEventTestConfig(t)
-					cfg.Core.ServerOnlyMode = false
+					wavetest.SetCoreServerOnlyMode(cfg, false)
 
 					var logOutputBuffer bytes.Buffer
 					serverForTest := setupProcessEventsServerForToolingTests(
 						t,
 						cfg,
+						configFilePath,
 					)
 					serverForTest.Log = slog.New(
 						slog.NewTextHandler(&logOutputBuffer, nil),
@@ -609,17 +580,6 @@ func TestFlexibilityContract_NoOpConfigMutationsAcrossPathAliasesAndEventTypes(
 						)
 					}
 
-					if !strings.Contains(
-						logOutputBuffer.String(),
-						"no changes to wave.config.json; skipping restart",
-					) {
-						t.Fatalf(
-							"expected no-op config log for %s via %s alias, got logs: %s",
-							configMutationEventCaseForRun.Name,
-							pathShapeCaseForRun.Name,
-							logOutputBuffer.String(),
-						)
-					}
 				},
 			)
 		}
@@ -646,11 +606,12 @@ func TestFlexibilityContract_ConfigSemanticMutationsAcrossPathAliasesAndEventTyp
 				pathShapeCaseForRun.Name+"_"+configMutationEventCaseForRun.Name,
 				func(t *testing.T) {
 					cfg, _, configFilePath := setupConfigEventTestConfig(t)
-					cfg.Core.ServerOnlyMode = false
+					wavetest.SetCoreServerOnlyMode(cfg, false)
 
 					serverForTest := setupProcessEventsServerForToolingTests(
 						t,
 						cfg,
+						configFilePath,
 					)
 
 					refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
@@ -718,8 +679,12 @@ func TestFlexibilityContract_ConfigWriteChangeBroadcastsAndRestarts(
 	t *testing.T,
 ) {
 	cfg, _, configFilePath := setupConfigEventTestConfig(t)
-	cfg.Core.ServerOnlyMode = false
-	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	serverForTest := setupProcessEventsServerForToolingTests(
+		t,
+		cfg,
+		configFilePath,
+	)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -776,14 +741,14 @@ func TestFlexibilityContract_ViteDevBuildHonorsCmdDirAndConfigFile(
 		t.Fatalf("failed creating Vite command directory: %v", err)
 	}
 
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = flexibilityContractViteHelperBaseCommand(
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, flexibilityContractViteHelperBaseCommand(
 		t,
-	)
-	cfg.Vite.JSPackageManagerCmdDir = commandWorkingDirectory
-	cfg.Vite.ViteConfigFile = "./vite.custom.config.ts"
+	))
+	wavetest.SetViteJSPackageManagerCmdDir(cfg, commandWorkingDirectory)
+	wavetest.SetViteConfigFile(cfg, "./vite.custom.config.ts")
 
 	builder := builder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()

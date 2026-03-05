@@ -1,6 +1,7 @@
 package watch_test
 
 import (
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,9 +15,8 @@ func TestWatcherAddDir_AddsNonIgnoredDirectoriesAndSkipsIgnoredOnes(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	projectRoot := filepath.Join(root, "project")
 	srcDir := filepath.Join(projectRoot, "src")
@@ -53,9 +53,8 @@ func TestWatcherRemoveStale_RemovesDeletedDirectoriesFromWatchSet(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	watchedDir := filepath.Join(root, "watched")
 	if err := os.MkdirAll(watchedDir, 0755); err != nil {
@@ -104,9 +103,8 @@ func TestWatcherAddDir_FailsWhenNestedDirectoryIsNotReadable(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	projectRoot := filepath.Join(root, "project")
 	unreadableDirectory := filepath.Join(projectRoot, "unreadable")

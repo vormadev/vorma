@@ -634,14 +634,14 @@ func TestProcessPublicFilesOnly_HandlesHashedPrehashedAndNohashFiles(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(filepath.Join(publicDir, "images"), 0755); err != nil {
 		t.Fatalf("failed creating images dir: %v", err)
 	}
@@ -707,9 +707,9 @@ func TestProcessPublicFilesOnly_HandlesHashedPrehashedAndNohashFiles(
 	}
 
 	expectedOutputs := []string{
-		filepath.Join(cfg.Dist.StaticPublic(), hashedEntry.DistName),
-		filepath.Join(cfg.Dist.StaticPublic(), prehashedEntry.DistName),
-		filepath.Join(cfg.Dist.StaticPublic(), nohashEntry.DistName),
+		filepath.Join(cfg.Dist().StaticPublic(), hashedEntry.DistName),
+		filepath.Join(cfg.Dist().StaticPublic(), prehashedEntry.DistName),
+		filepath.Join(cfg.Dist().StaticPublic(), nohashEntry.DistName),
 	}
 	for _, outputPath := range expectedOutputs {
 		if _, statErr := os.Stat(outputPath); statErr != nil {
@@ -726,14 +726,14 @@ func TestProcessPublicFilesOnly_GranularModeRemovesStaleOutputFiles(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -760,7 +760,7 @@ func TestProcessPublicFilesOnly_GranularModeRemovesStaleOutputFiles(
 		)
 	}
 	removedDistName := initialMap["removed.txt"].DistName
-	removedDistPath := filepath.Join(cfg.Dist.StaticPublic(), removedDistName)
+	removedDistPath := filepath.Join(cfg.Dist().StaticPublic(), removedDistName)
 
 	if err := os.Remove(removedPath); err != nil {
 		t.Fatalf("failed removing source file for stale cleanup test: %v", err)
@@ -793,14 +793,14 @@ func TestProcessPublicFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed creating public source dir: %v", err)
 	}
@@ -823,7 +823,7 @@ func TestProcessPublicFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(
 	}
 	initialEntry := initialMap["removed.txt"]
 	initialDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialEntry.DistName,
 	)
 
@@ -864,14 +864,14 @@ func TestProcessPublicFilesOnly_ReturnsErrorWhenLogicalPathCollidesAcrossSourceL
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	prehashedDir := filepath.Join(publicDir, waveartifacts.PrehashedDirname)
 	if err := os.MkdirAll(prehashedDir, 0o755); err != nil {
 		t.Fatalf("failed creating prehashed dir: %v", err)
@@ -906,14 +906,14 @@ func TestProcessPublicFilesOnlyForChangedPaths_UpdatesOnlyChangedEntries(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -974,7 +974,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_UpdatesOnlyChangedEntries(
 	}
 
 	oldChangedDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialChangedEntry.DistName,
 	)
 	if _, statErr := os.Stat(oldChangedDistPath); !os.IsNotExist(statErr) {
@@ -989,14 +989,14 @@ func TestProcessPublicFilesOnlyForChangedPaths_RemovesDeletedEntry(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -1016,7 +1016,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_RemovesDeletedEntry(
 	}
 	initialRemovedEntry := initialMap["removed.txt"]
 	initialRemovedDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialRemovedEntry.DistName,
 	)
 
@@ -1057,14 +1057,14 @@ func TestProcessPublicFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	prehashedDir := filepath.Join(publicDir, waveartifacts.PrehashedDirname)
 	if err := os.MkdirAll(prehashedDir, 0o755); err != nil {
 		t.Fatalf("failed creating prehashed dir: %v", err)
@@ -1106,14 +1106,14 @@ func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBat
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -1141,11 +1141,11 @@ func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBat
 	initialRenamedFromEntry := initialMap["old-logo.png"]
 	initialDeletedEntry := initialMap["obsolete.txt"]
 	initialRenamedFromDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialRenamedFromEntry.DistName,
 	)
 	initialDeletedDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialDeletedEntry.DistName,
 	)
 
@@ -1215,18 +1215,37 @@ func TestProcessPublicFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBat
 			statErr,
 		)
 	}
+
+	refBytes, readRefError := os.ReadFile(cfg.Dist().PublicFileMapRef())
+	if readRefError != nil {
+		t.Fatalf("failed reading public filemap ref after changed-path batch: %v", readRefError)
+	}
+	refTarget := strings.TrimSpace(string(refBytes))
+	if refTarget == "" {
+		t.Fatal("expected non-empty public filemap ref after changed-path batch")
+	}
+	canonicalPublicFileMapPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		refTarget,
+	)
+	if _, statError := os.Stat(canonicalPublicFileMapPath); statError != nil {
+		t.Fatalf(
+			"expected canonical public filemap JSON to exist after changed-path batch: %v",
+			statError,
+		)
+	}
 }
 
 func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	privateFile := filepath.Join(privateDir, "templates", "home.html")
 	if err := os.MkdirAll(filepath.Dir(privateFile), 0755); err != nil {
 		t.Fatalf("failed creating private file dir: %v", err)
@@ -1241,7 +1260,7 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 
 	privateMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath(private gob) returned error: %v", err)
@@ -1262,7 +1281,7 @@ func TestProcessPrivateFilesOnly_PreservesRelativePaths(t *testing.T) {
 	}
 
 	distPath := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		"templates",
 		"home.html",
 	)
@@ -1279,14 +1298,14 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	privateFilePath := filepath.Join(privateDir, "templates", "gone.html")
 	if err := os.MkdirAll(filepath.Dir(privateFilePath), 0o755); err != nil {
 		t.Fatalf("failed creating private source dir: %v", err)
@@ -1301,14 +1320,14 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(
 
 	initialMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf("loadFileMapFromPath returned error: %v", err)
 	}
 	initialEntry := initialMap["templates/gone.html"]
 	initialDistPath := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		initialEntry.DistName,
 	)
 
@@ -1325,7 +1344,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDeletedEntry(
 
 	updatedMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1352,14 +1371,14 @@ func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	privateFilePath := filepath.Join(privateDir, "templates", "gone.html")
 	if err := os.MkdirAll(filepath.Dir(privateFilePath), 0o755); err != nil {
 		t.Fatalf("failed creating private source file parent dir: %v", err)
@@ -1374,7 +1393,7 @@ func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(
 
 	initialMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1384,7 +1403,7 @@ func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(
 	}
 	initialEntry := initialMap["templates/gone.html"]
 	initialDistPath := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		initialEntry.DistName,
 	)
 
@@ -1401,7 +1420,7 @@ func TestProcessPrivateFilesOnly_SourceDirectoryRemovalCleansDistArtifacts(
 
 	updatedMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1428,14 +1447,14 @@ func TestProcessPrivateFilesOnly_ReturnsErrorWhenLogicalPathCollidesAcrossSource
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	prehashedDir := filepath.Join(privateDir, waveartifacts.PrehashedDirname)
 	if err := os.MkdirAll(prehashedDir, 0o755); err != nil {
 		t.Fatalf("failed creating prehashed dir: %v", err)
@@ -1472,14 +1491,14 @@ func TestProcessPrivateFilesOnlyForChangedPaths_ReturnsErrorWhenCollisionExists(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	prehashedDir := filepath.Join(privateDir, waveartifacts.PrehashedDirname)
 	if err := os.MkdirAll(prehashedDir, 0o755); err != nil {
 		t.Fatalf("failed creating prehashed dir: %v", err)
@@ -1523,14 +1542,14 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	if err := os.MkdirAll(privateDir, 0o755); err != nil {
 		t.Fatalf("failed creating private dir: %v", err)
 	}
@@ -1556,7 +1575,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 
 	initialMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1567,11 +1586,11 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 	initialRenamedFromEntry := initialMap["templates/old.html"]
 	initialDeletedEntry := initialMap["templates/obsolete.html"]
 	initialRenamedFromDistPath := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		initialRenamedFromEntry.DistName,
 	)
 	initialDeletedDistPath := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		initialDeletedEntry.DistName,
 	)
 
@@ -1599,7 +1618,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_MixedCreateDeleteAndRenameLikeBa
 
 	updatedMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1650,14 +1669,14 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -1677,20 +1696,20 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(
 	}
 	initialEntry := initialMap["logo.png"]
 
-	gobInfoBefore, err := os.Stat(cfg.Dist.PublicFileMapGob())
+	gobInfoBefore, err := os.Stat(cfg.Dist().PublicFileMapGob())
 	if err != nil {
 		t.Fatalf("stat public file map gob before no-op run: %v", err)
 	}
-	refDataBefore, err := os.ReadFile(cfg.Dist.PublicFileMapRef())
+	refDataBefore, err := os.ReadFile(cfg.Dist().PublicFileMapRef())
 	if err != nil {
 		t.Fatalf("read public file map ref before no-op run: %v", err)
 	}
-	refInfoBefore, err := os.Stat(cfg.Dist.PublicFileMapRef())
+	refInfoBefore, err := os.Stat(cfg.Dist().PublicFileMapRef())
 	if err != nil {
 		t.Fatalf("stat public file map ref before no-op run: %v", err)
 	}
 	jsPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(refDataBefore)),
 	)
 	jsInfoBefore, err := os.Stat(jsPath)
@@ -1726,11 +1745,11 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootIsNoOp(
 		)
 	}
 
-	gobInfoAfter, err := os.Stat(cfg.Dist.PublicFileMapGob())
+	gobInfoAfter, err := os.Stat(cfg.Dist().PublicFileMapGob())
 	if err != nil {
 		t.Fatalf("stat public file map gob after no-op run: %v", err)
 	}
-	refInfoAfter, err := os.Stat(cfg.Dist.PublicFileMapRef())
+	refInfoAfter, err := os.Stat(cfg.Dist().PublicFileMapRef())
 	if err != nil {
 		t.Fatalf("stat public file map ref after no-op run: %v", err)
 	}
@@ -1766,14 +1785,14 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhen
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -1798,7 +1817,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhen
 		)
 	}
 
-	if _, statErr := os.Stat(cfg.Dist.PublicFileMapGob()); !os.IsNotExist(
+	if _, statErr := os.Stat(cfg.Dist().PublicFileMapGob()); !os.IsNotExist(
 		statErr,
 	) {
 		t.Fatalf(
@@ -1806,7 +1825,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhen
 			statErr,
 		)
 	}
-	if _, statErr := os.Stat(cfg.Dist.PublicFileMapRef()); !os.IsNotExist(
+	if _, statErr := os.Stat(cfg.Dist().PublicFileMapRef()); !os.IsNotExist(
 		statErr,
 	) {
 		t.Fatalf(
@@ -1815,7 +1834,7 @@ func TestProcessPublicFilesOnlyForChangedPaths_OutsideStaticRootDoesNotBuildWhen
 		)
 	}
 
-	publicDistEntries, readErr := os.ReadDir(cfg.Dist.StaticPublic())
+	publicDistEntries, readErr := os.ReadDir(cfg.Dist().StaticPublic())
 	if readErr != nil && !os.IsNotExist(readErr) {
 		t.Fatalf("failed reading public dist dir: %v", readErr)
 	}
@@ -1831,14 +1850,14 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	removedSubtreeDirectory := filepath.Join(privateDir, "templates", "removed")
 	keptFilePath := filepath.Join(privateDir, "templates", "kept.html")
 	removedFilePathA := filepath.Join(removedSubtreeDirectory, "a.html")
@@ -1870,7 +1889,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(
 
 	initialMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1881,11 +1900,11 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(
 	removedEntryA := initialMap["templates/removed/a.html"]
 	removedEntryB := initialMap["templates/removed/nested/b.html"]
 	removedDistPathA := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		removedEntryA.DistName,
 	)
 	removedDistPathB := filepath.Join(
-		cfg.Dist.StaticPrivate(),
+		cfg.Dist().StaticPrivate(),
 		removedEntryB.DistName,
 	)
 
@@ -1902,7 +1921,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_RemovesDirectorySubtreeEntries(
 
 	updatedMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1947,14 +1966,14 @@ func TestProcessPrivateFilesOnlyForChangedPaths_DirectoryRenameWithoutChildFileE
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	privateDir := cfg.Core.StaticAssetDirs.Private
+	privateDir := cfg.Core().StaticAssetDirsPrivate()
 	oldDirectoryPath := filepath.Join(privateDir, "templates", "old")
 	newDirectoryPath := filepath.Join(privateDir, "templates", "new")
 	oldFilePathA := filepath.Join(oldDirectoryPath, "a.html")
@@ -1976,7 +1995,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_DirectoryRenameWithoutChildFileE
 
 	initialMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -1986,8 +2005,8 @@ func TestProcessPrivateFilesOnlyForChangedPaths_DirectoryRenameWithoutChildFileE
 	}
 	oldEntryA := initialMap["templates/old/a.html"]
 	oldEntryB := initialMap["templates/old/nested/b.html"]
-	oldDistPathA := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryA.DistName)
-	oldDistPathB := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryB.DistName)
+	oldDistPathA := filepath.Join(cfg.Dist().StaticPrivate(), oldEntryA.DistName)
+	oldDistPathB := filepath.Join(cfg.Dist().StaticPrivate(), oldEntryB.DistName)
 
 	if err := os.Rename(oldDirectoryPath, newDirectoryPath); err != nil {
 		t.Fatalf("failed renaming private subtree directory: %v", err)
@@ -2006,7 +2025,7 @@ func TestProcessPrivateFilesOnlyForChangedPaths_DirectoryRenameWithoutChildFileE
 
 	updatedMap, err := loadFileMapFromPathForStaticProcessingTests(
 		cfg,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if err != nil {
 		t.Fatalf(
@@ -2057,14 +2076,14 @@ func TestProcessPublicFilesOnly_RecopiesUnchangedFileWhenDistOutputIsMissing(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -2087,7 +2106,7 @@ func TestProcessPublicFilesOnly_RecopiesUnchangedFileWhenDistOutputIsMissing(
 		t.Fatalf("expected file map entry for logo.png, map=%#v", fileMap)
 	}
 
-	distPath := filepath.Join(cfg.Dist.StaticPublic(), entry.DistName)
+	distPath := filepath.Join(cfg.Dist().StaticPublic(), entry.DistName)
 	if err := os.Remove(distPath); err != nil {
 		t.Fatalf(
 			"failed removing dist output to simulate partial cleanup: %v",
@@ -2111,14 +2130,14 @@ func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForStaticProcessingTestsAtRoot(root)
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
 	builder := builder.NewBuilder(
 		cfg,
 		newDiscardLoggerForStaticProcessingTests(),
 	)
 	defer builder.Close()
 
-	publicDir := cfg.Core.StaticAssetDirs.Public
+	publicDir := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDir, 0755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -2130,14 +2149,14 @@ func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(
 		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
 	}
 
-	refPath := cfg.Dist.PublicFileMapRef()
+	refPath := cfg.Dist().PublicFileMapRef()
 	refBefore, err := os.ReadFile(refPath)
 	if err != nil {
 		t.Fatalf("failed reading file map ref: %v", err)
 	}
 
 	jsPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		strings.TrimSpace(string(refBefore)),
 	)
 	refInfoBefore, err := os.Stat(refPath)
@@ -2148,7 +2167,7 @@ func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(
 	if err != nil {
 		t.Fatalf("failed stating hashed file map artifact: %v", err)
 	}
-	gobInfoBefore, err := os.Stat(cfg.Dist.PublicFileMapGob())
+	gobInfoBefore, err := os.Stat(cfg.Dist().PublicFileMapGob())
 	if err != nil {
 		t.Fatalf("failed stating public file map gob: %v", err)
 	}
@@ -2167,7 +2186,7 @@ func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(
 	if err != nil {
 		t.Fatalf("failed stating hashed file map artifact after rerun: %v", err)
 	}
-	gobInfoAfter, err := os.Stat(cfg.Dist.PublicFileMapGob())
+	gobInfoAfter, err := os.Stat(cfg.Dist().PublicFileMapGob())
 	if err != nil {
 		t.Fatalf("failed stating public file map gob after rerun: %v", err)
 	}
@@ -2195,18 +2214,166 @@ func TestProcessPublicFilesOnly_UnchangedInputsDoNotRewriteMapArtifacts(
 	}
 }
 
+func TestProcessPublicFilesOnly_UnchangedInputsRecreateMissingCanonicalPublicFileMapArtifact(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
+	builder := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForStaticProcessingTests(),
+	)
+	defer builder.Close()
+
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(publicDir, "logo.png"), []byte("logo"), 0o644); err != nil {
+		t.Fatalf("failed writing source file: %v", err)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	refPath := cfg.Dist().PublicFileMapRef()
+	refBytesBeforeRepair, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("failed reading file map ref: %v", err)
+	}
+	refTargetBeforeRepair := strings.TrimSpace(string(refBytesBeforeRepair))
+	if refTargetBeforeRepair == "" {
+		t.Fatal("expected non-empty ref target before repair test")
+	}
+	missingCanonicalPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		refTargetBeforeRepair,
+	)
+	if err := os.Remove(missingCanonicalPath); err != nil {
+		t.Fatalf("failed removing canonical public filemap artifact: %v", err)
+	}
+	if _, statError := os.Stat(missingCanonicalPath); !os.IsNotExist(statError) {
+		t.Fatalf(
+			"expected canonical public filemap artifact to be missing, stat error: %v",
+			statError,
+		)
+	}
+
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("second ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	refBytesAfterRepair, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("failed reading file map ref after repair: %v", err)
+	}
+	refTargetAfterRepair := strings.TrimSpace(string(refBytesAfterRepair))
+	if refTargetAfterRepair == "" {
+		t.Fatal("expected non-empty ref target after repair")
+	}
+	repairedCanonicalPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		refTargetAfterRepair,
+	)
+	if _, statError := os.Stat(repairedCanonicalPath); statError != nil {
+		t.Fatalf(
+			"expected repaired canonical public filemap artifact to exist: %v",
+			statError,
+		)
+	}
+}
+
+func TestProcessPublicFilesOnlyForChangedPaths_IgnoredPathRecreatesMissingCanonicalPublicFileMapArtifact(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	cfg := newParsedConfigForStaticProcessingTestsAtRoot(t, root)
+	builder := builder.NewBuilder(
+		cfg,
+		newDiscardLoggerForStaticProcessingTests(),
+	)
+	defer builder.Close()
+
+	publicDir := cfg.Core().StaticAssetDirsPublic()
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
+		t.Fatalf("failed creating public dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(publicDir, "logo.png"), []byte("logo"), 0o644); err != nil {
+		t.Fatalf("failed writing source file: %v", err)
+	}
+	if err := builder.ProcessPublicFilesOnly(); err != nil {
+		t.Fatalf("initial ProcessPublicFilesOnly returned error: %v", err)
+	}
+
+	refPath := cfg.Dist().PublicFileMapRef()
+	refBytesBeforeRepair, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("failed reading file map ref: %v", err)
+	}
+	refTargetBeforeRepair := strings.TrimSpace(string(refBytesBeforeRepair))
+	if refTargetBeforeRepair == "" {
+		t.Fatal("expected non-empty ref target before repair test")
+	}
+
+	missingCanonicalPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		refTargetBeforeRepair,
+	)
+	if err := os.Remove(missingCanonicalPath); err != nil {
+		t.Fatalf("failed removing canonical public filemap artifact: %v", err)
+	}
+	if _, statError := os.Stat(missingCanonicalPath); !os.IsNotExist(statError) {
+		t.Fatalf(
+			"expected canonical public filemap artifact to be missing, stat error: %v",
+			statError,
+		)
+	}
+
+	ignoredPath := filepath.Join(publicDir, ".DS_Store")
+	if err := os.WriteFile(ignoredPath, []byte("ignored"), 0o644); err != nil {
+		t.Fatalf("failed writing ignored file: %v", err)
+	}
+	if err := builder.ProcessPublicFilesOnlyForChangedPaths([]string{ignoredPath}); err != nil {
+		t.Fatalf(
+			"ProcessPublicFilesOnlyForChangedPaths with ignored file returned error: %v",
+			err,
+		)
+	}
+
+	refBytesAfterRepair, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatalf("failed reading file map ref after repair: %v", err)
+	}
+	refTargetAfterRepair := strings.TrimSpace(string(refBytesAfterRepair))
+	if refTargetAfterRepair == "" {
+		t.Fatal("expected non-empty ref target after repair")
+	}
+	repairedCanonicalPath := filepath.Join(
+		cfg.Dist().StaticPublic(),
+		refTargetAfterRepair,
+	)
+	if _, statError := os.Stat(repairedCanonicalPath); statError != nil {
+		t.Fatalf(
+			"expected repaired canonical public filemap artifact to exist: %v",
+			statError,
+		)
+	}
+}
+
 func newDiscardLoggerForStaticProcessingTests() *slog.Logger {
 	return wavetest.NewDiscardLogger()
 }
 
 func newParsedConfigForStaticProcessingTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func loadFileMapFromPathForStaticProcessingTests(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	path string,
 ) (wavefilemap.FileMap, error) {
 	staticProcessor := static.NewProcessor(

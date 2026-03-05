@@ -15,20 +15,21 @@ import (
 )
 
 func newParsedConfigForSchemaPackageTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func TestWriteSchema_WritesSchemaJSON(t *testing.T) {
-	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t, t.TempDir())
 	processor := schema.NewProcessor(cfg, nil)
 
 	if writeError := processor.WriteSchema(); writeError != nil {
 		t.Fatalf("WriteSchema returned error: %v", writeError)
 	}
 
-	schemaPath := filepath.Join(cfg.Dist.Internal(), "schema.json")
+	schemaPath := filepath.Join(cfg.Dist().Internal(), "schema.json")
 	schemaBytes, readError := os.ReadFile(schemaPath)
 	if readError != nil {
 		t.Fatalf("read schema file %q: %v", schemaPath, readError)
@@ -52,7 +53,7 @@ func TestWriteSchema_WritesSchemaJSON(t *testing.T) {
 }
 
 func TestBuildSchemaDocument_IncludesFrameworkExtensions(t *testing.T) {
-	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t, t.TempDir())
 	waveframework.StateForConfig(cfg).SchemaExtensions = map[string]jsonschema.Entry{
 		"CustomFramework": jsonschema.OptionalObject(jsonschema.Def{
 			Properties: struct {
@@ -96,7 +97,7 @@ func TestWriteSchema_NilConfigReturnsError(t *testing.T) {
 func TestBuildSchemaDocument_WatchSchemaIncludesHookTimeoutSections(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t, t.TempDir())
 	processor := schema.NewProcessor(cfg, nil)
 
 	schemaDocument, buildError := processor.BuildSchemaDocument()
@@ -134,7 +135,7 @@ func TestBuildSchemaDocument_WatchSchemaIncludesHookTimeoutSections(
 func TestBuildSchemaDocument_HookTimingDescriptionUsesConcurrentDashNoWait(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t, t.TempDir())
 	processor := schema.NewProcessor(cfg, nil)
 
 	schemaDocument, buildError := processor.BuildSchemaDocument()
@@ -169,7 +170,7 @@ func TestBuildSchemaDocument_HookTimingDescriptionUsesConcurrentDashNoWait(
 }
 
 func TestBuildSchemaDocument_AllWaveOwnedFieldsHaveDescriptions(t *testing.T) {
-	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForSchemaPackageTestsAtRoot(t, t.TempDir())
 	processor := schema.NewProcessor(cfg, nil)
 
 	schemaDocument, buildError := processor.BuildSchemaDocument()

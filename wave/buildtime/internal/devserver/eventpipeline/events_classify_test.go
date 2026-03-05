@@ -1,13 +1,14 @@
 package eventpipeline_test
 
 import (
-	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/internal/wavetest"
@@ -20,14 +21,14 @@ func TestClassifyEventWithWatcherAndBuilder_GoFileCanBeTreatedAsNonGo(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:      "**/*.go",
 			TreatAsNonGo: true,
 			RestartApp:   true,
 		},
-	}
+	})
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -72,7 +73,7 @@ func TestClassifyEventWithWatcherAndBuilder_UnmatchedOtherFilesAreIgnored(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -114,10 +115,8 @@ func TestIsConfigFileMatchesNormalizedPath(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "backend", "wave.config.json")
 
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
-	cfg.Core.ConfigLocation = configPath
 	equivalentPath := filepath.Join(root, "backend", ".", "wave.config.json")
-	if !isConfigFileForEventPipelineTests(cfg, equivalentPath) {
+	if !isConfigFileForEventPipelineTests(configPath, equivalentPath) {
 		t.Fatalf(
 			"expected isConfigFileForEventPipelineTests(%q) to match config path %q",
 			equivalentPath,
@@ -126,15 +125,14 @@ func TestIsConfigFileMatchesNormalizedPath(t *testing.T) {
 	}
 
 	otherPath := filepath.Join(root, "backend", "different.config.json")
-	if isConfigFileForEventPipelineTests(cfg, otherPath) {
+	if isConfigFileForEventPipelineTests(configPath, otherPath) {
 		t.Fatalf(
 			"expected isConfigFileForEventPipelineTests(%q) to be false",
 			otherPath,
 		)
 	}
 
-	cfg.Core.ConfigLocation = ""
-	if isConfigFileForEventPipelineTests(cfg, configPath) {
+	if isConfigFileForEventPipelineTests("", configPath) {
 		t.Fatal(
 			"expected isConfigFileForEventPipelineTests to be false when config file path is empty",
 		)
@@ -150,7 +148,9 @@ func TestNeedsHardReload(t *testing.T) {
 	) {
 		t.Fatal("expected RecompileGoBinary=true to require hard reload")
 	}
-	if !eventpipeline.NeedsHardReload(&wavewatch.WatchedFile{RestartApp: true}) {
+	if !eventpipeline.NeedsHardReload(
+		&wavewatch.WatchedFile{RestartApp: true},
+	) {
 		t.Fatal("expected RestartApp=true to require hard reload")
 	}
 	if eventpipeline.NeedsHardReload(&wavewatch.WatchedFile{}) {
@@ -159,7 +159,7 @@ func TestNeedsHardReload(t *testing.T) {
 }
 
 func TestClassifyEventWithWatcherAndBuilder_EmptyPathIsIgnored(t *testing.T) {
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, t.TempDir())
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -191,7 +191,7 @@ func TestClassifyEventWithWatcherAndBuilder_PublicAndPrivateStaticFiles(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -209,12 +209,12 @@ func TestClassifyEventWithWatcherAndBuilder_PublicAndPrivateStaticFiles(
 	defer builderForTest.Close()
 
 	publicFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		"img",
 		"logo.png",
 	)
 	privateFilePath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"tpl",
 		"home.html",
 	)
@@ -248,7 +248,7 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -346,8 +346,8 @@ func TestClassifyEventWithWatcherAndBuilder_CriticalAndNormalCSSFiles(
 
 func TestClassifyEventWithWatcherAndBuilder_RespectsIgnoredFiles(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
-	cfg.Watch.Exclude.Files = []string{"ignored.tmp"}
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
+	wavetest.SetWatchExcludeFiles(cfg, []string{"ignored.tmp"})
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -380,24 +380,24 @@ func TestClassifyEventWithWatcherAndBuilder_RespectsIgnoredFiles(t *testing.T) {
 
 func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.StaticAssetDirs.Public = filepath.Join(
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetCoreStaticAssetDirsPublic(cfg, filepath.Join(
 		root,
 		"frontend",
 		waveartifacts.AssetsDirname,
-	)
-	cfg.Core.StaticAssetDirs.Private = filepath.Join(
+	))
+	wavetest.SetCoreStaticAssetDirsPrivate(cfg, filepath.Join(
 		root,
 		"backend",
 		waveartifacts.AssetsDirname,
-	)
+	))
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "frontend", "src", "styles", "main.critical.css"),
 		filepath.Join(root, "frontend", "src", "styles", "main.css"),
 	)
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:                            "backend/assets/markdown/**/*.md",
 			OnlyRunClientDefinedRevalidateFunc: true,
@@ -429,17 +429,16 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 				},
 			},
 		},
-	}
-
+	})
 	stylesDirectoryPath := filepath.Join(root, "frontend", "src", "styles")
 	if err := os.MkdirAll(stylesDirectoryPath, 0o755); err != nil {
 		t.Fatalf("create styles directory: %v", err)
 	}
-	if err := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Core().StaticAssetDirsPublic(), 0o755); err != nil {
 		t.Fatalf("create public static directory: %v", err)
 	}
 	if err := os.MkdirAll(
-		filepath.Join(cfg.Core.StaticAssetDirs.Private, "markdown", "blog"),
+		filepath.Join(cfg.Core().StaticAssetDirsPrivate(), "markdown", "blog"),
 		0o755,
 	); err != nil {
 		t.Fatalf("create private static markdown directory: %v", err)
@@ -464,14 +463,14 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 	)
 	tailwindPath := filepath.Join(stylesDirectoryPath, "tailwind.css")
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`@import "./fonts.css"; body { color: blue; }`),
 		0o644,
 	); err != nil {
 		t.Fatalf("write normal css entry: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`@import "./critical_import.css"; body { color: red; }`),
 		0o644,
 	); err != nil {
@@ -539,7 +538,7 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 	}
 
 	publicStaticAssetPath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		"icon.svg",
 	)
 	if err := os.WriteFile(
@@ -549,9 +548,24 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 	); err != nil {
 		t.Fatalf("write public static asset file: %v", err)
 	}
+	publicStaticFontPath := filepath.Join(
+		cfg.Core().StaticAssetDirsPublic(),
+		"fonts",
+		"test.woff2",
+	)
+	if err := os.MkdirAll(filepath.Dir(publicStaticFontPath), 0o755); err != nil {
+		t.Fatalf("create public static font directory: %v", err)
+	}
+	if err := os.WriteFile(
+		publicStaticFontPath,
+		[]byte("font-data"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write public static font file: %v", err)
+	}
 
 	markdownBlogPath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"markdown",
 		"blog",
 		"post.md",
@@ -578,6 +592,9 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 		newDiscardLoggerForEventClassificationTests(),
 	)
 	defer builderForTest.Close()
+	if processPublicFilesError := builderForTest.ProcessPublicFilesOnly(); processPublicFilesError != nil {
+		t.Fatalf("ProcessPublicFilesOnly returned error: %v", processPublicFilesError)
+	}
 
 	if cssBuildError := builderForTest.BuildCSS(
 		builder.CSSBuildOptions{
@@ -598,7 +615,7 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 	}{
 		{
 			name:            "normal css entry",
-			path:            cfg.Core.CSSEntryFiles.NonCritical,
+			path:            cfg.Core().NonCriticalCSSEntryFile(),
 			expectedType:    eventpipeline.FileTypeNormalCSS,
 			expectedIgnored: false,
 		},
@@ -610,7 +627,7 @@ func TestClassifyEventWithWatcherAndBuilder_SiteStyleFileMatrix(t *testing.T) {
 		},
 		{
 			name:            "critical css entry",
-			path:            cfg.Core.CSSEntryFiles.Critical,
+			path:            cfg.Core().CriticalCSSEntryFile(),
 			expectedType:    eventpipeline.FileTypeCriticalCSS,
 			expectedIgnored: false,
 		},
@@ -759,8 +776,8 @@ func TestClassifyWatcherEventsForProcessing_SiteStyleUnmanagedFrontendFilesDoNoW
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventClassificationTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForEventClassificationTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "frontend", "src", "styles", "main.critical.css"),
@@ -776,14 +793,14 @@ func TestClassifyWatcherEventsForProcessing_SiteStyleUnmanagedFrontendFilesDoNoW
 	}
 
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte(`body { color: blue; }`),
 		0o644,
 	); err != nil {
 		t.Fatalf("write normal css entry: %v", err)
 	}
 	if err := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(`body { color: red; }`),
 		0o644,
 	); err != nil {
@@ -846,7 +863,7 @@ func TestClassifyWatcherEventsForProcessing_SiteStyleUnmanagedFrontendFilesDoNoW
 	}
 
 	classifiedEvents, configChanged := classifyWatcherEventsForProcessingForEventPipelineTests(
-		cfg,
+		"",
 		[]fsnotify.Event{
 			{Name: tailwindPath, Op: fsnotify.Write},
 			{Name: vormaEntryPath, Op: fsnotify.Write},
@@ -871,7 +888,8 @@ func newDiscardLoggerForEventClassificationTests() *slog.Logger {
 }
 
 func newParsedConfigForEventClassificationTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }

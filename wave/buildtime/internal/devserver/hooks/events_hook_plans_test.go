@@ -263,7 +263,7 @@ func newWatcherForHookPlanTests(t *testing.T) *watch.Watcher {
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := wavetest.NewParsedConfigAtRoot(root)
+	cfg := wavetest.NewParsedConfigAtRoot(t, root)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,

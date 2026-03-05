@@ -26,7 +26,7 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_WritesCanonicalHashedJSONAndRef(
 ) {
 	root := t.TempDir()
 
-	cfg := wavetest.NewParsedConfigAtRoot(root)
+	cfg := wavetest.NewParsedConfigAtRoot(t, root)
 	processor := static.NewProcessor(
 		cfg,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -44,7 +44,7 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_WritesCanonicalHashedJSONAndRef(
 			ContentHash: aFileName,
 		},
 	}
-	if err := processor.SaveFileMap(input, cfg.Dist.PublicFileMapGob()); err != nil {
+	if err := processor.SaveFileMap(input, cfg.Dist().PublicFileMapGob()); err != nil {
 		t.Fatalf("SaveFileMap returned error: %v", err)
 	}
 
@@ -52,7 +52,7 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_WritesCanonicalHashedJSONAndRef(
 		t.Fatalf("WriteCanonicalPublicFileMapJSONAndRef returned error: %v", err)
 	}
 
-	refBytes, err := os.ReadFile(cfg.Dist.PublicFileMapRef())
+	refBytes, err := os.ReadFile(cfg.Dist().PublicFileMapRef())
 	if err != nil {
 		t.Fatalf("read public filemap ref: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_WritesCanonicalHashedJSONAndRef(
 		t.Fatalf("expected ref target to end with .json, got %q", refTarget)
 	}
 
-	canonicalJSONPath := filepath.Join(cfg.Dist.StaticPublic(), refTarget)
+	canonicalJSONPath := filepath.Join(cfg.Dist().StaticPublic(), refTarget)
 	canonicalJSONBytes, err := os.ReadFile(canonicalJSONPath)
 	if err != nil {
 		t.Fatalf("read canonical public filemap JSON: %v", err)
@@ -103,8 +103,8 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_ServerOnlyModeWithoutFileMap(
 ) {
 	root := t.TempDir()
 
-	cfg := wavetest.NewParsedConfigAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := wavetest.NewParsedConfigAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 	processor := static.NewProcessor(
 		cfg,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -114,7 +114,7 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_ServerOnlyModeWithoutFileMap(
 		t.Fatalf("WriteCanonicalPublicFileMapJSONAndRef returned error: %v", err)
 	}
 
-	refBytes, err := os.ReadFile(cfg.Dist.PublicFileMapRef())
+	refBytes, err := os.ReadFile(cfg.Dist().PublicFileMapRef())
 	if err != nil {
 		t.Fatalf("read public filemap ref: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestWriteCanonicalPublicFileMapJSONAndRef_ServerOnlyModeWithoutFileMap(
 		t.Fatal("expected non-empty public filemap ref")
 	}
 
-	canonicalJSONPath := filepath.Join(cfg.Dist.StaticPublic(), refTarget)
+	canonicalJSONPath := filepath.Join(cfg.Dist().StaticPublic(), refTarget)
 	canonicalJSONBytes, err := os.ReadFile(canonicalJSONPath)
 	if err != nil {
 		t.Fatalf("read canonical public filemap JSON: %v", err)

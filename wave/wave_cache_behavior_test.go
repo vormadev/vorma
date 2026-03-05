@@ -2,6 +2,7 @@ package wave
 
 import (
 	"bytes"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,12 +12,15 @@ import (
 
 func TestRawConfigJSONIsDefensivelyCopied(t *testing.T) {
 	fixture := newWaveTestFixture(t)
+	t.Chdir(fixture.root)
 	originalConfigJSON := fixture.configJSON(t)
 	expected := append([]byte(nil), originalConfigJSON...)
+	configPath := fixture.mustWriteConfigFile(t)
 
 	w := New(Config{
-		WaveConfigJSON: originalConfigJSON,
-		Logger:         newDiscardLoggerForWaveTests(),
+		FS:         os.DirFS(fixture.root),
+		ConfigPath: configPath,
+		Logger:     newDiscardLoggerForWaveTests(),
 	})
 
 	originalConfigJSON[0] = 'x'
@@ -44,7 +48,7 @@ func TestPublicURLCachingDiffersByMode(t *testing.T) {
 			t,
 			fixture,
 			false,
-			os.DirFS(fixture.cfg.Dist.Static()),
+			os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 		)
 
 		first := w.PublicURL("logo.txt")
@@ -52,7 +56,7 @@ func TestPublicURLCachingDiffersByMode(t *testing.T) {
 			t.Fatalf("unexpected initial public URL: %q", first)
 		}
 
-		mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), wavefilemap.FileMap{
+		mustWriteGob(t, fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapGob()), wavefilemap.FileMap{
 			"logo.txt": {
 				DistName: testHashedOutputRelativePath("logo.changed.txt"),
 			},
@@ -77,7 +81,7 @@ func TestPublicURLCachingDiffersByMode(t *testing.T) {
 			t.Fatalf("unexpected initial public URL: %q", first)
 		}
 
-		mustWriteGob(t, fixture.cfg.Dist.PublicFileMapGob(), wavefilemap.FileMap{
+		mustWriteGob(t, fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapGob()), wavefilemap.FileMap{
 			"logo.txt": {
 				DistName: testHashedOutputRelativePath("logo.changed.txt"),
 			},
@@ -96,12 +100,12 @@ func TestPublicURLCachingDiffersByMode(t *testing.T) {
 func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 	t.Run("production caches first file existence", func(t *testing.T) {
 		fixture := newWaveTestFixture(t)
-		fixture.cfg.Core.PublicPathPrefix = "/"
+		wavetest.SetCorePublicPathPrefix(fixture.cfg, "/")
 		w := newWaveForTest(
 			t,
 			fixture,
 			false,
-			os.DirFS(fixture.cfg.Dist.Static()),
+			os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 		)
 
 		if !w.runtime.IsPublicAsset("/logo.txt") {
@@ -109,7 +113,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 				"expected /logo.txt to be an asset on first production lookup",
 			)
 		}
-		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
+		if err := os.Remove(filepath.Join(fixture.pathInRoot(fixture.cfg.Dist().StaticPublic()), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
 		if !w.runtime.IsPublicAsset("/logo.txt") {
@@ -121,7 +125,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 
 	t.Run("development recomputes file existence", func(t *testing.T) {
 		fixture := newWaveTestFixture(t)
-		fixture.cfg.Core.PublicPathPrefix = "/"
+		wavetest.SetCorePublicPathPrefix(fixture.cfg, "/")
 		w := newWaveForTest(t, fixture, true, nil)
 
 		if !w.runtime.IsPublicAsset("/logo.txt") {
@@ -129,7 +133,7 @@ func TestIsPublicAssetCachingDiffersByModeForRootPrefix(t *testing.T) {
 				"expected /logo.txt to be an asset on first development lookup",
 			)
 		}
-		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
+		if err := os.Remove(filepath.Join(fixture.pathInRoot(fixture.cfg.Dist().StaticPublic()), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
 		if w.runtime.IsPublicAsset("/logo.txt") {
@@ -145,7 +149,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 			t,
 			fixture,
 			false,
-			os.DirFS(fixture.cfg.Dist.Static()),
+			os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 		)
 
 		if !w.runtime.IsPublicAsset("/assets/logo.txt") {
@@ -153,7 +157,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 				"expected /assets/logo.txt to be an asset on first production lookup",
 			)
 		}
-		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
+		if err := os.Remove(filepath.Join(fixture.pathInRoot(fixture.cfg.Dist().StaticPublic()), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
 		if !w.runtime.IsPublicAsset("/assets/logo.txt") {
@@ -172,7 +176,7 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 				"expected /assets/logo.txt to be an asset on first development lookup",
 			)
 		}
-		if err := os.Remove(filepath.Join(fixture.cfg.Dist.StaticPublic(), "logo.txt")); err != nil {
+		if err := os.Remove(filepath.Join(fixture.pathInRoot(fixture.cfg.Dist().StaticPublic()), "logo.txt")); err != nil {
 			t.Fatalf("failed to remove public file: %v", err)
 		}
 		if w.runtime.IsPublicAsset("/assets/logo.txt") {
@@ -185,7 +189,12 @@ func TestIsPublicAssetCachingDiffersByModeForConfiguredPrefix(t *testing.T) {
 
 func TestIsPublicAssetProductionDoesNotCacheNegativeResults(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+	w := newWaveForTest(
+		t,
+		fixture,
+		false,
+		os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
+	)
 
 	if w.runtime.IsPublicAsset("/assets/newly-created.txt") {
 		t.Fatal("expected missing asset to return false before file exists")
@@ -193,7 +202,7 @@ func TestIsPublicAssetProductionDoesNotCacheNegativeResults(t *testing.T) {
 
 	mustWriteFile(
 		t,
-		filepath.Join(fixture.cfg.Dist.StaticPublic(), "newly-created.txt"),
+		filepath.Join(fixture.pathInRoot(fixture.cfg.Dist().StaticPublic()), "newly-created.txt"),
 		"now-present",
 	)
 
@@ -211,7 +220,7 @@ func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 			t,
 			fixture,
 			false,
-			os.DirFS(fixture.cfg.Dist.Static()),
+			os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 		)
 
 		firstCSS := string(w.CriticalCSS())
@@ -222,7 +231,7 @@ func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 			)
 		}
 
-		mustWriteFile(t, fixture.cfg.Dist.CriticalCSS(), "body{color:green;}")
+		mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().CriticalCSS()), "body{color:green;}")
 
 		secondCSS := string(w.CriticalCSS())
 		if secondCSS != firstCSS {
@@ -246,7 +255,7 @@ func TestCriticalCSSCachingDiffersByMode(t *testing.T) {
 			)
 		}
 
-		mustWriteFile(t, fixture.cfg.Dist.CriticalCSS(), "body{color:green;}")
+		mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().CriticalCSS()), "body{color:green;}")
 
 		secondCSS := string(w.CriticalCSS())
 		if secondCSS != "body{color:green;}" {
@@ -265,7 +274,7 @@ func TestStylesheetURLCachingDiffersByMode(t *testing.T) {
 			t,
 			fixture,
 			false,
-			os.DirFS(fixture.cfg.Dist.Static()),
+			os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 		)
 
 		first := w.runtime.StyleSheetURL()
@@ -275,7 +284,7 @@ func TestStylesheetURLCachingDiffersByMode(t *testing.T) {
 
 		mustWriteFile(
 			t,
-			fixture.cfg.Dist.NormalCSSRef(),
+			fixture.pathInRoot(fixture.cfg.Dist().NormalCSSRef()),
 			testHashedOutputRelativePath("changed.css"),
 		)
 
@@ -300,7 +309,7 @@ func TestStylesheetURLCachingDiffersByMode(t *testing.T) {
 
 		mustWriteFile(
 			t,
-			fixture.cfg.Dist.NormalCSSRef(),
+			fixture.pathInRoot(fixture.cfg.Dist().NormalCSSRef()),
 			testHashedOutputRelativePath("changed.css"),
 		)
 
@@ -321,7 +330,7 @@ func TestPublicFileMapURLCachingDiffersByMode(t *testing.T) {
 			t,
 			fixture,
 			false,
-			os.DirFS(fixture.cfg.Dist.Static()),
+			os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 		)
 
 		first := w.runtime.PublicFileMapURL()
@@ -331,7 +340,7 @@ func TestPublicFileMapURLCachingDiffersByMode(t *testing.T) {
 
 		mustWriteFile(
 			t,
-			fixture.cfg.Dist.PublicFileMapRef(),
+			fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapRef()),
 			testHashedOutputRelativePath("changed_public_filemap.js"),
 		)
 
@@ -356,7 +365,7 @@ func TestPublicFileMapURLCachingDiffersByMode(t *testing.T) {
 
 		mustWriteFile(
 			t,
-			fixture.cfg.Dist.PublicFileMapRef(),
+			fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapRef()),
 			testHashedOutputRelativePath("changed_public_filemap.js"),
 		)
 

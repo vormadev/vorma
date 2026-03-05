@@ -136,7 +136,7 @@ func TestWritePublicFileMapTypeScript_WritesTypeScriptFromCanonicalJSON(
 		t.Fatalf("writePublicFileMapTypeScript returned error: %v", err)
 	}
 
-	fileMapTSPath := filepath.Join(app.Config.TSGenOutDir, "filemap.ts")
+	fileMapTSPath := filepath.Join(app.Config.TSGenOutDir(), "filemap.ts")
 
 	fileMapTSBytes, err := os.ReadFile(fileMapTSPath)
 	if err != nil {
@@ -146,7 +146,7 @@ func TestWritePublicFileMapTypeScript_WritesTypeScriptFromCanonicalJSON(
 		t.Fatal("expected filemap.ts to be non-empty")
 	}
 	if _, err := os.Stat(
-		filepath.Join(app.Config.TSGenOutDir, waveartifacts.PublicFileMapJSONName),
+		filepath.Join(app.Config.TSGenOutDir(), waveartifacts.PublicFileMapJSONName),
 	); !os.IsNotExist(err) {
 		t.Fatalf(
 			"expected %s to be absent, stat err=%v",
@@ -183,7 +183,7 @@ func TestBuildInner_DevBuildInnerFlow(t *testing.T) {
 		t.Fatalf("expected stage one paths file to exist: %v", err)
 	}
 
-	generatedTSPath := filepath.Join(app.Config.TSGenOutDir, "index.ts")
+	generatedTSPath := filepath.Join(app.Config.TSGenOutDir(), "index.ts")
 	if _, err := os.Stat(generatedTSPath); err != nil {
 		t.Fatalf("expected generated TS output to exist: %v", err)
 	}

@@ -224,7 +224,7 @@ func SyncAllReadmes() (Result, error) {
 // SyncAndResolvePublicURLs runs README sync and then rewrites generated doc URLs
 // using the current Wave public file map.
 func SyncAndResolvePublicURLs(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 ) (Result, error) {
 	res, err := SyncAllReadmes()
@@ -243,7 +243,7 @@ func SyncAndResolvePublicURLs(
 // ResolveGeneratedDocsPublicURLs rewrites generated docs URLs using the current
 // public file map. It uses granular public static processing for speed.
 func ResolveGeneratedDocsPublicURLs(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 ) (int, error) {
 	assetMap, publicPathPrefix, err := loadPublicAssetMap(cfg, log)
@@ -254,7 +254,7 @@ func ResolveGeneratedDocsPublicURLs(
 }
 
 func loadPublicAssetMap(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 ) (map[string]string, string, error) {
 	if cfg == nil {

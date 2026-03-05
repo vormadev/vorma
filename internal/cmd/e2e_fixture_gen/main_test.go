@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+const reusableFixtureRolldownBindingManifestRelativePath = "node_modules/@rolldown/binding-test/package.json"
+
 func TestMutationLabTemplatesUseConfigFirstURLBuilderInput(t *testing.T) {
 	repositoryRootPath := resolveRepositoryRootPathForTest(t)
 
@@ -154,6 +156,31 @@ func TestCanReuseExistingFixtureProject_ReturnsTrueWhenRequiredEntriesExist(
 	}
 }
 
+func TestCanReuseExistingFixtureProject_ReturnsFalseWhenRolldownBindingPackageMissing(
+	t *testing.T,
+) {
+	outputDirectoryPath := t.TempDir()
+	options := commandOptions{
+		outputDirectoryPath: outputDirectoryPath,
+		reuseIfPresent:      true,
+	}
+
+	writeReusableFixtureEntriesForTest(
+		t,
+		outputDirectoryPath,
+		reusableFixtureRolldownBindingManifestRelativePath,
+	)
+
+	canReuseExistingFixture, canReuseExistingFixtureError :=
+		canReuseExistingFixtureProject(options)
+	if canReuseExistingFixtureError != nil {
+		t.Fatalf("expected nil reuse-check error, got %v", canReuseExistingFixtureError)
+	}
+	if canReuseExistingFixture {
+		t.Fatal("expected reuse check to fail when rolldown binding package is missing")
+	}
+}
+
 func resolveRepositoryRootPathForTest(t *testing.T) string {
 	t.Helper()
 	_, currentFilePath, _, hasCaller := runtime.Caller(0)
@@ -195,6 +222,16 @@ func writeReusableFixtureEntriesForTest(
 			),
 		)
 	}
+
+	_, shouldSkipRolldownBindingManifest := missingRequiredFixtureEntryPathSet[reusableFixtureRolldownBindingManifestRelativePath]
+	if !shouldSkipRolldownBindingManifest {
+		writeReusableFixtureEntryForTest(
+			t,
+			outputDirectoryPath,
+			reusableFixtureRolldownBindingManifestRelativePath,
+			false,
+		)
+	}
 	writeReusableFixtureEntryForTest(
 		t,
 		outputDirectoryPath,
@@ -210,6 +247,7 @@ func writeReusableFixtureEntryForTest(
 	isDirectory bool,
 ) {
 	t.Helper()
+	normalizedRelativePath := filepath.ToSlash(relativePath)
 	absolutePath := filepath.Join(outputDirectoryPath, filepath.FromSlash(relativePath))
 	if isDirectory {
 		if makeDirectoryError := os.MkdirAll(absolutePath, 0o755); makeDirectoryError != nil {
@@ -222,7 +260,22 @@ func writeReusableFixtureEntryForTest(
 	if makeDirectoryError := os.MkdirAll(parentDirectoryPath, 0o755); makeDirectoryError != nil {
 		t.Fatalf("mkdir %q: %v", parentDirectoryPath, makeDirectoryError)
 	}
-	if writeFileError := os.WriteFile(absolutePath, []byte("ok\n"), 0o644); writeFileError != nil {
+	fileContents := []byte("ok\n")
+	if normalizedRelativePath == "backend/wave.config.json" {
+		fileContents = []byte(`{
+	"Core": {
+		"ProjectID": "e2e-fixture-gen-test",
+		"ResolveRoot": ".",
+		"MainAppEntry": "cmd/serve",
+		"StaticAssetDirs": {
+			"Private": "assets",
+			"Public": "../frontend/assets"
+		}
+	}
+}
+`)
+	}
+	if writeFileError := os.WriteFile(absolutePath, fileContents, 0o644); writeFileError != nil {
 		t.Fatalf("write %q: %v", absolutePath, writeFileError)
 	}
 }

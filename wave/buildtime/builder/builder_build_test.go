@@ -2,6 +2,7 @@ package builder
 
 import (
 	"encoding/json"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,12 +16,12 @@ import (
 
 func TestBuild_FileOnlyModeSkipsHooks(t *testing.T) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	markerPath := filepath.Join(root, "hook-marker.txt")
-	config.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(
-		markerPath,
+	wavetest.SetCoreDevBuildHook(config,
+		"printf 'user\\n' >> "+strconv.Quote(markerPath),
 	)
 	waveframework.StateForConfig(config).DevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(
 		markerPath,
@@ -51,9 +52,9 @@ func TestBuild_FileOnlyModeSkipsHooks(t *testing.T) {
 }
 
 func TestBuild_PropagatesHookFailure(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.DevBuildHook = "false"
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreDevBuildHook(config, "false")
 
 	builderForTest := NewBuilder(
 		config,
@@ -75,8 +76,8 @@ func TestBuild_PropagatesHookFailure(t *testing.T) {
 }
 
 func TestBuild_Success(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	builderForTest := NewBuilder(
 		config,
@@ -97,8 +98,8 @@ func TestBuild_Success(t *testing.T) {
 func TestBuildWithMetrics_CompileGoDurationIsZeroWhenCompileSkipped(
 	t *testing.T,
 ) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	builderForTest := NewBuilder(
 		config,
@@ -123,8 +124,8 @@ func TestBuildWithMetrics_CompileGoDurationIsZeroWhenCompileSkipped(
 }
 
 func TestBuild_WritesConfigSchema(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	builderForTest := NewBuilder(
 		config,
@@ -140,7 +141,7 @@ func TestBuild_WritesConfigSchema(t *testing.T) {
 		t.Fatalf("Build returned error: %v", buildError)
 	}
 
-	schemaPath := filepath.Join(config.Dist.Internal(), "schema.json")
+	schemaPath := filepath.Join(config.Dist().Internal(), "schema.json")
 	schemaBytes, readSchemaError := os.ReadFile(schemaPath)
 	if readSchemaError != nil {
 		t.Fatalf("read schema: %v", readSchemaError)
@@ -161,8 +162,8 @@ func TestBuild_WritesConfigSchema(t *testing.T) {
 }
 
 func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	builderForTest := NewBuilder(
 		config,
@@ -190,7 +191,7 @@ func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
 		t.Fatalf("Build returned error: %v", buildError)
 	}
 
-	schemaPath := filepath.Join(config.Dist.Internal(), "schema.json")
+	schemaPath := filepath.Join(config.Dist().Internal(), "schema.json")
 	schemaBytes, readSchemaError := os.ReadFile(schemaPath)
 	if readSchemaError != nil {
 		t.Fatalf("read schema: %v", readSchemaError)
@@ -209,9 +210,9 @@ func TestBuild_IncludesRegisteredSchemaSection(t *testing.T) {
 }
 
 func TestBuild_CompileGoFailureIsReported(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
-	config.Core.MainAppEntry = "this/package/does/not/exist"
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
+	wavetest.SetCoreMainAppEntry(config, "this/package/does/not/exist")
 
 	builderForTest := NewBuilder(
 		config,
@@ -236,12 +237,12 @@ func TestBuild_CompileGoFailureIsReported(t *testing.T) {
 
 func TestBuild_BrowserModeProcessesPublicFilesBeforeCSSBuild(t *testing.T) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.ServerOnlyMode = false
-	config.Core.CSSEntryFiles = cssEntryFilesForTests{
-		NonCritical: filepath.Join(root, "styles", "main.css"),
-	}
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(config, false)
+	wavetest.SetCoreCriticalCSSEntryFile(config, "")
+	wavetest.SetCoreNonCriticalCSSEntryFile(config,
+		filepath.Join(root, "styles", "main.css"),
+	)
 
 	if makeStylesDirectoryError := os.MkdirAll(
 		filepath.Join(root, "styles"),
@@ -253,7 +254,7 @@ func TestBuild_BrowserModeProcessesPublicFilesBeforeCSSBuild(t *testing.T) {
 		)
 	}
 	if writeMainCSSError := os.WriteFile(
-		config.Core.CSSEntryFiles.NonCritical,
+		config.Core().NonCriticalCSSEntryFile(),
 		[]byte(`.hero { background: url("images/logo.png"); }`),
 		0o644,
 	); writeMainCSSError != nil {
@@ -261,7 +262,7 @@ func TestBuild_BrowserModeProcessesPublicFilesBeforeCSSBuild(t *testing.T) {
 	}
 
 	publicAssetPath := filepath.Join(
-		config.Core.StaticAssetDirs.Public,
+		config.Core().StaticAssetDirsPublic(),
 		"images",
 		"logo.png",
 	)
@@ -297,13 +298,13 @@ func TestBuild_BrowserModeProcessesPublicFilesBeforeCSSBuild(t *testing.T) {
 	}
 
 	normalRefBytes, readNormalRefError := os.ReadFile(
-		config.Dist.NormalCSSRef(),
+		config.Dist().NormalCSSRef(),
 	)
 	if readNormalRefError != nil {
 		t.Fatalf("failed reading normal css ref: %v", readNormalRefError)
 	}
 	normalOutputPath := filepath.Join(
-		config.Dist.StaticPublic(),
+		config.Dist().StaticPublic(),
 		strings.TrimSpace(string(normalRefBytes)),
 	)
 	normalOutputBytes, readNormalOutputError := os.ReadFile(normalOutputPath)
@@ -328,17 +329,16 @@ func TestBuild_BrowserModeFailsOnPublicStaticCollisionBeforeCompileGo(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.ServerOnlyMode = false
-	config.Core.MainAppEntry = "this/package/does/not/exist"
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(config, false)
+	wavetest.SetCoreMainAppEntry(config, "this/package/does/not/exist")
 
 	collidingPublicFilePathA := filepath.Join(
-		config.Core.StaticAssetDirs.Public,
+		config.Core().StaticAssetDirsPublic(),
 		"logo.txt",
 	)
 	collidingPublicFilePathB := filepath.Join(
-		config.Core.StaticAssetDirs.Public,
+		config.Core().StaticAssetDirsPublic(),
 		waveartifacts.PrehashedDirname,
 		"logo.txt",
 	)
@@ -404,16 +404,15 @@ func TestBuild_BrowserModeCanSkipPostHookPublicStaticProcessing(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.ServerOnlyMode = false
-	config.Dist.Root = config.Core.DistDir
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(config, false)
 
 	collidingPublicFilePathA := filepath.Join(
-		config.Core.StaticAssetDirs.Public,
+		config.Core().StaticAssetDirsPublic(),
 		"logo.txt",
 	)
 	collidingPublicFilePathB := filepath.Join(
-		config.Core.StaticAssetDirs.Public,
+		config.Core().StaticAssetDirsPublic(),
 		waveartifacts.PrehashedDirname,
 		"logo.txt",
 	)
@@ -466,7 +465,7 @@ func TestBuild_BrowserModeCanSkipPostHookPublicStaticProcessing(
 		)
 	}
 
-	if _, statError := os.Stat(config.Dist.PublicFileMapGob()); !os.IsNotExist(
+	if _, statError := os.Stat(config.Dist().PublicFileMapGob()); !os.IsNotExist(
 		statError,
 	) {
 		t.Fatalf(
@@ -477,8 +476,8 @@ func TestBuild_BrowserModeCanSkipPostHookPublicStaticProcessing(
 }
 
 func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
-	config := newParsedConfigForBuilderBasicTestsAtRoot(t.TempDir())
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	builderForTest := NewBuilder(
 		config,
@@ -486,7 +485,7 @@ func TestProcessFiles_FullCleanupPreservesOnlyWaveDevLockFile(t *testing.T) {
 	)
 	defer builderForTest.Close()
 
-	staticDirectoryPath := config.Dist.Static()
+	staticDirectoryPath := config.Dist().Static()
 	if makeDirectoryError := os.MkdirAll(staticDirectoryPath, 0o755); makeDirectoryError != nil {
 		t.Fatalf(
 			"os.MkdirAll(%q) error = %v",
@@ -556,11 +555,11 @@ func TestProcessPublicFilesOnly_WritesCanonicalPublicFileMapJSONAndRef(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.ServerOnlyMode = true
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(config, true)
 
 	publicAssetPath := filepath.Join(
-		config.Core.StaticAssetDirs.Public,
+		config.Core().StaticAssetDirsPublic(),
 		waveartifacts.AssetsDirname,
 		"logo.txt",
 	)
@@ -581,7 +580,7 @@ func TestProcessPublicFilesOnly_WritesCanonicalPublicFileMapJSONAndRef(
 		t.Fatalf("process public files: %v", processError)
 	}
 
-	refBytes, readRefError := os.ReadFile(config.Dist.PublicFileMapRef())
+	refBytes, readRefError := os.ReadFile(config.Dist().PublicFileMapRef())
 	if readRefError != nil {
 		t.Fatalf("read public filemap ref: %v", readRefError)
 	}
@@ -590,7 +589,7 @@ func TestProcessPublicFilesOnly_WritesCanonicalPublicFileMapJSONAndRef(
 		t.Fatal("expected non-empty public filemap ref")
 	}
 
-	canonicalJSONPath := filepath.Join(config.Dist.StaticPublic(), refTarget)
+	canonicalJSONPath := filepath.Join(config.Dist().StaticPublic(), refTarget)
 	jsonBytes, readJSONError := os.ReadFile(canonicalJSONPath)
 	if readJSONError != nil {
 		t.Fatalf(

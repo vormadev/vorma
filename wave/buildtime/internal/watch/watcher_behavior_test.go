@@ -9,16 +9,15 @@ import (
 	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/buildtime/internal/watch"
 	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"github.com/vormadev/vorma/wave/waveframework"
 	"github.com/vormadev/vorma/wave/wavewatch"
 )
 
-func TestNewWatcher_FrameworkIgnoredPatternsAreRelativeToWatchRoot(
+func TestNewWatcher_FrameworkIgnoredPatternsAreRelativeToResolveRoot(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{
 		"generated/**",
 		"generated_file.txt",
@@ -51,7 +50,7 @@ func TestNewWatcher_FrameworkIgnoredLiteralDirectoryPatternIgnoresDirectoryTree(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{"generated"}
 
 	watcher, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
@@ -87,7 +86,7 @@ func TestNewWatcher_FrameworkIgnoredLiteralDirectoryPatternIgnoresDirectoryTree(
 
 func TestFindWatchedFile_MergesFrameworkAndUserMatches(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{
 		{
 			Pattern:           "**/*.txt",
@@ -97,7 +96,7 @@ func TestFindWatchedFile_MergesFrameworkAndUserMatches(t *testing.T) {
 			},
 		},
 	}
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:    "**/*.txt",
 			RestartApp: true,
@@ -105,8 +104,7 @@ func TestFindWatchedFile_MergesFrameworkAndUserMatches(t *testing.T) {
 				{Cmd: "user-post", Timing: wavewatch.OnChangeStrategyPost},
 			},
 		},
-	}
-
+	})
 	watcher, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
@@ -149,7 +147,7 @@ func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{
 		{
 			Pattern: "framework/**/*.txt",
@@ -161,7 +159,7 @@ func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(
 			},
 		},
 	}
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern: "user/**/*.txt",
 			OnChangeHooks: []wavewatch.OnChangeHook{
@@ -171,8 +169,7 @@ func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(
 				},
 			},
 		},
-	}
-
+	})
 	watcher, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
 	if err != nil {
 		t.Fatalf("newWatcher returned error: %v", err)
@@ -191,16 +188,23 @@ func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(
 			waveframework.StateForConfig(cfg).WatchPatterns[0].OnChangeHooks[0].Exclude[0],
 		)
 	}
-	if cfg.Watch.Include[0].Pattern != "user/**/*.txt" {
+	expectedUserPattern := filepath.Join(root, "user", "**", "*.txt")
+	if cfg.Watch().Include()[0].Pattern != expectedUserPattern {
 		t.Fatalf(
-			"expected user pattern to remain relative, got %q",
-			cfg.Watch.Include[0].Pattern,
+			"expected parsed user pattern to resolve under resolve root, got %q",
+			cfg.Watch().Include()[0].Pattern,
 		)
 	}
-	if cfg.Watch.Include[0].OnChangeHooks[0].Exclude[0] != "user/exclude/**" {
+	expectedUserExcludePattern := filepath.Join(
+		root,
+		"user",
+		"exclude",
+		"**",
+	)
+	if cfg.Watch().Include()[0].OnChangeHooks[0].Exclude[0] != expectedUserExcludePattern {
 		t.Fatalf(
-			"expected user exclude to remain relative, got %q",
-			cfg.Watch.Include[0].OnChangeHooks[0].Exclude[0],
+			"expected parsed user exclude pattern to resolve under resolve root, got %q",
+			cfg.Watch().Include()[0].OnChangeHooks[0].Exclude[0],
 		)
 	}
 
@@ -223,7 +227,7 @@ func TestNewWatcher_DoesNotMutateConfigWatchPatternsOrHookExcludes(
 
 func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 
 	watcher, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
 	if err != nil {
@@ -231,7 +235,12 @@ func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 	}
 	defer watcher.Close()
 
-	publicFile := filepath.Join(root, "static", waveartifacts.PublicDirname, "app.js")
+	publicFile := filepath.Join(
+		root,
+		"static",
+		waveartifacts.PublicDirname,
+		"app.js",
+	)
 	if !watcher.IsPublicStaticFile(publicFile) {
 		t.Fatalf(
 			"expected %q to be classified as public static file",
@@ -252,7 +261,12 @@ func TestWatcherStaticClassificationUsesDirectoryBoundaries(t *testing.T) {
 		)
 	}
 
-	privateFile := filepath.Join(root, "static", waveartifacts.PrivateDirname, "template.html")
+	privateFile := filepath.Join(
+		root,
+		"static",
+		waveartifacts.PrivateDirname,
+		"template.html",
+	)
 	if !watcher.IsPrivateStaticFile(privateFile) {
 		t.Fatalf(
 			"expected %q to be classified as private static file",
@@ -265,10 +279,18 @@ func TestWatcherStaticClassificationRecognizesSymlinkAliasPaths(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 
-	publicStaticDirectoryPath := filepath.Join(root, "static", waveartifacts.PublicDirname)
-	privateStaticDirectoryPath := filepath.Join(root, "static", waveartifacts.PrivateDirname)
+	publicStaticDirectoryPath := filepath.Join(
+		root,
+		"static",
+		waveartifacts.PublicDirname,
+	)
+	privateStaticDirectoryPath := filepath.Join(
+		root,
+		"static",
+		waveartifacts.PrivateDirname,
+	)
 	if makeDirectoryError := os.MkdirAll(publicStaticDirectoryPath, 0o755); makeDirectoryError != nil {
 		t.Fatalf(
 			"failed creating public static directory: %v",
@@ -343,7 +365,7 @@ func TestWatcherStaticClassificationRecognizesSymlinkAliasPaths(
 
 func TestNewWatcher_RejectsInvalidFrameworkWatchPattern(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{
 		{
 			Pattern: "[",
@@ -363,7 +385,7 @@ func TestNewWatcher_RejectsInvalidFrameworkWatchPattern(t *testing.T) {
 
 func TestNewWatcher_RejectsEmptyFrameworkWatchPattern(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{
 		{
 			Pattern: "   ",
@@ -384,7 +406,7 @@ func TestNewWatcher_RejectsEmptyFrameworkWatchPattern(t *testing.T) {
 
 func TestNewWatcher_RejectsInvalidFrameworkHookExcludePattern(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{
 		{
 			Pattern: "**/*.txt",
@@ -413,7 +435,7 @@ func TestNewWatcher_RejectsInvalidFrameworkHookExcludePattern(t *testing.T) {
 
 func TestNewWatcher_RejectsInvalidIgnoredPattern(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{"["}
 
 	_, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
@@ -431,8 +453,10 @@ func TestNewWatcher_RejectsIgnoredPatternWithSurroundingWhitespace(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{" generated/** "}
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{
+		" generated/** ",
+	}
 
 	_, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
 	if err == nil {
@@ -450,8 +474,8 @@ func TestNewWatcher_RejectsIgnoredPatternWithSurroundingWhitespace(
 
 func TestNewWatcher_RejectsInvalidWatchExcludePattern(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	cfg.Watch.Exclude.Files = []string{"["}
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	wavetest.SetWatchExcludeFiles(cfg, []string{"["})
 
 	_, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
 	if err == nil {
@@ -462,22 +486,21 @@ func TestNewWatcher_RejectsInvalidWatchExcludePattern(t *testing.T) {
 	}
 }
 
-func TestNewWatcher_RelativePatternsMatchWhenWatchRootContainsGlobMetacharacters(
+func TestNewWatcher_RelativePatternsMatchWhenResolveRootContainsGlobMetacharacters(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	watchRoot := filepath.Join(root, "[watch-root]")
-	if err := os.MkdirAll(watchRoot, 0o755); err != nil {
-		t.Fatalf("failed creating watch root: %v", err)
+	resolveRoot := filepath.Join(root, "[resolve-root]")
+	if err := os.MkdirAll(resolveRoot, 0o755); err != nil {
+		t.Fatalf("failed creating resolve root: %v", err)
 	}
 
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	cfg.Watch.WatchRoot = watchRoot
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForWatchTestsAtRoot(t, resolveRoot)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern: "**/*.txt",
 		},
-	}
+	})
 	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{"generated/**"}
 
 	watcher, err := watch.NewWatcher(cfg, newDiscardLoggerForWatchTests())
@@ -486,25 +509,25 @@ func TestNewWatcher_RelativePatternsMatchWhenWatchRootContainsGlobMetacharacters
 	}
 	defer watcher.Close()
 
-	changedFilePath := filepath.Join(watchRoot, "notes.txt")
+	changedFilePath := filepath.Join(resolveRoot, "notes.txt")
 	matchedWatchedFile := watcher.FindWatchedFile(changedFilePath)
 	if matchedWatchedFile == nil {
 		t.Fatalf(
-			"expected relative watch pattern to match changed file under watch root with glob metacharacters: %q",
+			"expected relative watch pattern to match changed file under resolve root with glob metacharacters: %q",
 			changedFilePath,
 		)
 	}
 
-	ignoredGeneratedDirectoryPath := filepath.Join(watchRoot, "generated")
+	ignoredGeneratedDirectoryPath := filepath.Join(resolveRoot, "generated")
 	if !watcher.IsIgnoredDir(ignoredGeneratedDirectoryPath) {
 		t.Fatalf(
-			"expected framework ignored dir pattern to match under watch root with glob metacharacters: %q",
+			"expected framework ignored dir pattern to match under resolve root with glob metacharacters: %q",
 			ignoredGeneratedDirectoryPath,
 		)
 	}
 }
 
-func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
+func TestWatcher_RelativeResolveRootMatchesAbsoluteEventPaths(t *testing.T) {
 	root := t.TempDir()
 	if makeDirectoryError := os.MkdirAll(
 		filepath.Join(root, "static", waveartifacts.PublicDirname),
@@ -539,24 +562,15 @@ func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
 		_ = os.Chdir(workingDirectoryBeforeTest)
 	})
 
-	cfg := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-		},
-		Watch: &waveconfig.WatchConfig{
-			WatchRoot: ".",
-			Include: []wavewatch.WatchedFile{
-				{Pattern: "**/*.txt"},
-			},
-		},
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, root)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
+		{Pattern: "**/*.txt"},
+	})
 	wavetest.SetStaticAssetDirectories(
 		cfg,
 		filepath.Join("static", waveartifacts.PublicDirname),
 		filepath.Join("static", waveartifacts.PrivateDirname),
 	)
-	cfg.Dist.Root = cfg.Core.DistDir
 
 	watcher, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -601,7 +615,10 @@ func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
 	}
 
 	absoluteDistOutputPath, absoluteDistOutputPathError := filepath.Abs(
-		filepath.Join("dist", "static", waveartifacts.AssetsDirname, waveartifacts.PublicDirname, "generated.js"),
+		filepath.Join(
+			cfg.Dist().StaticPublic(),
+			"generated.js",
+		),
 	)
 	if absoluteDistOutputPathError != nil {
 		t.Fatalf(
@@ -619,8 +636,8 @@ func TestWatcher_RelativeWatchRootMatchesAbsoluteEventPaths(t *testing.T) {
 
 func TestWatcher_AbsoluteGlobPatternsMatchAbsoluteEventPaths(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForWatchTestsAtRoot(root)
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForWatchTestsAtRoot(t, root)
+	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{
 		{
 			Pattern: filepath.ToSlash(
 				filepath.Join(root, "content", "**", "*.txt"),
@@ -630,7 +647,6 @@ func TestWatcher_AbsoluteGlobPatternsMatchAbsoluteEventPaths(t *testing.T) {
 	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{
 		filepath.ToSlash(filepath.Join(root, "generated", "**")),
 	}
-
 	watcher, watcherCreateError := watch.NewWatcher(
 		cfg,
 		newDiscardLoggerForWatchTests(),
@@ -658,7 +674,12 @@ func TestWatcher_AbsoluteGlobPatternsMatchAbsoluteEventPaths(t *testing.T) {
 	}
 
 	absoluteIgnoredFilePath, absoluteIgnoredPathError := filepath.Abs(
-		filepath.Join(root, "generated", waveartifacts.AssetsDirname, "file.txt"),
+		filepath.Join(
+			root,
+			"generated",
+			waveartifacts.AssetsDirname,
+			"file.txt",
+		),
 	)
 	if absoluteIgnoredPathError != nil {
 		t.Fatalf(

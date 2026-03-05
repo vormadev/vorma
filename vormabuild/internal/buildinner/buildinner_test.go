@@ -1166,11 +1166,11 @@ func TestWritePublicFileMapTypeScript(t *testing.T) {
 		if !writer.writeCalled {
 			t.Fatal("expected WritePublicFileMapTS to be called")
 		}
-		if writer.receivedOutDir != app.Config.TSGenOutDir {
+		if writer.receivedOutDir != app.Config.TSGenOutDir() {
 			t.Fatalf(
 				"out dir = %q, want %q",
 				writer.receivedOutDir,
-				app.Config.TSGenOutDir,
+				app.Config.TSGenOutDir(),
 			)
 		}
 		if !writer.closeCalled {

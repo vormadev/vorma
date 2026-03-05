@@ -3,8 +3,10 @@ package devserver
 import (
 	"context"
 	"encoding/json"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/waveartifacts"
 	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/waveenv"
 	"github.com/vormadev/vorma/wave/waveframework"
 	"github.com/vormadev/vorma/wave/wavewatch"
 	"net/http"
@@ -26,9 +28,8 @@ import (
 
 func TestInitWatcher_SetsWatcherOnServer(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	s := &Server{
 		Cfg: cfg,
@@ -44,34 +45,34 @@ func TestInitWatcher_SetsWatcherOnServer(t *testing.T) {
 		t.Fatal("expected initWatcher to set s.watcher")
 	}
 
-	if !s.Watcher.IsWatchingDir(cfg.WatchRoot()) {
+	if !s.Watcher.IsWatchingDir(cfg.ResolveRoot()) {
 		t.Fatalf(
-			"expected watch root to be in watched dirs: %s",
-			s.Watcher.NormalizePath(cfg.WatchRoot()),
+			"expected resolve root to be in watched dirs: %s",
+			s.Watcher.NormalizePath(cfg.ResolveRoot()),
 		)
 	}
 }
 
-func TestInitWatcher_AddsConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
+func TestInitWatcher_AddsConfigFileDirectoryOutsideResolveRoot(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	outsideConfigDirectory := t.TempDir()
 	outsideConfigFilePath := filepath.Join(
 		outsideConfigDirectory,
 		"wave.config.json",
 	)
-	if err := os.WriteFile(outsideConfigFilePath, []byte(`{"Core":{"MainAppEntry":"cmd/app","DistDir":"dist"}}`), 0644); err != nil {
+	if err := os.WriteFile(outsideConfigFilePath, []byte(`{"Core":{"ProjectID":"test-project","MainAppEntry":"cmd/app"}}`), 0644); err != nil {
 		t.Fatalf("failed writing outside config file: %v", err)
 	}
 
-	cfg.Core.ConfigLocation = outsideConfigFilePath
+	configFilePath := outsideConfigFilePath
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configFilePath,
 	}
 
 	if err := s.InitWatcher(); err != nil {
@@ -89,19 +90,19 @@ func TestInitWatcher_AddsConfigFileDirectoryOutsideWatchRoot(t *testing.T) {
 
 func TestAddConfigFileDirectory_IsIdempotent(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	outsideConfigDirectory := t.TempDir()
-	cfg.Core.ConfigLocation = filepath.Join(
+	configFilePath := filepath.Join(
 		outsideConfigDirectory,
 		"wave.config.json",
 	)
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configFilePath,
 	}
 
 	if err := s.InitWatcher(); err != nil {
@@ -146,11 +147,12 @@ func TestAddConfigFileDirectory_IsIdempotent(t *testing.T) {
 }
 
 func TestReloadConfig_NoConfigFilePathIsNoOp(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: "",
 	}
 
 	original := s.Cfg
@@ -170,8 +172,9 @@ func TestReloadConfig_NoConfigFilePathIsNoOp(t *testing.T) {
 
 func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	root := t.TempDir()
+	configPath := filepath.Join(root, "backend", "wave.config.json")
 
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{{Pattern: "**/*.route"}}
 	waveframework.StateForConfig(cfg).IgnoredPatterns = []string{"generated/**"}
 	waveframework.StateForConfig(cfg).DevBuildHook = "go run ./backend/cmd/build --dev --hook"
@@ -190,8 +193,8 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 
 	newConfig := map[string]any{
 		"Core": map[string]any{
+			"ProjectID":      "test-project",
 			"MainAppEntry":   "cmd/new",
-			"DistDir":        pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(t, filepath.Join(root, "new-dist")),
 			"ServerOnlyMode": true,
 		},
 	}
@@ -199,28 +202,33 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed marshaling config JSON: %v", err)
 	}
-	configPath := filepath.Join(root, "backend", "wave.config.json")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		t.Fatalf("failed creating config parent directory: %v", err)
 	}
 	if err := os.WriteFile(configPath, newConfigJSON, 0644); err != nil {
 		t.Fatalf("failed writing config JSON: %v", err)
 	}
-	cfg.Core.ConfigLocation = configPath
+	configFilePath := configPath
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configFilePath,
 	}
 
 	if _, err := s.ReloadConfig(); err != nil {
 		t.Fatalf("reloadConfig returned error: %v", err)
 	}
 
-	if s.Cfg.Core.MainAppEntry != "cmd/new" {
+	expectedMainAppEntry := filepath.Join(root, "backend", "cmd", "new")
+	if !waveenv.PathsReferToSameLocation(
+		s.Cfg.Core().MainAppEntry(),
+		expectedMainAppEntry,
+	) {
 		t.Fatalf(
-			"expected updated MainAppEntry, got %q",
-			s.Cfg.Core.MainAppEntry,
+			"expected updated MainAppEntry path equivalent to %q, got %q",
+			expectedMainAppEntry,
+			s.Cfg.Core().MainAppEntry(),
 		)
 	}
 	if len(waveframework.StateForConfig(s.Cfg).WatchPatterns) != 1 ||
@@ -277,17 +285,14 @@ func TestReloadConfig_PreservesFrameworkInjectedFields(t *testing.T) {
 	}
 }
 
-func TestReloadConfig_UsesConfigLocationWhenAvailable(t *testing.T) {
+func TestReloadConfig_UsesExplicitConfigFilePath(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "backend", "wave.config.json")
 	newConfigJSON, marshalError := json.Marshal(
 		map[string]any{
 			"Core": map[string]any{
+				"ProjectID":    "test-project",
 				"MainAppEntry": "cmd/new",
-				"DistDir": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-					t,
-					filepath.Join(root, "dist"),
-				),
 				"StaticAssetDirs": map[string]any{
 					"Public": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
 						t,
@@ -311,27 +316,33 @@ func TestReloadConfig_UsesConfigLocationWhenAvailable(t *testing.T) {
 		t.Fatalf("failed writing config JSON: %v", err)
 	}
 
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ConfigLocation = configPath
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	configFilePath := configPath
 	waveframework.StateForConfig(cfg).WatchPatterns = []wavewatch.WatchedFile{{Pattern: "**/*.route"}}
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configFilePath,
 	}
 
 	if _, err := s.ReloadConfig(); err != nil {
 		t.Fatalf("reloadConfig returned error: %v", err)
 	}
 
-	if s.Cfg.Core.MainAppEntry != "cmd/new" {
+	expectedMainAppEntry := filepath.Join(root, "backend", "cmd", "new")
+	if !waveenv.PathsReferToSameLocation(
+		s.Cfg.Core().MainAppEntry(),
+		expectedMainAppEntry,
+	) {
 		t.Fatalf(
-			"expected updated MainAppEntry, got %q",
-			s.Cfg.Core.MainAppEntry,
+			"expected updated MainAppEntry path equivalent to %q, got %q",
+			expectedMainAppEntry,
+			s.Cfg.Core().MainAppEntry(),
 		)
 	}
-	if got := s.Cfg.Core.ConfigLocation; got != configPath {
-		t.Fatalf("config location = %q, want %q", got, configPath)
+	if got := s.resolvedConfigFilePath(); got != configPath {
+		t.Fatalf("resolved config path = %q, want %q", got, configPath)
 	}
 	if len(waveframework.StateForConfig(s.Cfg).WatchPatterns) != 1 {
 		t.Fatalf(
@@ -341,7 +352,7 @@ func TestReloadConfig_UsesConfigLocationWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestDidConfigReloadChange_IgnoresEquivalentConfigLocationPathShapes(
+func TestResolvedConfigFilePath_NormalizesEquivalentPathShapes(
 	t *testing.T,
 ) {
 	root := t.TempDir()
@@ -350,16 +361,14 @@ func TestDidConfigReloadChange_IgnoresEquivalentConfigLocationPathShapes(
 	relativeConfigPath := filepath.Join("backend", "wave.config.json")
 	absoluteConfigPath := filepath.Join(root, "backend", "wave.config.json")
 
-	currentConfig := newParsedConfigForToolingTestsAtRoot(root)
-	currentConfig.Core.ConfigLocation = relativeConfigPath
-	nextConfig := currentConfig.Clone()
-	nextConfig.Core.ConfigLocation = absoluteConfigPath
-
-	if didConfigReloadChange(currentConfig, nextConfig) {
+	serverForRelativePath := &Server{ConfigFilePath: relativeConfigPath}
+	serverForAbsolutePath := &Server{ConfigFilePath: absoluteConfigPath}
+	if serverForRelativePath.resolvedConfigFilePath() !=
+		serverForAbsolutePath.resolvedConfigFilePath() {
 		t.Fatalf(
-			"expected equivalent relative/absolute config paths to be treated as unchanged: current=%q next=%q",
-			currentConfig.Core.ConfigLocation,
-			nextConfig.Core.ConfigLocation,
+			"expected equivalent relative/absolute config paths to resolve identically: relative=%q absolute=%q",
+			serverForRelativePath.resolvedConfigFilePath(),
+			serverForAbsolutePath.resolvedConfigFilePath(),
 		)
 	}
 }
@@ -375,9 +384,8 @@ func TestReloadConfigIfChanged_FirstNoOpWriteWithRelativeConfigPathIsNoOp(
 
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry":   "cmd/app",
-			"DistDir":        pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(t, filepath.Join(root, "dist")),
-			"ConfigLocation": configRelativePath,
+			"ProjectID":    "test-project",
+			"MainAppEntry": "cmd/app",
 			"StaticAssetDirs": map[string]any{
 				"Public": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
 					t,
@@ -396,12 +404,6 @@ func TestReloadConfigIfChanged_FirstNoOpWriteWithRelativeConfigPathIsNoOp(
 					),
 				),
 			},
-		},
-		"Watch": map[string]any{
-			"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				root,
-			),
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -423,11 +425,11 @@ func TestReloadConfigIfChanged_FirstNoOpWriteWithRelativeConfigPathIsNoOp(
 	if parseError != nil {
 		t.Fatalf("parse config payload: %v", parseError)
 	}
-	currentConfig.Core.ConfigLocation = configRelativePath
 
 	serverForTest := &Server{
-		Cfg: currentConfig,
-		Log: newDiscardLogger(),
+		Cfg:            currentConfig,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configRelativePath,
 	}
 
 	configChanged, reloadError := serverForTest.ReloadConfigIfChanged()
@@ -439,44 +441,244 @@ func TestReloadConfigIfChanged_FirstNoOpWriteWithRelativeConfigPathIsNoOp(
 			"expected first no-op config write path-shape mismatch to report unchanged",
 		)
 	}
-	if serverForTest.Cfg.Core.ConfigLocation != configRelativePath {
+	if serverForTest.ConfigFilePath != configRelativePath {
 		t.Fatalf(
 			"expected unchanged config pointer to preserve relative config location %q, got %q",
 			configRelativePath,
-			serverForTest.Cfg.Core.ConfigLocation,
+			serverForTest.ConfigFilePath,
+		)
+	}
+}
+
+func TestReloadConfigIfChanged_VormaOnlyMutationIsDetected(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "backend", "wave.config.json")
+	initialConfigJSON := []byte(`{
+  "Core":{"ProjectID":"test-project",
+    "MainAppEntry": "cmd/app",
+    "StaticAssetDirs": {
+      "Private": "assets/private",
+      "Public": "assets/public"
+    }
+  },
+  "Vorma": {
+    "BuildtimePublicURLFuncName": "waveBuildtimeURL"
+  }
+}`)
+	if mkdirError := os.MkdirAll(filepath.Dir(configPath), 0o755); mkdirError != nil {
+		t.Fatalf("create config directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(configPath, initialConfigJSON, 0o644); writeError != nil {
+		t.Fatalf("write initial config: %v", writeError)
+	}
+
+	currentConfig, parseError := waveconfig.ParseConfigFile(configPath)
+	if parseError != nil {
+		t.Fatalf("parse initial config: %v", parseError)
+	}
+	if len(currentConfig.SemanticConfigJSON()) == 0 {
+		t.Fatal("expected parsed config semantic JSON snapshot to be populated")
+	}
+
+	mutatedConfigJSON := []byte(`{
+  "Core":{"ProjectID":"test-project",
+    "MainAppEntry": "cmd/app",
+    "StaticAssetDirs": {
+      "Private": "assets/private",
+      "Public": "assets/public"
+    }
+  },
+  "Vorma": {
+    "BuildtimePublicURLFuncName": "waveBuildtimeURLMutated"
+  }
+}`)
+	if writeError := os.WriteFile(configPath, mutatedConfigJSON, 0o644); writeError != nil {
+		t.Fatalf("write mutated config: %v", writeError)
+	}
+
+	serverForTest := &Server{
+		Cfg:            currentConfig,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configPath,
+	}
+
+	configChanged, reloadError := serverForTest.ReloadConfigIfChanged()
+	if reloadError != nil {
+		t.Fatalf("ReloadConfigIfChanged returned error: %v", reloadError)
+	}
+	if !configChanged {
+		t.Fatal("expected Vorma-only semantic config mutation to be detected")
+	}
+}
+
+func TestReloadConfigIfChanged_NoOpWritePreservesFrameworkState(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "backend", "wave.config.json")
+	configJSON := []byte(`{
+  "Core":{"ProjectID":"test-project",
+    "MainAppEntry": "cmd/app",
+    "StaticAssetDirs": {
+      "Private": "assets/private",
+      "Public": "assets/public"
+    }
+  }
+}`)
+	if mkdirError := os.MkdirAll(filepath.Dir(configPath), 0o755); mkdirError != nil {
+		t.Fatalf("create config directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(configPath, configJSON, 0o644); writeError != nil {
+		t.Fatalf("write config: %v", writeError)
+	}
+
+	currentConfig, parseError := waveconfig.ParseConfigFile(configPath)
+	if parseError != nil {
+		t.Fatalf("parse config: %v", parseError)
+	}
+	waveframework.StateForConfig(currentConfig).SchemaExtensions = map[string]jsonschema.Entry{
+		"Vorma": {
+			Type: jsonschema.TypeObject,
+		},
+	}
+	waveframework.StateForConfig(currentConfig).RunBuildHook = func(context.Context, bool) error {
+		return nil
+	}
+
+	serverForTest := &Server{
+		Cfg:            currentConfig,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configPath,
+	}
+	configChanged, reloadError := serverForTest.ReloadConfigIfChanged()
+	if reloadError != nil {
+		t.Fatalf("ReloadConfigIfChanged returned error: %v", reloadError)
+	}
+	if configChanged {
+		t.Fatal("expected unchanged config write to report no semantic change")
+	}
+	if waveframework.StateForConfig(currentConfig).SchemaExtensions["Vorma"].Type != jsonschema.TypeObject {
+		t.Fatalf(
+			"expected framework schema extension to remain on no-op reload, got %#v",
+			waveframework.StateForConfig(currentConfig).SchemaExtensions,
+		)
+	}
+	if waveframework.StateForConfig(currentConfig).RunBuildHook == nil {
+		t.Fatal("expected framework run build hook to remain on no-op reload")
+	}
+}
+
+func TestReloadConfigIfChanged_ChangedConfigRunsFrameworkToolingReloadConfigurator(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "backend", "wave.config.json")
+	initialConfigJSON := []byte(`{
+  "Core":{"ProjectID":"test-project",
+    "MainAppEntry": "cmd/app",
+    "StaticAssetDirs": {
+      "Private": "assets/private",
+      "Public": "assets/public"
+    }
+  }
+}`)
+	if mkdirError := os.MkdirAll(filepath.Dir(configPath), 0o755); mkdirError != nil {
+		t.Fatalf("create config directory: %v", mkdirError)
+	}
+	if writeError := os.WriteFile(configPath, initialConfigJSON, 0o644); writeError != nil {
+		t.Fatalf("write initial config: %v", writeError)
+	}
+
+	currentConfig, parseError := waveconfig.ParseConfigFile(configPath)
+	if parseError != nil {
+		t.Fatalf("parse initial config: %v", parseError)
+	}
+	waveframework.StateForConfig(currentConfig).WatchPatterns = []wavewatch.WatchedFile{
+		{Pattern: "old-pattern"},
+	}
+
+	configureForReloadCallCount := 0
+	waveframework.StateForConfig(currentConfig).ConfigureForToolingReload = func(
+		reloadedConfig waveconfig.ParsedConfig,
+		_ []byte,
+	) error {
+		configureForReloadCallCount++
+		waveframework.StateForConfig(reloadedConfig).WatchPatterns = []wavewatch.WatchedFile{
+			{Pattern: "new-pattern"},
+		}
+		return nil
+	}
+
+	mutatedConfigJSON := []byte(`{
+  "Core":{"ProjectID":"test-project",
+    "MainAppEntry": "cmd/app-mutated",
+    "StaticAssetDirs": {
+      "Private": "assets/private",
+      "Public": "assets/public"
+    }
+  }
+}`)
+	if writeError := os.WriteFile(configPath, mutatedConfigJSON, 0o644); writeError != nil {
+		t.Fatalf("write mutated config: %v", writeError)
+	}
+
+	serverForTest := &Server{
+		Cfg:            currentConfig,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configPath,
+	}
+	configChanged, reloadError := serverForTest.ReloadConfigIfChanged()
+	if reloadError != nil {
+		t.Fatalf("ReloadConfigIfChanged returned error: %v", reloadError)
+	}
+	if !configChanged {
+		t.Fatal("expected changed config to be detected")
+	}
+	if configureForReloadCallCount != 1 {
+		t.Fatalf(
+			"expected framework tooling reload configurator to run once, got %d",
+			configureForReloadCallCount,
+		)
+	}
+	if got := waveframework.StateForConfig(serverForTest.Cfg).WatchPatterns[0].Pattern; got != "new-pattern" {
+		t.Fatalf(
+			"expected framework reload configurator to update watch pattern, got %q",
+			got,
+		)
+	}
+	if got := waveframework.StateForConfig(currentConfig).WatchPatterns[0].Pattern; got != "old-pattern" {
+		t.Fatalf(
+			"expected prior config framework state to remain unchanged, got %q",
+			got,
 		)
 	}
 }
 
 func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 	root := t.TempDir()
+	configPath := filepath.Join(root, "backend", "wave.config.json")
 
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
 
 	invalidConfig := map[string]any{
 		"Core": map[string]any{
-			"DistDir": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				filepath.Join(root, "dist-only-missing-main-entry"),
-			),
+			"ProjectID": "test-project",
 		},
 	}
 	invalidJSON, err := json.Marshal(invalidConfig)
 	if err != nil {
 		t.Fatalf("failed marshaling invalid config JSON: %v", err)
 	}
-	configPath := filepath.Join(root, "backend", "wave.config.json")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		t.Fatalf("failed creating config parent directory: %v", err)
 	}
 	if err := os.WriteFile(configPath, invalidJSON, 0644); err != nil {
 		t.Fatalf("failed writing invalid config JSON: %v", err)
 	}
-	cfg.Core.ConfigLocation = configPath
+	configFilePath := configPath
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configFilePath,
 	}
 
 	original := s.Cfg
@@ -492,16 +694,17 @@ func TestReloadConfig_ValidationFailureKeepsPreviousConfig(t *testing.T) {
 func TestReloadConfig_ConfigReadFailureKeepsPreviousConfig(t *testing.T) {
 	root := t.TempDir()
 
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ConfigLocation = filepath.Join(
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	configFilePath := filepath.Join(
 		root,
 		"backend",
 		"missing-wave.config.json",
 	)
 
 	s := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		Log:            newDiscardLogger(),
+		ConfigFilePath: configFilePath,
 	}
 
 	original := s.Cfg
@@ -515,8 +718,8 @@ func TestReloadConfig_ConfigReadFailureKeepsPreviousConfig(t *testing.T) {
 }
 
 func TestCleanupForRebuild_ClearsWatcherAndBuilder(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	watcher, err := watch.NewWatcher(cfg, newDiscardLogger())
 	if err != nil {
@@ -543,7 +746,7 @@ func TestCleanupForRebuild_ClearsWatcherAndBuilder(t *testing.T) {
 }
 
 func TestStopRefreshServer_CancelsManagerAndWaits(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
 
 	manager := broadcast.NewManager(
 		newDiscardLogger(),
@@ -581,8 +784,8 @@ func TestStopRefreshServer_CancelsManagerAndWaits(t *testing.T) {
 }
 
 func TestStartAndStopRefreshServer(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	s := &Server{
 		Cfg: cfg,
@@ -614,8 +817,8 @@ func TestStartAndStopRefreshServer(t *testing.T) {
 func TestStartRefreshServer_RefreshEndpointIsReachableOnLocalhostAndIPv4Loopback(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	s := &Server{
 		Cfg: cfg,
@@ -656,8 +859,8 @@ func TestStartRefreshServer_RefreshEndpointIsReachableOnLocalhostAndIPv4Loopback
 }
 
 func TestStartRefreshServer_NoOpInServerOnlyMode(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	s := &Server{
 		Cfg: cfg,
@@ -716,14 +919,14 @@ func TestWaitForVite_UsesViteClientEndpoint(t *testing.T) {
 
 func TestStartAppAndStopApp_WithExecutableBinary(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	if err := builder.SetupDistDir(cfg); err != nil {
 		t.Fatalf("SetupDistDir returned error: %v", err)
 	}
 
-	binPath := cfg.Dist.Binary()
+	binPath := cfg.Dist().Binary()
 	script := "#!/bin/sh\nsleep 30\n"
 	if err := os.WriteFile(binPath, []byte(script), 0755); err != nil {
 		t.Fatalf("failed writing executable test binary: %v", err)
@@ -747,8 +950,8 @@ func TestStartAppAndStopApp_WithExecutableBinary(t *testing.T) {
 }
 
 func TestStartApp_FailureLeavesAppCmdNil(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	s := &Server{
 		Cfg: cfg,
@@ -765,8 +968,8 @@ func TestStartApp_FailureLeavesAppCmdNil(t *testing.T) {
 }
 
 func TestStartAppOrQueueNoGoRestart_QueuesRestartOnStartFailure(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	s := &Server{
 		Cfg: cfg,
@@ -794,9 +997,11 @@ func TestStartAppOrQueueNoGoRestart_QueuesRestartOnStartFailure(t *testing.T) {
 }
 
 func TestStartRunCycleRuntime_ReturnsErrorWhenStartAppFails(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
-	cfg.Vite = nil
+	cfg := newParsedConfigForToolingTestsWithoutViteAtRoot(
+		t,
+		t.TempDir(),
+	)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	s := &Server{
 		Cfg: cfg,
@@ -810,8 +1015,10 @@ func TestStartRunCycleRuntime_ReturnsErrorWhenStartAppFails(t *testing.T) {
 }
 
 func TestStartViteAndStopVite_NoOpWhenViteDisabled(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Vite = nil
+	cfg := newParsedConfigForToolingTestsWithoutViteAtRoot(
+		t,
+		t.TempDir(),
+	)
 
 	builder := builder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -838,10 +1045,10 @@ func TestStartViteAndStopVite_NoOpWhenViteDisabled(t *testing.T) {
 }
 
 func TestStartViteAndStopVite_WithViteEnabled(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "echo"
-	cfg.Vite.DefaultPort = 5201
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "echo")
+	wavetest.SetViteDefaultPort(cfg, 5201)
 
 	builder := builder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -868,8 +1075,10 @@ func TestStartViteAndStopVite_WithViteEnabled(t *testing.T) {
 }
 
 func TestCycleVite_NoOpWhenViteDisabled(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Vite = nil
+	cfg := newParsedConfigForToolingTestsWithoutViteAtRoot(
+		t,
+		t.TempDir(),
+	)
 
 	s := &Server{
 		Cfg: cfg,
@@ -880,10 +1089,10 @@ func TestCycleVite_NoOpWhenViteDisabled(t *testing.T) {
 }
 
 func TestCycleVite_NoOpWhenViteEnabledButNotStarted(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "echo"
-	cfg.Vite.DefaultPort = 5202
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "echo")
+	wavetest.SetViteDefaultPort(cfg, 5202)
 
 	s := &Server{
 		Cfg: cfg,
@@ -894,10 +1103,10 @@ func TestCycleVite_NoOpWhenViteEnabledButNotStarted(t *testing.T) {
 }
 
 func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "command_that_does_not_exist_for_wave_cycle_test"
-	cfg.Vite.DefaultPort = 5203
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "command_that_does_not_exist_for_wave_cycle_test")
+	wavetest.SetViteDefaultPort(cfg, 5203)
 
 	builder := builder.NewBuilder(cfg, newDiscardLogger())
 	defer builder.Close()
@@ -907,7 +1116,7 @@ func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
 		Log:     newDiscardLogger(),
 		Builder: builder,
 		ViteContext: vitecmd.NewBuildCtx(
-			&vitecmd.BuildCtxOptions{DefaultPort: cfg.Vite.DefaultPort},
+			&vitecmd.BuildCtxOptions{DefaultPort: cfg.Vite().DefaultPort()},
 		),
 	}
 
@@ -921,8 +1130,8 @@ func TestCycleVite_StartFailureAfterStopLeavesViteContextCleared(t *testing.T) {
 }
 
 func TestStartRefreshServer_ReturnsErrorForInvalidPort(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	s := &Server{
 		Cfg: cfg,
@@ -939,8 +1148,8 @@ func TestStartRefreshServer_ReturnsErrorForInvalidPort(t *testing.T) {
 func TestStartRefreshServer_EventsEndpointSetsCORSAndRejectsNonWebSocket(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	s := &Server{
 		Cfg: cfg,

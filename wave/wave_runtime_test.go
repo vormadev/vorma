@@ -3,6 +3,8 @@ package wave
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -10,11 +12,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
 
-	"github.com/vormadev/vorma/internal/testpath"
 	"github.com/vormadev/vorma/lab/jsonschema"
 	"github.com/vormadev/vorma/wave/internal/wavefilemap"
 	"github.com/vormadev/vorma/wave/waveartifacts"
@@ -35,10 +37,13 @@ func newWaveForTest(
 ) *Wave {
 	t.Helper()
 	setWaveDevModeForTest(t, isDev)
+	t.Chdir(fixture.root)
+	_ = distStaticFS
+	configPath := fixture.mustWriteConfigFile(t)
 	return New(Config{
-		WaveConfigJSON: fixture.configJSON(t),
-		DistStaticFS:   distStaticFS,
-		Logger:         newDiscardLoggerForWaveTests(),
+		FS:         os.DirFS(fixture.root),
+		ConfigPath: configPath,
+		Logger:     newDiscardLoggerForWaveTests(),
 	})
 }
 
@@ -58,7 +63,7 @@ func TestNewPanicsWhenConfigJSONIsMissing(t *testing.T) {
 		if recovered == nil {
 			t.Fatal("expected panic when no config input is provided")
 		}
-		if !strings.Contains(recovered.(string), "WaveConfigJSON is required") {
+		if !strings.Contains(recovered.(string), "FS is required") {
 			t.Fatalf("unexpected panic value: %v", recovered)
 		}
 	}()
@@ -67,20 +72,141 @@ func TestNewPanicsWhenConfigJSONIsMissing(t *testing.T) {
 
 func TestNewFromWaveConfigJSON(t *testing.T) {
 	fixture := newWaveTestFixture(t)
+	t.Chdir(fixture.root)
 	setWaveDevModeForTest(t, false)
+	configPath := fixture.mustWriteConfigFile(t)
+	expectedRawConfigJSON, readConfigError := os.ReadFile(
+		filepath.Join(fixture.root, configPath),
+	)
+	if readConfigError != nil {
+		t.Fatalf("read fixture config: %v", readConfigError)
+	}
 
 	w := New(Config{
-		WaveConfigJSON: fixture.configJSON(t),
-		DistStaticFS:   os.DirFS(fixture.cfg.Dist.Static()),
-		Logger:         newDiscardLoggerForWaveTests(),
+		FS:         os.DirFS(fixture.root),
+		ConfigPath: configPath,
+		Logger:     newDiscardLoggerForWaveTests(),
 	})
 
 	if w == nil {
 		t.Fatal("expected non-nil Wave instance")
 	}
-	if !bytes.Equal(w.RawConfigJSON(), fixture.configJSON(t)) {
+	if !bytes.Equal(w.RawConfigJSON(), expectedRawConfigJSON) {
 		t.Fatal("expected RawConfigJSON to match input WaveConfigJSON")
 	}
+}
+
+func TestNewResolvesResolveRootRelativeToOSDirFSConfigLocation(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	mustWriteFile(
+		t,
+		filepath.Join(root, "backend", "wave.config.json"),
+		`{
+			"Core":{"ProjectID":"test-project",
+				"ResolveRoot": "../",
+				"ServerOnlyMode": true,
+				"MainAppEntry": "backend/cmd/serve"
+			}
+		}`,
+	)
+
+	waveRuntime := New(Config{
+		FS:         os.DirFS("backend"),
+		ConfigPath: "wave.config.json",
+		Logger:     newDiscardLoggerForWaveTests(),
+	})
+
+	expectedResolveRoot := filepath.Clean(root)
+	if gotResolveRoot := waveenv.Absolute(
+		waveRuntime.ParsedConfig().ResolveRoot(),
+	); gotResolveRoot != expectedResolveRoot {
+		t.Fatalf(
+			"expected resolve root %q, got %q",
+			expectedResolveRoot,
+			gotResolveRoot,
+		)
+	}
+}
+
+func TestNewDiscoversNestedConfigPathByBasenameWhenUnique(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	configPath := filepath.Join("apps", "site", "backend", "wave.config.json")
+	mustWriteFile(
+		t,
+		filepath.Join(root, configPath),
+		`{
+			"Core":{"ProjectID":"discovery-unique","MainAppEntry":"cmd/serve","ServerOnlyMode":true}
+		}`,
+	)
+	if mkdirError := os.MkdirAll(
+		filepath.Join(root, "apps", "site", "backend", ".wavedist", "static"),
+		0o755,
+	); mkdirError != nil {
+		t.Fatalf("create discovered static directory: %v", mkdirError)
+	}
+
+	w := New(Config{
+		FS:         os.DirFS(root),
+		ConfigPath: "wave.config.json",
+		Logger:     newDiscardLoggerForWaveTests(),
+	})
+
+	if got := w.ConfigFile(); got != filepath.ToSlash(configPath) {
+		t.Fatalf("ConfigFile() = %q, want %q", got, filepath.ToSlash(configPath))
+	}
+}
+
+func TestNewPanicsWhenConfigDiscoveryIsAmbiguousWithoutDirectMatch(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	t.Chdir(root)
+
+	mustWriteFile(
+		t,
+		filepath.Join(root, "app-a", "backend", "wave.config.json"),
+		`{
+			"Core":{"ProjectID":"project-a","MainAppEntry":"cmd/serve","ServerOnlyMode":true}
+		}`,
+	)
+	mustWriteFile(
+		t,
+		filepath.Join(root, "app-b", "backend", "wave.config.json"),
+		`{
+			"Core":{"ProjectID":"project-b","MainAppEntry":"cmd/serve","ServerOnlyMode":true}
+		}`,
+	)
+	for _, staticRoot := range []string{
+		filepath.Join(root, "app-a", "backend", ".wavedist", "static"),
+		filepath.Join(root, "app-b", "backend", ".wavedist", "static"),
+	} {
+		if mkdirError := os.MkdirAll(staticRoot, 0o755); mkdirError != nil {
+			t.Fatalf("create static directory %q: %v", staticRoot, mkdirError)
+		}
+	}
+
+	defer func() {
+		recoveredPanic := recover()
+		if recoveredPanic == nil {
+			t.Fatal("expected panic for ambiguous config discovery")
+		}
+		panicMessage := fmt.Sprint(recoveredPanic)
+		if !strings.Contains(panicMessage, "ambiguous config discovery") {
+			t.Fatalf("unexpected panic message: %v", recoveredPanic)
+		}
+	}()
+
+	_ = New(Config{
+		FS:         os.DirFS(root),
+		ConfigPath: "wave.config.json",
+		Logger:     newDiscardLoggerForWaveTests(),
+	})
 }
 
 func TestNewPanicsWhenConfigJSONIsInvalid(t *testing.T) {
@@ -95,13 +221,115 @@ func TestNewPanicsWhenConfigJSONIsInvalid(t *testing.T) {
 	}()
 
 	_ = New(Config{
-		WaveConfigJSON: []byte("{"),
+		FS: fstest.MapFS{
+			"wave.config.json": &fstest.MapFile{Data: []byte("{")},
+		},
+		ConfigPath: "wave.config.json",
+	})
+}
+
+func TestNewCreatesMissingDistStaticDirectoryForOSDirFS(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	configPath := filepath.Join("backend", "wave.config.json")
+	mustWriteFile(
+		t,
+		filepath.Join(root, configPath),
+		`{
+			"Core":{
+				"ProjectID":"dist-auto-create",
+				"MainAppEntry":"cmd/serve",
+				"ServerOnlyMode":true
+			}
+		}`,
+	)
+
+	distStaticDirectoryPath := filepath.Join(
+		root,
+		"backend",
+		".wavedist",
+		"static",
+	)
+	if _, distStaticDirectoryPathError := os.Stat(distStaticDirectoryPath); !os.IsNotExist(distStaticDirectoryPathError) {
+		t.Fatalf(
+			"expected %q to be missing before New, stat error = %v",
+			distStaticDirectoryPath,
+			distStaticDirectoryPathError,
+		)
+	}
+
+	w := New(Config{
+		FS:         os.DirFS(root),
+		ConfigPath: configPath,
+		Logger:     newDiscardLoggerForWaveTests(),
+	})
+	if w == nil {
+		t.Fatal("expected non-nil Wave instance")
+	}
+
+	distStaticDirectoryInfo, distStaticDirectoryPathError := os.Stat(
+		distStaticDirectoryPath,
+	)
+	if distStaticDirectoryPathError != nil {
+		t.Fatalf(
+			"expected dist static directory to exist after New: %v",
+			distStaticDirectoryPathError,
+		)
+	}
+	if !distStaticDirectoryInfo.IsDir() {
+		t.Fatalf(
+			"expected %q to be a directory after New",
+			distStaticDirectoryPath,
+		)
+	}
+}
+
+func TestNewPanicsWhenCWDConfigDiscoveryUnavailable(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	configPath := filepath.Join("backend", "wave.config.json")
+	mustWriteFile(
+		t,
+		filepath.Join(root, configPath),
+		`{
+			"Core":{
+				"ProjectID":"dist-create-contract-panic",
+				"MainAppEntry":"cmd/serve",
+				"ServerOnlyMode":true
+			}
+		}`,
+	)
+
+	defer func() {
+		recoveredPanic := recover()
+		if recoveredPanic == nil {
+			t.Fatal("expected New to panic when CWD config discovery is unavailable")
+		}
+		panicMessage := fmt.Sprint(recoveredPanic)
+		if !strings.Contains(
+			panicMessage,
+			"resolve config path",
+		) {
+			t.Fatalf("unexpected panic message: %v", recoveredPanic)
+		}
+	}()
+
+	_ = New(Config{
+		FS:         os.DirFS(root),
+		ConfigPath: configPath,
+		Logger:     newDiscardLoggerForWaveTests(),
 	})
 }
 
 func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+	w := newWaveForTest(
+		t,
+		fixture,
+		false,
+		os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
+	)
 
 	if w.Logger() == nil {
 		t.Fatal("expected Wave logger to be initialized")
@@ -188,26 +416,37 @@ func TestNewCreatesWaveAndExposesConfigurationMutators(t *testing.T) {
 	}
 }
 
-func TestConfigFileReturnsParsedConfigLocation(t *testing.T) {
+func TestConfigFileReturnsConstructorConfigPath(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	expectedConfigLocation := filepath.Join(
-		fixture.root,
-		"configs",
-		"wave.config.json",
+	w := newWaveForTest(
+		t,
+		fixture,
+		false,
+		os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
 	)
-	fixture.cfg.Core.ConfigLocation = expectedConfigLocation
-
-	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
-	if got := w.ConfigFile(); got != expectedConfigLocation {
-		t.Fatalf("ConfigFile() = %q, want %q", got, expectedConfigLocation)
+	expectedConfigPath := fixture.pathInRoot("wave.config.json")
+	if got := w.ConfigFile(); !waveenv.PathsReferToSameLocation(
+		got,
+		expectedConfigPath,
+	) {
+		t.Fatalf(
+			"ConfigFile() = %q, want path equivalent to %q",
+			got,
+			expectedConfigPath,
+		)
 	}
 }
 
 func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+	w := newWaveForTest(
+		t,
+		fixture,
+		false,
+		os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
+	)
 
-	originalCoreConfig := *w.cfg.Core
+	originalCoreConfig := w.cfg.Core().Clone()
 
 	appendFrameworkWatchPatternsForTest(
 		w,
@@ -237,10 +476,10 @@ func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
 	waveframework.StateForConfig(w.cfg).CriticalCSSStyleElementID = "vorma-critical-css"
 	waveframework.StateForConfig(w.cfg).NonCriticalCSSLinkElementID = "vorma-normal-css"
 
-	if got := *w.cfg.Core; got != originalCoreConfig {
+	if !reflect.DeepEqual(w.cfg.Core(), originalCoreConfig) {
 		t.Fatalf(
 			"framework setters mutated core config: got %#v want %#v",
-			got,
+			w.cfg.Core(),
 			originalCoreConfig,
 		)
 	}
@@ -248,7 +487,12 @@ func TestFrameworkSettersDoNotMutateCoreConfigFields(t *testing.T) {
 
 func TestAddFrameworkWatchPatternsAppendsInput(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+	w := newWaveForTest(
+		t,
+		fixture,
+		false,
+		os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
+	)
 
 	frameworkWatchPatterns := []wavewatch.WatchedFile{
 		{
@@ -289,35 +533,45 @@ func TestBaseFSUsesDiskInDevMode(t *testing.T) {
 	}
 }
 
-func TestBaseFSProductionRequiresDistStaticFS(t *testing.T) {
+func TestBaseFSProductionCreatesMissingDistStaticFS(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, false, nil)
-
-	_, err := w.runtime.GetBaseFS()
-	if err == nil {
-		t.Fatal(
-			"expected production mode base FS initialization to fail without DistStaticFS",
-		)
+	if removeError := os.RemoveAll(
+		fixture.pathInRoot(fixture.cfg.Dist().Static()),
+	); removeError != nil {
+		t.Fatalf("remove dist static directory: %v", removeError)
 	}
-	if !strings.Contains(err.Error(), "distStaticFS is nil") {
-		t.Fatalf("unexpected error: %v", err)
+	w := newWaveForTest(t, fixture, false, nil)
+	if w == nil {
+		t.Fatal("expected New to return a non-nil Wave instance")
+	}
+	distStaticDirectoryInfo, distStaticDirectoryStatError := os.Stat(
+		fixture.pathInRoot(fixture.cfg.Dist().Static()),
+	)
+	if distStaticDirectoryStatError != nil {
+		t.Fatalf("expected dist static directory to be recreated: %v", distStaticDirectoryStatError)
+	}
+	if !distStaticDirectoryInfo.IsDir() {
+		t.Fatalf(
+			"expected dist static path %q to be a directory",
+			fixture.pathInRoot(fixture.cfg.Dist().Static()),
+		)
 	}
 }
 
 func TestBaseFSProductionUsesProvidedFS(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	mapFS := fstest.MapFS{
-		"internal/probe.txt": {Data: []byte("ok")},
-	}
-	w := newWaveForTest(t, fixture, false, mapFS)
+	w := newWaveForTest(t, fixture, false, nil)
 
 	baseFS, err := w.runtime.GetBaseFS()
 	if err != nil {
 		t.Fatalf("baseFS returned error: %v", err)
 	}
 
-	if got := mustReadFileFromFS(t, baseFS, "internal/probe.txt"); got != "ok" {
-		t.Fatalf("expected provided FS content, got %q", got)
+	if got := mustReadFileFromFS(t, baseFS, "internal/critical.css"); got != "body{color:red;}" {
+		t.Fatalf(
+			"unexpected critical css content from base FS: %q",
+			got,
+		)
 	}
 }
 
@@ -433,7 +687,12 @@ func TestPublicFileMapAndURLResolution(t *testing.T) {
 
 func TestPublicFileMapReturnsDefensiveCopy(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	w := newWaveForTest(t, fixture, false, os.DirFS(fixture.cfg.Dist.Static()))
+	w := newWaveForTest(
+		t,
+		fixture,
+		false,
+		os.DirFS(fixture.pathInRoot(fixture.cfg.Dist().Static())),
+	)
 
 	firstMap, err := w.runtime.PublicFileMap()
 	if err != nil {
@@ -523,7 +782,7 @@ func TestPublicFileMapElementsUseConfiguredBrowserRuntimeSettings(
 
 func TestPublicFileMapElementsEmptyWhenRefMissing(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	if err := os.Remove(fixture.cfg.Dist.PublicFileMapRef()); err != nil {
+	if err := os.Remove(fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapRef())); err != nil {
 		t.Fatalf("failed to remove public file map ref: %v", err)
 	}
 	w := newWaveForTest(t, fixture, true, nil)
@@ -590,7 +849,7 @@ func TestCriticalCSSUsesConfiguredElementID(t *testing.T) {
 
 func TestCriticalCSSReturnsEmptyWhenEntryUnsetOrMissingFile(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.CSSEntryFiles.Critical = ""
+	wavetest.SetCoreCriticalCSSEntryFile(fixture.cfg, "")
 	wNoEntry := newWaveForTest(t, fixture, true, nil)
 	if got := wNoEntry.CriticalCSS(); got != "" {
 		t.Fatalf("expected empty critical css when entry is unset, got %q", got)
@@ -603,7 +862,7 @@ func TestCriticalCSSReturnsEmptyWhenEntryUnsetOrMissingFile(t *testing.T) {
 	}
 
 	fixture = newWaveTestFixture(t)
-	if err := os.Remove(fixture.cfg.Dist.CriticalCSS()); err != nil {
+	if err := os.Remove(fixture.pathInRoot(fixture.cfg.Dist().CriticalCSS())); err != nil {
 		t.Fatalf("failed to remove critical css file: %v", err)
 	}
 	wMissingFile := newWaveForTest(t, fixture, true, nil)
@@ -670,7 +929,7 @@ func TestStylesheetLinkUsesConfiguredElementID(t *testing.T) {
 
 func TestStylesheetReturnsEmptyWhenEntryUnset(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.CSSEntryFiles.NonCritical = ""
+	wavetest.SetCoreNonCriticalCSSEntryFile(fixture.cfg, "")
 	w := newWaveForTest(t, fixture, true, nil)
 
 	if got := w.runtime.StyleSheetURL(); got != "" {
@@ -715,7 +974,7 @@ func TestIsPublicAssetWithConfiguredPrefixUsesFileExistence(t *testing.T) {
 
 func TestIsPublicAssetRootPrefixUsesFileExistence(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.PublicPathPrefix = "/"
+	wavetest.SetCorePublicPathPrefix(fixture.cfg, "/")
 	w := newWaveForTest(t, fixture, true, nil)
 
 	if !w.runtime.IsPublicAsset("/logo.txt") {
@@ -855,73 +1114,89 @@ func TestConfigAccessorMethods(t *testing.T) {
 	if w.PublicPathPrefix() != "/assets/" {
 		t.Fatalf("unexpected public path prefix: %q", w.PublicPathPrefix())
 	}
-	expectedDistDir := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.Core.DistDir,
-	)
-	if w.DistDir() != expectedDistDir {
-		t.Fatalf("unexpected dist dir: %q", w.DistDir())
-	}
-	expectedPublicStaticDir := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.Core.StaticAssetDirs.Public,
-	)
-	if w.runtime.PublicStaticDir() != expectedPublicStaticDir {
+	expectedDistDir := fixture.cfg.Dist().Root()
+	if !waveenv.PathsReferToSameLocation(w.DistDir(), expectedDistDir) {
 		t.Fatalf(
-			"unexpected public static dir: %q",
+			"unexpected dist dir: got %q, want path equivalent to %q",
+			w.DistDir(),
+			expectedDistDir,
+		)
+	}
+	expectedPublicStaticDir := fixture.cfg.Core().StaticAssetDirsPublic()
+	if !waveenv.PathsReferToSameLocation(
+		w.runtime.PublicStaticDir(),
+		expectedPublicStaticDir,
+	) {
+		t.Fatalf(
+			"unexpected public static dir: got %q, want path equivalent to %q",
 			w.runtime.PublicStaticDir(),
+			expectedPublicStaticDir,
 		)
 	}
-	expectedPrivateStaticDir := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.Core.StaticAssetDirs.Private,
-	)
-	if w.PrivateStaticDir() != expectedPrivateStaticDir {
-		t.Fatalf("unexpected private static dir: %q", w.PrivateStaticDir())
-	}
-	expectedViteManifestLocation := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.ViteManifestPath(),
-	)
-	if w.ViteManifestLocation() != expectedViteManifestLocation {
+	expectedPrivateStaticDir := fixture.cfg.Core().StaticAssetDirsPrivate()
+	if !waveenv.PathsReferToSameLocation(
+		w.PrivateStaticDir(),
+		expectedPrivateStaticDir,
+	) {
 		t.Fatalf(
-			"unexpected Vite manifest location: %q",
+			"unexpected private static dir: got %q, want path equivalent to %q",
+			w.PrivateStaticDir(),
+			expectedPrivateStaticDir,
+		)
+	}
+	expectedViteManifestLocation := fixture.cfg.ViteManifestPath()
+	if !waveenv.PathsReferToSameLocation(
+		w.ViteManifestLocation(),
+		expectedViteManifestLocation,
+	) {
+		t.Fatalf(
+			"unexpected Vite manifest location: got %q, want path equivalent to %q",
 			w.ViteManifestLocation(),
+			expectedViteManifestLocation,
 		)
 	}
-	expectedViteOutDir := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.Dist.StaticPublic(),
-	)
-	if w.runtime.ViteOutDir() != expectedViteOutDir {
-		t.Fatalf("unexpected Vite out dir: %q", w.runtime.ViteOutDir())
-	}
-	expectedStaticPrivateOutDir := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.Dist.StaticPrivate(),
-	)
-	if w.StaticPrivateOutDir() != expectedStaticPrivateOutDir {
+	expectedViteOutDir := fixture.cfg.Dist().StaticPublic()
+	if !waveenv.PathsReferToSameLocation(
+		w.runtime.ViteOutDir(),
+		expectedViteOutDir,
+	) {
 		t.Fatalf(
-			"unexpected static private out dir: %q",
-			w.StaticPrivateOutDir(),
+			"unexpected Vite out dir: got %q, want path equivalent to %q",
+			w.runtime.ViteOutDir(),
+			expectedViteOutDir,
 		)
 	}
-	expectedStaticPublicOutDir := testpath.PathRelativeToCurrentWorkingDirectory(
-		t,
-		fixture.cfg.Dist.StaticPublic(),
-	)
-	if w.StaticPublicOutDir() != expectedStaticPublicOutDir {
-		t.Fatalf("unexpected static public out dir: %q", w.StaticPublicOutDir())
+	expectedStaticPrivateOutDir := fixture.cfg.Dist().StaticPrivate()
+	if !waveenv.PathsReferToSameLocation(
+		w.StaticPrivateOutDir(),
+		expectedStaticPrivateOutDir,
+	) {
+		t.Fatalf(
+			"unexpected static private out dir: got %q, want path equivalent to %q",
+			w.StaticPrivateOutDir(),
+			expectedStaticPrivateOutDir,
+		)
+	}
+	expectedStaticPublicOutDir := fixture.cfg.Dist().StaticPublic()
+	if !waveenv.PathsReferToSameLocation(
+		w.StaticPublicOutDir(),
+		expectedStaticPublicOutDir,
+	) {
+		t.Fatalf(
+			"unexpected static public out dir: got %q, want path equivalent to %q",
+			w.StaticPublicOutDir(),
+			expectedStaticPublicOutDir,
+		)
 	}
 
-	parsedConfig := waveframework.ParsedConfig(w.RawConfigJSON())
+	parsedConfig := w.ParsedConfig()
 	if parsedConfig == nil {
-		t.Fatal("expected ParsedConfig() to return non-nil parsed config")
+		t.Fatal("expected Wave.ParsedConfig() to return non-nil parsed config")
 	}
-	parsedConfigAgain := waveframework.ParsedConfig(w.RawConfigJSON())
+	parsedConfigAgain := w.ParsedConfig()
 	if parsedConfigAgain != parsedConfig {
 		t.Fatal(
-			"expected ParsedConfig() to return stable canonical parsed config across repeated calls",
+			"expected Wave.ParsedConfig() to return stable canonical parsed config across repeated calls",
 		)
 	}
 
@@ -950,12 +1225,10 @@ func TestConfigAccessorMethods(t *testing.T) {
 		"Custom": {Type: jsonschema.TypeObject},
 	}
 
-	buildtimeParsedConfig := waveframework.BuildtimeParsedConfig(
-		w.RawConfigJSON(),
-	)
+	buildtimeParsedConfig := w.ParsedConfig()
 	if buildtimeParsedConfig != parsedConfig {
 		t.Fatal(
-			"expected BuildtimeParsedConfig() to resolve to canonical parsed config instance",
+			"expected Wave.ParsedConfig() to resolve to canonical parsed config instance",
 		)
 	}
 
@@ -985,24 +1258,24 @@ func TestConfigAccessorMethods(t *testing.T) {
 	}
 	if _, ok := waveframework.StateForConfig(buildtimeParsedConfig).SchemaExtensions["Custom"]; !ok {
 		t.Fatal(
-			"expected BuildtimeParsedConfig() to preserve schema extensions",
+			"expected Wave.ParsedConfig() to preserve schema extensions",
 		)
 	}
 	if waveframework.StateForConfig(buildtimeParsedConfig).RunBuildHook == nil {
 		t.Fatal(
-			"expected BuildtimeParsedConfig() to preserve run build hook callback",
+			"expected Wave.ParsedConfig() to preserve run build hook callback",
 		)
 	}
 }
 
-func TestBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
+func TestWaveParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, true, nil)
 
-	parsedConfig := waveframework.BuildtimeParsedConfig(w.RawConfigJSON())
+	parsedConfig := w.ParsedConfig()
 	if parsedConfig == nil {
 		t.Fatal(
-			"expected BuildtimeParsedConfig() to return non-nil parsed config",
+			"expected Wave.ParsedConfig() to return non-nil parsed config",
 		)
 	}
 	waveframework.StateForConfig(parsedConfig).DevBuildHook = "go run ./backend/cmd/build --dev"
@@ -1013,12 +1286,10 @@ func TestBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 		return nil
 	}
 
-	buildtimeParsedConfig := waveframework.BuildtimeParsedConfig(
-		w.RawConfigJSON(),
-	)
+	buildtimeParsedConfig := w.ParsedConfig()
 	if buildtimeParsedConfig != parsedConfig {
 		t.Fatal(
-			"expected BuildtimeParsedConfig() to return stable canonical parsed config",
+			"expected Wave.ParsedConfig() to return stable canonical parsed config",
 		)
 	}
 	if got := waveframework.StateForConfig(buildtimeParsedConfig).DevBuildHook; got != "go run ./backend/cmd/build --dev" {
@@ -1026,12 +1297,12 @@ func TestBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 	}
 	if _, ok := waveframework.StateForConfig(buildtimeParsedConfig).SchemaExtensions["Custom"]; !ok {
 		t.Fatal(
-			"expected BuildtimeParsedConfig snapshot to include framework schema extensions",
+			"expected Wave.ParsedConfig() snapshot to include framework schema extensions",
 		)
 	}
 	if waveframework.StateForConfig(buildtimeParsedConfig).RunBuildHook == nil {
 		t.Fatal(
-			"expected BuildtimeParsedConfig snapshot to include framework run build hook",
+			"expected Wave.ParsedConfig() snapshot to include framework run build hook",
 		)
 	}
 }
@@ -1039,50 +1310,24 @@ func TestBuildtimeParsedConfigIncludesFrameworkBuildCallbacks(t *testing.T) {
 func TestMustGetFSAndStaticHandlerPanicsOnFailure(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, nil)
+	if removeErr := os.RemoveAll(fixture.pathInRoot(fixture.cfg.Dist().Static())); removeErr != nil {
+		t.Fatalf("remove dist static directory: %v", removeErr)
+	}
 
 	publicFS, publicFSError := w.runtime.GetPublicFS()
-	if publicFSError == nil {
-		t.Fatalf(
-			"expected getPublicFS to fail when distStaticFS is nil, got %#v",
-			publicFS,
-		)
-	}
-	if !strings.Contains(publicFSError.Error(), "distStaticFS is nil") {
+	if publicFSError != nil {
 		t.Fatalf("unexpected getPublicFS error: %v", publicFSError)
 	}
-	assertPanicContains(t, "distStaticFS is nil", func() {
-		_ = w.MustPrivateFS()
-	})
-	assertPanicContains(t, "distStaticFS is nil", func() {
-		_ = w.MustStaticMiddleware(true)
-	})
-}
-
-func assertPanicContains(t *testing.T, expectedSubstr string, fn func()) {
-	t.Helper()
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			t.Fatalf("expected panic containing %q", expectedSubstr)
-		}
-
-		if str, isString := recovered.(string); isString {
-			if !strings.Contains(str, expectedSubstr) {
-				t.Fatalf("unexpected panic string: %q", str)
-			}
-			return
-		}
-		if err, isErr := recovered.(error); isErr {
-			if !strings.Contains(err.Error(), expectedSubstr) {
-				t.Fatalf("unexpected panic error: %v", err)
-			}
-			return
-		}
-		t.Fatalf(
-			"panic value type %T did not contain %q",
-			recovered,
-			expectedSubstr,
+	if _, readErr := fs.ReadFile(publicFS, "logo.txt"); readErr == nil {
+		t.Fatal(
+			"expected public FS reads to fail when dist static directory is unavailable",
 		)
-	}()
-	fn()
+	}
+
+	privateFS := w.MustPrivateFS()
+	if _, readErr := fs.ReadFile(privateFS, "template.html"); readErr == nil {
+		t.Fatal(
+			"expected private FS reads to fail when dist static directory is unavailable",
+		)
+	}
 }

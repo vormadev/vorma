@@ -15,7 +15,6 @@ import (
 	"go/printer"
 	"go/token"
 	"go/types"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -37,9 +36,10 @@ type parsedServerRouteFile struct {
 }
 
 type localFunctionDeclaration struct {
-	name string
-	decl *ast.FuncDecl
-	file *parsedServerRouteFile
+	name          string
+	decl          *ast.FuncDecl
+	file          *parsedServerRouteFile
+	ownerAnalysis *PackageAnalysis
 }
 
 type PackageAnalysis struct {
@@ -52,7 +52,10 @@ type PackageAnalysis struct {
 	packageLevelIdentifierNames         map[string]struct{}
 	packageDir                          string
 	packageName                         string
+	packageImportPath                   string
 	filesByPath                         map[string]*parsedServerRouteFile
+	allFilesByPath                      map[string]*parsedServerRouteFile
+	packageAnalysesByImportPath         map[string]*PackageAnalysis
 	goTypesInfo                         *types.Info
 	goTypesPackagePath                  string
 	goTypesInfoInitializationAttempted  bool
@@ -70,6 +73,7 @@ type backendRouteDiscoveryState struct {
 	loaderPatternSet                    map[string]struct{}
 	activeFunctions                     map[*ast.FuncDecl]struct{}
 	discoveredVormaRegistrationCallByID map[string]*discoveredVormaRegistrationCall
+	rootAnalysis                        *PackageAnalysis
 }
 
 type expressionBindings struct {
@@ -79,18 +83,20 @@ type expressionBindings struct {
 
 type canonicalRouteRegistrationCall struct {
 	isLoader                        bool
+	method                          string
 	pattern                         string
 	discoveredVormaRegistrationCall *discoveredVormaRegistrationCall
 }
 
 type discoveredVormaRegistrationCall struct {
-	isLoader              bool
-	appExpression         ast.Expr
-	methodExpression      ast.Expr
-	patternExpression     ast.Expr
-	handlerExpression     ast.Expr
-	decorateCtxExpression ast.Expr
-	sourcePosition        token.Pos
+	isLoader                         bool
+	appExpression                    ast.Expr
+	methodExpression                 ast.Expr
+	patternExpression                ast.Expr
+	handlerExpression                ast.Expr
+	decorateCtxExpression            ast.Expr
+	registerDiscoveredTaskExpression ast.Expr
+	sourcePosition                   token.Pos
 }
 
 // ParseServerRouteFilesIntoPackageAnalyses parses matched route-definition
@@ -166,6 +172,33 @@ func ParseServerRouteFilesIntoPackageAnalyses(
 		}
 		packageAnalyses = append(packageAnalyses, packageAnalysis)
 	}
+
+	allFilesByPath := map[string]*parsedServerRouteFile{}
+	for _, packageAnalysis := range packageAnalyses {
+		for filePath, parsedServerFile := range packageAnalysis.filesByPath {
+			allFilesByPath[filePath] = parsedServerFile
+		}
+	}
+
+	packageAnalysesByImportPath := map[string]*PackageAnalysis{}
+	for _, packageAnalysis := range packageAnalyses {
+		if packageAnalysis.packageImportPath == "" ||
+			packageAnalysis.packageImportPath == "." ||
+			strings.HasPrefix(packageAnalysis.packageImportPath, "./") ||
+			strings.HasPrefix(packageAnalysis.packageImportPath, "../") {
+			continue
+		}
+		existingAnalysis, hasExistingAnalysis := packageAnalysesByImportPath[packageAnalysis.packageImportPath]
+		if hasExistingAnalysis && existingAnalysis != packageAnalysis {
+			continue
+		}
+		packageAnalysesByImportPath[packageAnalysis.packageImportPath] = packageAnalysis
+	}
+	for _, packageAnalysis := range packageAnalyses {
+		packageAnalysis.allFilesByPath = allFilesByPath
+		packageAnalysis.packageAnalysesByImportPath = packageAnalysesByImportPath
+	}
+
 	return packageAnalyses, nil
 }
 func parseServerRouteFileMetadata(
@@ -217,14 +250,6 @@ func deriveServerRoutePackageAnalysisKey(
 }
 
 func (analysis *PackageAnalysis) initialize() error {
-	containsRouteRegistrationHints, err := analysis.packageContainsRouteRegistrationHints()
-	if err != nil {
-		return err
-	}
-	if !containsRouteRegistrationHints {
-		return nil
-	}
-
 	if err := analysis.expandAndFilterFilesForCompiledPackage(); err != nil {
 		return err
 	}
@@ -252,9 +277,10 @@ func (analysis *PackageAnalysis) initialize() error {
 				continue
 			}
 			localFunction := &localFunctionDeclaration{
-				name: functionDeclaration.Name.Name,
-				decl: functionDeclaration,
-				file: parsedServerFile,
+				name:          functionDeclaration.Name.Name,
+				decl:          functionDeclaration,
+				file:          parsedServerFile,
+				ownerAnalysis: analysis,
 			}
 			analysis.localFunctionsByName[localFunction.name] = append(
 				analysis.localFunctionsByName[localFunction.name],
@@ -275,51 +301,6 @@ func (analysis *PackageAnalysis) initialize() error {
 	)
 
 	return nil
-}
-
-var routeRegistrationHintNeedles = [][]byte{
-	[]byte("DefineLoaderForRegistration"),
-	[]byte("DefineActionForRegistration"),
-	[]byte("AddTaskHandler"),
-}
-
-func (analysis *PackageAnalysis) packageContainsRouteRegistrationHints() (bool, error) {
-	packageDirEntries, readDirErr := os.ReadDir(analysis.packageDir)
-	if readDirErr != nil {
-		return false, fmt.Errorf(
-			"read package directory %q for route registration hint scan: %w",
-			analysis.packageDir,
-			readDirErr,
-		)
-	}
-
-	for _, packageDirEntry := range packageDirEntries {
-		if packageDirEntry.IsDir() {
-			continue
-		}
-		entryName := packageDirEntry.Name()
-		if filepath.Ext(entryName) != ".go" ||
-			strings.HasSuffix(entryName, "_test.go") {
-			continue
-		}
-		entryFilePath := filepath.ToSlash(
-			filepath.Clean(filepath.Join(analysis.packageDir, entryName)),
-		)
-		entryFileBytes, readErr := analysis.dependencies.ReadFile(entryFilePath)
-		if readErr != nil {
-			return false, fmt.Errorf(
-				"read file %q for route registration hint scan: %w",
-				entryFilePath,
-				readErr,
-			)
-		}
-		for _, routeRegistrationHintNeedle := range routeRegistrationHintNeedles {
-			if bytes.Contains(entryFileBytes, routeRegistrationHintNeedle) {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
 }
 
 func (analysis *PackageAnalysis) expandAndFilterFilesForCompiledPackage() error {
@@ -392,6 +373,16 @@ func (analysis *PackageAnalysis) resolveCompiledFilePathSetForPackageDir() (map[
 	}
 
 	compiledFilePathSet := map[string]struct{}{}
+	analysis.packageImportPath = strings.TrimSpace(importedPackage.ImportPath)
+	if analysis.packageImportPath == "" || analysis.packageImportPath == "." {
+		derivedImportPath, hasDerivedImportPath, err := analysis.deriveModuleImportPathForPackageDir()
+		if err != nil {
+			return nil, err
+		}
+		if hasDerivedImportPath {
+			analysis.packageImportPath = derivedImportPath
+		}
+	}
 	compiledGoFiles := append([]string{}, importedPackage.GoFiles...)
 	compiledGoFiles = append(compiledGoFiles, importedPackage.CgoFiles...)
 	for _, compiledGoFile := range compiledGoFiles {
@@ -401,6 +392,72 @@ func (analysis *PackageAnalysis) resolveCompiledFilePathSetForPackageDir() (map[
 		compiledFilePathSet[compiledFilePath] = struct{}{}
 	}
 	return compiledFilePathSet, nil
+}
+
+func (analysis *PackageAnalysis) deriveModuleImportPathForPackageDir() (string, bool, error) {
+	normalizedPackageDir := filepath.ToSlash(
+		filepath.Clean(analysis.packageDir),
+	)
+	currentDir := normalizedPackageDir
+	for {
+		goModFilePath := filepath.ToSlash(
+			filepath.Clean(filepath.Join(currentDir, "go.mod")),
+		)
+		goModFileBytes, readErr := analysis.dependencies.ReadFile(goModFilePath)
+		if readErr == nil {
+			modulePath, hasModulePath := parseModulePathFromGoModBytes(
+				goModFileBytes,
+			)
+			if !hasModulePath {
+				return "", false, nil
+			}
+
+			relativePackagePath, err := filepath.Rel(
+				currentDir,
+				normalizedPackageDir,
+			)
+			if err != nil {
+				return "", false, fmt.Errorf(
+					"resolve package import path relative to module root %q for package directory %q: %w",
+					currentDir,
+					normalizedPackageDir,
+					err,
+				)
+			}
+			normalizedRelativePackagePath := filepath.ToSlash(
+				filepath.Clean(relativePackagePath),
+			)
+			if normalizedRelativePackagePath == "." {
+				return modulePath, true, nil
+			}
+			return strings.TrimSuffix(
+				modulePath,
+				"/",
+			) + "/" + strings.TrimPrefix(
+				normalizedRelativePackagePath,
+				"./",
+			), true, nil
+		}
+
+		parentDir := filepath.ToSlash(filepath.Clean(filepath.Dir(currentDir)))
+		if parentDir == currentDir {
+			break
+		}
+		currentDir = parentDir
+	}
+	return "", false, nil
+}
+
+func parseModulePathFromGoModBytes(goModFileBytes []byte) (string, bool) {
+	for _, rawLine := range strings.Split(string(goModFileBytes), "\n") {
+		trimmedLine := strings.TrimSpace(rawLine)
+		fields := strings.Fields(trimmedLine)
+		if len(fields) < 2 || fields[0] != "module" {
+			continue
+		}
+		return strings.TrimSpace(fields[1]), true
+	}
+	return "", false
 }
 
 func (analysis *PackageAnalysis) initializeGoTypesInfo() error {
@@ -567,6 +624,7 @@ func (analysis *PackageAnalysis) DiscoverLoaderPatterns() ([]string, error) {
 		loaderPatternSet:                    map[string]struct{}{},
 		activeFunctions:                     map[*ast.FuncDecl]struct{}{},
 		discoveredVormaRegistrationCallByID: map[string]*discoveredVormaRegistrationCall{},
+		rootAnalysis:                        analysis,
 	}
 
 	if err := analysis.discoverRouteRegistrationsInRootFiles(state); err != nil {
@@ -604,12 +662,14 @@ func (analysis *PackageAnalysis) discoverRouteRegistrationsInRootFiles(
 				}
 				if err := analysis.discoverLoaderPatternsFromFunctionDeclaration(
 					&localFunctionDeclaration{
-						name: "init",
-						decl: typedDeclaration,
-						file: parsedServerFile,
+						name:          "init",
+						decl:          typedDeclaration,
+						file:          parsedServerFile,
+						ownerAnalysis: analysis,
 					},
 					nil,
 					state,
+					nil,
 				); err != nil {
 					return err
 				}
@@ -638,6 +698,7 @@ func (analysis *PackageAnalysis) discoverLoaderPatternsFromVarDeclaration(
 						parsedServerFile,
 						nil,
 						state,
+						nil,
 					)
 				},
 			); err != nil {
@@ -653,7 +714,12 @@ func (analysis *PackageAnalysis) analyzeCallExpression(
 	parsedServerFile *parsedServerRouteFile,
 	bindings *expressionBindings,
 	state *backendRouteDiscoveryState,
+	discoveredTaskExpression ast.Expr,
 ) error {
+	if discoveredTaskExpression == nil {
+		discoveredTaskExpression = call
+	}
+
 	canonicalCall, isCanonicalCall, err := analysis.parseCanonicalRouteRegistrationCall(
 		call,
 		parsedServerFile,
@@ -667,19 +733,52 @@ func (analysis *PackageAnalysis) analyzeCallExpression(
 			state.loaderPatternSet[canonicalCall.pattern] = struct{}{}
 		}
 		if canonicalCall.discoveredVormaRegistrationCall != nil {
-			callID, err := analysis.discoveredVormaRegistrationCallID(
-				canonicalCall.discoveredVormaRegistrationCall,
+			discoveredCall := canonicalCall.discoveredVormaRegistrationCall
+			if state.rootAnalysis != nil && analysis != state.rootAnalysis {
+				discoveredCall = &discoveredVormaRegistrationCall{
+					isLoader:      canonicalCall.isLoader,
+					appExpression: canonicalCall.discoveredVormaRegistrationCall.appExpression,
+					patternExpression: quotedStringExpression(
+						canonicalCall.pattern,
+					),
+					registerDiscoveredTaskExpression: discoveredTaskExpression,
+					sourcePosition:                   discoveredTaskExpression.Pos(),
+				}
+				if !canonicalCall.isLoader {
+					discoveredCall.methodExpression = quotedStringExpression(
+						canonicalCall.method,
+					)
+				}
+				if err := state.rootAnalysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
+					discoveredCall.appExpression,
+					"discovered registration app argument",
+					discoveredCall.sourcePosition,
+				); err != nil {
+					return err
+				}
+				if err := state.rootAnalysis.validateDiscoveredRegistrationExpressionForPackageInitScope(
+					discoveredCall.registerDiscoveredTaskExpression,
+					"discovered registration task argument",
+					discoveredCall.sourcePosition,
+				); err != nil {
+					return err
+				}
+			}
+
+			callID, err := state.rootAnalysis.discoveredVormaRegistrationCallID(
+				discoveredCall,
 			)
 			if err != nil {
-				return analysis.withPositionError(call.Pos(), err)
+				return err
 			}
-			state.discoveredVormaRegistrationCallByID[callID] = canonicalCall.discoveredVormaRegistrationCall
+			state.discoveredVormaRegistrationCallByID[callID] = discoveredCall
 		}
 		return nil
 	}
 
 	localFunctionDeclaration, hasLocalFunction, err := analysis.resolveLocalFunctionDeclarationForCall(
 		call,
+		parsedServerFile,
 		call.Pos(),
 	)
 	if err != nil {
@@ -701,6 +800,7 @@ func (analysis *PackageAnalysis) analyzeCallExpression(
 			parsedServerFile,
 			childBindings,
 			state,
+			discoveredTaskExpression,
 		)
 	}
 
@@ -709,10 +809,11 @@ func (analysis *PackageAnalysis) analyzeCallExpression(
 		call.Args,
 		bindings,
 	)
-	return analysis.discoverLoaderPatternsFromFunctionDeclaration(
+	return localFunctionDeclaration.ownerAnalysis.discoverLoaderPatternsFromFunctionDeclaration(
 		localFunctionDeclaration,
 		childBindings,
 		state,
+		discoveredTaskExpression,
 	)
 }
 
@@ -766,10 +867,6 @@ func (analysis *PackageAnalysis) parseCanonicalRouteRegistrationCall(
 		// Continue to fallback resolution when canonical AST import matching is unavailable.
 	}
 
-	if !callExpressionCouldReferenceCanonicalRouteRegistrationByName(call) {
-		return nil, false, nil
-	}
-
 	if goTypesRegistrationCall, isRegistrationCall, err := analysis.parseCanonicalRouteRegistrationCallByGoTypesIdentity(
 		call,
 		parsedServerFile,
@@ -781,32 +878,6 @@ func (analysis *PackageAnalysis) parseCanonicalRouteRegistrationCall(
 	}
 
 	return nil, false, nil
-}
-
-var canonicalRouteRegistrationFunctionNames = map[string]struct{}{
-	"DefineLoaderForRegistration": {},
-	"DefineActionForRegistration": {},
-	"AddTaskHandler":              {},
-}
-
-func callExpressionCouldReferenceCanonicalRouteRegistrationByName(
-	call *ast.CallExpr,
-) bool {
-	if call == nil {
-		return false
-	}
-
-	calleeExpression := unwrapGenericCalleeExpression(call.Fun)
-	switch typedCallee := calleeExpression.(type) {
-	case *ast.SelectorExpr:
-		_, isCanonicalName := canonicalRouteRegistrationFunctionNames[typedCallee.Sel.Name]
-		return isCanonicalName
-	case *ast.Ident:
-		_, isCanonicalName := canonicalRouteRegistrationFunctionNames[typedCallee.Name]
-		return isCanonicalName
-	default:
-		return false
-	}
 }
 
 func (analysis *PackageAnalysis) parseCanonicalRouteRegistrationCallByGoTypesIdentity(
@@ -895,22 +966,6 @@ func (analysis *PackageAnalysis) parseCanonicalRouteRegistrationCallByImportPath
 			call,
 			parsedServerFile,
 			bindings,
-		)
-	case importPath == "github.com/vormadev/vorma/kit/nestedmux" &&
-		functionName == "AddTaskHandler":
-		return analysis.parseCanonicalLoaderRegistrationCall(
-			call,
-			bindings,
-			"github.com/vormadev/vorma/kit/nestedmux.AddTaskHandler",
-			1,
-		)
-	case importPath == "github.com/vormadev/vorma/kit/mux" && functionName == "AddTaskHandler":
-		return analysis.parseCanonicalActionRegistrationCall(
-			call,
-			bindings,
-			"github.com/vormadev/vorma/kit/mux.AddTaskHandler",
-			1,
-			2,
 		)
 	default:
 		return nil, false, nil
@@ -1008,29 +1063,6 @@ func (analysis *PackageAnalysis) parseCanonicalVormaActionRegistrationCall(
 		)
 	}
 
-	resolvedMethod, isMethod := resolveCompileTimeStringExpression(
-		call.Args[1],
-		bindings,
-		analysis.stringConstResolver,
-		0,
-	)
-	if !isMethod {
-		return nil, false, fmt.Errorf(
-			"github.com/vormadev/vorma.DefineActionForRegistration method argument must resolve to compile-time string",
-		)
-	}
-	resolvedPattern, isPattern := resolveCompileTimeStringExpression(
-		call.Args[2],
-		bindings,
-		analysis.stringConstResolver,
-		0,
-	)
-	if !isPattern {
-		return nil, false, fmt.Errorf(
-			"github.com/vormadev/vorma.DefineActionForRegistration pattern argument must resolve to compile-time string",
-		)
-	}
-
 	appExpression := resolveExpressionWithBindingsForDiscoveredRegistration(
 		call.Args[0],
 		bindings,
@@ -1072,8 +1104,8 @@ func (analysis *PackageAnalysis) parseCanonicalVormaActionRegistrationCall(
 	canonicalCall.discoveredVormaRegistrationCall = &discoveredVormaRegistrationCall{
 		isLoader:              false,
 		appExpression:         appExpression,
-		methodExpression:      quotedStringExpression(resolvedMethod),
-		patternExpression:     quotedStringExpression(resolvedPattern),
+		methodExpression:      quotedStringExpression(canonicalCall.method),
+		patternExpression:     quotedStringExpression(canonicalCall.pattern),
 		handlerExpression:     handlerExpression,
 		decorateCtxExpression: decorateCtxExpression,
 		sourcePosition:        call.Pos(),
@@ -1128,31 +1160,37 @@ func (analysis *PackageAnalysis) parseCanonicalActionRegistrationCall(
 		)
 	}
 
-	if _, isCompileTimeMethod := resolveCompileTimeStringExpression(
+	actionMethod, isCompileTimeMethod := resolveCompileTimeStringExpression(
 		call.Args[methodArgumentIndex],
 		bindings,
 		analysis.stringConstResolver,
 		0,
-	); !isCompileTimeMethod {
+	)
+	if !isCompileTimeMethod {
 		return nil, false, fmt.Errorf(
 			"%s method argument must resolve to compile-time string",
 			calleeDisplayName,
 		)
 	}
 
-	if _, isCompileTimePattern := resolveCompileTimeStringExpression(
+	actionPattern, isCompileTimePattern := resolveCompileTimeStringExpression(
 		call.Args[patternArgumentIndex],
 		bindings,
 		analysis.stringConstResolver,
 		0,
-	); !isCompileTimePattern {
+	)
+	if !isCompileTimePattern {
 		return nil, false, fmt.Errorf(
 			"%s pattern argument must resolve to compile-time string",
 			calleeDisplayName,
 		)
 	}
 
-	return &canonicalRouteRegistrationCall{isLoader: false}, true, nil
+	return &canonicalRouteRegistrationCall{
+		isLoader: false,
+		method:   actionMethod,
+		pattern:  actionPattern,
+	}, true, nil
 }
 
 func unwrapGenericCalleeExpression(calleeExpression ast.Expr) ast.Expr {
@@ -1171,45 +1209,119 @@ func unwrapGenericCalleeExpression(calleeExpression ast.Expr) ast.Expr {
 
 func (analysis *PackageAnalysis) resolveLocalFunctionDeclarationForCall(
 	call *ast.CallExpr,
+	parsedServerFile *parsedServerRouteFile,
 	position token.Pos,
 ) (*localFunctionDeclaration, bool, error) {
 	calleeExpression := unwrapGenericCalleeExpression(call.Fun)
-	calleeIdentifier, isIdentifier := calleeExpression.(*ast.Ident)
-	if !isIdentifier {
+	switch typedCallee := calleeExpression.(type) {
+	case *ast.SelectorExpr:
+		importAlias, isImportAlias := typedCallee.X.(*ast.Ident)
+		if !isImportAlias || importAlias.Obj != nil {
+			return nil, false, nil
+		}
+		importPath, hasImportAlias := parsedServerFile.importAliases[importAlias.Name]
+		if !hasImportAlias {
+			return nil, false, nil
+		}
+		return analysis.resolveImportedFunctionDeclarationByImportPath(
+			importPath,
+			typedCallee.Sel.Name,
+			position,
+		)
+
+	case *ast.Ident:
+		if typedCallee.Obj != nil {
+			if typedCallee.Obj.Kind != ast.Fun {
+				return nil, false, nil
+			}
+			functionDeclaration, isFunctionDeclaration := typedCallee.Obj.Decl.(*ast.FuncDecl)
+			if !isFunctionDeclaration || functionDeclaration.Name == nil {
+				return nil, false, nil
+			}
+			functionDeclarationPosition := functionDeclaration.Name.Pos()
+			if functionDeclarationPosition == token.NoPos {
+				return nil, false, nil
+			}
+			localFunctionDeclaration, hasLocalFunction := analysis.localFunctionsByDeclarationPosition[functionDeclarationPosition]
+			if !hasLocalFunction {
+				return nil, false, nil
+			}
+			return localFunctionDeclaration, true, nil
+		}
+
+		localFunctionDeclarations := analysis.localFunctionsByName[typedCallee.Name]
+		switch len(localFunctionDeclarations) {
+		case 0:
+		case 1:
+			return localFunctionDeclarations[0], true, nil
+		default:
+			return nil, false, analysis.withPositionError(
+				position,
+				fmt.Errorf(
+					"ambiguous local function %q in route discovery; choose unique function name",
+					typedCallee.Name,
+				),
+			)
+		}
+
+		resolvedDeclaration := (*localFunctionDeclaration)(nil)
+		for importPath := range parsedServerFile.dotImportPaths {
+			candidateDeclaration, hasCandidate, err := analysis.resolveImportedFunctionDeclarationByImportPath(
+				importPath,
+				typedCallee.Name,
+				position,
+			)
+			if err != nil {
+				return nil, false, err
+			}
+			if !hasCandidate {
+				continue
+			}
+			if resolvedDeclaration != nil &&
+				resolvedDeclaration != candidateDeclaration {
+				return nil, false, analysis.withPositionError(
+					position,
+					fmt.Errorf(
+						"ambiguous dot-imported function %q in route discovery; avoid dot imports for helpers",
+						typedCallee.Name,
+					),
+				)
+			}
+			resolvedDeclaration = candidateDeclaration
+		}
+		if resolvedDeclaration != nil {
+			return resolvedDeclaration, true, nil
+		}
+		return nil, false, nil
+
+	default:
+		return nil, false, nil
+	}
+}
+
+func (analysis *PackageAnalysis) resolveImportedFunctionDeclarationByImportPath(
+	importPath string,
+	functionName string,
+	position token.Pos,
+) (*localFunctionDeclaration, bool, error) {
+	packageAnalysis, hasImportedPackageAnalysis := analysis.packageAnalysesByImportPath[importPath]
+	if !hasImportedPackageAnalysis || packageAnalysis == nil {
 		return nil, false, nil
 	}
 
-	if calleeIdentifier.Obj != nil {
-		if calleeIdentifier.Obj.Kind != ast.Fun {
-			return nil, false, nil
-		}
-		functionDeclaration, isFunctionDeclaration := calleeIdentifier.Obj.Decl.(*ast.FuncDecl)
-		if !isFunctionDeclaration || functionDeclaration.Name == nil {
-			return nil, false, nil
-		}
-		functionDeclarationPosition := functionDeclaration.Name.Pos()
-		if functionDeclarationPosition == token.NoPos {
-			return nil, false, nil
-		}
-		localFunctionDeclaration, hasLocalFunction := analysis.localFunctionsByDeclarationPosition[functionDeclarationPosition]
-		if !hasLocalFunction {
-			return nil, false, nil
-		}
-		return localFunctionDeclaration, true, nil
-	}
-
-	localFunctionDeclarations := analysis.localFunctionsByName[calleeIdentifier.Name]
-	switch len(localFunctionDeclarations) {
+	functionDeclarations := packageAnalysis.localFunctionsByName[functionName]
+	switch len(functionDeclarations) {
 	case 0:
 		return nil, false, nil
 	case 1:
-		return localFunctionDeclarations[0], true, nil
+		return functionDeclarations[0], true, nil
 	default:
 		return nil, false, analysis.withPositionError(
 			position,
 			fmt.Errorf(
-				"ambiguous local function %q in route discovery; choose unique function name",
-				calleeIdentifier.Name,
+				"ambiguous imported function %q from %q in route discovery; choose unique function name",
+				functionName,
+				importPath,
 			),
 		)
 	}
@@ -1252,6 +1364,7 @@ func (analysis *PackageAnalysis) discoverLoaderPatternsFromFunctionLiteral(
 	parsedServerFile *parsedServerRouteFile,
 	bindings *expressionBindings,
 	state *backendRouteDiscoveryState,
+	discoveredTaskExpression ast.Expr,
 ) error {
 	if functionLiteral == nil || functionLiteral.Body == nil {
 		return nil
@@ -1264,6 +1377,7 @@ func (analysis *PackageAnalysis) discoverLoaderPatternsFromFunctionLiteral(
 				parsedServerFile,
 				bindings,
 				state,
+				discoveredTaskExpression,
 			)
 		}); err != nil {
 			return err
@@ -1276,6 +1390,7 @@ func (analysis *PackageAnalysis) discoverLoaderPatternsFromFunctionDeclaration(
 	localFunction *localFunctionDeclaration,
 	bindings *expressionBindings,
 	state *backendRouteDiscoveryState,
+	discoveredTaskExpression ast.Expr,
 ) error {
 	if localFunction.decl == nil || localFunction.decl.Body == nil {
 		return nil
@@ -1300,6 +1415,7 @@ func (analysis *PackageAnalysis) discoverLoaderPatternsFromFunctionDeclaration(
 				localFunction.file,
 				bindings,
 				state,
+				discoveredTaskExpression,
 			)
 		}); err != nil {
 			return err
@@ -1529,6 +1645,7 @@ func (analysis *PackageAnalysis) discoverVormaRegistrationCalls() ([]*discovered
 		loaderPatternSet:                    map[string]struct{}{},
 		activeFunctions:                     map[*ast.FuncDecl]struct{}{},
 		discoveredVormaRegistrationCallByID: map[string]*discoveredVormaRegistrationCall{},
+		rootAnalysis:                        analysis,
 	}
 
 	if err := analysis.discoverRouteRegistrationsInRootFiles(state); err != nil {
@@ -1554,9 +1671,7 @@ func (analysis *PackageAnalysis) discoverVormaRegistrationCalls() ([]*discovered
 func (analysis *PackageAnalysis) renderDiscoveredRouteRegistrarSource(
 	discoveredCalls []*discoveredVormaRegistrationCall,
 ) ([]byte, error) {
-	requiredImports := map[string]string{
-		"vormagogen": "github.com/vormadev/vorma/vormagogen",
-	}
+	requiredImports := map[string]string{}
 	for _, discoveredCall := range discoveredCalls {
 		if err := analysis.collectRequiredImportsForDiscoveredCall(discoveredCall, requiredImports); err != nil {
 			return nil, err
@@ -1587,7 +1702,11 @@ func (analysis *PackageAnalysis) renderDiscoveredRouteRegistrarSource(
 		if err != nil {
 			return nil, err
 		}
-		sb.WriteString("\t_ = ")
+		// Call discovered registration entrypoints directly in init. Some
+		// registration helpers return tasks while others return no value.
+		// Wrapping calls in blank-identifier assignments breaks no-return
+		// helpers at compile time.
+		sb.WriteString("\t")
 		sb.WriteString(callExpression)
 		sb.WriteString("\n")
 	}
@@ -1610,6 +1729,38 @@ func (analysis *PackageAnalysis) renderDiscoveredCallExpression(
 	if err != nil {
 		return "", err
 	}
+
+	if discoveredCall.registerDiscoveredTaskExpression != nil {
+		taskExpression, err := analysis.formatDiscoveredCallExpression(
+			discoveredCall.registerDiscoveredTaskExpression,
+		)
+		if err != nil {
+			return "", err
+		}
+		if discoveredCall.isLoader {
+			return fmt.Sprintf(
+				"vorma.RegisterDiscoveredLoaderTask(%s, %s, %s)",
+				appExpression,
+				patternExpression,
+				taskExpression,
+			), nil
+		}
+
+		methodExpression, err := analysis.formatDiscoveredCallExpression(
+			discoveredCall.methodExpression,
+		)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(
+			"vorma.RegisterDiscoveredActionTask(%s, %s, %s, %s)",
+			appExpression,
+			methodExpression,
+			patternExpression,
+			taskExpression,
+		), nil
+	}
+
 	handlerExpression, err := analysis.formatDiscoveredCallExpression(
 		discoveredCall.handlerExpression,
 	)
@@ -1707,6 +1858,31 @@ func (analysis *PackageAnalysis) collectRequiredImportsForDiscoveredCall(
 	discoveredCall *discoveredVormaRegistrationCall,
 	requiredImports map[string]string,
 ) error {
+	if discoveredCall.registerDiscoveredTaskExpression != nil {
+		requiredImports["vorma"] = "github.com/vormadev/vorma"
+		callExpressions := []ast.Expr{
+			discoveredCall.appExpression,
+			discoveredCall.patternExpression,
+			discoveredCall.registerDiscoveredTaskExpression,
+		}
+		if !discoveredCall.isLoader {
+			callExpressions = append(
+				callExpressions,
+				discoveredCall.methodExpression,
+			)
+		}
+		for _, callExpression := range callExpressions {
+			if callExpression == nil {
+				continue
+			}
+			if err := analysis.collectRequiredImportsForExpression(callExpression, requiredImports); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	requiredImports["vormagogen"] = "github.com/vormadev/vorma/vormagogen"
 	callExpressions := []ast.Expr{
 		discoveredCall.appExpression,
 		discoveredCall.patternExpression,
@@ -1855,7 +2031,13 @@ func (analysis *PackageAnalysis) getParsedServerRouteFileForPosition(
 	filePath := filepath.ToSlash(filepath.Clean(filePosition.Filename))
 	parsedServerFile, hasParsedServerFile := analysis.filesByPath[filePath]
 	if !hasParsedServerFile {
-		return nil, false
+		if analysis.allFilesByPath == nil {
+			return nil, false
+		}
+		parsedServerFile, hasParsedServerFile = analysis.allFilesByPath[filePath]
+		if !hasParsedServerFile {
+			return nil, false
+		}
 	}
 	return parsedServerFile, true
 }

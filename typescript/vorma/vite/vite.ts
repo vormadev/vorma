@@ -1,5 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { isAbsolute, join, normalize, sep } from "node:path";
 import type { ConfigEnv, Plugin, UserConfig, ViteDevServer } from "vite";
 
 export type VormaVitePluginConfig = {
@@ -97,9 +97,17 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 
 	function getResolvedStaticDistDirPath(): string {
 		if (!resolvedStaticDistDirPath) {
-			resolvedStaticDistDirPath = resolve(
-				process.cwd(),
-				config.distDir,
+			const trimmedDistDir = config.distDir.trim();
+			if (trimmedDistDir === "") {
+				throw new Error("[vorma-vite-plugin] distDir cannot be empty.");
+			}
+			if (isAbsolute(trimmedDistDir)) {
+				throw new Error(
+					`[vorma-vite-plugin] distDir must be relative, got ${trimmedDistDir}.`,
+				);
+			}
+			resolvedStaticDistDirPath = join(
+				normalize(trimmedDistDir),
 				"static",
 			);
 		}
@@ -107,7 +115,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 	}
 
 	function getResolvedPublicFileMapRefPath(): string {
-		return resolve(
+		return join(
 			getResolvedStaticDistDirPath(),
 			"internal",
 			"public_file_map_file_ref.txt",
@@ -115,7 +123,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 	}
 
 	function getResolvedStaticPublicOutDir(): string {
-		return resolve(getResolvedStaticDistDirPath(), "assets", "public");
+		return join(getResolvedStaticDistDirPath(), "assets", "public");
 	}
 
 	function resolveCanonicalPublicFileMapPathFromRef(
@@ -127,9 +135,8 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 		}
 
 		const staticPublicOutDir = getResolvedStaticPublicOutDir();
-		const resolvedCanonicalPath = resolve(
-			staticPublicOutDir,
-			trimmedRefTargetPath,
+		const resolvedCanonicalPath = normalize(
+			join(staticPublicOutDir, trimmedRefTargetPath),
 		);
 		const normalizedStaticPublicOutDir = staticPublicOutDir.endsWith(sep)
 			? staticPublicOutDir

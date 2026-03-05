@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
-	"github.com/vormadev/vorma/wave/waveartifacts"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -18,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
 	"github.com/vormadev/vorma/internal/vormaruntime/routepipeline"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
@@ -26,27 +24,60 @@ import (
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/wave"
+	"github.com/vormadev/vorma/wave/waveartifacts"
 )
+
+type waveCoreConfigForGlueTests struct {
+	ProjectID       string                  `json:"ProjectID"`
+	MainAppEntry    string                  `json:"MainAppEntry"`
+	StaticAssetDirs staticAssetDirsForTests `json:"StaticAssetDirs"`
+	CSSEntryFiles   struct {
+		Critical    string `json:"Critical,omitempty"`
+		NonCritical string `json:"NonCritical,omitempty"`
+	} `json:"CSSEntryFiles,omitempty"`
+	PublicPathPrefix string `json:"PublicPathPrefix,omitempty"`
+}
+
+func newWaveFromConfigBytesForGlueTest(
+	t *testing.T,
+	rootDir string,
+	configBytes []byte,
+) *wave.Wave {
+	t.Helper()
+	mustChdirToRootForWaveNew(t, rootDir)
+	if err := os.WriteFile(
+		filepath.Join(rootDir, "wave.config.json"),
+		configBytes,
+		0o644,
+	); err != nil {
+		t.Fatalf("write wave config: %v", err)
+	}
+	return wave.New(wave.Config{
+		FS:         os.DirFS(rootDir),
+		ConfigPath: "wave.config.json",
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+}
 
 func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-glue-")
-	staticDir := filepath.Join(rootDir, "dist", "static")
+	staticDir := filepath.Join(rootDir, ".wavedist", "static")
 	mustMkdirAll(t, staticDir)
 
 	baseCfg := struct {
-		Core  waveconfig.CoreConfig `json:"Core"`
-		Vorma VormaConfig           `json:"Vorma"`
+		Core  waveCoreConfigForGlueTests `json:"Core"`
+		Vorma VormaConfigJSON            `json:"Vorma"`
 	}{
-		Core: waveconfig.CoreConfig{
+		Core: waveCoreConfigForGlueTests{
+			ProjectID:    "vormaruntime-glue-test",
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
 			},
 			PublicPathPrefix: "/",
 		},
-		Vorma: VormaConfig{
+		Vorma: VormaConfigJSON{
 			MainBuildEntry:       "backend/cmd/build",
 			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
@@ -60,89 +91,89 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		mutate  func(*VormaConfig)
+		mutate  func(*VormaConfigJSON)
 		wantMsg string
 	}{
 		{
 			name: "MainBuildEntry",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.MainBuildEntry = ""
 			},
 			wantMsg: "Vorma.MainBuildEntry is required",
 		},
 		{
 			name: "UIVariant",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.UIVariant = ""
 			},
 			wantMsg: "Vorma.UIVariant is required",
 		},
 		{
 			name: "HTMLTemplateLocation",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.HTMLTemplateLocation = ""
 			},
 			wantMsg: "Vorma.HTMLTemplateLocation is required",
 		},
 		{
 			name: "ClientEntry",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.ClientEntry = ""
 			},
 			wantMsg: "Vorma.ClientEntry is required",
 		},
 		{
 			name: "ClientRouteDefinitionPatterns",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.ClientRouteDefinitionPatterns = nil
 			},
 			wantMsg: "Vorma.ClientRouteDefinitionPatterns is required",
 		},
 		{
 			name: "ClientRouteDefinitionPatterns_EmptyEntry",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.ClientRouteDefinitionPatterns = []string{""}
 			},
 			wantMsg: "cannot be empty or whitespace",
 		},
 		{
 			name: "ClientRouteDefinitionPatterns_WhitespaceEntry",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.ClientRouteDefinitionPatterns = []string{"   "}
 			},
 			wantMsg: "cannot be empty or whitespace",
 		},
 		{
 			name: "TSGenOutDir",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.TSGenOutDir = ""
 			},
 			wantMsg: "Vorma.TSGenOutDir is required",
 		},
 		{
 			name: "UnresolvedRoutePolicy_Invalid",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.UnresolvedRoutePolicy = "invalid"
 			},
 			wantMsg: `Vorma.UnresolvedRoutePolicy must be "warn" or "error" when set`,
 		},
 		{
 			name: "DevReloadRoutesEndpointPath_MissingLeadingSlash",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.DevReloadRoutesEndpointPath = "reload-routes"
 			},
 			wantMsg: "Vorma.DevReloadRoutesEndpointPath must start with '/'",
 		},
 		{
 			name: "DevReloadTemplateEndpointPath_MissingLeadingSlash",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.DevReloadTemplateEndpointPath = "reload-template"
 			},
 			wantMsg: "Vorma.DevReloadTemplateEndpointPath must start with '/'",
 		},
 		{
 			name: "DevReloadEndpoints_MustDiffer",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.DevReloadRoutesEndpointPath = "/__same"
 				c.DevReloadTemplateEndpointPath = "/__same"
 			},
@@ -150,14 +181,14 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 		},
 		{
 			name: "TemplateDataKeys_MustBeNonEmpty",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.TemplateDataKeyHeadElements = "   "
 			},
 			wantMsg: "Vorma template data keys must be non-empty",
 		},
 		{
 			name: "TemplateDataKeys_MustBeUnique",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.TemplateDataKeyHeadElements = "SharedTemplateKey"
 				c.TemplateDataKeyBodyScripts = "SharedTemplateKey"
 			},
@@ -165,7 +196,7 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 		},
 		{
 			name: "ClientRootElementID_Required",
-			mutate: func(c *VormaConfig) {
+			mutate: func(c *VormaConfigJSON) {
 				c.ClientRootElementID = "   "
 			},
 			wantMsg: "Vorma.ClientRootElementID is required",
@@ -182,11 +213,7 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 				t.Fatalf("marshal config: %v", err)
 			}
 
-			w := wave.New(wave.Config{
-				WaveConfigJSON: cfgBytes,
-				DistStaticFS:   os.DirFS(staticDir),
-				Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-			})
+			w := newWaveFromConfigBytesForGlueTest(t, rootDir, cfgBytes)
 
 			defer func() {
 				r := recover()
@@ -205,22 +232,22 @@ func TestNewVormaApp_RequiredConfigValidation(t *testing.T) {
 
 func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-glue-")
-	staticDir := filepath.Join(rootDir, "dist", "static")
+	staticDir := filepath.Join(rootDir, ".wavedist", "static")
 	mustMkdirAll(t, staticDir)
 
 	cfg := struct {
-		Core  waveconfig.CoreConfig `json:"Core"`
-		Vorma VormaConfig           `json:"Vorma"`
+		Core  waveCoreConfigForGlueTests `json:"Core"`
+		Vorma VormaConfigJSON            `json:"Vorma"`
 	}{
-		Core: waveconfig.CoreConfig{
+		Core: waveCoreConfigForGlueTests{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
+			ProjectID:    "vormaruntime-glue-test",
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
 			},
 		},
-		Vorma: VormaConfig{
+		Vorma: VormaConfigJSON{
 			MainBuildEntry:       "backend/cmd/build",
 			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
@@ -236,91 +263,87 @@ func TestNewVormaApp_DefaultBuildtimePublicURLFuncName(t *testing.T) {
 		t.Fatalf("marshal config: %v", err)
 	}
 
-	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgBytes,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	w := newWaveFromConfigBytesForGlueTest(t, rootDir, cfgBytes)
 
 	app := NewVormaApp(VormaAppConfig{Wave: w})
-	if app.Config.BuildtimePublicURLFuncName != "waveBuildtimeURL" {
+	if app.Config.BuildtimePublicURLFuncName() != "waveBuildtimeURL" {
 		t.Fatalf(
 			"expected default buildtime URL function name, got %q",
-			app.Config.BuildtimePublicURLFuncName,
+			app.Config.BuildtimePublicURLFuncName(),
 		)
 	}
-	if app.Config.UnresolvedRoutePolicy != "" {
+	if app.Config.UnresolvedRoutePolicy() != "" {
 		t.Fatalf(
 			"expected unresolved route policy to be unset by default, got %q",
-			app.Config.UnresolvedRoutePolicy,
+			app.Config.UnresolvedRoutePolicy(),
 		)
 	}
-	if app.Config.DevReloadRoutesEndpointPath != runtimeconfig.DefaultDevReloadRoutesEndpointPath {
+	if app.Config.DevReloadRoutesEndpointPath() != runtimeconfig.DefaultDevReloadRoutesEndpointPath {
 		t.Fatalf(
 			"expected default routes reload endpoint path %q, got %q",
 			runtimeconfig.DefaultDevReloadRoutesEndpointPath,
-			app.Config.DevReloadRoutesEndpointPath,
+			app.Config.DevReloadRoutesEndpointPath(),
 		)
 	}
-	if app.Config.DevReloadTemplateEndpointPath != runtimeconfig.DefaultDevReloadTemplateEndpointPath {
+	if app.Config.DevReloadTemplateEndpointPath() != runtimeconfig.DefaultDevReloadTemplateEndpointPath {
 		t.Fatalf(
 			"expected default template reload endpoint path %q, got %q",
 			runtimeconfig.DefaultDevReloadTemplateEndpointPath,
-			app.Config.DevReloadTemplateEndpointPath,
+			app.Config.DevReloadTemplateEndpointPath(),
 		)
 	}
-	if app.Config.TemplateDataKeyHeadElements != runtimeconfig.DefaultTemplateDataKeyHeadElements {
+	if app.Config.TemplateDataKeyHeadElements() != runtimeconfig.DefaultTemplateDataKeyHeadElements {
 		t.Fatalf(
 			"expected default head-elements template key %q, got %q",
 			runtimeconfig.DefaultTemplateDataKeyHeadElements,
-			app.Config.TemplateDataKeyHeadElements,
+			app.Config.TemplateDataKeyHeadElements(),
 		)
 	}
-	if app.Config.TemplateDataKeyBodyScripts != runtimeconfig.DefaultTemplateDataKeyBodyScripts {
+	if app.Config.TemplateDataKeyBodyScripts() != runtimeconfig.DefaultTemplateDataKeyBodyScripts {
 		t.Fatalf(
 			"expected default body-scripts template key %q, got %q",
 			runtimeconfig.DefaultTemplateDataKeyBodyScripts,
-			app.Config.TemplateDataKeyBodyScripts,
+			app.Config.TemplateDataKeyBodyScripts(),
 		)
 	}
-	if app.Config.TemplateDataKeySSRScript != runtimeconfig.DefaultTemplateDataKeySSRScript {
+	if app.Config.TemplateDataKeySSRScript() != runtimeconfig.DefaultTemplateDataKeySSRScript {
 		t.Fatalf(
 			"expected default SSR-script template key %q, got %q",
 			runtimeconfig.DefaultTemplateDataKeySSRScript,
-			app.Config.TemplateDataKeySSRScript,
+			app.Config.TemplateDataKeySSRScript(),
 		)
 	}
-	if app.Config.TemplateDataKeySSRScriptHash != runtimeconfig.DefaultTemplateDataKeySSRScriptHash {
+	if app.Config.TemplateDataKeySSRScriptHash() != runtimeconfig.DefaultTemplateDataKeySSRScriptHash {
 		t.Fatalf(
 			"expected default SSR-script-hash template key %q, got %q",
 			runtimeconfig.DefaultTemplateDataKeySSRScriptHash,
-			app.Config.TemplateDataKeySSRScriptHash,
+			app.Config.TemplateDataKeySSRScriptHash(),
 		)
 	}
-	if app.Config.TemplateDataKeyRootElementID != runtimeconfig.DefaultTemplateDataKeyRootElementID {
+	if app.Config.TemplateDataKeyRootElementID() != runtimeconfig.DefaultTemplateDataKeyRootElementID {
 		t.Fatalf(
 			"expected default root-element-id template key %q, got %q",
 			runtimeconfig.DefaultTemplateDataKeyRootElementID,
-			app.Config.TemplateDataKeyRootElementID,
+			app.Config.TemplateDataKeyRootElementID(),
 		)
 	}
-	if app.Config.ClientRootElementID != runtimeconfig.DefaultClientRootElementID {
+	if app.Config.ClientRootElementID() != runtimeconfig.DefaultClientRootElementID {
 		t.Fatalf(
 			"expected default client root element id %q, got %q",
 			runtimeconfig.DefaultClientRootElementID,
-			app.Config.ClientRootElementID,
+			app.Config.ClientRootElementID(),
 		)
 	}
 }
 
 func TestNewVormaApp_NormalizesUnresolvedRoutePolicy(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{
-		configureVormaConfig: func(config *VormaConfig) {
+		configureVormaConfig: func(config *VormaConfigJSON) {
 			config.UnresolvedRoutePolicy = " Warn "
 		},
 	})
 
-	if got, want := fixture.app.Config.UnresolvedRoutePolicy, UnresolvedRoutePolicyWarn; got != want {
+	if got, want := fixture.app.Config.UnresolvedRoutePolicy(), UnresolvedRoutePolicyWarn; got != want {
 		t.Fatalf("unresolved route policy = %q, want %q", got, want)
 	}
 }
@@ -349,15 +372,15 @@ func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(
 	t *testing.T,
 ) {
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-glue-")
-	staticDir := filepath.Join(rootDir, "dist", "static")
+	staticDir := filepath.Join(rootDir, ".wavedist", "static")
 	mustMkdirAll(t, staticDir)
 
 	cfg := struct {
-		Core waveconfig.CoreConfig `json:"Core"`
+		Core waveCoreConfigForGlueTests `json:"Core"`
 	}{
-		Core: waveconfig.CoreConfig{
+		Core: waveCoreConfigForGlueTests{
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
+			ProjectID:    "vormaruntime-glue-test",
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "backend/assets",
 				Public:  "frontend/assets",
@@ -369,11 +392,7 @@ func TestNewVormaApp_MissingVormaSectionStillTriggersRequiredValidation(
 		t.Fatalf("marshal config: %v", err)
 	}
 
-	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgBytes,
-		DistStaticFS:   os.DirFS(staticDir),
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	w := newWaveFromConfigBytesForGlueTest(t, rootDir, cfgBytes)
 
 	defer func() {
 		r := recover()

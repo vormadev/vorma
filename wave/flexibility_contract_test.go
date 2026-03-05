@@ -1,6 +1,7 @@
 package wave
 
 import (
+	"github.com/vormadev/vorma/internal/wavetest"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,7 +9,7 @@ import (
 
 func TestFlexibilityContract_CustomNestedPublicPathPrefix(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.PublicPathPrefix = "/cdn/assets/v2"
+	wavetest.SetCorePublicPathPrefix(fixture.cfg, "/cdn/assets/v2")
 	waveInstance := newWaveForTest(t, fixture, true, nil)
 
 	if got := waveInstance.PublicPathPrefix(); got != "/cdn/assets/v2/" {

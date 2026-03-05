@@ -285,6 +285,7 @@ func TestStageOnePathsFile(t *testing.T) {
 	app := fixture.App
 
 	var pathsFile *runtimepaths.PathsFile
+	var stageOnePathsFileError error
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetBuildID("build-stage-one")
 		l.SetRouteManifestFile("manifest-stage-one.json")
@@ -295,8 +296,14 @@ func TestStageOnePathsFile(t *testing.T) {
 				ExportKey:       "default",
 			},
 		})
-		pathsFile = stageOnePathsFile(l, "manifest-stage-one.json")
+		pathsFile, stageOnePathsFileError = stageOnePathsFile(
+			l,
+			"manifest-stage-one.json",
+		)
 	})
+	if stageOnePathsFileError != nil {
+		t.Fatalf("stageOnePathsFile returned error: %v", stageOnePathsFileError)
+	}
 
 	if pathsFile == nil {
 		t.Fatal("expected non-nil stage one paths file")

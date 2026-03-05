@@ -10,7 +10,7 @@ build: pre
 
 # call with `make run port=whatever`
 run:
-	@PORT=$(port) ./backend/dist/main
+	@PORT=$(port) ./backend/.wavedist/main
 
 vercel-install-go:
 	@curl -L https://go.dev/dl/go1.24.0.linux-amd64.tar.gz | tar -C /tmp -xz
@@ -26,5 +26,4 @@ outer-npmbuild:
 
 vercel-build: outer-npmbuild
 	@export PATH=/tmp/go/bin:$$PATH && \
-		go run ./backend/cmd/build && \
-		ls -la backend/dist/
+		go run ./backend/cmd/build

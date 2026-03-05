@@ -1,11 +1,56 @@
 package builder
 
 import (
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"github.com/vormadev/vorma/wave/wavewatch"
 	"strings"
 	"testing"
 )
+
+func newParsedConfigForBuilderValidateTests(
+	t *testing.T,
+) waveconfig.ParsedConfig {
+	t.Helper()
+	return wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+}
+
+func resetCoreConfigForBuilderValidateTests(cfg waveconfig.ParsedConfig) {
+	if cfg == nil || cfg.Core() == nil {
+		return
+	}
+	wavetest.SetCoreDevBuildHook(cfg, "")
+	wavetest.SetCoreDevBuildHookTimeoutMilliseconds(cfg, 0)
+	wavetest.SetCoreProdBuildHook(cfg, "")
+	wavetest.SetCoreProdBuildHookTimeoutMilliseconds(cfg, 0)
+	wavetest.SetCoreMainAppEntry(cfg, "cmd/app")
+	wavetest.SetCoreStaticAssetDirsPrivate(cfg, "")
+	wavetest.SetCoreStaticAssetDirsPublic(cfg, "")
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, "")
+	wavetest.SetCoreNonCriticalCSSEntryFile(cfg, "")
+	wavetest.SetCorePublicPathPrefix(cfg, "")
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetCoreSequentialGoBuild(cfg, false)
+}
+
+func resetWatchConfigForBuilderValidateTests(cfg waveconfig.ParsedConfig) {
+	if cfg == nil || cfg.Watch() == nil {
+		return
+	}
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "")
+	wavetest.SetWatchHookStageFailurePolicy(cfg, "")
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchPostCommandTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchConcurrentCallbackTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchConcurrentNoWaitCallbackTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchPostCallbackTimeoutMilliseconds(cfg, 0)
+	wavetest.SetWatchInclude(cfg, nil)
+	wavetest.SetWatchExcludeDirs(cfg, nil)
+	wavetest.SetWatchExcludeFiles(cfg, nil)
+}
 
 func TestValidateWatchedFile_RunOnChangeOnlyTimingRules(t *testing.T) {
 	t.Run(
@@ -224,21 +269,14 @@ func TestValidateConfig_StaticDirRules(t *testing.T) {
 		}
 	})
 
-	base := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-		},
-	}
+	base := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("requires static dirs in browser mode", func(t *testing.T) {
-		cfg := *base
-		cfg.Core = &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-		}
+		cfg := base.Clone()
+		resetCoreConfigForBuilderValidateTests(cfg)
+		wavetest.SetCoreMainAppEntry(cfg, "cmd/app")
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -250,14 +288,12 @@ func TestValidateConfig_StaticDirRules(t *testing.T) {
 	t.Run(
 		"does not require static dirs in server-only mode",
 		func(t *testing.T) {
-			cfg := *base
-			cfg.Core = &waveconfig.CoreConfig{
-				MainAppEntry:   "cmd/app",
-				DistDir:        "dist",
-				ServerOnlyMode: true,
-			}
+			cfg := base.Clone()
+			resetCoreConfigForBuilderValidateTests(cfg)
+			wavetest.SetCoreMainAppEntry(cfg, "cmd/app")
+			wavetest.SetCoreServerOnlyMode(cfg, true)
 
-			if err := ValidateConfig(&cfg); err != nil {
+			if err := ValidateConfig(cfg); err != nil {
 				t.Fatalf("ValidateConfig returned error: %v", err)
 			}
 		},
@@ -265,43 +301,27 @@ func TestValidateConfig_StaticDirRules(t *testing.T) {
 }
 
 func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
-	baseConfig := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-		},
-		Watch: &waveconfig.WatchConfig{},
-	}
+	baseConfig := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("accepts non-negative timeout values", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-				PreCommandTimeoutMilliseconds:              250,
-				ConcurrentCommandTimeoutMilliseconds:       500,
-				ConcurrentNoWaitCommandTimeoutMilliseconds: 600,
-				PostCommandTimeoutMilliseconds:             750,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchPreCommandTimeoutMilliseconds(cfg, 250)
+		wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(cfg, 500)
+		wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(cfg, 600)
+		wavetest.SetWatchPostCommandTimeoutMilliseconds(cfg, 750)
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("rejects negative pre timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-				PreCommandTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchPreCommandTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative pre timeout")
 		}
@@ -311,14 +331,11 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 	})
 
 	t.Run("rejects negative concurrent timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-				ConcurrentCommandTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative concurrent timeout")
 		}
@@ -331,14 +348,11 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 	})
 
 	t.Run("rejects negative concurrent-no-wait timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-				ConcurrentNoWaitCommandTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for negative concurrent-no-wait timeout",
@@ -353,14 +367,11 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 	})
 
 	t.Run("rejects negative post timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-				PostCommandTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchPostCommandTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error for negative post timeout")
 		}
@@ -371,29 +382,20 @@ func TestValidateConfig_HookCommandTimeoutValidation(t *testing.T) {
 }
 
 func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
-	baseConfig := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-		},
-		Watch: &waveconfig.WatchConfig{},
-	}
+	baseConfig := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("rejects invalid Watch.Include pattern", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			Include: []wavewatch.WatchedFile{
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchInclude(cfg,
+			[]wavewatch.WatchedFile{
 				{
 					Pattern: "[",
 				},
 			},
-		}
+		)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -403,11 +405,11 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 	})
 
 	t.Run("rejects invalid Watch.Exclude.Dirs pattern", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{}
-		cfg.Watch.Exclude.Dirs = []string{"["}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchExcludeDirs(cfg, []string{"["})
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -417,11 +419,11 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 	})
 
 	t.Run("rejects invalid Watch.Exclude.Files pattern", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{}
-		cfg.Watch.Exclude.Files = []string{"["}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchExcludeFiles(cfg, []string{"["})
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -431,9 +433,10 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 	})
 
 	t.Run("rejects invalid OnChangeHooks exclude pattern", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			Include: []wavewatch.WatchedFile{
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchInclude(cfg,
+			[]wavewatch.WatchedFile{
 				{
 					Pattern: "**/*.go",
 					OnChangeHooks: []wavewatch.OnChangeHook{
@@ -444,9 +447,9 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 					},
 				},
 			},
-		}
+		)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal("expected validation error, got nil")
 		}
@@ -460,48 +463,31 @@ func TestValidateConfig_RejectsInvalidWatchGlobPatterns(t *testing.T) {
 }
 
 func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
-	baseConfig := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-		},
-	}
+	baseConfig := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("accepts non-negative core build hook timeouts", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Core = &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-			DevBuildHookTimeoutMilliseconds:  250,
-			ProdBuildHookTimeoutMilliseconds: 500,
-		}
+		cfg := baseConfig.Clone()
+		resetCoreConfigForBuilderValidateTests(cfg)
+		wavetest.SetCoreMainAppEntry(cfg, "cmd/app")
+		wavetest.SetCoreStaticAssetDirsPrivate(cfg, "static/private")
+		wavetest.SetCoreStaticAssetDirsPublic(cfg, "static/public")
+		wavetest.SetCoreDevBuildHookTimeoutMilliseconds(cfg, 250)
+		wavetest.SetCoreProdBuildHookTimeoutMilliseconds(cfg, 500)
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("rejects negative dev build hook timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Core = &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-			DevBuildHookTimeoutMilliseconds: -1,
-		}
+		cfg := baseConfig.Clone()
+		resetCoreConfigForBuilderValidateTests(cfg)
+		wavetest.SetCoreMainAppEntry(cfg, "cmd/app")
+		wavetest.SetCoreStaticAssetDirsPrivate(cfg, "static/private")
+		wavetest.SetCoreStaticAssetDirsPublic(cfg, "static/public")
+		wavetest.SetCoreDevBuildHookTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for negative dev build hook timeout",
@@ -513,18 +499,14 @@ func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
 	})
 
 	t.Run("rejects negative prod build hook timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Core = &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-			ProdBuildHookTimeoutMilliseconds: -1,
-		}
+		cfg := baseConfig.Clone()
+		resetCoreConfigForBuilderValidateTests(cfg)
+		wavetest.SetCoreMainAppEntry(cfg, "cmd/app")
+		wavetest.SetCoreStaticAssetDirsPrivate(cfg, "static/private")
+		wavetest.SetCoreStaticAssetDirsPublic(cfg, "static/public")
+		wavetest.SetCoreProdBuildHookTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for negative prod build hook timeout",
@@ -537,43 +519,27 @@ func TestValidateConfig_BuildHookTimeoutValidation(t *testing.T) {
 }
 
 func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
-	baseConfig := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-		},
-		Watch: &waveconfig.WatchConfig{},
-	}
+	baseConfig := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("accepts non-negative callback timeout values", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-				PreCallbackTimeoutMilliseconds:              250,
-				ConcurrentCallbackTimeoutMilliseconds:       500,
-				ConcurrentNoWaitCallbackTimeoutMilliseconds: 600,
-				PostCallbackTimeoutMilliseconds:             750,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchPreCallbackTimeoutMilliseconds(cfg, 250)
+		wavetest.SetWatchConcurrentCallbackTimeoutMilliseconds(cfg, 500)
+		wavetest.SetWatchConcurrentNoWaitCallbackTimeoutMilliseconds(cfg, 600)
+		wavetest.SetWatchPostCallbackTimeoutMilliseconds(cfg, 750)
 
-		if err := ValidateConfig(&cfg); err != nil {
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("rejects negative pre callback timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-				PreCallbackTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchPreCallbackTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for negative pre callback timeout",
@@ -585,14 +551,11 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 	})
 
 	t.Run("rejects negative concurrent callback timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-				ConcurrentCallbackTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchConcurrentCallbackTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for negative concurrent callback timeout",
@@ -609,14 +572,11 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 	t.Run(
 		"rejects negative concurrent-no-wait callback timeout",
 		func(t *testing.T) {
-			cfg := *baseConfig
-			cfg.Watch = &waveconfig.WatchConfig{
-				HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-					ConcurrentNoWaitCallbackTimeoutMilliseconds: -1,
-				},
-			}
+			cfg := baseConfig.Clone()
+			resetWatchConfigForBuilderValidateTests(cfg)
+			wavetest.SetWatchConcurrentNoWaitCallbackTimeoutMilliseconds(cfg, -1)
 
-			err := ValidateConfig(&cfg)
+			err := ValidateConfig(cfg)
 			if err == nil {
 				t.Fatal(
 					"expected validation error for negative concurrent-no-wait callback timeout",
@@ -632,14 +592,11 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 	)
 
 	t.Run("rejects negative post callback timeout", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-				PostCallbackTimeoutMilliseconds: -1,
-			},
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchPostCallbackTimeoutMilliseconds(cfg, -1)
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for negative post callback timeout",
@@ -652,30 +609,22 @@ func TestValidateConfig_HookCallbackTimeoutValidation(t *testing.T) {
 }
 
 func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
-	baseConfig := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-		},
-		Watch: &waveconfig.WatchConfig{},
-	}
+	baseConfig := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("accepts empty healthcheck endpoint", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{HealthcheckEndpoint: ""}
-		if err := ValidateConfig(&cfg); err != nil {
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchHealthcheckEndpoint(cfg, "")
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("accepts absolute path endpoint", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{HealthcheckEndpoint: "/healthz"}
-		if err := ValidateConfig(&cfg); err != nil {
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
@@ -714,12 +663,11 @@ func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			cfg := *baseConfig
-			cfg.Watch = &waveconfig.WatchConfig{
-				HealthcheckEndpoint: testCase.HealthcheckEndpoint,
-			}
+			cfg := baseConfig.Clone()
+			resetWatchConfigForBuilderValidateTests(cfg)
+			wavetest.SetWatchHealthcheckEndpoint(cfg, testCase.HealthcheckEndpoint)
 
-			err := ValidateConfig(&cfg)
+			err := ValidateConfig(cfg)
 			if err == nil {
 				t.Fatal("expected validation error for healthcheck endpoint")
 			}
@@ -734,53 +682,44 @@ func TestValidateConfig_HealthcheckEndpointValidation(t *testing.T) {
 }
 
 func TestValidateConfig_HookStageFailurePolicyValidation(t *testing.T) {
-	baseConfig := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			MainAppEntry: "cmd/app",
-			DistDir:      "dist",
-			StaticAssetDirs: staticAssetDirsForTests{
-				Private: "static/private",
-				Public:  "static/public",
-			},
-		},
-		Watch: &waveconfig.WatchConfig{},
-	}
+	baseConfig := newParsedConfigForBuilderValidateTests(t)
 
 	t.Run("accepts default empty value", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{}
-		if err := ValidateConfig(&cfg); err != nil {
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("accepts explicit fail-open", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookStageFailurePolicy: configuredHookStageFailurePolicyFailOpen,
-		}
-		if err := ValidateConfig(&cfg); err != nil {
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchHookStageFailurePolicy(cfg,
+			configuredHookStageFailurePolicyFailOpen,
+		)
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("accepts explicit fail-closed", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookStageFailurePolicy: configuredHookStageFailurePolicyFailClosed,
-		}
-		if err := ValidateConfig(&cfg); err != nil {
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchHookStageFailurePolicy(cfg,
+			configuredHookStageFailurePolicyFailClosed,
+		)
+		if err := ValidateConfig(cfg); err != nil {
 			t.Fatalf("ValidateConfig returned error: %v", err)
 		}
 	})
 
 	t.Run("rejects unknown hook-stage failure policy", func(t *testing.T) {
-		cfg := *baseConfig
-		cfg.Watch = &waveconfig.WatchConfig{
-			HookStageFailurePolicy: "invalid-policy",
-		}
+		cfg := baseConfig.Clone()
+		resetWatchConfigForBuilderValidateTests(cfg)
+		wavetest.SetWatchHookStageFailurePolicy(cfg, "invalid-policy")
 
-		err := ValidateConfig(&cfg)
+		err := ValidateConfig(cfg)
 		if err == nil {
 			t.Fatal(
 				"expected validation error for invalid hook-stage failure policy",

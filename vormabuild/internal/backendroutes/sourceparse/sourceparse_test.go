@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/vormabuild/internal/testkit"
 )
 
 func TestResolveServerRouteDefinitionFiles_ValidationAndNoMatch(t *testing.T) {
@@ -31,11 +32,22 @@ func TestResolveServerRouteDefinitionFiles_ValidationAndNoMatch(t *testing.T) {
 		"returns no-match error when configured patterns match nothing",
 		func(t *testing.T) {
 			runtime := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
-					ServerRouteDefinitionPatterns: []string{
-						filepath.Join(t.TempDir(), "**", "*.go"),
+				Config: testkit.MustParseVormaConfigJSONForTest(
+					t,
+					vormaruntime.VormaConfigJSON{
+						MainBuildEntry:       "backend/cmd/build",
+						UIVariant:            string(vormaruntime.UIVariantReact),
+						HTMLTemplateLocation: "entry.go.html",
+						ClientEntry:          "frontend/src/vorma.entry.tsx",
+						ClientRouteDefinitionPatterns: []string{
+							"frontend/src/**/*.vorma.routes.ts",
+						},
+						ServerRouteDefinitionPatterns: []string{
+							"server/routes/**/*.go",
+						},
+						TSGenOutDir: "frontend/src/vorma.gen",
 					},
-				},
+				),
 			}
 
 			_, err := ResolveServerRouteDefinitionFiles(runtime, Dependencies{})

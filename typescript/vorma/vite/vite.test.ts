@@ -2,7 +2,7 @@
 
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
 import { describe, expect, it } from "vitest";
 import vormaVitePlugin from "./vite.ts";
@@ -41,7 +41,16 @@ function createCanonicalPublicFileMapFixture(map: Record<string, string>): {
 	);
 	writeFileSync(publicFileMapRefPath, canonicalPublicFileMapPath);
 
-	return { distDir };
+	const currentWorkingDirectoryRelativeDistDir = relative(
+		process.cwd(),
+		distDir,
+	);
+	return {
+		distDir:
+			currentWorkingDirectoryRelativeDistDir.trim() === ""
+				? "."
+				: currentWorkingDirectoryRelativeDistDir,
+	};
 }
 
 function buildPluginConfig(map: Record<string, string> = {}) {
@@ -281,5 +290,21 @@ describe("vorma vite plugin static public URL transform behavior", () => {
 				`const logoURL = waveBuildtimeURL("images/missing.svg");`,
 			),
 		).rejects.toThrow("unresolved static public asset lookup(s)");
+	});
+
+	it("rejects machine-absolute distDir config values", async () => {
+		const plugin = vormaVitePlugin({
+			...buildPluginConfig({
+				"images/logo.svg": "wave_out_images_logo_deadbeef.svg",
+			}),
+			distDir: resolve(process.cwd(), "dist"),
+		});
+
+		await expect(
+			invokePluginTransform(
+				plugin,
+				`const logoURL = waveBuildtimeURL("images/logo.svg");`,
+			),
+		).rejects.toThrow("distDir must be relative");
 	});
 });

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/vormadev/vorma/internal/testhelpers/waveoutputtest"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -301,7 +301,9 @@ func TestRegisterPatternIfNeeded_IsConcurrentSafe(t *testing.T) {
 func TestInit_PanicsWithWrappedInitError(t *testing.T) {
 	fixture := newTestFixture(t, testFixtureOptions{})
 	app := fixture.app
-	app.Config.HTMLTemplateLocation = "missing-template.go.html"
+	mustMutateAppVormaConfig(t, app, func(config *VormaConfigJSON) {
+		config.HTMLTemplateLocation = "missing-template.go.html"
+	})
 
 	defer func() {
 		r := recover()
@@ -362,23 +364,24 @@ func TestInitInner_NormalizesNilStageCollections(t *testing.T) {
 	}
 }
 
-func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
+func TestInit_PanicsWhenBasePathsUnavailable(t *testing.T) {
 	rootDir := wavetest.NewWorkspaceTempDir(t, "vormaruntime-init-")
+	mustChdirToRootForWaveNew(t, rootDir)
 
 	cfg := struct {
-		Core  waveconfig.CoreConfig `json:"Core"`
-		Vorma VormaConfig           `json:"Vorma"`
+		Core  waveCoreConfigForGlueTests `json:"Core"`
+		Vorma VormaConfigJSON            `json:"Vorma"`
 	}{
-		Core: waveconfig.CoreConfig{
+		Core: waveCoreConfigForGlueTests{
+			ProjectID:    "vormaruntime-init-test",
 			MainAppEntry: "backend/cmd/serve",
-			DistDir:      wavetest.MustCWDRelativePath(filepath.Join(rootDir, "dist")),
 			StaticAssetDirs: staticAssetDirsForTests{
 				Private: "assets/private",
 				Public:  "assets/public",
 			},
 			PublicPathPrefix: "/",
 		},
-		Vorma: VormaConfig{
+		Vorma: VormaConfigJSON{
 			MainBuildEntry:       "backend/cmd/build",
 			UIVariant:            string(UIVariantReact),
 			HTMLTemplateLocation: "entry.go.html",
@@ -393,10 +396,24 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal config: %v", err)
 	}
+	if writeErr := os.WriteFile(
+		filepath.Join(rootDir, "wave.config.json"),
+		cfgBytes,
+		0o644,
+	); writeErr != nil {
+		t.Fatalf("write wave config: %v", writeErr)
+	}
+	if mkdirError := os.MkdirAll(
+		filepath.Join(rootDir, ".wavedist", "static"),
+		0o755,
+	); mkdirError != nil {
+		t.Fatalf("create dist static directory: %v", mkdirError)
+	}
 
 	w := wave.New(wave.Config{
-		WaveConfigJSON: cfgBytes,
-		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		FS:         os.DirFS(rootDir),
+		ConfigPath: "wave.config.json",
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 	app := NewVormaApp(VormaAppConfig{
 		Wave:   w,
@@ -406,11 +423,11 @@ func TestInit_PanicsWhenPrivateFSUnavailable(t *testing.T) {
 	defer func() {
 		r := recover()
 		if r == nil {
-			t.Fatal("expected panic when private FS is unavailable")
+			t.Fatal("expected panic when base paths are unavailable")
 		}
 		msg := r.(error).Error()
-		if !strings.Contains(msg, "could not get private fs") {
-			t.Fatalf("panic message = %q, expected private fs context", msg)
+		if !strings.Contains(msg, "could not get base paths") {
+			t.Fatalf("panic message = %q, expected base-paths context", msg)
 		}
 	}()
 
@@ -797,10 +814,14 @@ func TestInit_ReinitFailureDoesNotPartiallyMutateRuntimeState(t *testing.T) {
 	mustWriteJSONFile(t, stageOneFile, updatedStage)
 	mustWriteJSONFile(t, stageTwoFile, updatedStage)
 
-	previousTemplateLocation := app.Config.HTMLTemplateLocation
-	app.Config.HTMLTemplateLocation = "missing-template.go.html"
+	previousTemplateLocation := app.Config.HTMLTemplateLocation()
+	mustMutateAppVormaConfig(t, app, func(config *VormaConfigJSON) {
+		config.HTMLTemplateLocation = "missing-template.go.html"
+	})
 	defer func() {
-		app.Config.HTMLTemplateLocation = previousTemplateLocation
+		mustMutateAppVormaConfig(t, app, func(config *VormaConfigJSON) {
+			config.HTMLTemplateLocation = previousTemplateLocation
+		})
 	}()
 
 	func() {

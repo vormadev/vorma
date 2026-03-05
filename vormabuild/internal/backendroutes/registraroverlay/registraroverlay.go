@@ -204,7 +204,7 @@ func DiscoveryCacheKey(v *vormaruntime.Vorma) string {
 	}
 
 	normalizedServerRoutePatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
-		v.Config.ServerRouteDefinitionPatterns,
+		v.Config.ServerRouteDefinitionPatterns(),
 	)
 	if err != nil {
 		normalizedServerRoutePatterns = []string{
@@ -217,7 +217,7 @@ func DiscoveryCacheKey(v *vormaruntime.Vorma) string {
 			filepath.ToSlash(filepath.Clean(v.Wave.DistDir())),
 			filepath.ToSlash(filepath.Clean(v.Wave.StaticPrivateOutDir())),
 			filepath.ToSlash(filepath.Clean(v.Wave.StaticPublicOutDir())),
-			strings.TrimSpace(v.Config.MainBuildEntry),
+			strings.TrimSpace(v.Config.MainBuildEntry()),
 			strings.Join(normalizedServerRoutePatterns, ","),
 		},
 		"|",

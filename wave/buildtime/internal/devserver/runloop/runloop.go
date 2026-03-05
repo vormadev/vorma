@@ -29,7 +29,7 @@ type WatcherExecutionTraceContext struct {
 // Dependencies defines orchestration callbacks required by Engine.
 type Dependencies struct {
 	Log    *slog.Logger
-	Config *waveconfig.ParsedConfig
+	Config waveconfig.ParsedConfig
 
 	GetCurrentWatcher func() *watch.Watcher
 	GetCurrentBuilder func() *builder.Builder
@@ -148,7 +148,7 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 
 	if flowDecision.TriggerConfigRestart {
 		engine.broadcastRebuilding()
-		engine.logInfo("configuration changed; scheduling config restart")
+		engine.logDebug("configuration changed; scheduling config restart")
 		engine.triggerConfigRestart()
 		return
 	}
@@ -165,7 +165,7 @@ func (engine *Engine) ProcessEvents(events []fsnotify.Event) {
 		engine.logInfo("[watcher]", "op", logPayload.Operation, "filename", logPayload.FilePath)
 	}
 	if engine.isWaitingForBuildRetry() {
-		engine.logInfo(
+		engine.logDebug(
 			"waiting for build retry; queuing restart from watcher batch",
 			"cycle_id",
 			traceContext.CycleID,
@@ -250,7 +250,7 @@ func (engine *Engine) ProcessEventsWithDeterministicPipeline(
 		len(eventsWithHooks),
 	)
 	if !implicitBuildDecision.ShouldRunImplicitBuild {
-		engine.logInfo(implicitBuildDecision.SkipImplicitBuildLogEntry)
+		engine.logDebug(implicitBuildDecision.SkipImplicitBuildLogEntry)
 	} else if engine.dependencies.Config != nil {
 		work.Resolve(engine.dependencies.Config.UsingVite())
 	}
@@ -859,10 +859,10 @@ func (engine *Engine) ExecuteHookExecutionPlanWithContext(
 // configuredHookStageFailurePolicy reads configured stage failure policy.
 func (engine *Engine) configuredHookStageFailurePolicy() string {
 	if engine == nil || engine.dependencies.Config == nil ||
-		engine.dependencies.Config.Watch == nil {
+		engine.dependencies.Config.Watch() == nil {
 		return ""
 	}
-	return engine.dependencies.Config.Watch.HookStageFailurePolicy
+	return engine.dependencies.Config.Watch().HookStageFailurePolicy()
 }
 
 // resolveHookExecutionPlan resolves hook plan through dependency callback or default planner.
@@ -888,7 +888,7 @@ func (engine *Engine) deriveHookCommandTimeoutForExecutionPlan(
 		)
 	}
 	return hooks.DeriveHookCommandTimeoutDurationForExecutionPlan(
-		engine.dependencies.Config.Watch,
+		engine.dependencies.Config.Watch(),
 		stageType,
 		executionPlan,
 	)
@@ -907,7 +907,7 @@ func (engine *Engine) deriveHookCallbackTimeoutForExecutionPlan(
 		)
 	}
 	return hooks.DeriveHookCallbackTimeoutDurationForExecutionPlan(
-		engine.dependencies.Config.Watch,
+		engine.dependencies.Config.Watch(),
 		stageType,
 		executionPlan,
 	)
@@ -1088,6 +1088,14 @@ func (engine *Engine) logInfo(message string, arguments ...any) {
 		return
 	}
 	engine.dependencies.Log.Info(message, arguments...)
+}
+
+// logDebug emits debug log when logger is available.
+func (engine *Engine) logDebug(message string, arguments ...any) {
+	if engine == nil || engine.dependencies.Log == nil {
+		return
+	}
+	engine.dependencies.Log.Debug(message, arguments...)
 }
 
 // logWarn emits warn log when logger is available.

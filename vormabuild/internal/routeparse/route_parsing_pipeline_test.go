@@ -11,6 +11,16 @@ import (
 	"github.com/vormadev/vorma/internal/vormaruntime"
 )
 
+func routeParseTestPathFromWorkingDirectory(
+	tb testing.TB,
+	repositoryRelativePath string,
+) string {
+	tb.Helper()
+	return filepath.ToSlash(
+		filepath.Clean(filepath.FromSlash(repositoryRelativePath)),
+	)
+}
+
 func newRouteParsingExecutorForTest(
 	mutateDependencies func(*routeParsingExecutorDependencies),
 ) routeParsingExecutor {
@@ -50,48 +60,37 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 	)
 
 	t.Run(
-		"returns required error when route definition patterns are missing",
+		"returns parse error when route definition patterns are missing",
 		func(t *testing.T) {
-			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{},
-				Log:    testLogger(),
-			}
-
-			_, err := resolveClientRouteDefinitionFiles(v)
-			if err == nil {
+			rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+			rawConfig.ClientRouteDefinitionPatterns = []string{}
+			_, parseError := parseVormaConfigForRouteParseTests(t, rawConfig)
+			if parseError == nil {
 				t.Fatal(
-					"expected error when route definition patterns are missing",
+					"expected parse error when route definition patterns are missing",
 				)
 			}
-			if !strings.Contains(
-				err.Error(),
-				"Vorma.ClientRouteDefinitionPatterns is required",
-			) {
-				t.Fatalf("error = %q, expected required-patterns message", err)
+			if !strings.Contains(parseError.Error(), "ClientRouteDefinitionPatterns") {
+				t.Fatalf("error = %q, expected required-patterns parse error", parseError)
 			}
 		},
 	)
 
 	t.Run(
-		"returns error when route definition patterns contain only whitespace",
+		"returns parse error when route definition patterns contain only whitespace",
 		func(t *testing.T) {
-			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
-					ClientRouteDefinitionPatterns: []string{" ", "\n\t"},
-				},
-				Log: testLogger(),
-			}
-
-			_, err := resolveClientRouteDefinitionFiles(v)
-			if err == nil {
+			rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+			rawConfig.ClientRouteDefinitionPatterns = []string{" ", "\n\t"}
+			_, parseError := parseVormaConfigForRouteParseTests(t, rawConfig)
+			if parseError == nil {
 				t.Fatal(
-					"expected error when route definition patterns contain only whitespace",
+					"expected parse error for route definition patterns containing only whitespace",
 				)
 			}
-			if !strings.Contains(err.Error(), "cannot be empty or whitespace") {
+			if !strings.Contains(parseError.Error(), "cannot be empty or whitespace") {
 				t.Fatalf(
-					"error = %q, expected whitespace-only-patterns message",
-					err,
+					"error = %q, expected whitespace-only-patterns parse error",
+					parseError,
 				)
 			}
 		},
@@ -108,25 +107,17 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 					) ([]string, error) {
 						expandedPatterns = append(expandedPatterns, pattern)
 						return []string{
-							filepath.Join(
-								"frontend",
-								"src",
-								"routes",
-								"..",
-								"routes",
-								"b.vorma.routes.ts",
+							routeParseTestPathFromWorkingDirectory(
+								t,
+								"frontend/src/routes/../routes/b.vorma.routes.ts",
 							),
-							filepath.Join(
-								"frontend",
-								"src",
-								"routes",
-								"nested",
+							routeParseTestPathFromWorkingDirectory(
+								t,
+								"frontend/src/routes/nested",
 							),
-							filepath.Join(
-								"frontend",
-								"src",
-								"routes",
-								"a.vorma.routes.ts",
+							routeParseTestPathFromWorkingDirectory(
+								t,
+								"frontend/src/routes/a.vorma.routes.ts",
 							),
 						}, nil
 					}
@@ -143,12 +134,12 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			)
 
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/**/*vorma.routes.ts",
 						"frontend/src/vorma.routes.ts",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 
@@ -162,7 +153,12 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 
 			if !slices.Equal(
 				expandedPatterns,
-				[]string{"frontend/src/**/*vorma.routes.ts"},
+				[]string{
+					routeParseTestPathFromWorkingDirectory(
+						t,
+						"frontend/src/**/*vorma.routes.ts",
+					),
+				},
 			) {
 				t.Fatalf(
 					"expandedPatterns = %#v, want one explicit glob pattern",
@@ -171,9 +167,18 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			}
 
 			wantFiles := []string{
-				"frontend/src/routes/a.vorma.routes.ts",
-				"frontend/src/routes/b.vorma.routes.ts",
-				"frontend/src/vorma.routes.ts",
+				routeParseTestPathFromWorkingDirectory(
+					t,
+					"frontend/src/routes/a.vorma.routes.ts",
+				),
+				routeParseTestPathFromWorkingDirectory(
+					t,
+					"frontend/src/routes/b.vorma.routes.ts",
+				),
+				routeParseTestPathFromWorkingDirectory(
+					t,
+					"frontend/src/vorma.routes.ts",
+				),
 			}
 			if !slices.Equal(files, wantFiles) {
 				t.Fatalf("files = %#v, want %#v", files, wantFiles)
@@ -200,11 +205,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 		)
 
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 				ClientRouteDefinitionPatterns: []string{
 					"frontend/src/**/*vorma.routes.ts",
 				},
-			},
+			}),
 			Log: testLogger(),
 		}
 
@@ -214,7 +219,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 		}
 		if !strings.Contains(
 			err.Error(),
-			"expand route definition pattern \"frontend/src/**/*vorma.routes.ts\"",
+			"expand route definition pattern \""+
+				routeParseTestPathFromWorkingDirectory(
+					t,
+					"frontend/src/**/*vorma.routes.ts",
+				)+"\"",
 		) {
 			t.Fatalf("error = %q, expected expansion context", err)
 		}
@@ -245,11 +254,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			)
 
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/**/*vorma.routes.ts",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 
@@ -286,11 +295,15 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 					dependencies.statRouteDefinitionPath = func(
 						path string,
 					) (fs.FileInfo, error) {
-						if path != "frontend/src/vorma.routes.ts" {
+						expectedPath := routeParseTestPathFromWorkingDirectory(
+							t,
+							"frontend/src/vorma.routes.ts",
+						)
+						if path != expectedPath {
 							t.Fatalf(
 								"path = %q, want %q",
 								path,
-								"frontend/src/vorma.routes.ts",
+								expectedPath,
 							)
 						}
 						return nil, expectedErr
@@ -299,11 +312,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			)
 
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/vorma.routes.ts",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 
@@ -315,7 +328,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			}
 			if !strings.Contains(
 				err.Error(),
-				"stat route definition path \"frontend/src/vorma.routes.ts\"",
+				"stat route definition path \""+
+					routeParseTestPathFromWorkingDirectory(
+						t,
+						"frontend/src/vorma.routes.ts",
+					)+"\"",
 			) {
 				t.Fatalf("error = %q, expected stat context", err)
 			}
@@ -341,11 +358,15 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 					dependencies.statRouteDefinitionPath = func(
 						path string,
 					) (fs.FileInfo, error) {
-						if path != "frontend/src/routes" {
+						expectedPath := routeParseTestPathFromWorkingDirectory(
+							t,
+							"frontend/src/routes",
+						)
+						if path != expectedPath {
 							t.Fatalf(
 								"path = %q, want %q",
 								path,
-								"frontend/src/routes",
+								expectedPath,
 							)
 						}
 						return staticFileInfo{
@@ -358,11 +379,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			)
 
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/routes",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 
@@ -372,7 +393,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			}
 			if !strings.Contains(
 				err.Error(),
-				"route definition path \"frontend/src/routes\" is a directory",
+				"route definition path \""+
+					routeParseTestPathFromWorkingDirectory(
+						t,
+						"frontend/src/routes",
+					)+"\" is a directory",
 			) {
 				t.Fatalf("error = %q, expected explicit-directory message", err)
 			}
@@ -402,11 +427,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			)
 
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/**/*vorma.routes.ts",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 
@@ -416,7 +441,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 			}
 			if !strings.Contains(
 				err.Error(),
-				"no route definition files matched patterns: frontend/src/**/*vorma.routes.ts",
+				"no route definition files matched patterns: "+
+					routeParseTestPathFromWorkingDirectory(
+						t,
+						"frontend/src/**/*vorma.routes.ts",
+					),
 			) {
 				t.Fatalf("error = %q, expected no-match message", err)
 			}
@@ -426,11 +455,11 @@ func TestResolveClientRouteDefinitionFiles(t *testing.T) {
 
 func TestParseClientRoutes_OrchestratesPipelineSteps(t *testing.T) {
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{
 				"frontend/src/**/*vorma.routes.ts",
 			},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -807,7 +836,7 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 
 	t.Run("defaults to error in production mode", func(t *testing.T) {
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{},
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{}),
 			Log:    testLogger(),
 		}
 		v.SetIsDev(false)
@@ -827,7 +856,7 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 
 	t.Run("defaults to error in dev mode", func(t *testing.T) {
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{},
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{}),
 			Log:    testLogger(),
 		}
 		v.SetIsDev(true)
@@ -847,9 +876,9 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 
 	t.Run("uses explicit config override", func(t *testing.T) {
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 				UnresolvedRoutePolicy: vormaruntime.UnresolvedRoutePolicyWarn,
-			},
+			}),
 			Log: testLogger(),
 		}
 		v.SetIsDev(false)
@@ -867,23 +896,18 @@ func TestResolveUnresolvedRoutePolicy(t *testing.T) {
 		}
 	})
 
-	t.Run("returns error for unknown config override", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				UnresolvedRoutePolicy: "unknown",
-			},
-			Log: testLogger(),
-		}
-
-		_, err := resolveUnresolvedRoutePolicy(v)
-		if err == nil {
-			t.Fatal("expected error for unknown unresolved-route policy")
+	t.Run("returns parse error for unknown config override", func(t *testing.T) {
+		rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+		rawConfig.UnresolvedRoutePolicy = "unknown"
+		_, parseError := parseVormaConfigForRouteParseTests(t, rawConfig)
+		if parseError == nil {
+			t.Fatal("expected parse error for unknown unresolved-route policy")
 		}
 		if !strings.Contains(
-			err.Error(),
+			parseError.Error(),
 			"Vorma.UnresolvedRoutePolicy must be",
 		) {
-			t.Fatalf("error = %q, expected invalid-policy message", err)
+			t.Fatalf("error = %q, expected invalid-policy parse message", parseError)
 		}
 	})
 }
@@ -901,9 +925,9 @@ func TestHandleUnresolvedRouteCalls(t *testing.T) {
 		"returns nil when warn policy is explicitly configured",
 		func(t *testing.T) {
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					UnresolvedRoutePolicy: vormaruntime.UnresolvedRoutePolicyWarn,
-				},
+				}),
 				Log: testLogger(),
 			}
 			v.SetIsDev(true)
@@ -916,7 +940,7 @@ func TestHandleUnresolvedRouteCalls(t *testing.T) {
 
 	t.Run("returns detailed error for strict policy", func(t *testing.T) {
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{},
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{}),
 			Log:    testLogger(),
 		}
 		v.SetIsDev(false)
@@ -1104,11 +1128,11 @@ func TestMergeRouteCallsIntoPaths(t *testing.T) {
 		"returns error when a route call has no module argument",
 		func(t *testing.T) {
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/**/*vorma.routes.ts",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 
@@ -1155,11 +1179,11 @@ func TestMergeRouteCallsIntoPaths(t *testing.T) {
 		)
 
 		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
+			Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 				ClientRouteDefinitionPatterns: []string{
 					"frontend/src/**/*vorma.routes.ts",
 				},
-			},
+			}),
 			Log: testLogger(),
 		}
 

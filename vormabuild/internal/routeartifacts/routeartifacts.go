@@ -18,12 +18,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/artifactio"
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/lab/viteutil"
-	"github.com/vormadev/vorma/internal/artifactio"
 	"github.com/vormadev/vorma/vormabuild/internal/buildlifecycle"
 	"github.com/vormadev/vorma/vormabuild/internal/tsartifactgen"
 )
@@ -794,9 +795,16 @@ func (executor stageOnePathsWriterExecutor) writePathsToDiskStageOneWithRouteMan
 	l *vormaruntime.LockedVorma,
 	routeManifestFile string,
 ) error {
+	stageOnePathsFileData, stageOnePathsFileError := stageOnePathsFile(
+		l,
+		routeManifestFile,
+	)
+	if stageOnePathsFileError != nil {
+		return stageOnePathsFileError
+	}
 	return executor.writeStageOnePathsFileToDisk(
 		l.Vorma(),
-		stageOnePathsFile(l, routeManifestFile),
+		stageOnePathsFileData,
 	)
 }
 
@@ -817,13 +825,17 @@ func (executor stageOnePathsWriterExecutor) writePathsToDiskStageOneFromRuntimeS
 	runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 	routeManifestFile string,
 ) error {
+	stageOnePathsFileData, stageOnePathsFileError := stageOnePathsFileFromRuntimeState(
+		v,
+		runtimeStateSnapshot,
+		routeManifestFile,
+	)
+	if stageOnePathsFileError != nil {
+		return stageOnePathsFileError
+	}
 	return executor.writeStageOnePathsFileToDisk(
 		v,
-		stageOnePathsFileFromRuntimeState(
-			v,
-			runtimeStateSnapshot,
-			routeManifestFile,
-		),
+		stageOnePathsFileData,
 	)
 }
 
@@ -861,29 +873,49 @@ func (executor stageOnePathsWriterExecutor) writeStageOnePathsFileToDisk(
 func stageOnePathsFile(
 	l *vormaruntime.LockedVorma,
 	routeManifestFile string,
-) *runtimepaths.PathsFile {
+) (*runtimepaths.PathsFile, error) {
 	v := l.Vorma()
+	clientEntryRelativeToResolveRoot, clientEntryError := normalizePathOrPatternToResolveRootRelativeForRouteArtifacts(
+		v,
+		v.Config.ClientEntry(),
+	)
+	if clientEntryError != nil {
+		return nil, fmt.Errorf(
+			"normalize client entry for stage-one paths file: %w",
+			clientEntryError,
+		)
+	}
 	return &runtimepaths.PathsFile{
 		Stage:             "one",
 		Paths:             toRuntimePathsMap(l.Paths()),
-		ClientEntrySrc:    v.Config.ClientEntry,
+		ClientEntrySrc:    clientEntryRelativeToResolveRoot,
 		BuildID:           l.BuildID(),
 		RouteManifestFile: routeManifestFile,
-	}
+	}, nil
 }
 
 func stageOnePathsFileFromRuntimeState(
 	v *vormaruntime.Vorma,
 	runtimeStateSnapshot buildlifecycle.RouteBuildRuntimeStateSnapshot,
 	routeManifestFile string,
-) *runtimepaths.PathsFile {
+) (*runtimepaths.PathsFile, error) {
+	clientEntryRelativeToResolveRoot, clientEntryError := normalizePathOrPatternToResolveRootRelativeForRouteArtifacts(
+		v,
+		v.Config.ClientEntry(),
+	)
+	if clientEntryError != nil {
+		return nil, fmt.Errorf(
+			"normalize client entry for stage-one runtime-state paths file: %w",
+			clientEntryError,
+		)
+	}
 	return &runtimepaths.PathsFile{
 		Stage:             "one",
 		Paths:             toRuntimePathsMap(runtimeStateSnapshot.Paths),
-		ClientEntrySrc:    v.Config.ClientEntry,
+		ClientEntrySrc:    clientEntryRelativeToResolveRoot,
 		BuildID:           runtimeStateSnapshot.BuildID,
 		RouteManifestFile: routeManifestFile,
-	}
+	}, nil
 }
 
 type viteManifestApplicationResult struct {
@@ -1047,7 +1079,7 @@ func (executor stageTwoBuildIDExecutor) computeStageTwoBuildID(
 	pathsFile *runtimepaths.PathsFile,
 ) (string, error) {
 	htmlTemplateContent, err := executor.dependencies.readHTMLTemplate(
-		path.Join(v.Wave.PrivateStaticDir(), v.Config.HTMLTemplateLocation),
+		path.Join(v.Wave.PrivateStaticDir(), v.Config.HTMLTemplateLocation()),
 	)
 	if err != nil {
 		return "", fmt.Errorf("read HTML template: %w", err)
@@ -1133,7 +1165,17 @@ func toPathsFileStageTwo(
 	}
 
 	paths := v.Paths()
-	cleanClientEntry := filepath.Clean(v.Config.ClientEntry)
+	clientEntryRelativeToResolveRoot, clientEntryError := normalizePathOrPatternToResolveRootRelativeForRouteArtifacts(
+		v,
+		v.Config.ClientEntry(),
+	)
+	if clientEntryError != nil {
+		return nil, fmt.Errorf(
+			"normalize client entry for stage-two paths file: %w",
+			clientEntryError,
+		)
+	}
+	cleanClientEntry := filepath.Clean(clientEntryRelativeToResolveRoot)
 	manifestApplicationResult := applyViteManifestToPaths(
 		viteManifest,
 		paths,
@@ -1147,7 +1189,12 @@ func toPathsFileStageTwo(
 		return nil, err
 	}
 
-	pathsFile := buildStageTwoPathsFile(v, paths, manifestApplicationResult)
+	pathsFile := buildStageTwoPathsFile(
+		v,
+		paths,
+		clientEntryRelativeToResolveRoot,
+		manifestApplicationResult,
+	)
 
 	buildID, err := computeStageTwoBuildID(v, pathsFile)
 	if err != nil {
@@ -1209,13 +1256,14 @@ func applyBuildIDToPathsFile(
 func buildStageTwoPathsFile(
 	v *vormaruntime.Vorma,
 	paths map[string]*vormaruntime.Path,
+	clientEntryRelativeToResolveRoot string,
 	manifestApplicationResult viteManifestApplicationResult,
 ) *runtimepaths.PathsFile {
 	return &runtimepaths.PathsFile{
 		Stage:             "two",
 		DepToCSSBundleMap: manifestApplicationResult.depToCSSBundleMap,
 		Paths:             toRuntimePathsMap(paths),
-		ClientEntrySrc:    v.Config.ClientEntry,
+		ClientEntrySrc:    clientEntryRelativeToResolveRoot,
 		ClientEntryOut:    manifestApplicationResult.clientEntryOut,
 		ClientEntryDeps:   manifestApplicationResult.clientEntryDeps,
 		RouteManifestFile: v.RouteManifestFile(),
@@ -1274,6 +1322,23 @@ func toRuntimePathsMap(
 		}
 	}
 	return convertedPaths
+}
+
+func normalizePathOrPatternToResolveRootRelativeForRouteArtifacts(
+	v *vormaruntime.Vorma,
+	pathOrPattern string,
+) (string, error) {
+	if v == nil || v.Wave == nil || v.Wave.ParsedConfig() == nil {
+		return "", errors.New("vorma app with parsed wave config is required")
+	}
+	resolveRootRelativePathOrPattern, relativePathOrPatternError := runtimeconfig.NormalizePathOrPatternToResolveRootRelative(
+		v.Wave.ParsedConfig().ResolveRoot(),
+		pathOrPattern,
+	)
+	if relativePathOrPatternError != nil {
+		return "", relativePathOrPatternError
+	}
+	return filepath.ToSlash(filepath.Clean(resolveRootRelativePathOrPattern)), nil
 }
 
 func pathsOutputPath(v *vormaruntime.Vorma, fileName string) string {

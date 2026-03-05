@@ -2,8 +2,6 @@ package runloop_test
 
 import (
 	"context"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -11,6 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/internal/wavetest"
@@ -65,7 +66,7 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(
 ) {
 	harness := newBatchedWatcherHarness(
 		t,
-		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir()),
+		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir()),
 		nil,
 		nil,
 	)
@@ -132,7 +133,7 @@ func TestProcessBatchedEvents_AllRunOnChangeOnlySkipsBuildAndRestart(
 func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 	harness := newBatchedWatcherHarness(
 		t,
-		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir()),
+		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir()),
 		nil,
 		nil,
 	)
@@ -198,7 +199,7 @@ func TestProcessBatchedEvents_ConcurrentRestartSkipsPostHooks(t *testing.T) {
 func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 	harness := newBatchedWatcherHarness(
 		t,
-		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir()),
+		newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir()),
 		nil,
 		nil,
 	)
@@ -249,11 +250,11 @@ func TestProcessBatchedEvents_PostHookRestartNoGo(t *testing.T) {
 
 func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var callbackCount atomic.Int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	includePatterns := []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -267,8 +268,8 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 			},
 		},
 	}
-	cfg.Watch.Include[0].Sort()
-	cfg.Dist.Root = cfg.Core.DistDir
+	includePatterns[0].Sort()
+	wavetest.SetWatchInclude(cfg, includePatterns)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -326,11 +327,11 @@ func TestRunWatcher_ProcessesFsnotifyEventsUntilWatcherCloses(t *testing.T) {
 
 func TestRunWatcher_NilContextDefaultsToBackground(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var callbackCount atomic.Int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	includePatterns := []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -344,8 +345,8 @@ func TestRunWatcher_NilContextDefaultsToBackground(t *testing.T) {
 			},
 		},
 	}
-	cfg.Watch.Include[0].Sort()
-	cfg.Dist.Root = cfg.Core.DistDir
+	includePatterns[0].Sort()
+	wavetest.SetWatchInclude(cfg, includePatterns)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -403,8 +404,8 @@ func TestRunWatcher_NilContextDefaultsToBackground(t *testing.T) {
 }
 
 func TestWaitForBuildRetry_ConsumesRestartAndCleansUp(t *testing.T) {
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	watcherForTest, watcherCreateError := watch.NewWatcher(
 		cfg,
@@ -465,11 +466,11 @@ func TestProcessEvents_WaitingForBuildRetryQueuesRestartAndSkipsPipeline(
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-			cfg.Core.ServerOnlyMode = true
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+			wavetest.SetCoreServerOnlyMode(cfg, true)
 
 			var preHookCallbackCount atomic.Int32
-			cfg.Watch.Include = []wavewatch.WatchedFile{
+			includePatterns := []wavewatch.WatchedFile{
 				{
 					Pattern: "**/*.go",
 					OnChangeHooks: []wavewatch.OnChangeHook{
@@ -483,8 +484,8 @@ func TestProcessEvents_WaitingForBuildRetryQueuesRestartAndSkipsPipeline(
 					},
 				},
 			}
-			cfg.Watch.Include[0].Sort()
-			cfg.Dist.Root = cfg.Core.DistDir
+			includePatterns[0].Sort()
+			wavetest.SetWatchInclude(cfg, includePatterns)
 
 			watcherForTest, watcherCreateError := watch.NewWatcher(
 				cfg,
@@ -547,7 +548,7 @@ func TestProcessEvents_WaitingForBuildRetryQueuesRestartAndSkipsPipeline(
 
 func newBatchedWatcherHarness(
 	t *testing.T,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	watcherForTest *watch.Watcher,
 	builderForTest *builder.Builder,
 ) batchedWatcherHarness {
@@ -612,7 +613,7 @@ func newBatchedWatcherHarness(
 				builder *builder.Builder,
 			) eventpipeline.EventExecutionPlanningResult {
 				return buildEventExecutionPlanForRunloopTests(
-					cfg,
+					"",
 					events,
 					watcher,
 					builder,
@@ -705,9 +706,10 @@ func waveEvent(path string) fsnotify.Event {
 }
 
 func newParsedConfigForRunloopBatchedWatcherTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func newDiscardLoggerForRunloopBatchedWatcherTests() *slog.Logger {

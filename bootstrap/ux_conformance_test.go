@@ -292,10 +292,20 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 	}
 
 	for _, requiredFragment := range []string{
-		"//go:build !prod",
+		"wave.New(wave.Config{",
 		"os.DirFS(\"backend\")",
-		"WaveConfigJSON:",
-		"DistStaticFS:",
+		"ConfigPath: \"wave.config.json\"",
+	} {
+		if !strings.Contains(string(devTemplate), requiredFragment) {
+			t.Fatalf(
+				"expected dev wave template to contain %q",
+				requiredFragment,
+			)
+		}
+	}
+
+	for _, requiredFragment := range []string{
+		"//go:build !prod",
 	} {
 		if !strings.Contains(string(devTemplate), requiredFragment) {
 			t.Fatalf(
@@ -307,9 +317,10 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 
 	for _, requiredFragment := range []string{
 		"//go:build prod",
-		"//go:embed all:dist/static wave.config.json",
-		"WaveConfigJSON:",
-		"DistStaticFS:",
+		"//go:embed all:.wavedist/static wave.config.json",
+		"wave.New(wave.Config{",
+		"FS:         embedFS",
+		"ConfigPath: \"wave.config.json\"",
 	} {
 		if !strings.Contains(string(prodTemplate), requiredFragment) {
 			t.Fatalf(
@@ -317,6 +328,44 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 				requiredFragment,
 			)
 		}
+	}
+}
+
+func TestBootstrapWaveConfigTemplateUsesConfigRelativePaths(t *testing.T) {
+	waveConfigTemplate, readError := tmplsFS.ReadFile("tmpls/wave_config_json_tmpl.txt")
+	if readError != nil {
+		t.Fatalf("read wave config template: %v", readError)
+	}
+
+	for _, requiredFragment := range []string{
+		"\"ProjectID\": \"",
+		"\"ResolveRoot\": \"../\"",
+		"\"MainAppEntry\": \"backend/cmd/serve\"",
+		"\"Private\": \"backend/assets\"",
+		"\"Public\": \"frontend/assets\"",
+		"\"ServerRouteDefinitionPatterns\": [\"backend/src/**/*.go\"]",
+	} {
+		if !strings.Contains(string(waveConfigTemplate), requiredFragment) {
+			t.Fatalf(
+				"expected wave config template to contain %q",
+				requiredFragment,
+			)
+		}
+	}
+	if strings.Contains(string(waveConfigTemplate), "\"ConfigLocation\"") {
+		t.Fatal("did not expect wave config template to contain ConfigLocation")
+	}
+}
+
+func TestBootstrapWaveTemplateSetDoesNotIncludeSharedWaveTemplate(
+	t *testing.T,
+) {
+	_, err := tmplsFS.ReadFile("tmpls/backend_wave_shared_go_str.txt")
+	if err == nil {
+		t.Fatal("did not expect shared wave template file to exist")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("unexpected error reading shared wave template: %v", err)
 	}
 }
 

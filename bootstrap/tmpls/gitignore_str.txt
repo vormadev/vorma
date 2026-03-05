@@ -2,6 +2,6 @@
 **/node_modules/
 
 # Wave
-backend/dist/static/*
-!backend/dist/static/.keep
-backend/dist/main*
+backend/.wavedist/static/*
+!backend/.wavedist/static/.keep
+backend/.wavedist/main*

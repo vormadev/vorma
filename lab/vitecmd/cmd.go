@@ -51,6 +51,40 @@ type BuildCtxOptions struct {
 	ViteConfigFile string
 }
 
+func viteConfigFileArgumentPath(
+	viteConfigFile string,
+	commandWorkingDirectory string,
+) string {
+	trimmedViteConfigFile := strings.TrimSpace(viteConfigFile)
+	if trimmedViteConfigFile == "" {
+		return ""
+	}
+	if !filepath.IsAbs(trimmedViteConfigFile) {
+		return trimmedViteConfigFile
+	}
+	trimmedCommandWorkingDirectory := strings.TrimSpace(commandWorkingDirectory)
+	if trimmedCommandWorkingDirectory == "" {
+		return filepath.Clean(trimmedViteConfigFile)
+	}
+	relativeViteConfigFile, relativeViteConfigFileError := filepath.Rel(
+		trimmedCommandWorkingDirectory,
+		trimmedViteConfigFile,
+	)
+	if relativeViteConfigFileError != nil {
+		return filepath.Clean(trimmedViteConfigFile)
+	}
+	normalizedRelativeViteConfigFile := filepath.ToSlash(
+		filepath.Clean(relativeViteConfigFile),
+	)
+	if normalizedRelativeViteConfigFile == "." || normalizedRelativeViteConfigFile == "" {
+		return filepath.Clean(trimmedViteConfigFile)
+	}
+	if strings.HasPrefix(normalizedRelativeViteConfigFile, ".") {
+		return normalizedRelativeViteConfigFile
+	}
+	return "./" + normalizedRelativeViteConfigFile
+}
+
 func NewBuildCtx(opts *BuildCtxOptions) *BuildCtx {
 	if opts == nil {
 		opts = &BuildCtxOptions{}
@@ -112,7 +146,14 @@ func (c *BuildCtx) DevBuild() error {
 	)
 
 	if c.opts.ViteConfigFile != "" {
-		c.cmd.Args = append(c.cmd.Args, "--config", c.opts.ViteConfigFile)
+		c.cmd.Args = append(
+			c.cmd.Args,
+			"--config",
+			viteConfigFileArgumentPath(
+				c.opts.ViteConfigFile,
+				c.opts.JSPackageManagerCmdDir,
+			),
+		)
 	}
 
 	log.Info("Running vite (dev)...",
@@ -201,7 +242,14 @@ func (c *BuildCtx) ProdBuild() error {
 	)
 
 	if c.opts.ViteConfigFile != "" {
-		c.cmd.Args = append(c.cmd.Args, "--config", c.opts.ViteConfigFile)
+		c.cmd.Args = append(
+			c.cmd.Args,
+			"--config",
+			viteConfigFileArgumentPath(
+				c.opts.ViteConfigFile,
+				c.opts.JSPackageManagerCmdDir,
+			),
+		)
 	}
 
 	c.cmd.Env = append(os.Environ(), "ROLLDOWN_OPTIONS_VALIDATION=loose")

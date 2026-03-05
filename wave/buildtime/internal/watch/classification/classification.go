@@ -315,23 +315,24 @@ func IsConfigurationPathChange(
 	watcherPath string,
 	configurationPath string,
 ) bool {
-	normalizedWatcherPath := waveenv.Absolute(watcherPath)
-	normalizedConfigurationPath := waveenv.Absolute(configurationPath)
-	if normalizedWatcherPath == "" || normalizedConfigurationPath == "" {
+	watcherPathMachineAbsolute := waveenv.Absolute(watcherPath)
+	configurationPathMachineAbsolute := waveenv.Absolute(configurationPath)
+	if watcherPathMachineAbsolute == "" ||
+		configurationPathMachineAbsolute == "" {
 		return false
 	}
 	if waveenv.PathsReferToSameLocation(
-		normalizedWatcherPath,
-		normalizedConfigurationPath,
+		watcherPathMachineAbsolute,
+		configurationPathMachineAbsolute,
 	) {
 		return true
 	}
 
 	watcherMissingAliasKey := dedup.MissingFileAliasKeyForWatcherEventDeduplication(
-		normalizedWatcherPath,
+		watcherPathMachineAbsolute,
 	)
 	configurationMissingAliasKey := dedup.MissingFileAliasKeyForWatcherEventDeduplication(
-		normalizedConfigurationPath,
+		configurationPathMachineAbsolute,
 	)
 	return watcherMissingAliasKey != "" &&
 		watcherMissingAliasKey == configurationMissingAliasKey

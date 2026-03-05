@@ -18,8 +18,14 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 
 	testkit.WriteBootstrapStyleRoutesFixtureFiles(t)
 	app.SetIsDev(true)
-	app.Config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
-	app.Config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
+			config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
+		},
+	)
 
 	patterns := getDefaultWatchPatterns(app)
 	if len(patterns) != 3 {
@@ -30,7 +36,7 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		t,
 		patterns,
 		normalizeFrameworkWatchPatternPath(
-			app.Config.ClientRouteDefinitionPatterns[0],
+			app.Config.ClientRouteDefinitionPatterns()[0],
 		),
 	)
 	templatePatternHook := findWatchHookByPattern(
@@ -39,7 +45,7 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		normalizeFrameworkWatchPatternPath(
 			filepath.Join(
 				app.Wave.PrivateStaticDir(),
-				app.Config.HTMLTemplateLocation,
+				app.Config.HTMLTemplateLocation(),
 			),
 		),
 	)
@@ -53,12 +59,15 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 	var shouldTemplateFallback bool
 	var routeResolverHookContexts []*wavewatch.HookContext
 	var templateResolverHookContexts []*wavewatch.HookContext
+	var routeResolverExpectedBuildIDs []string
+	var templateResolverExpectedBuildIDs []string
 	resolveReloadAction := func(
 		_ *vormaruntime.Vorma,
 		reloadEndpoint string,
 		_ string,
 		_ string,
 		hookContext *wavewatch.HookContext,
+		expectedBuildID string,
 	) *wavewatch.RefreshAction {
 		switch reloadEndpoint {
 		case app.DevReloadRoutesEndpointPath():
@@ -66,6 +75,10 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 			routeResolverHookContexts = append(
 				routeResolverHookContexts,
 				hookContext,
+			)
+			routeResolverExpectedBuildIDs = append(
+				routeResolverExpectedBuildIDs,
+				expectedBuildID,
 			)
 			if shouldRouteFallback {
 				return &wavewatch.RefreshAction{
@@ -83,6 +96,10 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 			templateResolverHookContexts = append(
 				templateResolverHookContexts,
 				hookContext,
+			)
+			templateResolverExpectedBuildIDs = append(
+				templateResolverExpectedBuildIDs,
+				expectedBuildID,
 			)
 			if shouldTemplateFallback {
 				return &wavewatch.RefreshAction{
@@ -115,6 +132,7 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 		func(t *testing.T) {
 			shouldRouteFallback = false
 
+			buildIDBeforeFastRouteRebuild := app.BuildID()
 			routeHookContext := &wavewatch.HookContext{AppStoppedForBatch: false}
 			action, err := routesHook(routeHookContext)
 			if err != nil {
@@ -143,6 +161,14 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 				t.Fatalf(
 					"expected exactly one route resolver call, got %d",
 					routeResolverCalls,
+				)
+			}
+			if len(routeResolverExpectedBuildIDs) != 1 ||
+				routeResolverExpectedBuildIDs[0] !=
+					buildIDBeforeFastRouteRebuild {
+				t.Fatalf(
+					"expected route resolver to receive pre-rebuild expected build ID, got %#v",
+					routeResolverExpectedBuildIDs,
 				)
 			}
 			if len(routeResolverHookContexts) != 1 ||
@@ -178,6 +204,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 				t.Fatalf(
 					"expected exactly one additional route resolver call, got %d",
 					routeResolverCalls,
+				)
+			}
+			if len(routeResolverExpectedBuildIDs) != 2 ||
+				routeResolverExpectedBuildIDs[1] == "" {
+				t.Fatalf(
+					"expected route resolver to receive expected build ID for nil hook context path, got %#v",
+					routeResolverExpectedBuildIDs,
 				)
 			}
 			if len(routeResolverHookContexts) != 2 ||
@@ -271,6 +304,13 @@ func TestDefaultWatchPatternCallbacks_RoutesAndTemplate(t *testing.T) {
 				t.Fatalf(
 					"expected exactly one template resolver call, got %d",
 					templateResolverCalls,
+				)
+			}
+			if len(templateResolverExpectedBuildIDs) != 1 ||
+				templateResolverExpectedBuildIDs[0] == "" {
+				t.Fatalf(
+					"expected template resolver to receive expected build ID, got %#v",
+					templateResolverExpectedBuildIDs,
 				)
 			}
 			if len(templateResolverHookContexts) != 1 ||

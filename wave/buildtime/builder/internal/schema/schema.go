@@ -20,12 +20,12 @@ import (
 
 // Processor builds and writes Wave configuration schema documents.
 type Processor struct {
-	cfg *waveconfig.ParsedConfig
+	cfg waveconfig.ParsedConfig
 	log *slog.Logger
 }
 
 // NewProcessor creates a schema processor for one parsed config.
-func NewProcessor(cfg *waveconfig.ParsedConfig, log *slog.Logger) *Processor {
+func NewProcessor(cfg waveconfig.ParsedConfig, log *slog.Logger) *Processor {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -48,7 +48,7 @@ func (processor *Processor) WriteSchema() error {
 		return fmt.Errorf("marshal schema document: %w", marshalError)
 	}
 
-	targetPath := filepath.Join(processor.cfg.Dist.Internal(), "schema.json")
+	targetPath := filepath.Join(processor.cfg.Dist().Internal(), "schema.json")
 	if writeError := artifactio.WriteFileAtomically(targetPath, schemaBytes, 0o644); writeError != nil {
 		return writeError
 	}
@@ -104,19 +104,19 @@ func (processor *Processor) buildCoreSchema() map[string]any {
 		"description":          "Core build graph and runtime wiring used by Wave tooling and startup.",
 		"additionalProperties": false,
 		"required": []string{
+			"ProjectID",
 			"MainAppEntry",
-			"DistDir",
 			"StaticAssetDirs",
 		},
 		"properties": map[string]any{
-			"ConfigLocation": stringSchema(
-				"Configuration file path used for reload-aware tooling workflows.",
+			"ProjectID": stringSchema(
+				"Required project identifier used for deterministic config discovery when multiple configs match ConfigPath semantics.",
+			),
+			"ResolveRoot": stringSchema(
+				"Optional base directory for resolving filesystem paths. Relative to the config file directory. When omitted, paths resolve relative to the config file directory. Example: \"../\" resolves paths from the config file's parent directory.",
 			),
 			"MainAppEntry": stringSchema(
-				"Go application entry file path for build execution.",
-			),
-			"DistDir": stringSchema(
-				"Build output directory root for binaries and static artifacts.",
+				"Go application entry file path. Must be set relative to your JSON config file.",
 			),
 			"PublicPathPrefix": map[string]any{
 				"type":        "string",
@@ -147,10 +147,10 @@ func (processor *Processor) buildCoreSchema() map[string]any {
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"Public": stringSchema(
-						"Source directory for public static assets.",
+						"Source directory for public static assets. Must be set relative to your JSON config file.",
 					),
 					"Private": stringSchema(
-						"Source directory for private static assets.",
+						"Source directory for private static assets. Must be set relative to your JSON config file.",
 					),
 				},
 			},
@@ -160,10 +160,10 @@ func (processor *Processor) buildCoreSchema() map[string]any {
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"Critical": stringSchema(
-						"Critical CSS entry file path.",
+						"Critical CSS entry file path. Must be set relative to your JSON config file.",
 					),
 					"NonCritical": stringSchema(
-						"Non-critical CSS entry file path.",
+						"Non-critical CSS entry file path. Must be set relative to your JSON config file.",
 					),
 				},
 			},
@@ -212,7 +212,7 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 		"additionalProperties": false,
 		"properties": map[string]any{
 			"Pattern": stringSchema(
-				"Glob pattern for watched file selection.",
+				"Glob pattern for watched file selection. Must be set relative to your JSON config file.",
 			),
 			"OnChangeHooks": map[string]any{
 				"type":        "array",
@@ -245,9 +245,6 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 		"description":          "Dev watch behavior, hook execution policies, and restart/revalidate triggers.",
 		"additionalProperties": false,
 		"properties": map[string]any{
-			"WatchRoot": stringSchema(
-				"Root path used by recursive watch registration.",
-			),
 			"HealthcheckEndpoint": stringSchema(
 				"HTTP endpoint path used for app readiness polling.",
 			),
@@ -303,10 +300,10 @@ func (processor *Processor) buildWatchSchema() map[string]any {
 				"additionalProperties": false,
 				"properties": map[string]any{
 					"Dirs": arrayOfStringsSchema(
-						"Directory glob patterns excluded from watch registration.",
+						"Directory glob patterns excluded from watch registration. Must be set relative to your JSON config file.",
 					),
 					"Files": arrayOfStringsSchema(
-						"File glob patterns excluded from event processing.",
+						"File glob patterns excluded from event processing. Must be set relative to your JSON config file.",
 					),
 				},
 			},

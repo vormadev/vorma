@@ -1,6 +1,7 @@
 package hooks_test
 
 import (
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"github.com/vormadev/vorma/wave/waveframework"
 	"github.com/vormadev/vorma/wave/wavewatch"
@@ -13,13 +14,14 @@ import (
 func TestResolveHookCommand(t *testing.T) {
 	testCases := []struct {
 		Name string
-		Cfg  *waveconfig.ParsedConfig
+		Cfg  waveconfig.ParsedConfig
 		Hook wavewatch.OnChangeHook
 		Want string
 	}{
 		{
 			Name: "runs user then framework hook",
 			Cfg: newParsedConfigForHooksTests(
+				t,
 				"go generate ./...",
 				"go run ./backend/cmd/build --dev --hook",
 			),
@@ -31,6 +33,7 @@ func TestResolveHookCommand(t *testing.T) {
 		{
 			Name: "framework hook fallback when user hook empty",
 			Cfg: newParsedConfigForHooksTests(
+				t,
 				"",
 				"go run ./backend/cmd/build --dev --hook",
 			),
@@ -41,9 +44,7 @@ func TestResolveHookCommand(t *testing.T) {
 		},
 		{
 			Name: "user hook only",
-			Cfg: &waveconfig.ParsedConfig{
-				Core: &waveconfig.CoreConfig{DevBuildHook: "go generate ./..."},
-			},
+			Cfg:  newParsedConfigForHooksTests(t, "go generate ./...", ""),
 			Hook: wavewatch.OnChangeHook{
 				RunCombinedDevBuildHookCommands: true,
 			},
@@ -51,9 +52,7 @@ func TestResolveHookCommand(t *testing.T) {
 		},
 		{
 			Name: "returns empty when no hook commands configured",
-			Cfg: &waveconfig.ParsedConfig{
-				Core: &waveconfig.CoreConfig{},
-			},
+			Cfg:  newParsedConfigForHooksTests(t, "", ""),
 			Hook: wavewatch.OnChangeHook{
 				RunCombinedDevBuildHookCommands: true,
 			},
@@ -62,6 +61,7 @@ func TestResolveHookCommand(t *testing.T) {
 		{
 			Name: "trims whitespace around hooks",
 			Cfg: newParsedConfigForHooksTests(
+				t,
 				"   go generate ./...   ",
 				"\tgo run ./backend/cmd/build --dev --hook\t",
 			),
@@ -80,7 +80,7 @@ func TestResolveHookCommand(t *testing.T) {
 		},
 		{
 			Name: "resolves explicit cmd when hook does not use dev build hooks",
-			Cfg:  &waveconfig.ParsedConfig{},
+			Cfg:  newParsedConfigForHooksTests(t, "", ""),
 			Hook: wavewatch.OnChangeHook{
 				Cmd: "echo hi",
 			},
@@ -89,6 +89,7 @@ func TestResolveHookCommand(t *testing.T) {
 		{
 			Name: "runs explicit cmd before combined dev build hooks when both are set",
 			Cfg: newParsedConfigForHooksTests(
+				t,
 				"go generate ./...",
 				"go run ./backend/cmd/build --dev --hook",
 			),
@@ -127,7 +128,7 @@ func TestResolveSequentialShellCommands(t *testing.T) {
 }
 
 func resolveHookCommandForHooksTests(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 	hook wavewatch.OnChangeHook,
 ) string {
 	if !hook.RunCombinedDevBuildHookCommands {
@@ -146,15 +147,15 @@ func resolveHookCommandForHooksTests(
 	)
 }
 
-func getUserDevBuildHookForHooksTests(parsedConfig *waveconfig.ParsedConfig) string {
-	if parsedConfig == nil || parsedConfig.Core == nil {
+func getUserDevBuildHookForHooksTests(parsedConfig waveconfig.ParsedConfig) string {
+	if parsedConfig == nil || parsedConfig.Core() == nil {
 		return ""
 	}
-	return parsedConfig.Core.DevBuildHook
+	return parsedConfig.Core().DevBuildHook()
 }
 
 func getFrameworkDevBuildHookForHooksTests(
-	parsedConfig *waveconfig.ParsedConfig,
+	parsedConfig waveconfig.ParsedConfig,
 ) string {
 	if parsedConfig == nil {
 		return ""
@@ -163,14 +164,13 @@ func getFrameworkDevBuildHookForHooksTests(
 }
 
 func newParsedConfigForHooksTests(
+	t *testing.T,
 	userDevBuildHook string,
 	frameworkDevBuildHook string,
-) *waveconfig.ParsedConfig {
-	config := &waveconfig.ParsedConfig{
-		Core: &waveconfig.CoreConfig{
-			DevBuildHook: userDevBuildHook,
-		},
-	}
+) waveconfig.ParsedConfig {
+	t.Helper()
+	config := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetCoreDevBuildHook(config, userDevBuildHook)
 	waveframework.StateForConfig(config).DevBuildHook = frameworkDevBuildHook
 	return config
 }

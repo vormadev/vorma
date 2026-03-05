@@ -88,7 +88,13 @@ func TestPostViteProdBuild_ReturnsErrorWhenTemplateMissing(t *testing.T) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
 
-	app.Config.HTMLTemplateLocation = "missing-template.html"
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.HTMLTemplateLocation = "missing-template.html"
+		},
+	)
 	app.WithLock(func(l *vormaruntime.LockedVorma) {
 		l.SetPaths(map[string]*vormaruntime.Path{
 			"/": {

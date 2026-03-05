@@ -2,6 +2,7 @@ package devserver
 
 import (
 	"encoding/base64"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,10 +70,9 @@ func TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.WatchRoot = root
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	goMainPath := filepath.Join(root, "cmd", "app", "main.go")
 	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
@@ -85,7 +85,7 @@ func TestSiteRegression_WaitingForBuildRetry_GoSyntaxErrorThenFixDoesNotBlock(
 	); writeError != nil {
 		t.Fatalf("write broken go main file: %v", writeError)
 	}
-	cfg.Core.MainAppEntry = goMainPath
+	wavetest.SetCoreMainAppEntry(cfg, goMainPath)
 
 	serverForTest := setupProcessEventsServerForToolingTests(t, cfg)
 	t.Cleanup(func() {
@@ -626,15 +626,6 @@ func TestSiteRegression_MixedBatchNoOpConfigAndRouteRegistryProcessesRouteOnly(
 		"mixed no-op config + route-registry batch",
 	)
 
-	if harness.LogBuffer == nil || !strings.Contains(
-		harness.LogBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected mixed no-op config batch to log no-op config message, got logs: %s",
-			harness.LogBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_MixedBatchNoOpConfigAndPublicStaticProcessesStaticOnly(
@@ -699,15 +690,6 @@ func TestSiteRegression_MixedBatchNoOpConfigAndPublicStaticProcessesStaticOnly(
 		"mixed no-op config + public-static batch",
 	)
 
-	if harness.LogBuffer == nil || !strings.Contains(
-		harness.LogBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected mixed no-op config + public-static batch to log no-op config message, got logs: %s",
-			harness.LogBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndRouteRegistryProcessesRouteOnly(
@@ -778,15 +760,6 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndRouteRegistryProcessesR
 		"mixed no-op config atomic-save + route-registry batch",
 	)
 
-	if harness.LogBuffer == nil || !strings.Contains(
-		harness.LogBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected mixed no-op config atomic-save batch to log no-op config message, got logs: %s",
-			harness.LogBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndRouteRegistryUsesConfigRestart(
@@ -921,15 +894,6 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndPublicStaticProcessesSt
 		"mixed no-op config atomic-save + public-static batch",
 	)
 
-	if harness.LogBuffer == nil || !strings.Contains(
-		harness.LogBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected mixed no-op config atomic-save static batch to log no-op config message, got logs: %s",
-			harness.LogBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndPublicStaticUsesConfigRestart(
@@ -1065,15 +1029,6 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndMarkdownWithOverridePro
 		"mixed no-op config atomic-save + markdown-with-override batch",
 	)
 
-	if harness.LogBuffer == nil || !strings.Contains(
-		harness.LogBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected mixed no-op config atomic-save markdown batch to log no-op config message, got logs: %s",
-			harness.LogBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndMarkdownWithoutOverrideProcessesHardReload(
@@ -1149,15 +1104,6 @@ func TestSiteRegression_MixedBatchNoOpConfigAtomicSaveAndMarkdownWithoutOverride
 		"mixed no-op config atomic-save + markdown-without-override batch",
 	)
 
-	if harness.LogBuffer == nil || !strings.Contains(
-		harness.LogBuffer.String(),
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected mixed no-op config atomic-save markdown-no-override batch to log no-op config message, got logs: %s",
-			harness.LogBuffer.String(),
-		)
-	}
 }
 
 func TestSiteRegression_MixedBatchSemanticConfigAtomicSaveAndMarkdownWithOverrideUsesConfigRestart(

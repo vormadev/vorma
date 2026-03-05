@@ -8,15 +8,14 @@ package buildflow
 
 import (
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveframework"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/artifactio"
 	"github.com/vormadev/vorma/internal/vormaruntime"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/lab/viteutil"
-	"github.com/vormadev/vorma/internal/artifactio"
 	"github.com/vormadev/vorma/vormabuild/internal/buildenv"
 	"github.com/vormadev/vorma/vormabuild/internal/buildlifecycle"
 	"github.com/vormadev/vorma/vormabuild/internal/routeartifacts"
@@ -92,7 +91,7 @@ func recordFrameworkBuildOutputsToLedger(
 	v *vormaruntime.Vorma,
 	pathsFile *runtimepaths.PathsFile,
 ) error {
-	buildConfig := waveframework.BuildtimeParsedConfig(v.Wave.RawConfigJSON())
+	buildConfig := v.Wave.ParsedConfig()
 	if buildConfig == nil {
 		return fmt.Errorf("wave build config is nil")
 	}
@@ -297,6 +296,7 @@ func defaultRuntimeBuildToolingDependencies() runtimeBuildToolingDependencies {
 		runWaveDevelopmentMode: func(v *vormaruntime.Vorma) error {
 			return devserver.RunDev(
 				buildenv.Configure(v),
+				v.Wave.ConfigFile(),
 				v.Wave.Logger(),
 			)
 		},

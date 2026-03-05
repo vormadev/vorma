@@ -171,31 +171,29 @@ func runConfigMutationAndPathShapeMatrixForRunloopProcessTests(
 
 func setupConfigEventTestConfigForRunloopProcessTests(
 	t *testing.T,
-) (*waveconfig.ParsedConfig, string, string) {
+) (waveconfig.ParsedConfig, string, string) {
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 	configFilePath := filepath.Join(root, "backend", "wave.config.json")
-	cfg.Core.ConfigLocation = configFilePath
-	cfg.Dist.Root = cfg.Core.DistDir
 
 	if mkdirError := os.MkdirAll(filepath.Dir(configFilePath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating config file directory: %v", mkdirError)
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry":   "cmd/app",
-			"DistDir":        cfg.Core.DistDir,
-			"ServerOnlyMode": true,
+			"ProjectID": "test-project",
+			"MainAppEntry":        "cmd/app",
+			"ServerOnlyMode":      true,
 			"StaticAssetDirs": map[string]any{
-				"Public":  cfg.Core.StaticAssetDirs.Public,
-				"Private": cfg.Core.StaticAssetDirs.Private,
+				"Public": filepath.Join("static", waveartifacts.PublicDirname),
+				"Private": filepath.Join(
+					"static",
+					waveartifacts.PrivateDirname,
+				),
 			},
-		},
-		"Watch": map[string]any{
-			"WatchRoot": root,
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -215,7 +213,8 @@ func setupConfigEventTestConfigForRunloopProcessTests(
 
 func setupProcessEventsServerForRunloopTests(
 	t *testing.T,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
+	configFilePath string,
 ) *runloopTestServer {
 	t.Helper()
 
@@ -241,6 +240,7 @@ func setupProcessEventsServerForRunloopTests(
 	serverForTest := newRunloopTestServer(
 		cfg,
 		newDiscardLoggerForRunloopBatchedWatcherTests(),
+		configFilePath,
 	)
 	serverForTest.Watcher = watcherForTest
 	serverForTest.Builder = builderForTest
@@ -275,7 +275,11 @@ func TestProcessEvents_ConfigMutationsTriggerConfigRestart(t *testing.T) {
 				configMutationCaseForRun.PrepareEvent(t, configFilePath)
 			}
 
-			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			serverForTest := setupProcessEventsServerForRunloopTests(
+				t,
+				cfg,
+				configFilePath,
+			)
 
 			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
 			processEventsForRunloopTests(
@@ -307,7 +311,11 @@ func TestProcessEvents_ConfigChmodDoesNotTriggerConfigRestart(t *testing.T) {
 	cfg, _, configFilePath := setupConfigEventTestConfigForRunloopProcessTests(
 		t,
 	)
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(
+		t,
+		cfg,
+		configFilePath,
+	)
 
 	processEventsForRunloopTests(
 		t,
@@ -339,7 +347,7 @@ func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(
 			)
 
 			var nonConfigHookCallCount int32
-			cfg.Watch.Include = []wavewatch.WatchedFile{
+			wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 				{
 					Pattern:         "**/*.txt",
 					RunOnChangeOnly: true,
@@ -352,8 +360,7 @@ func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(
 						},
 					},
 				},
-			}
-
+			})
 			nonConfigFilePath := filepath.Join(root, "notes.txt")
 			if err := os.WriteFile(nonConfigFilePath, []byte("notes"), 0o644); err != nil {
 				t.Fatalf("failed writing non-config file: %v", err)
@@ -363,7 +370,11 @@ func TestProcessEvents_ConfigChangeBatchSkipsNonConfigHookProcessing(
 				configMutationCaseForRun.PrepareEvent(t, configFilePath)
 			}
 
-			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			serverForTest := setupProcessEventsServerForRunloopTests(
+				t,
+				cfg,
+				configFilePath,
+			)
 
 			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
 			processEventsForRunloopTests(
@@ -408,12 +419,11 @@ func TestProcessEvents_CreateForMissingFileStillRunsMatchingHooks(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var hookCallCount int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -426,9 +436,8 @@ func TestProcessEvents_CreateForMissingFileStillRunsMatchingHooks(
 				},
 			},
 		},
-	}
-
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	})
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 
 	missingFilePath := filepath.Join(root, "new-file.txt")
 	processEventsForRunloopTests(
@@ -457,12 +466,11 @@ func TestProcessEvents_RenameForMissingFileStillRunsMatchingHooks(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var hookCallCount int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -475,9 +483,8 @@ func TestProcessEvents_RenameForMissingFileStillRunsMatchingHooks(
 				},
 			},
 		},
-	}
-
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	})
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 
 	missingRenamePath := filepath.Join(root, "renamed-file.txt")
 	processEventsForRunloopTests(
@@ -504,9 +511,9 @@ func TestProcessEvents_RenameForMissingFileStillRunsMatchingHooks(
 
 func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -518,14 +525,14 @@ func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
 				},
 			},
 		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	var callbackCount int32
-	cfg.Watch.Include[0].OnChangeHooks[0].Callback = func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
+	includePatterns := cfg.Watch().Include()
+	includePatterns[0].OnChangeHooks[0].Callback = func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
 		atomic.AddInt32(&callbackCount, 1)
 		return nil, nil
 	}
+	wavetest.SetWatchInclude(cfg, includePatterns)
 
 	fileA := filepath.Join(root, "a.txt")
 	fileB := filepath.Join(root, "b.txt")
@@ -536,7 +543,7 @@ func TestProcessEvents_DeduplicatesEventsByMatchedPattern(t *testing.T) {
 		t.Fatalf("failed writing %s: %v", fileB, err)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 
 	processEventsForRunloopTests(
 		t,
@@ -559,13 +566,13 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var goHookAppStopped atomic.Bool
 	var txtHookAppStopped atomic.Bool
 
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.go",
 			RunOnChangeOnly: true,
@@ -590,9 +597,7 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(
 				},
 			},
 		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	goFile := filepath.Join(root, "main.go")
 	txtFile := filepath.Join(root, "notes.txt")
 	if err := os.WriteFile(goFile, []byte("package main"), 0o644); err != nil {
@@ -602,7 +607,7 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(
 		t.Fatalf("failed writing %s: %v", txtFile, err)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 
 	processEventsForRunloopTests(
 		t,
@@ -627,11 +632,11 @@ func TestProcessEvents_BatchHardReloadSetsAppStoppedForBatchOnHookContext(
 
 func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var callbackCount int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -644,15 +649,13 @@ func TestProcessEvents_IgnoresChmodOnNonEmptyFile(t *testing.T) {
 				},
 			},
 		},
-	}
-	cfg.Dist.Root = cfg.Core.DistDir
-
+	})
 	filePath := filepath.Join(root, "chmod.txt")
 	if err := os.WriteFile(filePath, []byte("content"), 0o644); err != nil {
 		t.Fatalf("failed writing %s: %v", filePath, err)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 
 	processEventsForRunloopTests(
 		t,
@@ -672,16 +675,15 @@ func TestProcessEvents_LogsWatcherEventsWithOperationAndPathFields(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	watchedTextFilePath := filepath.Join(root, "notes.txt")
 	if writeError := os.WriteFile(watchedTextFilePath, []byte("notes"), 0o644); writeError != nil {
 		t.Fatalf("write watched text file: %v", writeError)
 	}
 
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -693,9 +695,8 @@ func TestProcessEvents_LogsWatcherEventsWithOperationAndPathFields(
 				},
 			},
 		},
-	}
-
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	})
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	var logBuffer bytes.Buffer
 	serverForTest.Log = slog.New(slog.NewTextHandler(&logBuffer, nil))
 
@@ -730,11 +731,10 @@ func TestProcessEvents_LogsWatcherEventsWithOperationAndPathFields(
 
 func TestProcessEvents_NewDirectoryCreateEventAddsWatchDir(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 
 	newDirectory := filepath.Join(root, "new-child-dir")
 	if err := os.MkdirAll(newDirectory, 0o755); err != nil {
@@ -766,14 +766,13 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	builderForTest := serverForTest.Builder
 
-	publicDirectoryPath := cfg.Core.StaticAssetDirs.Public
+	publicDirectoryPath := cfg.Core().StaticAssetDirsPublic()
 	if err := os.MkdirAll(publicDirectoryPath, 0o755); err != nil {
 		t.Fatalf("failed creating public dir: %v", err)
 	}
@@ -798,11 +797,11 @@ func TestProcessEvents_PublicStaticMixedOpsBatchAppliesCreateDeleteAndRenameChan
 		t.Fatalf("LoadPublicFileMap after initial run returned error: %v", err)
 	}
 	initialRenamedFromDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialMap["old.png"].DistName,
 	)
 	initialDeletedDistPath := filepath.Join(
-		cfg.Dist.StaticPublic(),
+		cfg.Dist().StaticPublic(),
 		initialMap["delete.txt"].DistName,
 	)
 
@@ -878,14 +877,13 @@ func TestProcessEvents_PublicStaticDirectoryRenameWithoutChildFileEvents(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	builderForTest := serverForTest.Builder
 
-	publicDirectoryPath := cfg.Core.StaticAssetDirs.Public
+	publicDirectoryPath := cfg.Core().StaticAssetDirsPublic()
 	oldDirectoryPath := filepath.Join(publicDirectoryPath, "icons", "old")
 	newDirectoryPath := filepath.Join(publicDirectoryPath, "icons", "new")
 	oldFilePath := filepath.Join(oldDirectoryPath, "logo.svg")
@@ -911,7 +909,7 @@ func TestProcessEvents_PublicStaticDirectoryRenameWithoutChildFileEvents(
 		)
 	}
 	oldEntry := initialMap["icons/old/logo.svg"]
-	oldDistPath := filepath.Join(cfg.Dist.StaticPublic(), oldEntry.DistName)
+	oldDistPath := filepath.Join(cfg.Dist().StaticPublic(), oldEntry.DistName)
 
 	if renameError := os.Rename(oldDirectoryPath, newDirectoryPath); renameError != nil {
 		t.Fatalf("failed renaming public subtree directory: %v", renameError)
@@ -957,14 +955,13 @@ func TestProcessEvents_PrivateStaticDirectoryRenameWithoutChildFileEvents(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	builderForTest := serverForTest.Builder
 
-	privateDirectoryPath := cfg.Core.StaticAssetDirs.Private
+	privateDirectoryPath := cfg.Core().StaticAssetDirsPrivate()
 	oldDirectoryPath := filepath.Join(privateDirectoryPath, "templates", "old")
 	newDirectoryPath := filepath.Join(privateDirectoryPath, "templates", "new")
 	oldFilePathA := filepath.Join(oldDirectoryPath, "a.html")
@@ -991,7 +988,7 @@ func TestProcessEvents_PrivateStaticDirectoryRenameWithoutChildFileEvents(
 
 	initialMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
 		t,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	oldEntryA, hasOldEntryA := initialMap["templates/old/a.html"]
 	if !hasOldEntryA {
@@ -1007,8 +1004,8 @@ func TestProcessEvents_PrivateStaticDirectoryRenameWithoutChildFileEvents(
 			initialMap,
 		)
 	}
-	oldDistPathA := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryA.DistName)
-	oldDistPathB := filepath.Join(cfg.Dist.StaticPrivate(), oldEntryB.DistName)
+	oldDistPathA := filepath.Join(cfg.Dist().StaticPrivate(), oldEntryA.DistName)
+	oldDistPathB := filepath.Join(cfg.Dist().StaticPrivate(), oldEntryB.DistName)
 
 	if renameError := os.Rename(oldDirectoryPath, newDirectoryPath); renameError != nil {
 		t.Fatalf("failed renaming private subtree directory: %v", renameError)
@@ -1028,7 +1025,7 @@ func TestProcessEvents_PrivateStaticDirectoryRenameWithoutChildFileEvents(
 
 	updatedMap := loadStaticFileMapFromGobPathForRunloopProcessTests(
 		t,
-		cfg.Dist.PrivateFileMapGob(),
+		cfg.Dist().PrivateFileMapGob(),
 	)
 	if _, exists := updatedMap["templates/old/a.html"]; exists {
 		t.Fatalf(
@@ -1078,11 +1075,14 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	criticalEntryPath := filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName)
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	criticalEntryPath := filepath.Join(
+		root,
+		"styles",
+		waveartifacts.CriticalCSSFileName,
+	)
 	wavetest.SetCSSEntryFiles(cfg, criticalEntryPath, "")
-	cfg.Dist.Root = cfg.Core.DistDir
 
 	if err := os.MkdirAll(filepath.Dir(criticalEntryPath), 0o755); err != nil {
 		t.Fatalf("failed creating critical css directory: %v", err)
@@ -1091,7 +1091,7 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 		t.Fatalf("failed writing initial critical css file: %v", err)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	builderForTest := serverForTest.Builder
 	if err := builderForTest.BuildCSS(
 		builder.CSSBuildOptions{
@@ -1174,11 +1174,11 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 		ResolveHookExecutionPlan:                        serverForTest.ResolveHookExecutionPlan,
 	})
 
-	cfg.Core.CSSEntryFiles.Critical = filepath.Join(
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, filepath.Join(
 		root,
 		"styles",
 		"missing-critical.css",
-	)
+	))
 	engine.ProcessEvents([]fsnotify.Event{
 		{
 			Name: criticalEventPath,
@@ -1195,7 +1195,7 @@ func TestProcessEvents_CSSHotReloadSkipsFailedRebuildAndResumesAfterSuccessfulRe
 	default:
 	}
 
-	cfg.Core.CSSEntryFiles.Critical = criticalEntryPath
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, criticalEntryPath)
 	if err := os.WriteFile(criticalEntryPath, []byte("body { color: blue; }"), 0o644); err != nil {
 		t.Fatalf("failed writing updated critical css file: %v", err)
 	}
@@ -1455,14 +1455,22 @@ type siteStylePathMatrixForRunloopProcessTests struct {
 
 func configureSiteStyleFixtureForRunloopProcessTests(
 	t *testing.T,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	root string,
 ) siteStylePathMatrixForRunloopProcessTests {
 	t.Helper()
 
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.StaticAssetDirs.Public = filepath.Join(root, "frontend", waveartifacts.AssetsDirname)
-	cfg.Core.StaticAssetDirs.Private = filepath.Join(root, "backend", waveartifacts.AssetsDirname)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetCoreStaticAssetDirsPublic(cfg, filepath.Join(
+		root,
+		"frontend",
+		waveartifacts.AssetsDirname,
+	))
+	wavetest.SetCoreStaticAssetDirsPrivate(cfg, filepath.Join(
+		root,
+		"backend",
+		waveartifacts.AssetsDirname,
+	))
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "frontend", "src", "styles", "main.critical.css"),
@@ -1470,8 +1478,8 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 	)
 
 	paths := siteStylePathMatrixForRunloopProcessTests{
-		CriticalCSSEntryPath: cfg.Core.CSSEntryFiles.Critical,
-		NormalCSSEntryPath:   cfg.Core.CSSEntryFiles.NonCritical,
+		CriticalCSSEntryPath: cfg.Core().CriticalCSSEntryFile(),
+		NormalCSSEntryPath:   cfg.Core().NonCriticalCSSEntryFile(),
 		CriticalCSSImportPath: filepath.Join(
 			root,
 			"frontend",
@@ -1508,11 +1516,11 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 			"core.vorma.routes.ts",
 		),
 		PublicStaticPath: filepath.Join(
-			cfg.Core.StaticAssetDirs.Public,
+			cfg.Core().StaticAssetDirsPublic(),
 			"logo.svg",
 		),
 		PrivateStaticPath: filepath.Join(
-			cfg.Core.StaticAssetDirs.Private,
+			cfg.Core().StaticAssetDirsPrivate(),
 			"notes.txt",
 		),
 		TailwindCSSPath: filepath.Join(
@@ -1543,7 +1551,7 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 		),
 	}
 
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:                            "backend/assets/markdown/**/*.md",
 			OnlyRunClientDefinedRevalidateFunc: true,
@@ -1582,8 +1590,7 @@ func configureSiteStyleFixtureForRunloopProcessTests(
 				},
 			},
 		},
-	}
-
+	})
 	directoriesToCreate := []string{
 		filepath.Dir(paths.CriticalCSSEntryPath),
 		filepath.Dir(paths.NormalCSSEntryPath),
@@ -1651,11 +1658,10 @@ func TestProcessEvents_SiteStyleMatrixUsesMinimumWorkByFileType(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	if buildCSSError := serverForTest.Builder.BuildCSS(
 		builder.CSSBuildOptions{
 			BuildCriticalCSS: true,
@@ -1959,7 +1965,7 @@ func TestProcessEvents_SiteStyleMatrixUsesMinimumWorkByFileType(
 		},
 		{
 			Name:     "public_static_root_directory_event_is_noop",
-			FilePath: cfg.Core.StaticAssetDirs.Public,
+			FilePath: cfg.Core().StaticAssetDirsPublic(),
 			Op:       fsnotify.Write,
 			Assert: func(t *testing.T) {
 				t.Helper()
@@ -1968,7 +1974,7 @@ func TestProcessEvents_SiteStyleMatrixUsesMinimumWorkByFileType(
 		},
 		{
 			Name:     "private_static_root_directory_event_is_noop",
-			FilePath: cfg.Core.StaticAssetDirs.Private,
+			FilePath: cfg.Core().StaticAssetDirsPrivate(),
 			Op:       fsnotify.Write,
 			Assert: func(t *testing.T) {
 				t.Helper()
@@ -2057,12 +2063,11 @@ func TestProcessEvents_SiteStyleMixedBatchPublicAndPrivateStaticUsesHardReloadPr
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
 
 	privateStaticPath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"notes.txt",
 	)
 	if writeError := os.WriteFile(
@@ -2073,7 +2078,7 @@ func TestProcessEvents_SiteStyleMixedBatchPublicAndPrivateStaticUsesHardReloadPr
 		t.Fatalf("write private static file: %v", writeError)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,
@@ -2155,11 +2160,10 @@ func TestProcessEvents_SiteStyleMixedBatchRouteRegistryAndMarkdownUsesHardReload
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,
@@ -2234,11 +2238,10 @@ func TestProcessEvents_SiteStyleMixedBatchGoAndNormalCSSUsesHardReload(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,
@@ -2315,12 +2318,11 @@ func TestProcessEvents_MixedBatchRunOnChangeOnlyAndImplicitBuildEvent(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	var callbackCount int32
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -2333,8 +2335,7 @@ func TestProcessEvents_MixedBatchRunOnChangeOnlyAndImplicitBuildEvent(
 				},
 			},
 		},
-	}
-
+	})
 	watchedRunOnChangePath := filepath.Join(root, "notes.txt")
 	goSourcePath := filepath.Join(root, "backend", "handlers", "health.go")
 	if mkdirError := os.MkdirAll(filepath.Dir(goSourcePath), 0o755); mkdirError != nil {
@@ -2351,7 +2352,7 @@ func TestProcessEvents_MixedBatchRunOnChangeOnlyAndImplicitBuildEvent(
 		t.Fatalf("write go source file: %v", writeError)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,
@@ -2482,15 +2483,14 @@ func TestProcessEvents_SiteStyleTemplateMutationOpsUseFastReloadWithoutRestart(
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-			cfg.Dist.Root = cfg.Core.DistDir
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 			paths := configureSiteStyleFixtureForRunloopProcessTests(
 				t,
 				cfg,
 				root,
 			)
 
-			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 			capture := &runloopWorkCaptureForProcessTests{}
 			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 				serverForTest,
@@ -2622,15 +2622,14 @@ func TestProcessEvents_SiteStyleRouteRegistryMutationOpsUseFastReloadWithoutRest
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-			cfg.Dist.Root = cfg.Core.DistDir
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 			paths := configureSiteStyleFixtureForRunloopProcessTests(
 				t,
 				cfg,
 				root,
 			)
 
-			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 			capture := &runloopWorkCaptureForProcessTests{}
 			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 				serverForTest,
@@ -2742,15 +2741,14 @@ func TestProcessEvents_SiteStyleMarkdownMutationOpsUseRevalidateWithoutRestart(
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-			cfg.Dist.Root = cfg.Core.DistDir
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 			paths := configureSiteStyleFixtureForRunloopProcessTests(
 				t,
 				cfg,
 				root,
 			)
 
-			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 			capture := &runloopWorkCaptureForProcessTests{}
 			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 				serverForTest,
@@ -2836,12 +2834,11 @@ func TestProcessEvents_MarkdownWithoutWatchRuleUsesPrivateStaticReload(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	markdownPath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"markdown",
 		"blog",
 		"post.md",
@@ -2857,7 +2854,7 @@ func TestProcessEvents_MarkdownWithoutWatchRuleUsesPrivateStaticReload(
 		t.Fatalf("write markdown file: %v", writeError)
 	}
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,
@@ -3110,15 +3107,14 @@ func TestProcessEvents_SiteStylePlainStaticAssetMutationOpsUseExpectedWorkWithou
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-			cfg.Dist.Root = cfg.Core.DistDir
+			cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 			paths := configureSiteStyleFixtureForRunloopProcessTests(
 				t,
 				cfg,
 				root,
 			)
 
-			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+			serverForTest := setupProcessEventsServerForRunloopTests(t, cfg, "")
 			capture := &runloopWorkCaptureForProcessTests{}
 			engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 				serverForTest,
@@ -3296,8 +3292,7 @@ func TestProcessEvents_SiteStyleNoopFilesMutationOpsRemainNoop(t *testing.T) {
 			opCase := opCase
 			t.Run(targetCase.Name+"_"+opCase.Name, func(t *testing.T) {
 				root := t.TempDir()
-				cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-				cfg.Dist.Root = cfg.Core.DistDir
+				cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 				paths := configureSiteStyleFixtureForRunloopProcessTests(
 					t,
 					cfg,
@@ -3305,7 +3300,11 @@ func TestProcessEvents_SiteStyleNoopFilesMutationOpsRemainNoop(t *testing.T) {
 				)
 				targetPath := targetCase.ResolvePath(paths)
 
-				serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+				serverForTest := setupProcessEventsServerForRunloopTests(
+					t,
+					cfg,
+					"",
+				)
 				capture := &runloopWorkCaptureForProcessTests{}
 				engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 					serverForTest,
@@ -3359,10 +3358,10 @@ func TestProcessEvents_SiteStyleRouteRegistryFallbackRequestsNoGoRestart(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
-	cfg.Watch.Include[1].OnChangeHooks = []wavewatch.OnChangeHook{
+	includePatterns := cfg.Watch().Include()
+	includePatterns[1].OnChangeHooks = []wavewatch.OnChangeHook{
 		{
 			Timing: wavewatch.OnChangeStrategyPost,
 			Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
@@ -3373,8 +3372,13 @@ func TestProcessEvents_SiteStyleRouteRegistryFallbackRequestsNoGoRestart(
 			},
 		},
 	}
+	wavetest.SetWatchInclude(cfg, includePatterns)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(
+		t,
+		cfg,
+		"",
+	)
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,
@@ -3424,10 +3428,10 @@ func TestProcessEvents_SiteStyleTemplateFallbackRequestsNoGoRestart(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(root)
-	cfg.Dist.Root = cfg.Core.DistDir
+	cfg := newParsedConfigForRunloopBatchedWatcherTestsAtRoot(t, root)
 	paths := configureSiteStyleFixtureForRunloopProcessTests(t, cfg, root)
-	cfg.Watch.Include[2].OnChangeHooks = []wavewatch.OnChangeHook{
+	includePatterns := cfg.Watch().Include()
+	includePatterns[2].OnChangeHooks = []wavewatch.OnChangeHook{
 		{
 			Timing: wavewatch.OnChangeStrategyPost,
 			Callback: func(*wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
@@ -3438,8 +3442,13 @@ func TestProcessEvents_SiteStyleTemplateFallbackRequestsNoGoRestart(
 			},
 		},
 	}
+	wavetest.SetWatchInclude(cfg, includePatterns)
 
-	serverForTest := setupProcessEventsServerForRunloopTests(t, cfg)
+	serverForTest := setupProcessEventsServerForRunloopTests(
+		t,
+		cfg,
+		"",
+	)
 	capture := &runloopWorkCaptureForProcessTests{}
 	engine := buildRunloopEngineWithWorkCaptureForProcessTests(
 		serverForTest,

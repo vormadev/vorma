@@ -2,7 +2,9 @@ package routeparse
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -14,7 +16,144 @@ import (
 	"github.com/tdewolff/parse/v2"
 	"github.com/tdewolff/parse/v2/js"
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
+	"github.com/vormadev/vorma/wave/waveconfig"
 )
+
+func defaultRawVormaConfigJSONForRouteParseTests() vormaruntime.VormaConfigJSON {
+	return vormaruntime.VormaConfigJSON{
+		MainBuildEntry:       "backend/cmd/build",
+		UIVariant:            string(vormaruntime.UIVariantReact),
+		HTMLTemplateLocation: "entry.go.html",
+		ClientEntry:          "frontend/src/vorma.entry.tsx",
+		ClientRouteDefinitionPatterns: []string{
+			"frontend/src/**/*vorma.routes.ts",
+		},
+		TSGenOutDir: "frontend/src/vorma.gen",
+	}
+}
+
+func parseVormaConfigForRouteParseTests(
+	tb testing.TB,
+	rawConfig vormaruntime.VormaConfigJSON,
+) (vormaruntime.VormaConfig, error) {
+	tb.Helper()
+
+	rawVormaPayload, marshalError := json.Marshal(
+		struct {
+			Vorma vormaruntime.VormaConfigJSON `json:"Vorma"`
+		}{
+			Vorma: rawConfig,
+		},
+	)
+	if marshalError != nil {
+		return nil, fmt.Errorf("marshal raw Vorma config fixture: %w", marshalError)
+	}
+	rawWavePayload, marshalWaveError := json.Marshal(
+		map[string]any{
+			"Core": map[string]any{
+				"ProjectID":    "routeparse-tests",
+				"MainAppEntry": "backend/cmd/app",
+			},
+		},
+	)
+	if marshalWaveError != nil {
+		return nil, fmt.Errorf("marshal raw Wave config fixture: %w", marshalWaveError)
+	}
+	parsedWaveConfig, parseWaveError := waveconfig.ParseConfigJSONWithConfigPath(
+		rawWavePayload,
+		"wave.config.json",
+	)
+	if parseWaveError != nil {
+		return nil, fmt.Errorf("parse raw Wave config fixture: %w", parseWaveError)
+	}
+	parsedVormaConfig, parseError := runtimeconfig.ParseVormaConfigJSON(
+		rawVormaPayload,
+		parsedWaveConfig,
+	)
+	if parseError != nil {
+		return nil, parseError
+	}
+	return parsedVormaConfig, nil
+}
+
+func mustParsedVormaConfigForRouteParseTests(
+	tb testing.TB,
+	overrides *vormaruntime.VormaConfigJSON,
+) vormaruntime.VormaConfig {
+	tb.Helper()
+
+	rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+	if overrides != nil {
+		if overrides.IncludeDefaults != nil {
+			includeDefaults := *overrides.IncludeDefaults
+			rawConfig.IncludeDefaults = &includeDefaults
+		}
+		if overrides.MainBuildEntry != "" {
+			rawConfig.MainBuildEntry = overrides.MainBuildEntry
+		}
+		if overrides.UIVariant != "" {
+			rawConfig.UIVariant = overrides.UIVariant
+		}
+		if overrides.HTMLTemplateLocation != "" {
+			rawConfig.HTMLTemplateLocation = overrides.HTMLTemplateLocation
+		}
+		if overrides.ClientEntry != "" {
+			rawConfig.ClientEntry = overrides.ClientEntry
+		}
+		if overrides.ClientRouteDefinitionPatterns != nil {
+			rawConfig.ClientRouteDefinitionPatterns = append(
+				[]string(nil),
+				overrides.ClientRouteDefinitionPatterns...,
+			)
+		}
+		if overrides.ServerRouteDefinitionPatterns != nil {
+			rawConfig.ServerRouteDefinitionPatterns = append(
+				[]string(nil),
+				overrides.ServerRouteDefinitionPatterns...,
+			)
+		}
+		if overrides.TSGenOutDir != "" {
+			rawConfig.TSGenOutDir = overrides.TSGenOutDir
+		}
+		if overrides.BuildtimePublicURLFuncName != "" {
+			rawConfig.BuildtimePublicURLFuncName = overrides.BuildtimePublicURLFuncName
+		}
+		if overrides.UnresolvedRoutePolicy != "" {
+			rawConfig.UnresolvedRoutePolicy = overrides.UnresolvedRoutePolicy
+		}
+		if overrides.DevReloadRoutesEndpointPath != "" {
+			rawConfig.DevReloadRoutesEndpointPath = overrides.DevReloadRoutesEndpointPath
+		}
+		if overrides.DevReloadTemplateEndpointPath != "" {
+			rawConfig.DevReloadTemplateEndpointPath = overrides.DevReloadTemplateEndpointPath
+		}
+		if overrides.TemplateDataKeyHeadElements != "" {
+			rawConfig.TemplateDataKeyHeadElements = overrides.TemplateDataKeyHeadElements
+		}
+		if overrides.TemplateDataKeyBodyScripts != "" {
+			rawConfig.TemplateDataKeyBodyScripts = overrides.TemplateDataKeyBodyScripts
+		}
+		if overrides.TemplateDataKeySSRScript != "" {
+			rawConfig.TemplateDataKeySSRScript = overrides.TemplateDataKeySSRScript
+		}
+		if overrides.TemplateDataKeySSRScriptHash != "" {
+			rawConfig.TemplateDataKeySSRScriptHash = overrides.TemplateDataKeySSRScriptHash
+		}
+		if overrides.TemplateDataKeyRootElementID != "" {
+			rawConfig.TemplateDataKeyRootElementID = overrides.TemplateDataKeyRootElementID
+		}
+		if overrides.ClientRootElementID != "" {
+			rawConfig.ClientRootElementID = overrides.ClientRootElementID
+		}
+	}
+
+	parsedConfig, parseError := parseVormaConfigForRouteParseTests(tb, rawConfig)
+	if parseError != nil {
+		tb.Fatalf("parse raw Vorma config fixture: %v", parseError)
+	}
+	return parsedConfig
+}
 
 func TestExtractRouteCalls_HandlesAliasesAndUnresolvedModules(t *testing.T) {
 	t.Run(
@@ -362,9 +501,9 @@ func TestParseClientRoutes_ResolvesStaticAndImportModules(t *testing.T) {
 		`))
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{routesFile},
-		},
+		}),
 		Log: testLogger(),
 	}
 	v.SetIsDev(true)
@@ -442,9 +581,9 @@ func TestParseClientRoutes_UnresolvedRouteDefaultPolicyFailsInProd(
 	`))
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{routesFile},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -479,10 +618,10 @@ func TestParseClientRoutes_UnresolvedRoutePolicyOverrideWarnInProd(
 	`))
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{routesFile},
 			UnresolvedRoutePolicy:         vormaruntime.UnresolvedRoutePolicyWarn,
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -532,11 +671,11 @@ func TestParseClientRoutes_MergesRoutesAcrossDefinitionFiles(t *testing.T) {
 	)
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{
 				"frontend/src/**/*vorma.routes.ts",
 			},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -595,11 +734,11 @@ func TestParseClientRoutes_ReturnsErrorForDuplicatePatternAcrossDefinitionFiles(
 	)
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{
 				"frontend/src/**/*vorma.routes.ts",
 			},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -639,11 +778,11 @@ func TestParseClientRoutes_ReturnsErrorForNormalizedRootAliasCollision(
 	)
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{
 				"frontend/src/**/*vorma.routes.ts",
 			},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -698,11 +837,11 @@ func TestParseClientRoutes_ReturnsErrorForNormalizedRootAliasCollisionAcrossFile
 	)
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{
 				"frontend/src/**/*vorma.routes.ts",
 			},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -722,77 +861,62 @@ func TestParseClientRoutes_ReturnsErrorWhenRouteDefinitionPatternsNeedNormalizat
 	t *testing.T,
 ) {
 	t.Run(
-		"returns error when a pattern has surrounding whitespace",
+		"returns parse error when a pattern has surrounding whitespace",
 		func(t *testing.T) {
-			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
-					ClientRouteDefinitionPatterns: []string{
-						" frontend/src/routes/home.vorma.routes.ts ",
-					},
-				},
-				Log: testLogger(),
+			rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+			rawConfig.ClientRouteDefinitionPatterns = []string{
+				" frontend/src/routes/home.vorma.routes.ts ",
 			}
-
-			_, err := ParseClientRoutes(v)
-			if err == nil {
+			_, parseError := parseVormaConfigForRouteParseTests(t, rawConfig)
+			if parseError == nil {
 				t.Fatal(
-					"expected error for route definition pattern with surrounding whitespace",
+					"expected parse error for route definition pattern with surrounding whitespace",
 				)
 			}
 			if !strings.Contains(
-				err.Error(),
+				parseError.Error(),
 				"must not contain surrounding whitespace",
 			) {
 				t.Fatalf(
-					"error = %q, expected surrounding-whitespace pattern error",
-					err,
+					"error = %q, expected surrounding-whitespace pattern parse error",
+					parseError,
 				)
 			}
 		},
 	)
 
-	t.Run("returns error when patterns contain duplicates", func(t *testing.T) {
-		v := &vormaruntime.Vorma{
-			Config: &vormaruntime.VormaConfig{
-				ClientRouteDefinitionPatterns: []string{
-					"frontend/src/routes/home.vorma.routes.ts",
-					"frontend/src/routes/home.vorma.routes.ts",
-				},
-			},
-			Log: testLogger(),
+	t.Run("returns parse error when patterns contain duplicates", func(t *testing.T) {
+		rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+		rawConfig.ClientRouteDefinitionPatterns = []string{
+			"frontend/src/routes/home.vorma.routes.ts",
+			"frontend/src/routes/home.vorma.routes.ts",
 		}
-
-		_, err := ParseClientRoutes(v)
-		if err == nil {
-			t.Fatal("expected error for duplicate route definition patterns")
+		_, parseError := parseVormaConfigForRouteParseTests(t, rawConfig)
+		if parseError == nil {
+			t.Fatal("expected parse error for duplicate route definition patterns")
 		}
-		if !strings.Contains(err.Error(), "duplicates an earlier pattern") {
-			t.Fatalf("error = %q, expected duplicate pattern error", err)
+		if !strings.Contains(parseError.Error(), "duplicates an earlier pattern") {
+			t.Fatalf("error = %q, expected duplicate pattern parse error", parseError)
 		}
 	})
 }
 
-func TestParseClientRoutes_ReturnsErrorWhenRouteDefinitionPatternsContainOnlyWhitespace(
+func TestParseClientRoutes_ReturnsParseErrorWhenRouteDefinitionPatternsContainOnlyWhitespace(
 	t *testing.T,
 ) {
-	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
-			ClientRouteDefinitionPatterns: []string{
-				" ",
-				"\n\t",
-			},
-		},
-		Log: testLogger(),
+	rawConfig := defaultRawVormaConfigJSONForRouteParseTests()
+	rawConfig.ClientRouteDefinitionPatterns = []string{
+		" ",
+		"\n\t",
 	}
-
-	_, err := ParseClientRoutes(v)
-	if err == nil {
+	_, parseError := parseVormaConfigForRouteParseTests(t, rawConfig)
+	if parseError == nil {
 		t.Fatal(
-			"expected error for whitespace-only route definition patterns, got nil",
+			"expected parse error for whitespace-only route definition patterns, got nil",
 		)
 	}
-	if !strings.Contains(err.Error(), "cannot be empty or whitespace") {
-		t.Fatalf("error = %q, expected whitespace-only pattern error", err)
+	if !strings.Contains(parseError.Error(), "cannot be empty or whitespace") {
+		t.Fatalf("error = %q, expected whitespace-only pattern parse error", parseError)
 	}
 }
 
@@ -807,9 +931,9 @@ func TestParseClientRoutes_ReturnsErrorWhenModuleDoesNotExist(t *testing.T) {
 	`))
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{routesFile},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -826,11 +950,11 @@ func TestParseClientRoutes_ReturnsErrorWhenRoutesFileDoesNotExist(
 	t *testing.T,
 ) {
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{
-				filepath.Join(t.TempDir(), "missing.routes.ts"),
+				"frontend/src/missing.routes.ts",
 			},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -855,9 +979,9 @@ func TestParseClientRoutes_ReturnsErrorWhenTransformFails(t *testing.T) {
 	`))
 
 	v := &vormaruntime.Vorma{
-		Config: &vormaruntime.VormaConfig{
+		Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 			ClientRouteDefinitionPatterns: []string{routesFile},
-		},
+		}),
 		Log: testLogger(),
 	}
 
@@ -1430,11 +1554,11 @@ func TestResolveRouteModulePath(t *testing.T) {
 			)
 
 			v := &vormaruntime.Vorma{
-				Config: &vormaruntime.VormaConfig{
+				Config: mustParsedVormaConfigForRouteParseTests(t, &vormaruntime.VormaConfigJSON{
 					ClientRouteDefinitionPatterns: []string{
 						"frontend/src/**/*vorma.routes.ts",
 					},
-				},
+				}),
 				Log: testLogger(),
 			}
 			routeCall := routeCall{

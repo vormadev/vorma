@@ -1209,14 +1209,14 @@ func TestValidateHmacSha256(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			valid, err := ValidateHmacSha256(tt.message, tt.key, tt.knownMAC)
-				if tt.expectError {
-					if err == nil {
-						t.Error("expected error, got nil")
-					} else if tt.errorMsg != "" && err.Error() != tt.errorMsg {
-						t.Errorf("expected error %q, got %q", tt.errorMsg, err.Error())
-					}
-					return
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				} else if tt.errorMsg != "" && err.Error() != tt.errorMsg {
+					t.Errorf("expected error %q, got %q", tt.errorMsg, err.Error())
 				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

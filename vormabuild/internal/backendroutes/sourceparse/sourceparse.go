@@ -84,7 +84,7 @@ func ResolveServerRouteDefinitionFiles(
 	}
 
 	normalizedPatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
-		v.Config.ServerRouteDefinitionPatterns,
+		v.Config.ServerRouteDefinitionPatterns(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(

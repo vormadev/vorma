@@ -2,9 +2,10 @@ package eventpipeline_test
 
 import (
 	"context"
+	"log/slog"
+
 	"github.com/vormadev/vorma/wave/waveconfig"
 	"github.com/vormadev/vorma/wave/wavewatch"
-	"log/slog"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
@@ -18,15 +19,15 @@ import (
 )
 
 func isConfigFileForEventPipelineTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	path string,
 ) bool {
-	if cfg == nil || cfg.Core == nil {
+	if configFilePath == "" {
 		return false
 	}
 	return classification.IsConfigurationPathChange(
 		path,
-		cfg.Core.ConfigLocation,
+		configFilePath,
 	)
 }
 
@@ -80,13 +81,13 @@ func classifyEventWithWatcherAndBuilderForEventPipelineTests(
 }
 
 func classifyWatcherEventsForProcessingForEventPipelineTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	watcherEvents []fsnotify.Event,
 	watcherForClassification *watch.Watcher,
 	builderForClassification *builder.Builder,
 ) ([]eventpipeline.ClassifiedEvent, bool) {
 	classifiedEvents, configChanged := classifyWatcherEventsFromPreClassificationPlanForEventPipelineTests(
-		cfg,
+		configFilePath,
 		watcherEvents,
 		watcherForClassification,
 		builderForClassification,
@@ -100,7 +101,7 @@ func classifyWatcherEventsForProcessingForEventPipelineTests(
 }
 
 func classifyWatcherEventsFromPreClassificationPlanForEventPipelineTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	watcherEvents []fsnotify.Event,
 	watcherForClassification *watch.Watcher,
 	builderForClassification *builder.Builder,
@@ -115,7 +116,10 @@ func classifyWatcherEventsFromPreClassificationPlanForEventPipelineTests(
 		len(deduplicatedEvents),
 	)
 	for _, watcherEvent := range deduplicatedEvents {
-		if isConfigFileForEventPipelineTests(cfg, watcherEvent.Name) {
+		if isConfigFileForEventPipelineTests(
+			configFilePath,
+			watcherEvent.Name,
+		) {
 			return nil, true
 		}
 		classifiedEvents = append(
@@ -131,13 +135,13 @@ func classifyWatcherEventsFromPreClassificationPlanForEventPipelineTests(
 }
 
 func buildEventExecutionPlanForEventPipelineTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
 	watcherEvents []fsnotify.Event,
 	watcherForPlan *watch.Watcher,
 	builderForPlan *builder.Builder,
 ) eventpipeline.EventExecutionPlanningResult {
 	classifiedEvents, configChanged := classifyWatcherEventsForProcessingForEventPipelineTests(
-		cfg,
+		configFilePath,
 		watcherEvents,
 		watcherForPlan,
 		builderForPlan,
@@ -161,7 +165,8 @@ func buildEventExecutionPlanForEventPipelineTests(
 }
 
 func buildRunloopEngineForEventPipelineTests(
-	cfg *waveconfig.ParsedConfig,
+	configFilePath string,
+	cfg waveconfig.ParsedConfig,
 	log *slog.Logger,
 	watcherForRuntime *watch.Watcher,
 	builderForRuntime *builder.Builder,
@@ -194,7 +199,7 @@ func buildRunloopEngineForEventPipelineTests(
 			builderForPlan *builder.Builder,
 		) eventpipeline.EventExecutionPlanningResult {
 			return buildEventExecutionPlanForEventPipelineTests(
-				cfg,
+				configFilePath,
 				events,
 				watcherForPlan,
 				builderForPlan,

@@ -1,3 +1,39 @@
+## Never Ever Change Commitable Files To Work Around Agent Sandbox Issues
+
+Do not even attempt to run tests or any other commands in your sandbox
+environment. Always run things in MY environment. You should never ever ever
+make a change to commitable code or other files just to satisfy a sandbox
+restriction; that's completely inappropriate and wrong.
+
+Otherwise you hit all kinds of crazy annoying sandbox errors. Don't even try.
+Just always ask for elevated permissions. I shouldn't have to change my code to
+work around your sandbox issues.
+
+For build/test/dev commands, this is mandatory and non-negotiable:
+
+- Always execute through interactive-login shell: `/bin/zsh -lic '<command>'`
+- Never execute build/test/dev commands with `/bin/zsh -lc`
+- If `node -v` is not `v24.x` in that shell, stop immediately and do not run the
+  command
+- If any command output shows Node 20 from `/usr/local/bin/node`, treat that as
+  wrong environment usage and stop immediately
+
+## Do Not Use Machine-Absolute Paths Ever Without Explicit Human Permission
+
+Almost nothing in the repo should use machine-absolute paths other than in the
+rarest of circumstances. And anywhere that does MUST be labeled with
+`MachineAbsolute` or similar in the variable/method name.
+
+## Parse, Don't Validate
+
+Parse, don't validate. You know what this means. Follow it strictly and
+religiously.
+
+## Never Generate Non-Temp Test Artifacts
+
+Never generate test artifacts in the repo. Use os temp directories or the repo's
+own `__tmp` dir if you must.
+
 ## Always, Always, Always Do The Hardest Task First
 
 When you have a checklist of tasks to do, always always always do the #1 hardest

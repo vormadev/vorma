@@ -1,8 +1,11 @@
 package runtimeconfig
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/waveconfig"
 )
 
 func TestResolveDefaultsAndTrimmedValues(t *testing.T) {
@@ -61,6 +64,98 @@ func TestResolveDefaultsAndTrimmedValues(t *testing.T) {
 			got,
 			"app-root",
 		)
+	}
+}
+
+func TestParseAndValidateVormaConfig_ResolvesPathsRelativeToConfigFileDirectory(
+	t *testing.T,
+) {
+	root := t.TempDir()
+	t.Chdir(root)
+	configPath := filepath.Join("backend", "wave.config.json")
+
+	rawConfigJSON := []byte(`{
+		"Core":{
+			"ProjectID":"test-project",
+			"MainAppEntry":"../backend/cmd/app_main.go",
+			"StaticAssetDirs":{
+				"Public":"../static/public",
+				"Private":"../static/private"
+			}
+		},
+		"Vorma":{
+			"MainBuildEntry":"../backend/cmd/build",
+			"UIVariant":"react",
+			"HTMLTemplateLocation":"entry.go.html",
+			"ClientEntry":"../frontend/src/vorma.entry.tsx",
+			"ClientRouteDefinitionPatterns":["../frontend/src/**/*vorma.routes.ts"],
+			"ServerRouteDefinitionPatterns":["../backend/src/**/*.go"],
+			"TSGenOutDir":"../frontend/src/vorma.gen"
+		}
+	}`)
+
+	parsedWaveConfig, waveParseError := waveconfig.ParseConfigJSONWithConfigPath(
+		rawConfigJSON,
+		configPath,
+	)
+	if waveParseError != nil {
+		t.Fatalf(
+			"ParseConfigJSONWithConfigPath returned error: %v",
+			waveParseError,
+		)
+	}
+
+	config, parseError := ParseVormaConfigJSON(
+		rawConfigJSON,
+		parsedWaveConfig,
+	)
+	if parseError != nil {
+		t.Fatalf("ParseAndValidateVormaConfig returned error: %v", parseError)
+	}
+
+	if got, want := config.MainBuildEntry(), filepath.Join("backend", "cmd", "build"); got != want {
+		t.Fatalf("MainBuildEntry=%q, want %q", got, want)
+	}
+	if got, want := config.ClientEntry(), filepath.Join("frontend", "src", "vorma.entry.tsx"); got != want {
+		t.Fatalf("ClientEntry=%q, want %q", got, want)
+	}
+	if got, want := config.TSGenOutDir(), filepath.Join("frontend", "src", "vorma.gen"); got != want {
+		t.Fatalf("TSGenOutDir=%q, want %q", got, want)
+	}
+	if got, want := config.ServerRouteDefinitionPatterns()[0], filepath.Join("backend", "src", "**", "*.go"); got != want {
+		t.Fatalf("ServerRouteDefinitionPatterns[0]=%q, want %q", got, want)
+	}
+	if got, want := config.ClientRouteDefinitionPatterns()[0], filepath.Join("frontend", "src", "**", "*vorma.routes.ts"); got != want {
+		t.Fatalf("ClientRouteDefinitionPatterns[0]=%q, want %q", got, want)
+	}
+}
+
+func TestParseAndValidateVormaConfig_RequiresParsedWaveConfig(
+	t *testing.T,
+) {
+	rawConfigJSON := []byte(`{
+		"Vorma":{
+			"MainBuildEntry":"backend/cmd/build",
+			"UIVariant":"react",
+			"HTMLTemplateLocation":"entry.go.html",
+			"ClientEntry":"frontend/src/vorma.entry.tsx",
+			"ClientRouteDefinitionPatterns":["frontend/src/**/*vorma.routes.ts"],
+			"TSGenOutDir":"frontend/src/vorma.gen"
+		}
+	}`)
+
+	_, parseError := ParseVormaConfigJSON(
+		rawConfigJSON,
+		nil,
+	)
+	if parseError == nil {
+		t.Fatal("expected ParseAndValidateVormaConfig to reject nil parsed wave config")
+	}
+	if !strings.Contains(
+		parseError.Error(),
+		"parsed wave config",
+	) {
+		t.Fatalf("unexpected parse error: %v", parseError)
 	}
 }
 

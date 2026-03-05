@@ -22,13 +22,61 @@ func newDiscardLogger() *slog.Logger {
 	return wavetest.NewDiscardLogger()
 }
 
-func newParsedConfigForToolingTestsAtRoot(root string) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+func newParsedConfigForToolingTestsAtRoot(
+	tb testing.TB,
+	root string,
+) waveconfig.ParsedConfig {
+	tb.Helper()
+	return wavetest.NewParsedConfigAtRoot(tb, root)
+}
+
+func newParsedConfigForToolingTestsWithoutViteAtRoot(
+	tb testing.TB,
+	root string,
+) waveconfig.ParsedConfig {
+	tb.Helper()
+
+	baseConfig := wavetest.NewParsedConfigAtRoot(tb, root)
+	baseConfigJSON, marshalError := wavetest.MarshalParsedConfigToRawJSON(
+		baseConfig,
+	)
+	if marshalError != nil {
+		tb.Fatalf(
+			"marshal base tooling test config for no-vite fixture: %v",
+			marshalError,
+		)
+	}
+
+	var configDocument map[string]any
+	if unmarshalError := json.Unmarshal(baseConfigJSON, &configDocument); unmarshalError != nil {
+		tb.Fatalf(
+			"parse base tooling test config for no-vite fixture: %v",
+			unmarshalError,
+		)
+	}
+	delete(configDocument, "Vite")
+
+	noViteConfigJSON, remarshalError := json.Marshal(configDocument)
+	if remarshalError != nil {
+		tb.Fatalf(
+			"re-marshal no-vite tooling test config: %v",
+			remarshalError,
+		)
+	}
+
+	parsedConfig, parseError := waveconfig.ParseConfigJSONWithConfigPath(
+		noViteConfigJSON,
+		wavetest.MustCWDRelativePath(filepath.Join(root, "wave.config.json")),
+	)
+	if parseError != nil {
+		tb.Fatalf("parse no-vite tooling test config: %v", parseError)
+	}
+	return parsedConfig
 }
 
 func ensureViteConfigForToolingTests(
 	t *testing.T,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 ) {
 	wavetest.EnsureViteConfig(t, cfg)
 }
@@ -39,6 +87,18 @@ func pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
 ) string {
 	return testpath.PathRelativeToCurrentWorkingDirectory(
 		t,
+		configuredPath,
+	)
+}
+
+func pathRelativeToConfigFileDirectoryForToolingConfigJSON(
+	t *testing.T,
+	configFilePath string,
+	configuredPath string,
+) string {
+	return testpath.MustPathRelativeToConfiguredWorkingDirectory(
+		t,
+		filepath.Dir(configFilePath),
 		configuredPath,
 	)
 }
@@ -180,42 +240,38 @@ func writeSemanticallyChangedConfigForToolingTests(
 ) {
 	t.Helper()
 
+	resolveRootBasePath := filepath.Dir(filepath.Dir(configFilePath))
+
 	configBytes, readError := os.ReadFile(configFilePath)
 	if os.IsNotExist(readError) {
 		configPayload := map[string]any{
 			"Core": map[string]any{
-				"MainAppEntry": "cmd/app_changed",
-				"DistDir": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+				"ProjectID": "test-project",
+				"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 					t,
-					filepath.Join(
-						filepath.Dir(filepath.Dir(configFilePath)),
-						"dist",
-					),
+					configFilePath,
+					filepath.Join(resolveRootBasePath, "cmd", "app_changed"),
 				),
 				"StaticAssetDirs": map[string]any{
-					"Public": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+					"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 						t,
+						configFilePath,
 						filepath.Join(
-							filepath.Dir(filepath.Dir(configFilePath)),
+							resolveRootBasePath,
 							"static",
 							waveartifacts.PublicDirname,
 						),
 					),
-					"Private": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+					"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 						t,
+						configFilePath,
 						filepath.Join(
-							filepath.Dir(filepath.Dir(configFilePath)),
+							resolveRootBasePath,
 							"static",
 							waveartifacts.PrivateDirname,
 						),
 					),
 				},
-			},
-			"Watch": map[string]any{
-				"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-					t,
-					filepath.Dir(filepath.Dir(configFilePath)),
-				),
 			},
 		}
 		updatedConfigBytes, marshalError := json.Marshal(configPayload)
@@ -306,46 +362,38 @@ func runConfigMutationAndPathShapeMatrix(
 
 func setupConfigEventTestConfig(
 	t *testing.T,
-) (*waveconfig.ParsedConfig, string, string) {
+) (waveconfig.ParsedConfig, string, string) {
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	configFilePath := filepath.Join(root, "backend", "wave.config.json")
-	cfg.Core.ConfigLocation = configFilePath
-	cfg.Dist.Root = cfg.Core.DistDir
 
 	if mkdirError := os.MkdirAll(filepath.Dir(configFilePath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating config file directory: %v", mkdirError)
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+			"ProjectID": "test-project",
+			"MainAppEntry": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 				t,
-				cfg.Core.MainAppEntry,
-			),
-			"DistDir": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				cfg.Core.DistDir,
+				configFilePath,
+				cfg.Core().MainAppEntry(),
 			),
 			"ServerOnlyMode": false,
 			"StaticAssetDirs": map[string]any{
-				"Public": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+				"Public": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 					t,
-					cfg.Core.StaticAssetDirs.Public,
+					configFilePath,
+					cfg.Core().StaticAssetDirsPublic(),
 				),
-				"Private": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
+				"Private": pathRelativeToConfigFileDirectoryForToolingConfigJSON(
 					t,
-					cfg.Core.StaticAssetDirs.Private,
+					configFilePath,
+					cfg.Core().StaticAssetDirsPrivate(),
 				),
 			},
-		},
-		"Watch": map[string]any{
-			"WatchRoot": pathRelativeToCurrentWorkingDirectoryForToolingConfigJSON(
-				t,
-				root,
-			),
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -369,7 +417,7 @@ func setupConfigEventTestConfig(
 
 func setupWatcherAndBuilderForToolingTests(
 	t *testing.T,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 ) (*watch.Watcher, *builder.Builder) {
 	t.Helper()
 
@@ -391,16 +439,22 @@ func setupWatcherAndBuilderForToolingTests(
 
 func setupProcessEventsServerForToolingTests(
 	t *testing.T,
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
+	configFilePath ...string,
 ) *Server {
 	t.Helper()
 
 	watcher, builderForTest := setupWatcherAndBuilderForToolingTests(t, cfg)
+	resolvedConfigFilePath := ""
+	if len(configFilePath) > 0 {
+		resolvedConfigFilePath = configFilePath[0]
+	}
 	return &Server{
-		Cfg:     cfg,
-		Log:     newDiscardLogger(),
-		Watcher: watcher,
-		Builder: builderForTest,
+		Cfg:            cfg,
+		ConfigFilePath: resolvedConfigFilePath,
+		Log:            newDiscardLogger(),
+		Watcher:        watcher,
+		Builder:        builderForTest,
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),

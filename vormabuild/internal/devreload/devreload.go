@@ -586,6 +586,7 @@ func GetDeferredFrameworkRuntimeReloadAction(
 	warnMessage string,
 	reloadTrigger string,
 	hookContext *wavewatch.HookContext,
+	expectedBuildID string,
 ) *wavewatch.RefreshAction {
 	return defaultReloadActionExecutor.getDeferredFrameworkRuntimeReloadAction(
 		v,
@@ -593,6 +594,7 @@ func GetDeferredFrameworkRuntimeReloadAction(
 		warnMessage,
 		reloadTrigger,
 		hookContext,
+		expectedBuildID,
 	)
 }
 
@@ -602,6 +604,7 @@ func (executor reloadActionExecutor) getDeferredFrameworkRuntimeReloadAction(
 	warnMessage string,
 	reloadTrigger string,
 	_ *wavewatch.HookContext,
+	expectedBuildID string,
 ) *wavewatch.RefreshAction {
 	trimmedEndpoint := strings.TrimSpace(endpoint)
 	if trimmedEndpoint == "" {
@@ -621,16 +624,16 @@ func (executor reloadActionExecutor) getDeferredFrameworkRuntimeReloadAction(
 	if !strings.HasPrefix(trimmedEndpoint, "/") {
 		trimmedEndpoint = "/" + trimmedEndpoint
 	}
-	expectedBuildID := ""
-	if v != nil {
-		expectedBuildID = strings.TrimSpace(v.BuildID())
+	normalizedExpectedBuildID := strings.TrimSpace(expectedBuildID)
+	if normalizedExpectedBuildID == "" && v != nil {
+		normalizedExpectedBuildID = strings.TrimSpace(v.BuildID())
 	}
 
 	reloadAction := newReloadBrowserAndWaitAction()
 	reloadAction.FrameworkRuntimeReloadRequest = &wavewatch.FrameworkRuntimeReloadRequest{
 		EndpointPath:    trimmedEndpoint,
 		ReloadAttemptID: executor.dependencies.nextReloadAttemptID(),
-		ExpectedBuildID: expectedBuildID,
+		ExpectedBuildID: normalizedExpectedBuildID,
 		ReloadTrigger:   strings.TrimSpace(reloadTrigger),
 	}
 	return reloadAction
@@ -662,16 +665,17 @@ type frameworkReloadActionResolver func(
 	warnMessage string,
 	reloadTrigger string,
 	hookContext *wavewatch.HookContext,
+	expectedBuildID string,
 ) *wavewatch.RefreshAction
 
-func InjectDefaultWatchPatterns(v *vormaruntime.Vorma) *waveconfig.ParsedConfig {
-	cfg := waveframework.BuildtimeParsedConfig(v.Wave.RawConfigJSON())
+func InjectDefaultWatchPatterns(v *vormaruntime.Vorma) waveconfig.ParsedConfig {
+	cfg := v.Wave.ParsedConfig()
 	InjectDefaultWatchPatternsInConfig(cfg, v)
 	return cfg
 }
 
 func InjectDefaultWatchPatternsInConfig(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	v *vormaruntime.Vorma,
 ) {
 	if !shouldInjectDefaultWatchPatterns(v) {
@@ -684,16 +688,16 @@ func InjectDefaultWatchPatternsInConfig(
 	patterns := getDefaultWatchPatterns(v)
 	appendMissingFrameworkWatchPatterns(cfg, patterns)
 
-	if v.Config.TSGenOutDir != "" {
+	if v.Config.TSGenOutDir() != "" {
 		injectGeneratedOutputPathsForDefaultWatchPatterns(
 			cfg,
-			v.Config.TSGenOutDir,
+			v.Config.TSGenOutDir(),
 		)
 	}
 }
 
 func appendMissingFrameworkWatchPatterns(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	defaultPatterns []wavewatch.WatchedFile,
 ) {
 	for _, defaultPattern := range defaultPatterns {
@@ -744,7 +748,7 @@ func getDefaultWatchPatterns(v *vormaruntime.Vorma) []wavewatch.WatchedFile {
 
 func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wavewatch.WatchedFile {
 	normalizedRouteDefinitionPatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
-		v.Config.ClientRouteDefinitionPatterns,
+		v.Config.ClientRouteDefinitionPatterns(),
 	)
 	if err != nil {
 		panic(
@@ -778,7 +782,7 @@ func routeDefinitionWatchPatterns(v *vormaruntime.Vorma) []wavewatch.WatchedFile
 }
 
 func htmlTemplateWatchPattern(v *vormaruntime.Vorma) *wavewatch.WatchedFile {
-	htmlTemplateLocation := v.Config.HTMLTemplateLocation
+	htmlTemplateLocation := v.Config.HTMLTemplateLocation()
 	privateStaticDir := v.Wave.PrivateStaticDir()
 	if htmlTemplateLocation == "" || privateStaticDir == "" {
 		return nil
@@ -884,6 +888,10 @@ func watchReloadCallback(
 	}
 
 	return func(ctx *wavewatch.HookContext) (*wavewatch.RefreshAction, error) {
+		expectedBuildID := ""
+		if v != nil {
+			expectedBuildID = strings.TrimSpace(v.BuildID())
+		}
 		if preReloadAction != nil {
 			if err := preReloadAction(v); err != nil {
 				return nil, fmt.Errorf(
@@ -915,19 +923,20 @@ func watchReloadCallback(
 			reloadEndpointFailureWarnMessage,
 			reloadTrigger,
 			ctx,
+			expectedBuildID,
 		), nil
 	}
 }
 
 func shouldInjectDefaultWatchPatterns(v *vormaruntime.Vorma) bool {
-	if v.Config.IncludeDefaults == nil {
+	if v.Config.IncludeDefaults() == nil {
 		return true
 	}
-	return *v.Config.IncludeDefaults
+	return *v.Config.IncludeDefaults()
 }
 
 func injectGeneratedOutputPathsForDefaultWatchPatterns(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	tsGenOutDir string,
 ) {
 	appendMissingFrameworkIgnoredPatterns(
@@ -944,7 +953,7 @@ func injectGeneratedOutputPathsForDefaultWatchPatterns(
 }
 
 func appendMissingFrameworkIgnoredPatterns(
-	cfg *waveconfig.ParsedConfig,
+	cfg waveconfig.ParsedConfig,
 	defaultIgnoredPatterns ...string,
 ) {
 	for _, defaultIgnoredPattern := range defaultIgnoredPatterns {

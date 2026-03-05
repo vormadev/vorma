@@ -44,7 +44,7 @@ const defaultRefreshPort = 10000
 
 // Config configures low-level runtime behavior for one Wave instance.
 type Config struct {
-	ParsedConfig  *waveconfig.ParsedConfig
+	ParsedConfig  waveconfig.ParsedConfig
 	RawConfigJSON []byte
 	DistStaticFS  fs.FS
 	Logger        *slog.Logger
@@ -54,7 +54,7 @@ type Config struct {
 
 // Runtime owns runtime caches and filesystem-backed resolution behavior.
 type Runtime struct {
-	cfg    *waveconfig.ParsedConfig
+	cfg    waveconfig.ParsedConfig
 	rawCfg []byte
 	log    *slog.Logger
 
@@ -171,17 +171,17 @@ func (runtime *Runtime) PublicPathPrefix() string {
 
 // DistDir returns the configured build output directory root.
 func (runtime *Runtime) DistDir() string {
-	return runtime.cfg.Core.DistDir
+	return runtime.cfg.Dist().Root()
 }
 
 // PublicStaticDir returns the source directory for public static assets.
 func (runtime *Runtime) PublicStaticDir() string {
-	return runtime.cfg.Core.StaticAssetDirs.Public
+	return runtime.cfg.Core().StaticAssetDirsPublic()
 }
 
 // PrivateStaticDir returns the source directory for private static assets.
 func (runtime *Runtime) PrivateStaticDir() string {
-	return runtime.cfg.Core.StaticAssetDirs.Private
+	return runtime.cfg.Core().StaticAssetDirsPrivate()
 }
 
 // ViteManifestLocation returns the expected Vite manifest path in build output.
@@ -191,22 +191,17 @@ func (runtime *Runtime) ViteManifestLocation() string {
 
 // ViteOutDir returns the directory where Vite emits public artifacts.
 func (runtime *Runtime) ViteOutDir() string {
-	return runtime.cfg.Dist.StaticPublic()
+	return runtime.cfg.Dist().StaticPublic()
 }
 
 // StaticPrivateOutDir returns the private static output directory.
 func (runtime *Runtime) StaticPrivateOutDir() string {
-	return runtime.cfg.Dist.StaticPrivate()
+	return runtime.cfg.Dist().StaticPrivate()
 }
 
 // StaticPublicOutDir returns the public static output directory.
 func (runtime *Runtime) StaticPublicOutDir() string {
-	return runtime.cfg.Dist.StaticPublic()
-}
-
-// ConfigFile returns the original configuration file location if known.
-func (runtime *Runtime) ConfigFile() string {
-	return runtime.cfg.Core.ConfigLocation
+	return runtime.cfg.Dist().StaticPublic()
 }
 
 func (runtime *Runtime) initRuntimeCaches() {
@@ -261,10 +256,10 @@ func (runtime *Runtime) initRuntimeCaches() {
 }
 
 func (runtime *Runtime) initBaseFS() (fs.FS, error) {
-	if runtime.IsDev() {
-		return os.DirFS(runtime.cfg.Dist.Static()), nil
-	}
 	if runtime.distStaticFS == nil {
+		if runtime.IsDev() {
+			return os.DirFS(runtime.cfg.Dist().Static()), nil
+		}
 		return nil, fmt.Errorf("distStaticFS is nil in production mode")
 	}
 	return runtime.distStaticFS, nil
@@ -474,7 +469,9 @@ func (runtime *Runtime) readCriticalCSSContent() (string, bool, error) {
 	return string(content), false, nil
 }
 
-func (runtime *Runtime) buildCriticalCSSData(content string) (*criticalCSSData, error) {
+func (runtime *Runtime) buildCriticalCSSData(
+	content string,
+) (*criticalCSSData, error) {
 	styleElement, sha256Hash, err := waveruntime.BuildCriticalCSSStyleElement(
 		content,
 		waveframework.CriticalCSSStyleElementID(runtime.cfg),
@@ -553,7 +550,9 @@ func (runtime *Runtime) StyleSheetLinkElement() template.HTML {
 }
 
 func (runtime *Runtime) initFileMapURL() (string, error) {
-	return runtime.initPublicURLFromInternalRefFile(publicFileMapRefRelativePath())
+	return runtime.initPublicURLFromInternalRefFile(
+		publicFileMapRefRelativePath(),
+	)
 }
 
 // PublicFileMapURL returns the generated public file-map URL.
@@ -621,10 +620,18 @@ func (runtime *Runtime) RefreshScript() template.HTML {
 			waveruntime.BuildRefreshScript(
 				port,
 				waveruntime.RefreshScriptConfig{
-					BrowserRevalidateFunctionName:     waveframework.BrowserRevalidateFunctionName(runtime.cfg),
-					RefreshRebuildingOverlayElementID: waveframework.RefreshRebuildingOverlayElementID(runtime.cfg),
-					NonCriticalCSSLinkElementID:       waveframework.NonCriticalCSSLinkElementID(runtime.cfg),
-					CriticalCSSStyleElementID:         waveframework.CriticalCSSStyleElementID(runtime.cfg),
+					BrowserRevalidateFunctionName: waveframework.BrowserRevalidateFunctionName(
+						runtime.cfg,
+					),
+					RefreshRebuildingOverlayElementID: waveframework.RefreshRebuildingOverlayElementID(
+						runtime.cfg,
+					),
+					NonCriticalCSSLinkElementID: waveframework.NonCriticalCSSLinkElementID(
+						runtime.cfg,
+					),
+					CriticalCSSStyleElementID: waveframework.CriticalCSSStyleElementID(
+						runtime.cfg,
+					),
 				},
 			),
 		),

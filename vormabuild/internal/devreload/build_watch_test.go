@@ -1,33 +1,70 @@
 package devreload
 
 import (
+	"encoding/json"
 	"errors"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveframework"
-	"github.com/vormadev/vorma/wave/wavewatch"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/vormabuild/internal/testkit"
+	"github.com/vormadev/vorma/wave/waveframework"
+	"github.com/vormadev/vorma/wave/wavewatch"
 )
 
-func TestRouteDefinitionWatchPatterns_ReturnNilWhenRouteDefsPatternsMissing(
+func parseMutatedAppVormaConfigForBuildWatchTests(
+	tb testing.TB,
+	app *vormaruntime.Vorma,
+	mutate func(*vormaruntime.VormaConfigJSON),
+) (vormaruntime.VormaConfig, error) {
+	tb.Helper()
+	if app == nil || app.Wave == nil {
+		return nil, errors.New("app with Wave runtime is required")
+	}
+	rawConfig := struct {
+		Vorma vormaruntime.VormaConfigJSON `json:"Vorma"`
+	}{}
+	if unmarshalError := json.Unmarshal(
+		app.Wave.RawConfigJSON(),
+		&rawConfig,
+	); unmarshalError != nil {
+		return nil, unmarshalError
+	}
+	if mutate != nil {
+		mutate(&rawConfig.Vorma)
+	}
+	mutatedPayload, marshalError := json.Marshal(rawConfig)
+	if marshalError != nil {
+		return nil, marshalError
+	}
+	return runtimeconfig.ParseVormaConfigJSON(mutatedPayload, app.Wave.ParsedConfig())
+}
+
+func TestRouteDefinitionWatchPatterns_ReturnsParseErrorWhenRouteDefsPatternsMissing(
 	t *testing.T,
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.ClientRouteDefinitionPatterns = nil
-
-	patterns := routeDefinitionWatchPatterns(app)
-	if len(patterns) != 0 {
-		t.Fatalf(
-			"expected no watch patterns when route definitions patterns are empty, got %#v",
-			patterns,
-		)
+	_, parseError := parseMutatedAppVormaConfigForBuildWatchTests(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.ClientRouteDefinitionPatterns = nil
+		},
+	)
+	if parseError == nil {
+		t.Fatal("expected parse error when route definition patterns are missing")
+	}
+	if !strings.Contains(
+		parseError.Error(),
+		"Vorma.ClientRouteDefinitionPatterns is required",
+	) {
+		t.Fatalf("error = %q, expected required-pattern parse error", parseError)
 	}
 }
 
@@ -36,10 +73,16 @@ func TestRouteDefinitionWatchPatterns_PreservesInputOrderForValidPatterns(
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.ClientRouteDefinitionPatterns = []string{
-		"frontend/src/routes/alpha.vorma.routes.ts",
-		"frontend/src/routes/beta.vorma.routes.ts",
-	}
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.ClientRouteDefinitionPatterns = []string{
+				"frontend/src/routes/alpha.vorma.routes.ts",
+				"frontend/src/routes/beta.vorma.routes.ts",
+			}
+		},
+	)
 
 	patterns := routeDefinitionWatchPatterns(app)
 	if len(patterns) != 2 {
@@ -72,19 +115,26 @@ func TestRouteDefinitionWatchPatterns_PreservesInputOrderForValidPatterns(
 	}
 }
 
-func TestHTMLTemplateWatchPattern_ReturnsNilWhenTemplateLocationMissing(
+func TestHTMLTemplateWatchPattern_ReturnsParseErrorWhenTemplateLocationMissing(
 	t *testing.T,
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.HTMLTemplateLocation = ""
-
-	pattern := htmlTemplateWatchPattern(app)
-	if pattern != nil {
-		t.Fatalf(
-			"expected no watch pattern when html template location is empty, got %#v",
-			pattern,
-		)
+	_, parseError := parseMutatedAppVormaConfigForBuildWatchTests(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.HTMLTemplateLocation = ""
+		},
+	)
+	if parseError == nil {
+		t.Fatal("expected parse error when html template location is empty")
+	}
+	if !strings.Contains(
+		parseError.Error(),
+		"Vorma.HTMLTemplateLocation is required",
+	) {
+		t.Fatalf("error = %q, expected required-template parse error", parseError)
 	}
 }
 
@@ -143,22 +193,30 @@ func TestWatchReloadCallback_WrapsPreReloadActionErrorWithTriggerContext(
 	}
 }
 
-func TestGetDefaultWatchPatterns_SkipsMissingOptionalPatterns(t *testing.T) {
+func TestGetDefaultWatchPatterns_IncludesRequiredRouteTemplateAndGoPatterns(
+	t *testing.T,
+) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.ClientRouteDefinitionPatterns = nil
-	app.Config.HTMLTemplateLocation = ""
 
 	patterns := getDefaultWatchPatterns(app)
-	if len(patterns) != 1 {
+	expectedPatternCount := len(app.Config.ClientRouteDefinitionPatterns()) + 2
+	if len(patterns) != expectedPatternCount {
 		t.Fatalf(
-			"len(patterns) = %d, want %d when optional patterns are missing",
+			"len(patterns) = %d, want %d",
 			len(patterns),
-			1,
+			expectedPatternCount,
 		)
 	}
-	if patterns[0].Pattern != "**/*.go" {
-		t.Fatalf("pattern[0] = %q, want %q", patterns[0].Pattern, "**/*.go")
+	hasGoPattern := false
+	for _, pattern := range patterns {
+		if pattern.Pattern == "**/*.go" {
+			hasGoPattern = true
+			break
+		}
+	}
+	if !hasGoPattern {
+		t.Fatal("expected default watch patterns to include **/*.go")
 	}
 }
 
@@ -166,7 +224,7 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
 
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 	InjectDefaultWatchPatternsInConfig(parsedCfg, app)
 	InjectDefaultWatchPatternsInConfig(parsedCfg, app)
 
@@ -180,13 +238,13 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 
 	templatePath := filepath.Join(
 		app.Wave.PrivateStaticDir(),
-		app.Config.HTMLTemplateLocation,
+		app.Config.HTMLTemplateLocation(),
 	)
 	expectedPatternCounts := map[string]int{
 		normalizeFrameworkWatchPatternPath(templatePath): 1,
 		"**/*.go": 1,
 	}
-	for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
+	for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns() {
 		expectedPatternCounts[normalizeFrameworkWatchPatternPath(routeDefinitionPattern)] = 1
 	}
 	assertFrameworkWatchPatternCounts(
@@ -197,11 +255,11 @@ func TestInjectDefaultWatchPatterns_IsIdempotent(t *testing.T) {
 
 	expectedIgnoredPaths := []string{
 		filepath.Join(
-			app.Config.TSGenOutDir,
+			app.Config.TSGenOutDir(),
 			runtimepaths.GeneratedTypeScriptIndexFileName,
 		),
 		filepath.Join(
-			app.Config.TSGenOutDir,
+			app.Config.TSGenOutDir(),
 			runtimepaths.GeneratedTypeScriptPublicFileMapFileName,
 		),
 	}
@@ -218,7 +276,7 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 
 	customGoWatchPattern := wavewatch.WatchedFile{
 		Pattern: "**/*.go",
@@ -233,7 +291,7 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(
 	)
 
 	existingIgnoredPattern := filepath.Join(
-		app.Config.TSGenOutDir,
+		app.Config.TSGenOutDir(),
 		runtimepaths.GeneratedTypeScriptIndexFileName,
 	)
 	waveframework.StateForConfig(parsedCfg).IgnoredPatterns = append(
@@ -274,11 +332,11 @@ func TestInjectDefaultWatchPatterns_PreservesExistingUserConfiguration(
 
 	expectedIgnoredPaths := []string{
 		filepath.Join(
-			app.Config.TSGenOutDir,
+			app.Config.TSGenOutDir(),
 			runtimepaths.GeneratedTypeScriptIndexFileName,
 		),
 		filepath.Join(
-			app.Config.TSGenOutDir,
+			app.Config.TSGenOutDir(),
 			runtimepaths.GeneratedTypeScriptPublicFileMapFileName,
 		),
 	}
@@ -295,9 +353,9 @@ func TestInjectDefaultWatchPatterns_DoesNotDuplicateSemanticallyEquivalentRouteP
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 
-	existingRoutePattern := app.Config.ClientRouteDefinitionPatterns[0]
+	existingRoutePattern := app.Config.ClientRouteDefinitionPatterns()[0]
 	waveframework.StateForConfig(parsedCfg).WatchPatterns = append(
 		waveframework.StateForConfig(parsedCfg).WatchPatterns,
 		wavewatch.WatchedFile{
@@ -360,7 +418,7 @@ func TestInjectDefaultWatchPatterns_DoesNotDuplicateSemanticallyEquivalentRouteP
 	}
 }
 
-func TestInjectDefaultWatchPatterns_MatchesRouteAndTemplateWhenWatchRootIsAncestor(
+func TestInjectDefaultWatchPatterns_MatchesRouteAndTemplateWhenResolveRootIsAncestor(
 	t *testing.T,
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
@@ -377,21 +435,17 @@ func TestInjectDefaultWatchPatterns_MatchesRouteAndTemplateWhenWatchRootIsAncest
 		_ = os.Chdir(originalWorkingDirectory)
 	})
 
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
-	if parsedCfg.Watch == nil {
-		parsedCfg.Watch = &waveconfig.WatchConfig{}
-	}
-	parsedCfg.Watch.WatchRoot = filepath.Dir(fixture.RootDir)
+	parsedCfg := app.Wave.ParsedConfig()
 	InjectDefaultWatchPatternsInConfig(parsedCfg, app)
 
 	templatePattern := normalizeFrameworkWatchPatternPath(
 		filepath.Join(
 			app.Wave.PrivateStaticDir(),
-			app.Config.HTMLTemplateLocation,
+			app.Config.HTMLTemplateLocation(),
 		),
 	)
 	routePattern := normalizeFrameworkWatchPatternPath(
-		app.Config.ClientRouteDefinitionPatterns[0],
+		app.Config.ClientRouteDefinitionPatterns()[0],
 	)
 	assertFrameworkWatchPatternCounts(
 		t,
@@ -488,7 +542,7 @@ func assertIgnoredPatternCounts(
 func TestInjectGeneratedOutputPathsForDefaultWatchPatterns_AppendsGeneratedOutputsToIgnoreList(
 	t *testing.T,
 ) {
-	cfg := &waveconfig.ParsedConfig{}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
 
 	injectGeneratedOutputPathsForDefaultWatchPatterns(
 		cfg,
@@ -608,12 +662,25 @@ func TestShouldInjectDefaultWatchPatterns(t *testing.T) {
 	}
 
 	includeDefaults := false
-	app.Config.IncludeDefaults = &includeDefaults
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.IncludeDefaults = &includeDefaults
+		},
+	)
 	if shouldInjectDefaultWatchPatterns(app) {
 		t.Fatal("expected defaults to be skipped when IncludeDefaults is false")
 	}
 
 	includeDefaults = true
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.IncludeDefaults = &includeDefaults
+		},
+	)
 	if !shouldInjectDefaultWatchPatterns(app) {
 		t.Fatal("expected defaults to be injected when IncludeDefaults is true")
 	}
@@ -622,9 +689,15 @@ func TestShouldInjectDefaultWatchPatterns(t *testing.T) {
 func TestRouteDefinitionWatchPatterns_UseConfiguredRoutePattern(t *testing.T) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.ClientRouteDefinitionPatterns = []string{
-		"frontend/src/custom.routes.ts",
-	}
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.ClientRouteDefinitionPatterns = []string{
+				"frontend/src/custom.routes.ts",
+			}
+		},
+	)
 
 	patterns := routeDefinitionWatchPatterns(app)
 	if len(patterns) != 1 {
@@ -664,7 +737,13 @@ func TestRouteDefinitionWatchPatterns_UseConfiguredRoutePattern(t *testing.T) {
 func TestHTMLTemplateWatchPattern_UsesPrivateStaticDirPrefix(t *testing.T) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.HTMLTemplateLocation = "templates/custom.entry.go.html"
+	testkit.MustMutateAppVormaConfig(
+		t,
+		app,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.HTMLTemplateLocation = "templates/custom.entry.go.html"
+		},
+	)
 
 	pattern := htmlTemplateWatchPattern(app)
 	if pattern == nil {

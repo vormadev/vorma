@@ -2,10 +2,10 @@ package hooks_test
 
 import (
 	"context"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/buildtime/internal/devserver/hooks"
 )
 
@@ -89,14 +89,12 @@ func TestDeriveResolvedTimeoutDurationFromStageAndExecutionPolicy(
 }
 
 func TestDeriveHookCommandStageTimeoutMilliseconds(t *testing.T) {
-	watchConfig := &waveconfig.WatchConfig{
-		HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-			PreCommandTimeoutMilliseconds:              11,
-			ConcurrentCommandTimeoutMilliseconds:       22,
-			ConcurrentNoWaitCommandTimeoutMilliseconds: 27,
-			PostCommandTimeoutMilliseconds:             33,
-		},
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(cfg, 11)
+	wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(cfg, 22)
+	wavetest.SetWatchConcurrentNoWaitCommandTimeoutMilliseconds(cfg, 27)
+	wavetest.SetWatchPostCommandTimeoutMilliseconds(cfg, 33)
+	watchConfig := cfg.Watch()
 
 	testCases := []struct {
 		Name                                    string
@@ -152,14 +150,12 @@ func TestDeriveHookCommandStageTimeoutMilliseconds(t *testing.T) {
 }
 
 func TestDeriveHookCallbackStageTimeoutMilliseconds(t *testing.T) {
-	watchConfig := &waveconfig.WatchConfig{
-		HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-			PreCallbackTimeoutMilliseconds:              11,
-			ConcurrentCallbackTimeoutMilliseconds:       22,
-			ConcurrentNoWaitCallbackTimeoutMilliseconds: 27,
-			PostCallbackTimeoutMilliseconds:             33,
-		},
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(cfg, 11)
+	wavetest.SetWatchConcurrentCallbackTimeoutMilliseconds(cfg, 22)
+	wavetest.SetWatchConcurrentNoWaitCallbackTimeoutMilliseconds(cfg, 27)
+	wavetest.SetWatchPostCallbackTimeoutMilliseconds(cfg, 33)
+	watchConfig := cfg.Watch()
 
 	testCases := []struct {
 		Name                                     string
@@ -218,12 +214,10 @@ func TestDeriveHookCallbackStageTimeoutMilliseconds(t *testing.T) {
 }
 
 func TestDeriveHookCommandTimeoutDurationForExecutionPlan(t *testing.T) {
-	watchConfig := &waveconfig.WatchConfig{
-		HookCommandTimeouts: waveconfig.HookCommandTimeoutConfig{
-			PreCommandTimeoutMilliseconds:        1000,
-			ConcurrentCommandTimeoutMilliseconds: 2000,
-		},
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetWatchPreCommandTimeoutMilliseconds(cfg, 1000)
+	wavetest.SetWatchConcurrentCommandTimeoutMilliseconds(cfg, 2000)
+	watchConfig := cfg.Watch()
 
 	testCases := []struct {
 		Name                           string
@@ -291,12 +285,10 @@ func TestDeriveHookCommandTimeoutDurationForExecutionPlan(t *testing.T) {
 }
 
 func TestDeriveHookCallbackTimeoutDurationForExecutionPlan(t *testing.T) {
-	watchConfig := &waveconfig.WatchConfig{
-		HookCallbackTimeouts: waveconfig.HookCallbackTimeoutConfig{
-			PreCallbackTimeoutMilliseconds:        1000,
-			ConcurrentCallbackTimeoutMilliseconds: 2000,
-		},
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetWatchPreCallbackTimeoutMilliseconds(cfg, 1000)
+	wavetest.SetWatchConcurrentCallbackTimeoutMilliseconds(cfg, 2000)
+	watchConfig := cfg.Watch()
 
 	testCases := []struct {
 		Name                            string
@@ -364,10 +356,10 @@ func TestDeriveHookCallbackTimeoutDurationForExecutionPlan(t *testing.T) {
 }
 
 func TestDeriveBuildHookCommandTimeoutDuration(t *testing.T) {
-	coreConfig := &waveconfig.CoreConfig{
-		DevBuildHookTimeoutMilliseconds:  111,
-		ProdBuildHookTimeoutMilliseconds: 222,
-	}
+	cfg := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetCoreDevBuildHookTimeoutMilliseconds(cfg, 111)
+	wavetest.SetCoreProdBuildHookTimeoutMilliseconds(cfg, 222)
+	coreConfig := cfg.Core()
 
 	if got := hooks.DeriveBuildHookCommandTimeoutDuration(coreConfig, true); got != 111*time.Millisecond {
 		t.Fatalf(
@@ -387,10 +379,10 @@ func TestDeriveBuildHookCommandTimeoutDuration(t *testing.T) {
 		t.Fatalf("nil core config timeout duration=%s, expected=0", got)
 	}
 
-	coreConfigWithNegativeTimeouts := &waveconfig.CoreConfig{
-		DevBuildHookTimeoutMilliseconds:  -1,
-		ProdBuildHookTimeoutMilliseconds: -2,
-	}
+	configWithNegativeTimeouts := wavetest.NewParsedConfigAtRoot(t, t.TempDir())
+	wavetest.SetCoreDevBuildHookTimeoutMilliseconds(configWithNegativeTimeouts, -1)
+	wavetest.SetCoreProdBuildHookTimeoutMilliseconds(configWithNegativeTimeouts, -2)
+	coreConfigWithNegativeTimeouts := configWithNegativeTimeouts.Core()
 	if got := hooks.DeriveBuildHookCommandTimeoutDuration(coreConfigWithNegativeTimeouts, true); got != 0 {
 		t.Fatalf("negative dev timeout duration=%s, expected=0", got)
 	}

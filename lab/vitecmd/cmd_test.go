@@ -48,6 +48,71 @@ func TestNewBuildCtx_DefaultPortAndNilOptions(t *testing.T) {
 	}
 }
 
+func TestViteConfigFileArgumentPath(t *testing.T) {
+	commandWorkingDirectory := filepath.Join(t.TempDir(), "frontend")
+	if err := os.MkdirAll(commandWorkingDirectory, 0o755); err != nil {
+		t.Fatalf("create command working directory: %v", err)
+	}
+	configFileInCommandWorkingDirectory := filepath.Join(
+		commandWorkingDirectory,
+		"vite.custom.config.ts",
+	)
+	configFileOutsideCommandWorkingDirectory := filepath.Join(
+		filepath.Dir(commandWorkingDirectory),
+		"vite.root.config.ts",
+	)
+
+	testCases := []struct {
+		name                    string
+		viteConfigFile          string
+		commandWorkingDirectory string
+		expectedConfigArg       string
+	}{
+		{
+			name:                    "relative config path is preserved",
+			viteConfigFile:          "./vite.custom.config.ts",
+			commandWorkingDirectory: commandWorkingDirectory,
+			expectedConfigArg:       "./vite.custom.config.ts",
+		},
+		{
+			name:                    "absolute config file under command directory becomes dot-slash relative",
+			viteConfigFile:          configFileInCommandWorkingDirectory,
+			commandWorkingDirectory: commandWorkingDirectory,
+			expectedConfigArg:       "./vite.custom.config.ts",
+		},
+		{
+			name:                    "absolute config file outside command directory becomes dot-dot relative",
+			viteConfigFile:          configFileOutsideCommandWorkingDirectory,
+			commandWorkingDirectory: commandWorkingDirectory,
+			expectedConfigArg:       "../vite.root.config.ts",
+		},
+		{
+			name:                    "absolute config file remains absolute when command directory is omitted",
+			viteConfigFile:          configFileInCommandWorkingDirectory,
+			commandWorkingDirectory: "",
+			expectedConfigArg:       filepath.Clean(configFileInCommandWorkingDirectory),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			configArg := viteConfigFileArgumentPath(
+				testCase.viteConfigFile,
+				testCase.commandWorkingDirectory,
+			)
+			if configArg != testCase.expectedConfigArg {
+				t.Fatalf(
+					"viteConfigFileArgumentPath(%q, %q) = %q, want %q",
+					testCase.viteConfigFile,
+					testCase.commandWorkingDirectory,
+					configArg,
+					testCase.expectedConfigArg,
+				)
+			}
+		})
+	}
+}
+
 func TestDevBuild_ReturnsErrorForEmptyBaseCommand(t *testing.T) {
 	ctx := NewBuildCtx(&BuildCtxOptions{JSPackageManagerBaseCmd: "   "})
 	err := ctx.DevBuild()

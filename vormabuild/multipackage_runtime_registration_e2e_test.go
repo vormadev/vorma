@@ -42,15 +42,14 @@ package backend
 import (
 	"os"
 
-	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/wave"
 )
 
 var waveFS = os.DirFS(".")
 
 var Wave = wave.New(wave.Config{
-	WaveConfigJSON: fsutil.MustReadFile(waveFS, "backend/wave.config.json"),
-	DistStaticFS:   fsutil.MustSub(waveFS, "backend", "dist", "static"),
+	FS:         waveFS,
+	ConfigPath: "backend/wave.config.json",
 })
 `),
 	)
@@ -61,23 +60,23 @@ var Wave = wave.New(wave.Config{
 		[]byte(`
 {
 	"Core": {
-		"MainAppEntry": "backend/cmd/check",
-		"DistDir": "backend/dist",
+		"ProjectID": "multipackage-runtime-registration-e2e",
+		"MainAppEntry": "cmd/check",
 		"StaticAssetDirs": {
-			"Private": "backend/assets/private",
-			"Public": "backend/assets/public"
+			"Private": "assets/private",
+			"Public": "assets/public"
 		},
 		"PublicPathPrefix": "/",
 		"ServerOnlyMode": true
 	},
 	"Vorma": {
-		"MainBuildEntry": "backend/cmd/build",
+		"MainBuildEntry": "cmd/build",
 		"UIVariant": "react",
 		"HTMLTemplateLocation": "entry.go.html",
-		"ClientEntry": "frontend/src/vorma.entry.tsx",
-		"ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
-		"ServerRouteDefinitionPatterns": ["backend/src/routes/**/*.go"],
-		"TSGenOutDir": "frontend/src/vorma.gen",
+		"ClientEntry": "../frontend/src/vorma.entry.tsx",
+		"ClientRouteDefinitionPatterns": ["../frontend/src/**/*vorma.routes.ts"],
+		"ServerRouteDefinitionPatterns": ["src/routes/**/*.go"],
+		"TSGenOutDir": "../frontend/src/vorma.gen",
 		"BuildtimePublicURLFuncName": "waveBuildtimeURL"
 	}
 }
@@ -282,7 +281,12 @@ func main() {
 		t.Fatalf("build command failed: %v\n%s", buildErr, buildOutput)
 	}
 
-	compiledBinaryPath := filepath.Join(fixtureRootDir, "backend/dist/main")
+	compiledBinaryPath := filepath.Join(
+		fixtureRootDir,
+		"backend",
+		".wavedist",
+		"main",
+	)
 	if runtime.GOOS == "windows" {
 		compiledBinaryPath += ".exe"
 	}

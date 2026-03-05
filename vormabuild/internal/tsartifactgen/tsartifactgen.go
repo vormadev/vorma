@@ -7,6 +7,7 @@ package tsartifactgen
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -18,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/internal/vormaruntime/runtimepaths"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
@@ -151,7 +153,7 @@ type tsGenInput struct {
 	LoadersRouter *nestedmux.Router
 	ActionsRouter *mux.Router
 	Paths         map[string]*vormaruntime.Path
-	Config        *vormaruntime.VormaConfig
+	Config        vormaruntime.VormaConfig
 	AdHocTypes    []*tsgen.AdHocType
 	ExtraTSCode   string
 }
@@ -474,7 +476,7 @@ export type RouteProps<P extends VormaLoaderPattern<VormaApp>> = VormaRouteProps
 		string(metadataConfig.loadersDynamicRune),
 		string(metadataConfig.loadersSplatRune),
 		input.LoadersRouter.ExplicitIndexSegmentIdentifier(),
-		input.Config.UIVariant,
+		input.Config.UIVariant(),
 	))
 
 	if input.ExtraTSCode != "" {
@@ -516,8 +518,8 @@ type generatedTSAssemblyDependencies struct {
 	generateTypeScript                func(tsGenInput) (string, error)
 	generateRollupInput               func(*vormaruntime.LockedVorma, []string) (string, error)
 	generateRollupInputForEntrypoints func(*vormaruntime.Vorma, []string) (string, error)
-	getEntrypoints                    func(*vormaruntime.LockedVorma) []string
-	getEntrypointsForPaths            func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) []string
+	getEntrypoints                    func(*vormaruntime.LockedVorma) ([]string, error)
+	getEntrypointsForPaths            func(*vormaruntime.Vorma, map[string]*vormaruntime.Path) ([]string, error)
 }
 
 type generatedTSWriteDependencies struct {
@@ -794,7 +796,7 @@ func buildVitePluginTemplateData(
 
 	currentWorkingDirectoryRelativeDistDir, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
 		currentWorkingDirectory,
-		v.Wave.DistDir(),
+		distRootPathForGeneratedTypeScript(v),
 	)
 	if distDirError != nil {
 		return vitePluginTemplateData{}, fmt.Errorf(
@@ -817,10 +819,10 @@ func buildVitePluginTemplateData(
 	return vitePluginTemplateData{
 		Entrypoints:      entrypoints,
 		PublicPathPrefix: v.Wave.PublicPathPrefix(),
-		FuncName:         v.Config.BuildtimePublicURLFuncName,
+		FuncName:         v.Config.BuildtimePublicURLFuncName(),
 		DistDir:          currentWorkingDirectoryRelativeDistDir,
 		IgnoredPatterns:  ignoredPatterns,
-		DedupeList:       dedupeListForUIVariant(v.Config.UIVariant),
+		DedupeList:       dedupeListForUIVariant(v.Config.UIVariant()),
 	}, nil
 }
 
@@ -843,7 +845,7 @@ func buildViteIgnoredPatterns(
 ) ([]string, error) {
 	currentWorkingDirectoryRelativeDistDir, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
 		currentWorkingDirectory,
-		v.Wave.DistDir(),
+		distRootPathForGeneratedTypeScript(v),
 	)
 	if distDirError != nil {
 		return nil, fmt.Errorf(
@@ -865,7 +867,7 @@ func buildViteIgnoredPatterns(
 
 	currentWorkingDirectoryRelativeTSGenOutDir, tsGenOutDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
 		currentWorkingDirectory,
-		v.Config.TSGenOutDir,
+		v.Config.TSGenOutDir(),
 	)
 	if tsGenOutDirError != nil {
 		return nil, fmt.Errorf(
@@ -897,7 +899,7 @@ func buildViteIgnoredPatterns(
 	}
 
 	normalizedRouteDefinitionPatterns, err := routeparse.NormalizeRouteDefinitionPatternsInInputOrder(
-		v.Config.ClientRouteDefinitionPatterns,
+		v.Config.ClientRouteDefinitionPatterns(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -906,9 +908,20 @@ func buildViteIgnoredPatterns(
 		)
 	}
 	for _, routeDefinitionPattern := range normalizedRouteDefinitionPatterns {
+		resolveRootRelativeRouteDefinitionPattern, routeDefinitionPatternError := normalizePathOrPatternToResolveRootRelativeForGeneratedTypeScript(
+			v,
+			routeDefinitionPattern,
+		)
+		if routeDefinitionPatternError != nil {
+			return nil, fmt.Errorf(
+				"normalize client route definition pattern %q: %w",
+				routeDefinitionPattern,
+				routeDefinitionPatternError,
+			)
+		}
 		ignoredPatterns = append(
 			ignoredPatterns,
-			path.Join("**", routeDefinitionPattern),
+			path.Join("**", resolveRootRelativeRouteDefinitionPattern),
 		)
 	}
 	return ignoredPatterns, nil
@@ -958,6 +971,23 @@ func pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
 	return filepath.ToSlash(normalizedCurrentWorkingDirectoryRelativePath), nil
 }
 
+func distRootPathForGeneratedTypeScript(v *vormaruntime.Vorma) string {
+	if v == nil || v.Wave == nil {
+		return ""
+	}
+
+	if parsedWaveConfig := v.Wave.ParsedConfig(); parsedWaveConfig != nil &&
+		parsedWaveConfig.Dist() != nil {
+		if trimmedDistRootPath := strings.TrimSpace(
+			parsedWaveConfig.Dist().Root(),
+		); trimmedDistRootPath != "" {
+			return trimmedDistRootPath
+		}
+	}
+
+	return strings.TrimSpace(v.Wave.DistDir())
+}
+
 func formatConfigFilePatternForViteIgnore(
 	currentWorkingDirectory string,
 	configFilePattern string,
@@ -993,19 +1023,41 @@ func renderVitePluginConfig(
 	return buffer.String(), nil
 }
 
-func getEntrypoints(l *vormaruntime.LockedVorma) []string {
+func getEntrypoints(l *vormaruntime.LockedVorma) ([]string, error) {
 	return getEntrypointsForPaths(l.Vorma(), l.Paths())
 }
 
 func getEntrypointsForPaths(
 	v *vormaruntime.Vorma,
 	paths map[string]*vormaruntime.Path,
-) []string {
+) ([]string, error) {
+	if v == nil || v.Wave == nil || v.Wave.ParsedConfig() == nil {
+		return nil, errors.New("vorma app with parsed wave config is required")
+	}
+
 	entryPoints := make(map[string]struct{}, len(paths)+1)
-	entryPoints[path.Clean(v.Config.ClientEntry)] = struct{}{}
+	clientEntryRelativeToResolveRoot, clientEntryError := normalizePathOrPatternToResolveRootRelativeForGeneratedTypeScript(
+		v,
+		v.Config.ClientEntry(),
+	)
+	if clientEntryError != nil {
+		return nil, fmt.Errorf("normalize client entry: %w", clientEntryError)
+	}
+	entryPoints[clientEntryRelativeToResolveRoot] = struct{}{}
 	for _, currentPath := range paths {
 		if currentPath.SrcPath != "" {
-			entryPoints[currentPath.SrcPath] = struct{}{}
+			sourcePathRelativeToResolveRoot, sourcePathError := normalizePathOrPatternToResolveRootRelativeForGeneratedTypeScript(
+				v,
+				currentPath.SrcPath,
+			)
+			if sourcePathError != nil {
+				return nil, fmt.Errorf(
+					"normalize route source path %q: %w",
+					currentPath.SrcPath,
+					sourcePathError,
+				)
+			}
+			entryPoints[sourcePathRelativeToResolveRoot] = struct{}{}
 		}
 	}
 	keys := make([]string, 0, len(entryPoints))
@@ -1013,7 +1065,25 @@ func getEntrypointsForPaths(
 		keys = append(keys, key)
 	}
 	slices.SortStableFunc(keys, strings.Compare)
-	return keys
+	return keys, nil
+}
+
+func normalizePathOrPatternToResolveRootRelativeForGeneratedTypeScript(
+	v *vormaruntime.Vorma,
+	pathOrPattern string,
+) (string, error) {
+	if v == nil || v.Wave == nil || v.Wave.ParsedConfig() == nil {
+		return "", errors.New("vorma app with parsed wave config is required")
+	}
+
+	resolveRootRelativePathOrPattern, relativePathOrPatternError := runtimeconfig.NormalizePathOrPatternToResolveRootRelative(
+		v.Wave.ParsedConfig().ResolveRoot(),
+		pathOrPattern,
+	)
+	if relativePathOrPatternError != nil {
+		return "", relativePathOrPatternError
+	}
+	return filepath.ToSlash(filepath.Clean(resolveRootRelativePathOrPattern)), nil
 }
 
 func writeGeneratedTSWithDependencies(
@@ -1037,8 +1107,7 @@ func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTS(
 	}
 
 	targetPath := filepath.Join(
-		".",
-		v.Config.TSGenOutDir,
+		v.Config.TSGenOutDir(),
 		runtimepaths.GeneratedTypeScriptIndexFileName,
 	)
 	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(
@@ -1061,8 +1130,7 @@ func (generatedTSWriteExecutor generatedTSWriteExecutor) writeGeneratedTSForRout
 	}
 
 	targetPath := filepath.Join(
-		".",
-		v.Config.TSGenOutDir,
+		v.Config.TSGenOutDir(),
 		runtimepaths.GeneratedTypeScriptIndexFileName,
 	)
 	return generatedTSWriteExecutor.dependencies.writeGeneratedTSContentIfChanged(
@@ -1117,9 +1185,15 @@ func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssemb
 		return nil, fmt.Errorf("generate TypeScript: %w", err)
 	}
 
+	entrypoints, entrypointsError := generatedTSAssemblyExecutor.dependencies.getEntrypoints(
+		l,
+	)
+	if entrypointsError != nil {
+		return nil, fmt.Errorf("resolve entrypoints: %w", entrypointsError)
+	}
 	rollupOptions, err := generatedTSAssemblyExecutor.dependencies.generateRollupInput(
 		l,
-		generatedTSAssemblyExecutor.dependencies.getEntrypoints(l),
+		entrypoints,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("generate rollup options: %w", err)
@@ -1139,12 +1213,16 @@ func (generatedTSAssemblyExecutor generatedTSAssemblyExecutor) generateAndAssemb
 		return nil, fmt.Errorf("generate TypeScript: %w", err)
 	}
 
+	entrypoints, entrypointsError := generatedTSAssemblyExecutor.dependencies.getEntrypointsForPaths(
+		v,
+		runtimeStateSnapshot.paths,
+	)
+	if entrypointsError != nil {
+		return nil, fmt.Errorf("resolve entrypoints: %w", entrypointsError)
+	}
 	rollupOptions, err := generatedTSAssemblyExecutor.dependencies.generateRollupInputForEntrypoints(
 		v,
-		generatedTSAssemblyExecutor.dependencies.getEntrypointsForPaths(
-			v,
-			runtimeStateSnapshot.paths,
-		),
+		entrypoints,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("generate rollup options: %w", err)

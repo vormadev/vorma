@@ -88,8 +88,14 @@ func TestDevReloadEndpointPaths_DefaultAndCustom(t *testing.T) {
 
 	customFixture := newTestFixture(t, testFixtureOptions{})
 	customApp := customFixture.app
-	customApp.Config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
-	customApp.Config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
+	mustMutateAppVormaConfig(
+		t,
+		customApp,
+		func(config *VormaConfigJSON) {
+			config.DevReloadRoutesEndpointPath = "/__custom_internal/reload-routes"
+			config.DevReloadTemplateEndpointPath = "/__custom_internal/reload-template"
+		},
+	)
 	if got, want := customApp.DevReloadRoutesEndpointPath(), "/__custom_internal/reload-routes"; got != want {
 		t.Fatalf("custom routes endpoint path = %q, want %q", got, want)
 	}
@@ -1779,7 +1785,7 @@ func TestLoadersHandler_UsesConfiguredTemplateDataKeysAndRootElementID(
 		stageOne: stage,
 		stageTwo: stage,
 		template: "<!doctype html><html><head>{{.AppHeadElements}}</head><body><div id=\"{{.AppRootElementID}}\"></div>{{.AppSSRScript}}{{.AppBodyScripts}}</body></html>",
-		configureVormaConfig: func(config *VormaConfig) {
+		configureVormaConfig: func(config *VormaConfigJSON) {
 			config.TemplateDataKeyHeadElements = "AppHeadElements"
 			config.TemplateDataKeyBodyScripts = "AppBodyScripts"
 			config.TemplateDataKeySSRScript = "AppSSRScript"
@@ -2717,7 +2723,13 @@ func TestActionsHandler_DevReloadEndpoints(t *testing.T) {
 	})
 
 	t.Run("reload_template_error", func(t *testing.T) {
-		app.Config.HTMLTemplateLocation = "missing-template.go.html"
+		mustMutateAppVormaConfig(
+			t,
+			app,
+			func(config *VormaConfigJSON) {
+				config.HTMLTemplateLocation = "missing-template.go.html"
+			},
+		)
 
 		req := httptest.NewRequest(
 			http.MethodPost,

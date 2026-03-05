@@ -2,6 +2,7 @@ package wave
 
 import (
 	"fmt"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -17,18 +18,23 @@ import (
 
 func TestNewUsesProvidedOrDefaultLogger(t *testing.T) {
 	fixture := newWaveTestFixture(t)
+	t.Chdir(fixture.root)
 	providedLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	configPath := fixture.mustWriteConfigFile(t)
+	configFS := os.DirFS(fixture.root)
 
 	withProvided := New(Config{
-		WaveConfigJSON: fixture.configJSON(t),
-		Logger:         providedLogger,
+		FS:         configFS,
+		ConfigPath: configPath,
+		Logger:     providedLogger,
 	})
 	if withProvided.Logger() != providedLogger {
 		t.Fatal("expected New to use provided logger instance")
 	}
 
 	withDefault := New(Config{
-		WaveConfigJSON: fixture.configJSON(t),
+		FS:         configFS,
+		ConfigPath: configPath,
 	})
 	if withDefault.Logger() == nil {
 		t.Fatal("expected New to create a default logger when none is provided")
@@ -37,9 +43,12 @@ func TestNewUsesProvidedOrDefaultLogger(t *testing.T) {
 
 func TestWaveEnvWrapperMethods(t *testing.T) {
 	fixture := newWaveTestFixture(t)
+	t.Chdir(fixture.root)
+	configPath := fixture.mustWriteConfigFile(t)
 	w := New(Config{
-		WaveConfigJSON: fixture.configJSON(t),
-		Logger:         newDiscardLoggerForWaveTests(),
+		FS:         os.DirFS(fixture.root),
+		ConfigPath: configPath,
+		Logger:     newDiscardLoggerForWaveTests(),
 	})
 
 	t.Setenv(waveenv.EnvMode, "production")
@@ -101,7 +110,7 @@ func TestPublicFileMapMissingOrInvalidReturnsEmptyPublicURLWithoutPanic(
 ) {
 	t.Run("missing gob", func(t *testing.T) {
 		fixture := newWaveTestFixture(t)
-		if err := os.Remove(fixture.cfg.Dist.PublicFileMapGob()); err != nil {
+		if err := os.Remove(fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapGob())); err != nil {
 			t.Fatalf("failed to remove public file map gob: %v", err)
 		}
 
@@ -120,7 +129,7 @@ func TestPublicFileMapMissingOrInvalidReturnsEmptyPublicURLWithoutPanic(
 
 	t.Run("invalid gob", func(t *testing.T) {
 		fixture := newWaveTestFixture(t)
-		mustWriteFile(t, fixture.cfg.Dist.PublicFileMapGob(), "not-a-gob")
+		mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapGob()), "not-a-gob")
 
 		w := newWaveForTest(t, fixture, true, nil)
 		_, err := w.runtime.PublicFileMap()
@@ -139,6 +148,9 @@ func TestPublicFileMapMissingOrInvalidReturnsEmptyPublicURLWithoutPanic(
 func TestGettersHandleUnavailableBaseFSGracefully(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	w := newWaveForTest(t, fixture, false, nil)
+	if removeErr := os.RemoveAll(fixture.pathInRoot(fixture.cfg.Dist().Static())); removeErr != nil {
+		t.Fatalf("remove dist static directory: %v", removeErr)
+	}
 
 	if got := w.runtime.PublicFileMapURL(); got != "" {
 		t.Fatalf(
@@ -197,7 +209,7 @@ func TestGettersHandleUnavailableBaseFSGracefully(t *testing.T) {
 
 func TestStylesheetReferenceMissingReturnsEmpty(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	if err := os.Remove(fixture.cfg.Dist.NormalCSSRef()); err != nil {
+	if err := os.Remove(fixture.pathInRoot(fixture.cfg.Dist().NormalCSSRef())); err != nil {
 		t.Fatalf("failed removing normal css ref file: %v", err)
 	}
 	w := newWaveForTest(t, fixture, true, nil)
@@ -220,7 +232,7 @@ func TestStylesheetReferenceTrimsWhitespace(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	mustWriteFile(
 		t,
-		fixture.cfg.Dist.NormalCSSRef(),
+		fixture.pathInRoot(fixture.cfg.Dist().NormalCSSRef()),
 		" "+testOwnedOutputRelativePath("normal_hash.css")+" \n",
 	)
 
@@ -232,7 +244,7 @@ func TestStylesheetReferenceTrimsWhitespace(t *testing.T) {
 
 func TestStylesheetReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	mustWriteFile(t, fixture.cfg.Dist.NormalCSSRef(), " \n\t ")
+	mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().NormalCSSRef()), " \n\t ")
 
 	w := newWaveForTest(t, fixture, true, nil)
 	if got := w.runtime.StyleSheetURL(); got != "" {
@@ -251,7 +263,7 @@ func TestStylesheetReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 
 func TestStylesheetReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	mustWriteFile(t, fixture.cfg.Dist.NormalCSSRef(), "../outside.css")
+	mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().NormalCSSRef()), "../outside.css")
 
 	w := newWaveForTest(t, fixture, true, nil)
 	if got := w.runtime.StyleSheetURL(); got != "/assets/outside.css" {
@@ -264,7 +276,7 @@ func TestStylesheetReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
 
 func TestServeStaticWithRootPrefix(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.PublicPathPrefix = "/"
+	wavetest.SetCorePublicPathPrefix(fixture.cfg, "/")
 	w := newWaveForTest(t, fixture, true, nil)
 
 	handler, err := w.runtime.StaticHandler(false)
@@ -322,7 +334,7 @@ func TestServeStaticMiddlewareFallsThroughForRootAndDirectoryPathsWithRootPrefix
 	t *testing.T,
 ) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.PublicPathPrefix = "/"
+	wavetest.SetCorePublicPathPrefix(fixture.cfg, "/")
 	w := newWaveForTest(t, fixture, true, nil)
 
 	nextCalls := 0
@@ -362,8 +374,11 @@ func TestIsPublicAssetReturnsFalseWhenRootPrefixPublicFSUnavailable(
 	t *testing.T,
 ) {
 	fixture := newWaveTestFixture(t)
-	fixture.cfg.Core.PublicPathPrefix = "/"
+	wavetest.SetCorePublicPathPrefix(fixture.cfg, "/")
 	w := newWaveForTest(t, fixture, false, nil)
+	if removeErr := os.RemoveAll(fixture.pathInRoot(fixture.cfg.Dist().Static())); removeErr != nil {
+		t.Fatalf("remove dist static directory: %v", removeErr)
+	}
 
 	if w.runtime.IsPublicAsset("/logo.txt") {
 		t.Fatal(
@@ -397,7 +412,7 @@ func TestPublicFileMapReferenceTrimsWhitespace(t *testing.T) {
 	fixture := newWaveTestFixture(t)
 	mustWriteFile(
 		t,
-		fixture.cfg.Dist.PublicFileMapRef(),
+		fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapRef()),
 		" "+testOwnedOutputRelativePath("public_filemap_hash.js")+" \n",
 	)
 
@@ -409,7 +424,7 @@ func TestPublicFileMapReferenceTrimsWhitespace(t *testing.T) {
 
 func TestPublicFileMapReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	mustWriteFile(t, fixture.cfg.Dist.PublicFileMapRef(), " \n\t ")
+	mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapRef()), " \n\t ")
 
 	w := newWaveForTest(t, fixture, true, nil)
 	if got := w.runtime.PublicFileMapURL(); got != "" {
@@ -432,7 +447,7 @@ func TestPublicFileMapReferenceWithOnlyWhitespaceReturnsEmpty(t *testing.T) {
 
 func TestPublicFileMapReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	mustWriteFile(t, fixture.cfg.Dist.PublicFileMapRef(), "../outside.js")
+	mustWriteFile(t, fixture.pathInRoot(fixture.cfg.Dist().PublicFileMapRef()), "../outside.js")
 
 	w := newWaveForTest(t, fixture, true, nil)
 	if got := w.runtime.PublicFileMapURL(); got != "/assets/outside.js" {
@@ -445,10 +460,10 @@ func TestPublicFileMapReferenceTraversalStaysUnderPublicPrefix(t *testing.T) {
 
 func TestCriticalCSSReadErrorsFailClosed(t *testing.T) {
 	fixture := newWaveTestFixture(t)
-	if err := os.Remove(fixture.cfg.Dist.CriticalCSS()); err != nil {
+	if err := os.Remove(fixture.pathInRoot(fixture.cfg.Dist().CriticalCSS())); err != nil {
 		t.Fatalf("failed removing critical css file: %v", err)
 	}
-	if err := os.Mkdir(fixture.cfg.Dist.CriticalCSS(), 0o755); err != nil {
+	if err := os.Mkdir(fixture.pathInRoot(fixture.cfg.Dist().CriticalCSS()), 0o755); err != nil {
 		t.Fatalf("failed creating directory at critical css path: %v", err)
 	}
 

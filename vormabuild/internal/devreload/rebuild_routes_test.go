@@ -149,7 +149,7 @@ func TestRunRouteSyncExecution_ForFastRebuildSuccess(t *testing.T) {
 		t.Fatalf("expected route manifest file to exist: %v", err)
 	}
 
-	generatedTSPath := filepath.Join(app.Config.TSGenOutDir, "index.ts")
+	generatedTSPath := filepath.Join(app.Config.TSGenOutDir(), "index.ts")
 	if _, err := os.Stat(generatedTSPath); err != nil {
 		t.Fatalf("expected generated TypeScript to exist: %v", err)
 	}

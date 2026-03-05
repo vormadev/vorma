@@ -3,12 +3,15 @@ package eventpipeline_test
 import (
 	"encoding/base64"
 	"encoding/json"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/wavewatch"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/vormadev/vorma/wave/waveartifacts"
+	"github.com/vormadev/vorma/wave/waveconfig"
+	"github.com/vormadev/vorma/wave/wavewatch"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/wave/buildtime/builder"
@@ -244,31 +247,29 @@ func runConfigMutationAndPathShapeMatrixForEventPlanTests(
 
 func setupConfigEventTestConfigForEventPlanTests(
 	t *testing.T,
-) (*waveconfig.ParsedConfig, string, string) {
+) (waveconfig.ParsedConfig, string, string) {
 	t.Helper()
 
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 	configFilePath := filepath.Join(root, "backend", "wave.config.json")
-	cfg.Core.ConfigLocation = configFilePath
-	cfg.Dist.Root = cfg.Core.DistDir
 
 	if mkdirError := os.MkdirAll(filepath.Dir(configFilePath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating config file directory: %v", mkdirError)
 	}
 	configPayload := map[string]any{
 		"Core": map[string]any{
-			"MainAppEntry":   "cmd/app",
-			"DistDir":        cfg.Core.DistDir,
-			"ServerOnlyMode": true,
+			"ProjectID": "test-project",
+			"MainAppEntry":        "cmd/app",
+			"ServerOnlyMode":      true,
 			"StaticAssetDirs": map[string]any{
-				"Public":  cfg.Core.StaticAssetDirs.Public,
-				"Private": cfg.Core.StaticAssetDirs.Private,
+				"Public": filepath.Join("static", waveartifacts.PublicDirname),
+				"Private": filepath.Join(
+					"static",
+					waveartifacts.PrivateDirname,
+				),
 			},
-		},
-		"Watch": map[string]any{
-			"WatchRoot": root,
 		},
 	}
 	configPayloadBytes, marshalError := json.Marshal(configPayload)
@@ -318,7 +319,7 @@ func TestBuildEventExecutionPlan_ConfigChangeHasNoPlan(t *testing.T) {
 
 			configEventPath := pathShapeCaseForRun.BuildPath(t, configFilePath)
 			executionPlanningResult := buildEventExecutionPlanForEventPipelineTests(
-				cfg,
+				configFilePath,
 				[]fsnotify.Event{
 					{
 						Name: configEventPath,
@@ -350,13 +351,13 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern: "**/*.txt",
 		},
-	}
+	})
 
 	fileA := filepath.Join(root, "a.txt")
 	fileB := filepath.Join(root, "b.txt")
@@ -383,7 +384,7 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(
 	defer builderForTest.Close()
 
 	executionPlanningResult := buildEventExecutionPlanForEventPipelineTests(
-		cfg,
+		"",
 		[]fsnotify.Event{
 			{Name: fileA, Op: fsnotify.Write},
 			{Name: fileB, Op: fsnotify.Write},
@@ -448,9 +449,9 @@ func TestBuildEventExecutionPlan_BatchPlanIncludesHookBatchContext(
 
 func TestBuildEventExecutionPlan_MixedFileClassesAndHookShapes(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.Include = []wavewatch.WatchedFile{
+	cfg := newParsedConfigForEventPipelineDedupTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchInclude(cfg, []wavewatch.WatchedFile{
 		{
 			Pattern:         "**/*.txt",
 			RunOnChangeOnly: true,
@@ -462,13 +463,12 @@ func TestBuildEventExecutionPlan_MixedFileClassesAndHookShapes(t *testing.T) {
 				},
 			},
 		},
-	}
-
+	})
 	goFilePath := filepath.Join(root, "backend", "main.go")
 	textFilePathA := filepath.Join(root, "a.txt")
 	textFilePathB := filepath.Join(root, "b.txt")
 	publicStaticPath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Public,
+		cfg.Core().StaticAssetDirsPublic(),
 		"logo.svg",
 	)
 
@@ -507,7 +507,7 @@ func TestBuildEventExecutionPlan_MixedFileClassesAndHookShapes(t *testing.T) {
 	defer builderForTest.Close()
 
 	executionPlanningResult := buildEventExecutionPlanForEventPipelineTests(
-		cfg,
+		"",
 		[]fsnotify.Event{
 			{Name: goFilePath, Op: fsnotify.Write},
 			{Name: textFilePathA, Op: fsnotify.Write},

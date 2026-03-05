@@ -49,7 +49,7 @@ type fileMapStore struct {
 
 // Processor owns static artifact processing and file map persistence.
 type Processor struct {
-	cfg *waveconfig.ParsedConfig
+	cfg waveconfig.ParsedConfig
 	log *slog.Logger
 
 	mu sync.Mutex
@@ -62,7 +62,7 @@ type Processor struct {
 }
 
 // NewProcessor creates static processor for one parsed config.
-func NewProcessor(cfg *waveconfig.ParsedConfig, log *slog.Logger) *Processor {
+func NewProcessor(cfg waveconfig.ParsedConfig, log *slog.Logger) *Processor {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -73,14 +73,14 @@ func NewProcessor(cfg *waveconfig.ParsedConfig, log *slog.Logger) *Processor {
 	}
 	if cfg != nil {
 		processor.publicStore = fileMapStore{
-			sourceRootPath: filepath.Clean(cfg.Core.StaticAssetDirs.Public),
-			outputRootPath: cfg.Dist.StaticPublic(),
-			gobPath:        cfg.Dist.PublicFileMapGob(),
+			sourceRootPath: filepath.Clean(cfg.Core().StaticAssetDirsPublic()),
+			outputRootPath: cfg.Dist().StaticPublic(),
+			gobPath:        cfg.Dist().PublicFileMapGob(),
 		}
 		processor.privateStore = fileMapStore{
-			sourceRootPath: filepath.Clean(cfg.Core.StaticAssetDirs.Private),
-			outputRootPath: cfg.Dist.StaticPrivate(),
-			gobPath:        cfg.Dist.PrivateFileMapGob(),
+			sourceRootPath: filepath.Clean(cfg.Core().StaticAssetDirsPrivate()),
+			outputRootPath: cfg.Dist().StaticPrivate(),
+			gobPath:        cfg.Dist().PrivateFileMapGob(),
 		}
 	}
 	return processor
@@ -144,8 +144,8 @@ func (processor *Processor) WriteCanonicalPublicFileMapJSONAndRef() error {
 			fmt.Sprintf("public_filemap_%s.json", hashPrefix),
 		),
 	)
-	outputPath := filepath.Join(processor.cfg.Dist.StaticPublic(), fileName)
-	refPath := processor.cfg.Dist.PublicFileMapRef()
+	outputPath := filepath.Join(processor.cfg.Dist().StaticPublic(), fileName)
+	refPath := processor.cfg.Dist().PublicFileMapRef()
 
 	if writeError := artifactio.WriteFileAtomically(outputPath, serializedFileMap, 0o644); writeError != nil {
 		return writeError
@@ -161,6 +161,70 @@ func (processor *Processor) WriteCanonicalPublicFileMapJSONAndRef() error {
 		"entries",
 		len(publicFileMap),
 	)
+	return nil
+}
+
+func resolveCanonicalPublicFileMapOutputPath(
+	staticPublicRootPath string,
+	refTarget string,
+) (string, error) {
+	normalizedRefTarget := filepath.ToSlash(filepath.Clean(refTarget))
+	if normalizedRefTarget == "" ||
+		normalizedRefTarget == "." ||
+		normalizedRefTarget == ".." ||
+		strings.HasPrefix(normalizedRefTarget, "../") {
+		return "", errors.New("public filemap ref target is invalid")
+	}
+
+	resolvedOutputPath := filepath.Join(
+		staticPublicRootPath,
+		filepath.FromSlash(normalizedRefTarget),
+	)
+	relativeOutputPathFromPublicRoot, relativeOutputPathError := filepath.Rel(
+		staticPublicRootPath,
+		resolvedOutputPath,
+	)
+	if relativeOutputPathError != nil {
+		return "", relativeOutputPathError
+	}
+	normalizedRelativeOutputPath := filepath.ToSlash(relativeOutputPathFromPublicRoot)
+	if normalizedRelativeOutputPath == "." ||
+		normalizedRelativeOutputPath == ".." ||
+		strings.HasPrefix(normalizedRelativeOutputPath, "../") {
+		return "", errors.New("public filemap ref target escapes static public root")
+	}
+	return resolvedOutputPath, nil
+}
+
+func (processor *Processor) ensureCanonicalPublicFileMapArtifactsArePresent() error {
+	if processor == nil || processor.cfg == nil {
+		return errors.New("static processor config is nil")
+	}
+
+	refPath := processor.cfg.Dist().PublicFileMapRef()
+	refBytes, readRefError := os.ReadFile(refPath)
+	if readRefError != nil {
+		if errors.Is(readRefError, os.ErrNotExist) {
+			return processor.WriteCanonicalPublicFileMapJSONAndRef()
+		}
+		return readRefError
+	}
+
+	refTarget := strings.TrimSpace(string(refBytes))
+	canonicalOutputPath, resolveOutputPathError := resolveCanonicalPublicFileMapOutputPath(
+		processor.cfg.Dist().StaticPublic(),
+		refTarget,
+	)
+	if resolveOutputPathError != nil {
+		return processor.WriteCanonicalPublicFileMapJSONAndRef()
+	}
+
+	if _, statError := os.Stat(canonicalOutputPath); statError != nil {
+		if errors.Is(statError, os.ErrNotExist) {
+			return processor.WriteCanonicalPublicFileMapJSONAndRef()
+		}
+		return statError
+	}
 	return nil
 }
 
@@ -245,7 +309,7 @@ func (processor *Processor) loadOrBuildFileMap() (wavefilemap.FileMap, error) {
 	}
 
 	fileMap, loadError := processor.LoadFileMapFromPath(
-		processor.cfg.Dist.PublicFileMapGob(),
+		processor.cfg.Dist().PublicFileMapGob(),
 	)
 	if loadError != nil {
 		if !processor.cfg.UsingBrowser() {
@@ -258,7 +322,7 @@ func (processor *Processor) loadOrBuildFileMap() (wavefilemap.FileMap, error) {
 			return nil, fmt.Errorf("build files: %w", processError)
 		}
 		fileMap, loadError = processor.LoadFileMapFromPath(
-			processor.cfg.Dist.PublicFileMapGob(),
+			processor.cfg.Dist().PublicFileMapGob(),
 		)
 	}
 	return fileMap, loadError
@@ -302,7 +366,7 @@ func (processor *Processor) LoadPublicFileMap() (wavefilemap.FileMap, error) {
 	if processor == nil || processor.cfg == nil {
 		return nil, errors.New("static processor config is nil")
 	}
-	return processor.LoadFileMapFromPath(processor.cfg.Dist.PublicFileMapGob())
+	return processor.LoadFileMapFromPath(processor.cfg.Dist().PublicFileMapGob())
 }
 
 // PublicFileMapSnapshot returns cached public file map clone.
@@ -469,15 +533,36 @@ func (processor *Processor) processFullScan(
 	}
 	if reflect.DeepEqual(previousFileMap, nextFileMap) {
 		processor.updateCachedFileMap(isPublic, nextFileMap)
-		processor.log.Debug(
-			"processed static files (full scan)",
-			waveartifacts.PublicDirname,
-			isPublic,
-			"entries",
-			len(nextFileMap),
-		)
-		return nil
-	}
+		if isPublic {
+			if ensureFileMapArtifactsError := processor.ensureCanonicalPublicFileMapArtifactsArePresent(); ensureFileMapArtifactsError != nil {
+				return ensureFileMapArtifactsError
+			}
+			processor.log.Debug(
+				"processed public static files (full scan)",
+				"changed_paths",
+				0,
+				"updated_entries",
+				0,
+				"removed_entries",
+				0,
+				"entries",
+				len(nextFileMap),
+			)
+			return nil
+			}
+			processor.log.Debug(
+				"processed private static files (full scan)",
+				"changed_paths",
+				0,
+				"updated_entries",
+				0,
+				"removed_entries",
+				0,
+				"entries",
+				len(nextFileMap),
+			)
+			return nil
+		}
 
 	if saveError := saveFileMap(store.gobPath, nextFileMap); saveError != nil {
 		return saveError
@@ -488,15 +573,11 @@ func (processor *Processor) processFullScan(
 		if writeFileMapError := processor.WriteCanonicalPublicFileMapJSONAndRef(); writeFileMapError != nil {
 			return writeFileMapError
 		}
+		processor.log.Info("processed public static files")
+		return nil
 	}
 
-	processor.log.Debug(
-		"processed static files (full scan)",
-		waveartifacts.PublicDirname,
-		isPublic,
-		"entries",
-		len(nextFileMap),
-	)
+	processor.log.Info("processed private static files")
 	return nil
 }
 
@@ -526,6 +607,30 @@ func (processor *Processor) processChangedPaths(
 		return processor.processFullScan(store, isPublic)
 	}
 	if len(changedResolutions) == 0 {
+		if isPublic {
+			hasPublicFileMap, hasPublicFileMapError := staticSourceFileExists(
+				store.gobPath,
+			)
+			if hasPublicFileMapError != nil {
+				return hasPublicFileMapError
+			}
+			if hasPublicFileMap {
+				if ensureFileMapArtifactsError := processor.ensureCanonicalPublicFileMapArtifactsArePresent(); ensureFileMapArtifactsError != nil {
+					return ensureFileMapArtifactsError
+				}
+			}
+			processor.log.Debug(
+				"processed public static files (changed paths)",
+				"changed_paths",
+				len(normalizedChangedPaths),
+				"updated_entries",
+				0,
+				"removed_entries",
+				0,
+				"entries",
+				0,
+			)
+		}
 		return nil
 	}
 
@@ -544,6 +649,7 @@ func (processor *Processor) processChangedPaths(
 	sort.Strings(resolvedRelativePaths)
 
 	mapWasChanged := false
+	updatedEntryCount := 0
 	relativePathsNeedingRemoval := make([]string, 0, len(resolvedRelativePaths))
 	for _, resolvedRelativePath := range resolvedRelativePaths {
 		resolution := changedResolutions[resolvedRelativePath]
@@ -590,6 +696,7 @@ func (processor *Processor) processChangedPaths(
 
 			if !hadOldValueForPath || oldValueForPath != updatedValue {
 				mapWasChanged = true
+				updatedEntryCount++
 			}
 			currentFileMap[resolvedRelativePath] = updatedValue
 
@@ -618,6 +725,22 @@ func (processor *Processor) processChangedPaths(
 	}
 
 	if !mapWasChanged {
+		if isPublic {
+			if ensureFileMapArtifactsError := processor.ensureCanonicalPublicFileMapArtifactsArePresent(); ensureFileMapArtifactsError != nil {
+				return ensureFileMapArtifactsError
+			}
+			processor.log.Debug(
+				"processed public static files (changed paths)",
+				"changed_paths",
+				len(normalizedChangedPaths),
+				"updated_entries",
+				0,
+				"removed_entries",
+				0,
+				"entries",
+				len(currentFileMap),
+			)
+		}
 		return nil
 	}
 
@@ -630,17 +753,11 @@ func (processor *Processor) processChangedPaths(
 		if writeFileMapError := processor.WriteCanonicalPublicFileMapJSONAndRef(); writeFileMapError != nil {
 			return writeFileMapError
 		}
+		processor.log.Info("processed public static files")
+		return nil
 	}
 
-	processor.log.Debug(
-		"processed static files (changed paths)",
-		waveartifacts.PublicDirname,
-		isPublic,
-		"changed_paths",
-		len(normalizedChangedPaths),
-		"entries",
-		len(currentFileMap),
-	)
+	processor.log.Info("processed private static files")
 	return nil
 }
 
@@ -1053,12 +1170,20 @@ func ensureNoStaticLogicalPathCollision(
 	existingFileInfo fileInfo,
 	candidateFileInfo fileInfo,
 ) error {
-	existingPath := waveenv.Absolute(existingFileInfo.srcPath)
-	candidatePath := waveenv.Absolute(candidateFileInfo.srcPath)
-	if waveenv.PathsReferToSameLocation(existingPath, candidatePath) {
+	existingPathMachineAbsolute := waveenv.Absolute(existingFileInfo.srcPath)
+	candidatePathMachineAbsolute := waveenv.Absolute(
+		candidateFileInfo.srcPath,
+	)
+	if waveenv.PathsReferToSameLocation(
+		existingPathMachineAbsolute,
+		candidatePathMachineAbsolute,
+	) {
 		return nil
 	}
-	orderedPaths := []string{existingPath, candidatePath}
+	orderedPaths := []string{
+		existingPathMachineAbsolute,
+		candidatePathMachineAbsolute,
+	}
 	sort.Strings(orderedPaths)
 	return fmt.Errorf(
 		"static source path collision for logical path %q: multiple source files map to the same output: %s; keep exactly one source file",
@@ -1110,9 +1235,12 @@ func ensureNoStaticLogicalPathCollisionWithinSourceDirectory(
 			return sourceStatError
 		}
 		if sourceExists {
+			candidateSourcePathMachineAbsolute := waveenv.Absolute(
+				candidateFileInfo.srcPath,
+			)
 			existingSourcePaths = append(
 				existingSourcePaths,
-				waveenv.Absolute(candidateFileInfo.srcPath),
+				candidateSourcePathMachineAbsolute,
 			)
 		}
 	}

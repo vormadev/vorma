@@ -59,6 +59,7 @@ func TestGetDeferredFrameworkRuntimeReloadAction(t *testing.T) {
 				"reload warning",
 				" route-definitions-watch ",
 				nil,
+				"",
 			)
 			if action == nil {
 				t.Fatal("expected non-nil reload action on success")
@@ -126,6 +127,7 @@ func TestGetDeferredFrameworkRuntimeReloadAction(t *testing.T) {
 				"reload warning",
 				reloadTriggerRouteDefinitionsWatch,
 				nil,
+				"",
 			)
 			if action == nil {
 				t.Fatal(
@@ -168,6 +170,7 @@ func TestGetDeferredFrameworkRuntimeReloadAction(t *testing.T) {
 				"reload warning",
 				reloadTriggerHTMLTemplateWatch,
 				nil,
+				"",
 			)
 			if action == nil || action.FrameworkRuntimeReloadRequest == nil {
 				t.Fatalf(
@@ -180,6 +183,32 @@ func TestGetDeferredFrameworkRuntimeReloadAction(t *testing.T) {
 					"expected empty expectedBuildID for nil app, got %q",
 					got,
 				)
+			}
+		},
+	)
+
+	t.Run(
+		"explicit expected build ID overrides runtime build ID",
+		func(t *testing.T) {
+			executor := newReloadActionExecutor(reloadActionDependencies{
+				nextReloadAttemptID: func() string {
+					return "reload-test-attempt"
+				},
+			})
+
+			action := executor.getDeferredFrameworkRuntimeReloadAction(
+				app,
+				"/reload-routes",
+				"reload warning",
+				reloadTriggerRouteDefinitionsWatch,
+				nil,
+				"build-before-fast-reload",
+			)
+			if action == nil || action.FrameworkRuntimeReloadRequest == nil {
+				t.Fatalf("expected deferred request, got %#v", action)
+			}
+			if got, want := action.FrameworkRuntimeReloadRequest.ExpectedBuildID, "build-before-fast-reload"; got != want {
+				t.Fatalf("expectedBuildID=%q, want %q", got, want)
 			}
 		},
 	)

@@ -2,7 +2,6 @@ package devserver
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,18 +18,21 @@ import (
 	"github.com/vormadev/vorma/wave/waveframework"
 
 	"github.com/vormadev/vorma/internal/testpath"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"github.com/vormadev/vorma/wave/buildtime/internal/devserver/restartengine"
 	"github.com/vormadev/vorma/wave/buildtime/internal/watch"
 	"github.com/vormadev/vorma/wave/internal/wavelock"
 )
 
 func TestRunDev_ReturnsValidationErrorForInvalidConfig(t *testing.T) {
-	cfg := newParsedConfigForToolingTestsAtRoot(t.TempDir())
-	cfg.Core.MainAppEntry = ""
+	cfg := newParsedConfigForToolingTestsAtRoot(t, t.TempDir())
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "invalid-healthcheck-endpoint")
 
-	runError := RunDev(cfg, newDiscardLogger())
+	runError := RunDev(cfg, "", newDiscardLogger())
 	if runError == nil {
-		t.Fatal("expected RunDev to fail validation for missing MainAppEntry")
+		t.Fatal(
+			"expected RunDev to fail validation for invalid healthcheck endpoint",
+		)
 	}
 	if !strings.Contains(runError.Error(), "config validation failed") {
 		t.Fatalf("unexpected RunDev error: %v", runError)
@@ -38,7 +40,7 @@ func TestRunDev_ReturnsValidationErrorForInvalidConfig(t *testing.T) {
 }
 
 func TestRunDev_ReturnsErrorForNilConfig(t *testing.T) {
-	runError := RunDev(nil, newDiscardLogger())
+	runError := RunDev(nil, "", newDiscardLogger())
 	if runError == nil {
 		t.Fatal("expected RunDev to fail for nil config")
 	}
@@ -49,10 +51,10 @@ func TestRunDev_ReturnsErrorForNilConfig(t *testing.T) {
 
 func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
-	lock := wavelock.NewDevLock(cfg.Dist.Static())
+	lock := wavelock.NewDevLock(cfg.Dist().Static())
 	if lockAcquireError := lock.Acquire(); lockAcquireError != nil {
 		t.Fatalf("failed to acquire initial lock: %v", lockAcquireError)
 	}
@@ -60,7 +62,7 @@ func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
 		_ = lock.Release()
 	}()
 
-	runError := RunDev(cfg, newDiscardLogger())
+	runError := RunDev(cfg, "", newDiscardLogger())
 	if runError == nil {
 		t.Fatal("expected RunDev to fail when lock is already held")
 	}
@@ -71,19 +73,19 @@ func TestRunDev_ReturnsLockHeldErrorWhenProjectIsAlreadyLocked(t *testing.T) {
 
 func TestRunDev_WithNilLoggerReleasesLockWhenRunReturnsError(t *testing.T) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Watch.WatchRoot = filepath.Join(root, "missing-watch-root")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	configFilePath := filepath.Join(root, "missing-config-dir", "wave.config.json")
 
-	runError := RunDev(cfg, nil)
+	runError := RunDev(cfg, configFilePath, nil)
 	if runError == nil {
-		t.Fatal("expected RunDev to fail when watch root does not exist")
+		t.Fatal("expected RunDev to fail when config file directory does not exist")
 	}
 	if !strings.Contains(runError.Error(), "init watcher") {
 		t.Fatalf("unexpected RunDev error: %v", runError)
 	}
 
-	lock := wavelock.NewDevLock(cfg.Dist.Static())
+	lock := wavelock.NewDevLock(cfg.Dist().Static())
 	if lockAcquireError := lock.Acquire(); lockAcquireError != nil {
 		t.Fatalf(
 			"expected lock to be released after RunDev error, acquire failed: %v",
@@ -95,17 +97,20 @@ func TestRunDev_WithNilLoggerReleasesLockWhenRunReturnsError(t *testing.T) {
 	}()
 }
 
-func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
+func TestServerRun_ReturnsInitWatcherErrorWhenConfigFileDirectoryMissing(
+	t *testing.T,
+) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Watch.WatchRoot = filepath.Join(root, "does-not-exist")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	configFilePath := filepath.Join(root, "missing-config-dir", "wave.config.json")
 
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            newDiscardLogger(),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -113,33 +118,34 @@ func TestServerRun_ReturnsInitWatcherErrorWhenWatchRootMissing(t *testing.T) {
 
 	runError := serverForTest.Run()
 	if runError == nil {
-		t.Fatal("expected Run to fail when watch root does not exist")
+		t.Fatal("expected Run to fail when config file directory does not exist")
 	}
 	if !strings.Contains(runError.Error(), "init watcher") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 }
 
-func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
+func TestServerRun_BuildFailureThenRetryThenConfigReadFailure(t *testing.T) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.MainAppEntry = "missing/package/for/devserver/run"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	wavetest.SetCoreMainAppEntry(cfg, "missing/package/for/devserver/run")
+	configFilePath := filepath.Join(root, "wave.config.json")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Watch.WatchRoot,
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            newDiscardLogger(),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -160,12 +166,8 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
-			cfg,
-			filepath.Join(root, "missing-after-retry"),
-		); writeError != nil {
-			t.Error(writeError)
+		if removeError := os.Remove(configFilePath); removeError != nil {
+			t.Errorf("remove config file before retry: %v", removeError)
 			return
 		}
 		serverForTest.QueueRestartRequest(
@@ -176,10 +178,10 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 	runError := serverForTest.Run()
 	if runError == nil {
 		t.Fatal(
-			"expected Run to exit with watcher init error after retry cycle",
+			"expected Run to exit with config read error after retry cycle",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -190,29 +192,30 @@ func TestServerRun_BuildFailureThenRetryThenInitWatcherFailure(t *testing.T) {
 	}
 }
 
-func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
+func TestServerRun_SequentialCompileFailureThenRetryThenConfigReadFailure(
 	t *testing.T,
 ) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.SequentialGoBuild = true
-	cfg.Core.MainAppEntry = "missing/package/for/devserver/sequential"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	wavetest.SetCoreSequentialGoBuild(cfg, true)
+	wavetest.SetCoreMainAppEntry(cfg, "missing/package/for/devserver/sequential")
+	configFilePath := filepath.Join(root, "wave.config.json")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Watch.WatchRoot,
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            newDiscardLogger(),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -233,12 +236,8 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 			time.Sleep(10 * time.Millisecond)
 		}
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
-			cfg,
-			filepath.Join(root, "missing-after-sequential-retry"),
-		); writeError != nil {
-			t.Error(writeError)
+		if removeError := os.Remove(configFilePath); removeError != nil {
+			t.Errorf("remove config file before sequential retry: %v", removeError)
 			return
 		}
 		serverForTest.QueueRestartRequest(
@@ -249,10 +248,10 @@ func TestServerRun_SequentialCompileFailureThenRetryThenInitWatcherFailure(
 	runError := serverForTest.Run()
 	if runError == nil {
 		t.Fatal(
-			"expected Run to exit with watcher init error after sequential compile retry",
+			"expected Run to exit with config read error after sequential compile retry",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -269,24 +268,44 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.MainAppEntry = "missing/package/for/devserver/recovery"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	wavetest.SetCoreMainAppEntry(cfg, "missing/package/for/devserver/recovery")
+	configFilePath := filepath.Join(root, "wave.config.json")
+	fixedMainAppEntryAbsolutePath, fixedMainAppEntryAbsolutePathError := writeStableGoMainEntryForDevserverRunTests(
+		root,
+	)
+	if fixedMainAppEntryAbsolutePathError != nil {
+		t.Fatalf(
+			"write fixed main app entry: %v",
+			fixedMainAppEntryAbsolutePathError,
+		)
+	}
+	fixedMainAppEntryPath, fixedMainAppEntryPathError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
+		filepath.Dir(configFilePath),
+		fixedMainAppEntryAbsolutePath,
+	)
+	if fixedMainAppEntryPathError != nil {
+		t.Fatalf(
+			"resolve fixed main app entry path: %v",
+			fixedMainAppEntryPathError,
+		)
+	}
 
-	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Core.MainAppEntry,
-		cfg.Watch.WatchRoot,
+		cfg.Core().MainAppEntry(),
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	var runLogBuffer bytes.Buffer
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -302,10 +321,10 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			3*time.Second,
 		)
 		if firstWatcher == nil {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-initial-timeout"),
+				filepath.Join(root, "missing-resolve-root-initial-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 				return
@@ -323,10 +342,10 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			true,
 			3*time.Second,
 		) {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-retry-timeout"),
+				filepath.Join(root, "missing-resolve-root-retry-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 				return
@@ -339,11 +358,11 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			return
 		}
 
-		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+			configFilePath,
 			cfg,
-			"../../../internal/cmd/sum",
-			cfg.Watch.WatchRoot,
+			fixedMainAppEntryPath,
+			cfg.ConfigFileDirectory(),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -355,10 +374,10 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			4*time.Second,
 		)
 		if secondWatcher == nil {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-recovery-timeout"),
+				filepath.Join(root, "missing-resolve-root-recovery-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 				return
@@ -373,11 +392,11 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 
 		time.Sleep(200 * time.Millisecond)
 
-		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+			configFilePath,
 			cfg,
-			"../../../internal/cmd/sum",
-			filepath.Join(root, "missing-watch-root-after-recovery"),
+			fixedMainAppEntryPath,
+			filepath.Join(root, "missing-resolve-root-after-recovery"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -395,7 +414,7 @@ func TestServerRun_BuildFailureThenConfigFixRecoversAutomatically(
 			"expected Run to exit with watcher init error after recovery validation path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -435,18 +454,18 @@ func TestServerRun_GoSyntaxErrorThenQuickFixRecoversWithoutReadinessStall(
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+	configFilePath := filepath.Join(root, "wave.config.json")
 	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
 	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPublic(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating public static dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPrivate(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating private static dir: %v", mkdirError)
 	}
 	if writeError := writeGoMainFileForDevserverRunTests(
@@ -464,21 +483,22 @@ func main() {
 	); writeError != nil {
 		t.Fatalf("failed writing initial go main file: %v", writeError)
 	}
-	cfg.Core.MainAppEntry = goMainPath
+	wavetest.SetCoreMainAppEntry(cfg, goMainPath)
 
-	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Core.MainAppEntry,
-		cfg.Watch.WatchRoot,
+		cfg.Core().MainAppEntry(),
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	var runLogBuffer bytes.Buffer
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -493,10 +513,10 @@ func main() {
 			if failureError != nil {
 				t.Error(failureError)
 			}
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-go-syntax-recovery-timeout"),
+				filepath.Join(root, "missing-resolve-root-go-syntax-recovery-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 			}
@@ -601,10 +621,10 @@ func main() {
 
 		time.Sleep(200 * time.Millisecond)
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForResolveRoot(
+			configFilePath,
 			cfg,
-			filepath.Join(root, "missing-watch-root-after-go-syntax-recovery"),
+			filepath.Join(root, "missing-resolve-root-after-go-syntax-recovery"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -622,7 +642,7 @@ func main() {
 			"expected Run to exit with watcher init error after go syntax recovery validation path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -676,18 +696,18 @@ func TestServerRun_GoTypeErrorThenQuickFixRecoversWithoutReadinessStall(
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+	configFilePath := filepath.Join(root, "wave.config.json")
 	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
 	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPublic(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating public static dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPrivate(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating private static dir: %v", mkdirError)
 	}
 	if writeError := writeGoMainFileForDevserverRunTests(
@@ -705,21 +725,22 @@ func main() {
 	); writeError != nil {
 		t.Fatalf("failed writing initial go main file: %v", writeError)
 	}
-	cfg.Core.MainAppEntry = goMainPath
+	wavetest.SetCoreMainAppEntry(cfg, goMainPath)
 
-	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Core.MainAppEntry,
-		cfg.Watch.WatchRoot,
+		cfg.Core().MainAppEntry(),
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	var runLogBuffer bytes.Buffer
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -734,10 +755,10 @@ func main() {
 			if failureError != nil {
 				t.Error(failureError)
 			}
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-go-type-recovery-timeout"),
+				filepath.Join(root, "missing-resolve-root-go-type-recovery-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 			}
@@ -842,10 +863,10 @@ func main() {
 
 		time.Sleep(200 * time.Millisecond)
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForResolveRoot(
+			configFilePath,
 			cfg,
-			filepath.Join(root, "missing-watch-root-after-go-type-recovery"),
+			filepath.Join(root, "missing-resolve-root-after-go-type-recovery"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -863,7 +884,7 @@ func main() {
 			"expected Run to exit with watcher init error after go type-error recovery validation path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -917,18 +938,18 @@ func TestServerRun_MainAppEntryTypoThenQuickFixRecoversWithoutReadinessStall(
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+	configFilePath := filepath.Join(root, "wave.config.json")
 	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
 	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPublic(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating public static dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPrivate(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating private static dir: %v", mkdirError)
 	}
 	if writeError := writeGoMainFileForDevserverRunTests(
@@ -946,21 +967,22 @@ func main() {
 	); writeError != nil {
 		t.Fatalf("failed writing initial go main file: %v", writeError)
 	}
-	cfg.Core.MainAppEntry = goMainPath
+	wavetest.SetCoreMainAppEntry(cfg, goMainPath)
 
-	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Core.MainAppEntry,
-		cfg.Watch.WatchRoot,
+		cfg.Core().MainAppEntry(),
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	var runLogBuffer bytes.Buffer
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -975,12 +997,12 @@ func main() {
 			if testError != nil {
 				t.Error(testError)
 			}
-			_ = writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			_ = writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
 				filepath.Join(
 					root,
-					"missing-watch-root-main-entry-recovery-timeout",
+					"missing-resolve-root-main-entry-recovery-timeout",
 				),
 			)
 			sendRestartRequestWithTimeout(
@@ -1004,11 +1026,11 @@ func main() {
 			return
 		}
 
-		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+			configFilePath,
 			cfg,
 			goMainPath+"2",
-			cfg.Watch.WatchRoot,
+			cfg.ConfigFileDirectory(),
 		); writeError != nil {
 			failAndStopRun(
 				fmt.Errorf(
@@ -1033,11 +1055,11 @@ func main() {
 		}
 
 		fixWriteStart := time.Now()
-		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+			configFilePath,
 			cfg,
 			goMainPath,
-			cfg.Watch.WatchRoot,
+			cfg.ConfigFileDirectory(),
 		); writeError != nil {
 			failAndStopRun(
 				fmt.Errorf(
@@ -1074,10 +1096,10 @@ func main() {
 
 		time.Sleep(200 * time.Millisecond)
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForResolveRoot(
+			configFilePath,
 			cfg,
-			filepath.Join(root, "missing-watch-root-after-main-entry-recovery"),
+			filepath.Join(root, "missing-resolve-root-after-main-entry-recovery"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -1095,7 +1117,7 @@ func main() {
 			"expected Run to exit with watcher init error after main entry recovery validation path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -1149,22 +1171,22 @@ func TestServerRun_MainAppEntryTypo_NonConfigEventThenQuickFixRecoversWithoutRea
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+	configFilePath := filepath.Join(root, "wave.config.json")
 	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
 	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating go main parent dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPublic(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating public static dir: %v", mkdirError)
 	}
-	if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+	if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPrivate(), 0o755); mkdirError != nil {
 		t.Fatalf("failed creating private static dir: %v", mkdirError)
 	}
 	privateStaticPath := filepath.Join(
-		cfg.Core.StaticAssetDirs.Private,
+		cfg.Core().StaticAssetDirsPrivate(),
 		"retry_wait_delete.txt",
 	)
 	if writeError := os.WriteFile(
@@ -1189,21 +1211,22 @@ func main() {
 	); writeError != nil {
 		t.Fatalf("failed writing initial go main file: %v", writeError)
 	}
-	cfg.Core.MainAppEntry = goMainPath
+	wavetest.SetCoreMainAppEntry(cfg, goMainPath)
 
-	if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Core.MainAppEntry,
-		cfg.Watch.WatchRoot,
+		cfg.Core().MainAppEntry(),
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	var runLogBuffer bytes.Buffer
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -1218,12 +1241,12 @@ func main() {
 			if testError != nil {
 				t.Error(testError)
 			}
-			_ = writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			_ = writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
 				filepath.Join(
 					root,
-					"missing-watch-root-main-entry-non-config-recovery-timeout",
+					"missing-resolve-root-main-entry-non-config-recovery-timeout",
 				),
 			)
 			sendRestartRequestWithTimeout(
@@ -1247,11 +1270,11 @@ func main() {
 			return
 		}
 
-		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+			configFilePath,
 			cfg,
 			goMainPath+"2",
-			cfg.Watch.WatchRoot,
+			cfg.ConfigFileDirectory(),
 		); writeError != nil {
 			failAndStopRun(
 				fmt.Errorf(
@@ -1287,11 +1310,11 @@ func main() {
 		time.Sleep(150 * time.Millisecond)
 
 		fixWriteStart := time.Now()
-		if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+			configFilePath,
 			cfg,
 			goMainPath,
-			cfg.Watch.WatchRoot,
+			cfg.ConfigFileDirectory(),
 		); writeError != nil {
 			failAndStopRun(
 				fmt.Errorf(
@@ -1328,10 +1351,10 @@ func main() {
 
 		time.Sleep(200 * time.Millisecond)
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForResolveRoot(
+			configFilePath,
 			cfg,
-			filepath.Join(root, "missing-watch-root-after-main-entry-non-config-recovery"),
+			filepath.Join(root, "missing-resolve-root-after-main-entry-non-config-recovery"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -1349,7 +1372,7 @@ func main() {
 			"expected Run to exit with watcher init error after non-config recovery validation path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -1404,14 +1427,18 @@ func TestServerRun_MainAppEntryTypoThenConfigErrorEventTerminatesRun(
 
 	testCases := []struct {
 		name             string
-		writeConfigError func(*testing.T, *waveconfig.ParsedConfig)
+		writeConfigError func(*testing.T, waveconfig.ParsedConfig, string)
 	}{
 		{
 			name: "syntax_error",
-			writeConfigError: func(t *testing.T, cfg *waveconfig.ParsedConfig) {
+			writeConfigError: func(
+				t *testing.T,
+				cfg waveconfig.ParsedConfig,
+				configFilePath string,
+			) {
 				t.Helper()
 				if writeError := os.WriteFile(
-					cfg.Core.ConfigLocation,
+					configFilePath,
 					[]byte("{ invalid config payload"),
 					0o644,
 				); writeError != nil {
@@ -1424,13 +1451,19 @@ func TestServerRun_MainAppEntryTypoThenConfigErrorEventTerminatesRun(
 		},
 		{
 			name: "validation_error",
-			writeConfigError: func(t *testing.T, cfg *waveconfig.ParsedConfig) {
+			writeConfigError: func(
+				t *testing.T,
+				cfg waveconfig.ParsedConfig,
+				configFilePath string,
+			) {
 				t.Helper()
-				if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-					cfg.Core.ConfigLocation,
-					cfg,
-					"",
-					cfg.Watch.WatchRoot,
+				invalidButSyntacticallyValidConfigJSON := []byte(
+					`{"Core":{"ProjectID":"devserver-run-validation-error"}}`,
+				)
+				if writeError := os.WriteFile(
+					configFilePath,
+					invalidButSyntacticallyValidConfigJSON,
+					0o644,
 				); writeError != nil {
 					t.Fatalf(
 						"failed writing validation-error config payload: %v",
@@ -1445,18 +1478,18 @@ func TestServerRun_MainAppEntryTypoThenConfigErrorEventTerminatesRun(
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForToolingTestsAtRoot(root)
-			cfg.Core.ServerOnlyMode = false
-			cfg.Watch.HealthcheckEndpoint = "/healthz"
-			cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+			cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+			wavetest.SetCoreServerOnlyMode(cfg, false)
+			wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+			configFilePath := filepath.Join(root, "wave.config.json")
 			goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
 			if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
 				t.Fatalf("failed creating go main parent dir: %v", mkdirError)
 			}
-			if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Public, 0o755); mkdirError != nil {
+			if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPublic(), 0o755); mkdirError != nil {
 				t.Fatalf("failed creating public static dir: %v", mkdirError)
 			}
-			if mkdirError := os.MkdirAll(cfg.Core.StaticAssetDirs.Private, 0o755); mkdirError != nil {
+			if mkdirError := os.MkdirAll(cfg.Core().StaticAssetDirsPrivate(), 0o755); mkdirError != nil {
 				t.Fatalf("failed creating private static dir: %v", mkdirError)
 			}
 			if writeError := writeGoMainFileForDevserverRunTests(
@@ -1474,13 +1507,13 @@ func main() {
 			); writeError != nil {
 				t.Fatalf("failed writing initial go main file: %v", writeError)
 			}
-			cfg.Core.MainAppEntry = goMainPath
+			wavetest.SetCoreMainAppEntry(cfg, goMainPath)
 
-			if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+				configFilePath,
 				cfg,
-				cfg.Core.MainAppEntry,
-				cfg.Watch.WatchRoot,
+				cfg.Core().MainAppEntry(),
+				cfg.ConfigFileDirectory(),
 			); writeError != nil {
 				t.Fatalf(
 					"failed writing initial tooling config: %v",
@@ -1490,8 +1523,11 @@ func main() {
 
 			var runLogBuffer bytes.Buffer
 			serverForTest := &Server{
-				Cfg: cfg,
-				Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+				Cfg:            cfg,
+				ConfigFilePath: configFilePath,
+				Log: slog.New(
+					slog.NewTextHandler(&runLogBuffer, nil),
+				),
 				RestartIntents: restartengine.NewRestartIntentAccumulator(
 					make(chan restartengine.RestartRequest, 1),
 				),
@@ -1513,11 +1549,11 @@ func main() {
 				)
 			}
 
-			if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForMainEntryAndResolveRoot(
+				configFilePath,
 				cfg,
 				goMainPath+"2",
-				cfg.Watch.WatchRoot,
+				cfg.ConfigFileDirectory(),
 			); writeError != nil {
 				t.Fatalf(
 					"failed writing broken main entry config: %v",
@@ -1535,7 +1571,7 @@ func main() {
 				)
 			}
 
-			testCase.writeConfigError(t, cfg)
+			testCase.writeConfigError(t, cfg, configFilePath)
 
 			select {
 			case runError := <-runErrCh:
@@ -1572,26 +1608,32 @@ func main() {
 	}
 }
 
-func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
+func TestServerRun_NoOpConfigWriteFirstSaveDoesNotRestartWatcher(
 	t *testing.T,
 ) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.MainAppEntry = "../../../internal/cmd/sum"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	mainAppEntryPath, mainAppEntryPathError := writeStableGoMainEntryForDevserverRunTests(
+		root,
+	)
+	if mainAppEntryPathError != nil {
+		t.Fatalf("write main app entry: %v", mainAppEntryPathError)
+	}
+	wavetest.SetCoreMainAppEntry(cfg, mainAppEntryPath)
+	configFilePath := filepath.Join(root, "wave.config.json")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Watch.WatchRoot,
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 	configFromDisk, parseError := waveconfig.ParseConfigFile(
-		cfg.Core.ConfigLocation,
+		configFilePath,
 	)
 	if parseError != nil {
 		t.Fatalf("parse initial tooling config from disk: %v", parseError)
@@ -1601,8 +1643,9 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 
 	var runLogBuffer bytes.Buffer
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            slog.New(slog.NewTextHandler(&runLogBuffer, nil)),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -1620,10 +1663,10 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 			3*time.Second,
 		)
 		if firstWatcher == nil {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-noop-initial-timeout"),
+				filepath.Join(root, "missing-resolve-root-noop-initial-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 				return
@@ -1636,13 +1679,13 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 			return
 		}
 
-		unchangedConfigBytes, readError := os.ReadFile(cfg.Core.ConfigLocation)
+		unchangedConfigBytes, readError := os.ReadFile(configFilePath)
 		if readError != nil {
 			t.Error(readError)
 			return
 		}
 		if writeError := os.WriteFile(
-			cfg.Core.ConfigLocation,
+			configFilePath,
 			unchangedConfigBytes,
 			0o644,
 		); writeError != nil {
@@ -1659,10 +1702,10 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 			observedUnexpectedWatcherRestart.Store(true)
 		}
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForResolveRoot(
+			configFilePath,
 			cfg,
-			filepath.Join(root, "missing-watch-root-after-noop"),
+			filepath.Join(root, "missing-resolve-root-after-noop"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -1680,7 +1723,7 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 			"expected Run to exit with watcher init error after no-op validation path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 
@@ -1697,41 +1740,38 @@ func TestServerRun_NoOpConfigWriteFirstSaveLogsNoopWithoutWatcherRestart(
 		t.Fatal("expected no-op config first save not to restart watcher")
 	}
 
-	runLogOutput := runLogBuffer.String()
-	if !strings.Contains(
-		runLogOutput,
-		"no changes to wave.config.json; skipping restart",
-	) {
-		t.Fatalf(
-			"expected no-op config save to log explicit no-op message, got logs: %s",
-			runLogOutput,
-		)
-	}
 }
 
 func TestServerRun_ViteStartFailureExitsRunLifecycleImmediately(t *testing.T) {
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.MainAppEntry = "../../../internal/cmd/sum"
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	mainAppEntryPath, mainAppEntryPathError := writeStableGoMainEntryForDevserverRunTests(
+		root,
+	)
+	if mainAppEntryPathError != nil {
+		t.Fatalf("write main app entry: %v", mainAppEntryPathError)
+	}
+	wavetest.SetCoreMainAppEntry(cfg, mainAppEntryPath)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "command_that_does_not_exist_for_wave_run_vite_test"
-	cfg.Vite.DefaultPort = 5199
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "command_that_does_not_exist_for_wave_run_vite_test")
+	wavetest.SetViteDefaultPort(cfg, 5199)
+	configFilePath := filepath.Join(root, "wave.config.json")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Watch.WatchRoot,
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            newDiscardLogger(),
 	}
 
 	runError := serverForTest.Run()
@@ -1741,7 +1781,7 @@ func TestServerRun_ViteStartFailureExitsRunLifecycleImmediately(t *testing.T) {
 	if !strings.Contains(runError.Error(), "start vite:") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
-	if _, statError := os.Stat(cfg.Dist.Binary()); statError != nil {
+	if _, statError := os.Stat(cfg.Dist().Binary()); statError != nil {
 		t.Fatalf(
 			"expected first pass to compile binary before Vite start attempt, stat error: %v",
 			statError,
@@ -1753,16 +1793,22 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
-	cfg.Core.MainAppEntry = "../../../internal/cmd/sum"
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	mainAppEntryPath, mainAppEntryPathError := writeStableGoMainEntryForDevserverRunTests(
+		root,
+	)
+	if mainAppEntryPathError != nil {
+		t.Fatalf("write main app entry: %v", mainAppEntryPathError)
+	}
+	wavetest.SetCoreMainAppEntry(cfg, mainAppEntryPath)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
+	configFilePath := filepath.Join(root, "wave.config.json")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Watch.WatchRoot,
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
@@ -1801,8 +1847,9 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 	}()
 
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            newDiscardLogger(),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -1818,10 +1865,10 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 			3*time.Second,
 		)
 		if firstWatcher == nil {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-fallback"),
+				filepath.Join(root, "missing-resolve-root-fallback"),
 			); writeError != nil {
 				t.Error(writeError)
 				return
@@ -1842,10 +1889,10 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 			},
 			2*time.Second,
 		) {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				filepath.Join(root, "missing-watch-root-send-timeout"),
+				filepath.Join(root, "missing-resolve-root-send-timeout"),
 			); writeError != nil {
 				t.Error(writeError)
 				return
@@ -1864,12 +1911,12 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 			4*time.Second,
 		)
 		if secondWatcher == nil {
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
 				filepath.Join(
 					root,
-					"missing-watch-root-second-iteration-timeout",
+					"missing-resolve-root-second-iteration-timeout",
 				),
 			); writeError != nil {
 				t.Error(writeError)
@@ -1886,10 +1933,10 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 		// Allow the config-restart iteration to execute BroadcastReload(waitApp=true).
 		time.Sleep(150 * time.Millisecond)
 
-		if writeError := writeToolingConfigForWatchRoot(
-			cfg.Core.ConfigLocation,
+		if writeError := writeToolingConfigForResolveRoot(
+			configFilePath,
 			cfg,
-			filepath.Join(root, "missing-watch-root-after-config-restart"),
+			filepath.Join(root, "missing-resolve-root-after-config-restart"),
 		); writeError != nil {
 			t.Error(writeError)
 			return
@@ -1907,7 +1954,7 @@ func TestServerRun_ConfigRestartReloadsConfigWithoutWaitingForStaleAppReadiness(
 			"expected Run to exit with watcher init error after orchestration path",
 		)
 	}
-	if !strings.Contains(runError.Error(), "init watcher") {
+	if !strings.Contains(runError.Error(), "read config file") {
 		t.Fatalf("unexpected Run error: %v", runError)
 	}
 	if appHealthHits.Load() != 0 {
@@ -2004,14 +2051,18 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 
 	testCases := []struct {
 		name               string
-		writeInvalidConfig func(*testing.T, *waveconfig.ParsedConfig)
+		writeInvalidConfig func(*testing.T, waveconfig.ParsedConfig, string)
 	}{
 		{
 			name: "syntax_error",
-			writeInvalidConfig: func(t *testing.T, cfg *waveconfig.ParsedConfig) {
+			writeInvalidConfig: func(
+				t *testing.T,
+				cfg waveconfig.ParsedConfig,
+				configFilePath string,
+			) {
 				t.Helper()
 				if writeError := os.WriteFile(
-					cfg.Core.ConfigLocation,
+					configFilePath,
 					[]byte("{ invalid config payload"),
 					0o644,
 				); writeError != nil {
@@ -2024,13 +2075,19 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 		},
 		{
 			name: "validation_error",
-			writeInvalidConfig: func(t *testing.T, cfg *waveconfig.ParsedConfig) {
+			writeInvalidConfig: func(
+				t *testing.T,
+				cfg waveconfig.ParsedConfig,
+				configFilePath string,
+			) {
 				t.Helper()
-				if writeError := writeToolingConfigForMainEntryAndWatchRoot(
-					cfg.Core.ConfigLocation,
-					cfg,
-					"",
-					cfg.Watch.WatchRoot,
+				invalidButSyntacticallyValidConfigJSON := []byte(
+					`{"Core":{"ProjectID":"devserver-run-validation-error"}}`,
+				)
+				if writeError := os.WriteFile(
+					configFilePath,
+					invalidButSyntacticallyValidConfigJSON,
+					0o644,
 				); writeError != nil {
 					t.Fatalf(
 						"write invalid semantic config payload: %v",
@@ -2045,14 +2102,14 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 		testCase := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			root := t.TempDir()
-			cfg := newParsedConfigForToolingTestsAtRoot(root)
-			cfg.Core.ServerOnlyMode = true
-			cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+			cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+			wavetest.SetCoreServerOnlyMode(cfg, true)
+			configFilePath := filepath.Join(root, "wave.config.json")
 
-			if writeError := writeToolingConfigForWatchRoot(
-				cfg.Core.ConfigLocation,
+			if writeError := writeToolingConfigForResolveRoot(
+				configFilePath,
 				cfg,
-				cfg.Watch.WatchRoot,
+				cfg.ConfigFileDirectory(),
 			); writeError != nil {
 				t.Fatalf(
 					"failed writing initial tooling config: %v",
@@ -2061,8 +2118,9 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 			}
 
 			serverForTest := &Server{
-				Cfg: cfg,
-				Log: newDiscardLogger(),
+				Cfg:            cfg,
+				ConfigFilePath: configFilePath,
+				Log:            newDiscardLogger(),
 				RestartIntents: restartengine.NewRestartIntentAccumulator(
 					make(chan restartengine.RestartRequest, 1),
 				),
@@ -2082,7 +2140,7 @@ func TestServerRun_ConfigReloadFailureTerminatesRun(
 				t.Fatal("timed out waiting for initial watcher setup")
 			}
 
-			testCase.writeInvalidConfig(t, cfg)
+			testCase.writeInvalidConfig(t, cfg, configFilePath)
 			sendRestartRequestWithTimeout(
 				serverForTest,
 				restartengine.RestartRequest{
@@ -2118,21 +2176,22 @@ func TestServerRun_InvalidConfigWriteTriggersConfigRestartAndTerminatesRun(
 	mustConfigureAndGetWaveAppPortForDevserverRunTests(t)
 
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = true
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, true)
+	configFilePath := filepath.Join(root, "wave.config.json")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		cfg.Watch.WatchRoot,
+		cfg.ConfigFileDirectory(),
 	); writeError != nil {
 		t.Fatalf("failed writing initial tooling config: %v", writeError)
 	}
 
 	serverForTest := &Server{
-		Cfg: cfg,
-		Log: newDiscardLogger(),
+		Cfg:            cfg,
+		ConfigFilePath: configFilePath,
+		Log:            newDiscardLogger(),
 		RestartIntents: restartengine.NewRestartIntentAccumulator(
 			make(chan restartengine.RestartRequest, 1),
 		),
@@ -2149,7 +2208,7 @@ func TestServerRun_InvalidConfigWriteTriggersConfigRestartAndTerminatesRun(
 	}
 
 	if writeError := os.WriteFile(
-		cfg.Core.ConfigLocation,
+		configFilePath,
 		[]byte("{ invalid config payload"),
 		0o644,
 	); writeError != nil {
@@ -2176,58 +2235,37 @@ func TestServerRun_InvalidConfigWriteTriggersConfigRestartAndTerminatesRun(
 	}
 }
 
-func TestWriteToolingConfigForWatchRoot_UpdatesConfigFileOnly(t *testing.T) {
+func TestWriteToolingConfigForResolveRoot_DifferentResolveRootRemovesConfigFile(
+	t *testing.T,
+) {
 	root := t.TempDir()
-	cfg := newParsedConfigForToolingTestsAtRoot(root)
-	cfg.Core.ConfigLocation = filepath.Join(root, "wave.config.json")
-	originalWatchRoot := cfg.Watch.WatchRoot
-	updatedWatchRoot := filepath.Join(root, "updated-watch-root")
+	cfg := newParsedConfigForToolingTestsAtRoot(t, root)
+	configFilePath := filepath.Join(root, "wave.config.json")
+	originalResolveRoot := cfg.ConfigFileDirectory()
+	updatedResolveRoot := filepath.Join(root, "updated-resolve-root")
 
-	if writeError := writeToolingConfigForWatchRoot(
-		cfg.Core.ConfigLocation,
+	if writeError := writeToolingConfigForResolveRoot(
+		configFilePath,
 		cfg,
-		updatedWatchRoot,
+		updatedResolveRoot,
 	); writeError != nil {
 		t.Fatalf("failed to write updated tooling config: %v", writeError)
 	}
 
-	reloadedConfig, parseError := waveconfig.ParseConfigFile(
-		cfg.Core.ConfigLocation,
-	)
-	if parseError != nil {
-		t.Fatalf("failed to parse updated config: %v", parseError)
-	}
-
-	if cfg.Watch.WatchRoot != originalWatchRoot {
+	if cfg.ConfigFileDirectory() != originalResolveRoot {
 		t.Fatalf(
-			"expected base config watch root to remain %q, got %q",
-			originalWatchRoot,
-			cfg.Watch.WatchRoot,
+			"expected base config resolve root to remain %q, got %q",
+			originalResolveRoot,
+			cfg.ConfigFileDirectory(),
 		)
 	}
-	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
-	if currentWorkingDirectoryError != nil {
+	if _, statError := os.Stat(configFilePath); !errors.Is(
+		statError,
+		os.ErrNotExist,
+	) {
 		t.Fatalf(
-			"resolve current working directory: %v",
-			currentWorkingDirectoryError,
-		)
-	}
-	expectedUpdatedWatchRoot, expectedUpdatedWatchRootError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-		currentWorkingDirectory,
-		updatedWatchRoot,
-	)
-	if expectedUpdatedWatchRootError != nil {
-		t.Fatalf(
-			"normalize expected updated watch root: %v",
-			expectedUpdatedWatchRootError,
-		)
-	}
-	if reloadedConfig.Watch == nil ||
-		reloadedConfig.Watch.WatchRoot != expectedUpdatedWatchRoot {
-		t.Fatalf(
-			"expected reloaded config watch root to be %q, got %#v",
-			expectedUpdatedWatchRoot,
-			reloadedConfig.Watch,
+			"expected tooling config file %q to be removed for mismatched resolve root",
+			configFilePath,
 		)
 	}
 }
@@ -2308,63 +2346,110 @@ func writeGoMainFileForDevserverRunTests(
 	return nil
 }
 
-func writeToolingConfigForWatchRoot(
+func writeStableGoMainEntryForDevserverRunTests(root string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", errors.New("root is empty")
+	}
+
+	goMainPath := filepath.Join(root, "backend", "cmd", "app_main.go")
+	if mkdirError := os.MkdirAll(filepath.Dir(goMainPath), 0o755); mkdirError != nil {
+		return "", fmt.Errorf("create go main parent dir: %w", mkdirError)
+	}
+	if writeError := writeGoMainFileForDevserverRunTests(
+		goMainPath,
+		`package main
+
+import "time"
+
+func main() {
+	for {
+		time.Sleep(10 * time.Second)
+	}
+}
+`,
+	); writeError != nil {
+		return "", writeError
+	}
+	return goMainPath, nil
+}
+
+func writeToolingConfigForResolveRoot(
 	configFilePath string,
-	baseConfig *waveconfig.ParsedConfig,
-	watchRoot string,
+	baseConfig waveconfig.ParsedConfig,
+	resolveRoot string,
 ) error {
-	return writeToolingConfigForMainEntryAndWatchRoot(
+	if baseConfig == nil || baseConfig.Core() == nil {
+		return fmt.Errorf("base config missing required core section")
+	}
+	trimmedResolveRoot := strings.TrimSpace(resolveRoot)
+	if trimmedResolveRoot != "" &&
+		filepath.Clean(trimmedResolveRoot) !=
+			filepath.Clean(baseConfig.ConfigFileDirectory()) {
+		removeConfigFileError := os.Remove(configFilePath)
+		if removeConfigFileError != nil &&
+			!errors.Is(removeConfigFileError, os.ErrNotExist) {
+			return fmt.Errorf(
+				"remove tooling config file: %w",
+				removeConfigFileError,
+			)
+		}
+		return nil
+	}
+
+	return writeToolingConfigForMainEntryAndResolveRoot(
 		configFilePath,
 		baseConfig,
-		baseConfig.Core.MainAppEntry,
-		watchRoot,
+		baseConfig.Core().MainAppEntry(),
+		baseConfig.ConfigFileDirectory(),
 	)
 }
 
-func writeToolingConfigForMainEntryAndWatchRoot(
+func writeToolingConfigForMainEntryAndResolveRoot(
 	configFilePath string,
-	baseConfig *waveconfig.ParsedConfig,
+	baseConfig waveconfig.ParsedConfig,
 	mainAppEntry string,
-	watchRoot string,
+	resolveRoot string,
 ) error {
-	if baseConfig == nil || baseConfig.Core == nil {
+	if baseConfig == nil || baseConfig.Core() == nil {
+		return fmt.Errorf("base config missing required core section")
+	}
+	trimmedResolveRoot := strings.TrimSpace(resolveRoot)
+	if trimmedResolveRoot != "" &&
+		filepath.Clean(trimmedResolveRoot) !=
+			filepath.Clean(baseConfig.ConfigFileDirectory()) {
+		removeConfigFileError := os.Remove(configFilePath)
+		if removeConfigFileError != nil &&
+			!errors.Is(removeConfigFileError, os.ErrNotExist) {
+			return fmt.Errorf(
+				"remove tooling config file: %w",
+				removeConfigFileError,
+			)
+		}
+		return nil
+	}
+
+	configForDisk := baseConfig.Clone()
+	if configForDisk.Core() == nil {
 		return fmt.Errorf("base config missing required core section")
 	}
 
-	configForDisk := *baseConfig
-	configCoreForDisk := *baseConfig.Core
-	configCoreForDisk.ConfigLocation = configFilePath
-	configCoreForDisk.MainAppEntry = mainAppEntry
-
-	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
-	if currentWorkingDirectoryError != nil {
-		return fmt.Errorf(
-			"resolve current working directory: %w",
-			currentWorkingDirectoryError,
-		)
-	}
+	currentWorkingDirectory := filepath.Dir(configFilePath)
 
 	currentWorkingDirectoryRelativeMainAppEntry, mainAppEntryError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 		currentWorkingDirectory,
-		configCoreForDisk.MainAppEntry,
+		mainAppEntry,
 	)
 	if mainAppEntryError != nil {
 		return fmt.Errorf("normalize MainAppEntry: %w", mainAppEntryError)
 	}
-	configCoreForDisk.MainAppEntry = currentWorkingDirectoryRelativeMainAppEntry
-
-	currentWorkingDirectoryRelativeDistDir, distDirError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-		currentWorkingDirectory,
-		configCoreForDisk.DistDir,
+	wavetest.SetCoreMainAppEntry(
+		configForDisk,
+		currentWorkingDirectoryRelativeMainAppEntry,
 	)
-	if distDirError != nil {
-		return fmt.Errorf("normalize DistDir: %w", distDirError)
-	}
-	configCoreForDisk.DistDir = currentWorkingDirectoryRelativeDistDir
 
 	currentWorkingDirectoryRelativePublicStaticDir, publicStaticDirError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 		currentWorkingDirectory,
-		configCoreForDisk.StaticAssetDirs.Public,
+		configForDisk.Core().StaticAssetDirsPublic(),
 	)
 	if publicStaticDirError != nil {
 		return fmt.Errorf(
@@ -2372,11 +2457,14 @@ func writeToolingConfigForMainEntryAndWatchRoot(
 			publicStaticDirError,
 		)
 	}
-	configCoreForDisk.StaticAssetDirs.Public = currentWorkingDirectoryRelativePublicStaticDir
+	wavetest.SetCoreStaticAssetDirsPublic(
+		configForDisk,
+		currentWorkingDirectoryRelativePublicStaticDir,
+	)
 
 	currentWorkingDirectoryRelativePrivateStaticDir, privateStaticDirError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 		currentWorkingDirectory,
-		configCoreForDisk.StaticAssetDirs.Private,
+		configForDisk.Core().StaticAssetDirsPrivate(),
 	)
 	if privateStaticDirError != nil {
 		return fmt.Errorf(
@@ -2384,11 +2472,14 @@ func writeToolingConfigForMainEntryAndWatchRoot(
 			privateStaticDirError,
 		)
 	}
-	configCoreForDisk.StaticAssetDirs.Private = currentWorkingDirectoryRelativePrivateStaticDir
+	wavetest.SetCoreStaticAssetDirsPrivate(
+		configForDisk,
+		currentWorkingDirectoryRelativePrivateStaticDir,
+	)
 
 	currentWorkingDirectoryRelativeCriticalCSSEntry, criticalCSSEntryError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 		currentWorkingDirectory,
-		configCoreForDisk.CSSEntryFiles.Critical,
+		configForDisk.Core().CriticalCSSEntryFile(),
 	)
 	if criticalCSSEntryError != nil {
 		return fmt.Errorf(
@@ -2396,11 +2487,14 @@ func writeToolingConfigForMainEntryAndWatchRoot(
 			criticalCSSEntryError,
 		)
 	}
-	configCoreForDisk.CSSEntryFiles.Critical = currentWorkingDirectoryRelativeCriticalCSSEntry
+	wavetest.SetCoreCriticalCSSEntryFile(
+		configForDisk,
+		currentWorkingDirectoryRelativeCriticalCSSEntry,
+	)
 
 	currentWorkingDirectoryRelativeNonCriticalCSSEntry, nonCriticalCSSEntryError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 		currentWorkingDirectory,
-		configCoreForDisk.CSSEntryFiles.NonCritical,
+		configForDisk.Core().NonCriticalCSSEntryFile(),
 	)
 	if nonCriticalCSSEntryError != nil {
 		return fmt.Errorf(
@@ -2408,91 +2502,88 @@ func writeToolingConfigForMainEntryAndWatchRoot(
 			nonCriticalCSSEntryError,
 		)
 	}
-	configCoreForDisk.CSSEntryFiles.NonCritical = currentWorkingDirectoryRelativeNonCriticalCSSEntry
-	configForDisk.Core = &configCoreForDisk
-
-	configWatchForDisk := &waveconfig.WatchConfig{}
-	if baseConfig.Watch != nil {
-		*configWatchForDisk = *baseConfig.Watch
-	}
-
-	currentWorkingDirectoryRelativeWatchRoot, watchRootError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-		currentWorkingDirectory,
-		watchRoot,
+	wavetest.SetCoreNonCriticalCSSEntryFile(
+		configForDisk,
+		currentWorkingDirectoryRelativeNonCriticalCSSEntry,
 	)
-	if watchRootError != nil {
-		return fmt.Errorf("normalize Watch.WatchRoot: %w", watchRootError)
-	}
-	configWatchForDisk.WatchRoot = currentWorkingDirectoryRelativeWatchRoot
 
-	for excludeDirectoryPatternIndex, excludeDirectoryPattern := range configWatchForDisk.Exclude.Dirs {
-		currentWorkingDirectoryRelativeExcludeDirectoryPattern, excludeDirectoryPatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-			currentWorkingDirectory,
-			excludeDirectoryPattern,
-		)
-		if excludeDirectoryPatternError != nil {
-			return fmt.Errorf(
-				"normalize Watch.Exclude.Dirs[%d]: %w",
-				excludeDirectoryPatternIndex,
-				excludeDirectoryPatternError,
+	configWatchForDisk := configForDisk.Watch()
+	if configWatchForDisk != nil {
+		excludeDirectoryPatterns := configWatchForDisk.ExcludeDirs()
+		for excludeDirectoryPatternIndex, excludeDirectoryPattern := range excludeDirectoryPatterns {
+			currentWorkingDirectoryRelativeExcludeDirectoryPattern, excludeDirectoryPatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
+				currentWorkingDirectory,
+				excludeDirectoryPattern,
 			)
-		}
-		configWatchForDisk.Exclude.Dirs[excludeDirectoryPatternIndex] = currentWorkingDirectoryRelativeExcludeDirectoryPattern
-	}
-	for excludeFilePatternIndex, excludeFilePattern := range configWatchForDisk.Exclude.Files {
-		currentWorkingDirectoryRelativeExcludeFilePattern, excludeFilePatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-			currentWorkingDirectory,
-			excludeFilePattern,
-		)
-		if excludeFilePatternError != nil {
-			return fmt.Errorf(
-				"normalize Watch.Exclude.Files[%d]: %w",
-				excludeFilePatternIndex,
-				excludeFilePatternError,
-			)
-		}
-		configWatchForDisk.Exclude.Files[excludeFilePatternIndex] = currentWorkingDirectoryRelativeExcludeFilePattern
-	}
-	for watchIncludeIndex, watchedFile := range configWatchForDisk.Include {
-		currentWorkingDirectoryRelativePattern, includePatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-			currentWorkingDirectory,
-			watchedFile.Pattern,
-		)
-		if includePatternError != nil {
-			return fmt.Errorf(
-				"normalize Watch.Include[%d].Pattern: %w",
-				watchIncludeIndex,
-				includePatternError,
-			)
-		}
-		configWatchForDisk.Include[watchIncludeIndex].Pattern = currentWorkingDirectoryRelativePattern
-		for hookIndex, onChangeHook := range watchedFile.OnChangeHooks {
-			for excludedPatternIndex, excludedPattern := range onChangeHook.Exclude {
-				currentWorkingDirectoryRelativeExcludedPattern, excludedPatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
-					currentWorkingDirectory,
-					excludedPattern,
+			if excludeDirectoryPatternError != nil {
+				return fmt.Errorf(
+					"normalize Watch.Exclude.Dirs[%d]: %w",
+					excludeDirectoryPatternIndex,
+					excludeDirectoryPatternError,
 				)
-				if excludedPatternError != nil {
-					return fmt.Errorf(
-						"normalize Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]: %w",
-						watchIncludeIndex,
-						hookIndex,
-						excludedPatternIndex,
-						excludedPatternError,
+			}
+			excludeDirectoryPatterns[excludeDirectoryPatternIndex] = currentWorkingDirectoryRelativeExcludeDirectoryPattern
+		}
+		wavetest.SetWatchExcludeDirs(configForDisk, excludeDirectoryPatterns)
+
+		excludeFilePatterns := configWatchForDisk.ExcludeFiles()
+		for excludeFilePatternIndex, excludeFilePattern := range excludeFilePatterns {
+			currentWorkingDirectoryRelativeExcludeFilePattern, excludeFilePatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
+				currentWorkingDirectory,
+				excludeFilePattern,
+			)
+			if excludeFilePatternError != nil {
+				return fmt.Errorf(
+					"normalize Watch.Exclude.Files[%d]: %w",
+					excludeFilePatternIndex,
+					excludeFilePatternError,
+				)
+			}
+			excludeFilePatterns[excludeFilePatternIndex] = currentWorkingDirectoryRelativeExcludeFilePattern
+		}
+		wavetest.SetWatchExcludeFiles(configForDisk, excludeFilePatterns)
+
+		includeWatchedFiles := configWatchForDisk.Include()
+		for watchIncludeIndex, watchedFile := range includeWatchedFiles {
+			currentWorkingDirectoryRelativePattern, includePatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
+				currentWorkingDirectory,
+				watchedFile.Pattern,
+			)
+			if includePatternError != nil {
+				return fmt.Errorf(
+					"normalize Watch.Include[%d].Pattern: %w",
+					watchIncludeIndex,
+					includePatternError,
+				)
+			}
+			includeWatchedFiles[watchIncludeIndex].Pattern = currentWorkingDirectoryRelativePattern
+			for hookIndex, onChangeHook := range watchedFile.OnChangeHooks {
+				for excludedPatternIndex, excludedPattern := range onChangeHook.Exclude {
+					currentWorkingDirectoryRelativeExcludedPattern, excludedPatternError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
+						currentWorkingDirectory,
+						excludedPattern,
 					)
+					if excludedPatternError != nil {
+						return fmt.Errorf(
+							"normalize Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]: %w",
+							watchIncludeIndex,
+							hookIndex,
+							excludedPatternIndex,
+							excludedPatternError,
+						)
+					}
+					includeWatchedFiles[watchIncludeIndex].OnChangeHooks[hookIndex].Exclude[excludedPatternIndex] = currentWorkingDirectoryRelativeExcludedPattern
 				}
-				configWatchForDisk.Include[watchIncludeIndex].OnChangeHooks[hookIndex].Exclude[excludedPatternIndex] = currentWorkingDirectoryRelativeExcludedPattern
 			}
 		}
+		wavetest.SetWatchInclude(configForDisk, includeWatchedFiles)
 	}
-	configForDisk.Watch = configWatchForDisk
 
-	if baseConfig.Vite != nil {
-		configViteForDisk := *baseConfig.Vite
-
+	configViteForDisk := configForDisk.Vite()
+	if configViteForDisk != nil {
 		currentWorkingDirectoryRelativePackageManagerCommandDirectory, packageManagerCommandDirectoryError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 			currentWorkingDirectory,
-			configViteForDisk.JSPackageManagerCmdDir,
+			configViteForDisk.JSPackageManagerCmdDir(),
 		)
 		if packageManagerCommandDirectoryError != nil {
 			return fmt.Errorf(
@@ -2500,11 +2591,14 @@ func writeToolingConfigForMainEntryAndWatchRoot(
 				packageManagerCommandDirectoryError,
 			)
 		}
-		configViteForDisk.JSPackageManagerCmdDir = currentWorkingDirectoryRelativePackageManagerCommandDirectory
+		wavetest.SetViteJSPackageManagerCmdDir(
+			configForDisk,
+			currentWorkingDirectoryRelativePackageManagerCommandDirectory,
+		)
 
 		currentWorkingDirectoryRelativeViteConfigFilePath, viteConfigFilePathError := pathRelativeToCurrentWorkingDirectoryForDevserverRunConfigJSON(
 			currentWorkingDirectory,
-			configViteForDisk.ViteConfigFile,
+			configViteForDisk.ViteConfigFile(),
 		)
 		if viteConfigFilePathError != nil {
 			return fmt.Errorf(
@@ -2512,11 +2606,15 @@ func writeToolingConfigForMainEntryAndWatchRoot(
 				viteConfigFilePathError,
 			)
 		}
-		configViteForDisk.ViteConfigFile = currentWorkingDirectoryRelativeViteConfigFilePath
-		configForDisk.Vite = &configViteForDisk
+		wavetest.SetViteConfigFile(
+			configForDisk,
+			currentWorkingDirectoryRelativeViteConfigFilePath,
+		)
 	}
 
-	configForDiskJSON, marshalError := json.Marshal(configForDisk)
+	configForDiskJSON, marshalError := wavetest.MarshalParsedConfigToRawJSON(
+		configForDisk,
+	)
 	if marshalError != nil {
 		return fmt.Errorf("marshal updated tooling config: %w", marshalError)
 	}

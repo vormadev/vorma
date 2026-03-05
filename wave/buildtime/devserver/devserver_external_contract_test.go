@@ -8,4 +8,4 @@ import (
 )
 
 // Compile-time contract for non-tooling in-repo consumers (e.g. vormabuild).
-var _ func(*waveconfig.ParsedConfig, *slog.Logger) error = devserver.RunDev
+var _ func(waveconfig.ParsedConfig, string, *slog.Logger) error = devserver.RunDev

@@ -38,9 +38,10 @@ func newDiscardLoggerForBroadcastBehaviorTests() *slog.Logger {
 }
 
 func newParsedConfigForBroadcastBehaviorTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func newTCP4HTTPTestServerForBroadcastBehaviorTests(
@@ -236,8 +237,8 @@ func startBlockingFrameworkRuntimeReloadServerForBroadcastBehaviorTests(
 }
 
 func TestBroadcastRebuilding_SendsPayloadWhenEnabled(t *testing.T) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager := broadcast.NewManager(
 		newDiscardLoggerForBroadcastBehaviorTests(),
@@ -358,8 +359,8 @@ func waitForRefreshManagerConnectionCountForBroadcastBehaviorTests(
 }
 
 func TestBroadcastRebuilding_NoOpInServerOnlyMode(t *testing.T) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -384,8 +385,8 @@ func TestBroadcastRebuilding_NoOpInServerOnlyMode(t *testing.T) {
 }
 
 func TestBroadcastRebuilding_NoOpWhenContextCanceled(t *testing.T) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager, connection, cancelRefreshManager, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -412,8 +413,8 @@ func TestBroadcastRebuilding_NoOpWhenContextCanceled(t *testing.T) {
 }
 
 func TestBroadcastReload_StopsWhenContextCanceled(t *testing.T) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager, connection, cancelRefreshManager, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -445,8 +446,8 @@ func TestBroadcastReload_StopsWhenContextCanceled(t *testing.T) {
 func TestBroadcastReload_WaitingForBuildRetrySkipsPayloadBroadcast(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -477,9 +478,9 @@ func TestBroadcastReload_WaitingForBuildRetrySkipsPayloadBroadcast(
 func TestBroadcastReload_WaitAppDoesNotBlockSubsequentReloads(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	healthServerPort, requestStarted, requestCanceled, cleanupHealthServer := startBlockingHealthServerForBroadcastBehaviorTests(
 		t,
@@ -558,9 +559,9 @@ func TestBroadcastReload_WaitAppDoesNotBlockSubsequentReloads(
 func TestBroadcastReload_CleanupCancelsOutstandingReadinessWait(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	healthServerPort, requestStarted, requestCanceled, cleanupHealthServer := startBlockingHealthServerForBroadcastBehaviorTests(
 		t,
@@ -608,9 +609,9 @@ func TestBroadcastReload_CleanupCancelsOutstandingReadinessWait(
 func TestBroadcastReload_CycleViteWithoutActiveViteSkipsReadinessAndQueuesRestart(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	healthServerPort, requestStarted, requestCanceled, cleanupHealthServer := startBlockingHealthServerForBroadcastBehaviorTests(
 		t,
@@ -680,7 +681,7 @@ func TestBroadcastReload_CycleViteWithoutActiveViteSkipsReadinessAndQueuesRestar
 
 func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
 	serverForTest := &Server{
-		Cfg: newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir()),
+		Cfg: newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir()),
 		Log: newDiscardLoggerForBroadcastBehaviorTests(),
 	}
 
@@ -721,8 +722,8 @@ func TestShouldBroadcastReloadPayloadAfterReadiness(t *testing.T) {
 func TestBroadcastReload_CycleViteWithoutActiveContextQueuesRestartAndSkipsPayload(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -765,9 +766,9 @@ func TestBroadcastReload_CycleViteWithoutActiveContextQueuesRestartAndSkipsPaylo
 func TestBroadcastReload_FrameworkRuntimeReloadRequestsAreAsyncAndCleanupCancelable(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	reloadEndpointPath := "/__vorma_internal/reload-routes"
 	reloadServerPort, requestStarted, requestCanceled, cleanupReloadServer := startBlockingFrameworkRuntimeReloadServerForBroadcastBehaviorTests(
@@ -843,9 +844,9 @@ func TestBroadcastReload_FrameworkRuntimeReloadRequestsAreAsyncAndCleanupCancela
 func TestBroadcastReload_FrameworkRuntimeReloadRequestsWaitForAppReadiness(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	var appReady atomic.Bool
 	requestObservedBeforeReady := make(chan struct{}, 1)
@@ -967,9 +968,9 @@ func TestBroadcastReload_FrameworkRuntimeReloadRequestsWaitForAppReadiness(
 func TestBroadcastReload_FrameworkRuntimeReloadFailureQueuesRestartAndSkipsPayload(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
 		t,
@@ -1049,9 +1050,9 @@ func TestBroadcastReload_FrameworkRuntimeReloadFailureQueuesRestartAndSkipsPaylo
 func TestBroadcastReload_FrameworkRuntimeReloadSuccessBroadcastsPayloadAndHeaders(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	requestHeaders := make(chan http.Header, 1)
 	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
@@ -1147,11 +1148,11 @@ func TestBroadcastReload_FrameworkRuntimeReloadSuccessBroadcastsPayloadAndHeader
 func TestBroadcastReload_CycleViteFailureQueuesRestartAndSkipsPayload(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "command_that_does_not_exist_for_cycle_vite_failure_test"
-	cfg.Vite.DefaultPort = 5211
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "command_that_does_not_exist_for_cycle_vite_failure_test")
+	wavetest.SetViteDefaultPort(cfg, 5211)
 
 	builderForTest := builder.NewBuilder(
 		cfg,
@@ -1169,8 +1170,8 @@ func TestBroadcastReload_CycleViteFailureQueuesRestartAndSkipsPayload(
 		Log:     newDiscardLoggerForBroadcastBehaviorTests(),
 		Builder: builderForTest,
 		ViteContext: vitecmd.NewBuildCtx(&vitecmd.BuildCtxOptions{
-			JSPackageManagerBaseCmd: cfg.Vite.JSPackageManagerBaseCmd,
-			DefaultPort:             cfg.Vite.DefaultPort,
+			JSPackageManagerBaseCmd: cfg.Vite().JSPackageManagerBaseCmd(),
+			DefaultPort:             cfg.Vite().DefaultPort(),
 		}),
 		RefreshManager: refreshManager,
 	}
@@ -1205,9 +1206,11 @@ func TestBroadcastReload_CycleViteFailureQueuesRestartAndSkipsPayload(
 func TestExecuteBrowserPhase_InvalidateViteFallbackWithoutViteSetsHardReload(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Vite = nil
+	cfg := newParsedConfigForToolingTestsWithoutViteAtRoot(
+		t,
+		t.TempDir(),
+	)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	serverForTest := &Server{
 		Cfg: cfg,
@@ -1237,8 +1240,8 @@ func TestExecuteBrowserPhase_InvalidateViteFallbackWithoutViteSetsHardReload(
 func TestExecuteBrowserPhase_WaitingForBuildRetrySkipsBrowserBroadcast(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -1272,10 +1275,10 @@ func TestExecuteBrowserPhase_WaitingForBuildRetrySkipsBrowserBroadcast(
 func TestExecuteBrowserPhase_InvalidateViteRuntimeUnavailableQueuesRestart(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "pnpm"
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "pnpm")
 
 	serverForTest := &Server{
 		Cfg: cfg,
@@ -1306,10 +1309,10 @@ func TestExecuteBrowserPhase_InvalidateViteRuntimeUnavailableQueuesRestart(
 func TestExecuteBrowserPhase_InvalidateViteRuntimeUnavailableLogsRestartMessage(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "pnpm"
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "pnpm")
 
 	var logBuffer bytes.Buffer
 	serverForTest := &Server{
@@ -1338,10 +1341,10 @@ func TestExecuteBrowserPhase_InvalidateViteRuntimeUnavailableLogsRestartMessage(
 func TestExecuteBrowserPhase_InvalidateViteIsAsyncAndCleanupCancelable(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "pnpm"
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "pnpm")
 
 	invalidateServerPort, requestStarted, requestCanceled, cleanupInvalidateServer := startBlockingViteInvalidateServerForBroadcastBehaviorTests(
 		t,
@@ -1397,8 +1400,8 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
@@ -1406,7 +1409,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 	)
 
 	if mkdirCriticalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
+		filepath.Dir(cfg.Core().CriticalCSSEntryFile()),
 		0o755,
 	); mkdirCriticalError != nil {
 		t.Fatalf(
@@ -1415,7 +1418,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 		)
 	}
 	if mkdirNormalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical),
+		filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()),
 		0o755,
 	); mkdirNormalError != nil {
 		t.Fatalf(
@@ -1424,7 +1427,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 		)
 	}
 	if writeCriticalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte("body{color:red;}"),
 		0o644,
 	); writeCriticalEntryError != nil {
@@ -1434,7 +1437,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 		)
 	}
 	if writeNormalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte("body{color:blue;}"),
 		0o644,
 	); writeNormalEntryError != nil {
@@ -1458,7 +1461,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 	}
 
 	criticalCSSBytes, readCriticalCSSError := os.ReadFile(
-		cfg.Dist.CriticalCSS(),
+		cfg.Dist().CriticalCSS(),
 	)
 	if readCriticalCSSError != nil {
 		t.Fatalf(
@@ -1467,7 +1470,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalAndNormalPayloads(
 		)
 	}
 	normalCSSRefBytes, readNormalCSSRefError := os.ReadFile(
-		cfg.Dist.NormalCSSRef(),
+		cfg.Dist().NormalCSSRef(),
 	)
 	if readNormalCSSRefError != nil {
 		t.Fatalf(
@@ -1555,8 +1558,8 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
@@ -1564,7 +1567,7 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 	)
 
 	if mkdirCriticalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
+		filepath.Dir(cfg.Core().CriticalCSSEntryFile()),
 		0o755,
 	); mkdirCriticalError != nil {
 		t.Fatalf(
@@ -1573,7 +1576,7 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 		)
 	}
 	if mkdirNormalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical),
+		filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()),
 		0o755,
 	); mkdirNormalError != nil {
 		t.Fatalf(
@@ -1582,7 +1585,7 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 		)
 	}
 	if writeCriticalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte("body{color:red;}"),
 		0o644,
 	); writeCriticalEntryError != nil {
@@ -1592,7 +1595,7 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 		)
 	}
 	if writeNormalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte("body{color:blue;}"),
 		0o644,
 	); writeNormalEntryError != nil {
@@ -1615,16 +1618,16 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 		t.Fatalf("initial BuildCSS returned error: %v", initialBuildError)
 	}
 
-	cfg.Core.CSSEntryFiles.Critical = filepath.Join(
+	wavetest.SetCoreCriticalCSSEntryFile(cfg, filepath.Join(
 		root,
 		"styles",
 		"missing-critical.css",
-	)
-	cfg.Core.CSSEntryFiles.NonCritical = filepath.Join(
+	))
+	wavetest.SetCoreNonCriticalCSSEntryFile(cfg, filepath.Join(
 		root,
 		"styles",
 		"missing-normal.css",
-	)
+	))
 	if buildError := builderForTest.BuildCSS(builder.CSSBuildOptions{
 		BuildCriticalCSS: true,
 		BuildNormalCSS:   false,
@@ -1678,8 +1681,8 @@ func TestExecuteBrowserPhase_HotReloadCSSSkipsPayloadsWhenFreshBuildOutputsAreUn
 func TestExecuteBrowserPhase_RevalidateBroadcastsRevalidatePayload(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -1717,9 +1720,9 @@ func TestExecuteBrowserPhase_RevalidateBroadcastsRevalidatePayload(
 func TestExecuteBrowserPhase_RevalidateExecutesDeferredFrameworkReloadRequests(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	requestPaths := make(chan string, 1)
 	reloadServer := newTCP4HTTPTestServerForBroadcastBehaviorTests(
@@ -1809,8 +1812,8 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
@@ -1818,7 +1821,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 	)
 
 	if mkdirCriticalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
+		filepath.Dir(cfg.Core().CriticalCSSEntryFile()),
 		0o755,
 	); mkdirCriticalError != nil {
 		t.Fatalf(
@@ -1827,7 +1830,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalOnlyPayload(
 		)
 	}
 	if writeCriticalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte("body{background:black;}"),
 		0o644,
 	); writeCriticalEntryError != nil {
@@ -1890,8 +1893,8 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalPayloadWithEmptyCSSFi
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		filepath.Join(root, "styles", waveartifacts.CriticalCSSFileName),
@@ -1899,7 +1902,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalPayloadWithEmptyCSSFi
 	)
 
 	if mkdirCriticalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.Critical),
+		filepath.Dir(cfg.Core().CriticalCSSEntryFile()),
 		0o755,
 	); mkdirCriticalError != nil {
 		t.Fatalf(
@@ -1908,7 +1911,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsCriticalPayloadWithEmptyCSSFi
 		)
 	}
 	if writeCriticalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.Critical,
+		cfg.Core().CriticalCSSEntryFile(),
 		[]byte(""),
 		0o644,
 	); writeCriticalEntryError != nil {
@@ -1978,8 +1981,8 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(root)
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, root)
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	wavetest.SetCSSEntryFiles(
 		cfg,
 		"",
@@ -1987,7 +1990,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(
 	)
 
 	if mkdirNormalError := os.MkdirAll(
-		filepath.Dir(cfg.Core.CSSEntryFiles.NonCritical),
+		filepath.Dir(cfg.Core().NonCriticalCSSEntryFile()),
 		0o755,
 	); mkdirNormalError != nil {
 		t.Fatalf(
@@ -1996,7 +1999,7 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(
 		)
 	}
 	if writeNormalEntryError := os.WriteFile(
-		cfg.Core.CSSEntryFiles.NonCritical,
+		cfg.Core().NonCriticalCSSEntryFile(),
 		[]byte("body{background:white;}"),
 		0o644,
 	); writeNormalEntryError != nil {
@@ -2056,8 +2059,8 @@ func TestExecuteBrowserPhase_HotReloadCSSBroadcastsNormalOnlyPayload(
 }
 
 func TestExecuteBrowserPhase_NoOpWhenServerOnlyMode(t *testing.T) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = true
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, true)
 
 	refreshManager, connection, _, cleanup := setupRefreshWebsocketForBroadcastBehaviorTests(
 		t,
@@ -2090,10 +2093,10 @@ func TestExecuteBrowserPhase_NoOpWhenServerOnlyMode(t *testing.T) {
 func TestExecuteBrowserPhase_InvalidateViteSuccessReturnsWithoutReloadFallback(
 	t *testing.T,
 ) {
-	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t.TempDir())
-	cfg.Core.ServerOnlyMode = false
+	cfg := newParsedConfigForBroadcastBehaviorTestsAtRoot(t, t.TempDir())
+	wavetest.SetCoreServerOnlyMode(cfg, false)
 	ensureViteConfigForToolingTests(t, cfg)
-	cfg.Vite.JSPackageManagerBaseCmd = "pnpm"
+	wavetest.SetViteJSPackageManagerBaseCmd(cfg, "pnpm")
 
 	invalidateServer := httptest.NewServer(http.HandlerFunc(func(
 		responseWriter http.ResponseWriter,

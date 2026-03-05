@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"github.com/vormadev/vorma/internal/wavetest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,10 +18,10 @@ import (
 
 func TestRunBuildHooks_DevRunsUserThenFramework(t *testing.T) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
 
 	orderPath := filepath.Join(root, "hook-order.log")
-	config.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(orderPath)
+	wavetest.SetCoreDevBuildHook(config, "printf 'user\\n' >> "+strconv.Quote(orderPath))
 	waveframework.StateForConfig(config).DevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(
 		orderPath,
 	)
@@ -44,11 +45,11 @@ func TestRunBuildHooks_DevRunsUserThenFramework(t *testing.T) {
 
 func TestRunBuildHooks_ProdUsesProdHooks(t *testing.T) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
 
 	outPath := filepath.Join(root, "prod-hook.log")
-	config.Core.ProdBuildHook = "printf 'prod-user\\n' >> " + strconv.Quote(
-		outPath,
+	wavetest.SetCoreProdBuildHook(config,
+		"printf 'prod-user\\n' >> "+strconv.Quote(outPath),
 	)
 	waveframework.StateForConfig(config).ProdBuildHook = "printf 'prod-framework\\n' >> " + strconv.Quote(
 		outPath,
@@ -73,10 +74,10 @@ func TestRunBuildHooks_ProdUsesProdHooks(t *testing.T) {
 
 func TestRunBuildHooks_FailFastOnUserHookError(t *testing.T) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
 
 	outPath := filepath.Join(root, "should-not-exist.log")
-	config.Core.DevBuildHook = "false"
+	wavetest.SetCoreDevBuildHook(config, "false")
 	waveframework.StateForConfig(config).DevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(
 		outPath,
 	)
@@ -104,10 +105,10 @@ func TestRunBuildHooks_ReportsFrameworkHookErrorAfterUserHookRuns(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
 
 	outPath := filepath.Join(root, "hook-state.log")
-	config.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(outPath)
+	wavetest.SetCoreDevBuildHook(config, "printf 'user\\n' >> "+strconv.Quote(outPath))
 	waveframework.StateForConfig(config).DevBuildHook = "false"
 
 	builderForTest := NewBuilder(config, newDiscardLoggerForBuilderBasicTests())
@@ -140,10 +141,10 @@ func TestRunBuildHooks_UsesFrameworkBuildHookRunnerWhenConfigured(
 	t *testing.T,
 ) {
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
 
 	outPath := filepath.Join(root, "hook-state.log")
-	config.Core.DevBuildHook = "printf 'user\\n' >> " + strconv.Quote(outPath)
+	wavetest.SetCoreDevBuildHook(config, "printf 'user\\n' >> "+strconv.Quote(outPath))
 	waveframework.StateForConfig(config).DevBuildHook = "false"
 
 	frameworkRunnerCalled := false
@@ -197,11 +198,11 @@ func TestRunBuildHooks_DevHookTimeoutStopsUserHookQuickly(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.DevBuildHookTimeoutMilliseconds = 100
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreDevBuildHookTimeoutMilliseconds(config, 100)
 
 	frameworkMarkerPath := filepath.Join(root, "framework-should-not-run.log")
-	config.Core.DevBuildHook = "sleep 2"
+	wavetest.SetCoreDevBuildHook(config, "sleep 2")
 	waveframework.StateForConfig(config).DevBuildHook = "printf 'framework\\n' >> " + strconv.Quote(
 		frameworkMarkerPath,
 	)
@@ -244,12 +245,12 @@ func TestRunBuildHooks_ProdHookTimeoutStopsFrameworkHookQuickly(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	config := newParsedConfigForBuilderBasicTestsAtRoot(root)
-	config.Core.ProdBuildHookTimeoutMilliseconds = 100
+	config := newParsedConfigForBuilderBasicTestsAtRoot(t, root)
+	wavetest.SetCoreProdBuildHookTimeoutMilliseconds(config, 100)
 
 	userMarkerPath := filepath.Join(root, "prod-user-ran.log")
-	config.Core.ProdBuildHook = "printf 'prod-user\\n' >> " + strconv.Quote(
-		userMarkerPath,
+	wavetest.SetCoreProdBuildHook(config,
+		"printf 'prod-user\\n' >> "+strconv.Quote(userMarkerPath),
 	)
 	waveframework.StateForConfig(config).ProdBuildHook = "sleep 2"
 

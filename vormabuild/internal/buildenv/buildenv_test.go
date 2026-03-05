@@ -3,12 +3,13 @@ package buildenv
 import (
 	"context"
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveframework"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/vormabuild/internal/backendroutes/registraroverlay"
 	"github.com/vormadev/vorma/vormabuild/internal/testkit"
+	"github.com/vormadev/vorma/wave/waveframework"
 )
 
 func TestConfigure_WiresHooksAndDefaults(t *testing.T) {
@@ -21,9 +22,17 @@ func TestConfigure_WiresHooksAndDefaults(t *testing.T) {
 		t.Fatal("expected Configure to register Vorma schema extension")
 	}
 
+	mainBuildEntryRelativeToResolveRoot, mainBuildEntryError := runtimeconfig.NormalizePathOrPatternToResolveRootRelative(
+		app.Wave.ParsedConfig().ResolveRoot(),
+		app.Config.MainBuildEntry(),
+	)
+	if mainBuildEntryError != nil {
+		t.Fatalf("normalize MainBuildEntry for expectation: %v", mainBuildEntryError)
+	}
+
 	expectedDevHook := fmt.Sprintf(
 		"go run ./%s --dev --hook",
-		app.Config.MainBuildEntry,
+		mainBuildEntryRelativeToResolveRoot,
 	)
 	if waveframework.StateForConfig(parsedCfg).DevBuildHook != expectedDevHook {
 		t.Fatalf(
@@ -35,7 +44,7 @@ func TestConfigure_WiresHooksAndDefaults(t *testing.T) {
 
 	expectedProdHook := fmt.Sprintf(
 		"go run ./%s --hook",
-		app.Config.MainBuildEntry,
+		mainBuildEntryRelativeToResolveRoot,
 	)
 	if waveframework.StateForConfig(parsedCfg).ProdBuildHook != expectedProdHook {
 		t.Fatalf(
@@ -66,7 +75,7 @@ func TestConfigure_WiresHooksAndDefaults(t *testing.T) {
 func TestConfigureInConfig_PreservesExistingFrameworkBuildHooks(t *testing.T) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 
 	waveframework.StateForConfig(parsedCfg).DevBuildHook = "go run ./custom/devhook"
 	waveframework.StateForConfig(parsedCfg).ProdBuildHook = "go run ./custom/prodhook"
@@ -92,7 +101,7 @@ func TestConfigureInConfig_PreservesExistingFrameworkBuildHookRunner(
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 
 	frameworkBuildHookRunnerCalled := false
 	waveframework.StateForConfig(parsedCfg).RunBuildHook = func(context.Context, bool) error {
@@ -122,7 +131,7 @@ func TestConfigureInConfig_PreservesExistingFrameworkGoBuildOverlayPreparation(
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 
 	overlayPreparationCalled := false
 	waveframework.StateForConfig(parsedCfg).PrepareGoBuildOverlay = func() (*waveframework.GoBuildOverlay, error) {
@@ -155,7 +164,7 @@ func TestConfigure_FrameworkBuildHookRunner_ExecutesHookCommand(
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	parsedCfg := waveframework.BuildtimeParsedConfig(app.Wave.RawConfigJSON())
+	parsedCfg := app.Wave.ParsedConfig()
 
 	overlayCleanupCalled := false
 	var capturedGoRunArgs []string
@@ -264,7 +273,7 @@ func TestConfigure_UsesLifecycleOwnedDiscoveredRegistrarCache(
 	)
 
 	fixtureOne := testkit.NewBuildTestFixture(t, nil)
-	parsedCfgOne := waveframework.BuildtimeParsedConfig(fixtureOne.App.Wave.RawConfigJSON())
+	parsedCfgOne := fixtureOne.App.Wave.ParsedConfig()
 	configureInConfigWithFrameworkBuildHookExecutor(
 		fixtureOne.App,
 		parsedCfgOne,
@@ -297,7 +306,7 @@ func TestConfigure_UsesLifecycleOwnedDiscoveredRegistrarCache(
 	}
 
 	fixtureTwo := testkit.NewBuildTestFixture(t, nil)
-	parsedCfgTwo := waveframework.BuildtimeParsedConfig(fixtureTwo.App.Wave.RawConfigJSON())
+	parsedCfgTwo := fixtureTwo.App.Wave.ParsedConfig()
 	configureInConfigWithFrameworkBuildHookExecutor(
 		fixtureTwo.App,
 		parsedCfgTwo,

@@ -2,6 +2,7 @@ package tsartifactgen
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,10 +14,86 @@ import (
 	"testing"
 
 	"github.com/vormadev/vorma/internal/vormaruntime"
+	"github.com/vormadev/vorma/internal/vormaruntime/runtimeconfig"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/nestedmux"
 	"github.com/vormadev/vorma/vormabuild/internal/testkit"
+	"github.com/vormadev/vorma/wave"
 )
+
+func mustParsedVormaConfigForTSArtifactGenerationTests(
+	tb testing.TB,
+	overrides *vormaruntime.VormaConfigJSON,
+) vormaruntime.VormaConfig {
+	tb.Helper()
+
+	rawConfig := vormaruntime.VormaConfigJSON{
+		MainBuildEntry:       "backend/cmd/build",
+		UIVariant:            string(vormaruntime.UIVariantReact),
+		HTMLTemplateLocation: "entry.go.html",
+		ClientEntry:          "frontend/src/vorma.entry.tsx",
+		ClientRouteDefinitionPatterns: []string{
+			"frontend/src/**/*vorma.routes.ts",
+		},
+		TSGenOutDir: "frontend/src/vorma.gen",
+	}
+	if overrides != nil {
+		if overrides.MainBuildEntry != "" {
+			rawConfig.MainBuildEntry = overrides.MainBuildEntry
+		}
+		if overrides.UIVariant != "" {
+			rawConfig.UIVariant = overrides.UIVariant
+		}
+		if overrides.HTMLTemplateLocation != "" {
+			rawConfig.HTMLTemplateLocation = overrides.HTMLTemplateLocation
+		}
+		if overrides.ClientEntry != "" {
+			rawConfig.ClientEntry = overrides.ClientEntry
+		}
+		if overrides.ClientRouteDefinitionPatterns != nil {
+			rawConfig.ClientRouteDefinitionPatterns = append(
+				[]string(nil),
+				overrides.ClientRouteDefinitionPatterns...,
+			)
+		}
+		if overrides.TSGenOutDir != "" {
+			rawConfig.TSGenOutDir = overrides.TSGenOutDir
+		}
+		if overrides.BuildtimePublicURLFuncName != "" {
+			rawConfig.BuildtimePublicURLFuncName = overrides.BuildtimePublicURLFuncName
+		}
+	}
+
+	return testkit.MustParseVormaConfigJSONForTest(tb, rawConfig)
+}
+
+func parseMutatedAppVormaConfigForTSArtifactGenerationTests(
+	tb testing.TB,
+	app *vormaruntime.Vorma,
+	mutate func(*vormaruntime.VormaConfigJSON),
+) (vormaruntime.VormaConfig, error) {
+	tb.Helper()
+	if app == nil || app.Wave == nil {
+		return nil, errors.New("app with Wave runtime is required")
+	}
+	rawConfig := struct {
+		Vorma vormaruntime.VormaConfigJSON `json:"Vorma"`
+	}{}
+	if unmarshalError := json.Unmarshal(
+		app.Wave.RawConfigJSON(),
+		&rawConfig,
+	); unmarshalError != nil {
+		return nil, unmarshalError
+	}
+	if mutate != nil {
+		mutate(&rawConfig.Vorma)
+	}
+	mutatedPayload, marshalError := json.Marshal(rawConfig)
+	if marshalError != nil {
+		return nil, marshalError
+	}
+	return runtimeconfig.ParseVormaConfigJSON(mutatedPayload, app.Wave.ParsedConfig())
+}
 
 func TestExtractDynamicParamsFromPattern(t *testing.T) {
 	params := extractDynamicParamsFromPattern(
@@ -70,7 +147,10 @@ func TestGetEntrypoints_ReturnsStableSortedUniqueList(t *testing.T) {
 			},
 		})
 
-		got := getEntrypoints(l)
+		got, err := getEntrypoints(l)
+		if err != nil {
+			t.Fatalf("getEntrypoints returned error: %v", err)
+		}
 		want := []string{
 			"frontend/src/routes/a.tsx",
 			"frontend/src/routes/z.tsx",
@@ -116,7 +196,7 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 		}
 		currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
 			currentWorkingDirectory,
-			app.Wave.DistDir(),
+			distRootPathForGeneratedTypeScript(app),
 		)
 		if distDirError != nil {
 			t.Fatalf(
@@ -146,8 +226,19 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 			!strings.Contains(content, `"react-dom"`) {
 			t.Fatalf("rollup options missing react dedupe list:\n%s", content)
 		}
-		for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns {
-			if strings.Contains(content, routeDefinitionPattern) {
+		for _, routeDefinitionPattern := range app.Config.ClientRouteDefinitionPatterns() {
+			resolveRootRelativeRouteDefinitionPattern, routeDefinitionPatternError := runtimeconfig.NormalizePathOrPatternToResolveRootRelative(
+				app.Wave.ParsedConfig().ResolveRoot(),
+				routeDefinitionPattern,
+			)
+			if routeDefinitionPatternError != nil {
+				t.Fatalf(
+					"normalize route definition pattern %q for assertion: %v",
+					routeDefinitionPattern,
+					routeDefinitionPatternError,
+				)
+			}
+			if strings.Contains(content, resolveRootRelativeRouteDefinitionPattern) {
 				continue
 			}
 			t.Fatalf(
@@ -155,7 +246,17 @@ func TestGenerateRollupOptions_ContainsExpectedConfig(t *testing.T) {
 				content,
 			)
 		}
-		if !strings.Contains(content, app.Config.TSGenOutDir+"/**/*") {
+		currentWorkingDirectoryRelativeTSGenOutDir, tsGenOutDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
+			currentWorkingDirectory,
+			app.Config.TSGenOutDir(),
+		)
+		if tsGenOutDirError != nil {
+			t.Fatalf(
+				"normalize TSGenOutDir for generated TypeScript assertion: %v",
+				tsGenOutDirError,
+			)
+		}
+		if !strings.Contains(content, currentWorkingDirectoryRelativeTSGenOutDir+"/**/*") {
 			t.Fatalf(
 				"rollup options missing TS output dir in ignored patterns:\n%s",
 				content,
@@ -251,9 +352,12 @@ func TestGenerateTypeScript_CoversLoadersClientOnlyQueryAndMutation(
 				ExportKey:       "default",
 			},
 		},
-		Config: &vormaruntime.VormaConfig{
-			UIVariant: string(vormaruntime.UIVariantReact),
-		},
+		Config: mustParsedVormaConfigForTSArtifactGenerationTests(
+			t,
+			&vormaruntime.VormaConfigJSON{
+				UIVariant: string(vormaruntime.UIVariantReact),
+			},
+		),
 	})
 	if err != nil {
 		t.Fatalf("generateTypeScript returned error: %v", err)
@@ -331,9 +435,12 @@ func TestGenerateTypeScript_ClientOnlyLoaderMetadataUsesLoaderRunes(
 				ExportKey:       "default",
 			},
 		},
-		Config: &vormaruntime.VormaConfig{
-			UIVariant: string(vormaruntime.UIVariantReact),
-		},
+		Config: mustParsedVormaConfigForTSArtifactGenerationTests(
+			t,
+			&vormaruntime.VormaConfigJSON{
+				UIVariant: string(vormaruntime.UIVariantReact),
+			},
+		),
 	})
 	if err != nil {
 		t.Fatalf("generateTypeScript returned error: %v", err)
@@ -418,11 +525,11 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 			app.Wave.PublicPathPrefix(),
 		)
 	}
-	if data.FuncName != app.Config.BuildtimePublicURLFuncName {
+	if data.FuncName != app.Config.BuildtimePublicURLFuncName() {
 		t.Fatalf(
 			"FuncName = %q, want %q",
 			data.FuncName,
-			app.Config.BuildtimePublicURLFuncName,
+			app.Config.BuildtimePublicURLFuncName(),
 		)
 	}
 	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
@@ -434,7 +541,7 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	}
 	currentWorkingDirectoryRelativeDistDirForGeneratedTypeScript, distDirError := pathRelativeToCurrentWorkingDirectoryForGeneratedTypeScript(
 		currentWorkingDirectory,
-		app.Wave.DistDir(),
+		distRootPathForGeneratedTypeScript(app),
 	)
 	if distDirError != nil {
 		t.Fatalf(
@@ -457,41 +564,112 @@ func TestBuildVitePluginTemplateData(t *testing.T) {
 	}
 }
 
-func TestBuildViteIgnoredPatterns_ErrorsForInvalidRouteDefinitionPatterns(
+func TestBuildVitePluginTemplateData_UsesConfigFSRelativeDistWhenConfigIsNested(
+	t *testing.T,
+) {
+	projectRoot := t.TempDir()
+	t.Chdir(projectRoot)
+
+	testkit.MustWriteFile(
+		t,
+		filepath.Join("backend", "wave.config.json"),
+		[]byte(`{
+  "Core": {
+    "ProjectID": "tsartifactgen-test",
+    "ResolveRoot": ".",
+    "MainAppEntry": "cmd/serve",
+    "StaticAssetDirs": {
+      "Private": ".wavedist/static/assets/private",
+      "Public": ".wavedist/static/assets/public"
+    },
+    "PublicPathPrefix": "/"
+  },
+  "Vorma": {
+    "MainBuildEntry": "cmd/build",
+    "UIVariant": "react",
+    "HTMLTemplateLocation": "entry.go.html",
+    "ClientEntry": "frontend/src/vorma.entry.tsx",
+    "ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
+    "TSGenOutDir": "frontend/src/vorma.gen",
+    "BuildtimePublicURLFuncName": "waveBuildtimeURL"
+  }
+}`),
+	)
+	if makeDistStaticDirectoryError := os.MkdirAll(
+		filepath.Join(projectRoot, "backend", ".wavedist", "static"),
+		0o755,
+	); makeDistStaticDirectoryError != nil {
+		t.Fatalf(
+			"create nested backend dist static directory: %v",
+			makeDistStaticDirectoryError,
+		)
+	}
+
+	waveRuntime := wave.New(wave.Config{
+		FS:         os.DirFS(projectRoot),
+		ConfigPath: filepath.Join("backend", "wave.config.json"),
+		Logger:     testkit.TestLogger(),
+	})
+	app := vormaruntime.NewVormaApp(vormaruntime.VormaAppConfig{
+		Wave:   waveRuntime,
+		Logger: testkit.TestLogger(),
+	})
+
+	templateData, buildTemplateDataError := buildVitePluginTemplateData(
+		app,
+		[]string{"frontend/src/vorma.entry.tsx"},
+	)
+	if buildTemplateDataError != nil {
+		t.Fatalf(
+			"buildVitePluginTemplateData returned error: %v",
+			buildTemplateDataError,
+		)
+	}
+
+	expectedDistDir := filepath.ToSlash(
+		filepath.Clean(filepath.Join("backend", ".wavedist")),
+	)
+	if templateData.DistDir != expectedDistDir {
+		t.Fatalf(
+			"DistDir = %q, want %q",
+			templateData.DistDir,
+			expectedDistDir,
+		)
+	}
+	if filepath.IsAbs(templateData.DistDir) {
+		t.Fatalf("DistDir must not be machine-absolute: %q", templateData.DistDir)
+	}
+}
+
+func TestBuildViteIgnoredPatterns_ReturnsParseErrorForInvalidRouteDefinitionPatterns(
 	t *testing.T,
 ) {
 	fixture := testkit.NewBuildTestFixture(t, nil)
 	app := fixture.App
-	app.Config.ClientRouteDefinitionPatterns = []string{
-		" frontend/src/routes/core.vorma.routes.ts ",
-		"frontend/src/routes/core.vorma.routes.ts",
-		"",
-		"\nfrontend/src/routes/extra.vorma.routes.ts\n",
-	}
-
-	currentWorkingDirectory, currentWorkingDirectoryError := os.Getwd()
-	if currentWorkingDirectoryError != nil {
-		t.Fatalf(
-			"resolve current working directory: %v",
-			currentWorkingDirectoryError,
-		)
-	}
-	_, buildViteIgnoredPatternsError := buildViteIgnoredPatterns(
+	_, parseError := parseMutatedAppVormaConfigForTSArtifactGenerationTests(
+		t,
 		app,
-		currentWorkingDirectory,
+		func(config *vormaruntime.VormaConfigJSON) {
+			config.ClientRouteDefinitionPatterns = []string{
+				" frontend/src/routes/core.vorma.routes.ts ",
+				"frontend/src/routes/core.vorma.routes.ts",
+				"",
+				"\nfrontend/src/routes/extra.vorma.routes.ts\n",
+			}
+		},
 	)
-	if buildViteIgnoredPatternsError == nil {
+	if parseError == nil {
 		t.Fatal(
-			"expected error for invalid client route definition patterns",
+			"expected parse error for invalid client route definition patterns",
 		)
 	}
 	if !strings.Contains(
-		buildViteIgnoredPatternsError.Error(),
+		parseError.Error(),
 		"must not contain surrounding whitespace",
 	) {
 		t.Fatalf(
-			"error = %q, expected surrounding-whitespace validation message",
-			buildViteIgnoredPatternsError.Error(),
+			"error = %q, expected surrounding-whitespace parse validation message",
+			parseError.Error(),
 		)
 	}
 }

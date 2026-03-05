@@ -29,7 +29,7 @@ import (
 
 // Watcher provides filesystem watch streams plus semantic file classification helpers.
 type Watcher struct {
-	cfg *waveconfig.ParsedConfig
+	cfg waveconfig.ParsedConfig
 	log *slog.Logger
 
 	watcher *fsnotify.Watcher
@@ -55,7 +55,7 @@ type includeRule struct {
 }
 
 // NewWatcher creates and initializes a recursive watcher for project roots.
-func NewWatcher(cfg *waveconfig.ParsedConfig, log *slog.Logger) (*Watcher, error) {
+func NewWatcher(cfg waveconfig.ParsedConfig, log *slog.Logger) (*Watcher, error) {
 	if cfg == nil {
 		return nil, errors.New("watcher config is nil")
 	}
@@ -78,10 +78,10 @@ func NewWatcher(cfg *waveconfig.ParsedConfig, log *slog.Logger) (*Watcher, error
 	resolvedExcludeDirectoryPatterns := buildExcludeDirectoryPatterns(cfg)
 	resolvedExcludeFilePatterns := buildExcludeFilePatterns(cfg)
 	resolvedPublicStaticRoot := normalizePath(
-		filepath.Clean(cfg.Core.StaticAssetDirs.Public),
+		filepath.Clean(cfg.Core().StaticAssetDirsPublic()),
 	)
 	resolvedPrivateStaticRoot := normalizePath(
-		filepath.Clean(cfg.Core.StaticAssetDirs.Private),
+		filepath.Clean(cfg.Core().StaticAssetDirsPrivate()),
 	)
 
 	watcher := &Watcher{
@@ -111,22 +111,22 @@ func NewWatcher(cfg *waveconfig.ParsedConfig, log *slog.Logger) (*Watcher, error
 	return watcher, nil
 }
 
-// initializeDirectoryWatchPlan installs directory watches for watch root subtree.
+// initializeDirectoryWatchPlan installs directory watches for resolve root subtree.
 func (watcher *Watcher) initializeDirectoryWatchPlan() error {
-	watchRoot := watcher.cfg.WatchRoot()
-	if strings.TrimSpace(watchRoot) == "" {
-		watchRoot = "."
+	resolveRoot := watcher.cfg.ResolveRoot()
+	if strings.TrimSpace(resolveRoot) == "" {
+		resolveRoot = "."
 	}
-	watchRoot = filepath.Clean(watchRoot)
-	watchRootInfo, watchRootStatError := os.Stat(watchRoot)
-	if watchRootStatError != nil {
-		return fmt.Errorf("watch root %q: %w", watchRoot, watchRootStatError)
+	resolveRoot = filepath.Clean(resolveRoot)
+	resolveRootInfo, resolveRootStatError := os.Stat(resolveRoot)
+	if resolveRootStatError != nil {
+		return fmt.Errorf("resolve root %q: %w", resolveRoot, resolveRootStatError)
 	}
-	if !watchRootInfo.IsDir() {
-		return fmt.Errorf("watch root %q is not a directory", watchRoot)
+	if !resolveRootInfo.IsDir() {
+		return fmt.Errorf("resolve root %q is not a directory", resolveRoot)
 	}
 
-	if addError := watcher.addDirectoryRecursively(watchRoot); addError != nil {
+	if addError := watcher.addDirectoryRecursively(resolveRoot); addError != nil {
 		return addError
 	}
 	return nil
@@ -270,20 +270,24 @@ func (watcher *Watcher) IsIgnoredDirectory(directoryPath string) bool {
 		return true
 	}
 
-	// Never watch dist output roots to avoid self-trigger loops.
-	if normalizePath(watcher.cfg.Dist.Static()) == normalizedPath {
-		return true
-	}
-	if strings.HasPrefix(
+	pathCandidates := buildNormalizedPathCandidatesForPatternMatching(
 		normalizedPath,
-		normalizePath(watcher.cfg.Dist.Static())+"/",
-	) {
-		return true
-	}
-
-	for _, pattern := range watcher.excludeDirPatterns {
-		if waveglob.MatchPathAgainstGlob(normalizedPath, pattern) {
+		watcher.cfg,
+	)
+	normalizedDistStaticPath := normalizePath(watcher.cfg.Dist().Static())
+	for _, pathCandidate := range pathCandidates {
+		// Never watch dist output roots to avoid self-trigger loops.
+		if normalizedDistStaticPath == pathCandidate {
 			return true
+		}
+		if strings.HasPrefix(pathCandidate, normalizedDistStaticPath+"/") {
+			return true
+		}
+
+		for _, pattern := range watcher.excludeDirPatterns {
+			if waveglob.MatchPathAgainstGlob(pathCandidate, pattern) {
+				return true
+			}
 		}
 	}
 	return false
@@ -305,18 +309,24 @@ func (watcher *Watcher) IsIgnoredFile(filePath string) bool {
 		return true
 	}
 
-	for _, pattern := range watcher.excludeFilePatterns {
-		if waveglob.MatchPathAgainstGlob(normalizedPath, pattern) {
-			return true
+	pathCandidates := buildNormalizedPathCandidatesForPatternMatching(
+		normalizedPath,
+		watcher.cfg,
+	)
+	for _, pathCandidate := range pathCandidates {
+		for _, pattern := range watcher.excludeFilePatterns {
+			if waveglob.MatchPathAgainstGlob(pathCandidate, pattern) {
+				return true
+			}
 		}
-	}
 
-	for _, directoryPattern := range watcher.excludeDirPatterns {
-		if waveglob.MatchPathAgainstGlob(
-			normalizedPath,
-			directoryPattern,
-		) {
-			return true
+		for _, directoryPattern := range watcher.excludeDirPatterns {
+			if waveglob.MatchPathAgainstGlob(
+				pathCandidate,
+				directoryPattern,
+			) {
+				return true
+			}
 		}
 	}
 
@@ -370,9 +380,21 @@ func (watcher *Watcher) FindWatchedFile(path string) *wavewatch.WatchedFile {
 		return nil
 	}
 
+	pathCandidates := buildNormalizedPathCandidatesForPatternMatching(
+		normalizedPath,
+		watcher.cfg,
+	)
 	matches := make([]*wavewatch.WatchedFile, 0)
-	for _, rule := range watcher.includeRules {
-		if waveglob.MatchPathAgainstGlob(normalizedPath, rule.pattern) {
+	seenMatches := make(map[*wavewatch.WatchedFile]struct{})
+	for _, pathCandidate := range pathCandidates {
+		for _, rule := range watcher.includeRules {
+			if !waveglob.MatchPathAgainstGlob(pathCandidate, rule.pattern) {
+				continue
+			}
+			if _, alreadyIncluded := seenMatches[rule.watchedFile]; alreadyIncluded {
+				continue
+			}
+			seenMatches[rule.watchedFile] = struct{}{}
 			matches = append(matches, rule.watchedFile)
 		}
 	}
@@ -448,12 +470,12 @@ func (watcher *Watcher) EnsureDirectoryWatchForEventPath(path string) {
 }
 
 // buildIncludeRules merges app and framework watched file patterns.
-func buildIncludeRules(cfg *waveconfig.ParsedConfig) []includeRule {
+func buildIncludeRules(cfg waveconfig.ParsedConfig) []includeRule {
 	includeRules := make([]includeRule, 0)
 	appendRules := func(watchedFiles []wavewatch.WatchedFile) {
 		for watchedFileIndex := range watchedFiles {
 			watchedFile := watchedFiles[watchedFileIndex]
-			normalizedPattern := resolvePathOrPatternFromWatchRoot(
+			normalizedPattern := resolvePathOrPatternFromResolveRoot(
 				cfg,
 				watchedFile.Pattern,
 			)
@@ -470,18 +492,18 @@ func buildIncludeRules(cfg *waveconfig.ParsedConfig) []includeRule {
 	}
 
 	appendRules(waveframework.StateForConfig(cfg).WatchPatterns)
-	if cfg.Watch != nil {
-		appendRules(cfg.Watch.Include)
+	if cfg.Watch() != nil {
+		appendRules(cfg.Watch().Include())
 	}
 	return includeRules
 }
 
 // buildExcludeDirectoryPatterns builds normalized exclude dir patterns.
-func buildExcludeDirectoryPatterns(cfg *waveconfig.ParsedConfig) []string {
+func buildExcludeDirectoryPatterns(cfg waveconfig.ParsedConfig) []string {
 	patterns := make([]string, 0)
 
 	appendDirectoryPattern := func(pattern string) {
-		normalizedPattern := resolvePathOrPatternFromWatchRoot(cfg, pattern)
+		normalizedPattern := resolvePathOrPatternFromResolveRoot(cfg, pattern)
 		if normalizedPattern == "" {
 			return
 		}
@@ -491,8 +513,8 @@ func buildExcludeDirectoryPatterns(cfg *waveconfig.ParsedConfig) []string {
 		}
 	}
 
-	if cfg.Watch != nil {
-		for _, pattern := range cfg.Watch.Exclude.Dirs {
+	if cfg.Watch() != nil {
+		for _, pattern := range cfg.Watch().ExcludeDirs() {
 			appendDirectoryPattern(pattern)
 		}
 	}
@@ -500,43 +522,43 @@ func buildExcludeDirectoryPatterns(cfg *waveconfig.ParsedConfig) []string {
 		appendDirectoryPattern(pattern)
 	}
 
-	watchRoot := cfg.WatchRoot()
-	if strings.TrimSpace(watchRoot) == "" {
-		watchRoot = "."
+	resolveRoot := cfg.ResolveRoot()
+	if strings.TrimSpace(resolveRoot) == "" {
+		resolveRoot = "."
 	}
 	patterns = append(
 		patterns,
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, ".git"),
+			filepath.Join(resolveRoot, ".git"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, ".git", "**"),
+			filepath.Join(resolveRoot, ".git", "**"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, "**", ".git"),
+			filepath.Join(resolveRoot, "**", ".git"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, "**", ".git", "**"),
+			filepath.Join(resolveRoot, "**", ".git", "**"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, "node_modules"),
+			filepath.Join(resolveRoot, "node_modules"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, "node_modules", "**"),
+			filepath.Join(resolveRoot, "node_modules", "**"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, "**", "node_modules"),
+			filepath.Join(resolveRoot, "**", "node_modules"),
 		),
-		resolvePathOrPatternFromWatchRoot(
+		resolvePathOrPatternFromResolveRoot(
 			cfg,
-			filepath.Join(watchRoot, "**", "node_modules", "**"),
+			filepath.Join(resolveRoot, "**", "node_modules", "**"),
 		),
 	)
 
@@ -544,11 +566,11 @@ func buildExcludeDirectoryPatterns(cfg *waveconfig.ParsedConfig) []string {
 }
 
 // buildExcludeFilePatterns builds normalized exclude file patterns.
-func buildExcludeFilePatterns(cfg *waveconfig.ParsedConfig) []string {
+func buildExcludeFilePatterns(cfg waveconfig.ParsedConfig) []string {
 	patterns := make([]string, 0)
-	if cfg.Watch != nil {
-		for _, pattern := range cfg.Watch.Exclude.Files {
-			normalizedPattern := resolvePathOrPatternFromWatchRoot(cfg, pattern)
+	if cfg.Watch() != nil {
+		for _, pattern := range cfg.Watch().ExcludeFiles() {
+			normalizedPattern := resolvePathOrPatternFromResolveRoot(cfg, pattern)
 			if normalizedPattern != "" {
 				patterns = append(patterns, normalizedPattern)
 			}
@@ -558,17 +580,17 @@ func buildExcludeFilePatterns(cfg *waveconfig.ParsedConfig) []string {
 	// Always ignore generated build outputs and lock files.
 	patterns = append(
 		patterns,
-		normalizeGlob(filepath.Join(cfg.Dist.Static(), "**")),
-		normalizeGlob(cfg.Dist.Binary()),
+		normalizeGlob(filepath.Join(cfg.Dist().Static(), "**")),
+		normalizeGlob(cfg.Dist().Binary()),
 		normalizeGlob(
-			filepath.Join(cfg.Dist.Static(), wavelock.LockFileName),
+			filepath.Join(cfg.Dist().Static(), wavelock.LockFileName),
 		),
 	)
 
 	return dedupeStrings(patterns)
 }
 
-func validateWatcherConfigPatterns(cfg *waveconfig.ParsedConfig) error {
+func validateWatcherConfigPatterns(cfg waveconfig.ParsedConfig) error {
 	if cfg == nil {
 		return errors.New("watcher config is nil")
 	}
@@ -606,11 +628,11 @@ func validateWatcherConfigPatterns(cfg *waveconfig.ParsedConfig) error {
 		}
 	}
 
-	if cfg.Watch == nil {
+	if cfg.Watch() == nil {
 		return nil
 	}
 
-	for watchIncludePatternIndex, watchedFile := range cfg.Watch.Include {
+	for watchIncludePatternIndex, watchedFile := range cfg.Watch().Include() {
 		if validatePatternError := validateWatcherGlobPatternInputForRuntime(
 			fmt.Sprintf("Watch.Include[%d].Pattern", watchIncludePatternIndex),
 			watchedFile.Pattern,
@@ -625,7 +647,7 @@ func validateWatcherConfigPatterns(cfg *waveconfig.ParsedConfig) error {
 		}
 	}
 
-	for excludedDirectoryPatternIndex, excludedDirectoryPattern := range cfg.Watch.Exclude.Dirs {
+	for excludedDirectoryPatternIndex, excludedDirectoryPattern := range cfg.Watch().ExcludeDirs() {
 		if validatePatternError := validateWatcherGlobPatternInputForRuntime(
 			fmt.Sprintf("Watch.Exclude.Dirs[%d]", excludedDirectoryPatternIndex),
 			excludedDirectoryPattern,
@@ -634,7 +656,7 @@ func validateWatcherConfigPatterns(cfg *waveconfig.ParsedConfig) error {
 		}
 	}
 
-	for excludedFilePatternIndex, excludedFilePattern := range cfg.Watch.Exclude.Files {
+	for excludedFilePatternIndex, excludedFilePattern := range cfg.Watch().ExcludeFiles() {
 		if validatePatternError := validateWatcherGlobPatternInputForRuntime(
 			fmt.Sprintf("Watch.Exclude.Files[%d]", excludedFilePatternIndex),
 			excludedFilePattern,
@@ -679,48 +701,125 @@ func validateWatcherGlobPatternInputForRuntime(
 	)
 }
 
-func resolvePathOrPatternFromWatchRoot(
-	cfg *waveconfig.ParsedConfig,
+func resolvePathOrPatternFromResolveRoot(
+	cfg waveconfig.ParsedConfig,
 	pathOrPattern string,
 ) string {
 	if strings.TrimSpace(pathOrPattern) == "" {
 		return ""
 	}
-	if filepath.IsAbs(pathOrPattern) {
-		return normalizePath(pathOrPattern)
-	}
-
-	watchRoot := "."
+	resolveRoot := "."
 	if cfg != nil {
-		watchRoot = cfg.WatchRoot()
+		resolveRoot = cfg.ResolveRoot()
 	}
-	if strings.TrimSpace(watchRoot) == "" {
-		watchRoot = "."
+	if strings.TrimSpace(resolveRoot) == "" {
+		resolveRoot = "."
 	}
 
-	normalizedWatchRoot := normalizePath(watchRoot)
+	normalizedResolveRoot := normalizePath(resolveRoot)
+	normalizedResolveRootPrefix := normalizedResolveRoot + "/"
+	escapedResolveRoot := escapePatternMetaCharactersForDoublestarPattern(
+		normalizedResolveRoot,
+	)
+
+	if filepath.IsAbs(pathOrPattern) {
+		normalizedAbsolutePathOrPattern := normalizePath(pathOrPattern)
+		if normalizedAbsolutePathOrPattern == normalizedResolveRoot {
+			return escapedResolveRoot
+		}
+		if strings.HasPrefix(
+			normalizedAbsolutePathOrPattern,
+			normalizedResolveRootPrefix,
+		) {
+			return escapedResolveRoot + "/" + strings.TrimPrefix(
+				normalizedAbsolutePathOrPattern,
+				normalizedResolveRootPrefix,
+			)
+		}
+		return normalizedAbsolutePathOrPattern
+	}
+
 	normalizedJoinedPathOrPattern := normalizePath(
-		filepath.Join(watchRoot, pathOrPattern),
-	)
-	normalizedWatchRootPrefix := normalizedWatchRoot + "/"
-	escapedWatchRoot := escapePatternMetaCharactersForDoublestarPattern(
-		normalizedWatchRoot,
+		filepath.Join(resolveRoot, pathOrPattern),
 	)
 
-	if normalizedJoinedPathOrPattern == normalizedWatchRoot {
-		return escapedWatchRoot
+	if normalizedJoinedPathOrPattern == normalizedResolveRoot {
+		return escapedResolveRoot
 	}
 	if strings.HasPrefix(
 		normalizedJoinedPathOrPattern,
-		normalizedWatchRootPrefix,
+		normalizedResolveRootPrefix,
 	) {
-		return escapedWatchRoot + "/" + strings.TrimPrefix(
+		return escapedResolveRoot + "/" + strings.TrimPrefix(
 			normalizedJoinedPathOrPattern,
-			normalizedWatchRootPrefix,
+			normalizedResolveRootPrefix,
 		)
 	}
 
 	return normalizedJoinedPathOrPattern
+}
+
+func buildNormalizedPathCandidatesForPatternMatching(
+	normalizedPath string,
+	cfg waveconfig.ParsedConfig,
+) []string {
+	if strings.TrimSpace(normalizedPath) == "" {
+		return nil
+	}
+
+	pathCandidatesByValue := map[string]struct{}{
+		normalizedPath: {},
+	}
+	addPathCandidate := func(pathCandidate string) {
+		trimmedPathCandidate := strings.TrimSpace(pathCandidate)
+		if trimmedPathCandidate == "" {
+			return
+		}
+		pathCandidatesByValue[trimmedPathCandidate] = struct{}{}
+	}
+
+	if cfg != nil {
+		normalizedResolveRoot := normalizePath(cfg.ResolveRoot())
+		canonicalResolveRoot := canonicalizePathForLocationPrefixMatching(
+			normalizedResolveRoot,
+		)
+		addPathCandidate(canonicalResolveRoot)
+
+		maybeAddAliasedPathCandidate := func(
+			sourcePrefix string,
+			targetPrefix string,
+		) {
+			if sourcePrefix == "" || targetPrefix == "" || sourcePrefix == targetPrefix {
+				return
+			}
+			if normalizedPath == sourcePrefix {
+				addPathCandidate(targetPrefix)
+				return
+			}
+			if strings.HasPrefix(normalizedPath, sourcePrefix+"/") {
+				addPathCandidate(
+					targetPrefix + strings.TrimPrefix(normalizedPath, sourcePrefix),
+				)
+			}
+		}
+		maybeAddAliasedPathCandidate(
+			normalizedResolveRoot,
+			canonicalResolveRoot,
+		)
+		maybeAddAliasedPathCandidate(
+			canonicalResolveRoot,
+			normalizedResolveRoot,
+		)
+	}
+
+	canonicalPath := canonicalizePathForLocationPrefixMatching(normalizedPath)
+	addPathCandidate(canonicalPath)
+
+	pathCandidates := make([]string, 0, len(pathCandidatesByValue))
+	for pathCandidate := range pathCandidatesByValue {
+		pathCandidates = append(pathCandidates, pathCandidate)
+	}
+	return pathCandidates
 }
 
 // normalizePath returns cleaned slash-normalized path.

@@ -13,8 +13,8 @@ import (
 )
 
 func TestWaitForApp_UsesConfiguredHealthcheckEndpoint(t *testing.T) {
-	cfg := newParsedConfigForRuntimeprocessWaitTestsAtRoot(t.TempDir())
-	cfg.Watch.HealthcheckEndpoint = "/healthz"
+	cfg := newParsedConfigForRuntimeprocessWaitTestsAtRoot(t, t.TempDir())
+	wavetest.SetWatchHealthcheckEndpoint(cfg, "/healthz")
 
 	port := mustConfigureAndGetWaveAppPortForRuntimeprocessWaitTests(t)
 	listener, listenError := net.Listen(
@@ -69,9 +69,10 @@ func TestResolveAppReadyURL_UsesIPv4LoopbackHost(t *testing.T) {
 }
 
 func newParsedConfigForRuntimeprocessWaitTestsAtRoot(
+	t testing.TB,
 	root string,
-) *waveconfig.ParsedConfig {
-	return wavetest.NewParsedConfigAtRoot(root)
+) waveconfig.ParsedConfig {
+	return wavetest.NewParsedConfigAtRoot(t, root)
 }
 
 func mustConfigureAndGetWaveAppPortForRuntimeprocessWaitTests(
