@@ -1,3 +1,12 @@
+## Never Add Wrappers or Convenience Helpers Until Direct Call Pain Is Intolerable
+
+Never add wrappers or convenience helpers or supposed "ergonomic" improvements
+until we have extreme evidence that direct calls are too painful or confusing.
+The purpose of this rule is to avoid the common LLM failure mode of adding
+pointless indirection and thinking it's an architecture improvement, when really
+it's just adding bloat and harming the quality, maintainability, and
+debuggability of the codebase.
+
 ## Do Not Write Unnecessarily Defensive Code
 
 Contrary to popular opinion, being overly defensive and liberal in what inputs

@@ -56,48 +56,10 @@ func eventsPhaseFactsContainsType(
 	return false
 }
 
-type phase1BrowserActionIntent string
-
-const (
-	phase1BrowserActionIntentNone                           phase1BrowserActionIntent = "none"
-	phase1BrowserActionIntentCSSHotReload                   phase1BrowserActionIntent = "css_hot_reload"
-	phase1BrowserActionIntentRevalidate                     phase1BrowserActionIntent = "revalidate"
-	phase1BrowserActionIntentNotifyVitePublicFileMapChanged phase1BrowserActionIntent = "notify_vite_public_filemap_changed"
-	phase1BrowserActionIntentHardReload                     phase1BrowserActionIntent = "hard_reload"
-)
-
-func browserActionIntentPriority(
-	actionIntent phase1BrowserActionIntent,
-) int {
-	switch actionIntent {
-	case phase1BrowserActionIntentHardReload:
-		return 4
-	case phase1BrowserActionIntentNotifyVitePublicFileMapChanged:
-		return 3
-	case phase1BrowserActionIntentRevalidate:
-		return 2
-	case phase1BrowserActionIntentCSSHotReload:
-		return 1
-	default:
-		return 0
-	}
-}
-
-func dominantBrowserActionIntent(
-	leftActionIntent phase1BrowserActionIntent,
-	rightActionIntent phase1BrowserActionIntent,
-) phase1BrowserActionIntent {
-	if browserActionIntentPriority(rightActionIntent) >
-		browserActionIntentPriority(leftActionIntent) {
-		return rightActionIntent
-	}
-	return leftActionIntent
-}
-
 func deriveImplicitBrowserActionIntent(
 	eventsPhaseFacts EventsPhaseFacts,
-) phase1BrowserActionIntent {
-	actionIntent := phase1BrowserActionIntentNone
+) FrontendTerminalBrowserAction {
+	actionIntent := FrontendTerminalBrowserActionNone
 	if eventsPhaseFactsContainsType(
 		eventsPhaseFacts,
 		EventTypeCriticalCSSSourceChanged,
@@ -106,18 +68,18 @@ func deriveImplicitBrowserActionIntent(
 			eventsPhaseFacts,
 			EventTypeNormalCSSSourceChanged,
 		) {
-		actionIntent = dominantBrowserActionIntent(
+		actionIntent = dominantFrontendTerminalBrowserAction(
 			actionIntent,
-			phase1BrowserActionIntentCSSHotReload,
+			FrontendTerminalBrowserActionCSSHotReload,
 		)
 	}
 	if eventsPhaseFactsContainsType(
 		eventsPhaseFacts,
 		EventTypePublicStaticAssetChanged,
 	) {
-		actionIntent = dominantBrowserActionIntent(
+		actionIntent = dominantFrontendTerminalBrowserAction(
 			actionIntent,
-			phase1BrowserActionIntentNotifyVitePublicFileMapChanged,
+			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
 		)
 	}
 	if eventsPhaseFactsContainsType(
@@ -136,9 +98,9 @@ func deriveImplicitBrowserActionIntent(
 			eventsPhaseFacts,
 			EventTypeFrameworkTemplateChanged,
 		) {
-		actionIntent = dominantBrowserActionIntent(
+		actionIntent = dominantFrontendTerminalBrowserAction(
 			actionIntent,
-			phase1BrowserActionIntentHardReload,
+			FrontendTerminalBrowserActionHardReload,
 		)
 	}
 	return actionIntent
@@ -146,25 +108,25 @@ func deriveImplicitBrowserActionIntent(
 
 func deriveAppRequestedBrowserActionIntent(
 	eventsPhaseFacts EventsPhaseFacts,
-) phase1BrowserActionIntent {
+) FrontendTerminalBrowserAction {
 	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
-	actionIntent := phase1BrowserActionIntentNone
+	actionIntent := FrontendTerminalBrowserActionNone
 	if appRequestedOutcomes.RequestBrowserRevalidate {
-		actionIntent = dominantBrowserActionIntent(
+		actionIntent = dominantFrontendTerminalBrowserAction(
 			actionIntent,
-			phase1BrowserActionIntentRevalidate,
+			FrontendTerminalBrowserActionRevalidate,
 		)
 	}
 	if appRequestedOutcomes.RequestNotifyVitePublicFileMapChanged {
-		actionIntent = dominantBrowserActionIntent(
+		actionIntent = dominantFrontendTerminalBrowserAction(
 			actionIntent,
-			phase1BrowserActionIntentNotifyVitePublicFileMapChanged,
+			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
 		)
 	}
 	if appRequestedOutcomes.RequestBrowserHardReload {
-		actionIntent = dominantBrowserActionIntent(
+		actionIntent = dominantFrontendTerminalBrowserAction(
 			actionIntent,
-			phase1BrowserActionIntentHardReload,
+			FrontendTerminalBrowserActionHardReload,
 		)
 	}
 	return actionIntent
@@ -212,7 +174,7 @@ func reducePhase1BuildGoals(
 		EventTypeFrameworkTemplateChanged,
 	)
 	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
-	mergedBrowserActionIntent := dominantBrowserActionIntent(
+	mergedBrowserActionIntent := dominantFrontendTerminalBrowserAction(
 		deriveImplicitBrowserActionIntent(eventsPhaseFacts),
 		deriveAppRequestedBrowserActionIntent(eventsPhaseFacts),
 	)
@@ -226,13 +188,13 @@ func reducePhase1BuildGoals(
 	requestFrameworkTemplateRefresh := frameworkTemplateChanged
 	requestFrameworkPublicFileMapRefresh := publicStaticChanged
 	requestBrowserCSSHotReload :=
-		mergedBrowserActionIntent == phase1BrowserActionIntentCSSHotReload
+		mergedBrowserActionIntent == FrontendTerminalBrowserActionCSSHotReload
 	requestBrowserNotifyVitePublicFileMapChanged :=
-		mergedBrowserActionIntent == phase1BrowserActionIntentNotifyVitePublicFileMapChanged
+		mergedBrowserActionIntent == FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged
 	requestBrowserRevalidate :=
-		mergedBrowserActionIntent == phase1BrowserActionIntentRevalidate
+		mergedBrowserActionIntent == FrontendTerminalBrowserActionRevalidate
 	requestBrowserHardReload :=
-		mergedBrowserActionIntent == phase1BrowserActionIntentHardReload
+		mergedBrowserActionIntent == FrontendTerminalBrowserActionHardReload
 
 	if eventsPhaseFacts.Mode == ModeProd {
 		requestBackendRestart = false
@@ -315,11 +277,3 @@ var Phase1PlanBuildGoalsTask = tasks.NewTask(
 		return reducePhase1BuildGoals(eventsPhaseFacts), nil
 	},
 )
-
-// RunPhase1TaskGraph executes phase-1 task roots and returns build goals.
-func RunPhase1TaskGraph(
-	taskContext *tasks.Ctx,
-	input EventsPhaseBatchInput,
-) (Phase1BuildGoals, error) {
-	return Phase1PlanBuildGoalsTask.Run(taskContext, input)
-}

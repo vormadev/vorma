@@ -270,11 +270,3 @@ var Phase2PlanOutputTask = tasks.NewTask(
 		}, nil
 	},
 )
-
-// RunPhase2TaskGraph executes phase 2 and returns phase 3 goals.
-func RunPhase2TaskGraph(
-	taskContext *tasks.Ctx,
-	input Phase2BatchInput,
-) (Phase2Output, error) {
-	return Phase2PlanOutputTask.Run(taskContext, input)
-}

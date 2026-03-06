@@ -1,5 +1,5 @@
 Wave2 Rewrite Tracker
-Last updated: 2026-03-05
+Last updated: 2026-03-06
 
 Purpose
 - Preserve a declarative, forward-looking architecture plan so handoff stays aligned without re-litigating fundamentals.
@@ -16,6 +16,7 @@ Non-Negotiable Constraints
 - Inside each phase, sequencing and parallelism are owned only by `kit/tasks` task dependencies.
 - Do not introduce a second DAG/topological scheduler outside `kit/tasks`.
 - Four-phase orchestration stays function-based (`RunFourPhasePipeline`) with no runner-interface/config wrapper layer.
+- Default to direct calls. Do not add wrappers, convenience helpers, or "ergonomic" adapter layers unless there is explicit, repeated evidence that direct-call usage is too painful or confusing.
 
 Package Surfaces
 - `wave2/wave.go`
@@ -32,6 +33,7 @@ Canonical Batch Pipeline
 - Phase 2: Build
 - Planner reduces phase-1 output to build terminal goals.
 - Build roots run in `kit/tasks` and declare prerequisites by calling prerequisite tasks.
+- Pipeline composition calls phase root tasks directly; no one-line `RunPhase*TaskGraph` wrappers.
 - Phase 3: Backend Settling
 - Planner reduces phase-2 outcomes to backend-settling terminal goals.
 - Backend settling covers process/framework readiness concerns.
@@ -85,6 +87,7 @@ Checklist (Hardest First)
 - Keep planners pure and deterministic.
 - Keep planner output as terminal goals only (per phase).
 - Encode build-retry gating and browser action precedence as explicit planner policy: `hard_reload > notify_vite_public_filemap_changed > revalidate > css_hot_reload > none`.
+- Frontend-settling goal surface stays single-action (`terminal_browser_action`) rather than multi-boolean action flags.
 - Keep each phase planner backed by one pure reduction helper over prior-phase facts/goals.
 - Keep mode policy explicit at the pipeline boundary: `dev` runs all four phases; `prod` bypasses phases 1/3/4 and runs phase 2 only.
 - Keep phase-2 backend-settling planner output empty in `prod` because backend/frontend settling phases are skipped.

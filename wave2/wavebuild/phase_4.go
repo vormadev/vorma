@@ -1,10 +1,6 @@
 package wavebuild
 
-import (
-	"context"
-
-	"github.com/vormadev/vorma/kit/tasks"
-)
+import "github.com/vormadev/vorma/kit/tasks"
 
 // Phase4BatchInput is the frontend-settling input produced by phase 3.
 type Phase4BatchInput struct {
@@ -12,25 +8,9 @@ type Phase4BatchInput struct {
 	FrontendGoals Phase3FrontendSettlingGoals
 }
 
-// Phase4TerminalAction identifies one final frontend-settling action.
-type Phase4TerminalAction string
-
-const (
-	// Phase4TerminalActionNone represents no browser action.
-	Phase4TerminalActionNone Phase4TerminalAction = "none"
-	// Phase4TerminalActionCSSHotReload represents CSS-only hot reload.
-	Phase4TerminalActionCSSHotReload Phase4TerminalAction = "css_hot_reload"
-	// Phase4TerminalActionNotifyVitePublicFileMapChanged notifies Vite that public file-map artifacts changed.
-	Phase4TerminalActionNotifyVitePublicFileMapChanged Phase4TerminalAction = "notify_vite_public_filemap_changed"
-	// Phase4TerminalActionRevalidate represents browser revalidation.
-	Phase4TerminalActionRevalidate Phase4TerminalAction = "revalidate"
-	// Phase4TerminalActionHardReload represents browser hard reload.
-	Phase4TerminalActionHardReload Phase4TerminalAction = "hard_reload"
-)
-
 // Phase4CompletionSummary captures frontend-settling completion output.
 type Phase4CompletionSummary struct {
-	TerminalAction Phase4TerminalAction
+	TerminalAction FrontendTerminalBrowserAction
 }
 
 // FourPhaseRunResult captures the full four-phase pipeline execution.
@@ -87,70 +67,35 @@ var Phase4PublishNoReloadNeededNoticeTask = newPhase4EffectTask(
 	PhaseEffectIDFrontendPublishNoReloadNeededNotice,
 )
 
-// Phase4PlanTerminalFrontendActionTask selects final frontend action by precedence.
-var Phase4PlanTerminalFrontendActionTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase4BatchInput,
-	) (Phase4TerminalAction, error) {
-		return reducePhase4TerminalFrontendAction(input.FrontendGoals), nil
-	},
-)
-
-func reducePhase4TerminalFrontendAction(
-	frontendGoals Phase3FrontendSettlingGoals,
-) Phase4TerminalAction {
-	if frontendGoals.PerformHardReload {
-		return Phase4TerminalActionHardReload
-	}
-	if frontendGoals.PerformNotifyVitePublicFileMapChanged {
-		return Phase4TerminalActionNotifyVitePublicFileMapChanged
-	}
-	if frontendGoals.PerformRevalidate {
-		return Phase4TerminalActionRevalidate
-	}
-	if frontendGoals.PerformCSSHotReload {
-		return Phase4TerminalActionCSSHotReload
-	}
-	return Phase4TerminalActionNone
-}
-
 // RunPhase4TaskGraph executes phase 4 and returns completion summary.
 func RunPhase4TaskGraph(
 	taskContext *tasks.Ctx,
 	input Phase4BatchInput,
 ) (Phase4CompletionSummary, error) {
-	terminalAction, terminalActionError := Phase4PlanTerminalFrontendActionTask.Run(
-		taskContext,
-		input,
-	)
-	if terminalActionError != nil {
-		return Phase4CompletionSummary{}, terminalActionError
-	}
-
+	terminalAction := input.FrontendGoals.TerminalBrowserAction
 	switch terminalAction {
-	case Phase4TerminalActionHardReload:
+	case FrontendTerminalBrowserActionHardReload:
 		if _, hardReloadError := Phase4BroadcastHardReloadTask.Run(
 			taskContext,
 			input,
 		); hardReloadError != nil {
 			return Phase4CompletionSummary{}, hardReloadError
 		}
-	case Phase4TerminalActionNotifyVitePublicFileMapChanged:
+	case FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
 		if _, notifyViteError := Phase4NotifyVitePublicFileMapChangedTask.Run(
 			taskContext,
 			input,
 		); notifyViteError != nil {
 			return Phase4CompletionSummary{}, notifyViteError
 		}
-	case Phase4TerminalActionRevalidate:
+	case FrontendTerminalBrowserActionRevalidate:
 		if _, revalidateError := Phase4BroadcastRevalidateTask.Run(
 			taskContext,
 			input,
 		); revalidateError != nil {
 			return Phase4CompletionSummary{}, revalidateError
 		}
-	case Phase4TerminalActionCSSHotReload:
+	case FrontendTerminalBrowserActionCSSHotReload:
 		if _, cssHotReloadError := Phase4BroadcastCSSHotReloadTask.Run(
 			taskContext,
 			input,
@@ -167,12 +112,4 @@ func RunPhase4TaskGraph(
 	}
 
 	return Phase4CompletionSummary{TerminalAction: terminalAction}, nil
-}
-
-// RunFourPhaseTaskGraph executes all four phases end-to-end.
-func RunFourPhaseTaskGraph(
-	parentContext context.Context,
-	input EventsPhaseBatchInput,
-) (FourPhaseRunResult, error) {
-	return RunFourPhasePipeline(parentContext, input)
 }

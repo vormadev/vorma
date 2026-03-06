@@ -62,6 +62,51 @@ const (
 	EventTypeUnclassifiedNoWatchRuleChanged EventType = "unclassified_no_watch_rule_changed"
 )
 
+// FrontendTerminalBrowserAction is the single terminal browser action selected
+// for one batch.
+type FrontendTerminalBrowserAction string
+
+const (
+	// FrontendTerminalBrowserActionNone represents no browser action.
+	FrontendTerminalBrowserActionNone FrontendTerminalBrowserAction = "none"
+	// FrontendTerminalBrowserActionCSSHotReload represents CSS-only hot reload.
+	FrontendTerminalBrowserActionCSSHotReload FrontendTerminalBrowserAction = "css_hot_reload"
+	// FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged notifies Vite that public file-map artifacts changed.
+	FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged FrontendTerminalBrowserAction = "notify_vite_public_filemap_changed"
+	// FrontendTerminalBrowserActionRevalidate represents browser revalidation.
+	FrontendTerminalBrowserActionRevalidate FrontendTerminalBrowserAction = "revalidate"
+	// FrontendTerminalBrowserActionHardReload represents browser hard reload.
+	FrontendTerminalBrowserActionHardReload FrontendTerminalBrowserAction = "hard_reload"
+)
+
+func frontendTerminalBrowserActionPriority(
+	action FrontendTerminalBrowserAction,
+) int {
+	switch action {
+	case FrontendTerminalBrowserActionHardReload:
+		return 4
+	case FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
+		return 3
+	case FrontendTerminalBrowserActionRevalidate:
+		return 2
+	case FrontendTerminalBrowserActionCSSHotReload:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func dominantFrontendTerminalBrowserAction(
+	leftAction FrontendTerminalBrowserAction,
+	rightAction FrontendTerminalBrowserAction,
+) FrontendTerminalBrowserAction {
+	if frontendTerminalBrowserActionPriority(rightAction) >
+		frontendTerminalBrowserActionPriority(leftAction) {
+		return rightAction
+	}
+	return leftAction
+}
+
 // ObservedBatchEvent is one normalized, already-classified batch event input.
 //
 // The event type is expected to be produced by the watcher/classification layer;
@@ -348,7 +393,7 @@ func RunFourPhasePipeline(
 			if phaseInput.Events.Mode == ModeProd {
 				return canonicalProdBuildGoals(), nil
 			}
-			return RunPhase1TaskGraph(taskContext, phaseInput)
+			return Phase1PlanBuildGoalsTask.Run(taskContext, phaseInput)
 		},
 	)
 
@@ -364,7 +409,7 @@ func RunFourPhasePipeline(
 			if phase1Error != nil {
 				return Phase2Output{}, phase1Error
 			}
-			return RunPhase2TaskGraph(
+			return Phase2PlanOutputTask.Run(
 				taskContext,
 				Phase2BatchInput{
 					Batch: PhaseBatchInput{
@@ -395,7 +440,7 @@ func RunFourPhasePipeline(
 			if phase2Error != nil {
 				return Phase3FrontendSettlingGoals{}, phase2Error
 			}
-			return RunPhase3TaskGraph(
+			return Phase3PlanFrontendSettlingGoalsTask.Run(
 				taskContext,
 				Phase3BatchInput{
 					Batch: PhaseBatchInput{

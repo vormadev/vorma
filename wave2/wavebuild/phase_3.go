@@ -13,10 +13,7 @@ type Phase3BatchInput struct {
 
 // Phase3FrontendSettlingGoals are frontend-settling goals produced by phase 3.
 type Phase3FrontendSettlingGoals struct {
-	PerformCSSHotReload                   bool
-	PerformNotifyVitePublicFileMapChanged bool
-	PerformRevalidate                     bool
-	PerformHardReload                     bool
+	TerminalBrowserAction FrontendTerminalBrowserAction
 }
 
 func newPhase3EffectTask(
@@ -172,19 +169,38 @@ func reducePhase3FrontendSettlingGoals(
 	buildFacts Phase2BuildOutcomeFacts,
 ) Phase3FrontendSettlingGoals {
 	if backendGoals.QueueRetryWaitRestart {
-		return Phase3FrontendSettlingGoals{}
+		return Phase3FrontendSettlingGoals{
+			TerminalBrowserAction: FrontendTerminalBrowserActionNone,
+		}
 	}
 
-	phase3FrontendSettlingGoals := Phase3FrontendSettlingGoals{
-		PerformCSSHotReload: backendGoals.RequestBrowserCSSHotReload,
-		PerformNotifyVitePublicFileMapChanged: backendGoals.RequestBrowserNotifyVitePublicFileMapChanged &&
-			(buildFacts.PublicFileMapArtifactsChanged ||
-				buildFacts.PublicFileMapArtifactsRepaired),
-		PerformRevalidate: backendGoals.RequestBrowserRevalidate,
-		PerformHardReload: backendGoals.RequestBrowserHardReload,
+	terminalBrowserAction := FrontendTerminalBrowserActionNone
+	if backendGoals.RequestBrowserCSSHotReload {
+		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
+			terminalBrowserAction,
+			FrontendTerminalBrowserActionCSSHotReload,
+		)
 	}
-	if backendGoals.RestartViteProcess {
-		phase3FrontendSettlingGoals.PerformNotifyVitePublicFileMapChanged = false
+	if backendGoals.RequestBrowserNotifyVitePublicFileMapChanged &&
+		!backendGoals.RestartViteProcess &&
+		(buildFacts.PublicFileMapArtifactsChanged ||
+			buildFacts.PublicFileMapArtifactsRepaired) {
+		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
+			terminalBrowserAction,
+			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
+		)
+	}
+	if backendGoals.RequestBrowserRevalidate {
+		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
+			terminalBrowserAction,
+			FrontendTerminalBrowserActionRevalidate,
+		)
+	}
+	if backendGoals.RequestBrowserHardReload {
+		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
+			terminalBrowserAction,
+			FrontendTerminalBrowserActionHardReload,
+		)
 	}
 
 	if backendGoals.RestartDevServerCycle ||
@@ -193,15 +209,12 @@ func reducePhase3FrontendSettlingGoals(
 		backendGoals.RefreshFrameworkRoute ||
 		backendGoals.RefreshFrameworkTemplate ||
 		backendGoals.RefreshFrameworkPublicFileMap {
-		phase3FrontendSettlingGoals.PerformHardReload = true
+		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
+			terminalBrowserAction,
+			FrontendTerminalBrowserActionHardReload,
+		)
 	}
-	return phase3FrontendSettlingGoals
-}
-
-// RunPhase3TaskGraph executes phase 3 and returns phase 4 goals.
-func RunPhase3TaskGraph(
-	taskContext *tasks.Ctx,
-	input Phase3BatchInput,
-) (Phase3FrontendSettlingGoals, error) {
-	return Phase3PlanFrontendSettlingGoalsTask.Run(taskContext, input)
+	return Phase3FrontendSettlingGoals{
+		TerminalBrowserAction: terminalBrowserAction,
+	}
 }

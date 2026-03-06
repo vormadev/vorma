@@ -39,6 +39,7 @@ Each phase:
 - plans terminal goals for that phase
 - runs terminal roots in `kit/tasks`
 - lets `kit/tasks` own prerequisite ordering, dedupe, and parallelism
+- frontend settling uses one terminal browser action with explicit precedence
 
 ## Task Context Contract
 
