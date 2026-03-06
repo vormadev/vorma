@@ -19,7 +19,7 @@ type p2_BuildOutcomeFacts struct {
 	publicFileMapArtifactsRepaired bool
 }
 
-// p2_RequestedEffects are backend-settling effects requested by phase 2.
+// p2_RequestedEffects are backend-mutation effects requested by phase 2.
 type p2_RequestedEffects struct {
 	restartDevServerCycle          bool
 	restartAppProcess              bool

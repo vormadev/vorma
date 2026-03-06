@@ -4,25 +4,33 @@ package wavebuild
 /////// Phase Contracts
 /////////////////////////////////////////////////////////////////////
 
-// p3_BatchInput is the backend-settling input produced by phase 2.
+// p3_BatchInput is the backend-mutation input produced by phase 2.
 type p3_BatchInput struct {
 	batch               phaseBatchInput
 	p2_RequestedEffects p2_RequestedEffects
 }
 
-// p3_RequestedEffects are frontend-settling effects requested by phase 3.
-type p3_RequestedEffects struct {
-	terminalBrowserAction frontendTerminalBrowserAction
+// p4_RequestedEffects are backend-convergence effects requested by phase 3.
+type p4_RequestedEffects struct {
+	awaitBackendReadiness bool
+	p5_RequestedEffects   p5_RequestedEffects
+}
+
+// p3_Output is the full phase-3 planner output consumed by phase 4.
+type p3_Output struct {
+	p4_RequestedEffects p4_RequestedEffects
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Phase Reductions
 /////////////////////////////////////////////////////////////////////
 
-func (p2_RequestedEffects p2_RequestedEffects) deriveP3_RequestedEffects() p3_RequestedEffects {
+func (p2_RequestedEffects p2_RequestedEffects) deriveP4_RequestedEffects() p4_RequestedEffects {
 	if p2_RequestedEffects.queueRetryWaitRestart {
-		return p3_RequestedEffects{
-			terminalBrowserAction: frontendTerminalBrowserActionNone,
+		return p4_RequestedEffects{
+			p5_RequestedEffects: p5_RequestedEffects{
+				terminalBrowserAction: frontendTerminalBrowserActionNone,
+			},
 		}
 	}
 
@@ -46,7 +54,10 @@ func (p2_RequestedEffects p2_RequestedEffects) deriveP3_RequestedEffects() p3_Re
 			frontendTerminalBrowserActionHardReload,
 		)
 	}
-	return p3_RequestedEffects{
-		terminalBrowserAction: terminalBrowserAction,
+	return p4_RequestedEffects{
+		awaitBackendReadiness: p2_RequestedEffects.awaitBackendReadiness,
+		p5_RequestedEffects: p5_RequestedEffects{
+			terminalBrowserAction: terminalBrowserAction,
+		},
 	}
 }

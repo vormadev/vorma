@@ -14,8 +14,7 @@ type p3_Effects struct {
 	refreshFrameworkRoute         *tasks.Task[p3_BatchInput, struct{}]
 	refreshFrameworkTemplate      *tasks.Task[p3_BatchInput, struct{}]
 	refreshFrameworkPublicFileMap *tasks.Task[p3_BatchInput, struct{}]
-	awaitBackendReadiness         *tasks.Task[p3_BatchInput, struct{}]
-	planP3_RequestedEffects       *tasks.Task[p3_BatchInput, p3_RequestedEffects]
+	planP4_RequestedEffects       *tasks.Task[p3_BatchInput, p3_Output]
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -30,8 +29,7 @@ var p3_EffectsDef = p3_Effects{
 	refreshFrameworkRoute:         p3_RefreshFrameworkRouteTask,
 	refreshFrameworkTemplate:      p3_RefreshFrameworkTemplateTask,
 	refreshFrameworkPublicFileMap: p3_RefreshFrameworkPublicFileMapTask,
-	awaitBackendReadiness:         p3_AwaitBackendReadinessTask,
-	planP3_RequestedEffects:       p3_PlanP3_RequestedEffectsTask,
+	planP4_RequestedEffects:       p3_PlanP4_RequestedEffectsTask,
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -125,32 +123,28 @@ var p3_RefreshFrameworkPublicFileMapTask = tasks.NewTask(
 	},
 )
 
-var p3_AwaitBackendReadinessTask = tasks.NewTask(
+var p3_PlanP4_RequestedEffectsTask = tasks.NewTask(
 	func(
 		tasksCtx *tasks.Ctx,
 		input p3_BatchInput,
-	) (struct{}, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P3_AWAIT_BACKEND_READINESS) {
-			return struct{}{}, nil
-		}
+	) (p3_Output, error) {
 		if input.p2_RequestedEffects.queueRetryWaitRestart {
 			if _, queuedRestartError := p3_QueueRetryWaitRestartTask.Run(
 				tasksCtx,
 				input,
 			); queuedRestartError != nil {
-				return struct{}{}, queuedRestartError
+				return p3_Output{}, queuedRestartError
 			}
-			return struct{}{}, nil
-		}
-		if !input.p2_RequestedEffects.awaitBackendReadiness {
-			return struct{}{}, nil
+			return p3_Output{
+				p4_RequestedEffects: input.p2_RequestedEffects.deriveP4_RequestedEffects(),
+			}, nil
 		}
 
 		var ignoredResult struct{}
-		backendSettlingTasks := make([]tasks.BoundTask, 0, 6)
+		backendMutationTasks := make([]tasks.BoundTask, 0, 6)
 		if input.p2_RequestedEffects.restartDevServerCycle {
-			backendSettlingTasks = append(
-				backendSettlingTasks,
+			backendMutationTasks = append(
+				backendMutationTasks,
 				p3_ApplyDevServerRestartTask.Bind(
 					input,
 					&ignoredResult,
@@ -158,14 +152,14 @@ var p3_AwaitBackendReadinessTask = tasks.NewTask(
 			)
 		}
 		if input.p2_RequestedEffects.restartAppProcess {
-			backendSettlingTasks = append(
-				backendSettlingTasks,
+			backendMutationTasks = append(
+				backendMutationTasks,
 				p3_RestartAppProcessTask.Bind(input, &ignoredResult),
 			)
 		}
 		if input.p2_RequestedEffects.restartViteProcess {
-			backendSettlingTasks = append(
-				backendSettlingTasks,
+			backendMutationTasks = append(
+				backendMutationTasks,
 				p3_RestartViteProcessTask.Bind(
 					input,
 					&ignoredResult,
@@ -173,8 +167,8 @@ var p3_AwaitBackendReadinessTask = tasks.NewTask(
 			)
 		}
 		if input.p2_RequestedEffects.refreshFrameworkRoute {
-			backendSettlingTasks = append(
-				backendSettlingTasks,
+			backendMutationTasks = append(
+				backendMutationTasks,
 				p3_RefreshFrameworkRouteTask.Bind(
 					input,
 					&ignoredResult,
@@ -182,8 +176,8 @@ var p3_AwaitBackendReadinessTask = tasks.NewTask(
 			)
 		}
 		if input.p2_RequestedEffects.refreshFrameworkTemplate {
-			backendSettlingTasks = append(
-				backendSettlingTasks,
+			backendMutationTasks = append(
+				backendMutationTasks,
 				p3_RefreshFrameworkTemplateTask.Bind(
 					input,
 					&ignoredResult,
@@ -191,38 +185,21 @@ var p3_AwaitBackendReadinessTask = tasks.NewTask(
 			)
 		}
 		if input.p2_RequestedEffects.refreshFrameworkPublicFileMap {
-			backendSettlingTasks = append(
-				backendSettlingTasks,
+			backendMutationTasks = append(
+				backendMutationTasks,
 				p3_RefreshFrameworkPublicFileMapTask.Bind(
 					input,
 					&ignoredResult,
 				),
 			)
 		}
-		if runParallelError := tasksCtx.RunParallel(backendSettlingTasks...); runParallelError != nil {
-			return struct{}{}, runParallelError
+		if len(backendMutationTasks) > 0 {
+			if runParallelError := tasksCtx.RunParallel(backendMutationTasks...); runParallelError != nil {
+				return p3_Output{}, runParallelError
+			}
 		}
-		return struct{}{}, nil
-	},
-)
-
-var p3_PlanP3_RequestedEffectsTask = tasks.NewTask(
-	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
-	) (p3_RequestedEffects, error) {
-		if recordTestEffect(
-			tasksCtx,
-			_LABEL_P3_PLAN_PHASE_3_REQUESTED_EFFECTS,
-		) {
-			return p3_RequestedEffects{}, nil
-		}
-		if _, awaitReadyError := p3_AwaitBackendReadinessTask.Run(
-			tasksCtx,
-			input,
-		); awaitReadyError != nil {
-			return p3_RequestedEffects{}, awaitReadyError
-		}
-		return input.p2_RequestedEffects.deriveP3_RequestedEffects(), nil
+		return p3_Output{
+			p4_RequestedEffects: input.p2_RequestedEffects.deriveP4_RequestedEffects(),
+		}, nil
 	},
 )

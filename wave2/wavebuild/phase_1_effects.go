@@ -21,15 +21,9 @@ type p1_Effects struct {
 var p1_EffectsDef = p1_Effects{
 	planP1_RequestedEffects: tasks.NewTask(
 		func(
-			tasksCtx *tasks.Ctx,
+			_ *tasks.Ctx,
 			input p1_BatchInput,
 		) (p1_RequestedEffects, error) {
-			if recordTestEffect(
-				tasksCtx,
-				_LABEL_P1_PLAN_PHASE_1_REQUESTED_EFFECTS,
-			) {
-				return p1_RequestedEffects{}, nil
-			}
 			if input.p1 == nil {
 				return p1_RequestedEffects{}, errors.New(
 					"wavebuild: phase-1 input is required",

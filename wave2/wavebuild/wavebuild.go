@@ -1,13 +1,14 @@
 // Package wavebuild defines the build/dev orchestration contracts for Wave2.
 //
 // The contract is intentionally phase-oriented:
-// events -> build -> backend_settling -> frontend_settling.
+// events -> build -> backend_mutation -> backend_convergence -> frontend_settling.
 // Symbol naming uses numeric phase labels:
-// phase_1 -> phase_2 -> phase_3 -> phase_4.
+// phase_1 -> phase_2 -> phase_3 -> phase_4 -> phase_5.
 //
 // mode policy is pipeline-level:
-// - dev executes all four phases.
-// - prod bypasses events/backend_settling/frontend_settling and runs build only.
+//   - dev executes all five phases.
+//   - prod bypasses events/backend_mutation/backend_convergence/frontend_settling
+//     and runs build only.
 //
 // Each phase owns its own terminal effects and executes through kit/tasks. Phase
 // boundaries provide cross-phase ordering; inside a phase, dependency ordering
@@ -244,7 +245,7 @@ func (signal FrameworkSignal) Metadata() map[string]string {
 	return signal.metadata
 }
 
-// frameworkSignals reduces backend-settling effects into framework-agnostic
+// frameworkSignals reduces backend-mutation effects into framework-agnostic
 // signals for framework adapter handoff.
 func (p2_RequestedEffects p2_RequestedEffects) frameworkSignals(
 	generationID string,
@@ -260,7 +261,7 @@ func (p2_RequestedEffects p2_RequestedEffects) frameworkSignals(
 			FrameworkSignal{
 				signalType:     FrameworkSignalTypeRoutesChanged,
 				freshnessToken: freshnessToken,
-				trigger:        "backend_settling_refresh_framework_route",
+				trigger:        "backend_mutation_refresh_framework_route",
 			},
 		)
 	}
@@ -270,7 +271,7 @@ func (p2_RequestedEffects p2_RequestedEffects) frameworkSignals(
 			FrameworkSignal{
 				signalType:     FrameworkSignalTypeTemplateChanged,
 				freshnessToken: freshnessToken,
-				trigger:        "backend_settling_refresh_framework_template",
+				trigger:        "backend_mutation_refresh_framework_template",
 			},
 		)
 	}
@@ -280,7 +281,7 @@ func (p2_RequestedEffects p2_RequestedEffects) frameworkSignals(
 			FrameworkSignal{
 				signalType:     FrameworkSignalTypePublicFileMapChanged,
 				freshnessToken: freshnessToken,
-				trigger:        "backend_settling_refresh_framework_public_filemap",
+				trigger:        "backend_mutation_refresh_framework_public_filemap",
 			},
 		)
 	}
@@ -301,6 +302,7 @@ type phaseEffectSets struct {
 	p2 p2_Effects
 	p3 p3_Effects
 	p4 p4_Effects
+	p5 p5_Effects
 }
 
 var realPhaseEffectSets = phaseEffectSets{
@@ -308,38 +310,40 @@ var realPhaseEffectSets = phaseEffectSets{
 	p2: p2_EffectsDef,
 	p3: p3_EffectsDef,
 	p4: p4_EffectsDef,
+	p5: p5_EffectsDef,
 }
 
-// runFourPhasePipeline executes one phase batch with one batch-scoped tasks context.
+// runFivePhasePipeline executes one phase batch with one batch-scoped tasks
+// context.
 //
 // mode policy:
-// - dev runs phases 1-4.
-// - prod bypasses phases 1/3/4 and runs phase 2 only.
-func runFourPhasePipeline(
+// - dev runs phases 1-5.
+// - prod bypasses phases 1/3/4/5 and runs phase 2 only.
+func runFivePhasePipeline(
 	parentContext context.Context,
 	input p1_BatchInput,
-) (fourPhaseRunResult, error) {
-	return runFourPhasePipelineWithEffectSets(
+) (fivePhaseRunResult, error) {
+	return runFivePhasePipelineWithEffectSets(
 		parentContext,
 		input,
 		realPhaseEffectSets,
 	)
 }
 
-func runFourPhasePipelineWithEffectSets(
+func runFivePhasePipelineWithEffectSets(
 	parentContext context.Context,
 	input p1_BatchInput,
 	effects phaseEffectSets,
-) (fourPhaseRunResult, error) {
+) (fivePhaseRunResult, error) {
 	if input.p1 == nil {
-		return fourPhaseRunResult{}, errP1_InputRequired
+		return fivePhaseRunResult{}, errP1_InputRequired
 	}
 	normalizedGenerationID := strings.TrimSpace(input.p1.generationID)
 	if normalizedGenerationID == "" {
-		return fourPhaseRunResult{}, errGenerationIDRequired
+		return fivePhaseRunResult{}, errGenerationIDRequired
 	}
 	if modeError := input.p1.mode.validate(); modeError != nil {
-		return fourPhaseRunResult{}, modeError
+		return fivePhaseRunResult{}, modeError
 	}
 
 	batchTaskContext := tasks.NewCtx(parentContext)
@@ -351,7 +355,7 @@ func runFourPhasePipelineWithEffectSets(
 			input,
 		)
 		if p1_Error != nil {
-			return fourPhaseRunResult{}, p1_Error
+			return fivePhaseRunResult{}, p1_Error
 		}
 	}
 
@@ -367,16 +371,16 @@ func runFourPhasePipelineWithEffectSets(
 		},
 	)
 	if p2_Error != nil {
-		return fourPhaseRunResult{}, p2_Error
+		return fivePhaseRunResult{}, p2_Error
 	}
 	if input.p1.mode == modeProd {
-		return fourPhaseRunResult{
+		return fivePhaseRunResult{
 			p1_RequestedEffects: p1_RequestedEffects,
 			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
 		}, nil
 	}
 
-	p3_RequestedEffects, p3_Error := effects.p3.planP3_RequestedEffects.Run(
+	p3_Output, p3_Error := effects.p3.planP4_RequestedEffects.Run(
 		batchTaskContext,
 		p3_BatchInput{
 			batch:               phaseBatchInput,
@@ -384,24 +388,34 @@ func runFourPhasePipelineWithEffectSets(
 		},
 	)
 	if p3_Error != nil {
-		return fourPhaseRunResult{}, p3_Error
+		return fivePhaseRunResult{}, p3_Error
 	}
-	p4_CompletionSummary, p4_Error := effects.p4.executeTerminalBrowserAction.Run(
+	p4_Output, p4_Error := effects.p4.planP5_RequestedEffects.Run(
 		batchTaskContext,
 		p4_BatchInput{
 			batch:               phaseBatchInput,
-			p3_RequestedEffects: p3_RequestedEffects,
+			p4_RequestedEffects: p3_Output.p4_RequestedEffects,
 		},
 	)
 	if p4_Error != nil {
-		return fourPhaseRunResult{}, p4_Error
+		return fivePhaseRunResult{}, p4_Error
 	}
-	if p4_CompletionSummary.requiresBackendViteHealing {
+	p5_CompletionSummary, p5_Error := effects.p5.executeTerminalBrowserAction.Run(
+		batchTaskContext,
+		p5_BatchInput{
+			batch:               phaseBatchInput,
+			p5_RequestedEffects: p4_Output.p5_RequestedEffects,
+		},
+	)
+	if p5_Error != nil {
+		return fivePhaseRunResult{}, p5_Error
+	}
+	if p5_CompletionSummary.requiresBackendViteHealing {
 		healingP2_RequestedEffects := p2_RequestedEffects{
 			restartViteProcess:    true,
 			awaitBackendReadiness: true,
 		}
-		healingP3_RequestedEffects, healingP3_Error := effects.p3.planP3_RequestedEffects.Run(
+		healingP3_Output, healingP3_Error := effects.p3.planP4_RequestedEffects.Run(
 			batchTaskContext,
 			p3_BatchInput{
 				batch:               phaseBatchInput,
@@ -409,29 +423,41 @@ func runFourPhasePipelineWithEffectSets(
 			},
 		)
 		if healingP3_Error != nil {
-			return fourPhaseRunResult{}, healingP3_Error
+			return fivePhaseRunResult{}, healingP3_Error
 		}
-		healingCompletionSummary, healingP4_Error := effects.p4.executeTerminalBrowserAction.Run(
+		healingP4_Output, healingP4_Error := effects.p4.planP5_RequestedEffects.Run(
 			batchTaskContext,
 			p4_BatchInput{
 				batch:               phaseBatchInput,
-				p3_RequestedEffects: healingP3_RequestedEffects,
+				p4_RequestedEffects: healingP3_Output.p4_RequestedEffects,
 			},
 		)
 		if healingP4_Error != nil {
-			return fourPhaseRunResult{}, healingP4_Error
+			return fivePhaseRunResult{}, healingP4_Error
+		}
+		healingCompletionSummary, healingP5_Error := effects.p5.executeTerminalBrowserAction.Run(
+			batchTaskContext,
+			p5_BatchInput{
+				batch:               phaseBatchInput,
+				p5_RequestedEffects: healingP4_Output.p5_RequestedEffects,
+			},
+		)
+		if healingP5_Error != nil {
+			return fivePhaseRunResult{}, healingP5_Error
 		}
 		p2_Output.p2_RequestedEffects = p2_Output.p2_RequestedEffects.merge(
 			healingP2_RequestedEffects,
 		)
-		p3_RequestedEffects = healingP3_RequestedEffects
-		p4_CompletionSummary = healingCompletionSummary
+		p3_Output = healingP3_Output
+		p4_Output = healingP4_Output
+		p5_CompletionSummary = healingCompletionSummary
 	}
-	return fourPhaseRunResult{
+	return fivePhaseRunResult{
 		p1_RequestedEffects:  p1_RequestedEffects,
 		p2_RequestedEffects:  p2_Output.p2_RequestedEffects,
-		p3_RequestedEffects:  p3_RequestedEffects,
-		p4_CompletionSummary: p4_CompletionSummary,
+		p3_Output:            p3_Output,
+		p4_Output:            p4_Output,
+		p5_CompletionSummary: p5_CompletionSummary,
 		frameworkSignals: p2_Output.p2_RequestedEffects.frameworkSignals(
 			normalizedGenerationID,
 		),
@@ -506,6 +532,6 @@ func canonicalP1_RequestedEffects() p1_RequestedEffects {
 		cleanupStalePublicStaticOutputs: true,
 		processPrivateStaticAssets:      true,
 		generatePublicFileMap:           true,
-		validateBuildOutputs:            true,
+		runRequestedBuildEffects:        true,
 	}
 }

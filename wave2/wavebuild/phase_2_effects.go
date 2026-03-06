@@ -14,7 +14,7 @@ type p2_Effects struct {
 	cleanupStalePublicStatic       *tasks.Task[p2_BatchInput, p2_BuildOutcomeFacts]
 	processPrivateStaticAssets     *tasks.Task[p2_BatchInput, struct{}]
 	generatePublicFileMapArtifacts *tasks.Task[p2_BatchInput, p2_BuildOutcomeFacts]
-	validateBuildOutputs           *tasks.Task[p2_BatchInput, p2_BuildOutcomeFacts]
+	runRequestedBuildEffects       *tasks.Task[p2_BatchInput, p2_BuildOutcomeFacts]
 	planP2_Output                  *tasks.Task[p2_BatchInput, p2_Output]
 }
 
@@ -30,7 +30,7 @@ var p2_EffectsDef = p2_Effects{
 	cleanupStalePublicStatic:       p2_CleanupStalePublicStaticTask,
 	processPrivateStaticAssets:     p2_ProcessPrivateStaticAssetsTask,
 	generatePublicFileMapArtifacts: p2_GeneratePublicFileMapArtifactsTask,
-	validateBuildOutputs:           p2_ValidateBuildOutputsTask,
+	runRequestedBuildEffects:       p2_RunRequestedBuildEffectsTask,
 	planP2_Output:                  p2_PlanP2_OutputTask,
 }
 
@@ -115,12 +115,6 @@ var p2_GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		tasksCtx *tasks.Ctx,
 		input p2_BatchInput,
 	) (p2_BuildOutcomeFacts, error) {
-		if recordTestEffect(
-			tasksCtx,
-			_LABEL_P2_GENERATE_PUBLIC_FILEMAP_ARTIFACTS,
-		) {
-			return p2_BuildOutcomeFacts{}, nil
-		}
 		if _, publicStaticProcessingError := p2_ProcessPublicStaticAssetsTask.Run(
 			tasksCtx,
 			input,
@@ -138,15 +132,12 @@ var p2_GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 	},
 )
 
-var p2_ValidateBuildOutputsTask = tasks.NewTask(
+var p2_RunRequestedBuildEffectsTask = tasks.NewTask(
 	func(
 		tasksCtx *tasks.Ctx,
 		input p2_BatchInput,
 	) (p2_BuildOutcomeFacts, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P2_VALIDATE_BUILD_OUTPUTS) {
-			return p2_BuildOutcomeFacts{}, nil
-		}
-		if !input.p1_RequestedEffects.validateBuildOutputs {
+		if !input.p1_RequestedEffects.runRequestedBuildEffects {
 			return p2_BuildOutcomeFacts{}, nil
 		}
 
@@ -220,15 +211,12 @@ var p2_PlanP2_OutputTask = tasks.NewTask(
 		tasksCtx *tasks.Ctx,
 		input p2_BatchInput,
 	) (p2_Output, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P2_PLAN_PHASE_2_OUTPUT) {
-			return p2_Output{}, nil
-		}
-		buildOutcomeFacts, validateError := p2_ValidateBuildOutputsTask.Run(
+		buildOutcomeFacts, runRequestedBuildEffectsError := p2_RunRequestedBuildEffectsTask.Run(
 			tasksCtx,
 			input,
 		)
-		if validateError != nil {
-			return p2_Output{}, validateError
+		if runRequestedBuildEffectsError != nil {
+			return p2_Output{}, runRequestedBuildEffectsError
 		}
 		if input.batch.mode == modeProd {
 			return p2_Output{

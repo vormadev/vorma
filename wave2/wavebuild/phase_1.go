@@ -29,7 +29,7 @@ type p1_RequestedEffects struct {
 	cleanupStalePublicStaticOutputs bool
 	processPrivateStaticAssets      bool
 	generatePublicFileMap           bool
-	validateBuildOutputs            bool
+	runRequestedBuildEffects        bool
 	queueRetryWaitRestart           bool
 
 	requestBackendRestart                bool
@@ -176,7 +176,7 @@ func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
 		requestedEffects.restartDevServerCycle = false
 	}
 
-	requestedEffects.validateBuildOutputs =
+	requestedEffects.runRequestedBuildEffects =
 		requestedEffects.compileGoBinary ||
 			requestedEffects.buildCriticalCSS ||
 			requestedEffects.buildNormalCSS ||
