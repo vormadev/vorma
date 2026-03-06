@@ -1,0 +1,115 @@
+Wave2 Rewrite Tracker
+Last updated: 2026-03-05
+
+Purpose
+- Preserve exact architectural intent and current progress so any new agent can continue without re-litigating fundamentals.
+
+Non-Negotiable Constraints
+- Wave2 runtime/buildtime boundary must stay strict.
+- `wave2` (runtime-facing) must not import `wave2/wavebuild`.
+- Wave must remain framework-agnostic.
+- Framework-specific behavior belongs in adapters (`wavefw`) or framework-owned packages.
+- Keep code minimal, elegant, and outcome-driven (no transitional compatibility layers in this rewrite).
+
+Current Package Shape (Confirmed)
+- `wave2/wave.go`
+  - Runtime-facing stub surface.
+  - No import of `wave2/wavebuild`.
+- `wave2/wavefw/wavefw.go`
+  - Framework adapter registration targeting `*wavebuild.Engine`.
+- `wave2/wavebuild/wavebuild.go`
+  - Contract-first orchestration model (interfaces/types + minimal engine wiring).
+- `wave2/README.md`
+  - Captures goal-first `kit/tasks` model and strict runtime/buildtime boundary.
+
+Design Principles Locked In
+- Planner chooses terminal goals (effects), not imperative step scripts.
+- Effects are ensure-style outcomes (idempotent guarantees).
+- Batch planning reduces via union + dedupe + mode filtering + arbitration.
+- Execution should lean on `kit/tasks` for dependency sequencing and maximum parallelism.
+- Production should reduce batch changes to deduplicated prod-applicable goals and run each once.
+
+Status of the 5 Core Design Items
+1) Canonical terminal goal catalog
+- Status: PARTIAL
+- Exists: `GoalSpec` type with `Effect`, `Guarantee`, `AppliesTo`, `DependsOn`, `MutexGroup`.
+- Missing: canonical built-in catalog for Wave2 defaults.
+
+2) Single batch fact pass
+- Status: PARTIAL-TO-STRONG (shape present)
+- Exists: `FactsCollector` + `BuildPlanFromRawInput` pipeline with one facts collection pass.
+- Missing: typed, explicit fact schema replacing generic map-heavy facts for critical policy inputs.
+
+3) Arbitration rules as data
+- Status: PARTIAL
+- Exists: `Arbiter` contract + `MutexGroup` on goals.
+- Missing: explicit arbitration rule table (precedence, implication, conflict resolution strategy).
+
+4) Task input identity model
+- Status: STRONG (contract level)
+- Exists: `GoalExecutionKey` comparable identity shape.
+- Missing: final key fields/signature decisions once execution/runtime context model is finalized.
+
+5) Wave/framework boundary on signals
+- Status: PARTIAL
+- Exists: package boundaries now enforce no runtime->buildtime import.
+- Missing: explicit generic signal/event contract for Wave->framework communication.
+
+Current Code Reality
+- `wave2/wavebuild/wavebuild.go` is intentionally contract-first.
+- It defines interfaces and lightweight orchestration wiring:
+  - Facts collection
+  - Event classification
+  - Planning
+  - Arbitration
+  - Execution
+- It deliberately returns `ErrNotImplemented` when core implementations are not attached.
+
+Hardest-First Next Checklist
+1) Define typed `BatchFacts` schema (hardest, highest leverage)
+- Replace generic maps for critical policy with explicit fields.
+- Include normalized CWD-relative path facts and noise/CHMOD semantics.
+- Include explicit booleans for browser/runtime/build implications.
+
+2) Define canonical `GoalCatalog`
+- Enumerate default terminal goals.
+- Write one precise observable guarantee per goal.
+- Tag each goal `dev/prod/both`.
+
+3) Define `ArbitrationRuleSet` as pure data
+- Mutual exclusion domains.
+- Precedence order per domain.
+- Implication rules (e.g., restart implies hard reload if applicable).
+- Deterministic tie-break policy.
+
+4) Define generic `FrameworkSignal` contract
+- Wave emits generic signal intents only.
+- Framework adapters map those signals to framework-specific mechanisms.
+- Keep signal payload minimal and stable.
+
+5) Define task-graph contract for execution
+- Map terminal goals to `Ensure*` task roots.
+- Define required task input key identity (`GoalExecutionKey` + minimal context).
+- Clarify what must stay planner-level vs task-level.
+
+6) Only after 1-5: implement minimal concrete default components
+- `FactsCollector` implementation.
+- `EventClassifier` implementation.
+- `Planner` implementation.
+- `Arbiter` implementation.
+- `Executor` implementation that uses `kit/tasks`.
+
+Do Not Do
+- Do not re-introduce runtime->buildtime imports.
+- Do not add framework-specific strings/endpoints/names into Wave2 core.
+- Do not expand implementation before contracts in items 1-5 are settled.
+- Do not add transitional compatibility wrappers.
+
+Handoff Start Point For Next Agent
+- Read, in order:
+  1. `wave2/rewrite_tracker.txt`
+  2. `wave2/README.md`
+  3. `wave2/wavebuild/wavebuild.go`
+  4. `wave2/wave.go`
+  5. `wave2/wavefw/wavefw.go`
+- Continue from checklist item #1 (typed `BatchFacts` schema).
