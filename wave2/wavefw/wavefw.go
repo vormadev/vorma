@@ -1,7 +1,7 @@
 // Package wavefw provides the framework-facing adapter API for Wave2.
 //
 // A framework adapter registers event rules and effect task roots against one
-// Wave2 runtime without pushing framework-specific semantics into wave2 or
+// Wave2 build engine without pushing framework-specific semantics into wave2 or
 // wavebuild.
 package wavefw
 
@@ -14,25 +14,25 @@ import (
 	"github.com/vormadev/vorma/wave2/wavebuild"
 )
 
-// RuntimeActionType is one framework-owned runtime action intent.
-type RuntimeActionType string
+// FrameworkRefreshActionType is one framework-owned refresh action intent.
+type FrameworkRefreshActionType string
 
 const (
-	// RuntimeActionTypeRefreshRoutes asks framework runtime to refresh route
+	// FrameworkRefreshActionTypeRefreshRoutes asks framework adapter to refresh route
 	// definition state.
-	RuntimeActionTypeRefreshRoutes RuntimeActionType = "refresh_routes"
-	// RuntimeActionTypeRefreshTemplate asks framework runtime to refresh template
+	FrameworkRefreshActionTypeRefreshRoutes FrameworkRefreshActionType = "refresh_routes"
+	// FrameworkRefreshActionTypeRefreshTemplate asks framework adapter to refresh template
 	// rendering shell state.
-	RuntimeActionTypeRefreshTemplate RuntimeActionType = "refresh_template"
-	// RuntimeActionTypeRefreshPublicFileMap asks framework runtime to refresh
+	FrameworkRefreshActionTypeRefreshTemplate FrameworkRefreshActionType = "refresh_template"
+	// FrameworkRefreshActionTypeRefreshPublicFileMap asks framework adapter to refresh
 	// canonical public file-map state.
-	RuntimeActionTypeRefreshPublicFileMap RuntimeActionType = "refresh_public_file_map"
+	FrameworkRefreshActionTypeRefreshPublicFileMap FrameworkRefreshActionType = "refresh_public_file_map"
 )
 
-// RuntimeAction is one adapter runtime action derived from generic framework
+// FrameworkRefreshAction is one adapter action derived from generic framework
 // signals.
-type RuntimeAction struct {
-	Type RuntimeActionType
+type FrameworkRefreshAction struct {
+	Type FrameworkRefreshActionType
 	// FreshnessToken is forwarded from framework signal freshness metadata for
 	// stale-attempt rejection policy.
 	FreshnessToken string
@@ -44,23 +44,23 @@ type RuntimeAction struct {
 }
 
 // SignalTranslationRule maps one generic framework signal type to one
-// framework runtime action type.
+// framework refresh action type.
 type SignalTranslationRule struct {
 	SignalType wavebuild.FrameworkSignalType
-	ActionType RuntimeActionType
+	ActionType FrameworkRefreshActionType
 }
 
 // SignalTranslator translates generic framework signals to framework-owned
-// runtime actions.
+// refresh actions.
 type SignalTranslator interface {
 	TranslateSignals(
 		signals []wavebuild.FrameworkSignal,
-	) ([]RuntimeAction, error)
+	) ([]FrameworkRefreshAction, error)
 }
 
 // RuleBasedSignalTranslator translates framework signals using pure-data rules.
 type RuleBasedSignalTranslator struct {
-	ruleBySignalType map[wavebuild.FrameworkSignalType]RuntimeActionType
+	ruleBySignalType map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType
 }
 
 // NewRuleBasedSignalTranslator constructs one rule-based signal translator.
@@ -68,7 +68,7 @@ func NewRuleBasedSignalTranslator(
 	rules []SignalTranslationRule,
 ) (*RuleBasedSignalTranslator, error) {
 	ruleBySignalType := make(
-		map[wavebuild.FrameworkSignalType]RuntimeActionType,
+		map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType,
 		len(rules),
 	)
 	for _, rule := range rules {
@@ -90,24 +90,24 @@ func NewRuleBasedSignalTranslator(
 	}, nil
 }
 
-// TranslateSignals translates generic framework signals to framework runtime
+// TranslateSignals translates generic framework signals to framework refresh
 // actions using configured mapping rules.
 func (translator *RuleBasedSignalTranslator) TranslateSignals(
 	signals []wavebuild.FrameworkSignal,
-) ([]RuntimeAction, error) {
+) ([]FrameworkRefreshAction, error) {
 	if translator == nil {
 		return nil, errors.New("wavefw: signal translator is required")
 	}
 	if len(signals) == 0 {
 		return nil, nil
 	}
-	actions := make([]RuntimeAction, 0, len(signals))
+	actions := make([]FrameworkRefreshAction, 0, len(signals))
 	seenActionKey := make(map[string]struct{}, len(signals))
 	for _, signal := range signals {
 		actionType, foundActionType := translator.ruleBySignalType[signal.Type]
 		if !foundActionType {
 			return nil, fmt.Errorf(
-				"wavefw: no runtime action mapping for framework signal type %q",
+				"wavefw: no framework refresh action mapping for framework signal type %q",
 				signal.Type,
 			)
 		}
@@ -118,7 +118,7 @@ func (translator *RuleBasedSignalTranslator) TranslateSignals(
 		seenActionKey[actionKey] = struct{}{}
 		actions = append(
 			actions,
-			RuntimeAction{
+			FrameworkRefreshAction{
 				Type:           actionType,
 				FreshnessToken: signal.FreshnessToken,
 				Trigger:        signal.Trigger,
@@ -132,15 +132,15 @@ func (translator *RuleBasedSignalTranslator) TranslateSignals(
 var canonicalSignalTranslationRules = []SignalTranslationRule{
 	{
 		SignalType: wavebuild.FrameworkSignalTypeRoutesChanged,
-		ActionType: RuntimeActionTypeRefreshRoutes,
+		ActionType: FrameworkRefreshActionTypeRefreshRoutes,
 	},
 	{
 		SignalType: wavebuild.FrameworkSignalTypeTemplateChanged,
-		ActionType: RuntimeActionTypeRefreshTemplate,
+		ActionType: FrameworkRefreshActionTypeRefreshTemplate,
 	},
 	{
 		SignalType: wavebuild.FrameworkSignalTypePublicFileMapChanged,
-		ActionType: RuntimeActionTypeRefreshPublicFileMap,
+		ActionType: FrameworkRefreshActionTypeRefreshPublicFileMap,
 	},
 }
 
@@ -194,11 +194,11 @@ func Register(engine *wavebuild.Engine, adapter Adapter) error {
 }
 
 // TranslateFrameworkSignals converts generic framework signals into
-// framework-owned runtime actions using adapter translation policy.
+// framework-owned refresh actions using adapter translation policy.
 func TranslateFrameworkSignals(
 	adapter Adapter,
 	signals []wavebuild.FrameworkSignal,
-) ([]RuntimeAction, error) {
+) ([]FrameworkRefreshAction, error) {
 	translator := adapter.SignalTranslator
 	if translator == nil {
 		var translatorError error

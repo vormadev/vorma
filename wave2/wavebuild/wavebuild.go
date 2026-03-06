@@ -92,9 +92,9 @@ const (
 	// ConditionPublicFileMapChangedOrRepaired gates actions that should run only
 	// when canonical public file-map artifacts changed or required repair.
 	ConditionPublicFileMapChangedOrRepaired Condition = "public_file_map_changed_or_repaired"
-	// ConditionAppCallbackRequestedRuntimeReload gates app-callback requested
-	// framework runtime refresh effects.
-	ConditionAppCallbackRequestedRuntimeReload Condition = "app_callback_requested_runtime_reload"
+	// ConditionAppCallbackRequestedFrameworkRefresh gates app-callback requested
+	// framework refresh effects.
+	ConditionAppCallbackRequestedFrameworkRefresh Condition = "app_callback_requested_framework_refresh"
 	// ConditionAppCallbackRequestedBrowserInvalidate gates app-callback requested
 	// browser invalidate behavior.
 	ConditionAppCallbackRequestedBrowserInvalidate Condition = "app_callback_requested_browser_invalidate"
@@ -159,7 +159,7 @@ const (
 	// sources and mode.
 	EffectCompileGoBinary EffectID = "compile_go_binary"
 	// EffectRestartAppProcess ensures the running app process uses the latest
-	// compiled/runtime state.
+	// compiled state and configuration.
 	EffectRestartAppProcess EffectID = "restart_app_process"
 	// EffectBuildCriticalCSS ensures critical CSS output is regenerated from
 	// current sources.
@@ -176,13 +176,13 @@ const (
 	// EffectEnsurePublicFileMapArtifacts ensures canonical public file-map
 	// artifacts are current and repaired if needed.
 	EffectEnsurePublicFileMapArtifacts EffectID = "ensure_public_file_map_artifacts"
-	// EffectRequestFrameworkRouteRefresh ensures framework runtime route state is
+	// EffectRequestFrameworkRouteRefresh ensures framework route state is
 	// refreshed for the current generation.
 	EffectRequestFrameworkRouteRefresh EffectID = "request_framework_route_refresh"
-	// EffectRequestFrameworkTemplateRefresh ensures framework runtime template
+	// EffectRequestFrameworkTemplateRefresh ensures framework template
 	// state is refreshed for the current generation.
 	EffectRequestFrameworkTemplateRefresh EffectID = "request_framework_template_refresh"
-	// EffectRequestFrameworkPublicFileMapRefresh ensures framework runtime public
+	// EffectRequestFrameworkPublicFileMapRefresh ensures framework public
 	// file-map state is refreshed for the current generation.
 	EffectRequestFrameworkPublicFileMapRefresh EffectID = "request_framework_public_file_map_refresh"
 	// EffectBrowserCSSHotReload ensures browser CSS is refreshed without full
@@ -191,11 +191,11 @@ const (
 	// EffectBrowserRevalidate ensures framework/client revalidation behavior runs
 	// for the latest generation.
 	EffectBrowserRevalidate EffectID = "browser_revalidate"
-	// EffectBrowserInvalidatePublicAssets ensures browser runtime invalidates
+	// EffectBrowserInvalidatePublicAssets ensures browser invalidates
 	// public asset/file-map state without hard reload when eligible.
 	EffectBrowserInvalidatePublicAssets EffectID = "browser_invalidate_public_assets"
 	// EffectBrowserHardReload ensures browser fully reloads against the latest
-	// app/runtime state.
+	// app state.
 	EffectBrowserHardReload EffectID = "browser_hard_reload"
 	// EffectQueueRetryWaitRestart ensures retry-wait mode receives restart work
 	// intent without executing normal batch work immediately.
@@ -215,7 +215,7 @@ var canonicalGoalCatalog = []GoalSpec{
 	},
 	{
 		Effect:    EffectRestartAppProcess,
-		Guarantee: "Running app process serves current build/runtime state.",
+		Guarantee: "Running app process serves current compiled artifacts and configuration.",
 		AppliesTo: ModeApplicabilityDevOnly,
 	},
 	{
@@ -245,17 +245,17 @@ var canonicalGoalCatalog = []GoalSpec{
 	},
 	{
 		Effect:    EffectRequestFrameworkRouteRefresh,
-		Guarantee: "Framework runtime route state reflects latest route definition sources.",
+		Guarantee: "Framework route state reflects latest route definition sources.",
 		AppliesTo: ModeApplicabilityDevOnly,
 	},
 	{
 		Effect:    EffectRequestFrameworkTemplateRefresh,
-		Guarantee: "Framework runtime template state reflects latest template sources.",
+		Guarantee: "Framework template state reflects latest template sources.",
 		AppliesTo: ModeApplicabilityDevOnly,
 	},
 	{
 		Effect:    EffectRequestFrameworkPublicFileMapRefresh,
-		Guarantee: "Framework runtime public file-map state reflects latest canonical map artifacts.",
+		Guarantee: "Framework public file-map state reflects latest canonical map artifacts.",
 		AppliesTo: ModeApplicabilityDevOnly,
 		DependsOn: []EffectID{
 			EffectEnsurePublicFileMapArtifacts,
@@ -275,7 +275,7 @@ var canonicalGoalCatalog = []GoalSpec{
 	},
 	{
 		Effect:    EffectBrowserInvalidatePublicAssets,
-		Guarantee: "Browser runtime invalidates public asset/file-map state against current artifacts.",
+		Guarantee: "Browser invalidates public asset/file-map state against current artifacts.",
 		AppliesTo: ModeApplicabilityDevOnly,
 		DependsOn: []EffectID{
 			EffectEnsurePublicFileMapArtifacts,
@@ -284,7 +284,7 @@ var canonicalGoalCatalog = []GoalSpec{
 	},
 	{
 		Effect:     EffectBrowserHardReload,
-		Guarantee:  "Browser reloads full document against current app/runtime readiness state.",
+		Guarantee:  "Browser reloads full document against current app readiness state.",
 		AppliesTo:  ModeApplicabilityDevOnly,
 		MutexGroup: MutexGroupBrowserAction,
 	},
@@ -554,7 +554,7 @@ var canonicalEventRuleCatalog = []EventRule{
 		Dev: ModePlan{
 			ConditionalEffects: []ConditionalEffectSet{
 				{
-					Condition: ConditionAppCallbackRequestedRuntimeReload,
+					Condition: ConditionAppCallbackRequestedFrameworkRefresh,
 					Effects:   []EffectID{EffectRequestFrameworkRouteRefresh},
 				},
 				{
@@ -585,7 +585,7 @@ var canonicalEventRuleCatalog = []EventRule{
 		Dev: ModePlan{
 			ConditionalEffects: []ConditionalEffectSet{
 				{
-					Condition: ConditionAppCallbackRequestedRuntimeReload,
+					Condition: ConditionAppCallbackRequestedFrameworkRefresh,
 					Effects:   []EffectID{EffectRequestFrameworkRouteRefresh},
 				},
 				{
@@ -634,22 +634,22 @@ func CanonicalArbitrationRuleSet() ArbitrationRuleSet {
 	return cloneArbitrationRuleSet(canonicalArbitrationRuleSet)
 }
 
-// FrameworkSignalType is one framework-agnostic runtime signal intent.
+// FrameworkSignalType is one framework-agnostic refresh signal intent.
 type FrameworkSignalType string
 
 const (
 	// FrameworkSignalTypeRoutesChanged signals that route-definition state must
-	// refresh in framework runtime.
+	// refresh in framework process state.
 	FrameworkSignalTypeRoutesChanged FrameworkSignalType = "routes_changed"
 	// FrameworkSignalTypeTemplateChanged signals that template/render shell state
-	// must refresh in framework runtime.
+	// must refresh in framework process state.
 	FrameworkSignalTypeTemplateChanged FrameworkSignalType = "template_changed"
 	// FrameworkSignalTypePublicFileMapChanged signals that public-file-map state
-	// must refresh in framework runtime.
+	// must refresh in framework process state.
 	FrameworkSignalTypePublicFileMapChanged FrameworkSignalType = "public_file_map_changed"
 )
 
-// FrameworkSignal is one transport-agnostic framework runtime signal intent.
+// FrameworkSignal is one transport-agnostic framework refresh signal intent.
 type FrameworkSignal struct {
 	Type FrameworkSignalType
 	// FreshnessToken carries staleness-protection identity (for example, build
@@ -702,8 +702,8 @@ type BatchFacts struct {
 	// BuildFacts captures build-time implications inferred for this batch.
 	BuildFacts BatchBuildImplicationFacts
 
-	// RuntimeFacts captures process/runtime refresh implications.
-	RuntimeFacts BatchRuntimeImplicationFacts
+	// DevCycleFacts captures process and framework-refresh implications.
+	DevCycleFacts BatchDevCycleImplicationFacts
 
 	// BrowserFacts captures browser-facing implications before arbitration.
 	BrowserFacts BatchBrowserImplicationFacts
@@ -745,14 +745,14 @@ type BatchBuildImplicationFacts struct {
 	NeedsFullStaticScan        bool
 }
 
-// BatchRuntimeImplicationFacts captures runtime-process and in-process refresh
+// BatchDevCycleImplicationFacts captures process-level and in-process refresh
 // implications for one batch.
-type BatchRuntimeImplicationFacts struct {
+type BatchDevCycleImplicationFacts struct {
 	NeedsAppRestart                    bool
 	NeedsFrameworkRouteRefresh         bool
 	NeedsFrameworkTemplateRefresh      bool
 	NeedsFrameworkPublicFileMapRefresh bool
-	NeedsRuntimeRefreshStalenessGuard  bool
+	NeedsDevCycleRefreshStalenessGuard bool
 	NeedsRetryWaitRestartRequest       bool
 	RetryWaitRestartRequiresGoCompile  bool
 }
@@ -783,7 +783,7 @@ type BatchHookImplicationFacts struct {
 	HasRunOnChangeOnlyWork                bool
 	HasRunOnChangeCommandSuppression      bool
 	HasCallbackOnlyHookWork               bool
-	AppCallbackRequestedRuntimeReload     bool
+	AppCallbackRequestedFrameworkRefresh  bool
 	AppCallbackRequestedBrowserInvalidate bool
 	AppCallbackRequestedBrowserRevalidate bool
 	AppCallbackRequestedBrowserHardReload bool
@@ -934,7 +934,7 @@ func (collector *DefaultFactsCollector) CollectFacts(
 	facts.BuildFacts.NeedsDevServerCycleRestart = hasConfigFileChanged
 	if hasGoSourceChanged {
 		facts.BuildFacts.NeedsGoCompile = true
-		facts.RuntimeFacts.NeedsAppRestart = true
+		facts.DevCycleFacts.NeedsAppRestart = true
 		facts.BrowserFacts.RequestsHardReload = true
 		facts.BrowserFacts.WaitForAppReady = true
 	}
@@ -947,13 +947,13 @@ func (collector *DefaultFactsCollector) CollectFacts(
 		facts.BrowserFacts.RequestsCSSHotReload = true
 	}
 	if hasFrameworkRouteDefinitionChanged {
-		facts.RuntimeFacts.NeedsFrameworkRouteRefresh = true
+		facts.DevCycleFacts.NeedsFrameworkRouteRefresh = true
 		facts.BrowserFacts.RequestsHardReload = true
 		facts.BrowserFacts.WaitForAppReady = true
 		facts.BrowserFacts.WaitForViteReady = true
 	}
 	if hasFrameworkTemplateChanged {
-		facts.RuntimeFacts.NeedsFrameworkTemplateRefresh = true
+		facts.DevCycleFacts.NeedsFrameworkTemplateRefresh = true
 		facts.BrowserFacts.RequestsHardReload = true
 		facts.BrowserFacts.WaitForAppReady = true
 		facts.BrowserFacts.WaitForViteReady = true
@@ -1014,17 +1014,17 @@ func (collector *DefaultFactsCollector) CollectFacts(
 		input.Metadata,
 		"public_file_map_may_need_repair",
 	)
-	facts.RuntimeFacts.NeedsRetryWaitRestartRequest = parseBooleanMetadata(
+	facts.DevCycleFacts.NeedsRetryWaitRestartRequest = parseBooleanMetadata(
 		input.Metadata,
 		string(ConditionWaitingForBuildRetry),
 	)
-	facts.RuntimeFacts.RetryWaitRestartRequiresGoCompile = parseBooleanMetadata(
+	facts.DevCycleFacts.RetryWaitRestartRequiresGoCompile = parseBooleanMetadata(
 		input.Metadata,
 		"retry_wait_restart_requires_go_compile",
 	)
-	facts.HookFacts.AppCallbackRequestedRuntimeReload = parseBooleanMetadata(
+	facts.HookFacts.AppCallbackRequestedFrameworkRefresh = parseBooleanMetadata(
 		input.Metadata,
-		string(ConditionAppCallbackRequestedRuntimeReload),
+		string(ConditionAppCallbackRequestedFrameworkRefresh),
 	)
 	facts.HookFacts.AppCallbackRequestedBrowserInvalidate = parseBooleanMetadata(
 		input.Metadata,
@@ -1091,7 +1091,7 @@ func (classifier *DefaultEventClassifier) ClassifyEvents(
 	if facts.BuildFacts.NeedsDevServerCycleRestart {
 		appendEventType(EventTypeConfigFileChanged)
 	}
-	if facts.BuildFacts.NeedsGoCompile || facts.RuntimeFacts.NeedsAppRestart {
+	if facts.BuildFacts.NeedsGoCompile || facts.DevCycleFacts.NeedsAppRestart {
 		appendEventType(EventTypeGoSourceChanged)
 	}
 	if facts.BuildFacts.NeedsCriticalCSSBuild {
@@ -1106,10 +1106,10 @@ func (classifier *DefaultEventClassifier) ClassifyEvents(
 	if facts.BuildFacts.NeedsPrivateStaticProcess {
 		appendEventType(EventTypePrivateStaticAssetChanged)
 	}
-	if facts.RuntimeFacts.NeedsFrameworkRouteRefresh {
+	if facts.DevCycleFacts.NeedsFrameworkRouteRefresh {
 		appendEventType(EventTypeFrameworkRouteDefinitionChanged)
 	}
-	if facts.RuntimeFacts.NeedsFrameworkTemplateRefresh {
+	if facts.DevCycleFacts.NeedsFrameworkTemplateRefresh {
 		appendEventType(EventTypeFrameworkTemplateChanged)
 	}
 	if facts.HookFacts.AppDefinedWatchCallbackOnlyChanged {
@@ -1301,7 +1301,7 @@ func (executor *DefaultTaskRootExecutor) Execute(
 		return errors.New("wavebuild: default task root executor is required")
 	}
 	if ctx == nil {
-		ctx = context.Background()
+		panic("wavebuild: executor requires non-nil context")
 	}
 	taskExecutionContext := tasks.NewCtx(ctx)
 	generationID := strings.TrimSpace(plan.GenerationID)
@@ -1572,8 +1572,8 @@ func deriveConditionFactsFromBatchFactsAndMetadata(
 	conditionFacts := ConditionFacts{
 		ConditionPublicFileMapChangedOrRepaired: facts.StaticFacts.PublicFileMapMayHaveChanged ||
 			facts.StaticFacts.PublicFileMapMayNeedRepair,
-		ConditionWaitingForBuildRetry:                  facts.RuntimeFacts.NeedsRetryWaitRestartRequest,
-		ConditionAppCallbackRequestedRuntimeReload:     facts.HookFacts.AppCallbackRequestedRuntimeReload,
+		ConditionWaitingForBuildRetry:                  facts.DevCycleFacts.NeedsRetryWaitRestartRequest,
+		ConditionAppCallbackRequestedFrameworkRefresh:  facts.HookFacts.AppCallbackRequestedFrameworkRefresh,
 		ConditionAppCallbackRequestedBrowserInvalidate: facts.HookFacts.AppCallbackRequestedBrowserInvalidate,
 		ConditionAppCallbackRequestedBrowserRevalidate: facts.HookFacts.AppCallbackRequestedBrowserRevalidate,
 		ConditionAppCallbackRequestedBrowserHardReload: facts.HookFacts.AppCallbackRequestedBrowserHardReload,
@@ -1662,12 +1662,12 @@ func deriveHasMeaningfulWorkFromFacts(facts BatchFacts) bool {
 		facts.BuildFacts.NeedsPrivateStaticProcess ||
 		facts.BuildFacts.NeedsChangedPathStaticScan ||
 		facts.BuildFacts.NeedsFullStaticScan ||
-		facts.RuntimeFacts.NeedsAppRestart ||
-		facts.RuntimeFacts.NeedsFrameworkRouteRefresh ||
-		facts.RuntimeFacts.NeedsFrameworkTemplateRefresh ||
-		facts.RuntimeFacts.NeedsFrameworkPublicFileMapRefresh ||
-		facts.RuntimeFacts.NeedsRuntimeRefreshStalenessGuard ||
-		facts.RuntimeFacts.NeedsRetryWaitRestartRequest ||
+		facts.DevCycleFacts.NeedsAppRestart ||
+		facts.DevCycleFacts.NeedsFrameworkRouteRefresh ||
+		facts.DevCycleFacts.NeedsFrameworkTemplateRefresh ||
+		facts.DevCycleFacts.NeedsFrameworkPublicFileMapRefresh ||
+		facts.DevCycleFacts.NeedsDevCycleRefreshStalenessGuard ||
+		facts.DevCycleFacts.NeedsRetryWaitRestartRequest ||
 		facts.BrowserFacts.RequestsHardReload ||
 		facts.BrowserFacts.RequestsPublicAssetInvalidate ||
 		facts.BrowserFacts.RequestsRevalidate ||
@@ -2221,7 +2221,7 @@ func cloneBatchFacts(facts BatchFacts) BatchFacts {
 		ChangeSummary:   facts.ChangeSummary,
 		NoiseFacts:      facts.NoiseFacts,
 		BuildFacts:      facts.BuildFacts,
-		RuntimeFacts:    facts.RuntimeFacts,
+		DevCycleFacts:   facts.DevCycleFacts,
 		BrowserFacts:    facts.BrowserFacts,
 		StaticFacts: BatchStaticImplicationFacts{
 			PublicStaticChangedPathsCWD: append(
@@ -2262,16 +2262,7 @@ func cloneExecutionPlan(plan ExecutionPlan) ExecutionPlan {
 }
 
 func deriveGenerationIDFromRawBatchInput(input RawBatchInput) string {
-	if generationID := strings.TrimSpace(input.GenerationID); generationID != "" {
-		return generationID
-	}
-	if batchID := strings.TrimSpace(input.BatchID); batchID != "" {
-		return batchID
-	}
-	if traceID := strings.TrimSpace(input.TraceID); traceID != "" {
-		return traceID
-	}
-	return ""
+	return strings.TrimSpace(input.GenerationID)
 }
 
 func cloneEffectTaskRoots(

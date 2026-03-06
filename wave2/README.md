@@ -57,6 +57,8 @@ Execution is intentionally last-to-first:
 - `kit/tasks` guarantees:
     - a prereq runs before dependents that call it
     - shared prereqs run once per execution context
+    - shared prerequisite outputs are reused by later callers in the same
+      execution context
     - independent branches run in parallel
 
 This keeps orchestration small and avoids hand-written topo schedulers for most
@@ -85,6 +87,7 @@ Task graph responsibilities:
 
 - dependency ordering
 - dedupe across shared prereqs
+- typed output reuse across shared prereqs
 - parallel execution of independent work
 
 ## Current Direction

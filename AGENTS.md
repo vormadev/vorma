@@ -1,3 +1,10 @@
+## Do Not Write Unnecessarily Defensive Code
+
+Contrary to popular opinion, being overly defensive and liberal in what inputs
+you accept weakens a codebase, not strengthens it. Things that are wrong should
+fail, because that's how you learn you need to fix them. Everything always ends
+up more solid and strong that way.
+
 ## Never Ever Change Commitable Files To Work Around Agent Sandbox Issues
 
 Do not even attempt to run tests or any other commands in your sandbox

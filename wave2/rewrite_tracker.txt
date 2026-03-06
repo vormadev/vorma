@@ -47,9 +47,11 @@ Checklist (Hardest First)
 - Keep task-root dependency coverage validation available on the engine.
 - Fill dependency entries only where first-principles guarantees require prerequisites.
 
-2) Task-context artifact contract
-- Define one typed task execution context contract for shared artifacts/state handoff across goals.
-- Keep this contract runtime-safe and independent from framework-specific transport details.
+2) Task input/output contract
+- Keep plan-level data explicit in typed task inputs.
+- Keep task output sharing in prerequisite task return values and `kit/tasks` result caching.
+- Keep native context usage limited to cancellation/deadline and external call propagation.
+- Keep this contract independent from framework-specific transport details.
 
 3) Wave app-facing API shaping
 - Finalize `wave2/wave.go` app API so developer ergonomics remain simple while delegating orchestration to `wavebuild`.
