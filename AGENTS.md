@@ -114,27 +114,6 @@ user to run it manually.
 
 ## Go Rules
 
-### One Source Code File Per Package
-
-Every package must have precisely one source code file. If it's getting too long
-or burdensome, then it needs to be split into meaningful and well-thought-out
-subpackages (and sub-subpackages, if needed). Packages using different build
-tags in multiple files to accomplish some legitimate goal are exempted (solely
-to the extent necessary to apply such build tags).
-
-When you split packages, do not just create tiny packages with low hanging
-fruit. Choose meaningful lines that make sense to be tested together and are
-logical from an API design perspective.
-
-When appropriate to split up a large file into organized chunks (while keeping
-it a single file), you should add comments using the following shape:
-
-```
-/////////////////////////////////////////////////////////////////////
-/////// Applicable Topic Or Description
-/////////////////////////////////////////////////////////////////////
-```
-
 ### Never Alias Internal Go Package Names
 
 This rule applies to internal packages in this repository. If you find yourself

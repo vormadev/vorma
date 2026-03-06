@@ -2,74 +2,113 @@ Wave2 Rewrite Tracker
 Last updated: 2026-03-05
 
 Purpose
-- Preserve declarative architectural intent and next actions so handoff can continue without re-litigating fundamentals.
+- Preserve a declarative, forward-looking architecture plan so handoff stays aligned without re-litigating fundamentals.
 
 Non-Negotiable Constraints
 - Wave2 runtime/buildtime boundary stays strict.
 - `wave2` runtime-facing package does not import `wave2/wavebuild`.
 - Wave core stays framework-agnostic.
-- Framework-specific behavior stays in adapters or framework-owned packages.
-- Planner/execution model remains minimal: terminal goals + task graph dependencies.
+- Framework-specific behavior stays in framework-owned adapters/packages.
+- Execution model is phased:
+- `events -> build -> backend_settling -> frontend_settling`.
+- Each phase selects terminal goals, then executes those roots in `kit/tasks`.
+- Phase boundaries enforce cross-phase ordering.
+- Inside each phase, sequencing and parallelism are owned only by `kit/tasks` task dependencies.
+- Do not introduce a second DAG/topological scheduler outside `kit/tasks`.
 
 Package Surfaces
 - `wave2/wave.go`
   - App-facing runtime API surface.
 - `wave2/wavebuild/wavebuild.go`
-  - Build/dev orchestration contracts and default planner/arbiter/executor wiring.
+  - Build/dev phase contracts and phased-runner orchestration contract.
 - `wave2/wavefw/wavefw.go`
-  - Framework-facing adapter registration and signal translation policy.
+  - Framework-facing signal translation policy.
 
-Canonical Planning Model
-- Input reduction:
-  - Raw batch -> typed facts (`BatchFacts`) -> normalized events (`EventType`) -> terminal goals (`EffectID`).
-  - CSS event classes remain strictly `critical_css_source_changed` and `normal_css_source_changed`; both may co-occur, and no shared-CSS pseudo class exists.
-  - Config/public/private-static semantics are provided by configuration-aware upstream metadata; Wave2 does not infer those categories from path naming conventions.
-  - Default facts collection does not infer semantic event classes from project-shape path patterns.
-- Policy:
-  - Event rules are pure data (`EventRule` + `ConditionFacts`).
-  - Arbitration is pure data (`ArbitrationRuleSet`).
-- Output:
-  - `ExecutionPlan` carries terminal goals only (`TerminalGoals`), not ordered step groups.
-- Execution:
-  - Executor fans out terminal goal task roots in one `kit/tasks` context.
-  - Dependency sequencing and parallelism are owned by task dependencies, not orchestrator step ordering.
+Canonical Batch Pipeline
+- Phase 1: Events
+- Raw watcher batch is reduced to typed facts and normalized event categories.
+- CHMOD policy remains explicit in event classification (empty-file CHMOD can be actionable; non-empty CHMOD-only noise is suppressible).
+- Phase 2: Build
+- Planner reduces phase-1 output to build terminal goals.
+- Build roots run in `kit/tasks` and declare prerequisites by calling prerequisite tasks.
+- Phase 3: Backend Settling
+- Planner reduces phase-2 outcomes to backend-settling terminal goals.
+- Backend settling covers process/framework readiness concerns.
+- Phase 4: Frontend Settling
+- Planner reduces phase-3 outcomes to browser-settling terminal goals.
+- Frontend settling covers CSS hot updates, invalidate/revalidate, hard reload, or no browser action.
 
-Identity/Freshness Policy
-- Generation identity is explicit and typed.
-- `PlannerInput`, `BatchInput`, `RawBatchInput`, and `ExecutionPlan` carry `GenerationID`.
-- Framework signal freshness tokens derive from `ExecutionPlan.GenerationID`.
-- Goal execution keys derive from plan mode + generation + effect id.
+Parity-Critical Observable Goals
+- Batches that contain only editor/lock/churn noise produce no rebuild, restart, framework refresh, or browser refresh.
+- Real content edits are never dropped, including editor edge cases where empty-content transitions surface as CHMOD-like event shapes.
+- Generated output changes never create self-triggered rebuild/reload loops.
+- No-op config saves (including path-alias and atomic-save shapes) produce no visible action; semantic config changes produce one coherent config-restart cycle.
+- CSS source changes refresh styles without full document reload when safe.
+- Public static changes update served asset mappings and canonical public file map, including removal of stale mappings, and propagate the update to active dev runtime/browser state.
+- Private static, route-definition, and template changes converge to coherent new output state without mixed-generation responses.
+- App-defined watch behavior can request explicit outcomes (restart, recompile, revalidate, invalidate, hard reload, framework refresh), and the batch resolves them deterministically.
+- During build-failure/retry windows, user-visible behavior remains stable and resumes cleanly after a valid fix.
+- Stale deferred reload attempts are rejected instead of mutating newer runtime state.
+- Dev-only reload routes are unavailable in prod and enforce endpoint method contracts.
+- Concurrent request/reload traffic never serves mixed old/new build artifact sets in a single response.
+- Dev/prod integration behavior remains stable across supported UI adapters.
+
+Task Context Contract
+- One batch-scoped `tasks.Ctx` is shared across all four phases.
+- Native `context.Context` provides cancellation/deadline and is wrapped exactly once per batch.
+- Task identity and output reuse are owned by `kit/tasks`; phase planners do not duplicate that logic.
+- Phase task input keys stay comparable for `kit/tasks` identity semantics.
+
+Framework Signal Contract
+- Framework signal vocabulary stays observable and transport-agnostic.
+- Signal payload shape remains stable:
+- `type`, `freshness_token`, `trigger`, `metadata`.
+- Signal translation remains framework-owned in `wave2/wavefw`.
 
 Checklist (Hardest First)
-1) Canonical task-root dependency map
-- Keep one declarative mapping from each canonical terminal goal to prerequisite ensure-goals.
-- Keep dependency ownership in task graph, not planner ordering fields.
-- Keep task-root dependency coverage validation available on the engine.
-- Fill dependency entries only where first-principles guarantees require prerequisites.
+1) Define final phase-1 event/fact schema
+- Lock the minimal event/fact model required to decide observable outcomes deterministically.
+- Ensure the model can represent noise-only batches, semantic config changes, and actionable content edits.
+- Keep phase-1 boundary directly on `EventsPhaseInput` -> `EventsPhaseFacts` with no scenario-shaped external input.
 
-2) Task input/output contract
-- Keep plan-level data explicit in typed task inputs.
-- Keep task output sharing in prerequisite task return values and `kit/tasks` result caching.
-- Keep native context usage limited to cancellation/deadline and external call propagation.
-- Keep this contract independent from framework-specific transport details.
+2) Define final phase planners as pure reductions
+- Keep planners pure and deterministic.
+- Keep planner output as terminal goals only (per phase).
+- Encode build-retry gating and browser action precedence as explicit planner policy.
+- Keep each phase planner backed by one pure reduction helper over prior-phase facts/goals.
 
-3) Wave app-facing API shaping
-- Finalize `wave2/wave.go` app API so developer ergonomics remain simple while delegating orchestration to `wavebuild`.
-- Keep options explicit and minimize convenience cruft.
+3) Define final app-requested action reduction model
+- Preserve deterministic reduction when app-defined watch behavior requests outcomes that overlap or conflict with implicit file-driven outcomes.
 
-4) Framework signal/action policy tightening
-- Keep `wavefw` translation declarative and minimal.
-- Ensure signal/action vocabulary stays purely observable and transport-agnostic.
+4) Define final static-processing policy
+- Preserve canonical public-filemap correctness and stale-output cleanup.
+- Preserve minimal-work execution decisions while keeping output correctness unchanged.
+
+5) Define final framework-facing phase boundaries
+- Keep Wave2 phase outputs framework-agnostic.
+- Keep framework-owned translation and transport in `wavefw` or framework packages.
+- Preserve stale-guarded deferred runtime refresh behavior through stable generation/freshness identity fields.
+
+6) Keep phase contract names production-neutral
+- Keep phase contract symbols and comments free of temporary naming.
+
+7) Replace stub task bodies with real side effects incrementally
+- Keep task graph topology stable while replacing stubs.
+- Preserve idempotent ensure-style task semantics.
 
 Do Not Do
 - Do not re-introduce runtime->buildtime imports.
 - Do not encode framework-specific endpoint names or file conventions in Wave2 core.
 - Do not add compat/transitional wrappers.
-- Do not re-introduce planner-level execution ordering layers.
+- Do not add planner-level dependency graphs that duplicate `kit/tasks`.
+- Do not add external DAG/topological execution engines.
 
 Handoff Read Order
 1. `wave2/rewrite_tracker.txt`
-2. `wave2/README.md`
-3. `wave2/wavebuild/wavebuild.go`
-4. `wave2/wave.go`
-5. `wave2/wavefw/wavefw.go`
+2. `wave2/wavebuild/wavebuild.go`
+3. `wave2/wavebuild/phase_1.go`
+4. `wave2/wavebuild/phase_2.go`
+5. `wave2/wavebuild/phase_3.go`
+6. `wave2/wavebuild/phase_4.go`
+7. `wave2/wavefw/wavefw.go`
+8. `wave2/wave.go`
