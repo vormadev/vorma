@@ -48,13 +48,15 @@ func (traceRecorder *PhaseTaskTraceRecorder) SnapshotOrderedTaskNames() []string
 type PhaseBatchInput struct {
 	Mode         Mode
 	GenerationID string
+	Execution    *PhaseExecutionScope
 	Trace        *PhaseTaskTraceRecorder
 }
 
 // EventsPhaseBatchInput is the phase-1 input contract for one reduced batch.
 type EventsPhaseBatchInput struct {
-	Events *EventsPhaseInput
-	Trace  *PhaseTaskTraceRecorder
+	Events    *EventsPhaseInput
+	Execution *PhaseExecutionScope
+	Trace     *PhaseTaskTraceRecorder
 }
 
 // Phase1EventFacts are event-phase derived facts used by later phases.
@@ -277,9 +279,16 @@ var Phase1CollectBatchEnvelopeTask = tasks.NewTask(
 		if input.Events == nil {
 			return PhaseBatchInput{}, errors.New("wavebuild: events phase input is required")
 		}
+		if input.Execution == nil {
+			return PhaseBatchInput{}, errPhaseExecutionScopeRequired
+		}
+		if input.Execution.EffectExecutor == nil {
+			return PhaseBatchInput{}, errPhaseEffectExecutorRequired
+		}
 		return PhaseBatchInput{
 			Mode:         input.Events.Mode,
 			GenerationID: strings.TrimSpace(input.Events.GenerationID),
+			Execution:    input.Execution,
 			Trace:        input.Trace,
 		}, nil
 	},

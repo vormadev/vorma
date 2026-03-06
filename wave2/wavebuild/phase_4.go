@@ -97,7 +97,7 @@ var Phase4EnsureBrowserClientSessionReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase4EnsureCSSHotReloadPayloadReadyTask stubs CSS payload readiness.
+// Phase4EnsureCSSHotReloadPayloadReadyTask prepares CSS payload readiness.
 var Phase4EnsureCSSHotReloadPayloadReadyTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -115,7 +115,7 @@ var Phase4EnsureCSSHotReloadPayloadReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase4EnsureInvalidatePayloadReadyTask stubs invalidate payload readiness.
+// Phase4EnsureInvalidatePayloadReadyTask prepares invalidate payload readiness.
 var Phase4EnsureInvalidatePayloadReadyTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -133,7 +133,7 @@ var Phase4EnsureInvalidatePayloadReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase4EnsureRevalidatePayloadReadyTask stubs revalidate payload readiness.
+// Phase4EnsureRevalidatePayloadReadyTask prepares revalidate payload readiness.
 var Phase4EnsureRevalidatePayloadReadyTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -151,7 +151,7 @@ var Phase4EnsureRevalidatePayloadReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase4EnsureHardReloadPayloadReadyTask stubs hard-reload payload readiness.
+// Phase4EnsureHardReloadPayloadReadyTask prepares hard-reload payload readiness.
 var Phase4EnsureHardReloadPayloadReadyTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -169,7 +169,7 @@ var Phase4EnsureHardReloadPayloadReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase4BroadcastCSSHotReloadTask stubs CSS hot reload.
+// Phase4BroadcastCSSHotReloadTask executes CSS hot reload broadcast.
 var Phase4BroadcastCSSHotReloadTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -183,11 +183,18 @@ var Phase4BroadcastCSSHotReloadTask = tasks.NewTask(
 		if payloadError != nil {
 			return struct{}{}, payloadError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDFrontendBroadcastCSSHotReload,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase4BroadcastInvalidateAssetsTask stubs browser asset invalidation.
+// Phase4BroadcastInvalidateAssetsTask executes browser asset invalidation broadcast.
 var Phase4BroadcastInvalidateAssetsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -201,11 +208,18 @@ var Phase4BroadcastInvalidateAssetsTask = tasks.NewTask(
 		if payloadError != nil {
 			return struct{}{}, payloadError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDFrontendBroadcastInvalidateAssets,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase4BroadcastRevalidateTask stubs browser revalidation.
+// Phase4BroadcastRevalidateTask executes browser revalidation broadcast.
 var Phase4BroadcastRevalidateTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -219,11 +233,18 @@ var Phase4BroadcastRevalidateTask = tasks.NewTask(
 		if payloadError != nil {
 			return struct{}{}, payloadError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDFrontendBroadcastRevalidate,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase4BroadcastHardReloadTask stubs browser hard reload.
+// Phase4BroadcastHardReloadTask executes browser hard reload broadcast.
 var Phase4BroadcastHardReloadTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -237,11 +258,18 @@ var Phase4BroadcastHardReloadTask = tasks.NewTask(
 		if payloadError != nil {
 			return struct{}{}, payloadError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDFrontendBroadcastHardReload,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase4PublishNoReloadNeededNoticeTask stubs no-reload user messaging.
+// Phase4PublishNoReloadNeededNoticeTask executes no-reload user messaging.
 var Phase4PublishNoReloadNeededNoticeTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -254,6 +282,13 @@ var Phase4PublishNoReloadNeededNoticeTask = tasks.NewTask(
 		)
 		if browserChannelError != nil {
 			return struct{}{}, browserChannelError
+		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDFrontendPublishNoReloadNeededNotice,
+		); effectError != nil {
+			return struct{}{}, effectError
 		}
 		return struct{}{}, nil
 	},
@@ -295,7 +330,7 @@ func reducePhase4TerminalFrontendAction(
 	return Phase4TerminalActionNone
 }
 
-// Phase4FinalizeBatchSettlingTraceTask stubs final frontend-settling completion.
+// Phase4FinalizeBatchSettlingTraceTask finalizes frontend-settling completion.
 var Phase4FinalizeBatchSettlingTraceTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,

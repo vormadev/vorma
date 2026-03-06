@@ -237,6 +237,94 @@ type FrameworkSignal struct {
 	Metadata map[string]string
 }
 
+// PhaseEffectID identifies one terminal side effect emitted by a phase task.
+type PhaseEffectID string
+
+const (
+	// PhaseEffectIDBuildCompileGoBinary compiles the Go binary.
+	PhaseEffectIDBuildCompileGoBinary PhaseEffectID = "build_compile_go_binary"
+	// PhaseEffectIDBuildCriticalCSS builds critical CSS artifacts.
+	PhaseEffectIDBuildCriticalCSS PhaseEffectID = "build_critical_css"
+	// PhaseEffectIDBuildNormalCSS builds normal CSS artifacts.
+	PhaseEffectIDBuildNormalCSS PhaseEffectID = "build_normal_css"
+	// PhaseEffectIDBuildProcessPublicStaticAssets processes public static assets.
+	PhaseEffectIDBuildProcessPublicStaticAssets PhaseEffectID = "build_process_public_static_assets"
+	// PhaseEffectIDBuildCleanupStalePublicStaticOutputs removes stale public static outputs.
+	PhaseEffectIDBuildCleanupStalePublicStaticOutputs PhaseEffectID = "build_cleanup_stale_public_static_outputs"
+	// PhaseEffectIDBuildProcessPrivateStaticAssets processes private static assets.
+	PhaseEffectIDBuildProcessPrivateStaticAssets PhaseEffectID = "build_process_private_static_assets"
+	// PhaseEffectIDBuildGeneratePublicFileMapArtifacts regenerates public file-map artifacts.
+	PhaseEffectIDBuildGeneratePublicFileMapArtifacts PhaseEffectID = "build_generate_public_filemap_artifacts"
+	// PhaseEffectIDBuildValidateOutputs validates output coherence.
+	PhaseEffectIDBuildValidateOutputs PhaseEffectID = "build_validate_outputs"
+	// PhaseEffectIDBackendApplyDevServerRestart applies a dev-server restart cycle.
+	PhaseEffectIDBackendApplyDevServerRestart PhaseEffectID = "backend_apply_devserver_restart"
+	// PhaseEffectIDBackendQueueRetryWaitRestart queues retry-wait restart behavior.
+	PhaseEffectIDBackendQueueRetryWaitRestart PhaseEffectID = "backend_queue_retry_wait_restart"
+	// PhaseEffectIDBackendRestartAppProcess restarts the app process.
+	PhaseEffectIDBackendRestartAppProcess PhaseEffectID = "backend_restart_app_process"
+	// PhaseEffectIDBackendRestartViteProcess restarts the Vite process.
+	PhaseEffectIDBackendRestartViteProcess PhaseEffectID = "backend_restart_vite_process"
+	// PhaseEffectIDBackendRefreshFrameworkRoute refreshes framework routes.
+	PhaseEffectIDBackendRefreshFrameworkRoute PhaseEffectID = "backend_refresh_framework_route"
+	// PhaseEffectIDBackendRefreshFrameworkTemplate refreshes framework template state.
+	PhaseEffectIDBackendRefreshFrameworkTemplate PhaseEffectID = "backend_refresh_framework_template"
+	// PhaseEffectIDBackendRefreshFrameworkPublicFileMap refreshes framework public file-map state.
+	PhaseEffectIDBackendRefreshFrameworkPublicFileMap PhaseEffectID = "backend_refresh_framework_public_filemap"
+	// PhaseEffectIDBackendAwaitReadiness waits for backend readiness.
+	PhaseEffectIDBackendAwaitReadiness PhaseEffectID = "backend_await_readiness"
+	// PhaseEffectIDFrontendBroadcastCSSHotReload broadcasts CSS hot reload.
+	PhaseEffectIDFrontendBroadcastCSSHotReload PhaseEffectID = "frontend_broadcast_css_hotreload"
+	// PhaseEffectIDFrontendBroadcastInvalidateAssets broadcasts browser asset invalidation.
+	PhaseEffectIDFrontendBroadcastInvalidateAssets PhaseEffectID = "frontend_broadcast_invalidate_assets"
+	// PhaseEffectIDFrontendBroadcastRevalidate broadcasts browser revalidation.
+	PhaseEffectIDFrontendBroadcastRevalidate PhaseEffectID = "frontend_broadcast_revalidate"
+	// PhaseEffectIDFrontendBroadcastHardReload broadcasts browser hard reload.
+	PhaseEffectIDFrontendBroadcastHardReload PhaseEffectID = "frontend_broadcast_hard_reload"
+	// PhaseEffectIDFrontendPublishNoReloadNeededNotice publishes no-reload messaging.
+	PhaseEffectIDFrontendPublishNoReloadNeededNotice PhaseEffectID = "frontend_publish_no_reload_needed_notice"
+)
+
+// PhaseEffectRequest carries one terminal effect execution request.
+type PhaseEffectRequest struct {
+	EffectID PhaseEffectID
+
+	Mode         Mode
+	GenerationID string
+}
+
+// PhaseEffectExecutor executes terminal effect requests emitted by phase tasks.
+type PhaseEffectExecutor interface {
+	ExecutePhaseEffect(
+		nativeContext context.Context,
+		request PhaseEffectRequest,
+	) error
+}
+
+// NoopPhaseEffectExecutor is an explicit no-op effect executor for design-time wiring.
+type NoopPhaseEffectExecutor struct{}
+
+// ExecutePhaseEffect implements PhaseEffectExecutor with no-op behavior.
+func (NoopPhaseEffectExecutor) ExecutePhaseEffect(
+	nativeContext context.Context,
+	request PhaseEffectRequest,
+) error {
+	return nil
+}
+
+// PhaseExecutionScope carries execution adapters needed by terminal phase tasks.
+type PhaseExecutionScope struct {
+	EffectExecutor PhaseEffectExecutor
+}
+
+// NewNoopPhaseExecutionScope builds an explicit no-op execution scope for
+// design-time graph runs.
+func NewNoopPhaseExecutionScope() *PhaseExecutionScope {
+	return &PhaseExecutionScope{
+		EffectExecutor: NoopPhaseEffectExecutor{},
+	}
+}
+
 // FrameworkSignalsFromBackendSettlingGoals reduces backend-settling goals into
 // framework-agnostic signals for framework adapter handoff.
 func FrameworkSignalsFromBackendSettlingGoals(
@@ -390,6 +478,8 @@ var (
 	errBuildPhaseRunnerRequired            = errors.New("wavebuild: build phase runner is required")
 	errBackendSettlingPhaseRunnerRequired  = errors.New("wavebuild: backend settling phase runner is required")
 	errFrontendSettlingPhaseRunnerRequired = errors.New("wavebuild: frontend settling phase runner is required")
+	errPhaseExecutionScopeRequired         = errors.New("wavebuild: phase execution scope is required")
+	errPhaseEffectExecutorRequired         = errors.New("wavebuild: phase effect executor is required")
 )
 
 // NewFourPhaseRunner constructs one phased runner from explicit phase runners.
@@ -447,12 +537,19 @@ func (runner *FourPhaseRunner) Run(
 	if input.Events == nil {
 		return FourPhaseRunResult{}, errors.New("wavebuild: events phase input is required")
 	}
+	if input.Execution == nil {
+		return FourPhaseRunResult{}, errPhaseExecutionScopeRequired
+	}
+	if input.Execution.EffectExecutor == nil {
+		return FourPhaseRunResult{}, errPhaseEffectExecutorRequired
+	}
 	if input.Trace == nil {
 		input.Trace = &PhaseTaskTraceRecorder{}
 	}
 	phaseBatchInput := PhaseBatchInput{
 		Mode:         input.Events.Mode,
 		GenerationID: strings.TrimSpace(input.Events.GenerationID),
+		Execution:    input.Execution,
 		Trace:        input.Trace,
 	}
 
@@ -586,4 +683,28 @@ func reduceAppRequestedOutcomes(
 		reducedOutcomes.RequestBrowserRevalidate = false
 	}
 	return reducedOutcomes
+}
+
+func executePhaseEffect(
+	taskContext *tasks.Ctx,
+	batchInput PhaseBatchInput,
+	effectID PhaseEffectID,
+) error {
+	if taskContext == nil {
+		return errors.New("wavebuild: task context is required")
+	}
+	if batchInput.Execution == nil {
+		return errPhaseExecutionScopeRequired
+	}
+	if batchInput.Execution.EffectExecutor == nil {
+		return errPhaseEffectExecutorRequired
+	}
+	return batchInput.Execution.EffectExecutor.ExecutePhaseEffect(
+		taskContext.NativeContext(),
+		PhaseEffectRequest{
+			EffectID:     effectID,
+			Mode:         batchInput.Mode,
+			GenerationID: batchInput.GenerationID,
+		},
+	)
 }

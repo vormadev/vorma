@@ -165,7 +165,7 @@ var Phase2EnsurePublicFileMapPipelineReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase2BuildGoBinaryTask stubs Go compilation.
+// Phase2BuildGoBinaryTask executes Go compilation.
 var Phase2BuildGoBinaryTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -186,11 +186,18 @@ var Phase2BuildGoBinaryTask = tasks.NewTask(
 		if outputDirectoryError != nil {
 			return struct{}{}, outputDirectoryError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildCompileGoBinary,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase2BuildCriticalCSSTask stubs critical CSS compilation.
+// Phase2BuildCriticalCSSTask executes critical CSS compilation.
 var Phase2BuildCriticalCSSTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -211,11 +218,18 @@ var Phase2BuildCriticalCSSTask = tasks.NewTask(
 		if outputDirectoryError != nil {
 			return struct{}{}, outputDirectoryError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildCriticalCSS,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase2BuildNormalCSSTask stubs normal CSS compilation.
+// Phase2BuildNormalCSSTask executes normal CSS compilation.
 var Phase2BuildNormalCSSTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -236,11 +250,18 @@ var Phase2BuildNormalCSSTask = tasks.NewTask(
 		if outputDirectoryError != nil {
 			return struct{}{}, outputDirectoryError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildNormalCSS,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase2ProcessPublicStaticAssetsTask stubs public static processing.
+// Phase2ProcessPublicStaticAssetsTask executes public static processing.
 var Phase2ProcessPublicStaticAssetsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -261,11 +282,18 @@ var Phase2ProcessPublicStaticAssetsTask = tasks.NewTask(
 		if outputDirectoryError != nil {
 			return struct{}{}, outputDirectoryError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildProcessPublicStaticAssets,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase2CleanupStalePublicStaticOutputsTask stubs stale public-static cleanup.
+// Phase2CleanupStalePublicStaticOutputsTask executes stale public-static cleanup.
 var Phase2CleanupStalePublicStaticOutputsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -286,11 +314,18 @@ var Phase2CleanupStalePublicStaticOutputsTask = tasks.NewTask(
 		if outputDirectoryError != nil {
 			return struct{}{}, outputDirectoryError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildCleanupStalePublicStaticOutputs,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase2ProcessPrivateStaticAssetsTask stubs private static processing.
+// Phase2ProcessPrivateStaticAssetsTask executes private static processing.
 var Phase2ProcessPrivateStaticAssetsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -311,11 +346,18 @@ var Phase2ProcessPrivateStaticAssetsTask = tasks.NewTask(
 		if outputDirectoryError != nil {
 			return struct{}{}, outputDirectoryError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildProcessPrivateStaticAssets,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase2GeneratePublicFileMapArtifactsTask stubs public file-map generation.
+// Phase2GeneratePublicFileMapArtifactsTask executes public file-map generation.
 var Phase2GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -342,6 +384,13 @@ var Phase2GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		)
 		if staleCleanupError != nil {
 			return struct{}{}, staleCleanupError
+		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildGeneratePublicFileMapArtifacts,
+		); effectError != nil {
+			return struct{}{}, effectError
 		}
 		return struct{}{}, nil
 	},
@@ -405,6 +454,13 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 		}
 		if runParallelError := taskContext.RunParallel(boundBuildTasks...); runParallelError != nil {
 			return struct{}{}, runParallelError
+		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBuildValidateOutputs,
+		); effectError != nil {
+			return struct{}{}, effectError
 		}
 		return struct{}{}, nil
 	},

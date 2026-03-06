@@ -58,6 +58,7 @@ Task Context Contract
 - Native `context.Context` provides cancellation/deadline and is wrapped exactly once per batch.
 - Task identity and output reuse are owned by `kit/tasks`; phase planners do not duplicate that logic.
 - Phase task input keys stay comparable for `kit/tasks` identity semantics.
+- Batch execution scope carries a required `PhaseEffectExecutor` for terminal side effects.
 
 Framework Signal Contract
 - Framework signal vocabulary stays observable and transport-agnostic.
@@ -98,6 +99,7 @@ Checklist (Hardest First)
 7) Replace stub task bodies with real side effects incrementally
 - Keep task graph topology stable while replacing stubs.
 - Preserve idempotent ensure-style task semantics.
+- Route terminal phase tasks through a single `PhaseEffectExecutor` contract keyed by explicit `PhaseEffectID` values.
 
 Do Not Do
 - Do not re-introduce runtime->buildtime imports.

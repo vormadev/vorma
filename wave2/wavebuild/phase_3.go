@@ -111,7 +111,7 @@ var Phase3EnsureFrameworkBridgeReadyTask = tasks.NewTask(
 	},
 )
 
-// Phase3ApplyDevServerRestartTask stubs dev-server restart.
+// Phase3ApplyDevServerRestartTask executes dev-server restart.
 var Phase3ApplyDevServerRestartTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -139,11 +139,18 @@ var Phase3ApplyDevServerRestartTask = tasks.NewTask(
 		if viteSupervisorError != nil {
 			return struct{}{}, viteSupervisorError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendApplyDevServerRestart,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3QueueRetryWaitRestartTask stubs queued retry-wait restart request handling.
+// Phase3QueueRetryWaitRestartTask executes queued retry-wait restart handling.
 var Phase3QueueRetryWaitRestartTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -157,11 +164,18 @@ var Phase3QueueRetryWaitRestartTask = tasks.NewTask(
 		if lifecycleError != nil {
 			return struct{}{}, lifecycleError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendQueueRetryWaitRestart,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3RestartAppProcessTask stubs app process restart.
+// Phase3RestartAppProcessTask executes app process restart.
 var Phase3RestartAppProcessTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -175,11 +189,18 @@ var Phase3RestartAppProcessTask = tasks.NewTask(
 		if appSupervisorError != nil {
 			return struct{}{}, appSupervisorError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendRestartAppProcess,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3RestartViteProcessTask stubs Vite process restart.
+// Phase3RestartViteProcessTask executes Vite process restart.
 var Phase3RestartViteProcessTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -193,11 +214,18 @@ var Phase3RestartViteProcessTask = tasks.NewTask(
 		if viteSupervisorError != nil {
 			return struct{}{}, viteSupervisorError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendRestartViteProcess,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3RefreshFrameworkRouteTask stubs framework route refresh.
+// Phase3RefreshFrameworkRouteTask executes framework route refresh.
 var Phase3RefreshFrameworkRouteTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -211,11 +239,18 @@ var Phase3RefreshFrameworkRouteTask = tasks.NewTask(
 		if frameworkBridgeError != nil {
 			return struct{}{}, frameworkBridgeError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendRefreshFrameworkRoute,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3RefreshFrameworkTemplateTask stubs framework template refresh.
+// Phase3RefreshFrameworkTemplateTask executes framework template refresh.
 var Phase3RefreshFrameworkTemplateTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -229,11 +264,18 @@ var Phase3RefreshFrameworkTemplateTask = tasks.NewTask(
 		if frameworkBridgeError != nil {
 			return struct{}{}, frameworkBridgeError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendRefreshFrameworkTemplate,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3RefreshFrameworkPublicFileMapTask stubs framework public-file-map refresh.
+// Phase3RefreshFrameworkPublicFileMapTask executes framework public-file-map refresh.
 var Phase3RefreshFrameworkPublicFileMapTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -247,11 +289,18 @@ var Phase3RefreshFrameworkPublicFileMapTask = tasks.NewTask(
 		if frameworkBridgeError != nil {
 			return struct{}{}, frameworkBridgeError
 		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendRefreshFrameworkPublicFileMap,
+		); effectError != nil {
+			return struct{}{}, effectError
+		}
 		return struct{}{}, nil
 	},
 )
 
-// Phase3AwaitBackendReadinessTask stubs backend readiness wait.
+// Phase3AwaitBackendReadinessTask executes backend readiness wait.
 var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
@@ -298,6 +347,13 @@ var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 		}
 		if runParallelError := taskContext.RunParallel(backendSettlingTasks...); runParallelError != nil {
 			return struct{}{}, runParallelError
+		}
+		if effectError := executePhaseEffect(
+			taskContext,
+			input.Batch,
+			PhaseEffectIDBackendAwaitReadiness,
+		); effectError != nil {
+			return struct{}{}, effectError
 		}
 		return struct{}{}, nil
 	},
