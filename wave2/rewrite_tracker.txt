@@ -54,12 +54,13 @@ Parity-Critical Observable Goals
 - Dev/prod integration behavior remains stable across supported UI adapters.
 
 Task Context Contract
-- One batch-scoped `tasks.Ctx` is shared across all four phases.
+- One batch-scoped `tasks.Ctx` is shared across all executed phases in a batch.
 - Native `context.Context` provides cancellation/deadline and is wrapped exactly once per batch.
 - Task identity and output reuse are owned by `kit/tasks`; phase planners do not duplicate that logic.
 - Phase task input keys stay comparable for `kit/tasks` identity semantics.
 - Batch execution scope carries a required `PhaseEffectExecutor` for terminal side effects.
 - Events batch constructors keep execution scope explicit while minimizing invocation boilerplate.
+- Visibility stays out of core phase contracts: use plain runtime logging, and use stable `__WAVE_INTERNAL_TEST_MODE=1` task-name logging with early-return for task-selection tests.
 
 Framework Signal Contract
 - Framework signal vocabulary stays observable and transport-agnostic.
@@ -110,6 +111,7 @@ Do Not Do
 - Do not add compat/transitional wrappers.
 - Do not add planner-level dependency graphs that duplicate `kit/tasks`.
 - Do not add external DAG/topological execution engines.
+- Do not add dedicated observability/debug plumbing (snapshot/trace/recorder APIs) to Wave2 core contracts.
 
 Handoff Read Order
 1. `wave2/rewrite_tracker.txt`

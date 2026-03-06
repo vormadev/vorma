@@ -144,7 +144,9 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 	}
 	normalizedGenerationID := strings.TrimSpace(input.GenerationID)
 	if normalizedGenerationID == "" {
-		return EventsPhaseFacts{}, errors.New("wavebuild: generation id is required")
+		return EventsPhaseFacts{}, errors.New(
+			"wavebuild: generation id is required",
+		)
 	}
 
 	changedPathSet := make(map[string]struct{}, len(input.Events))
@@ -179,7 +181,8 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 		}
 		hasNoiseOnlyEvents = false
 
-		if rawEvent.Type == EventTypeConfigFileChanged && rawEvent.NoOpConfigMutation {
+		if rawEvent.Type == EventTypeConfigFileChanged &&
+			rawEvent.NoOpConfigMutation {
 			hasNoOpConfigMutation = true
 			continue
 		}
@@ -213,8 +216,10 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 		HasNoiseOnlyEvents:      hasNoiseOnlyEvents && !hasNoOpConfigMutation,
 		HasNoOpConfigMutation:   hasNoOpConfigMutation,
 		HasSemanticConfigChange: hasSemanticConfigChange,
-		AppRequestedOutcomes:    reduceAppRequestedOutcomes(input.AppRequestedOutcomes),
-		WaitingForBuildRetry:    input.WaitingForBuildRetry,
+		AppRequestedOutcomes: reduceAppRequestedOutcomes(
+			input.AppRequestedOutcomes,
+		),
+		WaitingForBuildRetry: input.WaitingForBuildRetry,
 	}, nil
 }
 
@@ -336,17 +341,14 @@ func NewNoopPhaseExecutionScope() *PhaseExecutionScope {
 	return NewPhaseExecutionScope(NoopPhaseEffectExecutor{})
 }
 
-// NewEventsPhaseBatchInput wraps phase-1 events input with explicit execution
-// scope and optional task trace recorder.
+// NewEventsPhaseBatchInput wraps phase-1 events input with explicit execution scope.
 func NewEventsPhaseBatchInput(
 	events EventsPhaseInput,
 	execution *PhaseExecutionScope,
-	trace *PhaseTaskTraceRecorder,
 ) EventsPhaseBatchInput {
 	return EventsPhaseBatchInput{
 		Events:    &events,
 		Execution: execution,
-		Trace:     trace,
 	}
 }
 
@@ -358,7 +360,6 @@ func NewEventsPhaseBatchInputWithNoopExecution(
 	return NewEventsPhaseBatchInput(
 		events,
 		NewNoopPhaseExecutionScope(),
-		nil,
 	)
 }
 
@@ -511,16 +512,30 @@ type FourPhaseRunner struct {
 }
 
 var (
-	errEventsPhaseRunnerRequired           = errors.New("wavebuild: events phase runner is required")
-	errBuildPhaseRunnerRequired            = errors.New("wavebuild: build phase runner is required")
-	errBackendSettlingPhaseRunnerRequired  = errors.New("wavebuild: backend settling phase runner is required")
-	errFrontendSettlingPhaseRunnerRequired = errors.New("wavebuild: frontend settling phase runner is required")
-	errPhaseExecutionScopeRequired         = errors.New("wavebuild: phase execution scope is required")
-	errPhaseEffectExecutorRequired         = errors.New("wavebuild: phase effect executor is required")
+	errEventsPhaseRunnerRequired = errors.New(
+		"wavebuild: events phase runner is required",
+	)
+	errBuildPhaseRunnerRequired = errors.New(
+		"wavebuild: build phase runner is required",
+	)
+	errBackendSettlingPhaseRunnerRequired = errors.New(
+		"wavebuild: backend settling phase runner is required",
+	)
+	errFrontendSettlingPhaseRunnerRequired = errors.New(
+		"wavebuild: frontend settling phase runner is required",
+	)
+	errPhaseExecutionScopeRequired = errors.New(
+		"wavebuild: phase execution scope is required",
+	)
+	errPhaseEffectExecutorRequired = errors.New(
+		"wavebuild: phase effect executor is required",
+	)
 )
 
 // NewFourPhaseRunner constructs one phased runner from explicit phase runners.
-func NewFourPhaseRunner(config FourPhaseRunnerConfig) (*FourPhaseRunner, error) {
+func NewFourPhaseRunner(
+	config FourPhaseRunnerConfig,
+) (*FourPhaseRunner, error) {
 	if config.EventsPhaseRunner == nil {
 		return nil, errEventsPhaseRunnerRequired
 	}
@@ -545,10 +560,18 @@ func NewFourPhaseRunner(config FourPhaseRunnerConfig) (*FourPhaseRunner, error) 
 func NewDefaultFourPhaseRunner() *FourPhaseRunner {
 	runner, configurationError := NewFourPhaseRunner(
 		FourPhaseRunnerConfig{
-			EventsPhaseRunner:           EventsPhaseRunnerFunc(RunPhase1TaskGraph),
-			BuildPhaseRunner:            BuildPhaseRunnerFunc(RunPhase2TaskGraph),
-			BackendSettlingPhaseRunner:  BackendSettlingPhaseRunnerFunc(RunPhase3TaskGraph),
-			FrontendSettlingPhaseRunner: FrontendSettlingPhaseRunnerFunc(RunPhase4TaskGraph),
+			EventsPhaseRunner: EventsPhaseRunnerFunc(
+				RunPhase1TaskGraph,
+			),
+			BuildPhaseRunner: BuildPhaseRunnerFunc(
+				RunPhase2TaskGraph,
+			),
+			BackendSettlingPhaseRunner: BackendSettlingPhaseRunnerFunc(
+				RunPhase3TaskGraph,
+			),
+			FrontendSettlingPhaseRunner: FrontendSettlingPhaseRunnerFunc(
+				RunPhase4TaskGraph,
+			),
 		},
 	)
 	if configurationError != nil {
@@ -572,10 +595,14 @@ func (runner *FourPhaseRunner) Run(
 	input EventsPhaseBatchInput,
 ) (FourPhaseRunResult, error) {
 	if runner == nil {
-		return FourPhaseRunResult{}, errors.New("wavebuild: four-phase runner is required")
+		return FourPhaseRunResult{}, errors.New(
+			"wavebuild: four-phase runner is required",
+		)
 	}
 	if input.Events == nil {
-		return FourPhaseRunResult{}, errors.New("wavebuild: events phase input is required")
+		return FourPhaseRunResult{}, errors.New(
+			"wavebuild: events phase input is required",
+		)
 	}
 	if input.Execution == nil {
 		return FourPhaseRunResult{}, errPhaseExecutionScopeRequired
@@ -587,7 +614,6 @@ func (runner *FourPhaseRunner) Run(
 		Mode:         input.Events.Mode,
 		GenerationID: strings.TrimSpace(input.Events.GenerationID),
 		Execution:    input.Execution,
-		Trace:        input.Trace,
 	}
 	if modeError := validateEventsPhaseMode(phaseBatchInput.Mode); modeError != nil {
 		return FourPhaseRunResult{}, modeError

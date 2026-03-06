@@ -21,20 +21,12 @@ type Phase3FrontendSettlingGoals struct {
 	NoBrowserAction         bool
 }
 
-func recordPhase3TaskExecution(
-	input Phase3BatchInput,
-	taskName string,
-) {
-	recordPhaseTaskExecution(input.Batch.Trace, taskName)
-}
-
 // Phase3EnsureBackendSettlingEnvelopeTask captures backend-settling envelope.
 var Phase3EnsureBackendSettlingEnvelopeTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (Phase3BatchInput, error) {
-		recordPhase3TaskExecution(input, "phase_3.ensure_backend_settling_envelope")
 		return input, nil
 	},
 )
@@ -45,7 +37,6 @@ var Phase3EnsureLifecycleCoordinatorReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.ensure_lifecycle_coordinator_ready")
 		_, envelopeError := Phase3EnsureBackendSettlingEnvelopeTask.Run(
 			taskContext,
 			input,
@@ -63,7 +54,6 @@ var Phase3EnsureAppSupervisorReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.ensure_app_supervisor_ready")
 		_, lifecycleError := Phase3EnsureLifecycleCoordinatorReadyTask.Run(
 			taskContext,
 			input,
@@ -81,7 +71,6 @@ var Phase3EnsureViteSupervisorReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.ensure_vite_supervisor_ready")
 		_, lifecycleError := Phase3EnsureLifecycleCoordinatorReadyTask.Run(
 			taskContext,
 			input,
@@ -99,7 +88,6 @@ var Phase3EnsureFrameworkBridgeReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.ensure_framework_bridge_ready")
 		_, lifecycleError := Phase3EnsureLifecycleCoordinatorReadyTask.Run(
 			taskContext,
 			input,
@@ -117,7 +105,6 @@ var Phase3ApplyDevServerRestartTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.apply_devserver_restart")
 		_, lifecycleError := Phase3EnsureLifecycleCoordinatorReadyTask.Run(
 			taskContext,
 			input,
@@ -156,7 +143,6 @@ var Phase3QueueRetryWaitRestartTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.queue_retry_wait_restart")
 		_, lifecycleError := Phase3EnsureLifecycleCoordinatorReadyTask.Run(
 			taskContext,
 			input,
@@ -181,7 +167,6 @@ var Phase3RestartAppProcessTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.restart_app_process")
 		_, appSupervisorError := Phase3EnsureAppSupervisorReadyTask.Run(
 			taskContext,
 			input,
@@ -206,7 +191,6 @@ var Phase3RestartViteProcessTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.restart_vite_process")
 		_, viteSupervisorError := Phase3EnsureViteSupervisorReadyTask.Run(
 			taskContext,
 			input,
@@ -231,7 +215,6 @@ var Phase3RefreshFrameworkRouteTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.refresh_framework_route")
 		_, frameworkBridgeError := Phase3EnsureFrameworkBridgeReadyTask.Run(
 			taskContext,
 			input,
@@ -256,7 +239,6 @@ var Phase3RefreshFrameworkTemplateTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.refresh_framework_template")
 		_, frameworkBridgeError := Phase3EnsureFrameworkBridgeReadyTask.Run(
 			taskContext,
 			input,
@@ -281,7 +263,6 @@ var Phase3RefreshFrameworkPublicFileMapTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.refresh_framework_public_filemap")
 		_, frameworkBridgeError := Phase3EnsureFrameworkBridgeReadyTask.Run(
 			taskContext,
 			input,
@@ -306,7 +287,6 @@ var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.await_backend_readiness")
 		var ignoredResult struct{}
 		backendSettlingTasks := make([]tasks.BoundTask, 0, 7)
 		if input.BackendGoals.RestartDevServerCycle {
@@ -342,7 +322,10 @@ var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 		if input.BackendGoals.RefreshFrameworkPublicFileMap {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3RefreshFrameworkPublicFileMapTask.Bind(input, &ignoredResult),
+				Phase3RefreshFrameworkPublicFileMapTask.Bind(
+					input,
+					&ignoredResult,
+				),
 			)
 		}
 		if runParallelError := taskContext.RunParallel(backendSettlingTasks...); runParallelError != nil {
@@ -365,8 +348,10 @@ var Phase3PlanFrontendSettlingGoalsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (Phase3FrontendSettlingGoals, error) {
-		recordPhase3TaskExecution(input, "phase_3.plan_frontend_settling_goals")
-		_, awaitReadyError := Phase3AwaitBackendReadinessTask.Run(taskContext, input)
+		_, awaitReadyError := Phase3AwaitBackendReadinessTask.Run(
+			taskContext,
+			input,
+		)
 		if awaitReadyError != nil {
 			return Phase3FrontendSettlingGoals{}, awaitReadyError
 		}
@@ -416,7 +401,6 @@ var Phase3RootApplyDevServerRestartTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_apply_devserver_restart")
 		return Phase3ApplyDevServerRestartTask.Run(taskContext, input)
 	},
 )
@@ -427,7 +411,6 @@ var Phase3RootQueueRetryWaitRestartTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_queue_retry_wait_restart")
 		return Phase3QueueRetryWaitRestartTask.Run(taskContext, input)
 	},
 )
@@ -438,7 +421,6 @@ var Phase3RootRestartAppProcessTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_restart_app_process")
 		return Phase3RestartAppProcessTask.Run(taskContext, input)
 	},
 )
@@ -449,7 +431,6 @@ var Phase3RootRestartViteProcessTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_restart_vite_process")
 		return Phase3RestartViteProcessTask.Run(taskContext, input)
 	},
 )
@@ -460,7 +441,6 @@ var Phase3RootRefreshFrameworkRouteTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_refresh_framework_route")
 		return Phase3RefreshFrameworkRouteTask.Run(taskContext, input)
 	},
 )
@@ -471,7 +451,6 @@ var Phase3RootRefreshFrameworkTemplateTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_refresh_framework_template")
 		return Phase3RefreshFrameworkTemplateTask.Run(taskContext, input)
 	},
 )
@@ -482,7 +461,6 @@ var Phase3RootRefreshFrameworkPublicFileMapTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_refresh_framework_public_filemap")
 		return Phase3RefreshFrameworkPublicFileMapTask.Run(taskContext, input)
 	},
 )
@@ -493,7 +471,6 @@ var Phase3RootAwaitBackendReadinessTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase3BatchInput,
 	) (struct{}, error) {
-		recordPhase3TaskExecution(input, "phase_3.root_await_backend_readiness")
 		return Phase3AwaitBackendReadinessTask.Run(taskContext, input)
 	},
 )

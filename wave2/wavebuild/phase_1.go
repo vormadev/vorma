@@ -3,66 +3,21 @@ package wavebuild
 import (
 	"errors"
 	"strings"
-	"sync"
 
 	"github.com/vormadev/vorma/kit/tasks"
 )
-
-// PhaseTaskTraceRecorder records deterministic task execution for one batch run.
-type PhaseTaskTraceRecorder struct {
-	mu               sync.Mutex
-	orderedTaskNames []string
-}
-
-// RecordTaskExecution appends one task name to the trace.
-func (traceRecorder *PhaseTaskTraceRecorder) RecordTaskExecution(
-	taskName string,
-) {
-	if traceRecorder == nil {
-		return
-	}
-	traceRecorder.mu.Lock()
-	defer traceRecorder.mu.Unlock()
-	traceRecorder.orderedTaskNames = append(
-		traceRecorder.orderedTaskNames,
-		taskName,
-	)
-}
 
 // PhaseBatchInput is the shared per-batch phase envelope passed after phase 1.
 type PhaseBatchInput struct {
 	Mode         Mode
 	GenerationID string
 	Execution    *PhaseExecutionScope
-	Trace        *PhaseTaskTraceRecorder
 }
 
 // EventsPhaseBatchInput is the phase-1 input contract for one reduced batch.
 type EventsPhaseBatchInput struct {
 	Events    *EventsPhaseInput
 	Execution *PhaseExecutionScope
-	Trace     *PhaseTaskTraceRecorder
-}
-
-// Phase1EventFacts are event-phase derived facts used by later phases.
-type Phase1EventFacts struct {
-	Mode                            Mode
-	ConfigChanged                   bool
-	GoSourceChanged                 bool
-	CriticalCSSChanged              bool
-	NormalCSSChanged                bool
-	PublicStaticChanged             bool
-	PrivateStaticChanged            bool
-	FrameworkRouteDefinitionChanged bool
-	FrameworkTemplateChanged        bool
-	AppRequestedFrameworkRefresh    bool
-	AppRequestedBrowserInvalidate   bool
-	AppRequestedBrowserRevalidate   bool
-	AppRequestedBrowserHardReload   bool
-	AppRequestedRestart             bool
-	AppRequestedGoCompile           bool
-	WaitingForBuildRetry            bool
-	HasMeaningfulWork               bool
 }
 
 // Phase1BuildGoals are phase-2 build goals plus carry-forward settle intents.
@@ -88,23 +43,6 @@ type Phase1BuildGoals struct {
 	RequestBrowserInvalidatePublicAssets bool
 	RequestBrowserRevalidate             bool
 	RequestBrowserHardReload             bool
-}
-
-func recordPhaseTaskExecution(
-	traceRecorder *PhaseTaskTraceRecorder,
-	taskName string,
-) {
-	if traceRecorder == nil {
-		return
-	}
-	traceRecorder.RecordTaskExecution(taskName)
-}
-
-func recordPhase1TaskExecution(
-	input EventsPhaseBatchInput,
-	taskName string,
-) {
-	recordPhaseTaskExecution(input.Trace, taskName)
 }
 
 func eventsPhaseFactsContainsType(
@@ -158,25 +96,47 @@ func dominantBrowserActionIntent(
 }
 
 func deriveImplicitBrowserActionIntent(
-	eventFacts Phase1EventFacts,
+	eventsPhaseFacts EventsPhaseFacts,
 ) phase1BrowserActionIntent {
 	actionIntent := phase1BrowserActionIntentNone
-	if eventFacts.CriticalCSSChanged || eventFacts.NormalCSSChanged {
+	if eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeCriticalCSSSourceChanged,
+	) ||
+		eventsPhaseFactsContainsType(
+			eventsPhaseFacts,
+			EventTypeNormalCSSSourceChanged,
+		) {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
 			phase1BrowserActionIntentCSSHotReload,
 		)
 	}
-	if eventFacts.PublicStaticChanged {
+	if eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypePublicStaticAssetChanged,
+	) {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
 			phase1BrowserActionIntentInvalidate,
 		)
 	}
-	if eventFacts.GoSourceChanged ||
-		eventFacts.PrivateStaticChanged ||
-		eventFacts.FrameworkRouteDefinitionChanged ||
-		eventFacts.FrameworkTemplateChanged {
+	if eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeGoSourceChanged,
+	) ||
+		eventsPhaseFactsContainsType(
+			eventsPhaseFacts,
+			EventTypePrivateStaticAssetChanged,
+		) ||
+		eventsPhaseFactsContainsType(
+			eventsPhaseFacts,
+			EventTypeFrameworkRouteDefinitionChanged,
+		) ||
+		eventsPhaseFactsContainsType(
+			eventsPhaseFacts,
+			EventTypeFrameworkTemplateChanged,
+		) {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
 			phase1BrowserActionIntentHardReload,
@@ -186,22 +146,23 @@ func deriveImplicitBrowserActionIntent(
 }
 
 func deriveAppRequestedBrowserActionIntent(
-	eventFacts Phase1EventFacts,
+	eventsPhaseFacts EventsPhaseFacts,
 ) phase1BrowserActionIntent {
+	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
 	actionIntent := phase1BrowserActionIntentNone
-	if eventFacts.AppRequestedBrowserRevalidate {
+	if appRequestedOutcomes.RequestBrowserRevalidate {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
 			phase1BrowserActionIntentRevalidate,
 		)
 	}
-	if eventFacts.AppRequestedBrowserInvalidate {
+	if appRequestedOutcomes.RequestBrowserInvalidate {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
 			phase1BrowserActionIntentInvalidate,
 		)
 	}
-	if eventFacts.AppRequestedBrowserHardReload {
+	if appRequestedOutcomes.RequestBrowserHardReload {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
 			phase1BrowserActionIntentHardReload,
@@ -210,23 +171,61 @@ func deriveAppRequestedBrowserActionIntent(
 	return actionIntent
 }
 
-func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
-	if eventFacts.Mode == ModeDev && eventFacts.WaitingForBuildRetry {
+func reducePhase1BuildGoals(
+	eventsPhaseFacts EventsPhaseFacts,
+) Phase1BuildGoals {
+	if eventsPhaseFacts.Mode == ModeDev &&
+		eventsPhaseFacts.WaitingForBuildRetry {
 		return Phase1BuildGoals{
 			QueueRetryWaitRestart: true,
 		}
 	}
+	configChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeConfigFileChanged,
+	)
+	goSourceChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeGoSourceChanged,
+	)
+	criticalCSSChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeCriticalCSSSourceChanged,
+	)
+	normalCSSChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeNormalCSSSourceChanged,
+	)
+	publicStaticChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypePublicStaticAssetChanged,
+	)
+	privateStaticChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypePrivateStaticAssetChanged,
+	)
+	frameworkRouteDefinitionChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeFrameworkRouteDefinitionChanged,
+	)
+	frameworkTemplateChanged := eventsPhaseFactsContainsType(
+		eventsPhaseFacts,
+		EventTypeFrameworkTemplateChanged,
+	)
+	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
 	mergedBrowserActionIntent := dominantBrowserActionIntent(
-		deriveImplicitBrowserActionIntent(eventFacts),
-		deriveAppRequestedBrowserActionIntent(eventFacts),
+		deriveImplicitBrowserActionIntent(eventsPhaseFacts),
+		deriveAppRequestedBrowserActionIntent(eventsPhaseFacts),
 	)
 
-	requestBackendRestart := eventFacts.GoSourceChanged || eventFacts.AppRequestedRestart
-	requestViteRestart := eventFacts.ConfigChanged
+	requestBackendRestart := goSourceChanged ||
+		appRequestedOutcomes.RequestRestart
+	requestViteRestart := configChanged
 	requestFrameworkRouteRefresh :=
-		eventFacts.FrameworkRouteDefinitionChanged || eventFacts.AppRequestedFrameworkRefresh
-	requestFrameworkTemplateRefresh := eventFacts.FrameworkTemplateChanged
-	requestFrameworkPublicFileMapRefresh := eventFacts.PublicStaticChanged
+		frameworkRouteDefinitionChanged ||
+			appRequestedOutcomes.RequestFrameworkRefresh
+	requestFrameworkTemplateRefresh := frameworkTemplateChanged
+	requestFrameworkPublicFileMapRefresh := publicStaticChanged
 	requestBrowserCSSHotReload :=
 		mergedBrowserActionIntent == phase1BrowserActionIntentCSSHotReload
 	requestBrowserInvalidatePublicAssets :=
@@ -236,7 +235,7 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 	requestBrowserHardReload :=
 		mergedBrowserActionIntent == phase1BrowserActionIntentHardReload
 
-	if eventFacts.Mode == ModeProd {
+	if eventsPhaseFacts.Mode == ModeProd {
 		requestBackendRestart = false
 		requestViteRestart = false
 		requestFrameworkRouteRefresh = false
@@ -249,14 +248,15 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 	}
 
 	phase1BuildGoals := Phase1BuildGoals{
-		RestartDevServerCycle:           eventFacts.ConfigChanged,
-		CompileGoBinary:                 eventFacts.GoSourceChanged || eventFacts.AppRequestedGoCompile,
-		BuildCriticalCSS:                eventFacts.CriticalCSSChanged,
-		BuildNormalCSS:                  eventFacts.NormalCSSChanged,
-		ProcessPublicStaticAssets:       eventFacts.PublicStaticChanged,
-		CleanupStalePublicStaticOutputs: eventFacts.PublicStaticChanged,
-		ProcessPrivateStaticAssets:      eventFacts.PrivateStaticChanged,
-		GeneratePublicFileMap:           eventFacts.PublicStaticChanged,
+		RestartDevServerCycle: configChanged,
+		CompileGoBinary: goSourceChanged ||
+			appRequestedOutcomes.RequestGoCompile,
+		BuildCriticalCSS:                criticalCSSChanged,
+		BuildNormalCSS:                  normalCSSChanged,
+		ProcessPublicStaticAssets:       publicStaticChanged,
+		CleanupStalePublicStaticOutputs: publicStaticChanged,
+		ProcessPrivateStaticAssets:      privateStaticChanged,
+		GeneratePublicFileMap:           publicStaticChanged,
 
 		RequestBackendRestart:                requestBackendRestart,
 		RequestViteRestart:                   requestViteRestart,
@@ -269,7 +269,7 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 		RequestBrowserRevalidate:             requestBrowserRevalidate,
 		RequestBrowserHardReload:             requestBrowserHardReload,
 	}
-	if eventFacts.Mode == ModeProd {
+	if eventsPhaseFacts.Mode == ModeProd {
 		phase1BuildGoals.RestartDevServerCycle = false
 	}
 
@@ -291,9 +291,10 @@ var Phase1CollectBatchEnvelopeTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input EventsPhaseBatchInput,
 	) (PhaseBatchInput, error) {
-		recordPhase1TaskExecution(input, "phase_1.collect_batch_envelope")
 		if input.Events == nil {
-			return PhaseBatchInput{}, errors.New("wavebuild: events phase input is required")
+			return PhaseBatchInput{}, errors.New(
+				"wavebuild: events phase input is required",
+			)
 		}
 		if input.Execution == nil {
 			return PhaseBatchInput{}, errPhaseExecutionScopeRequired
@@ -305,7 +306,6 @@ var Phase1CollectBatchEnvelopeTask = tasks.NewTask(
 			Mode:         input.Events.Mode,
 			GenerationID: strings.TrimSpace(input.Events.GenerationID),
 			Execution:    input.Execution,
-			Trace:        input.Trace,
 		}, nil
 	},
 )
@@ -316,7 +316,6 @@ var Phase1NormalizeWatcherEventsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input EventsPhaseBatchInput,
 	) (EventsPhaseInput, error) {
-		recordPhase1TaskExecution(input, "phase_1.normalize_watcher_events")
 		batchEnvelope, normalizeError := Phase1CollectBatchEnvelopeTask.Run(
 			taskContext,
 			input,
@@ -340,7 +339,6 @@ var Phase1BuildEventsPhaseInputTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input EventsPhaseBatchInput,
 	) (EventsPhaseInput, error) {
-		recordPhase1TaskExecution(input, "phase_1.build_events_phase_input")
 		eventsPhaseInput, normalizeError := Phase1NormalizeWatcherEventsTask.Run(
 			taskContext,
 			input,
@@ -358,7 +356,6 @@ var Phase1BuildEventsPhaseFactsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input EventsPhaseBatchInput,
 	) (EventsPhaseFacts, error) {
-		recordPhase1TaskExecution(input, "phase_1.build_events_phase_facts")
 		eventsPhaseInput, inputError := Phase1BuildEventsPhaseInputTask.Run(
 			taskContext,
 			input,
@@ -370,100 +367,20 @@ var Phase1BuildEventsPhaseFactsTask = tasks.NewTask(
 	},
 )
 
-// Phase1DeriveEventFactsTask derives canonical event facts for phase handoff.
-var Phase1DeriveEventFactsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (Phase1EventFacts, error) {
-		recordPhase1TaskExecution(input, "phase_1.derive_event_facts")
-		eventsPhaseFacts, eventsPhaseFactsError := Phase1BuildEventsPhaseFactsTask.Run(
-			taskContext,
-			input,
-		)
-		if eventsPhaseFactsError != nil {
-			return Phase1EventFacts{}, eventsPhaseFactsError
-		}
-
-		eventFacts := Phase1EventFacts{
-			Mode: eventsPhaseFacts.Mode,
-			ConfigChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypeConfigFileChanged,
-			),
-			GoSourceChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypeGoSourceChanged,
-			),
-			CriticalCSSChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypeCriticalCSSSourceChanged,
-			),
-			NormalCSSChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypeNormalCSSSourceChanged,
-			),
-			PublicStaticChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypePublicStaticAssetChanged,
-			),
-			PrivateStaticChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypePrivateStaticAssetChanged,
-			),
-			FrameworkRouteDefinitionChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypeFrameworkRouteDefinitionChanged,
-			),
-			FrameworkTemplateChanged: eventsPhaseFactsContainsType(
-				eventsPhaseFacts,
-				EventTypeFrameworkTemplateChanged,
-			),
-			AppRequestedFrameworkRefresh:  eventsPhaseFacts.AppRequestedOutcomes.RequestFrameworkRefresh,
-			AppRequestedBrowserInvalidate: eventsPhaseFacts.AppRequestedOutcomes.RequestBrowserInvalidate,
-			AppRequestedBrowserRevalidate: eventsPhaseFacts.AppRequestedOutcomes.RequestBrowserRevalidate,
-			AppRequestedBrowserHardReload: eventsPhaseFacts.AppRequestedOutcomes.RequestBrowserHardReload,
-			AppRequestedRestart:           eventsPhaseFacts.AppRequestedOutcomes.RequestRestart,
-			AppRequestedGoCompile:         eventsPhaseFacts.AppRequestedOutcomes.RequestGoCompile,
-			WaitingForBuildRetry:          eventsPhaseFacts.WaitingForBuildRetry,
-		}
-		eventFacts.HasMeaningfulWork =
-			!eventsPhaseFacts.HasNoActionableEvents ||
-				eventFacts.ConfigChanged ||
-				eventFacts.GoSourceChanged ||
-				eventFacts.CriticalCSSChanged ||
-				eventFacts.NormalCSSChanged ||
-				eventFacts.PublicStaticChanged ||
-				eventFacts.PrivateStaticChanged ||
-				eventFacts.FrameworkRouteDefinitionChanged ||
-				eventFacts.FrameworkTemplateChanged ||
-				eventFacts.AppRequestedFrameworkRefresh ||
-				eventFacts.AppRequestedBrowserInvalidate ||
-				eventFacts.AppRequestedBrowserRevalidate ||
-				eventFacts.AppRequestedBrowserHardReload ||
-				eventFacts.AppRequestedRestart ||
-				eventFacts.AppRequestedGoCompile ||
-				eventFacts.WaitingForBuildRetry
-
-		return eventFacts, nil
-	},
-)
-
 // Phase1PlanBuildGoalsTask maps event facts to build-phase goals.
 var Phase1PlanBuildGoalsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
 		input EventsPhaseBatchInput,
 	) (Phase1BuildGoals, error) {
-		recordPhase1TaskExecution(input, "phase_1.plan_build_goals")
-		eventFacts, eventFactsError := Phase1DeriveEventFactsTask.Run(
+		eventsPhaseFacts, eventsPhaseFactsError := Phase1BuildEventsPhaseFactsTask.Run(
 			taskContext,
 			input,
 		)
-		if eventFactsError != nil {
-			return Phase1BuildGoals{}, eventFactsError
+		if eventsPhaseFactsError != nil {
+			return Phase1BuildGoals{}, eventsPhaseFactsError
 		}
-		return reducePhase1BuildGoals(eventFacts), nil
+		return reducePhase1BuildGoals(eventsPhaseFacts), nil
 	},
 )
 

@@ -27,20 +27,12 @@ type Phase2BackendSettlingGoals struct {
 	NoBrowserAction                bool
 }
 
-func recordPhase2TaskExecution(
-	input Phase2BatchInput,
-	taskName string,
-) {
-	recordPhaseTaskExecution(input.Batch.Trace, taskName)
-}
-
 // Phase2EnsureBuildPhaseEnvelopeTask captures build-phase batch envelope.
 var Phase2EnsureBuildPhaseEnvelopeTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (Phase2BatchInput, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_build_phase_envelope")
 		return input, nil
 	},
 )
@@ -51,7 +43,6 @@ var Phase2EnsureWorkspaceReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_workspace_ready")
 		_, envelopeError := Phase2EnsureBuildPhaseEnvelopeTask.Run(
 			taskContext,
 			input,
@@ -69,8 +60,10 @@ var Phase2EnsureBuilderContextReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_builder_context_ready")
-		_, workspaceError := Phase2EnsureWorkspaceReadyTask.Run(taskContext, input)
+		_, workspaceError := Phase2EnsureWorkspaceReadyTask.Run(
+			taskContext,
+			input,
+		)
 		if workspaceError != nil {
 			return struct{}{}, workspaceError
 		}
@@ -84,8 +77,10 @@ var Phase2EnsureBuildOutputDirectoriesReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_build_output_directories_ready")
-		_, workspaceError := Phase2EnsureWorkspaceReadyTask.Run(taskContext, input)
+		_, workspaceError := Phase2EnsureWorkspaceReadyTask.Run(
+			taskContext,
+			input,
+		)
 		if workspaceError != nil {
 			return struct{}{}, workspaceError
 		}
@@ -99,7 +94,6 @@ var Phase2EnsureGoToolchainReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_go_toolchain_ready")
 		_, builderContextError := Phase2EnsureBuilderContextReadyTask.Run(
 			taskContext,
 			input,
@@ -117,7 +111,6 @@ var Phase2EnsureCSSToolchainReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_css_toolchain_ready")
 		_, builderContextError := Phase2EnsureBuilderContextReadyTask.Run(
 			taskContext,
 			input,
@@ -135,7 +128,6 @@ var Phase2EnsureStaticPipelineReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_static_pipeline_ready")
 		_, builderContextError := Phase2EnsureBuilderContextReadyTask.Run(
 			taskContext,
 			input,
@@ -153,7 +145,6 @@ var Phase2EnsurePublicFileMapPipelineReadyTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.ensure_public_filemap_pipeline_ready")
 		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
 			taskContext,
 			input,
@@ -171,7 +162,6 @@ var Phase2BuildGoBinaryTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.build_go_binary")
 		_, goToolchainError := Phase2EnsureGoToolchainReadyTask.Run(
 			taskContext,
 			input,
@@ -203,7 +193,6 @@ var Phase2BuildCriticalCSSTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.build_critical_css")
 		_, cssToolchainError := Phase2EnsureCSSToolchainReadyTask.Run(
 			taskContext,
 			input,
@@ -235,7 +224,6 @@ var Phase2BuildNormalCSSTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.build_normal_css")
 		_, cssToolchainError := Phase2EnsureCSSToolchainReadyTask.Run(
 			taskContext,
 			input,
@@ -267,7 +255,6 @@ var Phase2ProcessPublicStaticAssetsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.process_public_static_assets")
 		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
 			taskContext,
 			input,
@@ -299,7 +286,6 @@ var Phase2CleanupStalePublicStaticOutputsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.cleanup_stale_public_static_outputs")
 		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
 			taskContext,
 			input,
@@ -331,7 +317,6 @@ var Phase2ProcessPrivateStaticAssetsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.process_private_static_assets")
 		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
 			taskContext,
 			input,
@@ -363,7 +348,6 @@ var Phase2GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.generate_public_filemap_artifacts")
 		_, pipelineError := Phase2EnsurePublicFileMapPipelineReadyTask.Run(
 			taskContext,
 			input,
@@ -402,8 +386,10 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.validate_build_outputs")
-		_, envelopeError := Phase2EnsureBuildPhaseEnvelopeTask.Run(taskContext, input)
+		_, envelopeError := Phase2EnsureBuildPhaseEnvelopeTask.Run(
+			taskContext,
+			input,
+		)
 		if envelopeError != nil {
 			return struct{}{}, envelopeError
 		}
@@ -437,19 +423,28 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 		if input.BuildGoals.CleanupStalePublicStaticOutputs {
 			boundBuildTasks = append(
 				boundBuildTasks,
-				Phase2CleanupStalePublicStaticOutputsTask.Bind(input, &ignoredResult),
+				Phase2CleanupStalePublicStaticOutputsTask.Bind(
+					input,
+					&ignoredResult,
+				),
 			)
 		}
 		if input.BuildGoals.ProcessPrivateStaticAssets {
 			boundBuildTasks = append(
 				boundBuildTasks,
-				Phase2ProcessPrivateStaticAssetsTask.Bind(input, &ignoredResult),
+				Phase2ProcessPrivateStaticAssetsTask.Bind(
+					input,
+					&ignoredResult,
+				),
 			)
 		}
 		if input.BuildGoals.GeneratePublicFileMap {
 			boundBuildTasks = append(
 				boundBuildTasks,
-				Phase2GeneratePublicFileMapArtifactsTask.Bind(input, &ignoredResult),
+				Phase2GeneratePublicFileMapArtifactsTask.Bind(
+					input,
+					&ignoredResult,
+				),
 			)
 		}
 		if runParallelError := taskContext.RunParallel(boundBuildTasks...); runParallelError != nil {
@@ -477,12 +472,15 @@ func reducePhase2BackendSettlingGoals(
 	}
 
 	phase2BackendSettlingGoals := Phase2BackendSettlingGoals{
-		RestartDevServerCycle:          buildGoals.RestartDevServerCycle,
-		RestartAppProcess:              buildGoals.RequestBackendRestart || buildGoals.CompileGoBinary,
-		RestartViteProcess:             buildGoals.RequestViteRestart,
-		RefreshFrameworkRoute:          buildGoals.RequestFrameworkRouteRefresh,
-		RefreshFrameworkTemplate:       buildGoals.RequestFrameworkTemplateRefresh,
-		RefreshFrameworkPublicFileMap:  buildGoals.RequestFrameworkPublicFileMapRefresh || buildGoals.GeneratePublicFileMap || buildGoals.CleanupStalePublicStaticOutputs,
+		RestartDevServerCycle: buildGoals.RestartDevServerCycle,
+		RestartAppProcess: buildGoals.RequestBackendRestart ||
+			buildGoals.CompileGoBinary,
+		RestartViteProcess:       buildGoals.RequestViteRestart,
+		RefreshFrameworkRoute:    buildGoals.RequestFrameworkRouteRefresh,
+		RefreshFrameworkTemplate: buildGoals.RequestFrameworkTemplateRefresh,
+		RefreshFrameworkPublicFileMap: buildGoals.RequestFrameworkPublicFileMapRefresh ||
+			buildGoals.GeneratePublicFileMap ||
+			buildGoals.CleanupStalePublicStaticOutputs,
 		RequestBrowserCSSHotReload:     buildGoals.RequestBrowserCSSHotReload,
 		RequestBrowserInvalidateAssets: buildGoals.RequestBrowserInvalidatePublicAssets,
 		RequestBrowserRevalidate:       buildGoals.RequestBrowserRevalidate,
@@ -509,8 +507,10 @@ var Phase2PlanBackendSettlingGoalsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (Phase2BackendSettlingGoals, error) {
-		recordPhase2TaskExecution(input, "phase_2.plan_backend_settling_goals")
-		_, validateError := Phase2ValidateBuildOutputsTask.Run(taskContext, input)
+		_, validateError := Phase2ValidateBuildOutputsTask.Run(
+			taskContext,
+			input,
+		)
 		if validateError != nil {
 			return Phase2BackendSettlingGoals{}, validateError
 		}
@@ -524,7 +524,6 @@ var Phase2RootCompileGoBinaryTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_compile_go_binary")
 		return Phase2BuildGoBinaryTask.Run(taskContext, input)
 	},
 )
@@ -535,7 +534,6 @@ var Phase2RootBuildCriticalCSSTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_build_critical_css")
 		return Phase2BuildCriticalCSSTask.Run(taskContext, input)
 	},
 )
@@ -546,7 +544,6 @@ var Phase2RootBuildNormalCSSTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_build_normal_css")
 		return Phase2BuildNormalCSSTask.Run(taskContext, input)
 	},
 )
@@ -557,7 +554,6 @@ var Phase2RootProcessPublicStaticAssetsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_process_public_static_assets")
 		return Phase2ProcessPublicStaticAssetsTask.Run(taskContext, input)
 	},
 )
@@ -568,7 +564,6 @@ var Phase2RootCleanupStalePublicStaticOutputsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_cleanup_stale_public_static_outputs")
 		return Phase2CleanupStalePublicStaticOutputsTask.Run(taskContext, input)
 	},
 )
@@ -579,7 +574,6 @@ var Phase2RootProcessPrivateStaticAssetsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_process_private_static_assets")
 		return Phase2ProcessPrivateStaticAssetsTask.Run(taskContext, input)
 	},
 )
@@ -590,7 +584,6 @@ var Phase2RootGeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_generate_public_filemap_artifacts")
 		return Phase2GeneratePublicFileMapArtifactsTask.Run(taskContext, input)
 	},
 )
@@ -601,7 +594,6 @@ var Phase2RootValidateBuildOutputsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		recordPhase2TaskExecution(input, "phase_2.root_validate_build_outputs")
 		return Phase2ValidateBuildOutputsTask.Run(taskContext, input)
 	},
 )
@@ -641,19 +633,28 @@ func RunPhase2TaskGraph(
 	if input.BuildGoals.CleanupStalePublicStaticOutputs {
 		terminalBuildRoots = append(
 			terminalBuildRoots,
-			Phase2RootCleanupStalePublicStaticOutputsTask.Bind(input, &ignoredResult),
+			Phase2RootCleanupStalePublicStaticOutputsTask.Bind(
+				input,
+				&ignoredResult,
+			),
 		)
 	}
 	if input.BuildGoals.ProcessPrivateStaticAssets {
 		terminalBuildRoots = append(
 			terminalBuildRoots,
-			Phase2RootProcessPrivateStaticAssetsTask.Bind(input, &ignoredResult),
+			Phase2RootProcessPrivateStaticAssetsTask.Bind(
+				input,
+				&ignoredResult,
+			),
 		)
 	}
 	if input.BuildGoals.GeneratePublicFileMap {
 		terminalBuildRoots = append(
 			terminalBuildRoots,
-			Phase2RootGeneratePublicFileMapArtifactsTask.Bind(input, &ignoredResult),
+			Phase2RootGeneratePublicFileMapArtifactsTask.Bind(
+				input,
+				&ignoredResult,
+			),
 		)
 	}
 	if input.BuildGoals.ValidateBuildOutputs {
