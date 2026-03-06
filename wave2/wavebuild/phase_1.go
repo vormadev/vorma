@@ -2,7 +2,6 @@ package wavebuild
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/vormadev/vorma/kit/tasks"
 )
@@ -285,85 +284,18 @@ func reducePhase1BuildGoals(
 	return phase1BuildGoals
 }
 
-// Phase1CollectBatchEnvelopeTask captures stable batch identity input.
-var Phase1CollectBatchEnvelopeTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (PhaseBatchInput, error) {
-		if input.Events == nil {
-			return PhaseBatchInput{}, errors.New(
-				"wavebuild: events phase input is required",
-			)
-		}
-		if input.Execution == nil {
-			return PhaseBatchInput{}, errPhaseExecutionScopeRequired
-		}
-		if input.Execution.EffectExecutor == nil {
-			return PhaseBatchInput{}, errPhaseEffectExecutorRequired
-		}
-		return PhaseBatchInput{
-			Mode:         input.Events.Mode,
-			GenerationID: strings.TrimSpace(input.Events.GenerationID),
-			Execution:    input.Execution,
-		}, nil
-	},
-)
-
-// Phase1NormalizeWatcherEventsTask normalizes watcher event shape for planning.
-var Phase1NormalizeWatcherEventsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (EventsPhaseInput, error) {
-		batchEnvelope, normalizeError := Phase1CollectBatchEnvelopeTask.Run(
-			taskContext,
-			input,
-		)
-		if normalizeError != nil {
-			return EventsPhaseInput{}, normalizeError
-		}
-		return EventsPhaseInput{
-			Mode:                 batchEnvelope.Mode,
-			GenerationID:         batchEnvelope.GenerationID,
-			Events:               input.Events.Events,
-			AppRequestedOutcomes: input.Events.AppRequestedOutcomes,
-			WaitingForBuildRetry: input.Events.WaitingForBuildRetry,
-		}, nil
-	},
-)
-
-// Phase1BuildEventsPhaseInputTask maps batch input into canonical events-phase input.
-var Phase1BuildEventsPhaseInputTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (EventsPhaseInput, error) {
-		eventsPhaseInput, normalizeError := Phase1NormalizeWatcherEventsTask.Run(
-			taskContext,
-			input,
-		)
-		if normalizeError != nil {
-			return EventsPhaseInput{}, normalizeError
-		}
-		return eventsPhaseInput, nil
-	},
-)
-
-// Phase1BuildEventsPhaseFactsTask reduces canonical events input into phase-1 facts.
+// Phase1BuildEventsPhaseFactsTask reduces events batch input into phase-1 facts.
 var Phase1BuildEventsPhaseFactsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
 		input EventsPhaseBatchInput,
 	) (EventsPhaseFacts, error) {
-		eventsPhaseInput, inputError := Phase1BuildEventsPhaseInputTask.Run(
-			taskContext,
-			input,
-		)
-		if inputError != nil {
-			return EventsPhaseFacts{}, inputError
+		if input.Events == nil {
+			return EventsPhaseFacts{}, errors.New(
+				"wavebuild: events phase input is required",
+			)
 		}
-		return BuildEventsPhaseFacts(eventsPhaseInput)
+		return BuildEventsPhaseFacts(*input.Events)
 	},
 )
 

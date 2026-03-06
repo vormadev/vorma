@@ -16,7 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
+	"os"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/tasks"
@@ -62,32 +62,12 @@ const (
 	EventTypeUnclassifiedNoWatchRuleChanged EventType = "unclassified_no_watch_rule_changed"
 )
 
-// BatchEventOperation is one normalized filesystem event operation.
-type BatchEventOperation string
-
-const (
-	// BatchEventOperationCreate represents create operations.
-	BatchEventOperationCreate BatchEventOperation = "create"
-	// BatchEventOperationWrite represents write operations.
-	BatchEventOperationWrite BatchEventOperation = "write"
-	// BatchEventOperationRemove represents remove operations.
-	BatchEventOperationRemove BatchEventOperation = "remove"
-	// BatchEventOperationRename represents rename operations.
-	BatchEventOperationRename BatchEventOperation = "rename"
-	// BatchEventOperationChmod represents chmod operations.
-	BatchEventOperationChmod BatchEventOperation = "chmod"
-	// BatchEventOperationUnknown represents unknown operations.
-	BatchEventOperationUnknown BatchEventOperation = "unknown"
-)
-
 // ObservedBatchEvent is one normalized, already-classified batch event input.
 //
 // The event type is expected to be produced by the watcher/classification layer;
 // this contract intentionally avoids path-shape guessing.
 type ObservedBatchEvent struct {
-	Type      EventType
-	Operation BatchEventOperation
-	PathCWD   string
+	Type EventType
 
 	// NoiseOnly marks events that should not trigger user-visible work.
 	NoiseOnly bool
@@ -120,18 +100,9 @@ type EventsPhaseFacts struct {
 	Mode         Mode
 	GenerationID string
 
-	FilesChangedCount int
-	ChangedPathsCWD   []string
-
 	// EventTypes contains deduplicated actionable event types, preserving
 	// first-seen input order.
 	EventTypes []EventType
-
-	HasNoActionableEvents bool
-	HasNoiseOnlyEvents    bool
-
-	HasNoOpConfigMutation   bool
-	HasSemanticConfigChange bool
 
 	AppRequestedOutcomes AppRequestedOutcomes
 	WaitingForBuildRetry bool
@@ -149,41 +120,16 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 		)
 	}
 
-	changedPathSet := make(map[string]struct{}, len(input.Events))
-	changedPathsCWD := make([]string, 0, len(input.Events))
 	eventTypeSet := make(map[EventType]struct{}, len(input.Events))
 	actionableEventTypes := make([]EventType, 0, len(input.Events))
 
-	hasNoOpConfigMutation := false
-	hasSemanticConfigChange := false
-	hasNoiseOnlyEvents := len(input.Events) > 0
-
 	for eventIndex, rawEvent := range input.Events {
-		normalizedPathCWD, normalizePathError := normalizeBatchEventPathCWD(
-			rawEvent.PathCWD,
-		)
-		if normalizePathError != nil {
-			return EventsPhaseFacts{}, fmt.Errorf(
-				"wavebuild: normalize event path at index %d: %w",
-				eventIndex,
-				normalizePathError,
-			)
-		}
-		if normalizedPathCWD != "" {
-			if _, alreadySeenPath := changedPathSet[normalizedPathCWD]; !alreadySeenPath {
-				changedPathSet[normalizedPathCWD] = struct{}{}
-				changedPathsCWD = append(changedPathsCWD, normalizedPathCWD)
-			}
-		}
-
 		if rawEvent.NoiseOnly {
 			continue
 		}
-		hasNoiseOnlyEvents = false
 
 		if rawEvent.Type == EventTypeConfigFileChanged &&
 			rawEvent.NoOpConfigMutation {
-			hasNoOpConfigMutation = true
 			continue
 		}
 
@@ -194,9 +140,6 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 				eventIndex,
 			)
 		}
-		if rawEvent.Type == EventTypeConfigFileChanged {
-			hasSemanticConfigChange = true
-		}
 		if _, alreadySeenEventType := eventTypeSet[rawEvent.Type]; alreadySeenEventType {
 			continue
 		}
@@ -204,18 +147,10 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 		actionableEventTypes = append(actionableEventTypes, rawEvent.Type)
 	}
 
-	hasNoActionableEvents := len(actionableEventTypes) == 0
-
 	return EventsPhaseFacts{
-		Mode:                    input.Mode,
-		GenerationID:            normalizedGenerationID,
-		FilesChangedCount:       len(changedPathsCWD),
-		ChangedPathsCWD:         changedPathsCWD,
-		EventTypes:              actionableEventTypes,
-		HasNoActionableEvents:   hasNoActionableEvents,
-		HasNoiseOnlyEvents:      hasNoiseOnlyEvents && !hasNoOpConfigMutation,
-		HasNoOpConfigMutation:   hasNoOpConfigMutation,
-		HasSemanticConfigChange: hasSemanticConfigChange,
+		Mode:         input.Mode,
+		GenerationID: normalizedGenerationID,
+		EventTypes:   actionableEventTypes,
 		AppRequestedOutcomes: reduceAppRequestedOutcomes(
 			input.AppRequestedOutcomes,
 		),
@@ -697,25 +632,6 @@ func validateEventsPhaseMode(mode Mode) error {
 	}
 }
 
-func normalizeBatchEventPathCWD(pathCWD string) (string, error) {
-	trimmedPathCWD := strings.TrimSpace(pathCWD)
-	if trimmedPathCWD == "" {
-		return "", nil
-	}
-	if filepath.IsAbs(trimmedPathCWD) {
-		return "", fmt.Errorf("path must be cwd-relative: %q", pathCWD)
-	}
-	normalizedPathCWD := filepath.Clean(trimmedPathCWD)
-	if normalizedPathCWD == "." {
-		return "", nil
-	}
-	if normalizedPathCWD == ".." ||
-		strings.HasPrefix(normalizedPathCWD, "../") {
-		return "", fmt.Errorf("path must not escape cwd: %q", pathCWD)
-	}
-	return filepath.ToSlash(normalizedPathCWD), nil
-}
-
 func isSupportedEventType(eventType EventType) bool {
 	switch eventType {
 	case EventTypeConfigFileChanged:
@@ -788,6 +704,10 @@ func executePhaseEffect(
 	}
 	if batchInput.Execution.EffectExecutor == nil {
 		return errPhaseEffectExecutorRequired
+	}
+	if os.Getenv("__WAVE_INTERNAL_TEST_MODE") == "1" {
+		fmt.Printf("wave2_effect %s\n", effectID)
+		return nil
 	}
 	return batchInput.Execution.EffectExecutor.ExecutePhaseEffect(
 		taskContext.NativeContext(),

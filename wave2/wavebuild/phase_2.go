@@ -24,322 +24,56 @@ type Phase2BackendSettlingGoals struct {
 	RequestBrowserInvalidateAssets bool
 	RequestBrowserRevalidate       bool
 	RequestBrowserHardReload       bool
-	NoBrowserAction                bool
 }
 
-// Phase2EnsureBuildPhaseEnvelopeTask captures build-phase batch envelope.
-var Phase2EnsureBuildPhaseEnvelopeTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (Phase2BatchInput, error) {
-		return input, nil
-	},
-)
-
-// Phase2EnsureWorkspaceReadyTask validates workspace readiness.
-var Phase2EnsureWorkspaceReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, envelopeError := Phase2EnsureBuildPhaseEnvelopeTask.Run(
-			taskContext,
-			input,
-		)
-		if envelopeError != nil {
-			return struct{}{}, envelopeError
-		}
-		return struct{}{}, nil
-	},
-)
-
-// Phase2EnsureBuilderContextReadyTask validates builder context readiness.
-var Phase2EnsureBuilderContextReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, workspaceError := Phase2EnsureWorkspaceReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if workspaceError != nil {
-			return struct{}{}, workspaceError
-		}
-		return struct{}{}, nil
-	},
-)
-
-// Phase2EnsureBuildOutputDirectoriesReadyTask validates output directory readiness.
-var Phase2EnsureBuildOutputDirectoriesReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, workspaceError := Phase2EnsureWorkspaceReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if workspaceError != nil {
-			return struct{}{}, workspaceError
-		}
-		return struct{}{}, nil
-	},
-)
-
-// Phase2EnsureGoToolchainReadyTask validates Go toolchain readiness.
-var Phase2EnsureGoToolchainReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, builderContextError := Phase2EnsureBuilderContextReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if builderContextError != nil {
-			return struct{}{}, builderContextError
-		}
-		return struct{}{}, nil
-	},
-)
-
-// Phase2EnsureCSSToolchainReadyTask validates CSS toolchain readiness.
-var Phase2EnsureCSSToolchainReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, builderContextError := Phase2EnsureBuilderContextReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if builderContextError != nil {
-			return struct{}{}, builderContextError
-		}
-		return struct{}{}, nil
-	},
-)
-
-// Phase2EnsureStaticPipelineReadyTask validates static pipeline readiness.
-var Phase2EnsureStaticPipelineReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, builderContextError := Phase2EnsureBuilderContextReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if builderContextError != nil {
-			return struct{}{}, builderContextError
-		}
-		return struct{}{}, nil
-	},
-)
-
-// Phase2EnsurePublicFileMapPipelineReadyTask validates public-file-map pipeline readiness.
-var Phase2EnsurePublicFileMapPipelineReadyTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if staticPipelineError != nil {
-			return struct{}{}, staticPipelineError
-		}
-		return struct{}{}, nil
-	},
-)
+func newPhase2EffectTask(
+	effectID PhaseEffectID,
+) *tasks.Task[Phase2BatchInput, struct{}] {
+	return tasks.NewTask(
+		func(
+			taskContext *tasks.Ctx,
+			input Phase2BatchInput,
+		) (struct{}, error) {
+			if effectError := executePhaseEffect(
+				taskContext,
+				input.Batch,
+				effectID,
+			); effectError != nil {
+				return struct{}{}, effectError
+			}
+			return struct{}{}, nil
+		},
+	)
+}
 
 // Phase2BuildGoBinaryTask executes Go compilation.
-var Phase2BuildGoBinaryTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, goToolchainError := Phase2EnsureGoToolchainReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if goToolchainError != nil {
-			return struct{}{}, goToolchainError
-		}
-		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if outputDirectoryError != nil {
-			return struct{}{}, outputDirectoryError
-		}
-		if effectError := executePhaseEffect(
-			taskContext,
-			input.Batch,
-			PhaseEffectIDBuildCompileGoBinary,
-		); effectError != nil {
-			return struct{}{}, effectError
-		}
-		return struct{}{}, nil
-	},
+var Phase2BuildGoBinaryTask = newPhase2EffectTask(
+	PhaseEffectIDBuildCompileGoBinary,
 )
 
 // Phase2BuildCriticalCSSTask executes critical CSS compilation.
-var Phase2BuildCriticalCSSTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, cssToolchainError := Phase2EnsureCSSToolchainReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if cssToolchainError != nil {
-			return struct{}{}, cssToolchainError
-		}
-		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if outputDirectoryError != nil {
-			return struct{}{}, outputDirectoryError
-		}
-		if effectError := executePhaseEffect(
-			taskContext,
-			input.Batch,
-			PhaseEffectIDBuildCriticalCSS,
-		); effectError != nil {
-			return struct{}{}, effectError
-		}
-		return struct{}{}, nil
-	},
+var Phase2BuildCriticalCSSTask = newPhase2EffectTask(
+	PhaseEffectIDBuildCriticalCSS,
 )
 
 // Phase2BuildNormalCSSTask executes normal CSS compilation.
-var Phase2BuildNormalCSSTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, cssToolchainError := Phase2EnsureCSSToolchainReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if cssToolchainError != nil {
-			return struct{}{}, cssToolchainError
-		}
-		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if outputDirectoryError != nil {
-			return struct{}{}, outputDirectoryError
-		}
-		if effectError := executePhaseEffect(
-			taskContext,
-			input.Batch,
-			PhaseEffectIDBuildNormalCSS,
-		); effectError != nil {
-			return struct{}{}, effectError
-		}
-		return struct{}{}, nil
-	},
+var Phase2BuildNormalCSSTask = newPhase2EffectTask(
+	PhaseEffectIDBuildNormalCSS,
 )
 
 // Phase2ProcessPublicStaticAssetsTask executes public static processing.
-var Phase2ProcessPublicStaticAssetsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if staticPipelineError != nil {
-			return struct{}{}, staticPipelineError
-		}
-		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if outputDirectoryError != nil {
-			return struct{}{}, outputDirectoryError
-		}
-		if effectError := executePhaseEffect(
-			taskContext,
-			input.Batch,
-			PhaseEffectIDBuildProcessPublicStaticAssets,
-		); effectError != nil {
-			return struct{}{}, effectError
-		}
-		return struct{}{}, nil
-	},
+var Phase2ProcessPublicStaticAssetsTask = newPhase2EffectTask(
+	PhaseEffectIDBuildProcessPublicStaticAssets,
 )
 
 // Phase2CleanupStalePublicStaticOutputsTask executes stale public-static cleanup.
-var Phase2CleanupStalePublicStaticOutputsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if staticPipelineError != nil {
-			return struct{}{}, staticPipelineError
-		}
-		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if outputDirectoryError != nil {
-			return struct{}{}, outputDirectoryError
-		}
-		if effectError := executePhaseEffect(
-			taskContext,
-			input.Batch,
-			PhaseEffectIDBuildCleanupStalePublicStaticOutputs,
-		); effectError != nil {
-			return struct{}{}, effectError
-		}
-		return struct{}{}, nil
-	},
+var Phase2CleanupStalePublicStaticOutputsTask = newPhase2EffectTask(
+	PhaseEffectIDBuildCleanupStalePublicStaticOutputs,
 )
 
 // Phase2ProcessPrivateStaticAssetsTask executes private static processing.
-var Phase2ProcessPrivateStaticAssetsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if staticPipelineError != nil {
-			return struct{}{}, staticPipelineError
-		}
-		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
-			taskContext,
-			input,
-		)
-		if outputDirectoryError != nil {
-			return struct{}{}, outputDirectoryError
-		}
-		if effectError := executePhaseEffect(
-			taskContext,
-			input.Batch,
-			PhaseEffectIDBuildProcessPrivateStaticAssets,
-		); effectError != nil {
-			return struct{}{}, effectError
-		}
-		return struct{}{}, nil
-	},
+var Phase2ProcessPrivateStaticAssetsTask = newPhase2EffectTask(
+	PhaseEffectIDBuildProcessPrivateStaticAssets,
 )
 
 // Phase2GeneratePublicFileMapArtifactsTask executes public file-map generation.
@@ -348,25 +82,16 @@ var Phase2GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		_, pipelineError := Phase2EnsurePublicFileMapPipelineReadyTask.Run(
+		if _, publicStaticProcessingError := Phase2ProcessPublicStaticAssetsTask.Run(
 			taskContext,
 			input,
-		)
-		if pipelineError != nil {
-			return struct{}{}, pipelineError
-		}
-		_, publicStaticProcessingError := Phase2ProcessPublicStaticAssetsTask.Run(
-			taskContext,
-			input,
-		)
-		if publicStaticProcessingError != nil {
+		); publicStaticProcessingError != nil {
 			return struct{}{}, publicStaticProcessingError
 		}
-		_, staleCleanupError := Phase2CleanupStalePublicStaticOutputsTask.Run(
+		if _, staleCleanupError := Phase2CleanupStalePublicStaticOutputsTask.Run(
 			taskContext,
 			input,
-		)
-		if staleCleanupError != nil {
+		); staleCleanupError != nil {
 			return struct{}{}, staleCleanupError
 		}
 		if effectError := executePhaseEffect(
@@ -386,12 +111,8 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (struct{}, error) {
-		_, envelopeError := Phase2EnsureBuildPhaseEnvelopeTask.Run(
-			taskContext,
-			input,
-		)
-		if envelopeError != nil {
-			return struct{}{}, envelopeError
+		if !input.BuildGoals.ValidateBuildOutputs {
+			return struct{}{}, nil
 		}
 
 		var ignoredResult struct{}
@@ -467,7 +188,6 @@ func reducePhase2BackendSettlingGoals(
 	if buildGoals.QueueRetryWaitRestart {
 		return Phase2BackendSettlingGoals{
 			QueueRetryWaitRestart: true,
-			NoBrowserAction:       true,
 		}
 	}
 
@@ -493,11 +213,6 @@ func reducePhase2BackendSettlingGoals(
 			phase2BackendSettlingGoals.RefreshFrameworkRoute ||
 			phase2BackendSettlingGoals.RefreshFrameworkTemplate ||
 			phase2BackendSettlingGoals.RefreshFrameworkPublicFileMap
-	phase2BackendSettlingGoals.NoBrowserAction =
-		!phase2BackendSettlingGoals.RequestBrowserCSSHotReload &&
-			!phase2BackendSettlingGoals.RequestBrowserInvalidateAssets &&
-			!phase2BackendSettlingGoals.RequestBrowserRevalidate &&
-			!phase2BackendSettlingGoals.RequestBrowserHardReload
 	return phase2BackendSettlingGoals
 }
 
@@ -507,164 +222,23 @@ var Phase2PlanBackendSettlingGoalsTask = tasks.NewTask(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
 	) (Phase2BackendSettlingGoals, error) {
-		_, validateError := Phase2ValidateBuildOutputsTask.Run(
+		if _, validateError := Phase2ValidateBuildOutputsTask.Run(
 			taskContext,
 			input,
-		)
-		if validateError != nil {
+		); validateError != nil {
 			return Phase2BackendSettlingGoals{}, validateError
+		}
+		if input.Batch.Mode == ModeProd {
+			return Phase2BackendSettlingGoals{}, nil
 		}
 		return reducePhase2BackendSettlingGoals(input.BuildGoals), nil
 	},
 )
 
-// Phase2RootCompileGoBinaryTask is a terminal build-goal root.
-var Phase2RootCompileGoBinaryTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2BuildGoBinaryTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootBuildCriticalCSSTask is a terminal critical-css build root.
-var Phase2RootBuildCriticalCSSTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2BuildCriticalCSSTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootBuildNormalCSSTask is a terminal normal-css build root.
-var Phase2RootBuildNormalCSSTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2BuildNormalCSSTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootProcessPublicStaticAssetsTask is a terminal public-static root.
-var Phase2RootProcessPublicStaticAssetsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2ProcessPublicStaticAssetsTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootCleanupStalePublicStaticOutputsTask is a terminal stale-public-static cleanup root.
-var Phase2RootCleanupStalePublicStaticOutputsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2CleanupStalePublicStaticOutputsTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootProcessPrivateStaticAssetsTask is a terminal private-static root.
-var Phase2RootProcessPrivateStaticAssetsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2ProcessPrivateStaticAssetsTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootGeneratePublicFileMapArtifactsTask is a terminal file-map root.
-var Phase2RootGeneratePublicFileMapArtifactsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2GeneratePublicFileMapArtifactsTask.Run(taskContext, input)
-	},
-)
-
-// Phase2RootValidateBuildOutputsTask is a terminal validation root.
-var Phase2RootValidateBuildOutputsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (struct{}, error) {
-		return Phase2ValidateBuildOutputsTask.Run(taskContext, input)
-	},
-)
-
-// RunPhase2TaskGraph executes phase-2 task roots then plans phase 3 goals.
+// RunPhase2TaskGraph executes phase 2 and returns phase 3 goals.
 func RunPhase2TaskGraph(
 	taskContext *tasks.Ctx,
 	input Phase2BatchInput,
 ) (Phase2BackendSettlingGoals, error) {
-	var ignoredResult struct{}
-	terminalBuildRoots := make([]tasks.BoundTask, 0, 9)
-
-	if input.BuildGoals.CompileGoBinary {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootCompileGoBinaryTask.Bind(input, &ignoredResult),
-		)
-	}
-	if input.BuildGoals.BuildCriticalCSS {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootBuildCriticalCSSTask.Bind(input, &ignoredResult),
-		)
-	}
-	if input.BuildGoals.BuildNormalCSS {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootBuildNormalCSSTask.Bind(input, &ignoredResult),
-		)
-	}
-	if input.BuildGoals.ProcessPublicStaticAssets {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootProcessPublicStaticAssetsTask.Bind(input, &ignoredResult),
-		)
-	}
-	if input.BuildGoals.CleanupStalePublicStaticOutputs {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootCleanupStalePublicStaticOutputsTask.Bind(
-				input,
-				&ignoredResult,
-			),
-		)
-	}
-	if input.BuildGoals.ProcessPrivateStaticAssets {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootProcessPrivateStaticAssetsTask.Bind(
-				input,
-				&ignoredResult,
-			),
-		)
-	}
-	if input.BuildGoals.GeneratePublicFileMap {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootGeneratePublicFileMapArtifactsTask.Bind(
-				input,
-				&ignoredResult,
-			),
-		)
-	}
-	if input.BuildGoals.ValidateBuildOutputs {
-		terminalBuildRoots = append(
-			terminalBuildRoots,
-			Phase2RootValidateBuildOutputsTask.Bind(input, &ignoredResult),
-		)
-	}
-	if runParallelError := taskContext.RunParallel(terminalBuildRoots...); runParallelError != nil {
-		return Phase2BackendSettlingGoals{}, runParallelError
-	}
 	return Phase2PlanBackendSettlingGoalsTask.Run(taskContext, input)
 }
