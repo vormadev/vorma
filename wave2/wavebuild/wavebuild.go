@@ -52,9 +52,9 @@ const (
 	EventTypeFrameworkRouteDefinitionChanged EventType = "framework_route_definition_changed"
 	// EventTypeFrameworkTemplateChanged represents framework template changes.
 	EventTypeFrameworkTemplateChanged EventType = "framework_template_changed"
-	// EventTypeAppDefinedWatchActionOnlyChanged represents app watch classes that request direct actions.
+	// EventTypeAppDefinedWatchActionOnlyChanged represents app watch classes that request direct actions without implicit build work.
 	EventTypeAppDefinedWatchActionOnlyChanged EventType = "app_defined_watch_action_only_changed"
-	// EventTypeAppDefinedWatchWithRebuildChanged represents app watch classes that request rebuild work.
+	// EventTypeAppDefinedWatchWithRebuildChanged represents app watch classes that participate in normal build-phase planning; concrete goals still come from reduced outcomes.
 	EventTypeAppDefinedWatchWithRebuildChanged EventType = "app_defined_watch_with_rebuild_changed"
 	// EventTypeIgnoredOrNoiseChanged represents ignored/noise-only batches.
 	EventTypeIgnoredOrNoiseChanged EventType = "ignored_or_noise_changed"
@@ -77,12 +77,12 @@ type ObservedBatchEvent struct {
 
 // AppRequestedOutcomes captures app-requested observable outcomes for one batch.
 type AppRequestedOutcomes struct {
-	RequestFrameworkRefresh  bool
-	RequestBrowserInvalidate bool
-	RequestBrowserRevalidate bool
-	RequestBrowserHardReload bool
-	RequestRestart           bool
-	RequestGoCompile         bool
+	RequestFrameworkRefresh               bool
+	RequestNotifyVitePublicFileMapChanged bool
+	RequestBrowserRevalidate              bool
+	RequestBrowserHardReload              bool
+	RequestRestart                        bool
+	RequestGoCompile                      bool
 }
 
 // EventsPhaseInput is the phase-1 input contract in observable terms.
@@ -219,8 +219,8 @@ const (
 	PhaseEffectIDBackendAwaitReadiness PhaseEffectID = "backend_await_readiness"
 	// PhaseEffectIDFrontendBroadcastCSSHotReload broadcasts CSS hot reload.
 	PhaseEffectIDFrontendBroadcastCSSHotReload PhaseEffectID = "frontend_broadcast_css_hotreload"
-	// PhaseEffectIDFrontendBroadcastInvalidateAssets broadcasts browser asset invalidation.
-	PhaseEffectIDFrontendBroadcastInvalidateAssets PhaseEffectID = "frontend_broadcast_invalidate_assets"
+	// PhaseEffectIDFrontendNotifyVitePublicFileMapChanged notifies Vite that the public file map changed.
+	PhaseEffectIDFrontendNotifyVitePublicFileMapChanged PhaseEffectID = "frontend_notify_vite_public_filemap_changed"
 	// PhaseEffectIDFrontendBroadcastRevalidate broadcasts browser revalidation.
 	PhaseEffectIDFrontendBroadcastRevalidate PhaseEffectID = "frontend_broadcast_revalidate"
 	// PhaseEffectIDFrontendBroadcastHardReload broadcasts browser hard reload.
@@ -259,43 +259,6 @@ func (NoopPhaseEffectExecutor) ExecutePhaseEffect(
 // PhaseExecutionScope carries execution adapters needed by terminal phase tasks.
 type PhaseExecutionScope struct {
 	EffectExecutor PhaseEffectExecutor
-}
-
-// NewPhaseExecutionScope constructs one explicit phase execution scope.
-func NewPhaseExecutionScope(
-	effectExecutor PhaseEffectExecutor,
-) *PhaseExecutionScope {
-	return &PhaseExecutionScope{
-		EffectExecutor: effectExecutor,
-	}
-}
-
-// NewNoopPhaseExecutionScope builds an explicit no-op execution scope for
-// design-time graph runs.
-func NewNoopPhaseExecutionScope() *PhaseExecutionScope {
-	return NewPhaseExecutionScope(NoopPhaseEffectExecutor{})
-}
-
-// NewEventsPhaseBatchInput wraps phase-1 events input with explicit execution scope.
-func NewEventsPhaseBatchInput(
-	events EventsPhaseInput,
-	execution *PhaseExecutionScope,
-) EventsPhaseBatchInput {
-	return EventsPhaseBatchInput{
-		Events:    &events,
-		Execution: execution,
-	}
-}
-
-// NewEventsPhaseBatchInputWithNoopExecution wraps events input with explicit
-// no-op execution for design-time graph runs.
-func NewEventsPhaseBatchInputWithNoopExecution(
-	events EventsPhaseInput,
-) EventsPhaseBatchInput {
-	return NewEventsPhaseBatchInput(
-		events,
-		NewNoopPhaseExecutionScope(),
-	)
 }
 
 // FrameworkSignalsFromBackendSettlingGoals reduces backend-settling goals into
@@ -342,122 +305,9 @@ func FrameworkSignalsFromBackendSettlingGoals(
 	return signals
 }
 
-// EventsPhaseRunner executes phase 1 (events) and returns phase-2 build goals.
-type EventsPhaseRunner interface {
-	RunEventsPhase(
-		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (Phase1BuildGoals, error)
-}
-
-// BuildPhaseRunner executes phase 2 (build) and returns backend-settling goals.
-type BuildPhaseRunner interface {
-	RunBuildPhase(
-		taskContext *tasks.Ctx,
-		input Phase2BatchInput,
-	) (Phase2BackendSettlingGoals, error)
-}
-
-// BackendSettlingPhaseRunner executes phase 3 and returns frontend-settling goals.
-type BackendSettlingPhaseRunner interface {
-	RunBackendSettlingPhase(
-		taskContext *tasks.Ctx,
-		input Phase3BatchInput,
-	) (Phase3FrontendSettlingGoals, error)
-}
-
-// FrontendSettlingPhaseRunner executes phase 4 and returns completion summary.
-type FrontendSettlingPhaseRunner interface {
-	RunFrontendSettlingPhase(
-		taskContext *tasks.Ctx,
-		input Phase4BatchInput,
-	) (Phase4CompletionSummary, error)
-}
-
-// EventsPhaseRunnerFunc adapts a function to EventsPhaseRunner.
-type EventsPhaseRunnerFunc func(
-	taskContext *tasks.Ctx,
-	input EventsPhaseBatchInput,
-) (Phase1BuildGoals, error)
-
-// RunEventsPhase executes one events-phase function adapter.
-func (runner EventsPhaseRunnerFunc) RunEventsPhase(
-	taskContext *tasks.Ctx,
-	input EventsPhaseBatchInput,
-) (Phase1BuildGoals, error) {
-	return runner(taskContext, input)
-}
-
-// BuildPhaseRunnerFunc adapts a function to BuildPhaseRunner.
-type BuildPhaseRunnerFunc func(
-	taskContext *tasks.Ctx,
-	input Phase2BatchInput,
-) (Phase2BackendSettlingGoals, error)
-
-// RunBuildPhase executes one build-phase function adapter.
-func (runner BuildPhaseRunnerFunc) RunBuildPhase(
-	taskContext *tasks.Ctx,
-	input Phase2BatchInput,
-) (Phase2BackendSettlingGoals, error) {
-	return runner(taskContext, input)
-}
-
-// BackendSettlingPhaseRunnerFunc adapts a function to BackendSettlingPhaseRunner.
-type BackendSettlingPhaseRunnerFunc func(
-	taskContext *tasks.Ctx,
-	input Phase3BatchInput,
-) (Phase3FrontendSettlingGoals, error)
-
-// RunBackendSettlingPhase executes one backend-settling phase function adapter.
-func (runner BackendSettlingPhaseRunnerFunc) RunBackendSettlingPhase(
-	taskContext *tasks.Ctx,
-	input Phase3BatchInput,
-) (Phase3FrontendSettlingGoals, error) {
-	return runner(taskContext, input)
-}
-
-// FrontendSettlingPhaseRunnerFunc adapts a function to FrontendSettlingPhaseRunner.
-type FrontendSettlingPhaseRunnerFunc func(
-	taskContext *tasks.Ctx,
-	input Phase4BatchInput,
-) (Phase4CompletionSummary, error)
-
-// RunFrontendSettlingPhase executes one frontend-settling phase function adapter.
-func (runner FrontendSettlingPhaseRunnerFunc) RunFrontendSettlingPhase(
-	taskContext *tasks.Ctx,
-	input Phase4BatchInput,
-) (Phase4CompletionSummary, error) {
-	return runner(taskContext, input)
-}
-
-// FourPhaseRunnerConfig configures one phased runner.
-type FourPhaseRunnerConfig struct {
-	EventsPhaseRunner           EventsPhaseRunner
-	BuildPhaseRunner            BuildPhaseRunner
-	BackendSettlingPhaseRunner  BackendSettlingPhaseRunner
-	FrontendSettlingPhaseRunner FrontendSettlingPhaseRunner
-}
-
-// FourPhaseRunner runs the canonical 4-phase pipeline on one shared tasks context.
-type FourPhaseRunner struct {
-	eventsPhaseRunner           EventsPhaseRunner
-	buildPhaseRunner            BuildPhaseRunner
-	backendSettlingPhaseRunner  BackendSettlingPhaseRunner
-	frontendSettlingPhaseRunner FrontendSettlingPhaseRunner
-}
-
 var (
-	errEventsPhaseRunnerRequired = errors.New(
-		"wavebuild: events phase runner is required",
-	)
-	errBuildPhaseRunnerRequired = errors.New(
-		"wavebuild: build phase runner is required",
-	)
-	errBackendSettlingPhaseRunnerRequired = errors.New(
-		"wavebuild: backend settling phase runner is required",
-	)
-	errFrontendSettlingPhaseRunnerRequired = errors.New(
-		"wavebuild: frontend settling phase runner is required",
+	errEventsPhaseInputRequired = errors.New(
+		"wavebuild: events phase input is required",
 	)
 	errPhaseExecutionScopeRequired = errors.New(
 		"wavebuild: phase execution scope is required",
@@ -467,77 +317,17 @@ var (
 	)
 )
 
-// NewFourPhaseRunner constructs one phased runner from explicit phase runners.
-func NewFourPhaseRunner(
-	config FourPhaseRunnerConfig,
-) (*FourPhaseRunner, error) {
-	if config.EventsPhaseRunner == nil {
-		return nil, errEventsPhaseRunnerRequired
-	}
-	if config.BuildPhaseRunner == nil {
-		return nil, errBuildPhaseRunnerRequired
-	}
-	if config.BackendSettlingPhaseRunner == nil {
-		return nil, errBackendSettlingPhaseRunnerRequired
-	}
-	if config.FrontendSettlingPhaseRunner == nil {
-		return nil, errFrontendSettlingPhaseRunnerRequired
-	}
-	return &FourPhaseRunner{
-		eventsPhaseRunner:           config.EventsPhaseRunner,
-		buildPhaseRunner:            config.BuildPhaseRunner,
-		backendSettlingPhaseRunner:  config.BackendSettlingPhaseRunner,
-		frontendSettlingPhaseRunner: config.FrontendSettlingPhaseRunner,
-	}, nil
-}
-
-// NewDefaultFourPhaseRunner constructs one runner wired to the in-package task graphs.
-func NewDefaultFourPhaseRunner() *FourPhaseRunner {
-	runner, configurationError := NewFourPhaseRunner(
-		FourPhaseRunnerConfig{
-			EventsPhaseRunner: EventsPhaseRunnerFunc(
-				RunPhase1TaskGraph,
-			),
-			BuildPhaseRunner: BuildPhaseRunnerFunc(
-				RunPhase2TaskGraph,
-			),
-			BackendSettlingPhaseRunner: BackendSettlingPhaseRunnerFunc(
-				RunPhase3TaskGraph,
-			),
-			FrontendSettlingPhaseRunner: FrontendSettlingPhaseRunnerFunc(
-				RunPhase4TaskGraph,
-			),
-		},
-	)
-	if configurationError != nil {
-		panic(
-			fmt.Sprintf(
-				"wavebuild: default four-phase runner must be constructible: %v",
-				configurationError,
-			),
-		)
-	}
-	return runner
-}
-
-// Run executes one phase batch with one batch-scoped tasks context.
+// RunFourPhasePipeline executes one phase batch with one batch-scoped tasks context.
 //
 // Mode policy:
 // - dev runs phases 1-4.
 // - prod bypasses phases 1/3/4 and runs phase 2 only.
-func (runner *FourPhaseRunner) Run(
+func RunFourPhasePipeline(
 	parentContext context.Context,
 	input EventsPhaseBatchInput,
 ) (FourPhaseRunResult, error) {
-	if runner == nil {
-		return FourPhaseRunResult{}, errors.New(
-			"wavebuild: four-phase runner is required",
-		)
-	}
 	if input.Events == nil {
-		return FourPhaseRunResult{}, errors.New(
-			"wavebuild: events phase input is required",
-		)
+		return FourPhaseRunResult{}, errEventsPhaseInputRequired
 	}
 	if input.Execution == nil {
 		return FourPhaseRunResult{}, errPhaseExecutionScopeRequired
@@ -545,82 +335,164 @@ func (runner *FourPhaseRunner) Run(
 	if input.Execution.EffectExecutor == nil {
 		return FourPhaseRunResult{}, errPhaseEffectExecutorRequired
 	}
-	phaseBatchInput := PhaseBatchInput{
-		Mode:         input.Events.Mode,
-		GenerationID: strings.TrimSpace(input.Events.GenerationID),
-		Execution:    input.Execution,
-	}
-	if modeError := validateEventsPhaseMode(phaseBatchInput.Mode); modeError != nil {
+	if modeError := validateEventsPhaseMode(input.Events.Mode); modeError != nil {
 		return FourPhaseRunResult{}, modeError
 	}
 
 	batchTaskContext := tasks.NewCtx(parentContext)
-	phase1BuildGoals := Phase1BuildGoals{}
-	if phaseBatchInput.Mode == ModeProd {
-		phase1BuildGoals = canonicalProdBuildGoals()
-	} else {
-		var phase1Error error
-		phase1BuildGoals, phase1Error = runner.eventsPhaseRunner.RunEventsPhase(
-			batchTaskContext,
-			input,
-		)
-		if phase1Error != nil {
-			return FourPhaseRunResult{}, phase1Error
-		}
-	}
-
-	phase2BackendGoals, phase2Error := runner.buildPhaseRunner.RunBuildPhase(
-		batchTaskContext,
-		Phase2BatchInput{
-			Batch:      phaseBatchInput,
-			BuildGoals: phase1BuildGoals,
+	phase1Task := tasks.NewTask(
+		func(
+			taskContext *tasks.Ctx,
+			phaseInput EventsPhaseBatchInput,
+		) (Phase1BuildGoals, error) {
+			if phaseInput.Events.Mode == ModeProd {
+				return canonicalProdBuildGoals(), nil
+			}
+			return RunPhase1TaskGraph(taskContext, phaseInput)
 		},
 	)
-	if phase2Error != nil {
-		return FourPhaseRunResult{}, phase2Error
-	}
-	if phaseBatchInput.Mode == ModeProd {
-		return FourPhaseRunResult{
-			Phase1BuildGoals:   phase1BuildGoals,
-			Phase2BackendGoals: phase2BackendGoals,
-		}, nil
-	}
-	frameworkSignals := FrameworkSignalsFromBackendSettlingGoals(
-		phaseBatchInput.GenerationID,
-		phase2BackendGoals,
+
+	phase2Task := tasks.NewTask(
+		func(
+			taskContext *tasks.Ctx,
+			phaseInput EventsPhaseBatchInput,
+		) (Phase2Output, error) {
+			phase1BuildGoals, phase1Error := phase1Task.Run(
+				taskContext,
+				phaseInput,
+			)
+			if phase1Error != nil {
+				return Phase2Output{}, phase1Error
+			}
+			return RunPhase2TaskGraph(
+				taskContext,
+				Phase2BatchInput{
+					Batch: PhaseBatchInput{
+						Mode: phaseInput.Events.Mode,
+						GenerationID: strings.TrimSpace(
+							phaseInput.Events.GenerationID,
+						),
+						Execution: phaseInput.Execution,
+					},
+					BuildGoals: phase1BuildGoals,
+				},
+			)
+		},
 	)
 
-	phase3FrontendGoals, phase3Error :=
-		runner.backendSettlingPhaseRunner.RunBackendSettlingPhase(
-			batchTaskContext,
-			Phase3BatchInput{
-				Batch:        phaseBatchInput,
-				BackendGoals: phase2BackendGoals,
-			},
-		)
-	if phase3Error != nil {
-		return FourPhaseRunResult{}, phase3Error
-	}
+	phase3Task := tasks.NewTask(
+		func(
+			taskContext *tasks.Ctx,
+			phaseInput EventsPhaseBatchInput,
+		) (Phase3FrontendSettlingGoals, error) {
+			if phaseInput.Events.Mode == ModeProd {
+				return Phase3FrontendSettlingGoals{}, nil
+			}
+			phase2Output, phase2Error := phase2Task.Run(
+				taskContext,
+				phaseInput,
+			)
+			if phase2Error != nil {
+				return Phase3FrontendSettlingGoals{}, phase2Error
+			}
+			return RunPhase3TaskGraph(
+				taskContext,
+				Phase3BatchInput{
+					Batch: PhaseBatchInput{
+						Mode: phaseInput.Events.Mode,
+						GenerationID: strings.TrimSpace(
+							phaseInput.Events.GenerationID,
+						),
+						Execution: phaseInput.Execution,
+					},
+					BackendGoals: phase2Output.BackendSettlingGoals,
+					BuildFacts:   phase2Output.BuildOutcomeFacts,
+				},
+			)
+		},
+	)
 
-	phase4CompletionSummary, phase4Error :=
-		runner.frontendSettlingPhaseRunner.RunFrontendSettlingPhase(
-			batchTaskContext,
-			Phase4BatchInput{
-				Batch:         phaseBatchInput,
-				FrontendGoals: phase3FrontendGoals,
-			},
-		)
-	if phase4Error != nil {
-		return FourPhaseRunResult{}, phase4Error
-	}
+	phase4Task := tasks.NewTask(
+		func(
+			taskContext *tasks.Ctx,
+			phaseInput EventsPhaseBatchInput,
+		) (Phase4CompletionSummary, error) {
+			if phaseInput.Events.Mode == ModeProd {
+				return Phase4CompletionSummary{}, nil
+			}
+			phase3FrontendGoals, phase3Error := phase3Task.Run(
+				taskContext,
+				phaseInput,
+			)
+			if phase3Error != nil {
+				return Phase4CompletionSummary{}, phase3Error
+			}
+			return RunPhase4TaskGraph(
+				taskContext,
+				Phase4BatchInput{
+					Batch: PhaseBatchInput{
+						Mode: phaseInput.Events.Mode,
+						GenerationID: strings.TrimSpace(
+							phaseInput.Events.GenerationID,
+						),
+						Execution: phaseInput.Execution,
+					},
+					FrontendGoals: phase3FrontendGoals,
+				},
+			)
+		},
+	)
 
-	return FourPhaseRunResult{
-		Phase1BuildGoals:        phase1BuildGoals,
-		Phase2BackendGoals:      phase2BackendGoals,
-		Phase3FrontendGoals:     phase3FrontendGoals,
-		Phase4CompletionSummary: phase4CompletionSummary,
-		FrameworkSignals:        frameworkSignals,
-	}, nil
+	rootTask := tasks.NewTask(
+		func(
+			taskContext *tasks.Ctx,
+			phaseInput EventsPhaseBatchInput,
+		) (FourPhaseRunResult, error) {
+			phase1BuildGoals, phase1Error := phase1Task.Run(
+				taskContext,
+				phaseInput,
+			)
+			if phase1Error != nil {
+				return FourPhaseRunResult{}, phase1Error
+			}
+			phase2Output, phase2Error := phase2Task.Run(taskContext, phaseInput)
+			if phase2Error != nil {
+				return FourPhaseRunResult{}, phase2Error
+			}
+			if phaseInput.Events.Mode == ModeProd {
+				return FourPhaseRunResult{
+					Phase1BuildGoals:   phase1BuildGoals,
+					Phase2BackendGoals: phase2Output.BackendSettlingGoals,
+				}, nil
+			}
+			phase3FrontendGoals, phase3Error := phase3Task.Run(
+				taskContext,
+				phaseInput,
+			)
+			if phase3Error != nil {
+				return FourPhaseRunResult{}, phase3Error
+			}
+			phase4CompletionSummary, phase4Error := phase4Task.Run(
+				taskContext,
+				phaseInput,
+			)
+			if phase4Error != nil {
+				return FourPhaseRunResult{}, phase4Error
+			}
+			return FourPhaseRunResult{
+				Phase1BuildGoals:        phase1BuildGoals,
+				Phase2BackendGoals:      phase2Output.BackendSettlingGoals,
+				Phase3FrontendGoals:     phase3FrontendGoals,
+				Phase4CompletionSummary: phase4CompletionSummary,
+				FrameworkSignals: FrameworkSignalsFromBackendSettlingGoals(
+					strings.TrimSpace(phaseInput.Events.GenerationID),
+					phase2Output.BackendSettlingGoals,
+				),
+			}, nil
+		},
+	)
+
+	return rootTask.Run(batchTaskContext, input)
 }
 
 func validateEventsPhaseMode(mode Mode) error {
@@ -668,11 +540,11 @@ func reduceAppRequestedOutcomes(
 ) AppRequestedOutcomes {
 	reducedOutcomes := rawOutcomes
 	if reducedOutcomes.RequestBrowserHardReload {
-		reducedOutcomes.RequestBrowserInvalidate = false
+		reducedOutcomes.RequestNotifyVitePublicFileMapChanged = false
 		reducedOutcomes.RequestBrowserRevalidate = false
 		return reducedOutcomes
 	}
-	if reducedOutcomes.RequestBrowserInvalidate {
+	if reducedOutcomes.RequestNotifyVitePublicFileMapChanged {
 		reducedOutcomes.RequestBrowserRevalidate = false
 	}
 	return reducedOutcomes

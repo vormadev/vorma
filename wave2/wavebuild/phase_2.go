@@ -10,20 +10,35 @@ type Phase2BatchInput struct {
 	BuildGoals Phase1BuildGoals
 }
 
+// Phase2BuildOutcomeFacts are observable build outcome facts produced by phase 2.
+//
+// These facts are phase-2 outputs consumed by later phase planners; they are
+// not direct watcher-event classifications.
+type Phase2BuildOutcomeFacts struct {
+	PublicFileMapArtifactsChanged  bool
+	PublicFileMapArtifactsRepaired bool
+}
+
 // Phase2BackendSettlingGoals are backend-settling goals produced by phase 2.
 type Phase2BackendSettlingGoals struct {
-	RestartDevServerCycle          bool
-	RestartAppProcess              bool
-	RestartViteProcess             bool
-	RefreshFrameworkRoute          bool
-	RefreshFrameworkTemplate       bool
-	RefreshFrameworkPublicFileMap  bool
-	AwaitBackendReadiness          bool
-	QueueRetryWaitRestart          bool
-	RequestBrowserCSSHotReload     bool
-	RequestBrowserInvalidateAssets bool
-	RequestBrowserRevalidate       bool
-	RequestBrowserHardReload       bool
+	RestartDevServerCycle                        bool
+	RestartAppProcess                            bool
+	RestartViteProcess                           bool
+	RefreshFrameworkRoute                        bool
+	RefreshFrameworkTemplate                     bool
+	RefreshFrameworkPublicFileMap                bool
+	AwaitBackendReadiness                        bool
+	QueueRetryWaitRestart                        bool
+	RequestBrowserCSSHotReload                   bool
+	RequestBrowserNotifyVitePublicFileMapChanged bool
+	RequestBrowserRevalidate                     bool
+	RequestBrowserHardReload                     bool
+}
+
+// Phase2Output is the full phase-2 planner output consumed by phase 3.
+type Phase2Output struct {
+	BackendSettlingGoals Phase2BackendSettlingGoals
+	BuildOutcomeFacts    Phase2BuildOutcomeFacts
 }
 
 func newPhase2EffectTask(
@@ -184,6 +199,7 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 
 func reducePhase2BackendSettlingGoals(
 	buildGoals Phase1BuildGoals,
+	buildOutcomeFacts Phase2BuildOutcomeFacts,
 ) Phase2BackendSettlingGoals {
 	if buildGoals.QueueRetryWaitRestart {
 		return Phase2BackendSettlingGoals{
@@ -199,12 +215,14 @@ func reducePhase2BackendSettlingGoals(
 		RefreshFrameworkRoute:    buildGoals.RequestFrameworkRouteRefresh,
 		RefreshFrameworkTemplate: buildGoals.RequestFrameworkTemplateRefresh,
 		RefreshFrameworkPublicFileMap: buildGoals.RequestFrameworkPublicFileMapRefresh ||
-			buildGoals.GeneratePublicFileMap ||
-			buildGoals.CleanupStalePublicStaticOutputs,
-		RequestBrowserCSSHotReload:     buildGoals.RequestBrowserCSSHotReload,
-		RequestBrowserInvalidateAssets: buildGoals.RequestBrowserInvalidatePublicAssets,
-		RequestBrowserRevalidate:       buildGoals.RequestBrowserRevalidate,
-		RequestBrowserHardReload:       buildGoals.RequestBrowserHardReload,
+			buildOutcomeFacts.PublicFileMapArtifactsChanged ||
+			buildOutcomeFacts.PublicFileMapArtifactsRepaired,
+		RequestBrowserCSSHotReload: buildGoals.RequestBrowserCSSHotReload,
+		RequestBrowserNotifyVitePublicFileMapChanged: buildGoals.RequestBrowserNotifyVitePublicFileMapChanged ||
+			buildOutcomeFacts.PublicFileMapArtifactsChanged ||
+			buildOutcomeFacts.PublicFileMapArtifactsRepaired,
+		RequestBrowserRevalidate: buildGoals.RequestBrowserRevalidate,
+		RequestBrowserHardReload: buildGoals.RequestBrowserHardReload,
 	}
 	phase2BackendSettlingGoals.AwaitBackendReadiness =
 		phase2BackendSettlingGoals.RestartDevServerCycle ||
@@ -216,22 +234,40 @@ func reducePhase2BackendSettlingGoals(
 	return phase2BackendSettlingGoals
 }
 
-// Phase2PlanBackendSettlingGoalsTask maps build results to backend-settling goals.
-var Phase2PlanBackendSettlingGoalsTask = tasks.NewTask(
+func reducePhase2BuildOutcomeFacts(
+	buildGoals Phase1BuildGoals,
+) Phase2BuildOutcomeFacts {
+	return Phase2BuildOutcomeFacts{
+		PublicFileMapArtifactsChanged:  buildGoals.GeneratePublicFileMap,
+		PublicFileMapArtifactsRepaired: buildGoals.CleanupStalePublicStaticOutputs,
+	}
+}
+
+// Phase2PlanOutputTask maps build results to backend-settling goals and build outcome facts.
+var Phase2PlanOutputTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
 		input Phase2BatchInput,
-	) (Phase2BackendSettlingGoals, error) {
+	) (Phase2Output, error) {
 		if _, validateError := Phase2ValidateBuildOutputsTask.Run(
 			taskContext,
 			input,
 		); validateError != nil {
-			return Phase2BackendSettlingGoals{}, validateError
+			return Phase2Output{}, validateError
 		}
+		buildOutcomeFacts := reducePhase2BuildOutcomeFacts(input.BuildGoals)
 		if input.Batch.Mode == ModeProd {
-			return Phase2BackendSettlingGoals{}, nil
+			return Phase2Output{
+				BuildOutcomeFacts: buildOutcomeFacts,
+			}, nil
 		}
-		return reducePhase2BackendSettlingGoals(input.BuildGoals), nil
+		return Phase2Output{
+			BackendSettlingGoals: reducePhase2BackendSettlingGoals(
+				input.BuildGoals,
+				buildOutcomeFacts,
+			),
+			BuildOutcomeFacts: buildOutcomeFacts,
+		}, nil
 	},
 )
 
@@ -239,6 +275,6 @@ var Phase2PlanBackendSettlingGoalsTask = tasks.NewTask(
 func RunPhase2TaskGraph(
 	taskContext *tasks.Ctx,
 	input Phase2BatchInput,
-) (Phase2BackendSettlingGoals, error) {
-	return Phase2PlanBackendSettlingGoalsTask.Run(taskContext, input)
+) (Phase2Output, error) {
+	return Phase2PlanOutputTask.Run(taskContext, input)
 }

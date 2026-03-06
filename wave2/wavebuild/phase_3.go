@@ -8,14 +8,15 @@ import (
 type Phase3BatchInput struct {
 	Batch        PhaseBatchInput
 	BackendGoals Phase2BackendSettlingGoals
+	BuildFacts   Phase2BuildOutcomeFacts
 }
 
 // Phase3FrontendSettlingGoals are frontend-settling goals produced by phase 3.
 type Phase3FrontendSettlingGoals struct {
-	PerformCSSHotReload     bool
-	PerformInvalidateAssets bool
-	PerformRevalidate       bool
-	PerformHardReload       bool
+	PerformCSSHotReload                   bool
+	PerformNotifyVitePublicFileMapChanged bool
+	PerformRevalidate                     bool
+	PerformHardReload                     bool
 }
 
 func newPhase3EffectTask(
@@ -159,22 +160,31 @@ var Phase3PlanFrontendSettlingGoalsTask = tasks.NewTask(
 		); awaitReadyError != nil {
 			return Phase3FrontendSettlingGoals{}, awaitReadyError
 		}
-		return reducePhase3FrontendSettlingGoals(input.BackendGoals), nil
+		return reducePhase3FrontendSettlingGoals(
+			input.BackendGoals,
+			input.BuildFacts,
+		), nil
 	},
 )
 
 func reducePhase3FrontendSettlingGoals(
 	backendGoals Phase2BackendSettlingGoals,
+	buildFacts Phase2BuildOutcomeFacts,
 ) Phase3FrontendSettlingGoals {
 	if backendGoals.QueueRetryWaitRestart {
 		return Phase3FrontendSettlingGoals{}
 	}
 
 	phase3FrontendSettlingGoals := Phase3FrontendSettlingGoals{
-		PerformCSSHotReload:     backendGoals.RequestBrowserCSSHotReload,
-		PerformInvalidateAssets: backendGoals.RequestBrowserInvalidateAssets,
-		PerformRevalidate:       backendGoals.RequestBrowserRevalidate,
-		PerformHardReload:       backendGoals.RequestBrowserHardReload,
+		PerformCSSHotReload: backendGoals.RequestBrowserCSSHotReload,
+		PerformNotifyVitePublicFileMapChanged: backendGoals.RequestBrowserNotifyVitePublicFileMapChanged &&
+			(buildFacts.PublicFileMapArtifactsChanged ||
+				buildFacts.PublicFileMapArtifactsRepaired),
+		PerformRevalidate: backendGoals.RequestBrowserRevalidate,
+		PerformHardReload: backendGoals.RequestBrowserHardReload,
+	}
+	if backendGoals.RestartViteProcess {
+		phase3FrontendSettlingGoals.PerformNotifyVitePublicFileMapChanged = false
 	}
 
 	if backendGoals.RestartDevServerCycle ||

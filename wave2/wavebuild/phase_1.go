@@ -38,10 +38,10 @@ type Phase1BuildGoals struct {
 	RequestFrameworkTemplateRefresh      bool
 	RequestFrameworkPublicFileMapRefresh bool
 
-	RequestBrowserCSSHotReload           bool
-	RequestBrowserInvalidatePublicAssets bool
-	RequestBrowserRevalidate             bool
-	RequestBrowserHardReload             bool
+	RequestBrowserCSSHotReload                   bool
+	RequestBrowserNotifyVitePublicFileMapChanged bool
+	RequestBrowserRevalidate                     bool
+	RequestBrowserHardReload                     bool
 }
 
 func eventsPhaseFactsContainsType(
@@ -59,11 +59,11 @@ func eventsPhaseFactsContainsType(
 type phase1BrowserActionIntent string
 
 const (
-	phase1BrowserActionIntentNone         phase1BrowserActionIntent = "none"
-	phase1BrowserActionIntentCSSHotReload phase1BrowserActionIntent = "css_hot_reload"
-	phase1BrowserActionIntentRevalidate   phase1BrowserActionIntent = "revalidate"
-	phase1BrowserActionIntentInvalidate   phase1BrowserActionIntent = "invalidate"
-	phase1BrowserActionIntentHardReload   phase1BrowserActionIntent = "hard_reload"
+	phase1BrowserActionIntentNone                           phase1BrowserActionIntent = "none"
+	phase1BrowserActionIntentCSSHotReload                   phase1BrowserActionIntent = "css_hot_reload"
+	phase1BrowserActionIntentRevalidate                     phase1BrowserActionIntent = "revalidate"
+	phase1BrowserActionIntentNotifyVitePublicFileMapChanged phase1BrowserActionIntent = "notify_vite_public_filemap_changed"
+	phase1BrowserActionIntentHardReload                     phase1BrowserActionIntent = "hard_reload"
 )
 
 func browserActionIntentPriority(
@@ -72,7 +72,7 @@ func browserActionIntentPriority(
 	switch actionIntent {
 	case phase1BrowserActionIntentHardReload:
 		return 4
-	case phase1BrowserActionIntentInvalidate:
+	case phase1BrowserActionIntentNotifyVitePublicFileMapChanged:
 		return 3
 	case phase1BrowserActionIntentRevalidate:
 		return 2
@@ -117,7 +117,7 @@ func deriveImplicitBrowserActionIntent(
 	) {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
-			phase1BrowserActionIntentInvalidate,
+			phase1BrowserActionIntentNotifyVitePublicFileMapChanged,
 		)
 	}
 	if eventsPhaseFactsContainsType(
@@ -155,10 +155,10 @@ func deriveAppRequestedBrowserActionIntent(
 			phase1BrowserActionIntentRevalidate,
 		)
 	}
-	if appRequestedOutcomes.RequestBrowserInvalidate {
+	if appRequestedOutcomes.RequestNotifyVitePublicFileMapChanged {
 		actionIntent = dominantBrowserActionIntent(
 			actionIntent,
-			phase1BrowserActionIntentInvalidate,
+			phase1BrowserActionIntentNotifyVitePublicFileMapChanged,
 		)
 	}
 	if appRequestedOutcomes.RequestBrowserHardReload {
@@ -227,8 +227,8 @@ func reducePhase1BuildGoals(
 	requestFrameworkPublicFileMapRefresh := publicStaticChanged
 	requestBrowserCSSHotReload :=
 		mergedBrowserActionIntent == phase1BrowserActionIntentCSSHotReload
-	requestBrowserInvalidatePublicAssets :=
-		mergedBrowserActionIntent == phase1BrowserActionIntentInvalidate
+	requestBrowserNotifyVitePublicFileMapChanged :=
+		mergedBrowserActionIntent == phase1BrowserActionIntentNotifyVitePublicFileMapChanged
 	requestBrowserRevalidate :=
 		mergedBrowserActionIntent == phase1BrowserActionIntentRevalidate
 	requestBrowserHardReload :=
@@ -241,7 +241,7 @@ func reducePhase1BuildGoals(
 		requestFrameworkTemplateRefresh = false
 		requestFrameworkPublicFileMapRefresh = false
 		requestBrowserCSSHotReload = false
-		requestBrowserInvalidatePublicAssets = false
+		requestBrowserNotifyVitePublicFileMapChanged = false
 		requestBrowserRevalidate = false
 		requestBrowserHardReload = false
 	}
@@ -263,10 +263,10 @@ func reducePhase1BuildGoals(
 		RequestFrameworkTemplateRefresh:      requestFrameworkTemplateRefresh,
 		RequestFrameworkPublicFileMapRefresh: requestFrameworkPublicFileMapRefresh,
 
-		RequestBrowserCSSHotReload:           requestBrowserCSSHotReload,
-		RequestBrowserInvalidatePublicAssets: requestBrowserInvalidatePublicAssets,
-		RequestBrowserRevalidate:             requestBrowserRevalidate,
-		RequestBrowserHardReload:             requestBrowserHardReload,
+		RequestBrowserCSSHotReload:                   requestBrowserCSSHotReload,
+		RequestBrowserNotifyVitePublicFileMapChanged: requestBrowserNotifyVitePublicFileMapChanged,
+		RequestBrowserRevalidate:                     requestBrowserRevalidate,
+		RequestBrowserHardReload:                     requestBrowserHardReload,
 	}
 	if eventsPhaseFacts.Mode == ModeProd {
 		phase1BuildGoals.RestartDevServerCycle = false

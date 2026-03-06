@@ -20,8 +20,8 @@ const (
 	Phase4TerminalActionNone Phase4TerminalAction = "none"
 	// Phase4TerminalActionCSSHotReload represents CSS-only hot reload.
 	Phase4TerminalActionCSSHotReload Phase4TerminalAction = "css_hot_reload"
-	// Phase4TerminalActionInvalidateAssets represents browser asset invalidation.
-	Phase4TerminalActionInvalidateAssets Phase4TerminalAction = "invalidate_assets"
+	// Phase4TerminalActionNotifyVitePublicFileMapChanged notifies Vite that public file-map artifacts changed.
+	Phase4TerminalActionNotifyVitePublicFileMapChanged Phase4TerminalAction = "notify_vite_public_filemap_changed"
 	// Phase4TerminalActionRevalidate represents browser revalidation.
 	Phase4TerminalActionRevalidate Phase4TerminalAction = "revalidate"
 	// Phase4TerminalActionHardReload represents browser hard reload.
@@ -67,9 +67,9 @@ var Phase4BroadcastCSSHotReloadTask = newPhase4EffectTask(
 	PhaseEffectIDFrontendBroadcastCSSHotReload,
 )
 
-// Phase4BroadcastInvalidateAssetsTask executes browser asset invalidation broadcast.
-var Phase4BroadcastInvalidateAssetsTask = newPhase4EffectTask(
-	PhaseEffectIDFrontendBroadcastInvalidateAssets,
+// Phase4NotifyVitePublicFileMapChangedTask notifies Vite that public file-map artifacts changed.
+var Phase4NotifyVitePublicFileMapChangedTask = newPhase4EffectTask(
+	PhaseEffectIDFrontendNotifyVitePublicFileMapChanged,
 )
 
 // Phase4BroadcastRevalidateTask executes browser revalidation broadcast.
@@ -103,8 +103,8 @@ func reducePhase4TerminalFrontendAction(
 	if frontendGoals.PerformHardReload {
 		return Phase4TerminalActionHardReload
 	}
-	if frontendGoals.PerformInvalidateAssets {
-		return Phase4TerminalActionInvalidateAssets
+	if frontendGoals.PerformNotifyVitePublicFileMapChanged {
+		return Phase4TerminalActionNotifyVitePublicFileMapChanged
 	}
 	if frontendGoals.PerformRevalidate {
 		return Phase4TerminalActionRevalidate
@@ -136,12 +136,12 @@ func RunPhase4TaskGraph(
 		); hardReloadError != nil {
 			return Phase4CompletionSummary{}, hardReloadError
 		}
-	case Phase4TerminalActionInvalidateAssets:
-		if _, invalidateError := Phase4BroadcastInvalidateAssetsTask.Run(
+	case Phase4TerminalActionNotifyVitePublicFileMapChanged:
+		if _, notifyViteError := Phase4NotifyVitePublicFileMapChangedTask.Run(
 			taskContext,
 			input,
-		); invalidateError != nil {
-			return Phase4CompletionSummary{}, invalidateError
+		); notifyViteError != nil {
+			return Phase4CompletionSummary{}, notifyViteError
 		}
 	case Phase4TerminalActionRevalidate:
 		if _, revalidateError := Phase4BroadcastRevalidateTask.Run(
@@ -174,5 +174,5 @@ func RunFourPhaseTaskGraph(
 	parentContext context.Context,
 	input EventsPhaseBatchInput,
 ) (FourPhaseRunResult, error) {
-	return NewDefaultFourPhaseRunner().Run(parentContext, input)
+	return RunFourPhasePipeline(parentContext, input)
 }

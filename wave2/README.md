@@ -6,7 +6,7 @@ covers all required observable behavior.
 ## Public Surfaces
 
 - `wave2/wave.go`: app-facing runtime API
-- `wave2/wavebuild/wavebuild.go`: build/dev phase contracts and phase runner
+- `wave2/wavebuild/wavebuild.go`: build/dev phase contracts and phase pipeline
 - `wave2/wavefw/wavefw.go`: framework-facing signal translation
 
 ## Runtime/Buildtime Boundary
@@ -63,9 +63,8 @@ swapped without changing the task graph.
 
 For design runs:
 
-- `NewNoopPhaseExecutionScope()` provides explicit no-op side effects.
-- `NewEventsPhaseBatchInputWithNoopExecution(...)` provides an explicit
-  batch-input wrapper for a no-op scope.
+- Provide a no-op execution scope directly on batch input:
+  `Execution: wavebuild.PhaseExecutionScope{EffectExecutor: wavebuild.NoopPhaseEffectExecutor{}}`.
 
 ## Framework Boundary
 

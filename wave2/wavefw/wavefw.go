@@ -47,23 +47,11 @@ type SignalTranslationRule struct {
 	ActionType FrameworkRefreshActionType
 }
 
-// SignalTranslator translates generic framework signals to framework-owned
-// refresh actions.
-type SignalTranslator interface {
-	TranslateSignals(
-		signals []wavebuild.FrameworkSignal,
-	) ([]FrameworkRefreshAction, error)
-}
-
-// RuleBasedSignalTranslator translates framework signals using pure-data rules.
-type RuleBasedSignalTranslator struct {
-	ruleBySignalType map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType
-}
-
-// NewRuleBasedSignalTranslator constructs one rule-based signal translator.
-func NewRuleBasedSignalTranslator(
+// buildSignalTranslationRuleMap validates and indexes translation rules by
+// signal type.
+func buildSignalTranslationRuleMap(
 	rules []SignalTranslationRule,
-) (*RuleBasedSignalTranslator, error) {
+) (map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType, error) {
 	ruleBySignalType := make(
 		map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType,
 		len(rules),
@@ -82,26 +70,26 @@ func NewRuleBasedSignalTranslator(
 		}
 		ruleBySignalType[rule.SignalType] = rule.ActionType
 	}
-	return &RuleBasedSignalTranslator{
-		ruleBySignalType: ruleBySignalType,
-	}, nil
+	return ruleBySignalType, nil
 }
 
-// TranslateSignals translates generic framework signals to framework refresh
-// actions using configured mapping rules.
-func (translator *RuleBasedSignalTranslator) TranslateSignals(
+// TranslateSignalsWithRules translates generic framework signals to framework
+// refresh actions using explicit mapping rules.
+func TranslateSignalsWithRules(
 	signals []wavebuild.FrameworkSignal,
+	rules []SignalTranslationRule,
 ) ([]FrameworkRefreshAction, error) {
-	if translator == nil {
-		return nil, errors.New("wavefw: signal translator is required")
-	}
 	if len(signals) == 0 {
 		return nil, nil
+	}
+	ruleBySignalType, ruleMapError := buildSignalTranslationRuleMap(rules)
+	if ruleMapError != nil {
+		return nil, ruleMapError
 	}
 	actions := make([]FrameworkRefreshAction, 0, len(signals))
 	seenActionKey := make(map[string]struct{}, len(signals))
 	for _, signal := range signals {
-		actionType, foundActionType := translator.ruleBySignalType[signal.Type]
+		actionType, foundActionType := ruleBySignalType[signal.Type]
 		if !foundActionType {
 			return nil, fmt.Errorf(
 				"wavefw: no framework refresh action mapping for framework signal type %q",
@@ -146,18 +134,12 @@ func CanonicalSignalTranslationRules() []SignalTranslationRule {
 	return canonicalSignalTranslationRules
 }
 
-// NewCanonicalSignalTranslator constructs one translator with canonical mapping
-// defaults.
-func NewCanonicalSignalTranslator() (*RuleBasedSignalTranslator, error) {
-	return NewRuleBasedSignalTranslator(CanonicalSignalTranslationRules())
-}
-
 // Adapter describes one framework integration unit for Wave2.
 type Adapter struct {
 	Name string
-	// SignalTranslator converts Wave2 framework signals into framework-specific
-	// actions.
-	SignalTranslator SignalTranslator
+	// SignalTranslationRules convert Wave2 framework signals into framework-specific
+	// actions. Empty uses canonical translation rules.
+	SignalTranslationRules []SignalTranslationRule
 }
 
 // TranslateFrameworkSignals converts generic framework signals into
@@ -166,13 +148,9 @@ func TranslateFrameworkSignals(
 	adapter Adapter,
 	signals []wavebuild.FrameworkSignal,
 ) ([]FrameworkRefreshAction, error) {
-	translator := adapter.SignalTranslator
-	if translator == nil {
-		var translatorError error
-		translator, translatorError = NewCanonicalSignalTranslator()
-		if translatorError != nil {
-			return nil, translatorError
-		}
+	rules := adapter.SignalTranslationRules
+	if len(rules) == 0 {
+		rules = CanonicalSignalTranslationRules()
 	}
-	return translator.TranslateSignals(signals)
+	return TranslateSignalsWithRules(signals, rules)
 }
