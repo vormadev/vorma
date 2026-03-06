@@ -125,8 +125,8 @@ type appRequestedOutcomes struct {
 	requestGoCompile               bool
 }
 
-// phase1Input is the phase-1 input contract in observable terms.
-type phase1Input struct {
+// p1_Input is the phase-1 input contract in observable terms.
+type p1_Input struct {
 	mode         mode
 	generationID string
 	events       []observedBatchEvent
@@ -135,8 +135,8 @@ type phase1Input struct {
 	waitingForBuildRetry bool
 }
 
-// phase1Facts is the minimal phase-1 output used by planners.
-type phase1Facts struct {
+// p1_Facts is the minimal phase-1 output used by planners.
+type p1_Facts struct {
 	mode         mode
 	generationID string
 
@@ -149,20 +149,20 @@ type phase1Facts struct {
 }
 
 // buildFacts reduces one phase-1 input into deterministic planner facts.
-func (input phase1Input) buildFacts() (phase1Facts, error) {
+func (input p1_Input) buildFacts() (p1_Facts, error) {
 	if modeError := input.mode.validate(); modeError != nil {
-		return phase1Facts{}, modeError
+		return p1_Facts{}, modeError
 	}
 	normalizedGenerationID := strings.TrimSpace(input.generationID)
 	if normalizedGenerationID == "" {
-		return phase1Facts{}, errors.New(
+		return p1_Facts{}, errors.New(
 			"wavebuild: generation id is required",
 		)
 	}
 
 	appRequestedOutcomes, appRequestedOutcomesError := input.appRequestedOutcomes.reduce()
 	if appRequestedOutcomesError != nil {
-		return phase1Facts{}, appRequestedOutcomesError
+		return p1_Facts{}, appRequestedOutcomesError
 	}
 
 	eventTypeSet := make(map[eventType]struct{}, len(input.events))
@@ -179,7 +179,7 @@ func (input phase1Input) buildFacts() (phase1Facts, error) {
 		}
 
 		if !rawEvent.eventType.isSupported() {
-			return phase1Facts{}, fmt.Errorf(
+			return p1_Facts{}, fmt.Errorf(
 				"wavebuild: unsupported event type %q at index %d",
 				rawEvent.eventType,
 				eventIndex,
@@ -192,7 +192,7 @@ func (input phase1Input) buildFacts() (phase1Facts, error) {
 		actionableEventTypes = append(actionableEventTypes, rawEvent.eventType)
 	}
 
-	return phase1Facts{
+	return p1_Facts{
 		mode:                 input.mode,
 		generationID:         normalizedGenerationID,
 		eventTypes:           actionableEventTypes,
@@ -246,7 +246,7 @@ func (signal FrameworkSignal) Metadata() map[string]string {
 
 // frameworkSignals reduces backend-settling effects into framework-agnostic
 // signals for framework adapter handoff.
-func (phase2RequestedEffects phase2RequestedEffects) frameworkSignals(
+func (p2_RequestedEffects p2_RequestedEffects) frameworkSignals(
 	generationID string,
 ) []FrameworkSignal {
 	freshnessToken := strings.TrimSpace(generationID)
@@ -254,7 +254,7 @@ func (phase2RequestedEffects phase2RequestedEffects) frameworkSignals(
 		return nil
 	}
 	signals := make([]FrameworkSignal, 0, 3)
-	if phase2RequestedEffects.refreshFrameworkRoute {
+	if p2_RequestedEffects.refreshFrameworkRoute {
 		signals = append(
 			signals,
 			FrameworkSignal{
@@ -264,7 +264,7 @@ func (phase2RequestedEffects phase2RequestedEffects) frameworkSignals(
 			},
 		)
 	}
-	if phase2RequestedEffects.refreshFrameworkTemplate {
+	if p2_RequestedEffects.refreshFrameworkTemplate {
 		signals = append(
 			signals,
 			FrameworkSignal{
@@ -274,7 +274,7 @@ func (phase2RequestedEffects phase2RequestedEffects) frameworkSignals(
 			},
 		)
 	}
-	if phase2RequestedEffects.refreshFrameworkPublicFileMap {
+	if p2_RequestedEffects.refreshFrameworkPublicFileMap {
 		signals = append(
 			signals,
 			FrameworkSignal{
@@ -288,7 +288,7 @@ func (phase2RequestedEffects phase2RequestedEffects) frameworkSignals(
 }
 
 var (
-	errPhase1InputRequired = errors.New(
+	errP1_InputRequired = errors.New(
 		"wavebuild: phase-1 input is required",
 	)
 	errGenerationIDRequired = errors.New(
@@ -297,17 +297,17 @@ var (
 )
 
 type phaseEffectSets struct {
-	phase1 phase1Effects
-	phase2 phase2Effects
-	phase3 phase3Effects
-	phase4 phase4Effects
+	p1 p1_Effects
+	p2 p2_Effects
+	p3 p3_Effects
+	p4 p4_Effects
 }
 
 var realPhaseEffectSets = phaseEffectSets{
-	phase1: phase1EffectsDef,
-	phase2: phase2EffectsDef,
-	phase3: phase3EffectsDef,
-	phase4: phase4EffectsDef,
+	p1: p1_EffectsDef,
+	p2: p2_EffectsDef,
+	p3: p3_EffectsDef,
+	p4: p4_EffectsDef,
 }
 
 // runFourPhasePipeline executes one phase batch with one batch-scoped tasks context.
@@ -317,7 +317,7 @@ var realPhaseEffectSets = phaseEffectSets{
 // - prod bypasses phases 1/3/4 and runs phase 2 only.
 func runFourPhasePipeline(
 	parentContext context.Context,
-	input phase1BatchInput,
+	input p1_BatchInput,
 ) (fourPhaseRunResult, error) {
 	return runFourPhasePipelineWithEffectSets(
 		parentContext,
@@ -328,111 +328,111 @@ func runFourPhasePipeline(
 
 func runFourPhasePipelineWithEffectSets(
 	parentContext context.Context,
-	input phase1BatchInput,
+	input p1_BatchInput,
 	effects phaseEffectSets,
 ) (fourPhaseRunResult, error) {
-	if input.phase1 == nil {
-		return fourPhaseRunResult{}, errPhase1InputRequired
+	if input.p1 == nil {
+		return fourPhaseRunResult{}, errP1_InputRequired
 	}
-	normalizedGenerationID := strings.TrimSpace(input.phase1.generationID)
+	normalizedGenerationID := strings.TrimSpace(input.p1.generationID)
 	if normalizedGenerationID == "" {
 		return fourPhaseRunResult{}, errGenerationIDRequired
 	}
-	if modeError := input.phase1.mode.validate(); modeError != nil {
+	if modeError := input.p1.mode.validate(); modeError != nil {
 		return fourPhaseRunResult{}, modeError
 	}
 
 	batchTaskContext := tasks.NewCtx(parentContext)
-	phase1RequestedEffects := canonicalPhase1RequestedEffects()
-	if input.phase1.mode != modeProd {
-		var phase1Error error
-		phase1RequestedEffects, phase1Error = effects.phase1.planPhase1RequestedEffects.Run(
+	p1_RequestedEffects := canonicalP1_RequestedEffects()
+	if input.p1.mode != modeProd {
+		var p1_Error error
+		p1_RequestedEffects, p1_Error = effects.p1.planP1_RequestedEffects.Run(
 			batchTaskContext,
 			input,
 		)
-		if phase1Error != nil {
-			return fourPhaseRunResult{}, phase1Error
+		if p1_Error != nil {
+			return fourPhaseRunResult{}, p1_Error
 		}
 	}
 
 	phaseBatchInput := phaseBatchInput{
-		mode:         input.phase1.mode,
+		mode:         input.p1.mode,
 		generationID: normalizedGenerationID,
 	}
-	phase2Output, phase2Error := effects.phase2.planPhase2Output.Run(
+	p2_Output, p2_Error := effects.p2.planP2_Output.Run(
 		batchTaskContext,
-		phase2BatchInput{
-			batch:                  phaseBatchInput,
-			phase1RequestedEffects: phase1RequestedEffects,
+		p2_BatchInput{
+			batch:               phaseBatchInput,
+			p1_RequestedEffects: p1_RequestedEffects,
 		},
 	)
-	if phase2Error != nil {
-		return fourPhaseRunResult{}, phase2Error
+	if p2_Error != nil {
+		return fourPhaseRunResult{}, p2_Error
 	}
-	if input.phase1.mode == modeProd {
+	if input.p1.mode == modeProd {
 		return fourPhaseRunResult{
-			phase1RequestedEffects: phase1RequestedEffects,
-			phase2RequestedEffects: phase2Output.phase2RequestedEffects,
+			p1_RequestedEffects: p1_RequestedEffects,
+			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
 		}, nil
 	}
 
-	phase3RequestedEffects, phase3Error := effects.phase3.planPhase3RequestedEffects.Run(
+	p3_RequestedEffects, p3_Error := effects.p3.planP3_RequestedEffects.Run(
 		batchTaskContext,
-		phase3BatchInput{
-			batch:                  phaseBatchInput,
-			phase2RequestedEffects: phase2Output.phase2RequestedEffects,
+		p3_BatchInput{
+			batch:               phaseBatchInput,
+			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
 		},
 	)
-	if phase3Error != nil {
-		return fourPhaseRunResult{}, phase3Error
+	if p3_Error != nil {
+		return fourPhaseRunResult{}, p3_Error
 	}
-	phase4CompletionSummary, phase4Error := effects.phase4.executeTerminalBrowserAction.Run(
+	p4_CompletionSummary, p4_Error := effects.p4.executeTerminalBrowserAction.Run(
 		batchTaskContext,
-		phase4BatchInput{
-			batch:                  phaseBatchInput,
-			phase3RequestedEffects: phase3RequestedEffects,
+		p4_BatchInput{
+			batch:               phaseBatchInput,
+			p3_RequestedEffects: p3_RequestedEffects,
 		},
 	)
-	if phase4Error != nil {
-		return fourPhaseRunResult{}, phase4Error
+	if p4_Error != nil {
+		return fourPhaseRunResult{}, p4_Error
 	}
-	if phase4CompletionSummary.requiresBackendViteHealing {
-		healingPhase2RequestedEffects := phase2RequestedEffects{
+	if p4_CompletionSummary.requiresBackendViteHealing {
+		healingP2_RequestedEffects := p2_RequestedEffects{
 			restartViteProcess:    true,
 			awaitBackendReadiness: true,
 		}
-		healingPhase3RequestedEffects, healingPhase3Error := effects.phase3.planPhase3RequestedEffects.Run(
+		healingP3_RequestedEffects, healingP3_Error := effects.p3.planP3_RequestedEffects.Run(
 			batchTaskContext,
-			phase3BatchInput{
-				batch:                  phaseBatchInput,
-				phase2RequestedEffects: healingPhase2RequestedEffects,
+			p3_BatchInput{
+				batch:               phaseBatchInput,
+				p2_RequestedEffects: healingP2_RequestedEffects,
 			},
 		)
-		if healingPhase3Error != nil {
-			return fourPhaseRunResult{}, healingPhase3Error
+		if healingP3_Error != nil {
+			return fourPhaseRunResult{}, healingP3_Error
 		}
-		healingCompletionSummary, healingPhase4Error := effects.phase4.executeTerminalBrowserAction.Run(
+		healingCompletionSummary, healingP4_Error := effects.p4.executeTerminalBrowserAction.Run(
 			batchTaskContext,
-			phase4BatchInput{
-				batch:                  phaseBatchInput,
-				phase3RequestedEffects: healingPhase3RequestedEffects,
+			p4_BatchInput{
+				batch:               phaseBatchInput,
+				p3_RequestedEffects: healingP3_RequestedEffects,
 			},
 		)
-		if healingPhase4Error != nil {
-			return fourPhaseRunResult{}, healingPhase4Error
+		if healingP4_Error != nil {
+			return fourPhaseRunResult{}, healingP4_Error
 		}
-		phase2Output.phase2RequestedEffects = phase2Output.phase2RequestedEffects.merge(
-			healingPhase2RequestedEffects,
+		p2_Output.p2_RequestedEffects = p2_Output.p2_RequestedEffects.merge(
+			healingP2_RequestedEffects,
 		)
-		phase3RequestedEffects = healingPhase3RequestedEffects
-		phase4CompletionSummary = healingCompletionSummary
+		p3_RequestedEffects = healingP3_RequestedEffects
+		p4_CompletionSummary = healingCompletionSummary
 	}
 	return fourPhaseRunResult{
-		phase1RequestedEffects:  phase1RequestedEffects,
-		phase2RequestedEffects:  phase2Output.phase2RequestedEffects,
-		phase3RequestedEffects:  phase3RequestedEffects,
-		phase4CompletionSummary: phase4CompletionSummary,
-		frameworkSignals: phase2Output.phase2RequestedEffects.frameworkSignals(
+		p1_RequestedEffects:  p1_RequestedEffects,
+		p2_RequestedEffects:  p2_Output.p2_RequestedEffects,
+		p3_RequestedEffects:  p3_RequestedEffects,
+		p4_CompletionSummary: p4_CompletionSummary,
+		frameworkSignals: p2_Output.p2_RequestedEffects.frameworkSignals(
 			normalizedGenerationID,
 		),
 	}, nil
@@ -497,8 +497,8 @@ func (rawOutcomes appRequestedOutcomes) reduce() (appRequestedOutcomes, error) {
 	return reducedOutcomes, nil
 }
 
-func canonicalPhase1RequestedEffects() phase1RequestedEffects {
-	return phase1RequestedEffects{
+func canonicalP1_RequestedEffects() p1_RequestedEffects {
+	return p1_RequestedEffects{
 		compileGoBinary:                 true,
 		buildCriticalCSS:                true,
 		buildNormalCSS:                  true,

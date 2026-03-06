@@ -1,30 +1,26 @@
 package wavebuild
 
-import (
-	"github.com/vormadev/vorma/kit/tasks"
-)
-
 /////////////////////////////////////////////////////////////////////
 /////// Phase Contracts
 /////////////////////////////////////////////////////////////////////
 
-// phase2BatchInput is the build-phase input produced by phase 1.
-type phase2BatchInput struct {
-	batch                  phaseBatchInput
-	phase1RequestedEffects phase1RequestedEffects
+// p2_BatchInput is the build-phase input produced by phase 1.
+type p2_BatchInput struct {
+	batch               phaseBatchInput
+	p1_RequestedEffects p1_RequestedEffects
 }
 
-// phase2BuildOutcomeFacts are observable build outcome facts produced by phase 2.
+// p2_BuildOutcomeFacts are observable build outcome facts produced by phase 2.
 //
 // These facts are phase-2 outputs consumed by later phase planners; they are
 // not direct watcher-event classifications.
-type phase2BuildOutcomeFacts struct {
+type p2_BuildOutcomeFacts struct {
 	publicFileMapArtifactsChanged  bool
 	publicFileMapArtifactsRepaired bool
 }
 
-// phase2RequestedEffects are backend-settling effects requested by phase 2.
-type phase2RequestedEffects struct {
+// p2_RequestedEffects are backend-settling effects requested by phase 2.
+type p2_RequestedEffects struct {
 	restartDevServerCycle          bool
 	restartAppProcess              bool
 	restartViteProcess             bool
@@ -36,31 +32,20 @@ type phase2RequestedEffects struct {
 	requestedTerminalBrowserAction frontendTerminalBrowserAction
 }
 
-// phase2Output is the full phase-2 planner output consumed by phase 3.
-type phase2Output struct {
-	phase2RequestedEffects phase2RequestedEffects
-	buildOutcomeFacts      phase2BuildOutcomeFacts
+// p2_Output is the full phase-2 planner output consumed by phase 3.
+type p2_Output struct {
+	p2_RequestedEffects p2_RequestedEffects
+	buildOutcomeFacts   p2_BuildOutcomeFacts
 }
-
-/////////////////////////////////////////////////////////////////////
-/////// Shared Phase Tasks
-/////////////////////////////////////////////////////////////////////
-
-var noopPhase2EffectTask = tasks.NewTask(
-	func(taskContext *tasks.Ctx, input phase2BatchInput,
-	) (struct{}, error) {
-		return struct{}{}, nil
-	},
-)
 
 /////////////////////////////////////////////////////////////////////
 /////// Phase Reductions
 /////////////////////////////////////////////////////////////////////
 
-func (leftFacts phase2BuildOutcomeFacts) merge(
-	rightFacts phase2BuildOutcomeFacts,
-) phase2BuildOutcomeFacts {
-	return phase2BuildOutcomeFacts{
+func (leftFacts p2_BuildOutcomeFacts) merge(
+	rightFacts p2_BuildOutcomeFacts,
+) p2_BuildOutcomeFacts {
+	return p2_BuildOutcomeFacts{
 		publicFileMapArtifactsChanged: leftFacts.publicFileMapArtifactsChanged ||
 			rightFacts.publicFileMapArtifactsChanged,
 		publicFileMapArtifactsRepaired: leftFacts.publicFileMapArtifactsRepaired ||
@@ -68,16 +53,16 @@ func (leftFacts phase2BuildOutcomeFacts) merge(
 	}
 }
 
-func (phase1RequestedEffects phase1RequestedEffects) derivePhase2RequestedEffects(
-	buildOutcomeFacts phase2BuildOutcomeFacts,
-) phase2RequestedEffects {
-	if phase1RequestedEffects.queueRetryWaitRestart {
-		return phase2RequestedEffects{
+func (p1_RequestedEffects p1_RequestedEffects) deriveP2_RequestedEffects(
+	buildOutcomeFacts p2_BuildOutcomeFacts,
+) p2_RequestedEffects {
+	if p1_RequestedEffects.queueRetryWaitRestart {
+		return p2_RequestedEffects{
 			queueRetryWaitRestart: true,
 		}
 	}
 
-	requestedTerminalBrowserAction := phase1RequestedEffects.requestedTerminalBrowserAction
+	requestedTerminalBrowserAction := p1_RequestedEffects.requestedTerminalBrowserAction
 	if buildOutcomeFacts.publicFileMapArtifactsChanged ||
 		buildOutcomeFacts.publicFileMapArtifactsRepaired {
 		requestedTerminalBrowserAction = requestedTerminalBrowserAction.dominantWith(
@@ -85,14 +70,14 @@ func (phase1RequestedEffects phase1RequestedEffects) derivePhase2RequestedEffect
 		)
 	}
 
-	requestedEffects := phase2RequestedEffects{
-		restartDevServerCycle: phase1RequestedEffects.restartDevServerCycle,
-		restartAppProcess: phase1RequestedEffects.requestBackendRestart ||
-			phase1RequestedEffects.compileGoBinary,
-		restartViteProcess:       phase1RequestedEffects.requestViteRestart,
-		refreshFrameworkRoute:    phase1RequestedEffects.requestFrameworkRouteRefresh,
-		refreshFrameworkTemplate: phase1RequestedEffects.requestFrameworkTemplateRefresh,
-		refreshFrameworkPublicFileMap: phase1RequestedEffects.requestFrameworkPublicFileMapRefresh ||
+	requestedEffects := p2_RequestedEffects{
+		restartDevServerCycle: p1_RequestedEffects.restartDevServerCycle,
+		restartAppProcess: p1_RequestedEffects.requestBackendRestart ||
+			p1_RequestedEffects.compileGoBinary,
+		restartViteProcess:       p1_RequestedEffects.requestViteRestart,
+		refreshFrameworkRoute:    p1_RequestedEffects.requestFrameworkRouteRefresh,
+		refreshFrameworkTemplate: p1_RequestedEffects.requestFrameworkTemplateRefresh,
+		refreshFrameworkPublicFileMap: p1_RequestedEffects.requestFrameworkPublicFileMapRefresh ||
 			buildOutcomeFacts.publicFileMapArtifactsChanged ||
 			buildOutcomeFacts.publicFileMapArtifactsRepaired,
 		requestedTerminalBrowserAction: requestedTerminalBrowserAction,
@@ -107,10 +92,10 @@ func (phase1RequestedEffects phase1RequestedEffects) derivePhase2RequestedEffect
 	return requestedEffects
 }
 
-func (leftRequestedEffects phase2RequestedEffects) merge(
-	rightRequestedEffects phase2RequestedEffects,
-) phase2RequestedEffects {
-	return phase2RequestedEffects{
+func (leftRequestedEffects p2_RequestedEffects) merge(
+	rightRequestedEffects p2_RequestedEffects,
+) p2_RequestedEffects {
+	return p2_RequestedEffects{
 		restartDevServerCycle: leftRequestedEffects.restartDevServerCycle ||
 			rightRequestedEffects.restartDevServerCycle,
 		restartAppProcess: leftRequestedEffects.restartAppProcess ||

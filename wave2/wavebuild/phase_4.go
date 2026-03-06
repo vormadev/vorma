@@ -4,23 +4,23 @@ package wavebuild
 /////// Phase Contracts
 /////////////////////////////////////////////////////////////////////
 
-// phase4BatchInput is the frontend-settling input produced by phase 3.
-type phase4BatchInput struct {
-	batch                  phaseBatchInput
-	phase3RequestedEffects phase3RequestedEffects
+// p4_BatchInput is the frontend-settling input produced by phase 3.
+type p4_BatchInput struct {
+	batch               phaseBatchInput
+	p3_RequestedEffects p3_RequestedEffects
 }
 
-// phase4CompletionSummary captures frontend-settling completion output.
-type phase4CompletionSummary struct {
+// p4_CompletionSummary captures frontend-settling completion output.
+type p4_CompletionSummary struct {
 	terminalAction             frontendTerminalBrowserAction
 	requiresBackendViteHealing bool
 }
 
 // fourPhaseRunResult captures the full four-phase pipeline execution.
 type fourPhaseRunResult struct {
-	phase1RequestedEffects  phase1RequestedEffects
-	phase2RequestedEffects  phase2RequestedEffects
-	phase3RequestedEffects  phase3RequestedEffects
-	phase4CompletionSummary phase4CompletionSummary
-	frameworkSignals        []FrameworkSignal
+	p1_RequestedEffects  p1_RequestedEffects
+	p2_RequestedEffects  p2_RequestedEffects
+	p3_RequestedEffects  p3_RequestedEffects
+	p4_CompletionSummary p4_CompletionSummary
+	frameworkSignals     []FrameworkSignal
 }

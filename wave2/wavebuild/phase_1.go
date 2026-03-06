@@ -14,13 +14,13 @@ type phaseBatchInput struct {
 	generationID string
 }
 
-// phase1BatchInput is the phase-1 input contract for one reduced batch.
-type phase1BatchInput struct {
-	phase1 *phase1Input
+// p1_BatchInput is the phase-1 input contract for one reduced batch.
+type p1_BatchInput struct {
+	p1 *p1_Input
 }
 
-// phase1RequestedEffects are phase-2 build effects plus carry-forward settle intents.
-type phase1RequestedEffects struct {
+// p1_RequestedEffects are phase-2 build effects plus carry-forward settle intents.
+type p1_RequestedEffects struct {
 	restartDevServerCycle           bool
 	compileGoBinary                 bool
 	buildCriticalCSS                bool
@@ -44,13 +44,13 @@ type phase1RequestedEffects struct {
 /////// Phase Reductions
 /////////////////////////////////////////////////////////////////////
 
-func (facts phase1Facts) hasEventType(
+func (facts p1_Facts) hasEventType(
 	eventType eventType,
 ) bool {
 	return slices.Contains(facts.eventTypes, eventType)
 }
 
-func (facts phase1Facts) deriveImplicitBrowserActionIntent() frontendTerminalBrowserAction {
+func (facts p1_Facts) deriveImplicitBrowserActionIntent() frontendTerminalBrowserAction {
 	actionIntent := frontendTerminalBrowserActionNone
 	if facts.hasEventType(
 		eventTypeCriticalCSSSourceChanged,
@@ -88,10 +88,10 @@ func (facts phase1Facts) deriveImplicitBrowserActionIntent() frontendTerminalBro
 	return actionIntent
 }
 
-func (facts phase1Facts) derivePhase1RequestedEffects() phase1RequestedEffects {
+func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
 	if facts.mode == modeDev &&
 		facts.waitingForBuildRetry {
-		return phase1RequestedEffects{
+		return p1_RequestedEffects{
 			queueRetryWaitRestart: true,
 		}
 	}
@@ -154,7 +154,7 @@ func (facts phase1Facts) derivePhase1RequestedEffects() phase1RequestedEffects {
 		mergedBrowserActionIntent = frontendTerminalBrowserActionNone
 	}
 
-	requestedEffects := phase1RequestedEffects{
+	requestedEffects := p1_RequestedEffects{
 		restartDevServerCycle: configChanged,
 		compileGoBinary: goSourceChanged ||
 			appRequestedOutcomes.requestGoCompile,

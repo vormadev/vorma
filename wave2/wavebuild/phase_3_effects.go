@@ -6,144 +6,223 @@ import "github.com/vormadev/vorma/kit/tasks"
 /////// Effect Catalog
 /////////////////////////////////////////////////////////////////////
 
-type phase3Effects struct {
-	applyDevServerRestart         *tasks.Task[phase3BatchInput, struct{}]
-	queueRetryWaitRestart         *tasks.Task[phase3BatchInput, struct{}]
-	restartAppProcess             *tasks.Task[phase3BatchInput, struct{}]
-	restartViteProcess            *tasks.Task[phase3BatchInput, struct{}]
-	refreshFrameworkRoute         *tasks.Task[phase3BatchInput, struct{}]
-	refreshFrameworkTemplate      *tasks.Task[phase3BatchInput, struct{}]
-	refreshFrameworkPublicFileMap *tasks.Task[phase3BatchInput, struct{}]
-	awaitBackendReadiness         *tasks.Task[phase3BatchInput, struct{}]
-	planPhase3RequestedEffects    *tasks.Task[phase3BatchInput, phase3RequestedEffects]
+type p3_Effects struct {
+	applyDevServerRestart         *tasks.Task[p3_BatchInput, struct{}]
+	queueRetryWaitRestart         *tasks.Task[p3_BatchInput, struct{}]
+	restartAppProcess             *tasks.Task[p3_BatchInput, struct{}]
+	restartViteProcess            *tasks.Task[p3_BatchInput, struct{}]
+	refreshFrameworkRoute         *tasks.Task[p3_BatchInput, struct{}]
+	refreshFrameworkTemplate      *tasks.Task[p3_BatchInput, struct{}]
+	refreshFrameworkPublicFileMap *tasks.Task[p3_BatchInput, struct{}]
+	awaitBackendReadiness         *tasks.Task[p3_BatchInput, struct{}]
+	planP3_RequestedEffects       *tasks.Task[p3_BatchInput, p3_RequestedEffects]
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Definitions
 /////////////////////////////////////////////////////////////////////
 
-var phase3EffectsDef = phase3Effects{
-	applyDevServerRestart:         phase3ApplyDevServerRestartTask,
-	queueRetryWaitRestart:         phase3QueueRetryWaitRestartTask,
-	restartAppProcess:             phase3RestartAppProcessTask,
-	restartViteProcess:            phase3RestartViteProcessTask,
-	refreshFrameworkRoute:         phase3RefreshFrameworkRouteTask,
-	refreshFrameworkTemplate:      phase3RefreshFrameworkTemplateTask,
-	refreshFrameworkPublicFileMap: phase3RefreshFrameworkPublicFileMapTask,
-	awaitBackendReadiness:         phase3AwaitBackendReadinessTask,
-	planPhase3RequestedEffects:    phase3PlanPhase3RequestedEffectsTask,
+var p3_EffectsDef = p3_Effects{
+	applyDevServerRestart:         p3_ApplyDevServerRestartTask,
+	queueRetryWaitRestart:         p3_QueueRetryWaitRestartTask,
+	restartAppProcess:             p3_RestartAppProcessTask,
+	restartViteProcess:            p3_RestartViteProcessTask,
+	refreshFrameworkRoute:         p3_RefreshFrameworkRouteTask,
+	refreshFrameworkTemplate:      p3_RefreshFrameworkTemplateTask,
+	refreshFrameworkPublicFileMap: p3_RefreshFrameworkPublicFileMapTask,
+	awaitBackendReadiness:         p3_AwaitBackendReadinessTask,
+	planP3_RequestedEffects:       p3_PlanP3_RequestedEffectsTask,
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Tasks
 /////////////////////////////////////////////////////////////////////
 
-var noopPhase3EffectTask = tasks.NewTask(
+var p3_ApplyDevServerRestartTask = tasks.NewTask(
 	func(
-		taskContext *tasks.Ctx,
-		input phase3BatchInput,
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
 	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P3_APPLY_DEV_SERVER_RESTART) {
+			return struct{}{}, nil
+		}
 		return struct{}{}, nil
 	},
 )
 
-var phase3ApplyDevServerRestartTask = noopPhase3EffectTask
-var phase3QueueRetryWaitRestartTask = noopPhase3EffectTask
-var phase3RestartAppProcessTask = noopPhase3EffectTask
-var phase3RestartViteProcessTask = noopPhase3EffectTask
-var phase3RefreshFrameworkRouteTask = noopPhase3EffectTask
-var phase3RefreshFrameworkTemplateTask = noopPhase3EffectTask
-var phase3RefreshFrameworkPublicFileMapTask = noopPhase3EffectTask
-
-var phase3AwaitBackendReadinessTask = tasks.NewTask(
+var p3_QueueRetryWaitRestartTask = tasks.NewTask(
 	func(
-		taskContext *tasks.Ctx,
-		input phase3BatchInput,
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
 	) (struct{}, error) {
-		if input.phase2RequestedEffects.queueRetryWaitRestart {
-			if _, queuedRestartError := phase3QueueRetryWaitRestartTask.Run(
-				taskContext,
+		if recordTestEffect(tasksCtx, _LABEL_P3_QUEUE_RETRY_WAIT_RESTART) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p3_RestartAppProcessTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P3_RESTART_APP_PROCESS) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p3_RestartViteProcessTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P3_RESTART_VITE_PROCESS) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p3_RefreshFrameworkRouteTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P3_REFRESH_FRAMEWORK_ROUTE) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p3_RefreshFrameworkTemplateTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P3_REFRESH_FRAMEWORK_TEMPLATE) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p3_RefreshFrameworkPublicFileMapTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(
+			tasksCtx,
+			_LABEL_P3_REFRESH_FRAMEWORK_PUBLIC_FILEMAP,
+		) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p3_AwaitBackendReadinessTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P3_AWAIT_BACKEND_READINESS) {
+			return struct{}{}, nil
+		}
+		if input.p2_RequestedEffects.queueRetryWaitRestart {
+			if _, queuedRestartError := p3_QueueRetryWaitRestartTask.Run(
+				tasksCtx,
 				input,
 			); queuedRestartError != nil {
 				return struct{}{}, queuedRestartError
 			}
 			return struct{}{}, nil
 		}
-		if !input.phase2RequestedEffects.awaitBackendReadiness {
+		if !input.p2_RequestedEffects.awaitBackendReadiness {
 			return struct{}{}, nil
 		}
 
 		var ignoredResult struct{}
 		backendSettlingTasks := make([]tasks.BoundTask, 0, 6)
-		if input.phase2RequestedEffects.restartDevServerCycle {
+		if input.p2_RequestedEffects.restartDevServerCycle {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				phase3ApplyDevServerRestartTask.Bind(
+				p3_ApplyDevServerRestartTask.Bind(
 					input,
 					&ignoredResult,
 				),
 			)
 		}
-		if input.phase2RequestedEffects.restartAppProcess {
+		if input.p2_RequestedEffects.restartAppProcess {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				phase3RestartAppProcessTask.Bind(input, &ignoredResult),
+				p3_RestartAppProcessTask.Bind(input, &ignoredResult),
 			)
 		}
-		if input.phase2RequestedEffects.restartViteProcess {
+		if input.p2_RequestedEffects.restartViteProcess {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				phase3RestartViteProcessTask.Bind(
+				p3_RestartViteProcessTask.Bind(
 					input,
 					&ignoredResult,
 				),
 			)
 		}
-		if input.phase2RequestedEffects.refreshFrameworkRoute {
+		if input.p2_RequestedEffects.refreshFrameworkRoute {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				phase3RefreshFrameworkRouteTask.Bind(
+				p3_RefreshFrameworkRouteTask.Bind(
 					input,
 					&ignoredResult,
 				),
 			)
 		}
-		if input.phase2RequestedEffects.refreshFrameworkTemplate {
+		if input.p2_RequestedEffects.refreshFrameworkTemplate {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				phase3RefreshFrameworkTemplateTask.Bind(
+				p3_RefreshFrameworkTemplateTask.Bind(
 					input,
 					&ignoredResult,
 				),
 			)
 		}
-		if input.phase2RequestedEffects.refreshFrameworkPublicFileMap {
+		if input.p2_RequestedEffects.refreshFrameworkPublicFileMap {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				phase3RefreshFrameworkPublicFileMapTask.Bind(
+				p3_RefreshFrameworkPublicFileMapTask.Bind(
 					input,
 					&ignoredResult,
 				),
 			)
 		}
-		if runParallelError := taskContext.RunParallel(backendSettlingTasks...); runParallelError != nil {
+		if runParallelError := tasksCtx.RunParallel(backendSettlingTasks...); runParallelError != nil {
 			return struct{}{}, runParallelError
 		}
 		return struct{}{}, nil
 	},
 )
 
-var phase3PlanPhase3RequestedEffectsTask = tasks.NewTask(
+var p3_PlanP3_RequestedEffectsTask = tasks.NewTask(
 	func(
-		taskContext *tasks.Ctx,
-		input phase3BatchInput,
-	) (phase3RequestedEffects, error) {
-		if _, awaitReadyError := phase3AwaitBackendReadinessTask.Run(
-			taskContext,
+		tasksCtx *tasks.Ctx,
+		input p3_BatchInput,
+	) (p3_RequestedEffects, error) {
+		if recordTestEffect(
+			tasksCtx,
+			_LABEL_P3_PLAN_PHASE_3_REQUESTED_EFFECTS,
+		) {
+			return p3_RequestedEffects{}, nil
+		}
+		if _, awaitReadyError := p3_AwaitBackendReadinessTask.Run(
+			tasksCtx,
 			input,
 		); awaitReadyError != nil {
-			return phase3RequestedEffects{}, awaitReadyError
+			return p3_RequestedEffects{}, awaitReadyError
 		}
-		return input.phase2RequestedEffects.derivePhase3RequestedEffects(), nil
+		return input.p2_RequestedEffects.deriveP3_RequestedEffects(), nil
 	},
 )

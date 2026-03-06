@@ -10,30 +10,36 @@ import (
 /////// Effect Catalog
 /////////////////////////////////////////////////////////////////////
 
-type phase1Effects struct {
-	planPhase1RequestedEffects *tasks.Task[phase1BatchInput, phase1RequestedEffects]
+type p1_Effects struct {
+	planP1_RequestedEffects *tasks.Task[p1_BatchInput, p1_RequestedEffects]
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Definitions
 /////////////////////////////////////////////////////////////////////
 
-var phase1EffectsDef = phase1Effects{
-	planPhase1RequestedEffects: tasks.NewTask(
+var p1_EffectsDef = p1_Effects{
+	planP1_RequestedEffects: tasks.NewTask(
 		func(
-			taskContext *tasks.Ctx,
-			input phase1BatchInput,
-		) (phase1RequestedEffects, error) {
-			if input.phase1 == nil {
-				return phase1RequestedEffects{}, errors.New(
+			tasksCtx *tasks.Ctx,
+			input p1_BatchInput,
+		) (p1_RequestedEffects, error) {
+			if recordTestEffect(
+				tasksCtx,
+				_LABEL_P1_PLAN_PHASE_1_REQUESTED_EFFECTS,
+			) {
+				return p1_RequestedEffects{}, nil
+			}
+			if input.p1 == nil {
+				return p1_RequestedEffects{}, errors.New(
 					"wavebuild: phase-1 input is required",
 				)
 			}
-			phase1Facts, phase1FactsError := input.phase1.buildFacts()
-			if phase1FactsError != nil {
-				return phase1RequestedEffects{}, phase1FactsError
+			p1_Facts, p1_FactsError := input.p1.buildFacts()
+			if p1_FactsError != nil {
+				return p1_RequestedEffects{}, p1_FactsError
 			}
-			return phase1Facts.derivePhase1RequestedEffects(), nil
+			return p1_Facts.deriveP1_RequestedEffects(), nil
 		},
 	),
 }

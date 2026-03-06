@@ -6,94 +6,151 @@ import "github.com/vormadev/vorma/kit/tasks"
 /////// Effect Catalog
 /////////////////////////////////////////////////////////////////////
 
-type phase4Effects struct {
-	broadcastCSSHotReload          *tasks.Task[phase4BatchInput, struct{}]
-	notifyVitePublicFileMapChanged *tasks.Task[phase4BatchInput, struct{}]
-	broadcastRevalidate            *tasks.Task[phase4BatchInput, struct{}]
-	broadcastHardReload            *tasks.Task[phase4BatchInput, struct{}]
-	publishNoReloadNeededNotice    *tasks.Task[phase4BatchInput, struct{}]
-	executeTerminalBrowserAction   *tasks.Task[phase4BatchInput, phase4CompletionSummary]
+type p4_Effects struct {
+	broadcastCSSHotReload          *tasks.Task[p4_BatchInput, struct{}]
+	notifyVitePublicFileMapChanged *tasks.Task[p4_BatchInput, struct{}]
+	broadcastRevalidate            *tasks.Task[p4_BatchInput, struct{}]
+	broadcastHardReload            *tasks.Task[p4_BatchInput, struct{}]
+	publishNoReloadNeededNotice    *tasks.Task[p4_BatchInput, struct{}]
+	executeTerminalBrowserAction   *tasks.Task[p4_BatchInput, p4_CompletionSummary]
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Definitions
 /////////////////////////////////////////////////////////////////////
 
-var phase4EffectsDef = phase4Effects{
-	broadcastCSSHotReload:          phase4BroadcastCSSHotReloadTask,
-	notifyVitePublicFileMapChanged: phase4NotifyVitePublicFileMapChangedTask,
-	broadcastRevalidate:            phase4BroadcastRevalidateTask,
-	broadcastHardReload:            phase4BroadcastHardReloadTask,
-	publishNoReloadNeededNotice:    phase4PublishNoReloadNeededNoticeTask,
-	executeTerminalBrowserAction:   phase4ExecuteTerminalBrowserActionTask,
+var p4_EffectsDef = p4_Effects{
+	broadcastCSSHotReload:          p4_BroadcastCSSHotReloadTask,
+	notifyVitePublicFileMapChanged: p4_NotifyVitePublicFileMapChangedTask,
+	broadcastRevalidate:            p4_BroadcastRevalidateTask,
+	broadcastHardReload:            p4_BroadcastHardReloadTask,
+	publishNoReloadNeededNotice:    p4_PublishNoReloadNeededNoticeTask,
+	executeTerminalBrowserAction:   p4_ExecuteTerminalBrowserActionTask,
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Tasks
 /////////////////////////////////////////////////////////////////////
 
-var noopPhase4EffectTask = tasks.NewTask(
+var p4_BroadcastCSSHotReloadTask = tasks.NewTask(
 	func(
-		taskContext *tasks.Ctx,
-		input phase4BatchInput,
+		tasksCtx *tasks.Ctx,
+		input p4_BatchInput,
 	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P4_BROADCAST_CSS_HOT_RELOAD) {
+			return struct{}{}, nil
+		}
 		return struct{}{}, nil
 	},
 )
 
-var phase4BroadcastCSSHotReloadTask = noopPhase4EffectTask
-var phase4NotifyVitePublicFileMapChangedTask = noopPhase4EffectTask
-var phase4BroadcastRevalidateTask = noopPhase4EffectTask
-var phase4BroadcastHardReloadTask = noopPhase4EffectTask
-var phase4PublishNoReloadNeededNoticeTask = noopPhase4EffectTask
-
-var phase4ExecuteTerminalBrowserActionTask = tasks.NewTask(
+var p4_NotifyVitePublicFileMapChangedTask = tasks.NewTask(
 	func(
-		taskContext *tasks.Ctx,
-		input phase4BatchInput,
-	) (phase4CompletionSummary, error) {
-		terminalAction := input.phase3RequestedEffects.terminalBrowserAction
+		tasksCtx *tasks.Ctx,
+		input p4_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(
+			tasksCtx,
+			_LABEL_P4_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED,
+		) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p4_BroadcastRevalidateTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p4_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P4_BROADCAST_REVALIDATE) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p4_BroadcastHardReloadTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p4_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(tasksCtx, _LABEL_P4_BROADCAST_HARD_RELOAD) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p4_PublishNoReloadNeededNoticeTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p4_BatchInput,
+	) (struct{}, error) {
+		if recordTestEffect(
+			tasksCtx,
+			_LABEL_P4_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
+		) {
+			return struct{}{}, nil
+		}
+		return struct{}{}, nil
+	},
+)
+
+var p4_ExecuteTerminalBrowserActionTask = tasks.NewTask(
+	func(
+		tasksCtx *tasks.Ctx,
+		input p4_BatchInput,
+	) (p4_CompletionSummary, error) {
+		if recordTestEffect(
+			tasksCtx,
+			_LABEL_P4_EXECUTE_TERMINAL_BROWSER_ACTION,
+		) {
+			return p4_CompletionSummary{}, nil
+		}
+		terminalAction := input.p3_RequestedEffects.terminalBrowserAction
 		switch terminalAction {
 		case frontendTerminalBrowserActionHardReload:
-			if _, hardReloadError := phase4BroadcastHardReloadTask.Run(
-				taskContext,
+			if _, hardReloadError := p4_BroadcastHardReloadTask.Run(
+				tasksCtx,
 				input,
 			); hardReloadError != nil {
-				return phase4CompletionSummary{}, hardReloadError
+				return p4_CompletionSummary{}, hardReloadError
 			}
 		case frontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
-			if _, notifyViteError := phase4NotifyVitePublicFileMapChangedTask.Run(
-				taskContext,
+			if _, notifyViteError := p4_NotifyVitePublicFileMapChangedTask.Run(
+				tasksCtx,
 				input,
 			); notifyViteError != nil {
-				return phase4CompletionSummary{
+				return p4_CompletionSummary{
 					terminalAction:             frontendTerminalBrowserActionNone,
 					requiresBackendViteHealing: true,
 				}, nil
 			}
 		case frontendTerminalBrowserActionRevalidate:
-			if _, revalidateError := phase4BroadcastRevalidateTask.Run(
-				taskContext,
+			if _, revalidateError := p4_BroadcastRevalidateTask.Run(
+				tasksCtx,
 				input,
 			); revalidateError != nil {
-				return phase4CompletionSummary{}, revalidateError
+				return p4_CompletionSummary{}, revalidateError
 			}
 		case frontendTerminalBrowserActionCSSHotReload:
-			if _, cssHotReloadError := phase4BroadcastCSSHotReloadTask.Run(
-				taskContext,
+			if _, cssHotReloadError := p4_BroadcastCSSHotReloadTask.Run(
+				tasksCtx,
 				input,
 			); cssHotReloadError != nil {
-				return phase4CompletionSummary{}, cssHotReloadError
+				return p4_CompletionSummary{}, cssHotReloadError
 			}
 		default:
-			if _, noReloadNoticeError := phase4PublishNoReloadNeededNoticeTask.Run(
-				taskContext,
+			if _, noReloadNoticeError := p4_PublishNoReloadNeededNoticeTask.Run(
+				tasksCtx,
 				input,
 			); noReloadNoticeError != nil {
-				return phase4CompletionSummary{}, noReloadNoticeError
+				return p4_CompletionSummary{}, noReloadNoticeError
 			}
 		}
 
-		return phase4CompletionSummary{terminalAction: terminalAction}, nil
+		return p4_CompletionSummary{terminalAction: terminalAction}, nil
 	},
 )
