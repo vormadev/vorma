@@ -2,104 +2,72 @@ Wave2 Rewrite Tracker
 Last updated: 2026-03-05
 
 Purpose
-- Preserve exact architectural intent and current progress so any new agent can continue without re-litigating fundamentals.
+- Preserve declarative architectural intent and next actions so handoff can continue without re-litigating fundamentals.
 
 Non-Negotiable Constraints
-- Wave2 runtime/buildtime boundary must stay strict.
-- `wave2` (runtime-facing) must not import `wave2/wavebuild`.
-- Wave must remain framework-agnostic.
-- Framework-specific behavior belongs in adapters (`wavefw`) or framework-owned packages.
-- Keep code minimal, elegant, and outcome-driven (no transitional compatibility layers in this rewrite).
+- Wave2 runtime/buildtime boundary stays strict.
+- `wave2` runtime-facing package does not import `wave2/wavebuild`.
+- Wave core stays framework-agnostic.
+- Framework-specific behavior stays in adapters or framework-owned packages.
+- Planner/execution model remains minimal: terminal goals + task graph dependencies.
 
-Current Package Shape (Confirmed)
+Package Surfaces
 - `wave2/wave.go`
-  - Runtime-facing stub surface.
-  - No import of `wave2/wavebuild`.
-- `wave2/wavefw/wavefw.go`
-  - Framework adapter registration targeting `*wavebuild.Engine`.
+  - App-facing runtime API surface.
 - `wave2/wavebuild/wavebuild.go`
-  - Contract-first orchestration model (interfaces/types + minimal engine wiring).
-- `wave2/README.md`
-  - Captures goal-first `kit/tasks` model and strict runtime/buildtime boundary.
+  - Build/dev orchestration contracts and default planner/arbiter/executor wiring.
+- `wave2/wavefw/wavefw.go`
+  - Framework-facing adapter registration and signal translation policy.
 
-Design Principles Locked In
-- Planner chooses terminal goals (effects), not imperative step scripts.
-- Effects are ensure-style outcomes (idempotent guarantees).
-- Batch planning reduces via union + dedupe + mode filtering + arbitration.
-- Execution should lean on `kit/tasks` for dependency sequencing and maximum parallelism.
-- Production should reduce batch changes to deduplicated prod-applicable goals and run each once.
+Canonical Planning Model
+- Input reduction:
+  - Raw batch -> typed facts (`BatchFacts`) -> normalized events (`EventType`) -> terminal goals (`EffectID`).
+  - CSS event classes remain strictly `critical_css_source_changed` and `normal_css_source_changed`; both may co-occur, and no shared-CSS pseudo class exists.
+  - Config/public/private-static semantics are provided by configuration-aware upstream metadata; Wave2 does not infer those categories from path naming conventions.
+  - Default facts collection does not infer semantic event classes from project-shape path patterns.
+- Policy:
+  - Event rules are pure data (`EventRule` + `ConditionFacts`).
+  - Arbitration is pure data (`ArbitrationRuleSet`).
+- Output:
+  - `ExecutionPlan` carries terminal goals only (`TerminalGoals`), not ordered step groups.
+- Execution:
+  - Executor fans out terminal goal task roots in one `kit/tasks` context.
+  - Dependency sequencing and parallelism are owned by task dependencies, not orchestrator step ordering.
 
-Status of the 5 Core Design Items
-1) Canonical terminal goal catalog
-- Status: STRONG (baseline present)
-- Exists: canonical built-in catalog with explicit terminal effects, guarantees, mode applicability, and browser-action mutex grouping.
-- Remaining design target: keep catalog minimal and align event->goal mapping to the canonical set.
+Identity/Freshness Policy
+- Generation identity is explicit and typed.
+- `PlannerInput`, `BatchInput`, `RawBatchInput`, and `ExecutionPlan` carry `GenerationID`.
+- Framework signal freshness tokens derive from `ExecutionPlan.GenerationID`.
+- Goal execution keys derive from plan mode + generation + effect id.
 
-2) Single batch fact pass
-- Status: STRONG (typed baseline present)
-- Exists: one-pass `FactsCollector` pipeline with typed `BatchFacts` and explicit implication groups for build/runtime/browser/static/hook planning.
-- Remaining design target: keep only fields required by canonical goals and arbitration policy.
+Checklist (Hardest First)
+1) Canonical task-root dependency map
+- Keep one declarative mapping from each canonical terminal goal to prerequisite ensure-goals.
+- Keep dependency ownership in task graph, not planner ordering fields.
+- Keep task-root dependency coverage validation available on the engine.
+- Fill dependency entries only where first-principles guarantees require prerequisites.
 
-3) Arbitration rules as data
-- Status: STRONG (baseline present)
-- Exists: canonical arbitration rule set with precedence domains, implication rules, exclusion rules, and deterministic tie-break policy.
-- Remaining design target: align planner goal emission with canonical arbiter assumptions.
+2) Task-context artifact contract
+- Define one typed task execution context contract for shared artifacts/state handoff across goals.
+- Keep this contract runtime-safe and independent from framework-specific transport details.
 
-4) Task input identity model
-- Status: STRONG (contract level)
-- Exists: `GoalExecutionKey` comparable identity shape.
-- Remaining design target: finalize generation-token sourcing policy for execution keys.
+3) Wave app-facing API shaping
+- Finalize `wave2/wave.go` app API so developer ergonomics remain simple while delegating orchestration to `wavebuild`.
+- Keep options explicit and minimize convenience cruft.
 
-5) Wave/framework boundary on signals
-- Status: STRONG (baseline present)
-- Exists: explicit generic `FrameworkSignal` contract in planner/execution plan shape with transport-agnostic metadata.
-- Remaining design target: planner signal-emission policy and adapter translation defaults.
-
-Current Code Reality
-- `wave2/wavebuild/wavebuild.go` is intentionally contract-first.
-- It defines interfaces and lightweight orchestration wiring:
-  - Facts collection
-  - Event classification
-  - Planning
-  - Arbitration
-  - Task-root execution
-- It includes canonical goal, arbitration, and event-rule catalogs as data.
-- It includes a concrete `EventRulePlanner` for event-rule reduction into
-  deduplicated terminal goals and framework signals.
-- It includes a concrete `RuleSetArbiter` and `NewCanonicalRuleSetArbiter`
-  for data-driven rule application.
-- It includes a concrete `DefaultTaskRootExecutor` that runs deduplicated
-  terminal goal roots via `kit/tasks` in one execution context.
-- It deliberately returns `ErrNotImplemented` when core implementations are not attached.
-
-Hardest-First Next Checklist
-1) Define framework adapter signal-translation defaults (hardest, highest leverage)
-- Map generic framework signals to adapter-specific runtime actions.
-- Keep translation policy outside Wave core.
-
-2) Implement remaining concrete default components
-- `FactsCollector` implementation.
-- `EventClassifier` implementation.
-- Canonical event-rule registrations for planner construction.
-
-3) Wire canonical defaults in engine construction
-- When planner/arbiter/executor are unset, attach canonical implementations.
-- When facts collector/classifier are unset, attach canonical implementations.
-
-4) Finalize execution-key generation-token policy
-- Define canonical generation-token source for `GoalExecutionKey`.
+4) Framework signal/action policy tightening
+- Keep `wavefw` translation declarative and minimal.
+- Ensure signal/action vocabulary stays purely observable and transport-agnostic.
 
 Do Not Do
 - Do not re-introduce runtime->buildtime imports.
-- Do not add framework-specific strings/endpoints/names into Wave2 core.
-- Do not expand implementation before contracts in items 1-5 are settled.
-- Do not add transitional compatibility wrappers.
+- Do not encode framework-specific endpoint names or file conventions in Wave2 core.
+- Do not add compat/transitional wrappers.
+- Do not re-introduce planner-level execution ordering layers.
 
-Handoff Start Point For Next Agent
-- Read, in order:
-  1. `wave2/rewrite_tracker.txt`
-  2. `wave2/README.md`
-  3. `wave2/wavebuild/wavebuild.go`
-  4. `wave2/wave.go`
-  5. `wave2/wavefw/wavefw.go`
-- Continue from checklist item #1 (framework adapter signal-translation defaults).
+Handoff Read Order
+1. `wave2/rewrite_tracker.txt`
+2. `wave2/README.md`
+3. `wave2/wavebuild/wavebuild.go`
+4. `wave2/wave.go`
+5. `wave2/wavefw/wavefw.go`

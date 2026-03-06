@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"sort"
+	"path"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -57,9 +59,6 @@ const (
 	EventTypeCriticalCSSSourceChanged EventType = "critical_css_source_changed"
 	// EventTypeNormalCSSSourceChanged represents normal CSS source changes.
 	EventTypeNormalCSSSourceChanged EventType = "normal_css_source_changed"
-	// EventTypeSharedCSSSourceChanged represents shared CSS source changes that
-	// affect both critical and normal outputs.
-	EventTypeSharedCSSSourceChanged EventType = "shared_css_source_changed"
 	// EventTypePublicStaticAssetChanged represents public static asset changes.
 	EventTypePublicStaticAssetChanged EventType = "public_static_asset_changed"
 	// EventTypePrivateStaticAssetChanged represents private static asset changes.
@@ -113,6 +112,21 @@ const (
 	ConditionAppCallbackRequestedGoCompile Condition = "app_callback_requested_go_compile"
 	// ConditionWaitingForBuildRetry gates retry-wait restart intent behavior.
 	ConditionWaitingForBuildRetry Condition = "waiting_for_build_retry"
+)
+
+const (
+	// MetadataKeyAppDefinedWatchCallbackOnlyChanged marks callback-only
+	// app-defined watch class activity for one batch.
+	MetadataKeyAppDefinedWatchCallbackOnlyChanged = "app_defined_watch_callback_only_changed"
+	// MetadataKeyAppDefinedWatchWithRebuildChanged marks app-defined watch class
+	// activity that can request rebuild/restart/browser behavior.
+	MetadataKeyAppDefinedWatchWithRebuildChanged = "app_defined_watch_with_rebuild_changed"
+	// MetadataKeyPublicStaticChangedPathsCWD carries CWD-relative public static
+	// changed paths as a comma-separated list.
+	MetadataKeyPublicStaticChangedPathsCWD = "public_static_changed_paths_cwd"
+	// MetadataKeyPrivateStaticChangedPathsCWD carries CWD-relative private static
+	// changed paths as a comma-separated list.
+	MetadataKeyPrivateStaticChangedPathsCWD = "private_static_changed_paths_cwd"
 )
 
 // EffectID is one terminal effect/goal identifier.
@@ -286,6 +300,12 @@ func CanonicalGoalCatalog() []GoalSpec {
 	return cloneGoalSpecs(canonicalGoalCatalog)
 }
 
+// CanonicalGoalDependencyCatalog returns declared goal dependencies from the
+// canonical goal catalog.
+func CanonicalGoalDependencyCatalog() map[EffectID][]EffectID {
+	return buildGoalDependencyCatalog(CanonicalGoalCatalog())
+}
+
 // ArbitrationTieBreakPolicy selects deterministic winner strategy when two
 // effects are not ordered by explicit precedence.
 type ArbitrationTieBreakPolicy string
@@ -370,15 +390,18 @@ var canonicalEventRuleCatalog = []EventRule{
 	{
 		Event: EventTypeConfigFileChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{Condition: ConditionAlways, Effects: []EffectID{EffectRestartDevServerCycle}},
+			ConditionalEffects: []ConditionalEffectSet{
+				{
+					Condition: ConditionAlways,
+					Effects:   []EffectID{EffectRestartDevServerCycle},
+				},
 			},
 		},
 	},
 	{
 		Event: EventTypeGoSourceChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -390,15 +413,18 @@ var canonicalEventRuleCatalog = []EventRule{
 			},
 		},
 		Prod: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{Condition: ConditionAlways, Effects: []EffectID{EffectCompileGoBinary}},
+			ConditionalEffects: []ConditionalEffectSet{
+				{
+					Condition: ConditionAlways,
+					Effects:   []EffectID{EffectCompileGoBinary},
+				},
 			},
 		},
 	},
 	{
 		Event: EventTypeCriticalCSSSourceChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -409,15 +435,18 @@ var canonicalEventRuleCatalog = []EventRule{
 			},
 		},
 		Prod: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{Condition: ConditionAlways, Effects: []EffectID{EffectBuildCriticalCSS}},
+			ConditionalEffects: []ConditionalEffectSet{
+				{
+					Condition: ConditionAlways,
+					Effects:   []EffectID{EffectBuildCriticalCSS},
+				},
 			},
 		},
 	},
 	{
 		Event: EventTypeNormalCSSSourceChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -428,33 +457,10 @@ var canonicalEventRuleCatalog = []EventRule{
 			},
 		},
 		Prod: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{Condition: ConditionAlways, Effects: []EffectID{EffectBuildNormalCSS}},
-			},
-		},
-	},
-	{
-		Event: EventTypeSharedCSSSourceChanged,
-		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
-					Effects: []EffectID{
-						EffectBuildCriticalCSS,
-						EffectBuildNormalCSS,
-						EffectBrowserCSSHotReload,
-					},
-				},
-			},
-		},
-		Prod: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{
-					Condition: ConditionAlways,
-					Effects: []EffectID{
-						EffectBuildCriticalCSS,
-						EffectBuildNormalCSS,
-					},
+					Effects:   []EffectID{EffectBuildNormalCSS},
 				},
 			},
 		},
@@ -462,7 +468,7 @@ var canonicalEventRuleCatalog = []EventRule{
 	{
 		Event: EventTypePublicStaticAssetChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -480,7 +486,7 @@ var canonicalEventRuleCatalog = []EventRule{
 			},
 		},
 		Prod: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -494,7 +500,7 @@ var canonicalEventRuleCatalog = []EventRule{
 	{
 		Event: EventTypePrivateStaticAssetChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -505,7 +511,7 @@ var canonicalEventRuleCatalog = []EventRule{
 			},
 		},
 		Prod: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -518,7 +524,7 @@ var canonicalEventRuleCatalog = []EventRule{
 	{
 		Event: EventTypeFrameworkRouteDefinitionChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -532,7 +538,7 @@ var canonicalEventRuleCatalog = []EventRule{
 	{
 		Event: EventTypeFrameworkTemplateChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
+			ConditionalEffects: []ConditionalEffectSet{
 				{
 					Condition: ConditionAlways,
 					Effects: []EffectID{
@@ -546,26 +552,62 @@ var canonicalEventRuleCatalog = []EventRule{
 	{
 		Event: EventTypeAppDefinedWatchCallbackOnlyChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{Condition: ConditionAppCallbackRequestedRuntimeReload, Effects: []EffectID{EffectRequestFrameworkRouteRefresh}},
-				{Condition: ConditionAppCallbackRequestedBrowserInvalidate, Effects: []EffectID{EffectBrowserInvalidatePublicAssets}},
-				{Condition: ConditionAppCallbackRequestedBrowserRevalidate, Effects: []EffectID{EffectBrowserRevalidate}},
-				{Condition: ConditionAppCallbackRequestedBrowserHardReload, Effects: []EffectID{EffectBrowserHardReload}},
-				{Condition: ConditionAppCallbackRequestedRestart, Effects: []EffectID{EffectRestartAppProcess}},
-				{Condition: ConditionAppCallbackRequestedGoCompile, Effects: []EffectID{EffectCompileGoBinary}},
+			ConditionalEffects: []ConditionalEffectSet{
+				{
+					Condition: ConditionAppCallbackRequestedRuntimeReload,
+					Effects:   []EffectID{EffectRequestFrameworkRouteRefresh},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedBrowserInvalidate,
+					Effects:   []EffectID{EffectBrowserInvalidatePublicAssets},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedBrowserRevalidate,
+					Effects:   []EffectID{EffectBrowserRevalidate},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedBrowserHardReload,
+					Effects:   []EffectID{EffectBrowserHardReload},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedRestart,
+					Effects:   []EffectID{EffectRestartAppProcess},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedGoCompile,
+					Effects:   []EffectID{EffectCompileGoBinary},
+				},
 			},
 		},
 	},
 	{
 		Event: EventTypeAppDefinedWatchWithRebuildChanged,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: []ParallelEffectGroup{
-				{Condition: ConditionAppCallbackRequestedRuntimeReload, Effects: []EffectID{EffectRequestFrameworkRouteRefresh}},
-				{Condition: ConditionAppCallbackRequestedBrowserInvalidate, Effects: []EffectID{EffectBrowserInvalidatePublicAssets}},
-				{Condition: ConditionAppCallbackRequestedBrowserRevalidate, Effects: []EffectID{EffectBrowserRevalidate}},
-				{Condition: ConditionAppCallbackRequestedBrowserHardReload, Effects: []EffectID{EffectBrowserHardReload}},
-				{Condition: ConditionAppCallbackRequestedRestart, Effects: []EffectID{EffectRestartAppProcess}},
-				{Condition: ConditionAppCallbackRequestedGoCompile, Effects: []EffectID{EffectCompileGoBinary}},
+			ConditionalEffects: []ConditionalEffectSet{
+				{
+					Condition: ConditionAppCallbackRequestedRuntimeReload,
+					Effects:   []EffectID{EffectRequestFrameworkRouteRefresh},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedBrowserInvalidate,
+					Effects:   []EffectID{EffectBrowserInvalidatePublicAssets},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedBrowserRevalidate,
+					Effects:   []EffectID{EffectBrowserRevalidate},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedBrowserHardReload,
+					Effects:   []EffectID{EffectBrowserHardReload},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedRestart,
+					Effects:   []EffectID{EffectRestartAppProcess},
+				},
+				{
+					Condition: ConditionAppCallbackRequestedGoCompile,
+					Effects:   []EffectID{EffectCompileGoBinary},
+				},
 			},
 		},
 	},
@@ -636,12 +678,13 @@ type RawWatchEvent struct {
 
 // RawBatchInput is the pre-parse event batch at ingestion boundaries.
 type RawBatchInput struct {
-	Mode      Mode
-	Events    []RawWatchEvent
-	Metadata  map[string]string
-	TraceID   string
-	BatchID   string
-	IsInitial bool
+	Mode         Mode
+	GenerationID string
+	Events       []RawWatchEvent
+	Metadata     map[string]string
+	TraceID      string
+	BatchID      string
+	IsInitial    bool
 }
 
 // BatchFacts is the single-pass parsed fact set used by planning.
@@ -737,15 +780,24 @@ type BatchStaticImplicationFacts struct {
 
 // BatchHookImplicationFacts captures hook-policy facts for one batch.
 type BatchHookImplicationFacts struct {
-	HasRunOnChangeOnlyWork           bool
-	HasRunOnChangeCommandSuppression bool
-	HasCallbackOnlyHookWork          bool
+	HasRunOnChangeOnlyWork                bool
+	HasRunOnChangeCommandSuppression      bool
+	HasCallbackOnlyHookWork               bool
+	AppCallbackRequestedRuntimeReload     bool
+	AppCallbackRequestedBrowserInvalidate bool
+	AppCallbackRequestedBrowserRevalidate bool
+	AppCallbackRequestedBrowserHardReload bool
+	AppCallbackRequestedRestart           bool
+	AppCallbackRequestedGoCompile         bool
+	AppDefinedWatchCallbackOnlyChanged    bool
+	AppDefinedWatchWithRebuildChanged     bool
 }
 
 // PlannerInput is the canonical plan-input structure after facts and
 // classification are complete.
 type PlannerInput struct {
 	Mode           Mode
+	GenerationID   string
 	Events         []EventType
 	ConditionFacts ConditionFacts
 	Facts          BatchFacts
@@ -756,16 +808,15 @@ type PlannerInput struct {
 // Missing keys are interpreted as false, except ConditionAlways.
 type ConditionFacts map[Condition]bool
 
-// ParallelEffectGroup is one ordered stage with effects that may run in
-// parallel.
-type ParallelEffectGroup struct {
+// ConditionalEffectSet declares candidate effects gated by one condition.
+type ConditionalEffectSet struct {
 	Condition Condition
 	Effects   []EffectID
 }
 
-// ModePlan is one ordered set of parallel effect groups.
+// ModePlan is one condition-gated effect plan for one mode.
 type ModePlan struct {
-	OrderedParallelEffectGroups []ParallelEffectGroup
+	ConditionalEffects []ConditionalEffectSet
 }
 
 // EventRule maps one event class into dev/prod plans.
@@ -777,13 +828,14 @@ type EventRule struct {
 
 // ExecutionPlan is one deterministic plan ready for execution.
 type ExecutionPlan struct {
-	Mode                   Mode
-	Events                 []EventType
-	ConditionFacts         ConditionFacts
-	Facts                  BatchFacts
-	Metadata               map[string]string
-	FrameworkSignals       []FrameworkSignal
-	OrderedParallelEffects [][]EffectID
+	Mode             Mode
+	GenerationID     string
+	Events           []EventType
+	ConditionFacts   ConditionFacts
+	Facts            BatchFacts
+	Metadata         map[string]string
+	FrameworkSignals []FrameworkSignal
+	TerminalGoals    []EffectID
 }
 
 // ArbitrationInput captures data needed to resolve mutually exclusive goals.
@@ -815,6 +867,268 @@ type EventClassifier interface {
 	ClassifyEvents(mode Mode, facts BatchFacts) ([]EventType, error)
 }
 
+// DefaultFactsCollector derives typed batch facts from raw watcher input and
+// optional metadata hints.
+type DefaultFactsCollector struct{}
+
+// CollectFacts parses one raw batch input into typed planning facts.
+func (collector *DefaultFactsCollector) CollectFacts(
+	input RawBatchInput,
+) (BatchFacts, error) {
+	if collector == nil {
+		return BatchFacts{}, errors.New(
+			"wavebuild: default facts collector is required",
+		)
+	}
+	normalizedChangedPaths := make([]string, 0, len(input.Events))
+	seenPath := make(map[string]struct{}, len(input.Events))
+	facts := BatchFacts{}
+	for _, rawEvent := range input.Events {
+		normalizedPath := normalizeWatcherPathForFacts(rawEvent.Path)
+		if normalizedPath == "" {
+			continue
+		}
+		if _, alreadySeen := seenPath[normalizedPath]; !alreadySeen {
+			seenPath[normalizedPath] = struct{}{}
+			normalizedChangedPaths = append(
+				normalizedChangedPaths,
+				normalizedPath,
+			)
+		}
+		if strings.EqualFold(strings.TrimSpace(rawEvent.Operation), "chmod") {
+			if parseBooleanMetadata(input.Metadata, "chmod_non_content_only") {
+				facts.NoiseFacts.HasNonContentCHMODOnlyNoise = true
+				continue
+			}
+			facts.NoiseFacts.HasEmptyFileCHMODContentSignal = true
+		}
+	}
+
+	facts.ChangedPathsCWD = normalizedChangedPaths
+	facts.ChangeSummary.FilesChangedCount = len(normalizedChangedPaths)
+	facts.ChangeSummary.HasSingleFileInput = len(normalizedChangedPaths) == 1
+	hasConfigFileChanged := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypeConfigFileChanged),
+	)
+	hasGoSourceChanged := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypeGoSourceChanged),
+	)
+	hasCriticalCSSSourceChanged := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypeCriticalCSSSourceChanged),
+	)
+	hasNormalCSSSourceChanged := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypeNormalCSSSourceChanged),
+	)
+	hasFrameworkRouteDefinitionChanged := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypeFrameworkRouteDefinitionChanged),
+	)
+	hasFrameworkTemplateChanged := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypeFrameworkTemplateChanged),
+	)
+	facts.BuildFacts.NeedsDevServerCycleRestart = hasConfigFileChanged
+	if hasGoSourceChanged {
+		facts.BuildFacts.NeedsGoCompile = true
+		facts.RuntimeFacts.NeedsAppRestart = true
+		facts.BrowserFacts.RequestsHardReload = true
+		facts.BrowserFacts.WaitForAppReady = true
+	}
+	if hasCriticalCSSSourceChanged {
+		facts.BuildFacts.NeedsCriticalCSSBuild = true
+		facts.BrowserFacts.RequestsCSSHotReload = true
+	}
+	if hasNormalCSSSourceChanged {
+		facts.BuildFacts.NeedsNormalCSSBuild = true
+		facts.BrowserFacts.RequestsCSSHotReload = true
+	}
+	if hasFrameworkRouteDefinitionChanged {
+		facts.RuntimeFacts.NeedsFrameworkRouteRefresh = true
+		facts.BrowserFacts.RequestsHardReload = true
+		facts.BrowserFacts.WaitForAppReady = true
+		facts.BrowserFacts.WaitForViteReady = true
+	}
+	if hasFrameworkTemplateChanged {
+		facts.RuntimeFacts.NeedsFrameworkTemplateRefresh = true
+		facts.BrowserFacts.RequestsHardReload = true
+		facts.BrowserFacts.WaitForAppReady = true
+		facts.BrowserFacts.WaitForViteReady = true
+	}
+
+	facts.StaticFacts.PublicStaticChangedPathsCWD = append(
+		facts.StaticFacts.PublicStaticChangedPathsCWD,
+		parseChangedPathsMetadata(
+			input.Metadata,
+			MetadataKeyPublicStaticChangedPathsCWD,
+		)...,
+	)
+	facts.StaticFacts.PrivateStaticChangedPathsCWD = append(
+		facts.StaticFacts.PrivateStaticChangedPathsCWD,
+		parseChangedPathsMetadata(
+			input.Metadata,
+			MetadataKeyPrivateStaticChangedPathsCWD,
+		)...,
+	)
+
+	hasExplicitPublicStaticChange := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypePublicStaticAssetChanged),
+	)
+	hasExplicitPrivateStaticChange := parseBooleanMetadata(
+		input.Metadata,
+		string(EventTypePrivateStaticAssetChanged),
+	)
+	if hasExplicitPublicStaticChange ||
+		len(facts.StaticFacts.PublicStaticChangedPathsCWD) > 0 {
+		facts.BuildFacts.NeedsPublicStaticProcess = true
+		facts.StaticFacts.PublicFileMapMayHaveChanged = true
+		if len(facts.StaticFacts.PublicStaticChangedPathsCWD) > 0 {
+			facts.BuildFacts.NeedsChangedPathStaticScan = true
+		} else {
+			facts.BuildFacts.NeedsFullStaticScan = true
+		}
+	}
+	if hasExplicitPrivateStaticChange ||
+		len(facts.StaticFacts.PrivateStaticChangedPathsCWD) > 0 {
+		facts.BuildFacts.NeedsPrivateStaticProcess = true
+		facts.BrowserFacts.RequestsHardReload = true
+		facts.BrowserFacts.WaitForAppReady = true
+		if len(facts.StaticFacts.PrivateStaticChangedPathsCWD) > 0 {
+			facts.BuildFacts.NeedsChangedPathStaticScan = true
+		} else {
+			facts.BuildFacts.NeedsFullStaticScan = true
+		}
+	}
+
+	facts.StaticFacts.PublicFileMapMayHaveChanged =
+		facts.StaticFacts.PublicFileMapMayHaveChanged ||
+			parseBooleanMetadata(
+				input.Metadata,
+				string(ConditionPublicFileMapChangedOrRepaired),
+			)
+	facts.StaticFacts.PublicFileMapMayNeedRepair = parseBooleanMetadata(
+		input.Metadata,
+		"public_file_map_may_need_repair",
+	)
+	facts.RuntimeFacts.NeedsRetryWaitRestartRequest = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionWaitingForBuildRetry),
+	)
+	facts.RuntimeFacts.RetryWaitRestartRequiresGoCompile = parseBooleanMetadata(
+		input.Metadata,
+		"retry_wait_restart_requires_go_compile",
+	)
+	facts.HookFacts.AppCallbackRequestedRuntimeReload = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionAppCallbackRequestedRuntimeReload),
+	)
+	facts.HookFacts.AppCallbackRequestedBrowserInvalidate = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionAppCallbackRequestedBrowserInvalidate),
+	)
+	facts.HookFacts.AppCallbackRequestedBrowserRevalidate = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionAppCallbackRequestedBrowserRevalidate),
+	)
+	facts.HookFacts.AppCallbackRequestedBrowserHardReload = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionAppCallbackRequestedBrowserHardReload),
+	)
+	facts.HookFacts.AppCallbackRequestedRestart = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionAppCallbackRequestedRestart),
+	)
+	facts.HookFacts.AppCallbackRequestedGoCompile = parseBooleanMetadata(
+		input.Metadata,
+		string(ConditionAppCallbackRequestedGoCompile),
+	)
+	facts.HookFacts.AppDefinedWatchCallbackOnlyChanged = parseBooleanMetadata(
+		input.Metadata,
+		MetadataKeyAppDefinedWatchCallbackOnlyChanged,
+	)
+	facts.HookFacts.AppDefinedWatchWithRebuildChanged = parseBooleanMetadata(
+		input.Metadata,
+		MetadataKeyAppDefinedWatchWithRebuildChanged,
+	)
+	facts.HookFacts.HasCallbackOnlyHookWork =
+		facts.HookFacts.HasCallbackOnlyHookWork ||
+			facts.HookFacts.AppDefinedWatchCallbackOnlyChanged
+
+	facts.ChangeSummary.HasMeaningfulWork = deriveHasMeaningfulWorkFromFacts(
+		facts,
+	)
+	return facts, nil
+}
+
+// DefaultEventClassifier maps typed batch facts into normalized event classes.
+type DefaultEventClassifier struct{}
+
+// ClassifyEvents returns normalized event classes for one batch.
+func (classifier *DefaultEventClassifier) ClassifyEvents(
+	_ Mode,
+	facts BatchFacts,
+) ([]EventType, error) {
+	if classifier == nil {
+		return nil, errors.New(
+			"wavebuild: default event classifier is required",
+		)
+	}
+	classifiedEvents := make([]EventType, 0, 10)
+	appendEventType := func(eventType EventType) {
+		if eventType == "" {
+			return
+		}
+		if slices.Contains(classifiedEvents, eventType) {
+			return
+		}
+		classifiedEvents = append(classifiedEvents, eventType)
+	}
+
+	if facts.BuildFacts.NeedsDevServerCycleRestart {
+		appendEventType(EventTypeConfigFileChanged)
+	}
+	if facts.BuildFacts.NeedsGoCompile || facts.RuntimeFacts.NeedsAppRestart {
+		appendEventType(EventTypeGoSourceChanged)
+	}
+	if facts.BuildFacts.NeedsCriticalCSSBuild {
+		appendEventType(EventTypeCriticalCSSSourceChanged)
+	}
+	if facts.BuildFacts.NeedsNormalCSSBuild {
+		appendEventType(EventTypeNormalCSSSourceChanged)
+	}
+	if facts.BuildFacts.NeedsPublicStaticProcess {
+		appendEventType(EventTypePublicStaticAssetChanged)
+	}
+	if facts.BuildFacts.NeedsPrivateStaticProcess {
+		appendEventType(EventTypePrivateStaticAssetChanged)
+	}
+	if facts.RuntimeFacts.NeedsFrameworkRouteRefresh {
+		appendEventType(EventTypeFrameworkRouteDefinitionChanged)
+	}
+	if facts.RuntimeFacts.NeedsFrameworkTemplateRefresh {
+		appendEventType(EventTypeFrameworkTemplateChanged)
+	}
+	if facts.HookFacts.AppDefinedWatchCallbackOnlyChanged {
+		appendEventType(EventTypeAppDefinedWatchCallbackOnlyChanged)
+	}
+	if facts.HookFacts.AppDefinedWatchWithRebuildChanged {
+		appendEventType(EventTypeAppDefinedWatchWithRebuildChanged)
+	}
+
+	if len(classifiedEvents) == 0 && facts.ChangeSummary.FilesChangedCount > 0 {
+		if !facts.ChangeSummary.HasMeaningfulWork {
+			appendEventType(EventTypeIgnoredOrNoiseChanged)
+		} else {
+			appendEventType(EventTypeUnclassifiedNoWatchRuleChanged)
+		}
+	}
+	return classifiedEvents, nil
+}
+
 // Planner reduces classified events + facts into an execution plan.
 type Planner interface {
 	Plan(input PlannerInput) (ExecutionPlan, error)
@@ -833,12 +1147,6 @@ type Executor interface {
 		effectTaskRoots map[EffectID]*tasks.Task[GoalExecutionKey, struct{}],
 	) error
 }
-
-const (
-	// ExecutionPlanMetadataGenerationIDKey is the metadata key used to carry one
-	// generation identifier into task execution keys.
-	ExecutionPlanMetadataGenerationIDKey = "generation_id"
-)
 
 // EngineConfig configures one contract-level orchestration engine.
 type EngineConfig struct {
@@ -888,11 +1196,15 @@ func NewEventRulePlanner(rules []EventRule) *EventRulePlanner {
 
 // Plan reduces one classified batch into a deduplicated terminal goal set and
 // derived framework signals.
-func (planner *EventRulePlanner) Plan(input PlannerInput) (ExecutionPlan, error) {
+func (planner *EventRulePlanner) Plan(
+	input PlannerInput,
+) (ExecutionPlan, error) {
 	if planner == nil {
-		return ExecutionPlan{}, errors.New("wavebuild: event rule planner is required")
+		return ExecutionPlan{}, errors.New(
+			"wavebuild: event rule planner is required",
+		)
 	}
-	candidateGoalGroups := make([][]EffectID, 0, len(input.Events))
+	candidateGoals := make([]EffectID, 0, len(input.Events))
 	for _, event := range input.Events {
 		eventRule, foundEventRule := planner.eventRuleByType[event]
 		if !foundEventRule {
@@ -905,37 +1217,31 @@ func (planner *EventRulePlanner) Plan(input PlannerInput) (ExecutionPlan, error)
 		if resolveModePlanError != nil {
 			return ExecutionPlan{}, resolveModePlanError
 		}
-		for _, effectGroup := range modePlan.OrderedParallelEffectGroups {
-			if !conditionMatches(effectGroup.Condition, input.ConditionFacts) {
+		for _, effectSet := range modePlan.ConditionalEffects {
+			if !conditionMatches(effectSet.Condition, input.ConditionFacts) {
 				continue
 			}
-			if len(effectGroup.Effects) == 0 {
+			if len(effectSet.Effects) == 0 {
 				continue
 			}
-			candidateGoalGroups = append(
-				candidateGoalGroups,
-				append([]EffectID(nil), effectGroup.Effects...),
-			)
+			candidateGoals = append(candidateGoals, effectSet.Effects...)
 		}
 	}
-	deduplicatedTerminalGoals := deduplicateCandidateGoals(candidateGoalGroups)
+	deduplicatedTerminalGoals := deduplicateCandidateGoals(candidateGoals)
 	frameworkSignals := deriveFrameworkSignalsFromTerminalGoals(
 		deduplicatedTerminalGoals,
-		input.Metadata,
+		input.GenerationID,
 	)
 	plan := ExecutionPlan{
 		Mode:             input.Mode,
+		GenerationID:     input.GenerationID,
 		Events:           append([]EventType(nil), input.Events...),
 		ConditionFacts:   cloneConditionFacts(input.ConditionFacts),
 		Facts:            cloneBatchFacts(input.Facts),
 		Metadata:         cloneStringMap(input.Metadata),
 		FrameworkSignals: frameworkSignals,
 	}
-	if len(deduplicatedTerminalGoals) > 0 {
-		plan.OrderedParallelEffects = [][]EffectID{
-			append([]EffectID(nil), deduplicatedTerminalGoals...),
-		}
-	}
+	plan.TerminalGoals = append([]EffectID(nil), deduplicatedTerminalGoals...)
 	return plan, nil
 }
 
@@ -959,23 +1265,23 @@ func (arbiter *RuleSetArbiter) Arbitrate(
 	input ArbitrationInput,
 ) (ExecutionPlan, error) {
 	if arbiter == nil {
-		return ExecutionPlan{}, errors.New("wavebuild: rule-set arbiter is required")
+		return ExecutionPlan{}, errors.New(
+			"wavebuild: rule-set arbiter is required",
+		)
 	}
 	plan := cloneExecutionPlan(input.Draft)
 	terminalGoals, arbitrateError := arbitrateTerminalGoalsWithRuleSet(
-		deriveOrderedUniqueTerminalGoalsFromExecutionPlan(plan),
+		deriveOrderedUniqueTerminalGoals(plan.TerminalGoals),
 		arbiter.RuleSet,
 	)
 	if arbitrateError != nil {
 		return ExecutionPlan{}, arbitrateError
 	}
 	if len(terminalGoals) == 0 {
-		plan.OrderedParallelEffects = nil
+		plan.TerminalGoals = nil
 		return plan, nil
 	}
-	plan.OrderedParallelEffects = [][]EffectID{
-		append([]EffectID(nil), terminalGoals...),
-	}
+	plan.TerminalGoals = append([]EffectID(nil), terminalGoals...)
 	return plan, nil
 }
 
@@ -998,8 +1304,8 @@ func (executor *DefaultTaskRootExecutor) Execute(
 		ctx = context.Background()
 	}
 	taskExecutionContext := tasks.NewCtx(ctx)
-	generationID := plan.Metadata[ExecutionPlanMetadataGenerationIDKey]
-	terminalGoals := deriveOrderedUniqueTerminalGoalsFromExecutionPlan(plan)
+	generationID := strings.TrimSpace(plan.GenerationID)
+	terminalGoals := deriveOrderedUniqueTerminalGoals(plan.TerminalGoals)
 	boundTasks := make([]tasks.BoundTask, 0, len(terminalGoals))
 	for _, effect := range terminalGoals {
 		taskRoot := effectTaskRoots[effect]
@@ -1028,24 +1334,25 @@ func (executor *DefaultTaskRootExecutor) Execute(
 	return nil
 }
 
-func deriveOrderedUniqueTerminalGoalsFromExecutionPlan(
-	plan ExecutionPlan,
+func deriveOrderedUniqueTerminalGoals(
+	terminalGoals []EffectID,
 ) []EffectID {
-	if len(plan.OrderedParallelEffects) == 0 {
+	if len(terminalGoals) == 0 {
 		return nil
 	}
 	seen := make(map[EffectID]struct{})
-	terminalGoals := make([]EffectID, 0, len(plan.OrderedParallelEffects))
-	for _, effectGroup := range plan.OrderedParallelEffects {
-		for _, effect := range effectGroup {
-			if _, alreadySeen := seen[effect]; alreadySeen {
-				continue
-			}
-			seen[effect] = struct{}{}
-			terminalGoals = append(terminalGoals, effect)
+	deduplicatedTerminalGoals := make([]EffectID, 0, len(terminalGoals))
+	for _, terminalGoal := range terminalGoals {
+		if _, alreadySeen := seen[terminalGoal]; alreadySeen {
+			continue
 		}
+		seen[terminalGoal] = struct{}{}
+		deduplicatedTerminalGoals = append(
+			deduplicatedTerminalGoals,
+			terminalGoal,
+		)
 	}
-	return terminalGoals
+	return deduplicatedTerminalGoals
 }
 
 func resolveModePlanForPlannerInput(
@@ -1069,37 +1376,33 @@ func conditionMatches(condition Condition, conditionFacts ConditionFacts) bool {
 	return conditionFacts[condition]
 }
 
-func deduplicateCandidateGoals(candidateGoalGroups [][]EffectID) []EffectID {
-	if len(candidateGoalGroups) == 0 {
+func deduplicateCandidateGoals(candidateGoals []EffectID) []EffectID {
+	if len(candidateGoals) == 0 {
 		return nil
 	}
 	seen := make(map[EffectID]struct{})
-	deduplicatedGoals := make([]EffectID, 0, len(candidateGoalGroups))
-	for _, candidateGoalGroup := range candidateGoalGroups {
-		for _, candidateGoal := range candidateGoalGroup {
-			if candidateGoal == "" {
-				continue
-			}
-			if _, alreadySeen := seen[candidateGoal]; alreadySeen {
-				continue
-			}
-			seen[candidateGoal] = struct{}{}
-			deduplicatedGoals = append(deduplicatedGoals, candidateGoal)
+	deduplicatedGoals := make([]EffectID, 0, len(candidateGoals))
+	for _, candidateGoal := range candidateGoals {
+		if candidateGoal == "" {
+			continue
 		}
+		if _, alreadySeen := seen[candidateGoal]; alreadySeen {
+			continue
+		}
+		seen[candidateGoal] = struct{}{}
+		deduplicatedGoals = append(deduplicatedGoals, candidateGoal)
 	}
 	return deduplicatedGoals
 }
 
 func deriveFrameworkSignalsFromTerminalGoals(
 	terminalGoals []EffectID,
-	metadata map[string]string,
+	generationID string,
 ) []FrameworkSignal {
 	if len(terminalGoals) == 0 {
 		return nil
 	}
-	freshnessToken := strings.TrimSpace(
-		metadata[ExecutionPlanMetadataGenerationIDKey],
-	)
+	freshnessToken := strings.TrimSpace(generationID)
 	seenSignalTypes := make(map[FrameworkSignalType]struct{})
 	signals := make([]FrameworkSignal, 0, len(terminalGoals))
 	for _, goal := range terminalGoals {
@@ -1173,9 +1476,7 @@ func arbitrateTerminalGoalsWithRuleSet(
 	}
 	switch ruleSet.TieBreakPolicy {
 	case "", ArbitrationTieBreakByEffectIDLexicographic:
-		sort.Slice(impliedOnly, func(left, right int) bool {
-			return impliedOnly[left] < impliedOnly[right]
-		})
+		slices.Sort(impliedOnly)
 	default:
 		return nil, fmt.Errorf(
 			"wavebuild: unsupported arbitration tie-break policy %q",
@@ -1264,27 +1565,180 @@ func applyPrecedenceDomains(
 	}
 }
 
+func deriveConditionFactsFromBatchFactsAndMetadata(
+	facts BatchFacts,
+	metadata map[string]string,
+) ConditionFacts {
+	conditionFacts := ConditionFacts{
+		ConditionPublicFileMapChangedOrRepaired: facts.StaticFacts.PublicFileMapMayHaveChanged ||
+			facts.StaticFacts.PublicFileMapMayNeedRepair,
+		ConditionWaitingForBuildRetry:                  facts.RuntimeFacts.NeedsRetryWaitRestartRequest,
+		ConditionAppCallbackRequestedRuntimeReload:     facts.HookFacts.AppCallbackRequestedRuntimeReload,
+		ConditionAppCallbackRequestedBrowserInvalidate: facts.HookFacts.AppCallbackRequestedBrowserInvalidate,
+		ConditionAppCallbackRequestedBrowserRevalidate: facts.HookFacts.AppCallbackRequestedBrowserRevalidate,
+		ConditionAppCallbackRequestedBrowserHardReload: facts.HookFacts.AppCallbackRequestedBrowserHardReload,
+		ConditionAppCallbackRequestedRestart:           facts.HookFacts.AppCallbackRequestedRestart,
+		ConditionAppCallbackRequestedGoCompile:         facts.HookFacts.AppCallbackRequestedGoCompile,
+	}
+	for condition := range conditionFacts {
+		if parseBooleanMetadata(metadata, string(condition)) {
+			conditionFacts[condition] = true
+		}
+	}
+	return conditionFacts
+}
+
+func parseBooleanMetadata(
+	metadata map[string]string,
+	key string,
+) bool {
+	if len(metadata) == 0 {
+		return false
+	}
+	rawValue, exists := metadata[key]
+	if !exists {
+		return false
+	}
+	parsedValue, parseError := strconv.ParseBool(strings.TrimSpace(rawValue))
+	return parseError == nil && parsedValue
+}
+
+func parseChangedPathsMetadata(
+	metadata map[string]string,
+	key string,
+) []string {
+	if len(metadata) == 0 {
+		return nil
+	}
+	rawValue, exists := metadata[key]
+	if !exists {
+		return nil
+	}
+	normalizedRawValue := strings.NewReplacer(";", ",", "\n", ",").Replace(
+		rawValue,
+	)
+	rawParts := strings.Split(normalizedRawValue, ",")
+	if len(rawParts) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(rawParts))
+	parsedPaths := make([]string, 0, len(rawParts))
+	for _, rawPart := range rawParts {
+		normalizedPath := normalizeWatcherPathForFacts(rawPart)
+		if normalizedPath == "" {
+			continue
+		}
+		if _, alreadySeen := seen[normalizedPath]; alreadySeen {
+			continue
+		}
+		seen[normalizedPath] = struct{}{}
+		parsedPaths = append(parsedPaths, normalizedPath)
+	}
+	if len(parsedPaths) == 0 {
+		return nil
+	}
+	return parsedPaths
+}
+
+func normalizeWatcherPathForFacts(rawPath string) string {
+	trimmedPath := strings.TrimSpace(rawPath)
+	if trimmedPath == "" {
+		return ""
+	}
+	normalizedSlashPath := strings.ReplaceAll(trimmedPath, "\\", "/")
+	cleanedPath := path.Clean(normalizedSlashPath)
+	if cleanedPath == "." {
+		return ""
+	}
+	return cleanedPath
+}
+
+func deriveHasMeaningfulWorkFromFacts(facts BatchFacts) bool {
+	return facts.BuildFacts.NeedsDevServerCycleRestart ||
+		facts.BuildFacts.NeedsGoCompile ||
+		facts.BuildFacts.NeedsCriticalCSSBuild ||
+		facts.BuildFacts.NeedsNormalCSSBuild ||
+		facts.BuildFacts.NeedsPublicStaticProcess ||
+		facts.BuildFacts.NeedsPrivateStaticProcess ||
+		facts.BuildFacts.NeedsChangedPathStaticScan ||
+		facts.BuildFacts.NeedsFullStaticScan ||
+		facts.RuntimeFacts.NeedsAppRestart ||
+		facts.RuntimeFacts.NeedsFrameworkRouteRefresh ||
+		facts.RuntimeFacts.NeedsFrameworkTemplateRefresh ||
+		facts.RuntimeFacts.NeedsFrameworkPublicFileMapRefresh ||
+		facts.RuntimeFacts.NeedsRuntimeRefreshStalenessGuard ||
+		facts.RuntimeFacts.NeedsRetryWaitRestartRequest ||
+		facts.BrowserFacts.RequestsHardReload ||
+		facts.BrowserFacts.RequestsPublicAssetInvalidate ||
+		facts.BrowserFacts.RequestsRevalidate ||
+		facts.BrowserFacts.RequestsCSSHotReload ||
+		facts.StaticFacts.PublicFileMapMayHaveChanged ||
+		facts.StaticFacts.PublicFileMapMayNeedRepair ||
+		facts.HookFacts.HasRunOnChangeOnlyWork ||
+		facts.HookFacts.HasRunOnChangeCommandSuppression ||
+		facts.HookFacts.HasCallbackOnlyHookWork ||
+		facts.HookFacts.AppDefinedWatchCallbackOnlyChanged ||
+		facts.HookFacts.AppDefinedWatchWithRebuildChanged
+}
+
 // NewEngine constructs one contract-first engine.
 func NewEngine(config EngineConfig) (*Engine, error) {
+	resolvedFactsCollector := config.FactsCollector
+	if resolvedFactsCollector == nil {
+		resolvedFactsCollector = &DefaultFactsCollector{}
+	}
+	resolvedEventClassifier := config.EventClassifier
+	if resolvedEventClassifier == nil {
+		resolvedEventClassifier = &DefaultEventClassifier{}
+	}
+
+	resolvedEventRules := CanonicalEventRuleCatalog()
+	if len(config.InitialEventRules) > 0 {
+		resolvedEventRules = append(
+			resolvedEventRules,
+			cloneEventRules(config.InitialEventRules)...,
+		)
+	}
+	resolvedGoalSpecs := CanonicalGoalCatalog()
+	if len(config.InitialGoalSpecs) > 0 {
+		resolvedGoalSpecs = append(
+			resolvedGoalSpecs,
+			cloneGoalSpecs(config.InitialGoalSpecs)...,
+		)
+	}
+
+	resolvedPlanner := config.Planner
+	if resolvedPlanner == nil {
+		resolvedPlanner = NewEventRulePlanner(resolvedEventRules)
+	}
+	resolvedArbiter := config.Arbiter
+	if resolvedArbiter == nil {
+		resolvedArbiter = NewCanonicalRuleSetArbiter()
+	}
+	resolvedExecutor := config.Executor
+	if resolvedExecutor == nil {
+		resolvedExecutor = &DefaultTaskRootExecutor{}
+	}
+
 	engine := &Engine{
 		eventRuleByType:    make(map[EventType]EventRule),
 		goalSpecByEffectID: make(map[EffectID]GoalSpec),
 		effectTaskRootByID: make(
 			map[EffectID]*tasks.Task[GoalExecutionKey, struct{}],
 		),
-		factsCollector:  config.FactsCollector,
-		eventClassifier: config.EventClassifier,
-		planner:         config.Planner,
-		arbiter:         config.Arbiter,
-		executor:        config.Executor,
+		factsCollector:  resolvedFactsCollector,
+		eventClassifier: resolvedEventClassifier,
+		planner:         resolvedPlanner,
+		arbiter:         resolvedArbiter,
+		executor:        resolvedExecutor,
 	}
 	if registerRulesError := engine.RegisterEventRules(
-		config.InitialEventRules...,
+		resolvedEventRules...,
 	); registerRulesError != nil {
 		return nil, registerRulesError
 	}
 	if registerGoalSpecsError := engine.RegisterGoalSpecs(
-		config.InitialGoalSpecs...,
+		resolvedGoalSpecs...,
 	); registerGoalSpecsError != nil {
 		return nil, registerGoalSpecsError
 	}
@@ -1350,6 +1804,52 @@ func (engine *Engine) RegisterEffectTaskRoots(
 		engine.effectTaskRootByID[registration.Effect] = registration.TaskRoot
 	}
 	return nil
+}
+
+// ValidateTaskRootDependencyCoverage checks that registered terminal task roots
+// also register roots for their declared goal dependencies.
+func (engine *Engine) ValidateTaskRootDependencyCoverage() error {
+	if engine == nil {
+		return errors.New("wavebuild: engine is required")
+	}
+	engine.mu.RLock()
+	goalSet := snapshotGoalSet(engine.goalSpecByEffectID)
+	effectTaskRoots := cloneEffectTaskRoots(engine.effectTaskRootByID)
+	engine.mu.RUnlock()
+
+	dependencyCatalog := buildGoalDependencyCatalog(goalSet)
+	if len(dependencyCatalog) == 0 {
+		return nil
+	}
+	effects := make([]EffectID, 0, len(dependencyCatalog))
+	for effect := range dependencyCatalog {
+		effects = append(effects, effect)
+	}
+	slices.Sort(effects)
+
+	missingCoverageLines := make([]string, 0)
+	for _, effect := range effects {
+		if effectTaskRoots[effect] == nil {
+			continue
+		}
+		dependencies := dependencyCatalog[effect]
+		for _, dependency := range dependencies {
+			if effectTaskRoots[dependency] != nil {
+				continue
+			}
+			missingCoverageLines = append(
+				missingCoverageLines,
+				fmt.Sprintf("%s requires %s", effect, dependency),
+			)
+		}
+	}
+	if len(missingCoverageLines) == 0 {
+		return nil
+	}
+	return fmt.Errorf(
+		"wavebuild: missing task-root dependency coverage: %s",
+		strings.Join(missingCoverageLines, "; "),
+	)
 }
 
 // SetFactsCollector sets the facts collector implementation.
@@ -1443,6 +1943,7 @@ func (engine *Engine) BuildPlanFromRawInput(
 			ErrNotImplemented,
 		)
 	}
+	generationID := deriveGenerationIDFromRawBatchInput(input)
 
 	facts, collectFactsError := factsCollector.CollectFacts(input)
 	if collectFactsError != nil {
@@ -1457,11 +1958,15 @@ func (engine *Engine) BuildPlanFromRawInput(
 	}
 	planDraft, planError := planner.Plan(
 		PlannerInput{
-			Mode:           input.Mode,
-			Events:         append([]EventType(nil), events...),
-			ConditionFacts: nil,
-			Facts:          cloneBatchFacts(facts),
-			Metadata:       cloneStringMap(input.Metadata),
+			Mode:         input.Mode,
+			GenerationID: generationID,
+			Events:       append([]EventType(nil), events...),
+			ConditionFacts: deriveConditionFactsFromBatchFactsAndMetadata(
+				facts,
+				input.Metadata,
+			),
+			Facts:    cloneBatchFacts(facts),
+			Metadata: cloneStringMap(input.Metadata),
 		},
 	)
 	if planError != nil {
@@ -1493,6 +1998,7 @@ func (engine *Engine) Plan(batch BatchInput) (ExecutionPlan, error) {
 	return planner.Plan(
 		PlannerInput{
 			Mode:           batch.Mode,
+			GenerationID:   strings.TrimSpace(batch.GenerationID),
 			Events:         append([]EventType(nil), batch.Events...),
 			ConditionFacts: cloneConditionFacts(batch.ConditionFacts),
 			Facts:          cloneBatchFacts(batch.Facts),
@@ -1534,6 +2040,7 @@ func (engine *Engine) PlanAndExecute(
 // BatchInput is one direct planning request for an already-classified batch.
 type BatchInput struct {
 	Mode           Mode
+	GenerationID   string
 	Events         []EventType
 	ConditionFacts ConditionFacts
 	Facts          BatchFacts
@@ -1544,13 +2051,13 @@ func cloneEventRule(rule EventRule) EventRule {
 	return EventRule{
 		Event: rule.Event,
 		Dev: ModePlan{
-			OrderedParallelEffectGroups: cloneParallelEffectGroups(
-				rule.Dev.OrderedParallelEffectGroups,
+			ConditionalEffects: cloneConditionalEffectSets(
+				rule.Dev.ConditionalEffects,
 			),
 		},
 		Prod: ModePlan{
-			OrderedParallelEffectGroups: cloneParallelEffectGroups(
-				rule.Prod.OrderedParallelEffectGroups,
+			ConditionalEffects: cloneConditionalEffectSets(
+				rule.Prod.ConditionalEffects,
 			),
 		},
 	}
@@ -1567,17 +2074,17 @@ func cloneEventRules(rules []EventRule) []EventRule {
 	return cloned
 }
 
-func cloneParallelEffectGroups(
-	groups []ParallelEffectGroup,
-) []ParallelEffectGroup {
+func cloneConditionalEffectSets(
+	groups []ConditionalEffectSet,
+) []ConditionalEffectSet {
 	if len(groups) == 0 {
 		return nil
 	}
-	cloned := make([]ParallelEffectGroup, 0, len(groups))
+	cloned := make([]ConditionalEffectSet, 0, len(groups))
 	for _, group := range groups {
 		cloned = append(
 			cloned,
-			ParallelEffectGroup{
+			ConditionalEffectSet{
 				Condition: group.Condition,
 				Effects:   append([]EffectID(nil), group.Effects...),
 			},
@@ -1618,6 +2125,32 @@ func cloneGoalSpecs(goalSpecs []GoalSpec) []GoalSpec {
 	return cloned
 }
 
+func buildGoalDependencyCatalog(goalSpecs []GoalSpec) map[EffectID][]EffectID {
+	if len(goalSpecs) == 0 {
+		return nil
+	}
+	dependencyCatalog := make(map[EffectID][]EffectID, len(goalSpecs))
+	for _, goalSpec := range goalSpecs {
+		if goalSpec.Effect == "" {
+			continue
+		}
+		if len(goalSpec.DependsOn) == 0 {
+			continue
+		}
+		deduplicatedDependencies := deduplicateCandidateGoals(
+			goalSpec.DependsOn,
+		)
+		if len(deduplicatedDependencies) == 0 {
+			continue
+		}
+		dependencyCatalog[goalSpec.Effect] = deduplicatedDependencies
+	}
+	if len(dependencyCatalog) == 0 {
+		return nil
+	}
+	return dependencyCatalog
+}
+
 func cloneArbitrationRuleSet(ruleSet ArbitrationRuleSet) ArbitrationRuleSet {
 	return ArbitrationRuleSet{
 		PrecedenceDomains: cloneArbitrationPrecedenceDomains(
@@ -1642,8 +2175,10 @@ func cloneArbitrationPrecedenceDomains(
 		cloned = append(
 			cloned,
 			ArbitrationPrecedenceDomain{
-				Domain:          domain.Domain,
-				HighestToLowest: append([]EffectID(nil), domain.HighestToLowest...),
+				Domain: domain.Domain,
+				HighestToLowest: append(
+					[]EffectID(nil),
+					domain.HighestToLowest...),
 			},
 		)
 	}
@@ -1714,26 +2249,29 @@ func cloneConditionFacts(facts ConditionFacts) ConditionFacts {
 }
 
 func cloneExecutionPlan(plan ExecutionPlan) ExecutionPlan {
-	clonedParallelEffects := make(
-		[][]EffectID,
-		0,
-		len(plan.OrderedParallelEffects),
-	)
-	for _, group := range plan.OrderedParallelEffects {
-		clonedParallelEffects = append(
-			clonedParallelEffects,
-			append([]EffectID(nil), group...),
-		)
-	}
 	return ExecutionPlan{
-		Mode:                   plan.Mode,
-		Events:                 append([]EventType(nil), plan.Events...),
-		ConditionFacts:         cloneConditionFacts(plan.ConditionFacts),
-		Facts:                  cloneBatchFacts(plan.Facts),
-		Metadata:               cloneStringMap(plan.Metadata),
-		FrameworkSignals:       cloneFrameworkSignals(plan.FrameworkSignals),
-		OrderedParallelEffects: clonedParallelEffects,
+		Mode:             plan.Mode,
+		GenerationID:     plan.GenerationID,
+		Events:           append([]EventType(nil), plan.Events...),
+		ConditionFacts:   cloneConditionFacts(plan.ConditionFacts),
+		Facts:            cloneBatchFacts(plan.Facts),
+		Metadata:         cloneStringMap(plan.Metadata),
+		FrameworkSignals: cloneFrameworkSignals(plan.FrameworkSignals),
+		TerminalGoals:    append([]EffectID(nil), plan.TerminalGoals...),
 	}
+}
+
+func deriveGenerationIDFromRawBatchInput(input RawBatchInput) string {
+	if generationID := strings.TrimSpace(input.GenerationID); generationID != "" {
+		return generationID
+	}
+	if batchID := strings.TrimSpace(input.BatchID); batchID != "" {
+		return batchID
+	}
+	if traceID := strings.TrimSpace(input.TraceID); traceID != "" {
+		return traceID
+	}
+	return ""
 }
 
 func cloneEffectTaskRoots(

@@ -42,10 +42,10 @@ apps do not pull dev/build dependencies.
     - dedupe
     - filter by mode
     - apply precedence/exclusivity rules (for example browser action winner)
-    - output ordered parallel groups
+    - output terminal goals
 
 In prod, this naturally becomes: union all relevant prod-capable effects for the
-batch, dedupe, run once each in correct order.
+batch, dedupe, run once each.
 
 ## Goal-First Execution with `kit/tasks`
 
@@ -87,19 +87,11 @@ Task graph responsibilities:
 - dedupe across shared prereqs
 - parallel execution of independent work
 
-## Suggested Evolution
+## Current Direction
 
-Near term:
-
-1. keep current event->ordered-group planning in `wavebuild`
-2. migrate effect implementations toward `Ensure*` task nodes
-3. make terminal goals thin wrappers around task graph roots
-
-End state:
-
-- planner outputs terminal goal set
-- execution calls terminal goal tasks only
-- dependency sequencing/parallelism lives almost entirely in `kit/tasks`
+1. planner outputs terminal goal sets only
+2. execution invokes terminal goal task roots only
+3. dependency sequencing/parallelism lives in `kit/tasks`
 
 ## Pseudocode
 
