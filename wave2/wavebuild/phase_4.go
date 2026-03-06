@@ -2,37 +2,37 @@ package wavebuild
 
 import "github.com/vormadev/vorma/kit/tasks"
 
-// Phase4BatchInput is the frontend-settling input produced by phase 3.
-type Phase4BatchInput struct {
-	Batch         PhaseBatchInput
-	FrontendGoals Phase3FrontendSettlingGoals
+// phase4BatchInput is the frontend-settling input produced by phase 3.
+type phase4BatchInput struct {
+	batch         phaseBatchInput
+	frontendGoals phase3FrontendSettlingGoals
 }
 
-// Phase4CompletionSummary captures frontend-settling completion output.
-type Phase4CompletionSummary struct {
-	TerminalAction FrontendTerminalBrowserAction
+// phase4CompletionSummary captures frontend-settling completion output.
+type phase4CompletionSummary struct {
+	terminalAction             frontendTerminalBrowserAction
+	requiresBackendViteHealing bool
 }
 
-// FourPhaseRunResult captures the full four-phase pipeline execution.
-type FourPhaseRunResult struct {
-	Phase1BuildGoals        Phase1BuildGoals
-	Phase2BackendGoals      Phase2BackendSettlingGoals
-	Phase3FrontendGoals     Phase3FrontendSettlingGoals
-	Phase4CompletionSummary Phase4CompletionSummary
-	FrameworkSignals        []FrameworkSignal
+// fourPhaseRunResult captures the full four-phase pipeline execution.
+type fourPhaseRunResult struct {
+	phase1BuildGoals        phase1BuildGoals
+	phase2BackendGoals      phase2BackendSettlingGoals
+	phase3FrontendGoals     phase3FrontendSettlingGoals
+	phase4CompletionSummary phase4CompletionSummary
+	frameworkSignals        []FrameworkSignal
 }
 
 func newPhase4EffectTask(
-	effectID PhaseEffectID,
-) *tasks.Task[Phase4BatchInput, struct{}] {
+	effectID phaseEffectID,
+) *tasks.Task[phase4BatchInput, struct{}] {
 	return tasks.NewTask(
 		func(
 			taskContext *tasks.Ctx,
-			input Phase4BatchInput,
+			input phase4BatchInput,
 		) (struct{}, error) {
-			if effectError := executePhaseEffect(
+			if _, effectError := input.batch.runPhaseEffect(
 				taskContext,
-				input.Batch,
 				effectID,
 			); effectError != nil {
 				return struct{}{}, effectError
@@ -42,77 +42,80 @@ func newPhase4EffectTask(
 	)
 }
 
-// Phase4BroadcastCSSHotReloadTask executes CSS hot reload broadcast.
-var Phase4BroadcastCSSHotReloadTask = newPhase4EffectTask(
-	PhaseEffectIDFrontendBroadcastCSSHotReload,
+// phase4BroadcastCSSHotReloadTask executes CSS hot reload broadcast.
+var phase4BroadcastCSSHotReloadTask = newPhase4EffectTask(
+	phaseEffectIDFrontendBroadcastCSSHotReload,
 )
 
-// Phase4NotifyVitePublicFileMapChangedTask notifies Vite that public file-map artifacts changed.
-var Phase4NotifyVitePublicFileMapChangedTask = newPhase4EffectTask(
-	PhaseEffectIDFrontendNotifyVitePublicFileMapChanged,
+// phase4NotifyVitePublicFileMapChangedTask notifies Vite that public file-map artifacts changed.
+var phase4NotifyVitePublicFileMapChangedTask = newPhase4EffectTask(
+	phaseEffectIDFrontendNotifyVitePublicFileMapChanged,
 )
 
-// Phase4BroadcastRevalidateTask executes browser revalidation broadcast.
-var Phase4BroadcastRevalidateTask = newPhase4EffectTask(
-	PhaseEffectIDFrontendBroadcastRevalidate,
+// phase4BroadcastRevalidateTask executes browser revalidation broadcast.
+var phase4BroadcastRevalidateTask = newPhase4EffectTask(
+	phaseEffectIDFrontendBroadcastRevalidate,
 )
 
-// Phase4BroadcastHardReloadTask executes browser hard reload broadcast.
-var Phase4BroadcastHardReloadTask = newPhase4EffectTask(
-	PhaseEffectIDFrontendBroadcastHardReload,
+// phase4BroadcastHardReloadTask executes browser hard reload broadcast.
+var phase4BroadcastHardReloadTask = newPhase4EffectTask(
+	phaseEffectIDFrontendBroadcastHardReload,
 )
 
-// Phase4PublishNoReloadNeededNoticeTask executes no-reload user messaging.
-var Phase4PublishNoReloadNeededNoticeTask = newPhase4EffectTask(
-	PhaseEffectIDFrontendPublishNoReloadNeededNotice,
+// phase4PublishNoReloadNeededNoticeTask executes no-reload user messaging.
+var phase4PublishNoReloadNeededNoticeTask = newPhase4EffectTask(
+	phaseEffectIDFrontendPublishNoReloadNeededNotice,
 )
 
-// Phase4ExecuteTerminalBrowserActionTask executes phase-4 terminal browser
+// phase4ExecuteTerminalBrowserActionTask executes phase-4 terminal browser
 // action and returns completion summary.
-var Phase4ExecuteTerminalBrowserActionTask = tasks.NewTask(
+var phase4ExecuteTerminalBrowserActionTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
-		input Phase4BatchInput,
-	) (Phase4CompletionSummary, error) {
-		terminalAction := input.FrontendGoals.TerminalBrowserAction
+		input phase4BatchInput,
+	) (phase4CompletionSummary, error) {
+		terminalAction := input.frontendGoals.terminalBrowserAction
 		switch terminalAction {
-		case FrontendTerminalBrowserActionHardReload:
-			if _, hardReloadError := Phase4BroadcastHardReloadTask.Run(
+		case frontendTerminalBrowserActionHardReload:
+			if _, hardReloadError := phase4BroadcastHardReloadTask.Run(
 				taskContext,
 				input,
 			); hardReloadError != nil {
-				return Phase4CompletionSummary{}, hardReloadError
+				return phase4CompletionSummary{}, hardReloadError
 			}
-		case FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
-			if _, notifyViteError := Phase4NotifyVitePublicFileMapChangedTask.Run(
+		case frontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
+			if _, notifyViteError := phase4NotifyVitePublicFileMapChangedTask.Run(
 				taskContext,
 				input,
 			); notifyViteError != nil {
-				return Phase4CompletionSummary{}, notifyViteError
+				return phase4CompletionSummary{
+					terminalAction:             frontendTerminalBrowserActionNone,
+					requiresBackendViteHealing: true,
+				}, nil
 			}
-		case FrontendTerminalBrowserActionRevalidate:
-			if _, revalidateError := Phase4BroadcastRevalidateTask.Run(
+		case frontendTerminalBrowserActionRevalidate:
+			if _, revalidateError := phase4BroadcastRevalidateTask.Run(
 				taskContext,
 				input,
 			); revalidateError != nil {
-				return Phase4CompletionSummary{}, revalidateError
+				return phase4CompletionSummary{}, revalidateError
 			}
-		case FrontendTerminalBrowserActionCSSHotReload:
-			if _, cssHotReloadError := Phase4BroadcastCSSHotReloadTask.Run(
+		case frontendTerminalBrowserActionCSSHotReload:
+			if _, cssHotReloadError := phase4BroadcastCSSHotReloadTask.Run(
 				taskContext,
 				input,
 			); cssHotReloadError != nil {
-				return Phase4CompletionSummary{}, cssHotReloadError
+				return phase4CompletionSummary{}, cssHotReloadError
 			}
 		default:
-			if _, noReloadNoticeError := Phase4PublishNoReloadNeededNoticeTask.Run(
+			if _, noReloadNoticeError := phase4PublishNoReloadNeededNoticeTask.Run(
 				taskContext,
 				input,
 			); noReloadNoticeError != nil {
-				return Phase4CompletionSummary{}, noReloadNoticeError
+				return phase4CompletionSummary{}, noReloadNoticeError
 			}
 		}
 
-		return Phase4CompletionSummary{TerminalAction: terminalAction}, nil
+		return phase4CompletionSummary{terminalAction: terminalAction}, nil
 	},
 )

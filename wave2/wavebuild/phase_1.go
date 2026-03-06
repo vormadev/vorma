@@ -2,233 +2,204 @@ package wavebuild
 
 import (
 	"errors"
+	"slices"
 
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
-// PhaseBatchInput is the shared per-batch phase envelope passed after phase 1.
-type PhaseBatchInput struct {
-	Mode         Mode
-	GenerationID string
-	Execution    *PhaseExecutionScope
+// phaseBatchInput is the shared per-batch phase envelope passed after phase 1.
+type phaseBatchInput struct {
+	mode         mode
+	generationID string
+	execution    *phaseExecutionScope
 }
 
-// EventsPhaseBatchInput is the phase-1 input contract for one reduced batch.
-type EventsPhaseBatchInput struct {
-	Events    *EventsPhaseInput
-	Execution *PhaseExecutionScope
+// phase1BatchInput is the phase-1 input contract for one reduced batch.
+type phase1BatchInput struct {
+	phase1    *phase1Input
+	execution *phaseExecutionScope
 }
 
-// Phase1BuildGoals are phase-2 build goals plus carry-forward settle intents.
-type Phase1BuildGoals struct {
-	RestartDevServerCycle           bool
-	CompileGoBinary                 bool
-	BuildCriticalCSS                bool
-	BuildNormalCSS                  bool
-	ProcessPublicStaticAssets       bool
-	CleanupStalePublicStaticOutputs bool
-	ProcessPrivateStaticAssets      bool
-	GeneratePublicFileMap           bool
-	ValidateBuildOutputs            bool
-	QueueRetryWaitRestart           bool
+// phase1BuildGoals are phase-2 build goals plus carry-forward settle intents.
+type phase1BuildGoals struct {
+	restartDevServerCycle           bool
+	compileGoBinary                 bool
+	buildCriticalCSS                bool
+	buildNormalCSS                  bool
+	processPublicStaticAssets       bool
+	cleanupStalePublicStaticOutputs bool
+	processPrivateStaticAssets      bool
+	generatePublicFileMap           bool
+	validateBuildOutputs            bool
+	queueRetryWaitRestart           bool
 
-	RequestBackendRestart                bool
-	RequestViteRestart                   bool
-	RequestFrameworkRouteRefresh         bool
-	RequestFrameworkTemplateRefresh      bool
-	RequestFrameworkPublicFileMapRefresh bool
-	RequestedTerminalBrowserAction       FrontendTerminalBrowserAction
+	requestBackendRestart                bool
+	requestViteRestart                   bool
+	requestFrameworkRouteRefresh         bool
+	requestFrameworkTemplateRefresh      bool
+	requestFrameworkPublicFileMapRefresh bool
+	requestedTerminalBrowserAction       frontendTerminalBrowserAction
 }
 
-func eventsPhaseFactsContainsType(
-	facts EventsPhaseFacts,
-	eventType EventType,
+func (facts phase1Facts) hasEventType(
+	eventType eventType,
 ) bool {
-	for _, candidateType := range facts.EventTypes {
-		if candidateType == eventType {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(facts.eventTypes, eventType)
 }
 
-func deriveImplicitBrowserActionIntent(
-	eventsPhaseFacts EventsPhaseFacts,
-) FrontendTerminalBrowserAction {
-	actionIntent := FrontendTerminalBrowserActionNone
-	if eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeCriticalCSSSourceChanged,
+func (facts phase1Facts) deriveImplicitBrowserActionIntent() frontendTerminalBrowserAction {
+	actionIntent := frontendTerminalBrowserActionNone
+	if facts.hasEventType(
+		eventTypeCriticalCSSSourceChanged,
 	) ||
-		eventsPhaseFactsContainsType(
-			eventsPhaseFacts,
-			EventTypeNormalCSSSourceChanged,
+		facts.hasEventType(
+			eventTypeNormalCSSSourceChanged,
 		) {
-		actionIntent = dominantFrontendTerminalBrowserAction(
-			actionIntent,
-			FrontendTerminalBrowserActionCSSHotReload,
+		actionIntent = actionIntent.dominantWith(
+			frontendTerminalBrowserActionCSSHotReload,
 		)
 	}
-	if eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypePublicStaticAssetChanged,
+	if facts.hasEventType(
+		eventTypePublicStaticAssetChanged,
 	) {
-		actionIntent = dominantFrontendTerminalBrowserAction(
-			actionIntent,
-			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
+		actionIntent = actionIntent.dominantWith(
+			frontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
 		)
 	}
-	if eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeGoSourceChanged,
+	if facts.hasEventType(
+		eventTypeGoSourceChanged,
 	) ||
-		eventsPhaseFactsContainsType(
-			eventsPhaseFacts,
-			EventTypePrivateStaticAssetChanged,
+		facts.hasEventType(
+			eventTypePrivateStaticAssetChanged,
 		) ||
-		eventsPhaseFactsContainsType(
-			eventsPhaseFacts,
-			EventTypeFrameworkRouteDefinitionChanged,
+		facts.hasEventType(
+			eventTypeFrameworkRouteDefinitionChanged,
 		) ||
-		eventsPhaseFactsContainsType(
-			eventsPhaseFacts,
-			EventTypeFrameworkTemplateChanged,
+		facts.hasEventType(
+			eventTypeFrameworkTemplateChanged,
 		) {
-		actionIntent = dominantFrontendTerminalBrowserAction(
-			actionIntent,
-			FrontendTerminalBrowserActionHardReload,
+		actionIntent = actionIntent.dominantWith(
+			frontendTerminalBrowserActionHardReload,
 		)
 	}
 	return actionIntent
 }
 
-func reducePhase1BuildGoals(
-	eventsPhaseFacts EventsPhaseFacts,
-) Phase1BuildGoals {
-	if eventsPhaseFacts.Mode == ModeDev &&
-		eventsPhaseFacts.WaitingForBuildRetry {
-		return Phase1BuildGoals{
-			QueueRetryWaitRestart: true,
+func (facts phase1Facts) derivePhase1BuildGoals() phase1BuildGoals {
+	if facts.mode == modeDev &&
+		facts.waitingForBuildRetry {
+		return phase1BuildGoals{
+			queueRetryWaitRestart: true,
 		}
 	}
-	configChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeConfigFileChanged,
+	configChanged := facts.hasEventType(
+		eventTypeConfigFileChanged,
 	)
-	goSourceChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeGoSourceChanged,
+	goSourceChanged := facts.hasEventType(
+		eventTypeGoSourceChanged,
 	)
-	criticalCSSChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeCriticalCSSSourceChanged,
+	criticalCSSChanged := facts.hasEventType(
+		eventTypeCriticalCSSSourceChanged,
 	)
-	normalCSSChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeNormalCSSSourceChanged,
+	normalCSSChanged := facts.hasEventType(
+		eventTypeNormalCSSSourceChanged,
 	)
-	publicStaticChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypePublicStaticAssetChanged,
+	publicStaticChanged := facts.hasEventType(
+		eventTypePublicStaticAssetChanged,
 	)
-	privateStaticChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypePrivateStaticAssetChanged,
+	privateStaticChanged := facts.hasEventType(
+		eventTypePrivateStaticAssetChanged,
 	)
-	frameworkRouteDefinitionChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeFrameworkRouteDefinitionChanged,
+	frameworkRouteDefinitionChanged := facts.hasEventType(
+		eventTypeFrameworkRouteDefinitionChanged,
 	)
-	frameworkTemplateChanged := eventsPhaseFactsContainsType(
-		eventsPhaseFacts,
-		EventTypeFrameworkTemplateChanged,
+	frameworkTemplateChanged := facts.hasEventType(
+		eventTypeFrameworkTemplateChanged,
 	)
-	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
-	mergedBrowserActionIntent := dominantFrontendTerminalBrowserAction(
-		deriveImplicitBrowserActionIntent(eventsPhaseFacts),
-		appRequestedOutcomes.RequestedTerminalBrowserAction,
+	appDefinedWatchActionOnlyChanged := facts.hasEventType(
+		eventTypeAppDefinedWatchActionOnlyChanged,
 	)
+	appDefinedWatchWithRebuildChanged := facts.hasEventType(
+		eventTypeAppDefinedWatchWithRebuildChanged,
+	)
+	appDefinedWatchChanged := appDefinedWatchActionOnlyChanged ||
+		appDefinedWatchWithRebuildChanged
+	appRequestedOutcomes := appRequestedOutcomes{}
+	if appDefinedWatchChanged {
+		appRequestedOutcomes = facts.appRequestedOutcomes
+	}
+	mergedBrowserActionIntent := facts.deriveImplicitBrowserActionIntent().
+		dominantWith(
+			appRequestedOutcomes.requestedTerminalBrowserAction,
+		)
 
 	requestBackendRestart := goSourceChanged ||
-		appRequestedOutcomes.RequestRestart
+		appRequestedOutcomes.requestRestart
 	requestViteRestart := configChanged
 	requestFrameworkRouteRefresh :=
 		frameworkRouteDefinitionChanged ||
-			appRequestedOutcomes.RequestFrameworkRefresh
+			appRequestedOutcomes.requestFrameworkRefresh
 	requestFrameworkTemplateRefresh := frameworkTemplateChanged
 	requestFrameworkPublicFileMapRefresh := publicStaticChanged
 
-	if eventsPhaseFacts.Mode == ModeProd {
+	if facts.mode == modeProd {
 		requestBackendRestart = false
 		requestViteRestart = false
 		requestFrameworkRouteRefresh = false
 		requestFrameworkTemplateRefresh = false
 		requestFrameworkPublicFileMapRefresh = false
-		mergedBrowserActionIntent = FrontendTerminalBrowserActionNone
+		mergedBrowserActionIntent = frontendTerminalBrowserActionNone
 	}
 
-	phase1BuildGoals := Phase1BuildGoals{
-		RestartDevServerCycle: configChanged,
-		CompileGoBinary: goSourceChanged ||
-			appRequestedOutcomes.RequestGoCompile,
-		BuildCriticalCSS:                criticalCSSChanged,
-		BuildNormalCSS:                  normalCSSChanged,
-		ProcessPublicStaticAssets:       publicStaticChanged,
-		CleanupStalePublicStaticOutputs: publicStaticChanged,
-		ProcessPrivateStaticAssets:      privateStaticChanged,
-		GeneratePublicFileMap:           publicStaticChanged,
+	phase1BuildGoals := phase1BuildGoals{
+		restartDevServerCycle: configChanged,
+		compileGoBinary: goSourceChanged ||
+			appRequestedOutcomes.requestGoCompile,
+		buildCriticalCSS:                criticalCSSChanged,
+		buildNormalCSS:                  normalCSSChanged,
+		processPublicStaticAssets:       publicStaticChanged,
+		cleanupStalePublicStaticOutputs: publicStaticChanged,
+		processPrivateStaticAssets:      privateStaticChanged,
+		generatePublicFileMap:           publicStaticChanged,
 
-		RequestBackendRestart:                requestBackendRestart,
-		RequestViteRestart:                   requestViteRestart,
-		RequestFrameworkRouteRefresh:         requestFrameworkRouteRefresh,
-		RequestFrameworkTemplateRefresh:      requestFrameworkTemplateRefresh,
-		RequestFrameworkPublicFileMapRefresh: requestFrameworkPublicFileMapRefresh,
-		RequestedTerminalBrowserAction:       mergedBrowserActionIntent,
+		requestBackendRestart:                requestBackendRestart,
+		requestViteRestart:                   requestViteRestart,
+		requestFrameworkRouteRefresh:         requestFrameworkRouteRefresh,
+		requestFrameworkTemplateRefresh:      requestFrameworkTemplateRefresh,
+		requestFrameworkPublicFileMapRefresh: requestFrameworkPublicFileMapRefresh,
+		requestedTerminalBrowserAction:       mergedBrowserActionIntent,
 	}
-	if eventsPhaseFacts.Mode == ModeProd {
-		phase1BuildGoals.RestartDevServerCycle = false
+	if facts.mode == modeProd {
+		phase1BuildGoals.restartDevServerCycle = false
 	}
 
-	phase1BuildGoals.ValidateBuildOutputs =
-		phase1BuildGoals.CompileGoBinary ||
-			phase1BuildGoals.BuildCriticalCSS ||
-			phase1BuildGoals.BuildNormalCSS ||
-			phase1BuildGoals.ProcessPublicStaticAssets ||
-			phase1BuildGoals.CleanupStalePublicStaticOutputs ||
-			phase1BuildGoals.ProcessPrivateStaticAssets ||
-			phase1BuildGoals.GeneratePublicFileMap
+	phase1BuildGoals.validateBuildOutputs =
+		phase1BuildGoals.compileGoBinary ||
+			phase1BuildGoals.buildCriticalCSS ||
+			phase1BuildGoals.buildNormalCSS ||
+			phase1BuildGoals.processPublicStaticAssets ||
+			phase1BuildGoals.cleanupStalePublicStaticOutputs ||
+			phase1BuildGoals.processPrivateStaticAssets ||
+			phase1BuildGoals.generatePublicFileMap
 
 	return phase1BuildGoals
 }
 
-// Phase1BuildEventsPhaseFactsTask reduces events batch input into phase-1 facts.
-var Phase1BuildEventsPhaseFactsTask = tasks.NewTask(
+// phase1PlanBuildGoalsTask maps event facts to build-phase goals.
+var phase1PlanBuildGoalsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (EventsPhaseFacts, error) {
-		if input.Events == nil {
-			return EventsPhaseFacts{}, errors.New(
-				"wavebuild: events phase input is required",
+		input phase1BatchInput,
+	) (phase1BuildGoals, error) {
+		if input.phase1 == nil {
+			return phase1BuildGoals{}, errors.New(
+				"wavebuild: phase-1 input is required",
 			)
 		}
-		return BuildEventsPhaseFacts(*input.Events)
-	},
-)
-
-// Phase1PlanBuildGoalsTask maps event facts to build-phase goals.
-var Phase1PlanBuildGoalsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input EventsPhaseBatchInput,
-	) (Phase1BuildGoals, error) {
-		eventsPhaseFacts, eventsPhaseFactsError := Phase1BuildEventsPhaseFactsTask.Run(
-			taskContext,
-			input,
-		)
-		if eventsPhaseFactsError != nil {
-			return Phase1BuildGoals{}, eventsPhaseFactsError
+		phase1Facts, phase1FactsError := input.phase1.buildFacts()
+		if phase1FactsError != nil {
+			return phase1BuildGoals{}, phase1FactsError
 		}
-		return reducePhase1BuildGoals(eventsPhaseFacts), nil
+		return phase1Facts.derivePhase1BuildGoals(), nil
 	},
 )

@@ -171,17 +171,20 @@ func (waveRuntime *Wave) PrivateStaticDir() string {
 
 // ViteManifestLocation returns the expected path of the Vite manifest in build output.
 func (waveRuntime *Wave) ViteManifestLocation() string {
-	return waveRuntime.mustRuntimeSurface("ViteManifestLocation").ViteManifestLocation()
+	return waveRuntime.mustRuntimeSurface("ViteManifestLocation").
+		ViteManifestLocation()
 }
 
 // StaticPrivateOutDir returns the private static output directory.
 func (waveRuntime *Wave) StaticPrivateOutDir() string {
-	return waveRuntime.mustRuntimeSurface("StaticPrivateOutDir").StaticPrivateOutDir()
+	return waveRuntime.mustRuntimeSurface("StaticPrivateOutDir").
+		StaticPrivateOutDir()
 }
 
 // StaticPublicOutDir returns the public static output directory.
 func (waveRuntime *Wave) StaticPublicOutDir() string {
-	return waveRuntime.mustRuntimeSurface("StaticPublicOutDir").StaticPublicOutDir()
+	return waveRuntime.mustRuntimeSurface("StaticPublicOutDir").
+		StaticPublicOutDir()
 }
 
 // PrivateFS returns the runtime private-assets filesystem.
@@ -206,12 +209,14 @@ func (waveRuntime *Wave) CriticalCSS() template.CSS {
 
 // CriticalCSSStyleElement returns one rendered critical-css <style> element.
 func (waveRuntime *Wave) CriticalCSSStyleElement() template.HTML {
-	return waveRuntime.mustRuntimeSurface("CriticalCSSStyleElement").CriticalCSSStyleElement()
+	return waveRuntime.mustRuntimeSurface("CriticalCSSStyleElement").
+		CriticalCSSStyleElement()
 }
 
 // StyleSheetLinkElement returns one rendered non-critical stylesheet <link>.
 func (waveRuntime *Wave) StyleSheetLinkElement() template.HTML {
-	return waveRuntime.mustRuntimeSurface("StyleSheetLinkElement").StyleSheetLinkElement()
+	return waveRuntime.mustRuntimeSurface("StyleSheetLinkElement").
+		StyleSheetLinkElement()
 }
 
 // RefreshScript returns one rendered dev refresh script.
@@ -224,7 +229,8 @@ func (waveRuntime *Wave) RefreshScript() template.HTML {
 func (waveRuntime *Wave) MustStaticMiddleware(
 	immutable bool,
 ) func(http.Handler) http.Handler {
-	return waveRuntime.mustRuntimeSurface("MustStaticMiddleware").MustStaticMiddleware(immutable)
+	return waveRuntime.mustRuntimeSurface("MustStaticMiddleware").
+		MustStaticMiddleware(immutable)
 }
 
 func (waveRuntime *Wave) mustRuntimeSurface(methodName string) RuntimeSurface {

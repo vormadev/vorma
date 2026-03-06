@@ -6,7 +6,8 @@ covers all required observable behavior.
 ## Public Surfaces
 
 - `wave2/wave.go`: app-facing runtime API
-- `wave2/wavebuild/wavebuild.go`: build/dev phase contracts and phase pipeline
+- `wave2/wavebuild/wavebuild.go`: build/dev phase pipeline plus framework-signal
+  contract
 - `wave2/wavefw/wavefw.go`: framework-facing signal translation
 
 ## Runtime/Buildtime Boundary
@@ -40,6 +41,8 @@ Each phase:
 - runs terminal roots in `kit/tasks`
 - lets `kit/tasks` own prerequisite ordering, dedupe, and parallelism
 - frontend settling uses one terminal browser action with explicit precedence
+- notify-Vite failure heals through backend restart/readiness; current policy
+  then applies hard reload when Vite restart occurs
 
 ## Task Context Contract
 
@@ -55,17 +58,13 @@ That gives:
 
 Terminal side effects are emitted through one explicit execution port:
 
-- `PhaseEffectExecutor`
-- keyed by explicit `PhaseEffectID`
-- invoked only by terminal phase tasks
+- one phase-effect task
+- keyed by an explicit phase-effect request
+- invoked directly by terminal phase tasks
+- phase-effect result carries effect outcomes needed by later planners
 
 This keeps phase planning pure while allowing side-effect implementation to be
 swapped without changing the task graph.
-
-For design runs:
-
-- Provide a no-op execution scope directly on batch input:
-  `Execution: wavebuild.PhaseExecutionScope{EffectExecutor: wavebuild.NoopPhaseEffectExecutor{}}`.
 
 ## Framework Boundary
 

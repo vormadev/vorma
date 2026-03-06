@@ -4,28 +4,27 @@ import (
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
-// Phase3BatchInput is the backend-settling input produced by phase 2.
-type Phase3BatchInput struct {
-	Batch        PhaseBatchInput
-	BackendGoals Phase2BackendSettlingGoals
+// phase3BatchInput is the backend-settling input produced by phase 2.
+type phase3BatchInput struct {
+	batch        phaseBatchInput
+	backendGoals phase2BackendSettlingGoals
 }
 
-// Phase3FrontendSettlingGoals are frontend-settling goals produced by phase 3.
-type Phase3FrontendSettlingGoals struct {
-	TerminalBrowserAction FrontendTerminalBrowserAction
+// phase3FrontendSettlingGoals are frontend-settling goals produced by phase 3.
+type phase3FrontendSettlingGoals struct {
+	terminalBrowserAction frontendTerminalBrowserAction
 }
 
 func newPhase3EffectTask(
-	effectID PhaseEffectID,
-) *tasks.Task[Phase3BatchInput, struct{}] {
+	effectID phaseEffectID,
+) *tasks.Task[phase3BatchInput, struct{}] {
 	return tasks.NewTask(
 		func(
 			taskContext *tasks.Ctx,
-			input Phase3BatchInput,
+			input phase3BatchInput,
 		) (struct{}, error) {
-			if effectError := executePhaseEffect(
+			if _, effectError := input.batch.runPhaseEffect(
 				taskContext,
-				input.Batch,
 				effectID,
 			); effectError != nil {
 				return struct{}{}, effectError
@@ -35,49 +34,49 @@ func newPhase3EffectTask(
 	)
 }
 
-// Phase3ApplyDevServerRestartTask executes dev-server restart.
-var Phase3ApplyDevServerRestartTask = newPhase3EffectTask(
-	PhaseEffectIDBackendApplyDevServerRestart,
+// phase3ApplyDevServerRestartTask executes dev-server restart.
+var phase3ApplyDevServerRestartTask = newPhase3EffectTask(
+	phaseEffectIDBackendApplyDevServerRestart,
 )
 
-// Phase3QueueRetryWaitRestartTask executes queued retry-wait restart handling.
-var Phase3QueueRetryWaitRestartTask = newPhase3EffectTask(
-	PhaseEffectIDBackendQueueRetryWaitRestart,
+// phase3QueueRetryWaitRestartTask executes queued retry-wait restart handling.
+var phase3QueueRetryWaitRestartTask = newPhase3EffectTask(
+	phaseEffectIDBackendQueueRetryWaitRestart,
 )
 
-// Phase3RestartAppProcessTask executes app process restart.
-var Phase3RestartAppProcessTask = newPhase3EffectTask(
-	PhaseEffectIDBackendRestartAppProcess,
+// phase3RestartAppProcessTask executes app process restart.
+var phase3RestartAppProcessTask = newPhase3EffectTask(
+	phaseEffectIDBackendRestartAppProcess,
 )
 
-// Phase3RestartViteProcessTask executes Vite process restart.
-var Phase3RestartViteProcessTask = newPhase3EffectTask(
-	PhaseEffectIDBackendRestartViteProcess,
+// phase3RestartViteProcessTask executes Vite process restart.
+var phase3RestartViteProcessTask = newPhase3EffectTask(
+	phaseEffectIDBackendRestartViteProcess,
 )
 
-// Phase3RefreshFrameworkRouteTask executes framework route refresh.
-var Phase3RefreshFrameworkRouteTask = newPhase3EffectTask(
-	PhaseEffectIDBackendRefreshFrameworkRoute,
+// phase3RefreshFrameworkRouteTask executes framework route refresh.
+var phase3RefreshFrameworkRouteTask = newPhase3EffectTask(
+	phaseEffectIDBackendRefreshFrameworkRoute,
 )
 
-// Phase3RefreshFrameworkTemplateTask executes framework template refresh.
-var Phase3RefreshFrameworkTemplateTask = newPhase3EffectTask(
-	PhaseEffectIDBackendRefreshFrameworkTemplate,
+// phase3RefreshFrameworkTemplateTask executes framework template refresh.
+var phase3RefreshFrameworkTemplateTask = newPhase3EffectTask(
+	phaseEffectIDBackendRefreshFrameworkTemplate,
 )
 
-// Phase3RefreshFrameworkPublicFileMapTask executes framework public-file-map refresh.
-var Phase3RefreshFrameworkPublicFileMapTask = newPhase3EffectTask(
-	PhaseEffectIDBackendRefreshFrameworkPublicFileMap,
+// phase3RefreshFrameworkPublicFileMapTask executes framework public-file-map refresh.
+var phase3RefreshFrameworkPublicFileMapTask = newPhase3EffectTask(
+	phaseEffectIDBackendRefreshFrameworkPublicFileMap,
 )
 
-// Phase3AwaitBackendReadinessTask executes backend readiness wait.
-var Phase3AwaitBackendReadinessTask = tasks.NewTask(
+// phase3AwaitBackendReadinessTask executes backend readiness wait.
+var phase3AwaitBackendReadinessTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
-		input Phase3BatchInput,
+		input phase3BatchInput,
 	) (struct{}, error) {
-		if input.BackendGoals.QueueRetryWaitRestart {
-			if _, queuedRestartError := Phase3QueueRetryWaitRestartTask.Run(
+		if input.backendGoals.queueRetryWaitRestart {
+			if _, queuedRestartError := phase3QueueRetryWaitRestartTask.Run(
 				taskContext,
 				input,
 			); queuedRestartError != nil {
@@ -85,46 +84,46 @@ var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 			}
 			return struct{}{}, nil
 		}
-		if !input.BackendGoals.AwaitBackendReadiness {
+		if !input.backendGoals.awaitBackendReadiness {
 			return struct{}{}, nil
 		}
 
 		var ignoredResult struct{}
 		backendSettlingTasks := make([]tasks.BoundTask, 0, 6)
-		if input.BackendGoals.RestartDevServerCycle {
+		if input.backendGoals.restartDevServerCycle {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3ApplyDevServerRestartTask.Bind(input, &ignoredResult),
+				phase3ApplyDevServerRestartTask.Bind(input, &ignoredResult),
 			)
 		}
-		if input.BackendGoals.RestartAppProcess {
+		if input.backendGoals.restartAppProcess {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3RestartAppProcessTask.Bind(input, &ignoredResult),
+				phase3RestartAppProcessTask.Bind(input, &ignoredResult),
 			)
 		}
-		if input.BackendGoals.RestartViteProcess {
+		if input.backendGoals.restartViteProcess {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3RestartViteProcessTask.Bind(input, &ignoredResult),
+				phase3RestartViteProcessTask.Bind(input, &ignoredResult),
 			)
 		}
-		if input.BackendGoals.RefreshFrameworkRoute {
+		if input.backendGoals.refreshFrameworkRoute {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3RefreshFrameworkRouteTask.Bind(input, &ignoredResult),
+				phase3RefreshFrameworkRouteTask.Bind(input, &ignoredResult),
 			)
 		}
-		if input.BackendGoals.RefreshFrameworkTemplate {
+		if input.backendGoals.refreshFrameworkTemplate {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3RefreshFrameworkTemplateTask.Bind(input, &ignoredResult),
+				phase3RefreshFrameworkTemplateTask.Bind(input, &ignoredResult),
 			)
 		}
-		if input.BackendGoals.RefreshFrameworkPublicFileMap {
+		if input.backendGoals.refreshFrameworkPublicFileMap {
 			backendSettlingTasks = append(
 				backendSettlingTasks,
-				Phase3RefreshFrameworkPublicFileMapTask.Bind(
+				phase3RefreshFrameworkPublicFileMapTask.Bind(
 					input,
 					&ignoredResult,
 				),
@@ -133,10 +132,9 @@ var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 		if runParallelError := taskContext.RunParallel(backendSettlingTasks...); runParallelError != nil {
 			return struct{}{}, runParallelError
 		}
-		if effectError := executePhaseEffect(
+		if _, effectError := input.batch.runPhaseEffect(
 			taskContext,
-			input.Batch,
-			PhaseEffectIDBackendAwaitReadiness,
+			phaseEffectIDBackendAwaitReadiness,
 		); effectError != nil {
 			return struct{}{}, effectError
 		}
@@ -144,51 +142,50 @@ var Phase3AwaitBackendReadinessTask = tasks.NewTask(
 	},
 )
 
-// Phase3PlanFrontendSettlingGoalsTask maps backend goals to frontend settling goals.
-var Phase3PlanFrontendSettlingGoalsTask = tasks.NewTask(
+// phase3PlanFrontendSettlingGoalsTask maps backend goals to frontend settling goals.
+var phase3PlanFrontendSettlingGoalsTask = tasks.NewTask(
 	func(
 		taskContext *tasks.Ctx,
-		input Phase3BatchInput,
-	) (Phase3FrontendSettlingGoals, error) {
-		if _, awaitReadyError := Phase3AwaitBackendReadinessTask.Run(
+		input phase3BatchInput,
+	) (phase3FrontendSettlingGoals, error) {
+		if _, awaitReadyError := phase3AwaitBackendReadinessTask.Run(
 			taskContext,
 			input,
 		); awaitReadyError != nil {
-			return Phase3FrontendSettlingGoals{}, awaitReadyError
+			return phase3FrontendSettlingGoals{}, awaitReadyError
 		}
-		return reducePhase3FrontendSettlingGoals(
-			input.BackendGoals,
-		), nil
+		return input.backendGoals.derivePhase3FrontendSettlingGoals(), nil
 	},
 )
 
-func reducePhase3FrontendSettlingGoals(
-	backendGoals Phase2BackendSettlingGoals,
-) Phase3FrontendSettlingGoals {
-	if backendGoals.QueueRetryWaitRestart {
-		return Phase3FrontendSettlingGoals{
-			TerminalBrowserAction: FrontendTerminalBrowserActionNone,
+func (backendGoals phase2BackendSettlingGoals) derivePhase3FrontendSettlingGoals() phase3FrontendSettlingGoals {
+	if backendGoals.queueRetryWaitRestart {
+		return phase3FrontendSettlingGoals{
+			terminalBrowserAction: frontendTerminalBrowserActionNone,
 		}
 	}
 
-	terminalBrowserAction := backendGoals.RequestedTerminalBrowserAction
-	if backendGoals.RestartViteProcess &&
-		terminalBrowserAction == FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged {
-		terminalBrowserAction = FrontendTerminalBrowserActionNone
+	terminalBrowserAction := backendGoals.requestedTerminalBrowserAction
+	if backendGoals.restartViteProcess &&
+		terminalBrowserAction == frontendTerminalBrowserActionNotifyVitePublicFileMapChanged {
+		terminalBrowserAction = frontendTerminalBrowserActionNone
 	}
 
-	if backendGoals.RestartDevServerCycle ||
-		backendGoals.RestartAppProcess ||
-		backendGoals.RestartViteProcess ||
-		backendGoals.RefreshFrameworkRoute ||
-		backendGoals.RefreshFrameworkTemplate ||
-		backendGoals.RefreshFrameworkPublicFileMap {
-		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
-			terminalBrowserAction,
-			FrontendTerminalBrowserActionHardReload,
+	// Restarting Vite currently requires terminal hard reload so browser clients
+	// reconnect against the active Vite endpoint.
+	// Potential policy refinement: require this only when restart changes the
+	// effective browser-facing Vite endpoint (for example, port change).
+	if backendGoals.restartDevServerCycle ||
+		backendGoals.restartAppProcess ||
+		backendGoals.restartViteProcess ||
+		backendGoals.refreshFrameworkRoute ||
+		backendGoals.refreshFrameworkTemplate ||
+		backendGoals.refreshFrameworkPublicFileMap {
+		terminalBrowserAction = terminalBrowserAction.dominantWith(
+			frontendTerminalBrowserActionHardReload,
 		)
 	}
-	return Phase3FrontendSettlingGoals{
-		TerminalBrowserAction: terminalBrowserAction,
+	return phase3FrontendSettlingGoals{
+		terminalBrowserAction: terminalBrowserAction,
 	}
 }

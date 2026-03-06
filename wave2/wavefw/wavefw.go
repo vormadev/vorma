@@ -47,15 +47,43 @@ type SignalTranslationRule struct {
 	ActionType FrameworkRefreshActionType
 }
 
-// TranslateSignalsWithRules translates generic framework signals to framework
-// refresh actions using explicit mapping rules.
-func TranslateSignalsWithRules(
+var defaultSignalTranslationRules = []SignalTranslationRule{
+	{
+		SignalType: wavebuild.FrameworkSignalTypeRoutesChanged,
+		ActionType: FrameworkRefreshActionTypeRefreshRoutes,
+	},
+	{
+		SignalType: wavebuild.FrameworkSignalTypeTemplateChanged,
+		ActionType: FrameworkRefreshActionTypeRefreshTemplate,
+	},
+	{
+		SignalType: wavebuild.FrameworkSignalTypePublicFileMapChanged,
+		ActionType: FrameworkRefreshActionTypeRefreshPublicFileMap,
+	},
+}
+
+// Adapter describes one framework integration unit for Wave2.
+type Adapter struct {
+	Name string
+	// SignalTranslationRules convert Wave2 framework signals into framework-specific
+	// actions. Empty uses canonical translation rules.
+	SignalTranslationRules []SignalTranslationRule
+}
+
+// TranslateFrameworkSignals converts generic framework signals into
+// framework-owned refresh actions using adapter translation policy.
+func TranslateFrameworkSignals(
+	adapter Adapter,
 	signals []wavebuild.FrameworkSignal,
-	rules []SignalTranslationRule,
 ) ([]FrameworkRefreshAction, error) {
 	if len(signals) == 0 {
 		return nil, nil
 	}
+	rules := adapter.SignalTranslationRules
+	if len(rules) == 0 {
+		rules = defaultSignalTranslationRules
+	}
+
 	ruleBySignalType := make(
 		map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType,
 		len(rules),
@@ -74,17 +102,18 @@ func TranslateSignalsWithRules(
 		}
 		ruleBySignalType[rule.SignalType] = rule.ActionType
 	}
+
 	actions := make([]FrameworkRefreshAction, 0, len(signals))
 	seenActionKey := make(map[string]struct{}, len(signals))
 	for _, signal := range signals {
-		actionType, foundActionType := ruleBySignalType[signal.Type]
+		actionType, foundActionType := ruleBySignalType[signal.SignalType()]
 		if !foundActionType {
 			return nil, fmt.Errorf(
 				"wavefw: no framework refresh action mapping for framework signal type %q",
-				signal.Type,
+				signal.SignalType(),
 			)
 		}
-		actionKey := string(actionType) + "|" + signal.FreshnessToken
+		actionKey := string(actionType) + "|" + signal.FreshnessToken()
 		if _, alreadyAdded := seenActionKey[actionKey]; alreadyAdded {
 			continue
 		}
@@ -93,52 +122,11 @@ func TranslateSignalsWithRules(
 			actions,
 			FrameworkRefreshAction{
 				Type:           actionType,
-				FreshnessToken: signal.FreshnessToken,
-				Trigger:        signal.Trigger,
-				Metadata:       signal.Metadata,
+				FreshnessToken: signal.FreshnessToken(),
+				Trigger:        signal.Trigger(),
+				Metadata:       signal.Metadata(),
 			},
 		)
 	}
 	return actions, nil
-}
-
-var canonicalSignalTranslationRules = []SignalTranslationRule{
-	{
-		SignalType: wavebuild.FrameworkSignalTypeRoutesChanged,
-		ActionType: FrameworkRefreshActionTypeRefreshRoutes,
-	},
-	{
-		SignalType: wavebuild.FrameworkSignalTypeTemplateChanged,
-		ActionType: FrameworkRefreshActionTypeRefreshTemplate,
-	},
-	{
-		SignalType: wavebuild.FrameworkSignalTypePublicFileMapChanged,
-		ActionType: FrameworkRefreshActionTypeRefreshPublicFileMap,
-	},
-}
-
-// CanonicalSignalTranslationRules returns the baseline signal mapping policy.
-func CanonicalSignalTranslationRules() []SignalTranslationRule {
-	return canonicalSignalTranslationRules
-}
-
-// Adapter describes one framework integration unit for Wave2.
-type Adapter struct {
-	Name string
-	// SignalTranslationRules convert Wave2 framework signals into framework-specific
-	// actions. Empty uses canonical translation rules.
-	SignalTranslationRules []SignalTranslationRule
-}
-
-// TranslateFrameworkSignals converts generic framework signals into
-// framework-owned refresh actions using adapter translation policy.
-func TranslateFrameworkSignals(
-	adapter Adapter,
-	signals []wavebuild.FrameworkSignal,
-) ([]FrameworkRefreshAction, error) {
-	rules := adapter.SignalTranslationRules
-	if len(rules) == 0 {
-		rules = CanonicalSignalTranslationRules()
-	}
-	return TranslateSignalsWithRules(signals, rules)
 }
