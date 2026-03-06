@@ -67,49 +67,52 @@ var Phase4PublishNoReloadNeededNoticeTask = newPhase4EffectTask(
 	PhaseEffectIDFrontendPublishNoReloadNeededNotice,
 )
 
-// RunPhase4TaskGraph executes phase 4 and returns completion summary.
-func RunPhase4TaskGraph(
-	taskContext *tasks.Ctx,
-	input Phase4BatchInput,
-) (Phase4CompletionSummary, error) {
-	terminalAction := input.FrontendGoals.TerminalBrowserAction
-	switch terminalAction {
-	case FrontendTerminalBrowserActionHardReload:
-		if _, hardReloadError := Phase4BroadcastHardReloadTask.Run(
-			taskContext,
-			input,
-		); hardReloadError != nil {
-			return Phase4CompletionSummary{}, hardReloadError
+// Phase4ExecuteTerminalBrowserActionTask executes phase-4 terminal browser
+// action and returns completion summary.
+var Phase4ExecuteTerminalBrowserActionTask = tasks.NewTask(
+	func(
+		taskContext *tasks.Ctx,
+		input Phase4BatchInput,
+	) (Phase4CompletionSummary, error) {
+		terminalAction := input.FrontendGoals.TerminalBrowserAction
+		switch terminalAction {
+		case FrontendTerminalBrowserActionHardReload:
+			if _, hardReloadError := Phase4BroadcastHardReloadTask.Run(
+				taskContext,
+				input,
+			); hardReloadError != nil {
+				return Phase4CompletionSummary{}, hardReloadError
+			}
+		case FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
+			if _, notifyViteError := Phase4NotifyVitePublicFileMapChangedTask.Run(
+				taskContext,
+				input,
+			); notifyViteError != nil {
+				return Phase4CompletionSummary{}, notifyViteError
+			}
+		case FrontendTerminalBrowserActionRevalidate:
+			if _, revalidateError := Phase4BroadcastRevalidateTask.Run(
+				taskContext,
+				input,
+			); revalidateError != nil {
+				return Phase4CompletionSummary{}, revalidateError
+			}
+		case FrontendTerminalBrowserActionCSSHotReload:
+			if _, cssHotReloadError := Phase4BroadcastCSSHotReloadTask.Run(
+				taskContext,
+				input,
+			); cssHotReloadError != nil {
+				return Phase4CompletionSummary{}, cssHotReloadError
+			}
+		default:
+			if _, noReloadNoticeError := Phase4PublishNoReloadNeededNoticeTask.Run(
+				taskContext,
+				input,
+			); noReloadNoticeError != nil {
+				return Phase4CompletionSummary{}, noReloadNoticeError
+			}
 		}
-	case FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
-		if _, notifyViteError := Phase4NotifyVitePublicFileMapChangedTask.Run(
-			taskContext,
-			input,
-		); notifyViteError != nil {
-			return Phase4CompletionSummary{}, notifyViteError
-		}
-	case FrontendTerminalBrowserActionRevalidate:
-		if _, revalidateError := Phase4BroadcastRevalidateTask.Run(
-			taskContext,
-			input,
-		); revalidateError != nil {
-			return Phase4CompletionSummary{}, revalidateError
-		}
-	case FrontendTerminalBrowserActionCSSHotReload:
-		if _, cssHotReloadError := Phase4BroadcastCSSHotReloadTask.Run(
-			taskContext,
-			input,
-		); cssHotReloadError != nil {
-			return Phase4CompletionSummary{}, cssHotReloadError
-		}
-	default:
-		if _, noReloadNoticeError := Phase4PublishNoReloadNeededNoticeTask.Run(
-			taskContext,
-			input,
-		); noReloadNoticeError != nil {
-			return Phase4CompletionSummary{}, noReloadNoticeError
-		}
-	}
 
-	return Phase4CompletionSummary{TerminalAction: terminalAction}, nil
-}
+		return Phase4CompletionSummary{TerminalAction: terminalAction}, nil
+	},
+)

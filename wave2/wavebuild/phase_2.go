@@ -21,18 +21,15 @@ type Phase2BuildOutcomeFacts struct {
 
 // Phase2BackendSettlingGoals are backend-settling goals produced by phase 2.
 type Phase2BackendSettlingGoals struct {
-	RestartDevServerCycle                        bool
-	RestartAppProcess                            bool
-	RestartViteProcess                           bool
-	RefreshFrameworkRoute                        bool
-	RefreshFrameworkTemplate                     bool
-	RefreshFrameworkPublicFileMap                bool
-	AwaitBackendReadiness                        bool
-	QueueRetryWaitRestart                        bool
-	RequestBrowserCSSHotReload                   bool
-	RequestBrowserNotifyVitePublicFileMapChanged bool
-	RequestBrowserRevalidate                     bool
-	RequestBrowserHardReload                     bool
+	RestartDevServerCycle          bool
+	RestartAppProcess              bool
+	RestartViteProcess             bool
+	RefreshFrameworkRoute          bool
+	RefreshFrameworkTemplate       bool
+	RefreshFrameworkPublicFileMap  bool
+	AwaitBackendReadiness          bool
+	QueueRetryWaitRestart          bool
+	RequestedTerminalBrowserAction FrontendTerminalBrowserAction
 }
 
 // Phase2Output is the full phase-2 planner output consumed by phase 3.
@@ -207,6 +204,15 @@ func reducePhase2BackendSettlingGoals(
 		}
 	}
 
+	requestedTerminalBrowserAction := buildGoals.RequestedTerminalBrowserAction
+	if buildOutcomeFacts.PublicFileMapArtifactsChanged ||
+		buildOutcomeFacts.PublicFileMapArtifactsRepaired {
+		requestedTerminalBrowserAction = dominantFrontendTerminalBrowserAction(
+			requestedTerminalBrowserAction,
+			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
+		)
+	}
+
 	phase2BackendSettlingGoals := Phase2BackendSettlingGoals{
 		RestartDevServerCycle: buildGoals.RestartDevServerCycle,
 		RestartAppProcess: buildGoals.RequestBackendRestart ||
@@ -217,12 +223,7 @@ func reducePhase2BackendSettlingGoals(
 		RefreshFrameworkPublicFileMap: buildGoals.RequestFrameworkPublicFileMapRefresh ||
 			buildOutcomeFacts.PublicFileMapArtifactsChanged ||
 			buildOutcomeFacts.PublicFileMapArtifactsRepaired,
-		RequestBrowserCSSHotReload: buildGoals.RequestBrowserCSSHotReload,
-		RequestBrowserNotifyVitePublicFileMapChanged: buildGoals.RequestBrowserNotifyVitePublicFileMapChanged ||
-			buildOutcomeFacts.PublicFileMapArtifactsChanged ||
-			buildOutcomeFacts.PublicFileMapArtifactsRepaired,
-		RequestBrowserRevalidate: buildGoals.RequestBrowserRevalidate,
-		RequestBrowserHardReload: buildGoals.RequestBrowserHardReload,
+		RequestedTerminalBrowserAction: requestedTerminalBrowserAction,
 	}
 	phase2BackendSettlingGoals.AwaitBackendReadiness =
 		phase2BackendSettlingGoals.RestartDevServerCycle ||
@@ -232,15 +233,6 @@ func reducePhase2BackendSettlingGoals(
 			phase2BackendSettlingGoals.RefreshFrameworkTemplate ||
 			phase2BackendSettlingGoals.RefreshFrameworkPublicFileMap
 	return phase2BackendSettlingGoals
-}
-
-func reducePhase2BuildOutcomeFacts(
-	buildGoals Phase1BuildGoals,
-) Phase2BuildOutcomeFacts {
-	return Phase2BuildOutcomeFacts{
-		PublicFileMapArtifactsChanged:  buildGoals.GeneratePublicFileMap,
-		PublicFileMapArtifactsRepaired: buildGoals.CleanupStalePublicStaticOutputs,
-	}
 }
 
 // Phase2PlanOutputTask maps build results to backend-settling goals and build outcome facts.
@@ -255,7 +247,10 @@ var Phase2PlanOutputTask = tasks.NewTask(
 		); validateError != nil {
 			return Phase2Output{}, validateError
 		}
-		buildOutcomeFacts := reducePhase2BuildOutcomeFacts(input.BuildGoals)
+		buildOutcomeFacts := Phase2BuildOutcomeFacts{
+			PublicFileMapArtifactsChanged:  input.BuildGoals.GeneratePublicFileMap,
+			PublicFileMapArtifactsRepaired: input.BuildGoals.CleanupStalePublicStaticOutputs,
+		}
 		if input.Batch.Mode == ModeProd {
 			return Phase2Output{
 				BuildOutcomeFacts: buildOutcomeFacts,

@@ -47,11 +47,15 @@ type SignalTranslationRule struct {
 	ActionType FrameworkRefreshActionType
 }
 
-// buildSignalTranslationRuleMap validates and indexes translation rules by
-// signal type.
-func buildSignalTranslationRuleMap(
+// TranslateSignalsWithRules translates generic framework signals to framework
+// refresh actions using explicit mapping rules.
+func TranslateSignalsWithRules(
+	signals []wavebuild.FrameworkSignal,
 	rules []SignalTranslationRule,
-) (map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType, error) {
+) ([]FrameworkRefreshAction, error) {
+	if len(signals) == 0 {
+		return nil, nil
+	}
 	ruleBySignalType := make(
 		map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType,
 		len(rules),
@@ -69,22 +73,6 @@ func buildSignalTranslationRuleMap(
 			)
 		}
 		ruleBySignalType[rule.SignalType] = rule.ActionType
-	}
-	return ruleBySignalType, nil
-}
-
-// TranslateSignalsWithRules translates generic framework signals to framework
-// refresh actions using explicit mapping rules.
-func TranslateSignalsWithRules(
-	signals []wavebuild.FrameworkSignal,
-	rules []SignalTranslationRule,
-) ([]FrameworkRefreshAction, error) {
-	if len(signals) == 0 {
-		return nil, nil
-	}
-	ruleBySignalType, ruleMapError := buildSignalTranslationRuleMap(rules)
-	if ruleMapError != nil {
-		return nil, ruleMapError
 	}
 	actions := make([]FrameworkRefreshAction, 0, len(signals))
 	seenActionKey := make(map[string]struct{}, len(signals))

@@ -8,7 +8,6 @@ import (
 type Phase3BatchInput struct {
 	Batch        PhaseBatchInput
 	BackendGoals Phase2BackendSettlingGoals
-	BuildFacts   Phase2BuildOutcomeFacts
 }
 
 // Phase3FrontendSettlingGoals are frontend-settling goals produced by phase 3.
@@ -159,14 +158,12 @@ var Phase3PlanFrontendSettlingGoalsTask = tasks.NewTask(
 		}
 		return reducePhase3FrontendSettlingGoals(
 			input.BackendGoals,
-			input.BuildFacts,
 		), nil
 	},
 )
 
 func reducePhase3FrontendSettlingGoals(
 	backendGoals Phase2BackendSettlingGoals,
-	buildFacts Phase2BuildOutcomeFacts,
 ) Phase3FrontendSettlingGoals {
 	if backendGoals.QueueRetryWaitRestart {
 		return Phase3FrontendSettlingGoals{
@@ -174,33 +171,10 @@ func reducePhase3FrontendSettlingGoals(
 		}
 	}
 
-	terminalBrowserAction := FrontendTerminalBrowserActionNone
-	if backendGoals.RequestBrowserCSSHotReload {
-		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
-			terminalBrowserAction,
-			FrontendTerminalBrowserActionCSSHotReload,
-		)
-	}
-	if backendGoals.RequestBrowserNotifyVitePublicFileMapChanged &&
-		!backendGoals.RestartViteProcess &&
-		(buildFacts.PublicFileMapArtifactsChanged ||
-			buildFacts.PublicFileMapArtifactsRepaired) {
-		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
-			terminalBrowserAction,
-			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
-		)
-	}
-	if backendGoals.RequestBrowserRevalidate {
-		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
-			terminalBrowserAction,
-			FrontendTerminalBrowserActionRevalidate,
-		)
-	}
-	if backendGoals.RequestBrowserHardReload {
-		terminalBrowserAction = dominantFrontendTerminalBrowserAction(
-			terminalBrowserAction,
-			FrontendTerminalBrowserActionHardReload,
-		)
+	terminalBrowserAction := backendGoals.RequestedTerminalBrowserAction
+	if backendGoals.RestartViteProcess &&
+		terminalBrowserAction == FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged {
+		terminalBrowserAction = FrontendTerminalBrowserActionNone
 	}
 
 	if backendGoals.RestartDevServerCycle ||

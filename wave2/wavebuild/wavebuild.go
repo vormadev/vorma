@@ -3,7 +3,7 @@
 // The contract is intentionally phase-oriented:
 // events -> build -> backend_settling -> frontend_settling.
 //
-// Mode policy is runner-level:
+// Mode policy is pipeline-level:
 // - dev executes all four phases.
 // - prod bypasses events/backend_settling/frontend_settling and runs build only.
 //
@@ -122,12 +122,10 @@ type ObservedBatchEvent struct {
 
 // AppRequestedOutcomes captures app-requested observable outcomes for one batch.
 type AppRequestedOutcomes struct {
-	RequestFrameworkRefresh               bool
-	RequestNotifyVitePublicFileMapChanged bool
-	RequestBrowserRevalidate              bool
-	RequestBrowserHardReload              bool
-	RequestRestart                        bool
-	RequestGoCompile                      bool
+	RequestFrameworkRefresh        bool
+	RequestedTerminalBrowserAction FrontendTerminalBrowserAction
+	RequestRestart                 bool
+	RequestGoCompile               bool
 }
 
 // EventsPhaseInput is the phase-1 input contract in observable terms.
@@ -165,6 +163,13 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 		)
 	}
 
+	appRequestedOutcomes, appRequestedOutcomesError := reduceAppRequestedOutcomes(
+		input.AppRequestedOutcomes,
+	)
+	if appRequestedOutcomesError != nil {
+		return EventsPhaseFacts{}, appRequestedOutcomesError
+	}
+
 	eventTypeSet := make(map[EventType]struct{}, len(input.Events))
 	actionableEventTypes := make([]EventType, 0, len(input.Events))
 
@@ -193,12 +198,10 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 	}
 
 	return EventsPhaseFacts{
-		Mode:         input.Mode,
-		GenerationID: normalizedGenerationID,
-		EventTypes:   actionableEventTypes,
-		AppRequestedOutcomes: reduceAppRequestedOutcomes(
-			input.AppRequestedOutcomes,
-		),
+		Mode:                 input.Mode,
+		GenerationID:         normalizedGenerationID,
+		EventTypes:           actionableEventTypes,
+		AppRequestedOutcomes: appRequestedOutcomes,
 		WaitingForBuildRetry: input.WaitingForBuildRetry,
 	}, nil
 }
@@ -354,6 +357,9 @@ var (
 	errEventsPhaseInputRequired = errors.New(
 		"wavebuild: events phase input is required",
 	)
+	errGenerationIDRequired = errors.New(
+		"wavebuild: generation id is required",
+	)
 	errPhaseExecutionScopeRequired = errors.New(
 		"wavebuild: phase execution scope is required",
 	)
@@ -380,164 +386,79 @@ func RunFourPhasePipeline(
 	if input.Execution.EffectExecutor == nil {
 		return FourPhaseRunResult{}, errPhaseEffectExecutorRequired
 	}
+	normalizedGenerationID := strings.TrimSpace(input.Events.GenerationID)
+	if normalizedGenerationID == "" {
+		return FourPhaseRunResult{}, errGenerationIDRequired
+	}
 	if modeError := validateEventsPhaseMode(input.Events.Mode); modeError != nil {
 		return FourPhaseRunResult{}, modeError
 	}
 
 	batchTaskContext := tasks.NewCtx(parentContext)
-	phase1Task := tasks.NewTask(
-		func(
-			taskContext *tasks.Ctx,
-			phaseInput EventsPhaseBatchInput,
-		) (Phase1BuildGoals, error) {
-			if phaseInput.Events.Mode == ModeProd {
-				return canonicalProdBuildGoals(), nil
-			}
-			return Phase1PlanBuildGoalsTask.Run(taskContext, phaseInput)
+	phase1BuildGoals := canonicalProdBuildGoals()
+	if input.Events.Mode != ModeProd {
+		var phase1Error error
+		phase1BuildGoals, phase1Error = Phase1PlanBuildGoalsTask.Run(
+			batchTaskContext,
+			input,
+		)
+		if phase1Error != nil {
+			return FourPhaseRunResult{}, phase1Error
+		}
+	}
+
+	phaseBatchInput := PhaseBatchInput{
+		Mode:         input.Events.Mode,
+		GenerationID: normalizedGenerationID,
+		Execution:    input.Execution,
+	}
+	phase2Output, phase2Error := Phase2PlanOutputTask.Run(
+		batchTaskContext,
+		Phase2BatchInput{
+			Batch:      phaseBatchInput,
+			BuildGoals: phase1BuildGoals,
 		},
 	)
+	if phase2Error != nil {
+		return FourPhaseRunResult{}, phase2Error
+	}
+	if input.Events.Mode == ModeProd {
+		return FourPhaseRunResult{
+			Phase1BuildGoals:   phase1BuildGoals,
+			Phase2BackendGoals: phase2Output.BackendSettlingGoals,
+		}, nil
+	}
 
-	phase2Task := tasks.NewTask(
-		func(
-			taskContext *tasks.Ctx,
-			phaseInput EventsPhaseBatchInput,
-		) (Phase2Output, error) {
-			phase1BuildGoals, phase1Error := phase1Task.Run(
-				taskContext,
-				phaseInput,
-			)
-			if phase1Error != nil {
-				return Phase2Output{}, phase1Error
-			}
-			return Phase2PlanOutputTask.Run(
-				taskContext,
-				Phase2BatchInput{
-					Batch: PhaseBatchInput{
-						Mode: phaseInput.Events.Mode,
-						GenerationID: strings.TrimSpace(
-							phaseInput.Events.GenerationID,
-						),
-						Execution: phaseInput.Execution,
-					},
-					BuildGoals: phase1BuildGoals,
-				},
-			)
+	phase3FrontendGoals, phase3Error := Phase3PlanFrontendSettlingGoalsTask.Run(
+		batchTaskContext,
+		Phase3BatchInput{
+			Batch:        phaseBatchInput,
+			BackendGoals: phase2Output.BackendSettlingGoals,
 		},
 	)
-
-	phase3Task := tasks.NewTask(
-		func(
-			taskContext *tasks.Ctx,
-			phaseInput EventsPhaseBatchInput,
-		) (Phase3FrontendSettlingGoals, error) {
-			if phaseInput.Events.Mode == ModeProd {
-				return Phase3FrontendSettlingGoals{}, nil
-			}
-			phase2Output, phase2Error := phase2Task.Run(
-				taskContext,
-				phaseInput,
-			)
-			if phase2Error != nil {
-				return Phase3FrontendSettlingGoals{}, phase2Error
-			}
-			return Phase3PlanFrontendSettlingGoalsTask.Run(
-				taskContext,
-				Phase3BatchInput{
-					Batch: PhaseBatchInput{
-						Mode: phaseInput.Events.Mode,
-						GenerationID: strings.TrimSpace(
-							phaseInput.Events.GenerationID,
-						),
-						Execution: phaseInput.Execution,
-					},
-					BackendGoals: phase2Output.BackendSettlingGoals,
-					BuildFacts:   phase2Output.BuildOutcomeFacts,
-				},
-			)
+	if phase3Error != nil {
+		return FourPhaseRunResult{}, phase3Error
+	}
+	phase4CompletionSummary, phase4Error := Phase4ExecuteTerminalBrowserActionTask.Run(
+		batchTaskContext,
+		Phase4BatchInput{
+			Batch:         phaseBatchInput,
+			FrontendGoals: phase3FrontendGoals,
 		},
 	)
-
-	phase4Task := tasks.NewTask(
-		func(
-			taskContext *tasks.Ctx,
-			phaseInput EventsPhaseBatchInput,
-		) (Phase4CompletionSummary, error) {
-			if phaseInput.Events.Mode == ModeProd {
-				return Phase4CompletionSummary{}, nil
-			}
-			phase3FrontendGoals, phase3Error := phase3Task.Run(
-				taskContext,
-				phaseInput,
-			)
-			if phase3Error != nil {
-				return Phase4CompletionSummary{}, phase3Error
-			}
-			return RunPhase4TaskGraph(
-				taskContext,
-				Phase4BatchInput{
-					Batch: PhaseBatchInput{
-						Mode: phaseInput.Events.Mode,
-						GenerationID: strings.TrimSpace(
-							phaseInput.Events.GenerationID,
-						),
-						Execution: phaseInput.Execution,
-					},
-					FrontendGoals: phase3FrontendGoals,
-				},
-			)
-		},
-	)
-
-	rootTask := tasks.NewTask(
-		func(
-			taskContext *tasks.Ctx,
-			phaseInput EventsPhaseBatchInput,
-		) (FourPhaseRunResult, error) {
-			phase1BuildGoals, phase1Error := phase1Task.Run(
-				taskContext,
-				phaseInput,
-			)
-			if phase1Error != nil {
-				return FourPhaseRunResult{}, phase1Error
-			}
-			phase2Output, phase2Error := phase2Task.Run(taskContext, phaseInput)
-			if phase2Error != nil {
-				return FourPhaseRunResult{}, phase2Error
-			}
-			if phaseInput.Events.Mode == ModeProd {
-				return FourPhaseRunResult{
-					Phase1BuildGoals:   phase1BuildGoals,
-					Phase2BackendGoals: phase2Output.BackendSettlingGoals,
-				}, nil
-			}
-			phase3FrontendGoals, phase3Error := phase3Task.Run(
-				taskContext,
-				phaseInput,
-			)
-			if phase3Error != nil {
-				return FourPhaseRunResult{}, phase3Error
-			}
-			phase4CompletionSummary, phase4Error := phase4Task.Run(
-				taskContext,
-				phaseInput,
-			)
-			if phase4Error != nil {
-				return FourPhaseRunResult{}, phase4Error
-			}
-			return FourPhaseRunResult{
-				Phase1BuildGoals:        phase1BuildGoals,
-				Phase2BackendGoals:      phase2Output.BackendSettlingGoals,
-				Phase3FrontendGoals:     phase3FrontendGoals,
-				Phase4CompletionSummary: phase4CompletionSummary,
-				FrameworkSignals: FrameworkSignalsFromBackendSettlingGoals(
-					strings.TrimSpace(phaseInput.Events.GenerationID),
-					phase2Output.BackendSettlingGoals,
-				),
-			}, nil
-		},
-	)
-
-	return rootTask.Run(batchTaskContext, input)
+	if phase4Error != nil {
+		return FourPhaseRunResult{}, phase4Error
+	}
+	return FourPhaseRunResult{
+		Phase1BuildGoals:        phase1BuildGoals,
+		Phase2BackendGoals:      phase2Output.BackendSettlingGoals,
+		Phase3FrontendGoals:     phase3FrontendGoals,
+		Phase4CompletionSummary: phase4CompletionSummary,
+		FrameworkSignals: FrameworkSignalsFromBackendSettlingGoals(
+			normalizedGenerationID,
+			phase2Output.BackendSettlingGoals,
+		),
+	}, nil
 }
 
 func validateEventsPhaseMode(mode Mode) error {
@@ -582,17 +503,23 @@ func isSupportedEventType(eventType EventType) bool {
 
 func reduceAppRequestedOutcomes(
 	rawOutcomes AppRequestedOutcomes,
-) AppRequestedOutcomes {
+) (AppRequestedOutcomes, error) {
 	reducedOutcomes := rawOutcomes
-	if reducedOutcomes.RequestBrowserHardReload {
-		reducedOutcomes.RequestNotifyVitePublicFileMapChanged = false
-		reducedOutcomes.RequestBrowserRevalidate = false
-		return reducedOutcomes
+	switch reducedOutcomes.RequestedTerminalBrowserAction {
+	case "":
+		reducedOutcomes.RequestedTerminalBrowserAction = FrontendTerminalBrowserActionNone
+	case FrontendTerminalBrowserActionNone,
+		FrontendTerminalBrowserActionCSSHotReload,
+		FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
+		FrontendTerminalBrowserActionRevalidate,
+		FrontendTerminalBrowserActionHardReload:
+	default:
+		return AppRequestedOutcomes{}, fmt.Errorf(
+			"wavebuild: unsupported requested terminal browser action %q",
+			reducedOutcomes.RequestedTerminalBrowserAction,
+		)
 	}
-	if reducedOutcomes.RequestNotifyVitePublicFileMapChanged {
-		reducedOutcomes.RequestBrowserRevalidate = false
-	}
-	return reducedOutcomes
+	return reducedOutcomes, nil
 }
 
 func canonicalProdBuildGoals() Phase1BuildGoals {

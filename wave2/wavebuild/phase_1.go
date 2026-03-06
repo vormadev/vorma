@@ -37,11 +37,7 @@ type Phase1BuildGoals struct {
 	RequestFrameworkRouteRefresh         bool
 	RequestFrameworkTemplateRefresh      bool
 	RequestFrameworkPublicFileMapRefresh bool
-
-	RequestBrowserCSSHotReload                   bool
-	RequestBrowserNotifyVitePublicFileMapChanged bool
-	RequestBrowserRevalidate                     bool
-	RequestBrowserHardReload                     bool
+	RequestedTerminalBrowserAction       FrontendTerminalBrowserAction
 }
 
 func eventsPhaseFactsContainsType(
@@ -106,32 +102,6 @@ func deriveImplicitBrowserActionIntent(
 	return actionIntent
 }
 
-func deriveAppRequestedBrowserActionIntent(
-	eventsPhaseFacts EventsPhaseFacts,
-) FrontendTerminalBrowserAction {
-	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
-	actionIntent := FrontendTerminalBrowserActionNone
-	if appRequestedOutcomes.RequestBrowserRevalidate {
-		actionIntent = dominantFrontendTerminalBrowserAction(
-			actionIntent,
-			FrontendTerminalBrowserActionRevalidate,
-		)
-	}
-	if appRequestedOutcomes.RequestNotifyVitePublicFileMapChanged {
-		actionIntent = dominantFrontendTerminalBrowserAction(
-			actionIntent,
-			FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
-		)
-	}
-	if appRequestedOutcomes.RequestBrowserHardReload {
-		actionIntent = dominantFrontendTerminalBrowserAction(
-			actionIntent,
-			FrontendTerminalBrowserActionHardReload,
-		)
-	}
-	return actionIntent
-}
-
 func reducePhase1BuildGoals(
 	eventsPhaseFacts EventsPhaseFacts,
 ) Phase1BuildGoals {
@@ -176,7 +146,7 @@ func reducePhase1BuildGoals(
 	appRequestedOutcomes := eventsPhaseFacts.AppRequestedOutcomes
 	mergedBrowserActionIntent := dominantFrontendTerminalBrowserAction(
 		deriveImplicitBrowserActionIntent(eventsPhaseFacts),
-		deriveAppRequestedBrowserActionIntent(eventsPhaseFacts),
+		appRequestedOutcomes.RequestedTerminalBrowserAction,
 	)
 
 	requestBackendRestart := goSourceChanged ||
@@ -187,14 +157,6 @@ func reducePhase1BuildGoals(
 			appRequestedOutcomes.RequestFrameworkRefresh
 	requestFrameworkTemplateRefresh := frameworkTemplateChanged
 	requestFrameworkPublicFileMapRefresh := publicStaticChanged
-	requestBrowserCSSHotReload :=
-		mergedBrowserActionIntent == FrontendTerminalBrowserActionCSSHotReload
-	requestBrowserNotifyVitePublicFileMapChanged :=
-		mergedBrowserActionIntent == FrontendTerminalBrowserActionNotifyVitePublicFileMapChanged
-	requestBrowserRevalidate :=
-		mergedBrowserActionIntent == FrontendTerminalBrowserActionRevalidate
-	requestBrowserHardReload :=
-		mergedBrowserActionIntent == FrontendTerminalBrowserActionHardReload
 
 	if eventsPhaseFacts.Mode == ModeProd {
 		requestBackendRestart = false
@@ -202,10 +164,7 @@ func reducePhase1BuildGoals(
 		requestFrameworkRouteRefresh = false
 		requestFrameworkTemplateRefresh = false
 		requestFrameworkPublicFileMapRefresh = false
-		requestBrowserCSSHotReload = false
-		requestBrowserNotifyVitePublicFileMapChanged = false
-		requestBrowserRevalidate = false
-		requestBrowserHardReload = false
+		mergedBrowserActionIntent = FrontendTerminalBrowserActionNone
 	}
 
 	phase1BuildGoals := Phase1BuildGoals{
@@ -224,11 +183,7 @@ func reducePhase1BuildGoals(
 		RequestFrameworkRouteRefresh:         requestFrameworkRouteRefresh,
 		RequestFrameworkTemplateRefresh:      requestFrameworkTemplateRefresh,
 		RequestFrameworkPublicFileMapRefresh: requestFrameworkPublicFileMapRefresh,
-
-		RequestBrowserCSSHotReload:                   requestBrowserCSSHotReload,
-		RequestBrowserNotifyVitePublicFileMapChanged: requestBrowserNotifyVitePublicFileMapChanged,
-		RequestBrowserRevalidate:                     requestBrowserRevalidate,
-		RequestBrowserHardReload:                     requestBrowserHardReload,
+		RequestedTerminalBrowserAction:       mergedBrowserActionIntent,
 	}
 	if eventsPhaseFacts.Mode == ModeProd {
 		phase1BuildGoals.RestartDevServerCycle = false
