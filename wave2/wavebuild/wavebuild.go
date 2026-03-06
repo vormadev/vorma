@@ -9,7 +9,7 @@
 // - dev executes all four phases.
 // - prod bypasses events/backend_settling/frontend_settling and runs build only.
 //
-// Each phase owns its own terminal goals and executes through kit/tasks. Phase
+// Each phase owns its own terminal effects and executes through kit/tasks. Phase
 // boundaries provide cross-phase ordering; inside a phase, dependency ordering
 // and parallelism come only from task prerequisites.
 package wavebuild
@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/tasks"
@@ -56,7 +55,7 @@ const (
 	eventTypeFrameworkTemplateChanged eventType = "framework_template_changed"
 	// eventTypeAppDefinedWatchActionOnlyChanged represents app watch classes that request direct actions without implicit build work.
 	eventTypeAppDefinedWatchActionOnlyChanged eventType = "app_defined_watch_action_only_changed"
-	// eventTypeAppDefinedWatchWithRebuildChanged represents app watch classes that participate in normal build-phase planning; concrete goals still come from reduced outcomes.
+	// eventTypeAppDefinedWatchWithRebuildChanged represents app watch classes that participate in normal build-phase planning; concrete effects still come from reduced outcomes.
 	eventTypeAppDefinedWatchWithRebuildChanged eventType = "app_defined_watch_with_rebuild_changed"
 	// eventTypeIgnoredOrNoiseChanged represents ignored/noise-only batches.
 	eventTypeIgnoredOrNoiseChanged eventType = "ignored_or_noise_changed"
@@ -245,90 +244,9 @@ func (signal FrameworkSignal) Metadata() map[string]string {
 	return signal.metadata
 }
 
-// phaseEffectID identifies one terminal side effect emitted by a phase task.
-type phaseEffectID string
-
-const (
-	// phaseEffectIDBuildCompileGoBinary compiles the Go binary.
-	phaseEffectIDBuildCompileGoBinary phaseEffectID = "build_compile_go_binary"
-	// phaseEffectIDBuildCriticalCSS builds critical CSS artifacts.
-	phaseEffectIDBuildCriticalCSS phaseEffectID = "build_critical_css"
-	// phaseEffectIDBuildNormalCSS builds normal CSS artifacts.
-	phaseEffectIDBuildNormalCSS phaseEffectID = "build_normal_css"
-	// phaseEffectIDBuildProcessPublicStaticAssets processes public static assets.
-	phaseEffectIDBuildProcessPublicStaticAssets phaseEffectID = "build_process_public_static_assets"
-	// phaseEffectIDBuildCleanupStalePublicStaticOutputs removes stale public static outputs.
-	phaseEffectIDBuildCleanupStalePublicStaticOutputs phaseEffectID = "build_cleanup_stale_public_static_outputs"
-	// phaseEffectIDBuildProcessPrivateStaticAssets processes private static assets.
-	phaseEffectIDBuildProcessPrivateStaticAssets phaseEffectID = "build_process_private_static_assets"
-	// phaseEffectIDBuildGeneratePublicFileMapArtifacts regenerates public file-map artifacts.
-	phaseEffectIDBuildGeneratePublicFileMapArtifacts phaseEffectID = "build_generate_public_filemap_artifacts"
-	// phaseEffectIDBuildValidateOutputs validates output coherence.
-	phaseEffectIDBuildValidateOutputs phaseEffectID = "build_validate_outputs"
-	// phaseEffectIDBackendApplyDevServerRestart applies a dev-server restart cycle.
-	phaseEffectIDBackendApplyDevServerRestart phaseEffectID = "backend_apply_devserver_restart"
-	// phaseEffectIDBackendQueueRetryWaitRestart queues retry-wait restart behavior.
-	phaseEffectIDBackendQueueRetryWaitRestart phaseEffectID = "backend_queue_retry_wait_restart"
-	// phaseEffectIDBackendRestartAppProcess restarts the app process.
-	phaseEffectIDBackendRestartAppProcess phaseEffectID = "backend_restart_app_process"
-	// phaseEffectIDBackendRestartViteProcess restarts the Vite process.
-	phaseEffectIDBackendRestartViteProcess phaseEffectID = "backend_restart_vite_process"
-	// phaseEffectIDBackendRefreshFrameworkRoute refreshes framework routes.
-	phaseEffectIDBackendRefreshFrameworkRoute phaseEffectID = "backend_refresh_framework_route"
-	// phaseEffectIDBackendRefreshFrameworkTemplate refreshes framework template state.
-	phaseEffectIDBackendRefreshFrameworkTemplate phaseEffectID = "backend_refresh_framework_template"
-	// phaseEffectIDBackendRefreshFrameworkPublicFileMap refreshes framework public file-map state.
-	phaseEffectIDBackendRefreshFrameworkPublicFileMap phaseEffectID = "backend_refresh_framework_public_filemap"
-	// phaseEffectIDBackendAwaitReadiness waits for backend readiness.
-	phaseEffectIDBackendAwaitReadiness phaseEffectID = "backend_await_readiness"
-	// phaseEffectIDFrontendBroadcastCSSHotReload broadcasts CSS hot reload.
-	phaseEffectIDFrontendBroadcastCSSHotReload phaseEffectID = "frontend_broadcast_css_hotreload"
-	// phaseEffectIDFrontendNotifyVitePublicFileMapChanged notifies Vite that the public file map changed.
-	phaseEffectIDFrontendNotifyVitePublicFileMapChanged phaseEffectID = "frontend_notify_vite_public_filemap_changed"
-	// phaseEffectIDFrontendBroadcastRevalidate broadcasts browser revalidation.
-	phaseEffectIDFrontendBroadcastRevalidate phaseEffectID = "frontend_broadcast_revalidate"
-	// phaseEffectIDFrontendBroadcastHardReload broadcasts browser hard reload.
-	phaseEffectIDFrontendBroadcastHardReload phaseEffectID = "frontend_broadcast_hard_reload"
-	// phaseEffectIDFrontendPublishNoReloadNeededNotice publishes no-reload messaging.
-	phaseEffectIDFrontendPublishNoReloadNeededNotice phaseEffectID = "frontend_publish_no_reload_needed_notice"
-)
-
-// phaseEffectRequest carries one terminal effect execution request.
-type phaseEffectRequest struct {
-	effectID phaseEffectID
-
-	mode         mode
-	generationID string
-}
-
-// phaseEffectResult captures observable execution outcomes from one effect.
-//
-// Most effects return the zero value. Fields are populated only where downstream
-// planning needs concrete "what happened" facts instead of requested goals.
-type phaseEffectResult struct {
-	publicFileMapArtifactsChanged  bool
-	publicFileMapArtifactsRepaired bool
-}
-
-// noopPhaseEffectTask is the explicit no-op phase task for design-time pipeline
-// wiring.
-var noopPhaseEffectTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		request phaseEffectRequest,
-	) (phaseEffectResult, error) {
-		return phaseEffectResult{}, nil
-	},
-)
-
-// phaseExecutionScope carries execution tasks needed by terminal phase tasks.
-type phaseExecutionScope struct {
-	phaseEffectTask *tasks.Task[phaseEffectRequest, phaseEffectResult]
-}
-
-// frameworkSignals reduces backend-settling goals into framework-agnostic
+// frameworkSignals reduces backend-settling effects into framework-agnostic
 // signals for framework adapter handoff.
-func (backendGoals phase2BackendSettlingGoals) frameworkSignals(
+func (phase2RequestedEffects phase2RequestedEffects) frameworkSignals(
 	generationID string,
 ) []FrameworkSignal {
 	freshnessToken := strings.TrimSpace(generationID)
@@ -336,7 +254,7 @@ func (backendGoals phase2BackendSettlingGoals) frameworkSignals(
 		return nil
 	}
 	signals := make([]FrameworkSignal, 0, 3)
-	if backendGoals.refreshFrameworkRoute {
+	if phase2RequestedEffects.refreshFrameworkRoute {
 		signals = append(
 			signals,
 			FrameworkSignal{
@@ -346,7 +264,7 @@ func (backendGoals phase2BackendSettlingGoals) frameworkSignals(
 			},
 		)
 	}
-	if backendGoals.refreshFrameworkTemplate {
+	if phase2RequestedEffects.refreshFrameworkTemplate {
 		signals = append(
 			signals,
 			FrameworkSignal{
@@ -356,7 +274,7 @@ func (backendGoals phase2BackendSettlingGoals) frameworkSignals(
 			},
 		)
 	}
-	if backendGoals.refreshFrameworkPublicFileMap {
+	if phase2RequestedEffects.refreshFrameworkPublicFileMap {
 		signals = append(
 			signals,
 			FrameworkSignal{
@@ -376,13 +294,21 @@ var (
 	errGenerationIDRequired = errors.New(
 		"wavebuild: generation id is required",
 	)
-	errPhaseExecutionScopeRequired = errors.New(
-		"wavebuild: phase execution scope is required",
-	)
-	errPhaseEffectTaskRequired = errors.New(
-		"wavebuild: phase effect task is required",
-	)
 )
+
+type phaseEffectSets struct {
+	phase1 phase1Effects
+	phase2 phase2Effects
+	phase3 phase3Effects
+	phase4 phase4Effects
+}
+
+var realPhaseEffectSets = phaseEffectSets{
+	phase1: phase1EffectsDef,
+	phase2: phase2EffectsDef,
+	phase3: phase3EffectsDef,
+	phase4: phase4EffectsDef,
+}
 
 // runFourPhasePipeline executes one phase batch with one batch-scoped tasks context.
 //
@@ -393,14 +319,20 @@ func runFourPhasePipeline(
 	parentContext context.Context,
 	input phase1BatchInput,
 ) (fourPhaseRunResult, error) {
+	return runFourPhasePipelineWithEffectSets(
+		parentContext,
+		input,
+		realPhaseEffectSets,
+	)
+}
+
+func runFourPhasePipelineWithEffectSets(
+	parentContext context.Context,
+	input phase1BatchInput,
+	effects phaseEffectSets,
+) (fourPhaseRunResult, error) {
 	if input.phase1 == nil {
 		return fourPhaseRunResult{}, errPhase1InputRequired
-	}
-	if input.execution == nil {
-		return fourPhaseRunResult{}, errPhaseExecutionScopeRequired
-	}
-	if input.execution.phaseEffectTask == nil {
-		return fourPhaseRunResult{}, errPhaseEffectTaskRequired
 	}
 	normalizedGenerationID := strings.TrimSpace(input.phase1.generationID)
 	if normalizedGenerationID == "" {
@@ -411,10 +343,10 @@ func runFourPhasePipeline(
 	}
 
 	batchTaskContext := tasks.NewCtx(parentContext)
-	phase1BuildGoals := canonicalProdBuildGoals()
+	phase1RequestedEffects := canonicalPhase1RequestedEffects()
 	if input.phase1.mode != modeProd {
 		var phase1Error error
-		phase1BuildGoals, phase1Error = phase1PlanBuildGoalsTask.Run(
+		phase1RequestedEffects, phase1Error = effects.phase1.planPhase1RequestedEffects.Run(
 			batchTaskContext,
 			input,
 		)
@@ -426,13 +358,12 @@ func runFourPhasePipeline(
 	phaseBatchInput := phaseBatchInput{
 		mode:         input.phase1.mode,
 		generationID: normalizedGenerationID,
-		execution:    input.execution,
 	}
-	phase2Output, phase2Error := phase2PlanOutputTask.Run(
+	phase2Output, phase2Error := effects.phase2.planPhase2Output.Run(
 		batchTaskContext,
 		phase2BatchInput{
-			batch:      phaseBatchInput,
-			buildGoals: phase1BuildGoals,
+			batch:                  phaseBatchInput,
+			phase1RequestedEffects: phase1RequestedEffects,
 		},
 	)
 	if phase2Error != nil {
@@ -440,68 +371,68 @@ func runFourPhasePipeline(
 	}
 	if input.phase1.mode == modeProd {
 		return fourPhaseRunResult{
-			phase1BuildGoals:   phase1BuildGoals,
-			phase2BackendGoals: phase2Output.backendSettlingGoals,
+			phase1RequestedEffects: phase1RequestedEffects,
+			phase2RequestedEffects: phase2Output.phase2RequestedEffects,
 		}, nil
 	}
 
-	phase3FrontendGoals, phase3Error := phase3PlanFrontendSettlingGoalsTask.Run(
+	phase3RequestedEffects, phase3Error := effects.phase3.planPhase3RequestedEffects.Run(
 		batchTaskContext,
 		phase3BatchInput{
-			batch:        phaseBatchInput,
-			backendGoals: phase2Output.backendSettlingGoals,
+			batch:                  phaseBatchInput,
+			phase2RequestedEffects: phase2Output.phase2RequestedEffects,
 		},
 	)
 	if phase3Error != nil {
 		return fourPhaseRunResult{}, phase3Error
 	}
-	phase4CompletionSummary, phase4Error := phase4ExecuteTerminalBrowserActionTask.Run(
+	phase4CompletionSummary, phase4Error := effects.phase4.executeTerminalBrowserAction.Run(
 		batchTaskContext,
 		phase4BatchInput{
-			batch:         phaseBatchInput,
-			frontendGoals: phase3FrontendGoals,
+			batch:                  phaseBatchInput,
+			phase3RequestedEffects: phase3RequestedEffects,
 		},
 	)
 	if phase4Error != nil {
 		return fourPhaseRunResult{}, phase4Error
 	}
 	if phase4CompletionSummary.requiresBackendViteHealing {
-		healingBackendGoals := phase2BackendSettlingGoals{
+		healingPhase2RequestedEffects := phase2RequestedEffects{
 			restartViteProcess:    true,
 			awaitBackendReadiness: true,
 		}
-		healingFrontendGoals, healingPhase3Error := phase3PlanFrontendSettlingGoalsTask.Run(
+		healingPhase3RequestedEffects, healingPhase3Error := effects.phase3.planPhase3RequestedEffects.Run(
 			batchTaskContext,
 			phase3BatchInput{
-				batch:        phaseBatchInput,
-				backendGoals: healingBackendGoals,
+				batch:                  phaseBatchInput,
+				phase2RequestedEffects: healingPhase2RequestedEffects,
 			},
 		)
 		if healingPhase3Error != nil {
 			return fourPhaseRunResult{}, healingPhase3Error
 		}
-		healingCompletionSummary, healingPhase4Error := phase4ExecuteTerminalBrowserActionTask.Run(
+		healingCompletionSummary, healingPhase4Error := effects.phase4.executeTerminalBrowserAction.Run(
 			batchTaskContext,
 			phase4BatchInput{
-				batch:         phaseBatchInput,
-				frontendGoals: healingFrontendGoals,
+				batch:                  phaseBatchInput,
+				phase3RequestedEffects: healingPhase3RequestedEffects,
 			},
 		)
 		if healingPhase4Error != nil {
 			return fourPhaseRunResult{}, healingPhase4Error
 		}
-		phase2Output.backendSettlingGoals = phase2Output.backendSettlingGoals.merge(
-			healingBackendGoals,
+		phase2Output.phase2RequestedEffects = phase2Output.phase2RequestedEffects.merge(
+			healingPhase2RequestedEffects,
 		)
-		phase3FrontendGoals = healingFrontendGoals
+		phase3RequestedEffects = healingPhase3RequestedEffects
 		phase4CompletionSummary = healingCompletionSummary
 	}
 	return fourPhaseRunResult{
-		phase1BuildGoals:        phase1BuildGoals,
-		phase2BackendGoals:      phase2Output.backendSettlingGoals,
-		phase3FrontendGoals:     phase3FrontendGoals,
+		phase1RequestedEffects:  phase1RequestedEffects,
+		phase2RequestedEffects:  phase2Output.phase2RequestedEffects,
+		phase3RequestedEffects:  phase3RequestedEffects,
 		phase4CompletionSummary: phase4CompletionSummary,
-		frameworkSignals: phase2Output.backendSettlingGoals.frameworkSignals(
+		frameworkSignals: phase2Output.phase2RequestedEffects.frameworkSignals(
 			normalizedGenerationID,
 		),
 	}, nil
@@ -566,8 +497,8 @@ func (rawOutcomes appRequestedOutcomes) reduce() (appRequestedOutcomes, error) {
 	return reducedOutcomes, nil
 }
 
-func canonicalProdBuildGoals() phase1BuildGoals {
-	return phase1BuildGoals{
+func canonicalPhase1RequestedEffects() phase1RequestedEffects {
+	return phase1RequestedEffects{
 		compileGoBinary:                 true,
 		buildCriticalCSS:                true,
 		buildNormalCSS:                  true,
@@ -577,33 +508,4 @@ func canonicalProdBuildGoals() phase1BuildGoals {
 		generatePublicFileMap:           true,
 		validateBuildOutputs:            true,
 	}
-}
-
-func (batchInput phaseBatchInput) runPhaseEffect(
-	taskContext *tasks.Ctx,
-	effectID phaseEffectID,
-) (phaseEffectResult, error) {
-	if taskContext == nil {
-		return phaseEffectResult{}, errors.New(
-			"wavebuild: task context is required",
-		)
-	}
-	if batchInput.execution == nil {
-		return phaseEffectResult{}, errPhaseExecutionScopeRequired
-	}
-	if batchInput.execution.phaseEffectTask == nil {
-		return phaseEffectResult{}, errPhaseEffectTaskRequired
-	}
-	if os.Getenv("__WAVE_INTERNAL_TEST_MODE") == "1" {
-		fmt.Printf("wave2_effect %s\n", effectID)
-		return phaseEffectResult{}, nil
-	}
-	return batchInput.execution.phaseEffectTask.Run(
-		taskContext,
-		phaseEffectRequest{
-			effectID:     effectID,
-			mode:         batchInput.mode,
-			generationID: batchInput.generationID,
-		},
-	)
 }

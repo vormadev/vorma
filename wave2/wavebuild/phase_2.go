@@ -4,10 +4,14 @@ import (
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
+/////////////////////////////////////////////////////////////////////
+/////// Phase Contracts
+/////////////////////////////////////////////////////////////////////
+
 // phase2BatchInput is the build-phase input produced by phase 1.
 type phase2BatchInput struct {
-	batch      phaseBatchInput
-	buildGoals phase1BuildGoals
+	batch                  phaseBatchInput
+	phase1RequestedEffects phase1RequestedEffects
 }
 
 // phase2BuildOutcomeFacts are observable build outcome facts produced by phase 2.
@@ -19,8 +23,8 @@ type phase2BuildOutcomeFacts struct {
 	publicFileMapArtifactsRepaired bool
 }
 
-// phase2BackendSettlingGoals are backend-settling goals produced by phase 2.
-type phase2BackendSettlingGoals struct {
+// phase2RequestedEffects are backend-settling effects requested by phase 2.
+type phase2RequestedEffects struct {
 	restartDevServerCycle          bool
 	restartAppProcess              bool
 	restartViteProcess             bool
@@ -34,184 +38,24 @@ type phase2BackendSettlingGoals struct {
 
 // phase2Output is the full phase-2 planner output consumed by phase 3.
 type phase2Output struct {
-	backendSettlingGoals phase2BackendSettlingGoals
-	buildOutcomeFacts    phase2BuildOutcomeFacts
+	phase2RequestedEffects phase2RequestedEffects
+	buildOutcomeFacts      phase2BuildOutcomeFacts
 }
 
-func newPhase2EffectTask(
-	effectID phaseEffectID,
-) *tasks.Task[phase2BatchInput, struct{}] {
-	return tasks.NewTask(
-		func(
-			taskContext *tasks.Ctx,
-			input phase2BatchInput,
-		) (struct{}, error) {
-			if _, effectError := input.batch.runPhaseEffect(
-				taskContext,
-				effectID,
-			); effectError != nil {
-				return struct{}{}, effectError
-			}
-			return struct{}{}, nil
-		},
-	)
-}
+/////////////////////////////////////////////////////////////////////
+/////// Shared Phase Tasks
+/////////////////////////////////////////////////////////////////////
 
-// phase2BuildGoBinaryTask executes Go compilation.
-var phase2BuildGoBinaryTask = newPhase2EffectTask(
-	phaseEffectIDBuildCompileGoBinary,
-)
-
-// phase2BuildCriticalCSSTask executes critical CSS compilation.
-var phase2BuildCriticalCSSTask = newPhase2EffectTask(
-	phaseEffectIDBuildCriticalCSS,
-)
-
-// phase2BuildNormalCSSTask executes normal CSS compilation.
-var phase2BuildNormalCSSTask = newPhase2EffectTask(
-	phaseEffectIDBuildNormalCSS,
-)
-
-// phase2ProcessPublicStaticAssetsTask executes public static processing.
-var phase2ProcessPublicStaticAssetsTask = newPhase2EffectTask(
-	phaseEffectIDBuildProcessPublicStaticAssets,
-)
-
-// phase2CleanupStalePublicStaticOutputsTask executes stale public-static cleanup.
-var phase2CleanupStalePublicStaticOutputsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input phase2BatchInput,
-	) (phase2BuildOutcomeFacts, error) {
-		effectResult, effectError := input.batch.runPhaseEffect(
-			taskContext,
-			phaseEffectIDBuildCleanupStalePublicStaticOutputs,
-		)
-		if effectError != nil {
-			return phase2BuildOutcomeFacts{}, effectError
-		}
-		return phase2BuildOutcomeFacts{
-			publicFileMapArtifactsRepaired: effectResult.publicFileMapArtifactsRepaired,
-		}, nil
+var noopPhase2EffectTask = tasks.NewTask(
+	func(taskContext *tasks.Ctx, input phase2BatchInput,
+	) (struct{}, error) {
+		return struct{}{}, nil
 	},
 )
 
-// phase2ProcessPrivateStaticAssetsTask executes private static processing.
-var phase2ProcessPrivateStaticAssetsTask = newPhase2EffectTask(
-	phaseEffectIDBuildProcessPrivateStaticAssets,
-)
-
-// phase2GeneratePublicFileMapArtifactsTask executes public file-map generation.
-var phase2GeneratePublicFileMapArtifactsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input phase2BatchInput,
-	) (phase2BuildOutcomeFacts, error) {
-		if _, publicStaticProcessingError := phase2ProcessPublicStaticAssetsTask.Run(
-			taskContext,
-			input,
-		); publicStaticProcessingError != nil {
-			return phase2BuildOutcomeFacts{}, publicStaticProcessingError
-		}
-		cleanupFacts, staleCleanupError := phase2CleanupStalePublicStaticOutputsTask.Run(
-			taskContext,
-			input,
-		)
-		if staleCleanupError != nil {
-			return phase2BuildOutcomeFacts{}, staleCleanupError
-		}
-		effectResult, effectError := input.batch.runPhaseEffect(
-			taskContext,
-			phaseEffectIDBuildGeneratePublicFileMapArtifacts,
-		)
-		if effectError != nil {
-			return phase2BuildOutcomeFacts{}, effectError
-		}
-		return cleanupFacts.merge(
-			phase2BuildOutcomeFacts{
-				publicFileMapArtifactsChanged: effectResult.publicFileMapArtifactsChanged,
-			},
-		), nil
-	},
-)
-
-// phase2ValidateBuildOutputsTask validates synthetic build outputs.
-var phase2ValidateBuildOutputsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input phase2BatchInput,
-	) (phase2BuildOutcomeFacts, error) {
-		if !input.buildGoals.validateBuildOutputs {
-			return phase2BuildOutcomeFacts{}, nil
-		}
-
-		var ignoredResult struct{}
-		var cleanupFacts phase2BuildOutcomeFacts
-		var generatePublicFileMapFacts phase2BuildOutcomeFacts
-		boundBuildTasks := make([]tasks.BoundTask, 0, 8)
-		if input.buildGoals.compileGoBinary {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2BuildGoBinaryTask.Bind(input, &ignoredResult),
-			)
-		}
-		if input.buildGoals.buildCriticalCSS {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2BuildCriticalCSSTask.Bind(input, &ignoredResult),
-			)
-		}
-		if input.buildGoals.buildNormalCSS {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2BuildNormalCSSTask.Bind(input, &ignoredResult),
-			)
-		}
-		if input.buildGoals.processPublicStaticAssets {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2ProcessPublicStaticAssetsTask.Bind(input, &ignoredResult),
-			)
-		}
-		if input.buildGoals.cleanupStalePublicStaticOutputs {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2CleanupStalePublicStaticOutputsTask.Bind(
-					input,
-					&cleanupFacts,
-				),
-			)
-		}
-		if input.buildGoals.processPrivateStaticAssets {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2ProcessPrivateStaticAssetsTask.Bind(
-					input,
-					&ignoredResult,
-				),
-			)
-		}
-		if input.buildGoals.generatePublicFileMap {
-			boundBuildTasks = append(
-				boundBuildTasks,
-				phase2GeneratePublicFileMapArtifactsTask.Bind(
-					input,
-					&generatePublicFileMapFacts,
-				),
-			)
-		}
-		if runParallelError := taskContext.RunParallel(boundBuildTasks...); runParallelError != nil {
-			return phase2BuildOutcomeFacts{}, runParallelError
-		}
-		if _, effectError := input.batch.runPhaseEffect(
-			taskContext,
-			phaseEffectIDBuildValidateOutputs,
-		); effectError != nil {
-			return phase2BuildOutcomeFacts{}, effectError
-		}
-		return cleanupFacts.merge(generatePublicFileMapFacts), nil
-	},
-)
+/////////////////////////////////////////////////////////////////////
+/////// Phase Reductions
+/////////////////////////////////////////////////////////////////////
 
 func (leftFacts phase2BuildOutcomeFacts) merge(
 	rightFacts phase2BuildOutcomeFacts,
@@ -224,16 +68,16 @@ func (leftFacts phase2BuildOutcomeFacts) merge(
 	}
 }
 
-func (buildGoals phase1BuildGoals) derivePhase2BackendSettlingGoals(
+func (phase1RequestedEffects phase1RequestedEffects) derivePhase2RequestedEffects(
 	buildOutcomeFacts phase2BuildOutcomeFacts,
-) phase2BackendSettlingGoals {
-	if buildGoals.queueRetryWaitRestart {
-		return phase2BackendSettlingGoals{
+) phase2RequestedEffects {
+	if phase1RequestedEffects.queueRetryWaitRestart {
+		return phase2RequestedEffects{
 			queueRetryWaitRestart: true,
 		}
 	}
 
-	requestedTerminalBrowserAction := buildGoals.requestedTerminalBrowserAction
+	requestedTerminalBrowserAction := phase1RequestedEffects.requestedTerminalBrowserAction
 	if buildOutcomeFacts.publicFileMapArtifactsChanged ||
 		buildOutcomeFacts.publicFileMapArtifactsRepaired {
 		requestedTerminalBrowserAction = requestedTerminalBrowserAction.dominantWith(
@@ -241,77 +85,50 @@ func (buildGoals phase1BuildGoals) derivePhase2BackendSettlingGoals(
 		)
 	}
 
-	phase2BackendSettlingGoals := phase2BackendSettlingGoals{
-		restartDevServerCycle: buildGoals.restartDevServerCycle,
-		restartAppProcess: buildGoals.requestBackendRestart ||
-			buildGoals.compileGoBinary,
-		restartViteProcess:       buildGoals.requestViteRestart,
-		refreshFrameworkRoute:    buildGoals.requestFrameworkRouteRefresh,
-		refreshFrameworkTemplate: buildGoals.requestFrameworkTemplateRefresh,
-		refreshFrameworkPublicFileMap: buildGoals.requestFrameworkPublicFileMapRefresh ||
+	requestedEffects := phase2RequestedEffects{
+		restartDevServerCycle: phase1RequestedEffects.restartDevServerCycle,
+		restartAppProcess: phase1RequestedEffects.requestBackendRestart ||
+			phase1RequestedEffects.compileGoBinary,
+		restartViteProcess:       phase1RequestedEffects.requestViteRestart,
+		refreshFrameworkRoute:    phase1RequestedEffects.requestFrameworkRouteRefresh,
+		refreshFrameworkTemplate: phase1RequestedEffects.requestFrameworkTemplateRefresh,
+		refreshFrameworkPublicFileMap: phase1RequestedEffects.requestFrameworkPublicFileMapRefresh ||
 			buildOutcomeFacts.publicFileMapArtifactsChanged ||
 			buildOutcomeFacts.publicFileMapArtifactsRepaired,
 		requestedTerminalBrowserAction: requestedTerminalBrowserAction,
 	}
-	phase2BackendSettlingGoals.awaitBackendReadiness =
-		phase2BackendSettlingGoals.restartDevServerCycle ||
-			phase2BackendSettlingGoals.restartAppProcess ||
-			phase2BackendSettlingGoals.restartViteProcess ||
-			phase2BackendSettlingGoals.refreshFrameworkRoute ||
-			phase2BackendSettlingGoals.refreshFrameworkTemplate ||
-			phase2BackendSettlingGoals.refreshFrameworkPublicFileMap
-	return phase2BackendSettlingGoals
+	requestedEffects.awaitBackendReadiness =
+		requestedEffects.restartDevServerCycle ||
+			requestedEffects.restartAppProcess ||
+			requestedEffects.restartViteProcess ||
+			requestedEffects.refreshFrameworkRoute ||
+			requestedEffects.refreshFrameworkTemplate ||
+			requestedEffects.refreshFrameworkPublicFileMap
+	return requestedEffects
 }
 
-func (leftGoals phase2BackendSettlingGoals) merge(
-	rightGoals phase2BackendSettlingGoals,
-) phase2BackendSettlingGoals {
-	return phase2BackendSettlingGoals{
-		restartDevServerCycle: leftGoals.restartDevServerCycle ||
-			rightGoals.restartDevServerCycle,
-		restartAppProcess: leftGoals.restartAppProcess ||
-			rightGoals.restartAppProcess,
-		restartViteProcess: leftGoals.restartViteProcess ||
-			rightGoals.restartViteProcess,
-		refreshFrameworkRoute: leftGoals.refreshFrameworkRoute ||
-			rightGoals.refreshFrameworkRoute,
-		refreshFrameworkTemplate: leftGoals.refreshFrameworkTemplate ||
-			rightGoals.refreshFrameworkTemplate,
-		refreshFrameworkPublicFileMap: leftGoals.refreshFrameworkPublicFileMap ||
-			rightGoals.refreshFrameworkPublicFileMap,
-		awaitBackendReadiness: leftGoals.awaitBackendReadiness ||
-			rightGoals.awaitBackendReadiness,
-		queueRetryWaitRestart: leftGoals.queueRetryWaitRestart ||
-			rightGoals.queueRetryWaitRestart,
-		requestedTerminalBrowserAction: leftGoals.requestedTerminalBrowserAction.dominantWith(
-			rightGoals.requestedTerminalBrowserAction,
+func (leftRequestedEffects phase2RequestedEffects) merge(
+	rightRequestedEffects phase2RequestedEffects,
+) phase2RequestedEffects {
+	return phase2RequestedEffects{
+		restartDevServerCycle: leftRequestedEffects.restartDevServerCycle ||
+			rightRequestedEffects.restartDevServerCycle,
+		restartAppProcess: leftRequestedEffects.restartAppProcess ||
+			rightRequestedEffects.restartAppProcess,
+		restartViteProcess: leftRequestedEffects.restartViteProcess ||
+			rightRequestedEffects.restartViteProcess,
+		refreshFrameworkRoute: leftRequestedEffects.refreshFrameworkRoute ||
+			rightRequestedEffects.refreshFrameworkRoute,
+		refreshFrameworkTemplate: leftRequestedEffects.refreshFrameworkTemplate ||
+			rightRequestedEffects.refreshFrameworkTemplate,
+		refreshFrameworkPublicFileMap: leftRequestedEffects.refreshFrameworkPublicFileMap ||
+			rightRequestedEffects.refreshFrameworkPublicFileMap,
+		awaitBackendReadiness: leftRequestedEffects.awaitBackendReadiness ||
+			rightRequestedEffects.awaitBackendReadiness,
+		queueRetryWaitRestart: leftRequestedEffects.queueRetryWaitRestart ||
+			rightRequestedEffects.queueRetryWaitRestart,
+		requestedTerminalBrowserAction: leftRequestedEffects.requestedTerminalBrowserAction.dominantWith(
+			rightRequestedEffects.requestedTerminalBrowserAction,
 		),
 	}
 }
-
-// phase2PlanOutputTask maps build results to backend-settling goals and build outcome facts.
-var phase2PlanOutputTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input phase2BatchInput,
-	) (phase2Output, error) {
-		buildOutcomeFacts, validateError := phase2ValidateBuildOutputsTask.Run(
-			taskContext,
-			input,
-		)
-		if validateError != nil {
-			return phase2Output{}, validateError
-		}
-		if input.batch.mode == modeProd {
-			return phase2Output{
-				buildOutcomeFacts: buildOutcomeFacts,
-			}, nil
-		}
-		return phase2Output{
-			backendSettlingGoals: input.buildGoals.derivePhase2BackendSettlingGoals(
-				buildOutcomeFacts,
-			),
-			buildOutcomeFacts: buildOutcomeFacts,
-		}, nil
-	},
-)

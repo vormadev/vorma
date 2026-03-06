@@ -13,13 +13,20 @@ Non-Negotiable Constraints
 - `events -> build -> backend_settling -> frontend_settling`.
 - Symbol naming uses numeric labels:
 - `phase_1 -> phase_2 -> phase_3 -> phase_4`.
-- Each phase selects terminal goals, then executes those roots in `kit/tasks`.
+- Each phase selects terminal effects, then executes those roots in `kit/tasks`.
 - Phase boundaries enforce cross-phase ordering.
 - Inside each phase, sequencing and parallelism are owned only by `kit/tasks` task dependencies.
 - Do not introduce a second DAG/topological scheduler outside `kit/tasks`.
 - Four-phase orchestration stays function-based with no runner-interface/config wrapper layer.
 - Default to direct calls. Do not add wrappers, convenience helpers, or "ergonomic" adapter layers unless there is explicit, repeated evidence that direct-call usage is too painful or confusing.
-- Phase-effect execution stays direct-task based (`PhaseEffectTask`); do not reintroduce effect-executor interface layers.
+- Keep only two phase orchestration buckets:
+- `phaseXRequestedEffects` = request payload selecting work for the next phase.
+- `phaseXEffects` = executable task catalog for that phase.
+- Remove generic effect-dispatch adapter indirection from core pipeline:
+- `phaseEffectID`
+- `phaseEffectRequest`
+- `phaseEffectResult`
+- `phaseEffectTask` in `phaseExecutionScope`
 
 Package Surfaces
 - `wave2/wave.go`
@@ -35,16 +42,19 @@ Canonical Batch Pipeline
 - CHMOD policy remains explicit in event classification (empty-file CHMOD can be actionable; non-empty CHMOD-only noise is suppressible).
 - App-requested outcomes are applied only when app-defined watch event classes are present in the batch.
 - Phase 2: Build
-- Planner reduces phase-1 output to build terminal goals.
+- Planner reduces phase-1 facts into `phase1RequestedEffects`.
+- `phase1RequestedEffects` selects tasks in `phase2Effects`.
 - Build roots run in `kit/tasks` and declare prerequisites by calling prerequisite tasks.
 - Pipeline composition calls phase root tasks directly; no one-line `RunPhase*TaskGraph` wrappers.
-- Build outcome facts are executor-reported outcomes (what happened), not goal inference (what was requested).
+- Build outcome facts are returned by executed phase-2 effect tasks (what happened), not inferred from request booleans.
 - Phase 3: Backend Settling
-- Planner reduces phase-2 outcomes to backend-settling terminal goals.
+- Planner reduces phase-2 outcomes into `phase2RequestedEffects`.
+- `phase2RequestedEffects` selects tasks in `phase3Effects`.
 - Backend settling covers process/framework readiness concerns.
 - App/Vite readiness waiting remains one backend-readiness terminal goal, not separate phase-goal flags.
 - Phase 4: Frontend Settling
-- Planner reduces phase-3 outcomes to browser-settling terminal goals.
+- Planner reduces phase-3 outcomes into `phase3RequestedEffects`.
+- `phase3RequestedEffects` selects tasks in `phase4Effects`.
 - Frontend settling covers CSS hot updates, notify-Vite-public-filemap-changed, revalidate, hard reload, or no browser action.
 - Notify-Vite failure policy is explicit backend healing (`restart_vite -> await_readiness`) and then follows normal phase-3 browser policy.
 
@@ -66,13 +76,35 @@ Parity-Critical Observable Goals
 Task Context Contract
 - One batch-scoped `tasks.Ctx` is shared across all executed phases in a batch.
 - Pipeline orchestration stays direct and sequential over phase root tasks; do not add wrapper orchestration tasks around phase calls.
+- Request payload structs are phase-indexed:
+- `phase1RequestedEffects`
+- `phase2RequestedEffects`
+- `phase3RequestedEffects`
+- Executable effect catalogs are phase-indexed:
+- `phase1Effects`
+- `phase2Effects`
+- `phase3Effects`
+- `phase4Effects`
+- Each `phaseXEffects` struct is the canonical inventory of executable task fields for that phase.
+- Each `phaseXEffects` struct is created by an explicit constructor:
+- `newPhase1Effects()`
+- `newPhase2Effects()`
+- `newPhase3Effects()`
+- `newPhase4Effects()`
+- Four-phase execution is wired through one effect-set bundle:
+- `type phaseEffectSets struct { phase1 ...; phase2 ...; phase3 ...; phase4 ... }`
+- Real execution effect sets are constructed by:
+- `newRealPhaseEffectSets()`
+- Pipeline has two entrypoints:
+- `runFourPhasePipeline(...)` as the default path
+- `runFourPhasePipelineWithEffectSets(...)` as the injection shim used for test effect sets
+- Matrix-style task-selection tests use test effect-set constructors and the injection shim.
 - Native `context.Context` provides cancellation/deadline and is wrapped exactly once per batch.
 - Task identity and output reuse are owned by `kit/tasks`; phase planners do not duplicate that logic.
 - Phase task input keys stay comparable for `kit/tasks` identity semantics.
 - Batch input stays comparable by carrying non-comparable event/execution payloads through pointers in phase-input envelopes.
-- Batch execution scope carries a required `PhaseEffectTask` for terminal side effects.
 - Phase-1 batch inputs are assembled directly with explicit execution scope.
-- Visibility stays out of core phase contracts: use plain runtime logging, and use stable `__WAVE_INTERNAL_TEST_MODE=1` task-name logging with early-return for task-selection tests.
+- Visibility stays out of core phase contracts: use plain runtime logging and explicit test effect-set injection.
 
 Framework Signal Contract
 - Framework signal vocabulary stays observable and transport-agnostic.

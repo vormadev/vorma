@@ -1,27 +1,26 @@
 package wavebuild
 
 import (
-	"errors"
 	"slices"
-
-	"github.com/vormadev/vorma/kit/tasks"
 )
+
+/////////////////////////////////////////////////////////////////////
+/////// Phase Contracts
+/////////////////////////////////////////////////////////////////////
 
 // phaseBatchInput is the shared per-batch phase envelope passed after phase 1.
 type phaseBatchInput struct {
 	mode         mode
 	generationID string
-	execution    *phaseExecutionScope
 }
 
 // phase1BatchInput is the phase-1 input contract for one reduced batch.
 type phase1BatchInput struct {
-	phase1    *phase1Input
-	execution *phaseExecutionScope
+	phase1 *phase1Input
 }
 
-// phase1BuildGoals are phase-2 build goals plus carry-forward settle intents.
-type phase1BuildGoals struct {
+// phase1RequestedEffects are phase-2 build effects plus carry-forward settle intents.
+type phase1RequestedEffects struct {
 	restartDevServerCycle           bool
 	compileGoBinary                 bool
 	buildCriticalCSS                bool
@@ -40,6 +39,10 @@ type phase1BuildGoals struct {
 	requestFrameworkPublicFileMapRefresh bool
 	requestedTerminalBrowserAction       frontendTerminalBrowserAction
 }
+
+/////////////////////////////////////////////////////////////////////
+/////// Phase Reductions
+/////////////////////////////////////////////////////////////////////
 
 func (facts phase1Facts) hasEventType(
 	eventType eventType,
@@ -85,10 +88,10 @@ func (facts phase1Facts) deriveImplicitBrowserActionIntent() frontendTerminalBro
 	return actionIntent
 }
 
-func (facts phase1Facts) derivePhase1BuildGoals() phase1BuildGoals {
+func (facts phase1Facts) derivePhase1RequestedEffects() phase1RequestedEffects {
 	if facts.mode == modeDev &&
 		facts.waitingForBuildRetry {
-		return phase1BuildGoals{
+		return phase1RequestedEffects{
 			queueRetryWaitRestart: true,
 		}
 	}
@@ -151,7 +154,7 @@ func (facts phase1Facts) derivePhase1BuildGoals() phase1BuildGoals {
 		mergedBrowserActionIntent = frontendTerminalBrowserActionNone
 	}
 
-	phase1BuildGoals := phase1BuildGoals{
+	requestedEffects := phase1RequestedEffects{
 		restartDevServerCycle: configChanged,
 		compileGoBinary: goSourceChanged ||
 			appRequestedOutcomes.requestGoCompile,
@@ -170,36 +173,17 @@ func (facts phase1Facts) derivePhase1BuildGoals() phase1BuildGoals {
 		requestedTerminalBrowserAction:       mergedBrowserActionIntent,
 	}
 	if facts.mode == modeProd {
-		phase1BuildGoals.restartDevServerCycle = false
+		requestedEffects.restartDevServerCycle = false
 	}
 
-	phase1BuildGoals.validateBuildOutputs =
-		phase1BuildGoals.compileGoBinary ||
-			phase1BuildGoals.buildCriticalCSS ||
-			phase1BuildGoals.buildNormalCSS ||
-			phase1BuildGoals.processPublicStaticAssets ||
-			phase1BuildGoals.cleanupStalePublicStaticOutputs ||
-			phase1BuildGoals.processPrivateStaticAssets ||
-			phase1BuildGoals.generatePublicFileMap
+	requestedEffects.validateBuildOutputs =
+		requestedEffects.compileGoBinary ||
+			requestedEffects.buildCriticalCSS ||
+			requestedEffects.buildNormalCSS ||
+			requestedEffects.processPublicStaticAssets ||
+			requestedEffects.cleanupStalePublicStaticOutputs ||
+			requestedEffects.processPrivateStaticAssets ||
+			requestedEffects.generatePublicFileMap
 
-	return phase1BuildGoals
+	return requestedEffects
 }
-
-// phase1PlanBuildGoalsTask maps event facts to build-phase goals.
-var phase1PlanBuildGoalsTask = tasks.NewTask(
-	func(
-		taskContext *tasks.Ctx,
-		input phase1BatchInput,
-	) (phase1BuildGoals, error) {
-		if input.phase1 == nil {
-			return phase1BuildGoals{}, errors.New(
-				"wavebuild: phase-1 input is required",
-			)
-		}
-		phase1Facts, phase1FactsError := input.phase1.buildFacts()
-		if phase1FactsError != nil {
-			return phase1BuildGoals{}, phase1FactsError
-		}
-		return phase1Facts.derivePhase1BuildGoals(), nil
-	},
-)
