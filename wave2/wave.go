@@ -55,7 +55,7 @@ type Config struct {
 	// Optional runtime operational adapter used for runtime-backed behavior.
 	RuntimeSurface RuntimeSurface
 
-	// Optional raw config JSON snapshot for runtime consumers.
+	// Optional raw config JSON for runtime consumers.
 	RawConfigJSON []byte
 }
 
@@ -84,7 +84,7 @@ func New(config Config) *Wave {
 		configPath:     normalizedConfigPath,
 		logger:         config.Logger,
 		runtimeSurface: config.RuntimeSurface,
-		rawConfigJSON:  append([]byte(nil), config.RawConfigJSON...),
+		rawConfigJSON:  config.RawConfigJSON,
 	}
 }
 
@@ -123,12 +123,12 @@ func (waveRuntime *Wave) SetLogger(logger *slog.Logger) {
 	waveRuntime.logger = logger
 }
 
-// RawConfigJSON returns the raw config JSON snapshot.
+// RawConfigJSON returns the raw config JSON.
 func (waveRuntime *Wave) RawConfigJSON() []byte {
 	if waveRuntime == nil {
 		return nil
 	}
-	return append([]byte(nil), waveRuntime.rawConfigJSON...)
+	return waveRuntime.rawConfigJSON
 }
 
 // RuntimeSurface returns the configured runtime adapter.

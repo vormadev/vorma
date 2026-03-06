@@ -33,14 +33,13 @@ type Phase4CompletionSummary struct {
 	TerminalAction Phase4TerminalAction
 }
 
-// FourPhaseRunResult captures the full four-phase stub execution.
+// FourPhaseRunResult captures the full four-phase pipeline execution.
 type FourPhaseRunResult struct {
 	Phase1BuildGoals        Phase1BuildGoals
 	Phase2BackendGoals      Phase2BackendSettlingGoals
 	Phase3FrontendGoals     Phase3FrontendSettlingGoals
 	Phase4CompletionSummary Phase4CompletionSummary
 	FrameworkSignals        []FrameworkSignal
-	OrderedTaskNames        []string
 }
 
 func recordPhase4TaskExecution(
@@ -459,7 +458,7 @@ func RunPhase4TaskGraph(
 	return Phase4FinalizeBatchSettlingTraceTask.Run(taskContext, input)
 }
 
-// RunFourPhaseTaskGraph executes all four phases end-to-end for DAG stress testing.
+// RunFourPhaseTaskGraph executes all four phases end-to-end.
 func RunFourPhaseTaskGraph(
 	parentContext context.Context,
 	input EventsPhaseBatchInput,

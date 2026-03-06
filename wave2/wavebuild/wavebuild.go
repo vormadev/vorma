@@ -3,6 +3,10 @@
 // The contract is intentionally phase-oriented:
 // events -> build -> backend_settling -> frontend_settling.
 //
+// Mode policy is runner-level:
+// - dev executes all four phases.
+// - prod bypasses events/backend_settling/frontend_settling and runs build only.
+//
 // Each phase owns its own terminal goals and executes through kit/tasks. Phase
 // boundaries provide cross-phase ordering; inside a phase, dependency ordering
 // and parallelism come only from task prerequisites.
@@ -317,12 +321,45 @@ type PhaseExecutionScope struct {
 	EffectExecutor PhaseEffectExecutor
 }
 
+// NewPhaseExecutionScope constructs one explicit phase execution scope.
+func NewPhaseExecutionScope(
+	effectExecutor PhaseEffectExecutor,
+) *PhaseExecutionScope {
+	return &PhaseExecutionScope{
+		EffectExecutor: effectExecutor,
+	}
+}
+
 // NewNoopPhaseExecutionScope builds an explicit no-op execution scope for
 // design-time graph runs.
 func NewNoopPhaseExecutionScope() *PhaseExecutionScope {
-	return &PhaseExecutionScope{
-		EffectExecutor: NoopPhaseEffectExecutor{},
+	return NewPhaseExecutionScope(NoopPhaseEffectExecutor{})
+}
+
+// NewEventsPhaseBatchInput wraps phase-1 events input with explicit execution
+// scope and optional task trace recorder.
+func NewEventsPhaseBatchInput(
+	events EventsPhaseInput,
+	execution *PhaseExecutionScope,
+	trace *PhaseTaskTraceRecorder,
+) EventsPhaseBatchInput {
+	return EventsPhaseBatchInput{
+		Events:    &events,
+		Execution: execution,
+		Trace:     trace,
 	}
+}
+
+// NewEventsPhaseBatchInputWithNoopExecution wraps events input with explicit
+// no-op execution for design-time graph runs.
+func NewEventsPhaseBatchInputWithNoopExecution(
+	events EventsPhaseInput,
+) EventsPhaseBatchInput {
+	return NewEventsPhaseBatchInput(
+		events,
+		NewNoopPhaseExecutionScope(),
+		nil,
+	)
 }
 
 // FrameworkSignalsFromBackendSettlingGoals reduces backend-settling goals into
@@ -525,8 +562,11 @@ func NewDefaultFourPhaseRunner() *FourPhaseRunner {
 	return runner
 }
 
-// Run executes events->build->backend_settling->frontend_settling with one
-// batch-scoped tasks context.
+// Run executes one phase batch with one batch-scoped tasks context.
+//
+// Mode policy:
+// - dev runs phases 1-4.
+// - prod bypasses phases 1/3/4 and runs phase 2 only.
 func (runner *FourPhaseRunner) Run(
 	parentContext context.Context,
 	input EventsPhaseBatchInput,
@@ -543,23 +583,29 @@ func (runner *FourPhaseRunner) Run(
 	if input.Execution.EffectExecutor == nil {
 		return FourPhaseRunResult{}, errPhaseEffectExecutorRequired
 	}
-	if input.Trace == nil {
-		input.Trace = &PhaseTaskTraceRecorder{}
-	}
 	phaseBatchInput := PhaseBatchInput{
 		Mode:         input.Events.Mode,
 		GenerationID: strings.TrimSpace(input.Events.GenerationID),
 		Execution:    input.Execution,
 		Trace:        input.Trace,
 	}
+	if modeError := validateEventsPhaseMode(phaseBatchInput.Mode); modeError != nil {
+		return FourPhaseRunResult{}, modeError
+	}
 
 	batchTaskContext := tasks.NewCtx(parentContext)
-	phase1BuildGoals, phase1Error := runner.eventsPhaseRunner.RunEventsPhase(
-		batchTaskContext,
-		input,
-	)
-	if phase1Error != nil {
-		return FourPhaseRunResult{}, phase1Error
+	phase1BuildGoals := Phase1BuildGoals{}
+	if phaseBatchInput.Mode == ModeProd {
+		phase1BuildGoals = canonicalProdBuildGoals()
+	} else {
+		var phase1Error error
+		phase1BuildGoals, phase1Error = runner.eventsPhaseRunner.RunEventsPhase(
+			batchTaskContext,
+			input,
+		)
+		if phase1Error != nil {
+			return FourPhaseRunResult{}, phase1Error
+		}
 	}
 
 	phase2BackendGoals, phase2Error := runner.buildPhaseRunner.RunBuildPhase(
@@ -571,6 +617,12 @@ func (runner *FourPhaseRunner) Run(
 	)
 	if phase2Error != nil {
 		return FourPhaseRunResult{}, phase2Error
+	}
+	if phaseBatchInput.Mode == ModeProd {
+		return FourPhaseRunResult{
+			Phase1BuildGoals:   phase1BuildGoals,
+			Phase2BackendGoals: phase2BackendGoals,
+		}, nil
 	}
 	frameworkSignals := FrameworkSignalsFromBackendSettlingGoals(
 		phaseBatchInput.GenerationID,
@@ -607,7 +659,6 @@ func (runner *FourPhaseRunner) Run(
 		Phase3FrontendGoals:     phase3FrontendGoals,
 		Phase4CompletionSummary: phase4CompletionSummary,
 		FrameworkSignals:        frameworkSignals,
-		OrderedTaskNames:        phaseBatchInput.Trace.SnapshotOrderedTaskNames(),
 	}, nil
 }
 
@@ -683,6 +734,19 @@ func reduceAppRequestedOutcomes(
 		reducedOutcomes.RequestBrowserRevalidate = false
 	}
 	return reducedOutcomes
+}
+
+func canonicalProdBuildGoals() Phase1BuildGoals {
+	return Phase1BuildGoals{
+		CompileGoBinary:                 true,
+		BuildCriticalCSS:                true,
+		BuildNormalCSS:                  true,
+		ProcessPublicStaticAssets:       true,
+		CleanupStalePublicStaticOutputs: true,
+		ProcessPrivateStaticAssets:      true,
+		GeneratePublicFileMap:           true,
+		ValidateBuildOutputs:            true,
+	}
 }
 
 func executePhaseEffect(

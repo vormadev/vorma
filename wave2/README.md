@@ -29,6 +29,11 @@ Wave2 orchestration is phase-based:
 3. `backend_settling`
 4. `frontend_settling`
 
+Mode policy:
+
+- `dev` executes phases 1-4.
+- `prod` bypasses phases 1/3/4 and executes phase 2 only.
+
 Each phase:
 
 - plans terminal goals for that phase
@@ -37,13 +42,30 @@ Each phase:
 
 ## Task Context Contract
 
-One batch-scoped `tasks.Ctx` is shared across all four phases.
+One batch-scoped `tasks.Ctx` is shared across all executed phases in a batch.
 
 That gives:
 
 - one identity domain for all task keys in the batch
 - one cache domain for task outputs reused by downstream callers
 - no second DAG scheduler outside `kit/tasks`
+
+## Execution Port Contract
+
+Terminal side effects are emitted through one explicit execution port:
+
+- `PhaseEffectExecutor`
+- keyed by explicit `PhaseEffectID`
+- invoked only by terminal phase tasks
+
+This keeps phase planning pure while allowing side-effect implementation to be
+swapped without changing the task graph.
+
+For design runs:
+
+- `NewNoopPhaseExecutionScope()` provides explicit no-op side effects.
+- `NewEventsPhaseBatchInputWithNoopExecution(...)` provides an explicit
+  batch-input wrapper for a no-op scope.
 
 ## Framework Boundary
 

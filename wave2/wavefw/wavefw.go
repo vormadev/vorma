@@ -7,7 +7,6 @@ package wavefw
 import (
 	"errors"
 	"fmt"
-	"maps"
 
 	"github.com/vormadev/vorma/wave2/wavebuild"
 )
@@ -120,7 +119,7 @@ func (translator *RuleBasedSignalTranslator) TranslateSignals(
 				Type:           actionType,
 				FreshnessToken: signal.FreshnessToken,
 				Trigger:        signal.Trigger,
-				Metadata:       cloneStringMap(signal.Metadata),
+				Metadata:       signal.Metadata,
 			},
 		)
 	}
@@ -144,7 +143,7 @@ var canonicalSignalTranslationRules = []SignalTranslationRule{
 
 // CanonicalSignalTranslationRules returns the baseline signal mapping policy.
 func CanonicalSignalTranslationRules() []SignalTranslationRule {
-	return cloneSignalTranslationRules(canonicalSignalTranslationRules)
+	return canonicalSignalTranslationRules
 }
 
 // NewCanonicalSignalTranslator constructs one translator with canonical mapping
@@ -176,24 +175,4 @@ func TranslateFrameworkSignals(
 		}
 	}
 	return translator.TranslateSignals(signals)
-}
-
-func cloneSignalTranslationRules(
-	rules []SignalTranslationRule,
-) []SignalTranslationRule {
-	if len(rules) == 0 {
-		return nil
-	}
-	cloned := make([]SignalTranslationRule, len(rules))
-	copy(cloned, rules)
-	return cloned
-}
-
-func cloneStringMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return nil
-	}
-	cloned := make(map[string]string, len(input))
-	maps.Copy(cloned, input)
-	return cloned
 }

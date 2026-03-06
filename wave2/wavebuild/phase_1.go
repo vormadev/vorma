@@ -29,21 +29,6 @@ func (traceRecorder *PhaseTaskTraceRecorder) RecordTaskExecution(
 	)
 }
 
-// SnapshotOrderedTaskNames returns an isolated copy of the trace entries.
-func (traceRecorder *PhaseTaskTraceRecorder) SnapshotOrderedTaskNames() []string {
-	if traceRecorder == nil {
-		return nil
-	}
-	traceRecorder.mu.Lock()
-	defer traceRecorder.mu.Unlock()
-	if len(traceRecorder.orderedTaskNames) == 0 {
-		return nil
-	}
-	cloned := make([]string, len(traceRecorder.orderedTaskNames))
-	copy(cloned, traceRecorder.orderedTaskNames)
-	return cloned
-}
-
 // PhaseBatchInput is the shared per-batch phase envelope passed after phase 1.
 type PhaseBatchInput struct {
 	Mode         Mode
@@ -61,6 +46,7 @@ type EventsPhaseBatchInput struct {
 
 // Phase1EventFacts are event-phase derived facts used by later phases.
 type Phase1EventFacts struct {
+	Mode                            Mode
 	ConfigChanged                   bool
 	GoSourceChanged                 bool
 	CriticalCSSChanged              bool
@@ -225,7 +211,7 @@ func deriveAppRequestedBrowserActionIntent(
 }
 
 func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
-	if eventFacts.WaitingForBuildRetry {
+	if eventFacts.Mode == ModeDev && eventFacts.WaitingForBuildRetry {
 		return Phase1BuildGoals{
 			QueueRetryWaitRestart: true,
 		}
@@ -234,6 +220,33 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 		deriveImplicitBrowserActionIntent(eventFacts),
 		deriveAppRequestedBrowserActionIntent(eventFacts),
 	)
+
+	requestBackendRestart := eventFacts.GoSourceChanged || eventFacts.AppRequestedRestart
+	requestViteRestart := eventFacts.ConfigChanged
+	requestFrameworkRouteRefresh :=
+		eventFacts.FrameworkRouteDefinitionChanged || eventFacts.AppRequestedFrameworkRefresh
+	requestFrameworkTemplateRefresh := eventFacts.FrameworkTemplateChanged
+	requestFrameworkPublicFileMapRefresh := eventFacts.PublicStaticChanged
+	requestBrowserCSSHotReload :=
+		mergedBrowserActionIntent == phase1BrowserActionIntentCSSHotReload
+	requestBrowserInvalidatePublicAssets :=
+		mergedBrowserActionIntent == phase1BrowserActionIntentInvalidate
+	requestBrowserRevalidate :=
+		mergedBrowserActionIntent == phase1BrowserActionIntentRevalidate
+	requestBrowserHardReload :=
+		mergedBrowserActionIntent == phase1BrowserActionIntentHardReload
+
+	if eventFacts.Mode == ModeProd {
+		requestBackendRestart = false
+		requestViteRestart = false
+		requestFrameworkRouteRefresh = false
+		requestFrameworkTemplateRefresh = false
+		requestFrameworkPublicFileMapRefresh = false
+		requestBrowserCSSHotReload = false
+		requestBrowserInvalidatePublicAssets = false
+		requestBrowserRevalidate = false
+		requestBrowserHardReload = false
+	}
 
 	phase1BuildGoals := Phase1BuildGoals{
 		RestartDevServerCycle:           eventFacts.ConfigChanged,
@@ -245,16 +258,19 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 		ProcessPrivateStaticAssets:      eventFacts.PrivateStaticChanged,
 		GeneratePublicFileMap:           eventFacts.PublicStaticChanged,
 
-		RequestBackendRestart:                eventFacts.GoSourceChanged || eventFacts.AppRequestedRestart,
-		RequestViteRestart:                   eventFacts.ConfigChanged,
-		RequestFrameworkRouteRefresh:         eventFacts.FrameworkRouteDefinitionChanged || eventFacts.AppRequestedFrameworkRefresh,
-		RequestFrameworkTemplateRefresh:      eventFacts.FrameworkTemplateChanged,
-		RequestFrameworkPublicFileMapRefresh: eventFacts.PublicStaticChanged,
+		RequestBackendRestart:                requestBackendRestart,
+		RequestViteRestart:                   requestViteRestart,
+		RequestFrameworkRouteRefresh:         requestFrameworkRouteRefresh,
+		RequestFrameworkTemplateRefresh:      requestFrameworkTemplateRefresh,
+		RequestFrameworkPublicFileMapRefresh: requestFrameworkPublicFileMapRefresh,
 
-		RequestBrowserCSSHotReload:           mergedBrowserActionIntent == phase1BrowserActionIntentCSSHotReload,
-		RequestBrowserInvalidatePublicAssets: mergedBrowserActionIntent == phase1BrowserActionIntentInvalidate,
-		RequestBrowserRevalidate:             mergedBrowserActionIntent == phase1BrowserActionIntentRevalidate,
-		RequestBrowserHardReload:             mergedBrowserActionIntent == phase1BrowserActionIntentHardReload,
+		RequestBrowserCSSHotReload:           requestBrowserCSSHotReload,
+		RequestBrowserInvalidatePublicAssets: requestBrowserInvalidatePublicAssets,
+		RequestBrowserRevalidate:             requestBrowserRevalidate,
+		RequestBrowserHardReload:             requestBrowserHardReload,
+	}
+	if eventFacts.Mode == ModeProd {
+		phase1BuildGoals.RestartDevServerCycle = false
 	}
 
 	phase1BuildGoals.ValidateBuildOutputs =
@@ -309,12 +325,9 @@ var Phase1NormalizeWatcherEventsTask = tasks.NewTask(
 			return EventsPhaseInput{}, normalizeError
 		}
 		return EventsPhaseInput{
-			Mode:         batchEnvelope.Mode,
-			GenerationID: batchEnvelope.GenerationID,
-			Events: append(
-				[]ObservedBatchEvent(nil),
-				input.Events.Events...,
-			),
+			Mode:                 batchEnvelope.Mode,
+			GenerationID:         batchEnvelope.GenerationID,
+			Events:               input.Events.Events,
 			AppRequestedOutcomes: input.Events.AppRequestedOutcomes,
 			WaitingForBuildRetry: input.Events.WaitingForBuildRetry,
 		}, nil
@@ -373,6 +386,7 @@ var Phase1DeriveEventFactsTask = tasks.NewTask(
 		}
 
 		eventFacts := Phase1EventFacts{
+			Mode: eventsPhaseFacts.Mode,
 			ConfigChanged: eventsPhaseFactsContainsType(
 				eventsPhaseFacts,
 				EventTypeConfigFileChanged,

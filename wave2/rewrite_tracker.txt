@@ -59,6 +59,7 @@ Task Context Contract
 - Task identity and output reuse are owned by `kit/tasks`; phase planners do not duplicate that logic.
 - Phase task input keys stay comparable for `kit/tasks` identity semantics.
 - Batch execution scope carries a required `PhaseEffectExecutor` for terminal side effects.
+- Events batch constructors keep execution scope explicit while minimizing invocation boilerplate.
 
 Framework Signal Contract
 - Framework signal vocabulary stays observable and transport-agnostic.
@@ -77,6 +78,7 @@ Checklist (Hardest First)
 - Keep planner output as terminal goals only (per phase).
 - Encode build-retry gating and browser action precedence as explicit planner policy.
 - Keep each phase planner backed by one pure reduction helper over prior-phase facts/goals.
+- Keep mode policy explicit at the runner boundary: `dev` runs all four phases; `prod` bypasses phases 1/3/4 and runs phase 2 only.
 
 3) Define final app-requested action reduction model
 - Preserve deterministic reduction when app-defined watch behavior requests outcomes that overlap or conflict with implicit file-driven outcomes.
@@ -92,12 +94,13 @@ Checklist (Hardest First)
 - Keep framework-owned translation and transport in `wavefw` or framework packages.
 - Preserve stale-guarded deferred runtime refresh behavior through stable generation/freshness identity fields.
 - Keep framework-signal reduction as a pure Wave2 reduction from backend-settling goals.
+- Keep framework signals emitted only for dev runs that execute backend/frontend settling phases.
 
 6) Keep phase contract names production-neutral
 - Keep phase contract symbols and comments free of temporary naming.
 
-7) Replace stub task bodies with real side effects incrementally
-- Keep task graph topology stable while replacing stubs.
+7) Replace placeholder task bodies with real side effects incrementally
+- Keep task graph topology stable while replacing placeholder bodies.
 - Preserve idempotent ensure-style task semantics.
 - Route terminal phase tasks through a single `PhaseEffectExecutor` contract keyed by explicit `PhaseEffectID` values.
 
