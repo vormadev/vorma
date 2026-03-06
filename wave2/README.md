@@ -64,7 +64,7 @@ cases.
 
 ## Effect Contract
 
-Every effect callback/task should follow this contract:
+Every effect task root should follow this contract:
 
 - **Ensure semantics**: "ensure X is true" instead of "do X step now"
 - **idempotent** under one execution context

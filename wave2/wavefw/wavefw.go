@@ -1,6 +1,6 @@
 // Package wavefw provides the framework-facing adapter API for Wave2.
 //
-// A framework adapter registers event rules and effect callbacks against one
+// A framework adapter registers event rules and effect task roots against one
 // Wave2 runtime without pushing framework-specific semantics into wave2 or
 // wavebuild.
 package wavefw
@@ -17,7 +17,7 @@ import (
 type Adapter struct {
 	Name            string
 	EventRules      []wavebuild.EventRule
-	EffectCallbacks []wavebuild.EffectCallbackRegistration
+	EffectTaskRoots []wavebuild.EffectTaskRootRegistration
 }
 
 // Register attaches one framework adapter to one Wave2 build engine.
@@ -38,13 +38,13 @@ func Register(engine *wavebuild.Engine, adapter Adapter) error {
 			registerRulesError,
 		)
 	}
-	if registerCallbacksError := engine.RegisterEffectCallbacks(
-		adapter.EffectCallbacks...,
-	); registerCallbacksError != nil {
+	if registerTaskRootsError := engine.RegisterEffectTaskRoots(
+		adapter.EffectTaskRoots...,
+	); registerTaskRootsError != nil {
 		return fmt.Errorf(
-			"wavefw: register effect callbacks for adapter %q: %w",
+			"wavefw: register effect task roots for adapter %q: %w",
 			adapterName,
-			registerCallbacksError,
+			registerTaskRootsError,
 		)
 	}
 	return nil

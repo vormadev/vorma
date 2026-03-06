@@ -31,9 +31,9 @@ Design Principles Locked In
 
 Status of the 5 Core Design Items
 1) Canonical terminal goal catalog
-- Status: PARTIAL
-- Exists: `GoalSpec` type with `Effect`, `Guarantee`, `AppliesTo`, `DependsOn`, `MutexGroup`.
-- Missing: canonical built-in catalog for Wave2 defaults.
+- Status: STRONG (baseline present)
+- Exists: canonical built-in catalog with explicit terminal effects, guarantees, mode applicability, and browser-action mutex grouping.
+- Remaining design target: keep catalog minimal and align event->goal mapping to the canonical set.
 
 2) Single batch fact pass
 - Status: STRONG (typed baseline present)
@@ -41,19 +41,19 @@ Status of the 5 Core Design Items
 - Remaining design target: keep only fields required by canonical goals and arbitration policy.
 
 3) Arbitration rules as data
-- Status: PARTIAL
-- Exists: `Arbiter` contract + `MutexGroup` on goals.
-- Missing: explicit arbitration rule table (precedence, implication, conflict resolution strategy).
+- Status: STRONG (baseline present)
+- Exists: canonical arbitration rule set with precedence domains, implication rules, exclusion rules, and deterministic tie-break policy.
+- Remaining design target: align planner goal emission with canonical arbiter assumptions.
 
 4) Task input identity model
 - Status: STRONG (contract level)
 - Exists: `GoalExecutionKey` comparable identity shape.
-- Missing: final key fields/signature decisions once execution/runtime context model is finalized.
+- Remaining design target: finalize generation-token sourcing policy for execution keys.
 
 5) Wave/framework boundary on signals
-- Status: PARTIAL
-- Exists: package boundaries now enforce no runtime->buildtime import.
-- Missing: explicit generic signal/event contract for Wave->framework communication.
+- Status: STRONG (baseline present)
+- Exists: explicit generic `FrameworkSignal` contract in planner/execution plan shape with transport-agnostic metadata.
+- Remaining design target: planner signal-emission policy and adapter translation defaults.
 
 Current Code Reality
 - `wave2/wavebuild/wavebuild.go` is intentionally contract-first.
@@ -62,37 +62,32 @@ Current Code Reality
   - Event classification
   - Planning
   - Arbitration
-  - Execution
+  - Task-root execution
+- It includes canonical goal, arbitration, and event-rule catalogs as data.
+- It includes a concrete `EventRulePlanner` for event-rule reduction into
+  deduplicated terminal goals and framework signals.
+- It includes a concrete `RuleSetArbiter` and `NewCanonicalRuleSetArbiter`
+  for data-driven rule application.
+- It includes a concrete `DefaultTaskRootExecutor` that runs deduplicated
+  terminal goal roots via `kit/tasks` in one execution context.
 - It deliberately returns `ErrNotImplemented` when core implementations are not attached.
 
 Hardest-First Next Checklist
-1) Define canonical `GoalCatalog` (hardest, highest leverage)
-- Enumerate default terminal goals.
-- Write one precise observable guarantee per goal.
-- Tag each goal `dev/prod/both`.
+1) Define framework adapter signal-translation defaults (hardest, highest leverage)
+- Map generic framework signals to adapter-specific runtime actions.
+- Keep translation policy outside Wave core.
 
-2) Define `ArbitrationRuleSet` as pure data
-- Mutual exclusion domains.
-- Precedence order per domain.
-- Implication rules (e.g., restart implies hard reload if applicable).
-- Deterministic tie-break policy.
-
-3) Define generic `FrameworkSignal` contract
-- Wave emits generic signal intents only.
-- Framework adapters map those signals to framework-specific mechanisms.
-- Keep signal payload minimal and stable.
-
-4) Define task-graph contract for execution
-- Map terminal goals to `Ensure*` task roots.
-- Define required task input key identity (`GoalExecutionKey` + minimal context).
-- Clarify what must stay planner-level vs task-level.
-
-5) Only after 1-4: implement minimal concrete default components
+2) Implement remaining concrete default components
 - `FactsCollector` implementation.
 - `EventClassifier` implementation.
-- `Planner` implementation.
-- `Arbiter` implementation.
-- `Executor` implementation that uses `kit/tasks`.
+- Canonical event-rule registrations for planner construction.
+
+3) Wire canonical defaults in engine construction
+- When planner/arbiter/executor are unset, attach canonical implementations.
+- When facts collector/classifier are unset, attach canonical implementations.
+
+4) Finalize execution-key generation-token policy
+- Define canonical generation-token source for `GoalExecutionKey`.
 
 Do Not Do
 - Do not re-introduce runtime->buildtime imports.
@@ -107,4 +102,4 @@ Handoff Start Point For Next Agent
   3. `wave2/wavebuild/wavebuild.go`
   4. `wave2/wave.go`
   5. `wave2/wavefw/wavefw.go`
-- Continue from checklist item #1 (typed `BatchFacts` schema).
+- Continue from checklist item #1 (framework adapter signal-translation defaults).
