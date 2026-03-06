@@ -95,10 +95,100 @@ type RawBatchInput struct {
 
 // BatchFacts is the single-pass parsed fact set used by planning.
 type BatchFacts struct {
-	ChangedPaths []string
-	Bool         map[string]bool
-	Text         map[string]string
-	Number       map[string]int
+	// ChangedPathsCWD stores normalized changed paths relative to the current
+	// working directory for one batch.
+	ChangedPathsCWD []string
+
+	// ChangeSummary captures batch-shape facts that affect planning decisions.
+	ChangeSummary BatchChangeSummaryFacts
+
+	// NoiseFacts captures watcher-noise and suppression-relevant facts.
+	NoiseFacts BatchNoiseFacts
+
+	// BuildFacts captures build-time implications inferred for this batch.
+	BuildFacts BatchBuildImplicationFacts
+
+	// RuntimeFacts captures process/runtime refresh implications.
+	RuntimeFacts BatchRuntimeImplicationFacts
+
+	// BrowserFacts captures browser-facing implications before arbitration.
+	BrowserFacts BatchBrowserImplicationFacts
+
+	// StaticFacts captures static asset and file map implications.
+	StaticFacts BatchStaticImplicationFacts
+
+	// HookFacts captures run-on-change and command-policy implications.
+	HookFacts BatchHookImplicationFacts
+}
+
+// BatchChangeSummaryFacts captures coarse batch shape used by planning policy.
+type BatchChangeSummaryFacts struct {
+	FilesChangedCount  int
+	HasMeaningfulWork  bool
+	HasSingleFileInput bool
+}
+
+// BatchNoiseFacts captures noise-oriented watcher facts.
+type BatchNoiseFacts struct {
+	HasLockFileNoise               bool
+	HasEditorTempNoise             bool
+	HasIgnoredPathNoise            bool
+	HasDirectoryMaintenanceNoise   bool
+	HasNonContentCHMODOnlyNoise    bool
+	HasEmptyFileCHMODContentSignal bool
+}
+
+// BatchBuildImplicationFacts captures build-time requirements inferred from one
+// batch.
+type BatchBuildImplicationFacts struct {
+	NeedsDevServerCycleRestart bool
+	NeedsGoCompile             bool
+	NeedsCriticalCSSBuild      bool
+	NeedsNormalCSSBuild        bool
+	NeedsPublicStaticProcess   bool
+	NeedsPrivateStaticProcess  bool
+	NeedsChangedPathStaticScan bool
+	NeedsFullStaticScan        bool
+}
+
+// BatchRuntimeImplicationFacts captures runtime-process and in-process refresh
+// implications for one batch.
+type BatchRuntimeImplicationFacts struct {
+	NeedsAppRestart                    bool
+	NeedsFrameworkRouteRefresh         bool
+	NeedsFrameworkTemplateRefresh      bool
+	NeedsFrameworkPublicFileMapRefresh bool
+	NeedsRuntimeRefreshStalenessGuard  bool
+	NeedsRetryWaitRestartRequest       bool
+	RetryWaitRestartRequiresGoCompile  bool
+}
+
+// BatchBrowserImplicationFacts captures candidate browser behavior prior to
+// precedence arbitration.
+type BatchBrowserImplicationFacts struct {
+	RequestsHardReload            bool
+	RequestsPublicAssetInvalidate bool
+	RequestsRevalidate            bool
+	RequestsCSSHotReload          bool
+	WaitForAppReady               bool
+	WaitForViteReady              bool
+	SuppressBrowserAction         bool
+}
+
+// BatchStaticImplicationFacts captures static-asset changed paths and public
+// file map implications.
+type BatchStaticImplicationFacts struct {
+	PublicStaticChangedPathsCWD  []string
+	PrivateStaticChangedPathsCWD []string
+	PublicFileMapMayHaveChanged  bool
+	PublicFileMapMayNeedRepair   bool
+}
+
+// BatchHookImplicationFacts captures hook-policy facts for one batch.
+type BatchHookImplicationFacts struct {
+	HasRunOnChangeOnlyWork           bool
+	HasRunOnChangeCommandSuppression bool
+	HasCallbackOnlyHookWork          bool
 }
 
 // PlannerInput is the canonical plan-input structure after facts and
@@ -554,10 +644,25 @@ func snapshotGoalSet(goalSpecByEffectID map[EffectID]GoalSpec) []GoalSpec {
 
 func cloneBatchFacts(facts BatchFacts) BatchFacts {
 	return BatchFacts{
-		ChangedPaths: append([]string(nil), facts.ChangedPaths...),
-		Bool:         cloneBoolMap(facts.Bool),
-		Text:         cloneStringMap(facts.Text),
-		Number:       cloneIntMap(facts.Number),
+		ChangedPathsCWD: append([]string(nil), facts.ChangedPathsCWD...),
+		ChangeSummary:   facts.ChangeSummary,
+		NoiseFacts:      facts.NoiseFacts,
+		BuildFacts:      facts.BuildFacts,
+		RuntimeFacts:    facts.RuntimeFacts,
+		BrowserFacts:    facts.BrowserFacts,
+		StaticFacts: BatchStaticImplicationFacts{
+			PublicStaticChangedPathsCWD: append(
+				[]string(nil),
+				facts.StaticFacts.PublicStaticChangedPathsCWD...,
+			),
+			PrivateStaticChangedPathsCWD: append(
+				[]string(nil),
+				facts.StaticFacts.PrivateStaticChangedPathsCWD...,
+			),
+			PublicFileMapMayHaveChanged: facts.StaticFacts.PublicFileMapMayHaveChanged,
+			PublicFileMapMayNeedRepair:  facts.StaticFacts.PublicFileMapMayNeedRepair,
+		},
+		HookFacts: facts.HookFacts,
 	}
 }
 
@@ -603,29 +708,11 @@ func cloneEffectCallbacks(
 	return cloned
 }
 
-func cloneBoolMap(input map[string]bool) map[string]bool {
-	if len(input) == 0 {
-		return nil
-	}
-	cloned := make(map[string]bool, len(input))
-	maps.Copy(cloned, input)
-	return cloned
-}
-
 func cloneStringMap(input map[string]string) map[string]string {
 	if len(input) == 0 {
 		return nil
 	}
 	cloned := make(map[string]string, len(input))
-	maps.Copy(cloned, input)
-	return cloned
-}
-
-func cloneIntMap(input map[string]int) map[string]int {
-	if len(input) == 0 {
-		return nil
-	}
-	cloned := make(map[string]int, len(input))
 	maps.Copy(cloned, input)
 	return cloned
 }

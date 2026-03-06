@@ -36,9 +36,9 @@ Status of the 5 Core Design Items
 - Missing: canonical built-in catalog for Wave2 defaults.
 
 2) Single batch fact pass
-- Status: PARTIAL-TO-STRONG (shape present)
-- Exists: `FactsCollector` + `BuildPlanFromRawInput` pipeline with one facts collection pass.
-- Missing: typed, explicit fact schema replacing generic map-heavy facts for critical policy inputs.
+- Status: STRONG (typed baseline present)
+- Exists: one-pass `FactsCollector` pipeline with typed `BatchFacts` and explicit implication groups for build/runtime/browser/static/hook planning.
+- Remaining design target: keep only fields required by canonical goals and arbitration policy.
 
 3) Arbitration rules as data
 - Status: PARTIAL
@@ -66,33 +66,28 @@ Current Code Reality
 - It deliberately returns `ErrNotImplemented` when core implementations are not attached.
 
 Hardest-First Next Checklist
-1) Define typed `BatchFacts` schema (hardest, highest leverage)
-- Replace generic maps for critical policy with explicit fields.
-- Include normalized CWD-relative path facts and noise/CHMOD semantics.
-- Include explicit booleans for browser/runtime/build implications.
-
-2) Define canonical `GoalCatalog`
+1) Define canonical `GoalCatalog` (hardest, highest leverage)
 - Enumerate default terminal goals.
 - Write one precise observable guarantee per goal.
 - Tag each goal `dev/prod/both`.
 
-3) Define `ArbitrationRuleSet` as pure data
+2) Define `ArbitrationRuleSet` as pure data
 - Mutual exclusion domains.
 - Precedence order per domain.
 - Implication rules (e.g., restart implies hard reload if applicable).
 - Deterministic tie-break policy.
 
-4) Define generic `FrameworkSignal` contract
+3) Define generic `FrameworkSignal` contract
 - Wave emits generic signal intents only.
 - Framework adapters map those signals to framework-specific mechanisms.
 - Keep signal payload minimal and stable.
 
-5) Define task-graph contract for execution
+4) Define task-graph contract for execution
 - Map terminal goals to `Ensure*` task roots.
 - Define required task input key identity (`GoalExecutionKey` + minimal context).
 - Clarify what must stay planner-level vs task-level.
 
-6) Only after 1-5: implement minimal concrete default components
+5) Only after 1-4: implement minimal concrete default components
 - `FactsCollector` implementation.
 - `EventClassifier` implementation.
 - `Planner` implementation.
