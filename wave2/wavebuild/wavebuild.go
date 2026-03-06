@@ -209,7 +209,7 @@ func BuildEventsPhaseFacts(input EventsPhaseInput) (EventsPhaseFacts, error) {
 		HasNoiseOnlyEvents:      hasNoiseOnlyEvents && !hasNoOpConfigMutation,
 		HasNoOpConfigMutation:   hasNoOpConfigMutation,
 		HasSemanticConfigChange: hasSemanticConfigChange,
-		AppRequestedOutcomes:    input.AppRequestedOutcomes,
+		AppRequestedOutcomes:    reduceAppRequestedOutcomes(input.AppRequestedOutcomes),
 		WaitingForBuildRetry:    input.WaitingForBuildRetry,
 	}, nil
 }
@@ -235,6 +235,50 @@ type FrameworkSignal struct {
 	Trigger string
 	// Metadata carries optional stable key/value context.
 	Metadata map[string]string
+}
+
+// FrameworkSignalsFromBackendSettlingGoals reduces backend-settling goals into
+// framework-agnostic signals for framework adapter handoff.
+func FrameworkSignalsFromBackendSettlingGoals(
+	generationID string,
+	backendGoals Phase2BackendSettlingGoals,
+) []FrameworkSignal {
+	freshnessToken := strings.TrimSpace(generationID)
+	if freshnessToken == "" {
+		return nil
+	}
+	signals := make([]FrameworkSignal, 0, 3)
+	if backendGoals.RefreshFrameworkRoute {
+		signals = append(
+			signals,
+			FrameworkSignal{
+				Type:           FrameworkSignalTypeRoutesChanged,
+				FreshnessToken: freshnessToken,
+				Trigger:        "backend_settling_refresh_framework_route",
+			},
+		)
+	}
+	if backendGoals.RefreshFrameworkTemplate {
+		signals = append(
+			signals,
+			FrameworkSignal{
+				Type:           FrameworkSignalTypeTemplateChanged,
+				FreshnessToken: freshnessToken,
+				Trigger:        "backend_settling_refresh_framework_template",
+			},
+		)
+	}
+	if backendGoals.RefreshFrameworkPublicFileMap {
+		signals = append(
+			signals,
+			FrameworkSignal{
+				Type:           FrameworkSignalTypePublicFileMapChanged,
+				FreshnessToken: freshnessToken,
+				Trigger:        "backend_settling_refresh_framework_public_filemap",
+			},
+		)
+	}
+	return signals
 }
 
 // EventsPhaseRunner executes phase 1 (events) and returns phase-2 build goals.
@@ -431,6 +475,10 @@ func (runner *FourPhaseRunner) Run(
 	if phase2Error != nil {
 		return FourPhaseRunResult{}, phase2Error
 	}
+	frameworkSignals := FrameworkSignalsFromBackendSettlingGoals(
+		phaseBatchInput.GenerationID,
+		phase2BackendGoals,
+	)
 
 	phase3FrontendGoals, phase3Error :=
 		runner.backendSettlingPhaseRunner.RunBackendSettlingPhase(
@@ -461,6 +509,7 @@ func (runner *FourPhaseRunner) Run(
 		Phase2BackendGoals:      phase2BackendGoals,
 		Phase3FrontendGoals:     phase3FrontendGoals,
 		Phase4CompletionSummary: phase4CompletionSummary,
+		FrameworkSignals:        frameworkSignals,
 		OrderedTaskNames:        phaseBatchInput.Trace.SnapshotOrderedTaskNames(),
 	}, nil
 }
@@ -522,4 +571,19 @@ func isSupportedEventType(eventType EventType) bool {
 	default:
 		return false
 	}
+}
+
+func reduceAppRequestedOutcomes(
+	rawOutcomes AppRequestedOutcomes,
+) AppRequestedOutcomes {
+	reducedOutcomes := rawOutcomes
+	if reducedOutcomes.RequestBrowserHardReload {
+		reducedOutcomes.RequestBrowserInvalidate = false
+		reducedOutcomes.RequestBrowserRevalidate = false
+		return reducedOutcomes
+	}
+	if reducedOutcomes.RequestBrowserInvalidate {
+		reducedOutcomes.RequestBrowserRevalidate = false
+	}
+	return reducedOutcomes
 }

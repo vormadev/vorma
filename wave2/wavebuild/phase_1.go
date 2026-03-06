@@ -79,15 +79,16 @@ type Phase1EventFacts struct {
 
 // Phase1BuildGoals are phase-2 build goals plus carry-forward settle intents.
 type Phase1BuildGoals struct {
-	RestartDevServerCycle      bool
-	CompileGoBinary            bool
-	BuildCriticalCSS           bool
-	BuildNormalCSS             bool
-	ProcessPublicStaticAssets  bool
-	ProcessPrivateStaticAssets bool
-	GeneratePublicFileMap      bool
-	ValidateBuildOutputs       bool
-	QueueRetryWaitRestart      bool
+	RestartDevServerCycle           bool
+	CompileGoBinary                 bool
+	BuildCriticalCSS                bool
+	BuildNormalCSS                  bool
+	ProcessPublicStaticAssets       bool
+	CleanupStalePublicStaticOutputs bool
+	ProcessPrivateStaticAssets      bool
+	GeneratePublicFileMap           bool
+	ValidateBuildOutputs            bool
+	QueueRetryWaitRestart           bool
 
 	RequestBackendRestart                bool
 	RequestViteRestart                   bool
@@ -130,21 +131,117 @@ func eventsPhaseFactsContainsType(
 	return false
 }
 
+type phase1BrowserActionIntent string
+
+const (
+	phase1BrowserActionIntentNone         phase1BrowserActionIntent = "none"
+	phase1BrowserActionIntentCSSHotReload phase1BrowserActionIntent = "css_hot_reload"
+	phase1BrowserActionIntentRevalidate   phase1BrowserActionIntent = "revalidate"
+	phase1BrowserActionIntentInvalidate   phase1BrowserActionIntent = "invalidate"
+	phase1BrowserActionIntentHardReload   phase1BrowserActionIntent = "hard_reload"
+)
+
+func browserActionIntentPriority(
+	actionIntent phase1BrowserActionIntent,
+) int {
+	switch actionIntent {
+	case phase1BrowserActionIntentHardReload:
+		return 4
+	case phase1BrowserActionIntentInvalidate:
+		return 3
+	case phase1BrowserActionIntentRevalidate:
+		return 2
+	case phase1BrowserActionIntentCSSHotReload:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func dominantBrowserActionIntent(
+	leftActionIntent phase1BrowserActionIntent,
+	rightActionIntent phase1BrowserActionIntent,
+) phase1BrowserActionIntent {
+	if browserActionIntentPriority(rightActionIntent) >
+		browserActionIntentPriority(leftActionIntent) {
+		return rightActionIntent
+	}
+	return leftActionIntent
+}
+
+func deriveImplicitBrowserActionIntent(
+	eventFacts Phase1EventFacts,
+) phase1BrowserActionIntent {
+	actionIntent := phase1BrowserActionIntentNone
+	if eventFacts.CriticalCSSChanged || eventFacts.NormalCSSChanged {
+		actionIntent = dominantBrowserActionIntent(
+			actionIntent,
+			phase1BrowserActionIntentCSSHotReload,
+		)
+	}
+	if eventFacts.PublicStaticChanged {
+		actionIntent = dominantBrowserActionIntent(
+			actionIntent,
+			phase1BrowserActionIntentInvalidate,
+		)
+	}
+	if eventFacts.GoSourceChanged ||
+		eventFacts.PrivateStaticChanged ||
+		eventFacts.FrameworkRouteDefinitionChanged ||
+		eventFacts.FrameworkTemplateChanged {
+		actionIntent = dominantBrowserActionIntent(
+			actionIntent,
+			phase1BrowserActionIntentHardReload,
+		)
+	}
+	return actionIntent
+}
+
+func deriveAppRequestedBrowserActionIntent(
+	eventFacts Phase1EventFacts,
+) phase1BrowserActionIntent {
+	actionIntent := phase1BrowserActionIntentNone
+	if eventFacts.AppRequestedBrowserRevalidate {
+		actionIntent = dominantBrowserActionIntent(
+			actionIntent,
+			phase1BrowserActionIntentRevalidate,
+		)
+	}
+	if eventFacts.AppRequestedBrowserInvalidate {
+		actionIntent = dominantBrowserActionIntent(
+			actionIntent,
+			phase1BrowserActionIntentInvalidate,
+		)
+	}
+	if eventFacts.AppRequestedBrowserHardReload {
+		actionIntent = dominantBrowserActionIntent(
+			actionIntent,
+			phase1BrowserActionIntentHardReload,
+		)
+	}
+	return actionIntent
+}
+
 func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 	if eventFacts.WaitingForBuildRetry {
 		return Phase1BuildGoals{
 			QueueRetryWaitRestart: true,
 		}
 	}
+	mergedBrowserActionIntent := dominantBrowserActionIntent(
+		deriveImplicitBrowserActionIntent(eventFacts),
+		deriveAppRequestedBrowserActionIntent(eventFacts),
+	)
 
 	phase1BuildGoals := Phase1BuildGoals{
-		RestartDevServerCycle:      eventFacts.ConfigChanged,
-		CompileGoBinary:            eventFacts.GoSourceChanged || eventFacts.AppRequestedGoCompile,
-		BuildCriticalCSS:           eventFacts.CriticalCSSChanged,
-		BuildNormalCSS:             eventFacts.NormalCSSChanged,
-		ProcessPublicStaticAssets:  eventFacts.PublicStaticChanged,
-		ProcessPrivateStaticAssets: eventFacts.PrivateStaticChanged,
-		GeneratePublicFileMap:      eventFacts.PublicStaticChanged,
+		RestartDevServerCycle:           eventFacts.ConfigChanged,
+		CompileGoBinary:                 eventFacts.GoSourceChanged || eventFacts.AppRequestedGoCompile,
+		BuildCriticalCSS:                eventFacts.CriticalCSSChanged,
+		BuildNormalCSS:                  eventFacts.NormalCSSChanged,
+		ProcessPublicStaticAssets:       eventFacts.PublicStaticChanged,
+		CleanupStalePublicStaticOutputs: eventFacts.PublicStaticChanged,
+		ProcessPrivateStaticAssets:      eventFacts.PrivateStaticChanged,
+		GeneratePublicFileMap:           eventFacts.PublicStaticChanged,
 
 		RequestBackendRestart:                eventFacts.GoSourceChanged || eventFacts.AppRequestedRestart,
 		RequestViteRestart:                   eventFacts.ConfigChanged,
@@ -152,10 +249,10 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 		RequestFrameworkTemplateRefresh:      eventFacts.FrameworkTemplateChanged,
 		RequestFrameworkPublicFileMapRefresh: eventFacts.PublicStaticChanged,
 
-		RequestBrowserCSSHotReload:           eventFacts.CriticalCSSChanged || eventFacts.NormalCSSChanged,
-		RequestBrowserInvalidatePublicAssets: eventFacts.PublicStaticChanged || eventFacts.AppRequestedBrowserInvalidate,
-		RequestBrowserRevalidate:             eventFacts.AppRequestedBrowserRevalidate,
-		RequestBrowserHardReload:             eventFacts.GoSourceChanged || eventFacts.PrivateStaticChanged || eventFacts.FrameworkRouteDefinitionChanged || eventFacts.FrameworkTemplateChanged || eventFacts.AppRequestedBrowserHardReload,
+		RequestBrowserCSSHotReload:           mergedBrowserActionIntent == phase1BrowserActionIntentCSSHotReload,
+		RequestBrowserInvalidatePublicAssets: mergedBrowserActionIntent == phase1BrowserActionIntentInvalidate,
+		RequestBrowserRevalidate:             mergedBrowserActionIntent == phase1BrowserActionIntentRevalidate,
+		RequestBrowserHardReload:             mergedBrowserActionIntent == phase1BrowserActionIntentHardReload,
 	}
 
 	phase1BuildGoals.ValidateBuildOutputs =
@@ -163,6 +260,7 @@ func reducePhase1BuildGoals(eventFacts Phase1EventFacts) Phase1BuildGoals {
 			phase1BuildGoals.BuildCriticalCSS ||
 			phase1BuildGoals.BuildNormalCSS ||
 			phase1BuildGoals.ProcessPublicStaticAssets ||
+			phase1BuildGoals.CleanupStalePublicStaticOutputs ||
 			phase1BuildGoals.ProcessPrivateStaticAssets ||
 			phase1BuildGoals.GeneratePublicFileMap
 

@@ -39,6 +39,7 @@ type FourPhaseRunResult struct {
 	Phase2BackendGoals      Phase2BackendSettlingGoals
 	Phase3FrontendGoals     Phase3FrontendSettlingGoals
 	Phase4CompletionSummary Phase4CompletionSummary
+	FrameworkSignals        []FrameworkSignal
 	OrderedTaskNames        []string
 }
 

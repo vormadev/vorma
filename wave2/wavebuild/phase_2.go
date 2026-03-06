@@ -265,6 +265,31 @@ var Phase2ProcessPublicStaticAssetsTask = tasks.NewTask(
 	},
 )
 
+// Phase2CleanupStalePublicStaticOutputsTask stubs stale public-static cleanup.
+var Phase2CleanupStalePublicStaticOutputsTask = tasks.NewTask(
+	func(
+		taskContext *tasks.Ctx,
+		input Phase2BatchInput,
+	) (struct{}, error) {
+		recordPhase2TaskExecution(input, "phase_2.cleanup_stale_public_static_outputs")
+		_, staticPipelineError := Phase2EnsureStaticPipelineReadyTask.Run(
+			taskContext,
+			input,
+		)
+		if staticPipelineError != nil {
+			return struct{}{}, staticPipelineError
+		}
+		_, outputDirectoryError := Phase2EnsureBuildOutputDirectoriesReadyTask.Run(
+			taskContext,
+			input,
+		)
+		if outputDirectoryError != nil {
+			return struct{}{}, outputDirectoryError
+		}
+		return struct{}{}, nil
+	},
+)
+
 // Phase2ProcessPrivateStaticAssetsTask stubs private static processing.
 var Phase2ProcessPrivateStaticAssetsTask = tasks.NewTask(
 	func(
@@ -311,6 +336,13 @@ var Phase2GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		if publicStaticProcessingError != nil {
 			return struct{}{}, publicStaticProcessingError
 		}
+		_, staleCleanupError := Phase2CleanupStalePublicStaticOutputsTask.Run(
+			taskContext,
+			input,
+		)
+		if staleCleanupError != nil {
+			return struct{}{}, staleCleanupError
+		}
 		return struct{}{}, nil
 	},
 )
@@ -328,7 +360,7 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 		}
 
 		var ignoredResult struct{}
-		boundBuildTasks := make([]tasks.BoundTask, 0, 7)
+		boundBuildTasks := make([]tasks.BoundTask, 0, 8)
 		if input.BuildGoals.CompileGoBinary {
 			boundBuildTasks = append(
 				boundBuildTasks,
@@ -351,6 +383,12 @@ var Phase2ValidateBuildOutputsTask = tasks.NewTask(
 			boundBuildTasks = append(
 				boundBuildTasks,
 				Phase2ProcessPublicStaticAssetsTask.Bind(input, &ignoredResult),
+			)
+		}
+		if input.BuildGoals.CleanupStalePublicStaticOutputs {
+			boundBuildTasks = append(
+				boundBuildTasks,
+				Phase2CleanupStalePublicStaticOutputsTask.Bind(input, &ignoredResult),
 			)
 		}
 		if input.BuildGoals.ProcessPrivateStaticAssets {
@@ -388,7 +426,7 @@ func reducePhase2BackendSettlingGoals(
 		RestartViteProcess:             buildGoals.RequestViteRestart,
 		RefreshFrameworkRoute:          buildGoals.RequestFrameworkRouteRefresh,
 		RefreshFrameworkTemplate:       buildGoals.RequestFrameworkTemplateRefresh,
-		RefreshFrameworkPublicFileMap:  buildGoals.RequestFrameworkPublicFileMapRefresh || buildGoals.GeneratePublicFileMap,
+		RefreshFrameworkPublicFileMap:  buildGoals.RequestFrameworkPublicFileMapRefresh || buildGoals.GeneratePublicFileMap || buildGoals.CleanupStalePublicStaticOutputs,
 		RequestBrowserCSSHotReload:     buildGoals.RequestBrowserCSSHotReload,
 		RequestBrowserInvalidateAssets: buildGoals.RequestBrowserInvalidatePublicAssets,
 		RequestBrowserRevalidate:       buildGoals.RequestBrowserRevalidate,
@@ -468,6 +506,17 @@ var Phase2RootProcessPublicStaticAssetsTask = tasks.NewTask(
 	},
 )
 
+// Phase2RootCleanupStalePublicStaticOutputsTask is a terminal stale-public-static cleanup root.
+var Phase2RootCleanupStalePublicStaticOutputsTask = tasks.NewTask(
+	func(
+		taskContext *tasks.Ctx,
+		input Phase2BatchInput,
+	) (struct{}, error) {
+		recordPhase2TaskExecution(input, "phase_2.root_cleanup_stale_public_static_outputs")
+		return Phase2CleanupStalePublicStaticOutputsTask.Run(taskContext, input)
+	},
+)
+
 // Phase2RootProcessPrivateStaticAssetsTask is a terminal private-static root.
 var Phase2RootProcessPrivateStaticAssetsTask = tasks.NewTask(
 	func(
@@ -507,7 +556,7 @@ func RunPhase2TaskGraph(
 	input Phase2BatchInput,
 ) (Phase2BackendSettlingGoals, error) {
 	var ignoredResult struct{}
-	terminalBuildRoots := make([]tasks.BoundTask, 0, 8)
+	terminalBuildRoots := make([]tasks.BoundTask, 0, 9)
 
 	if input.BuildGoals.CompileGoBinary {
 		terminalBuildRoots = append(
@@ -531,6 +580,12 @@ func RunPhase2TaskGraph(
 		terminalBuildRoots = append(
 			terminalBuildRoots,
 			Phase2RootProcessPublicStaticAssetsTask.Bind(input, &ignoredResult),
+		)
+	}
+	if input.BuildGoals.CleanupStalePublicStaticOutputs {
+		terminalBuildRoots = append(
+			terminalBuildRoots,
+			Phase2RootCleanupStalePublicStaticOutputsTask.Bind(input, &ignoredResult),
 		)
 	}
 	if input.BuildGoals.ProcessPrivateStaticAssets {

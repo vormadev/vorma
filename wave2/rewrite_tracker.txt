@@ -79,15 +79,18 @@ Checklist (Hardest First)
 
 3) Define final app-requested action reduction model
 - Preserve deterministic reduction when app-defined watch behavior requests outcomes that overlap or conflict with implicit file-driven outcomes.
+- Keep app-requested browser intents reduced canonically and merged with implicit browser intents through one explicit precedence policy.
 
 4) Define final static-processing policy
 - Preserve canonical public-filemap correctness and stale-output cleanup.
 - Preserve minimal-work execution decisions while keeping output correctness unchanged.
+- Keep stale-public-static cleanup and public-filemap regeneration as explicit, separate build goals.
 
 5) Define final framework-facing phase boundaries
 - Keep Wave2 phase outputs framework-agnostic.
 - Keep framework-owned translation and transport in `wavefw` or framework packages.
 - Preserve stale-guarded deferred runtime refresh behavior through stable generation/freshness identity fields.
+- Keep framework-signal reduction as a pure Wave2 reduction from backend-settling goals.
 
 6) Keep phase contract names production-neutral
 - Keep phase contract symbols and comments free of temporary naming.
