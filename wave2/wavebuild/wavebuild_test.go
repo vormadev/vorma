@@ -6,72 +6,75 @@ import (
 	"testing"
 )
 
-type pipelineEffectMatrixTestCase struct {
-	name                                        string
-	mode                                        mode
-	waitingForBuildRetry                        bool
-	events                                      []observedBatchEvent
-	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
-	appRequestedOutcomes                        appRequestedOutcomes
-	expectedEffectLabels                        []string
+type pipeline_effect_matrix_test_case struct {
+	name                                       string
+	mode                                       mode
+	waiting_for_build_retry                    bool
+	events                                     []observed_batch_event
+	wave_public_file_map_notif_destination_key fw_notif_destination_key
+	app_requested_outcomes                     app_requested_outcomes
+	expected_effect_labels                     []string
 }
 
-func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
-	t.Setenv(waveInternalTestModeEnvVar, "1")
+func Test_run_five_phase_pipeline_explicit_effect_matrix(t *testing.T) {
+	t.Setenv(wave_internal_test_mode_env_var, "1")
 
-	testCases := []pipelineEffectMatrixTestCase{
+	test_cases := []pipeline_effect_matrix_test_case{
 		{
-			name: "dev_noise_only_batch_produces_no_reload_notice",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeIgnoredOrNoiseChanged, noiseOnly: true},
-			},
-			expectedEffectLabels: []string{
-				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
-			},
-		},
-		{
-			name: "dev_noop_config_mutation_produces_no_reload_notice",
-			mode: modeDev,
-			events: []observedBatchEvent{
+			name: "dev-noise-only-batch-produces-no-reload-notice",
+			mode: mode_dev,
+			events: []observed_batch_event{
 				{
-					eventType:          eventTypeConfigFileChanged,
-					noOpConfigMutation: true,
+					event_type: event_type_ignored_or_noise_changed,
+					noise_only: true,
 				},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
 			},
 		},
 		{
-			name: "dev_critical_css_change_builds_critical_css_and_css_hot_reload",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeCriticalCSSSourceChanged},
+			name: "dev-noop-config-mutation-produces-no-reload-notice",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{
+					event_type:            event_type_config_file_changed,
+					no_op_config_mutation: true,
+				},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
+				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
+			},
+		},
+		{
+			name: "dev-critical-css-change-builds-critical-css-and-css-hot-reload",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_critical_css_source_changed},
+			},
+			expected_effect_labels: []string{
 				_LABEL_P2_BUILD_CRITICAL_CSS,
 				_LABEL_P5_BROADCAST_CSS_HOT_RELOAD,
 			},
 		},
 		{
-			name: "dev_normal_css_change_builds_normal_css_and_css_hot_reload",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeNormalCSSSourceChanged},
+			name: "dev-normal-css-change-builds-normal-css-and-css-hot-reload",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_normal_css_source_changed},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_BUILD_NORMAL_CSS,
 				_LABEL_P5_BROADCAST_CSS_HOT_RELOAD,
 			},
 		},
 		{
-			name: "dev_go_source_change_builds_binary_restarts_app_and_hard_reloads",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeGoSourceChanged},
+			name: "dev-go-source-change-builds-binary-restarts-app-and-hard-reloads",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_go_source_changed},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_BUILD_GO_BINARY,
 				_LABEL_P3_RESTART_APP_PROCESS,
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
@@ -79,84 +82,84 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "dev_public_static_change_processes_assets_emits_fw_notification_and_notifies_vite",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypePublicStaticAssetChanged},
+			name: "dev-public-static-change-processes-assets-emits-fw-notif-and-notifies-vite",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_public_static_asset_changed},
 			},
-			wavePublicFileMapNotificationDestinationKey: fwNotificationDestinationKey(
-				"fw.public_filemap_reload",
+			wave_public_file_map_notif_destination_key: fw_notif_destination_key(
+				"fw.public-filemap-reload",
 			),
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
 				_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
-				_LABEL_P4_EXECUTE_FW_NOTIFICATION + "[fw.public_filemap_reload]",
+				_LABEL_P4_EXECUTE_Fw_NOTIFICATION + "[fw.public-filemap-reload]",
 				_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED,
 			},
 		},
 		{
-			name: "dev_private_static_change_processes_private_assets_and_hard_reloads",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypePrivateStaticAssetChanged},
+			name: "dev-private-static-change-processes-private-assets-and-hard-reloads",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_private_static_asset_changed},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS,
 				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
 		},
 		{
-			name: "dev_fw_requested_backend_mutation_effect_executes_and_hard_reloads",
-			mode: modeDev,
-			events: []observedBatchEvent{
+			name: "dev-fw-requested-backend-mutation-effect-executes-and-hard-reloads",
+			mode: mode_dev,
+			events: []observed_batch_event{
 				{
-					eventType: eventTypeFWRequestedEffectsChanged,
-					fwRequestedEffects: fwRequestedEffects{
-						backendMutationEffectKeys: []fwMutationEffectKey{
-							"fw.reload_routes",
+					event_type: fw_event_type_requested_effects_changed,
+					fw_requested_effects: fw_requested_effects{
+						backend_mutation_effect_keys: []fw_mutation_effect_key{
+							"fw.reload-routes",
 						},
 					},
 				},
 			},
-			appRequestedOutcomes: appRequestedOutcomes{
-				requestedTerminalBrowserAction: frontendTerminalBrowserActionHardReload,
+			app_requested_outcomes: app_requested_outcomes{
+				requested_terminal_browser_action: frontend_terminal_browser_action_hard_reload,
 			},
-			expectedEffectLabels: []string{
-				_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT + "[fw.reload_routes]",
+			expected_effect_labels: []string{
+				_LABEL_P3_EXECUTE_Fw_MUTATION_EFFECT + "[fw.reload-routes]",
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
 		},
 		{
-			name: "dev_fw_requested_notification_executes_and_allows_no_reload_terminal_action",
-			mode: modeDev,
-			events: []observedBatchEvent{
+			name: "dev-fw-requested-notif-executes-and-allows-no-reload-terminal-action",
+			mode: mode_dev,
+			events: []observed_batch_event{
 				{
-					eventType: eventTypeFWRequestedEffectsChanged,
-					fwRequestedEffects: fwRequestedEffects{
-						backendConvergenceNotificationQueue: []fwNotificationRequest{
+					event_type: fw_event_type_requested_effects_changed,
+					fw_requested_effects: fw_requested_effects{
+						backend_convergence_notif_queue: []fw_notif_request{
 							{
-								destinationKey: "fw.runtime_notify",
-								trigger:        "fw_watch_change",
+								destination_key: "fw.runtime-notify",
+								trigger:         "fw-watch-change",
 							},
 						},
 					},
 				},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
-				_LABEL_P4_EXECUTE_FW_NOTIFICATION + "[fw.runtime_notify]",
+				_LABEL_P4_EXECUTE_Fw_NOTIFICATION + "[fw.runtime-notify]",
 				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
 			},
 		},
 		{
-			name: "dev_config_change_restarts_dev_server_cycle_and_vite_then_hard_reloads",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeConfigFileChanged},
+			name: "dev-config-change-restarts-dev-server-cycle-and-vite-then-hard-reloads",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_config_file_changed},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P3_APPLY_DEV_SERVER_RESTART,
 				_LABEL_P3_RESTART_VITE_PROCESS,
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
@@ -164,59 +167,59 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "dev_app_action_only_revalidate_requests_revalidate_without_build_or_backend_settling",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeAppDefinedWatchActionOnlyChanged},
+			name: "dev-app-action-only-revalidate-requests-revalidate-without-build-or-backend-settling",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_app_defined_watch_action_only_changed},
 			},
-			appRequestedOutcomes: appRequestedOutcomes{
-				requestedTerminalBrowserAction: frontendTerminalBrowserActionRevalidate,
+			app_requested_outcomes: app_requested_outcomes{
+				requested_terminal_browser_action: frontend_terminal_browser_action_revalidate,
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P5_BROADCAST_REVALIDATE,
 			},
 		},
 		{
-			name: "dev_app_action_only_fw_effect_request_executes_and_hard_reloads",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeAppDefinedWatchActionOnlyChanged},
+			name: "dev-app-action-only-fw-effect-request-executes-and-hard-reloads",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_app_defined_watch_action_only_changed},
 			},
-			appRequestedOutcomes: appRequestedOutcomes{
-				requestedTerminalBrowserAction: frontendTerminalBrowserActionHardReload,
-				fwRequestedEffects: fwRequestedEffects{
-					backendMutationEffectKeys: []fwMutationEffectKey{
-						"fw.refresh_runtime_cache",
+			app_requested_outcomes: app_requested_outcomes{
+				requested_terminal_browser_action: frontend_terminal_browser_action_hard_reload,
+				fw_requested_effects: fw_requested_effects{
+					backend_mutation_effect_keys: []fw_mutation_effect_key{
+						"fw.refresh-runtime-cache",
 					},
 				},
 			},
-			expectedEffectLabels: []string{
-				_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT + "[fw.refresh_runtime_cache]",
+			expected_effect_labels: []string{
+				_LABEL_P3_EXECUTE_Fw_MUTATION_EFFECT + "[fw.refresh-runtime-cache]",
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
 		},
 		{
-			name:                 "dev_waiting_for_build_retry_queues_retry_wait_restart_and_skips_reload",
-			mode:                 modeDev,
-			waitingForBuildRetry: true,
-			events: []observedBatchEvent{
-				{eventType: eventTypeGoSourceChanged},
+			name:                    "dev-waiting-for-build-retry-queues-retry-wait-restart-and-skips-reload",
+			mode:                    mode_dev,
+			waiting_for_build_retry: true,
+			events: []observed_batch_event{
+				{event_type: event_type_go_source_changed},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P3_QUEUE_RETRY_WAIT_RESTART,
 				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
 			},
 		},
 		{
-			name: "dev_mixed_go_css_and_public_static_runs_deduped_build_and_hard_reload",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeGoSourceChanged},
-				{eventType: eventTypeNormalCSSSourceChanged},
-				{eventType: eventTypePublicStaticAssetChanged},
+			name: "dev-mixed-go-css-and-public-static-runs-deduped-build-and-hard-reload",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_go_source_changed},
+				{event_type: event_type_normal_css_source_changed},
+				{event_type: event_type_public_static_asset_changed},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_BUILD_GO_BINARY,
 				_LABEL_P2_BUILD_NORMAL_CSS,
 				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
@@ -227,33 +230,36 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "dev_app_requested_outcomes_are_ignored_without_app_defined_event",
-			mode: modeDev,
-			events: []observedBatchEvent{
-				{eventType: eventTypeNormalCSSSourceChanged},
+			name: "dev-app-requested-outcomes-are-ignored-without-app-defined-event",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_normal_css_source_changed},
 			},
-			appRequestedOutcomes: appRequestedOutcomes{
-				requestedTerminalBrowserAction: frontendTerminalBrowserActionHardReload,
-				requestRestart:                 true,
-				requestGoCompile:               true,
-				fwRequestedEffects: fwRequestedEffects{
-					backendMutationEffectKeys: []fwMutationEffectKey{
-						"fw.unused_without_app_defined_event",
+			app_requested_outcomes: app_requested_outcomes{
+				requested_terminal_browser_action: frontend_terminal_browser_action_hard_reload,
+				request_restart:                   true,
+				request_go_compile:                true,
+				fw_requested_effects: fw_requested_effects{
+					backend_mutation_effect_keys: []fw_mutation_effect_key{
+						"fw.unused-without-app-defined-event",
 					},
 				},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_BUILD_NORMAL_CSS,
 				_LABEL_P5_BROADCAST_CSS_HOT_RELOAD,
 			},
 		},
 		{
-			name: "prod_runs_build_only_with_canonical_build_effects",
-			mode: modeProd,
-			events: []observedBatchEvent{
-				{eventType: eventTypeIgnoredOrNoiseChanged, noiseOnly: true},
+			name: "prod-runs-build-only-with-canonical-build-effects",
+			mode: mode_prod,
+			events: []observed_batch_event{
+				{
+					event_type: event_type_ignored_or_noise_changed,
+					noise_only: true,
+				},
 			},
-			expectedEffectLabels: []string{
+			expected_effect_labels: []string{
 				_LABEL_P2_BUILD_GO_BINARY,
 				_LABEL_P2_BUILD_CRITICAL_CSS,
 				_LABEL_P2_BUILD_NORMAL_CSS,
@@ -264,74 +270,74 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 		},
 	}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			recordedEffectLabels := runPipelineAndRecordEffectLabels(
+	for _, test_case := range test_cases {
+		t.Run(test_case.name, func(t *testing.T) {
+			recorded_effect_labels := run_pipeline_and_record_effect_labels(
 				t,
-				testCase,
+				test_case,
 			)
-			assertUnorderedEffectLabels(
+			assert_unordered_effect_labels(
 				t,
-				recordedEffectLabels,
-				testCase.expectedEffectLabels,
+				recorded_effect_labels,
+				test_case.expected_effect_labels,
 			)
 		})
 	}
 }
 
-func runPipelineAndRecordEffectLabels(
+func run_pipeline_and_record_effect_labels(
 	t *testing.T,
-	testCase pipelineEffectMatrixTestCase,
+	test_case pipeline_effect_matrix_test_case,
 ) []string {
 	t.Helper()
 
-	effectRecorder := &testEffectRecorder{}
-	nativeContextWithRecorder := withTestEffectRecorder(
+	effect_recorder := &test_effect_recorder{}
+	native_context_with_recorder := with_test_effect_recorder(
 		context.Background(),
-		effectRecorder,
+		effect_recorder,
 	)
-	_, runError := runFivePhasePipeline(
-		nativeContextWithRecorder,
-		p1_BatchInput{
-			p1: &p1_Input{
-				mode:         testCase.mode,
-				generationID: "test_generation",
-				events:       testCase.events,
-				wavePublicFileMapNotificationDestinationKey: testCase.
-					wavePublicFileMapNotificationDestinationKey,
-				appRequestedOutcomes: testCase.appRequestedOutcomes,
-				waitingForBuildRetry: testCase.waitingForBuildRetry,
+	_, err := run_five_phase_pipeline(
+		native_context_with_recorder,
+		p1_batch_input{
+			p1: &p1_input{
+				mode:          test_case.mode,
+				generation_id: "test-generation",
+				events:        test_case.events,
+				wave_public_file_map_notif_destination_key: test_case.
+					wave_public_file_map_notif_destination_key,
+				app_requested_outcomes:  test_case.app_requested_outcomes,
+				waiting_for_build_retry: test_case.waiting_for_build_retry,
 			},
 		},
 	)
-	if runError != nil {
-		t.Fatalf("runFivePhasePipeline returned error: %v", runError)
+	if err != nil {
+		t.Fatalf("runFivePhasePipeline returned error: %v", err)
 	}
-	return effectRecorder.snapshotEffectLabels()
+	return effect_recorder.snapshot_effect_labels()
 }
 
-func assertUnorderedEffectLabels(
+func assert_unordered_effect_labels(
 	t *testing.T,
-	recordedEffectLabels []string,
-	expectedEffectLabels []string,
+	recorded_effect_labels []string,
+	expected_effect_labels []string,
 ) {
 	t.Helper()
 	if !reflect.DeepEqual(
-		countEffectLabels(recordedEffectLabels),
-		countEffectLabels(expectedEffectLabels),
+		count_effect_labels(recorded_effect_labels),
+		count_effect_labels(expected_effect_labels),
 	) {
 		t.Fatalf(
 			"effect labels mismatch\nrecorded=%v\nexpected=%v",
-			recordedEffectLabels,
-			expectedEffectLabels,
+			recorded_effect_labels,
+			expected_effect_labels,
 		)
 	}
 }
 
-func countEffectLabels(labels []string) map[string]int {
-	labelCounts := make(map[string]int, len(labels))
+func count_effect_labels(labels []string) map[string]int {
+	label_counts := make(map[string]int, len(labels))
 	for _, label := range labels {
-		labelCounts[label]++
+		label_counts[label]++
 	}
-	return labelCounts
+	return label_counts
 }

@@ -63,7 +63,7 @@ func TranslateFrameworkNotifications(
 	}
 	rules := adapter.NotificationTranslationRules
 
-	ruleBySignalType := make(
+	rule_by_signal_type := make(
 		map[string]FrameworkRefreshActionType,
 		len(rules),
 	)
@@ -79,32 +79,32 @@ func TranslateFrameworkNotifications(
 				rule.DestinationKey,
 			)
 		}
-		ruleBySignalType[rule.DestinationKey] = rule.ActionType
+		rule_by_signal_type[rule.DestinationKey] = rule.ActionType
 	}
 
 	actions := make([]FrameworkRefreshAction, 0, len(notifications))
-	seenActionKey := make(map[string]struct{}, len(notifications))
+	seen_action_key := make(map[string]struct{}, len(notifications))
 	for _, notification := range notifications {
-		destinationKey := notification.DestinationKey()
-		actionType, foundActionType := ruleBySignalType[destinationKey]
-		if !foundActionType {
-			actionType = FrameworkRefreshActionType(destinationKey)
+		destination_key := notification.DestinationKey()
+		action_type, found_action_type := rule_by_signal_type[destination_key]
+		if !found_action_type {
+			action_type = FrameworkRefreshActionType(destination_key)
 		}
-		if actionType == "" {
+		if action_type == "" {
 			return nil, errors.New(
 				"wavefw: framework refresh action type is required",
 			)
 		}
-		actionKey := string(actionType) + "|" + notification.FreshnessToken()
-		if _, alreadyAdded := seenActionKey[actionKey]; alreadyAdded {
+		action_key := string(action_type) + "|" + notification.FreshnessToken()
+		if _, already_added := seen_action_key[action_key]; already_added {
 			continue
 		}
-		seenActionKey[actionKey] = struct{}{}
+		seen_action_key[action_key] = struct{}{}
 		actions = append(
 			actions,
 			FrameworkRefreshAction{
-				Type:           actionType,
-				DestinationKey: destinationKey,
+				Type:           action_type,
+				DestinationKey: destination_key,
 				FreshnessToken: notification.FreshnessToken(),
 				Trigger:        notification.Trigger(),
 				Metadata:       notification.Metadata(),

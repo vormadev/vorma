@@ -4,79 +4,79 @@ package wavebuild
 /////// Phase Contracts
 /////////////////////////////////////////////////////////////////////
 
-// p2_BatchInput is the build-phase input produced by phase 1.
-type p2_BatchInput struct {
-	batch               phaseBatchInput
-	p1_RequestedEffects p1_RequestedEffects
+// p2_batch_input is the build-phase input produced by phase 1.
+type p2_batch_input struct {
+	batch                phase_batch_input
+	p1_requested_effects p1_requested_effects
 }
 
-// p2_BuildOutcomeFacts are observable build outcome facts produced by phase 2.
+// p2_build_outcome_facts are observable build outcome facts produced by phase 2.
 //
 // These facts are phase-2 outputs consumed by later phase planners; they are
 // not direct watcher-event classifications.
-type p2_BuildOutcomeFacts struct {
-	publicFileMapArtifactsChanged  bool
-	publicFileMapArtifactsRepaired bool
+type p2_build_outcome_facts struct {
+	public_file_map_artifacts_changed  bool
+	public_file_map_artifacts_repaired bool
 }
 
-// p2_RequestedEffects are backend-mutation effects requested by phase 2.
-type p2_RequestedEffects struct {
-	restartDevServerCycle          bool
-	restartAppProcess              bool
-	restartViteProcess             bool
-	awaitBackendReadiness          bool
-	queueRetryWaitRestart          bool
-	requestedTerminalBrowserAction frontendTerminalBrowserAction
-	fwExecutionRegistrations       *fwExecutionRegistrations
-	fwRequestedEffects             *fwRequestedEffects
+// p2_requested_effects are backend-mutation effects requested by phase 2.
+type p2_requested_effects struct {
+	restart_dev_server_cycle          bool
+	restart_app_process               bool
+	restart_vite_process              bool
+	await_backend_readiness           bool
+	queue_retry_wait_restart          bool
+	requested_terminal_browser_action frontend_terminal_browser_action
+	fw_execution_registrations        *fw_execution_registrations
+	fw_requested_effects              *fw_requested_effects
 }
 
-// p2_Output is the full phase-2 planner output consumed by phase 3.
-type p2_Output struct {
-	p2_RequestedEffects p2_RequestedEffects
-	buildOutcomeFacts   p2_BuildOutcomeFacts
+// p2_output is the full phase-2 planner output consumed by phase 3.
+type p2_output struct {
+	p2_requested_effects p2_requested_effects
+	build_outcome_facts  p2_build_outcome_facts
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Phase Reductions
 /////////////////////////////////////////////////////////////////////
 
-func (leftFacts p2_BuildOutcomeFacts) merge(
-	rightFacts p2_BuildOutcomeFacts,
-) p2_BuildOutcomeFacts {
-	return p2_BuildOutcomeFacts{
-		publicFileMapArtifactsChanged: leftFacts.publicFileMapArtifactsChanged ||
-			rightFacts.publicFileMapArtifactsChanged,
-		publicFileMapArtifactsRepaired: leftFacts.publicFileMapArtifactsRepaired ||
-			rightFacts.publicFileMapArtifactsRepaired,
+func (left p2_build_outcome_facts) merge(
+	right p2_build_outcome_facts,
+) p2_build_outcome_facts {
+	return p2_build_outcome_facts{
+		public_file_map_artifacts_changed: left.public_file_map_artifacts_changed ||
+			right.public_file_map_artifacts_changed,
+		public_file_map_artifacts_repaired: left.public_file_map_artifacts_repaired ||
+			right.public_file_map_artifacts_repaired,
 	}
 }
 
-func (p1_RequestedEffects p1_RequestedEffects) deriveP2_RequestedEffects(
-	buildOutcomeFacts p2_BuildOutcomeFacts,
-) p2_RequestedEffects {
-	if p1_RequestedEffects.queueRetryWaitRestart {
-		return p2_RequestedEffects{
-			queueRetryWaitRestart: true,
+func (re p1_requested_effects) derive_p2_requested_effects(
+	build_outcome_facts p2_build_outcome_facts,
+) p2_requested_effects {
+	if re.queue_retry_wait_restart {
+		return p2_requested_effects{
+			queue_retry_wait_restart: true,
 		}
 	}
 
-	requestedTerminalBrowserAction := p1_RequestedEffects.requestedTerminalBrowserAction
-	requestedFWEffects := fwRequestedEffectsFromPointer(
-		p1_RequestedEffects.fwRequestedEffects,
+	requested_terminal_browser_action := re.requested_terminal_browser_action
+	fw_requested_effects_val := fw_requested_effects_from_pointer(
+		re.fw_requested_effects,
 	)
-	if buildOutcomeFacts.publicFileMapArtifactsChanged ||
-		buildOutcomeFacts.publicFileMapArtifactsRepaired {
-		requestedTerminalBrowserAction = requestedTerminalBrowserAction.dominantWith(
-			frontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
+	if build_outcome_facts.public_file_map_artifacts_changed ||
+		build_outcome_facts.public_file_map_artifacts_repaired {
+		requested_terminal_browser_action = requested_terminal_browser_action.dominant_with(
+			frontend_terminal_browser_action_notify_vite_public_file_map_changed,
 		)
-		if p1_RequestedEffects.wavePublicFileMapNotificationDestinationKey != "" {
-			requestedFWEffects = requestedFWEffects.merge(
-				fwRequestedEffects{
-					backendConvergenceNotificationQueue: []fwNotificationRequest{
+		if re.wave_public_file_map_notif_destination_key != "" {
+			fw_requested_effects_val = fw_requested_effects_val.merge(
+				fw_requested_effects{
+					backend_convergence_notif_queue: []fw_notif_request{
 						{
-							destinationKey: p1_RequestedEffects.wavePublicFileMapNotificationDestinationKey,
-							trigger:        "wave_public_filemap_artifacts_changed",
+							destination_key: re.wave_public_file_map_notif_destination_key,
+							trigger:         "wave-public-filemap-artifacts-changed",
 						},
 					},
 				},
@@ -84,55 +84,55 @@ func (p1_RequestedEffects p1_RequestedEffects) deriveP2_RequestedEffects(
 		}
 	}
 
-	requestedEffects := p2_RequestedEffects{
-		restartDevServerCycle: p1_RequestedEffects.restartDevServerCycle,
-		restartAppProcess: p1_RequestedEffects.requestBackendRestart ||
-			p1_RequestedEffects.compileGoBinary,
-		restartViteProcess:             p1_RequestedEffects.requestViteRestart,
-		requestedTerminalBrowserAction: requestedTerminalBrowserAction,
-		fwExecutionRegistrations:       p1_RequestedEffects.fwExecutionRegistrations,
-		fwRequestedEffects: newFWRequestedEffectsPointerIfAny(
-			requestedFWEffects,
+	requested_effects := p2_requested_effects{
+		restart_dev_server_cycle: re.restart_dev_server_cycle,
+		restart_app_process: re.request_backend_restart ||
+			re.compile_go_binary,
+		restart_vite_process:              re.request_vite_restart,
+		requested_terminal_browser_action: requested_terminal_browser_action,
+		fw_execution_registrations:        re.fw_execution_registrations,
+		fw_requested_effects: fw_new_requested_effects_pointer_if_any(
+			fw_requested_effects_val,
 		),
 	}
-	requestedEffects.awaitBackendReadiness =
-		requestedEffects.restartDevServerCycle ||
-			requestedEffects.restartAppProcess ||
-			requestedEffects.restartViteProcess ||
-			fwRequestedEffectsFromPointer(
-				requestedEffects.fwRequestedEffects,
-			).hasAny()
-	return requestedEffects
+	requested_effects.await_backend_readiness =
+		requested_effects.restart_dev_server_cycle ||
+			requested_effects.restart_app_process ||
+			requested_effects.restart_vite_process ||
+			fw_requested_effects_from_pointer(
+				requested_effects.fw_requested_effects,
+			).has_any()
+	return requested_effects
 }
 
-func (leftRequestedEffects p2_RequestedEffects) merge(
-	rightRequestedEffects p2_RequestedEffects,
-) p2_RequestedEffects {
-	fwExecutionRegistrations := leftRequestedEffects.fwExecutionRegistrations
-	if fwExecutionRegistrations == nil {
-		fwExecutionRegistrations = rightRequestedEffects.fwExecutionRegistrations
+func (left p2_requested_effects) merge(
+	right p2_requested_effects,
+) p2_requested_effects {
+	fw_execution_registrations := left.fw_execution_registrations
+	if fw_execution_registrations == nil {
+		fw_execution_registrations = right.fw_execution_registrations
 	}
-	return p2_RequestedEffects{
-		restartDevServerCycle: leftRequestedEffects.restartDevServerCycle ||
-			rightRequestedEffects.restartDevServerCycle,
-		restartAppProcess: leftRequestedEffects.restartAppProcess ||
-			rightRequestedEffects.restartAppProcess,
-		restartViteProcess: leftRequestedEffects.restartViteProcess ||
-			rightRequestedEffects.restartViteProcess,
-		awaitBackendReadiness: leftRequestedEffects.awaitBackendReadiness ||
-			rightRequestedEffects.awaitBackendReadiness,
-		queueRetryWaitRestart: leftRequestedEffects.queueRetryWaitRestart ||
-			rightRequestedEffects.queueRetryWaitRestart,
-		requestedTerminalBrowserAction: leftRequestedEffects.requestedTerminalBrowserAction.dominantWith(
-			rightRequestedEffects.requestedTerminalBrowserAction,
+	return p2_requested_effects{
+		restart_dev_server_cycle: left.restart_dev_server_cycle ||
+			right.restart_dev_server_cycle,
+		restart_app_process: left.restart_app_process ||
+			right.restart_app_process,
+		restart_vite_process: left.restart_vite_process ||
+			right.restart_vite_process,
+		await_backend_readiness: left.await_backend_readiness ||
+			right.await_backend_readiness,
+		queue_retry_wait_restart: left.queue_retry_wait_restart ||
+			right.queue_retry_wait_restart,
+		requested_terminal_browser_action: left.requested_terminal_browser_action.dominant_with(
+			right.requested_terminal_browser_action,
 		),
-		fwExecutionRegistrations: fwExecutionRegistrations,
-		fwRequestedEffects: newFWRequestedEffectsPointerIfAny(
-			fwRequestedEffectsFromPointer(
-				leftRequestedEffects.fwRequestedEffects,
+		fw_execution_registrations: fw_execution_registrations,
+		fw_requested_effects: fw_new_requested_effects_pointer_if_any(
+			fw_requested_effects_from_pointer(
+				left.fw_requested_effects,
 			).merge(
-				fwRequestedEffectsFromPointer(
-					rightRequestedEffects.fwRequestedEffects,
+				fw_requested_effects_from_pointer(
+					right.fw_requested_effects,
 				),
 			),
 		),

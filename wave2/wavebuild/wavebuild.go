@@ -29,811 +29,835 @@ import (
 type mode string
 
 const (
-	// modeDev applies development-time policy.
-	modeDev mode = "dev"
-	// modeProd applies production-time policy.
-	modeProd mode = "prod"
+	// mode_dev applies development-time policy.
+	mode_dev mode = "dev"
+	// mode_prod applies production-time policy.
+	mode_prod mode = "prod"
 )
 
-// eventType is one normalized change category from watcher input.
-type eventType string
+// event_type is one normalized change category from watcher input.
+type event_type string
 
 const (
-	// eventTypeConfigFileChanged represents semantic config changes.
-	eventTypeConfigFileChanged eventType = "config_file_changed"
-	// eventTypeGoSourceChanged represents application Go source changes.
-	eventTypeGoSourceChanged eventType = "go_source_changed"
-	// eventTypeCriticalCSSSourceChanged represents critical CSS source changes.
-	eventTypeCriticalCSSSourceChanged eventType = "critical_css_source_changed"
-	// eventTypeNormalCSSSourceChanged represents normal CSS source changes.
-	eventTypeNormalCSSSourceChanged eventType = "normal_css_source_changed"
-	// eventTypePublicStaticAssetChanged represents public static asset changes.
-	eventTypePublicStaticAssetChanged eventType = "public_static_asset_changed"
-	// eventTypePrivateStaticAssetChanged represents private static asset changes.
-	eventTypePrivateStaticAssetChanged eventType = "private_static_asset_changed"
-	// eventTypeFWRequestedEffectsChanged represents fw-requested
+	// event_type_config_file_changed represents semantic config changes.
+	event_type_config_file_changed event_type = "config-file-changed"
+	// event_type_go_source_changed represents application Go source changes.
+	event_type_go_source_changed event_type = "go-source-changed"
+	// event_type_critical_css_source_changed represents critical CSS source changes.
+	event_type_critical_css_source_changed event_type = "critical-css-source-changed"
+	// event_type_normal_css_source_changed represents normal CSS source changes.
+	event_type_normal_css_source_changed event_type = "normal-css-source-changed"
+	// event_type_public_static_asset_changed represents public static asset changes.
+	event_type_public_static_asset_changed event_type = "public-static-asset-changed"
+	// event_type_private_static_asset_changed represents private static asset changes.
+	event_type_private_static_asset_changed event_type = "private-static-asset-changed"
+	// fw_event_type_requested_effects_changed represents fw-requested
 	// effect payload changes carried by watcher classification.
-	eventTypeFWRequestedEffectsChanged eventType = "fw_requested_effects_changed"
-	// eventTypeAppDefinedWatchActionOnlyChanged represents app watch classes that request direct actions without implicit build work.
-	eventTypeAppDefinedWatchActionOnlyChanged eventType = "app_defined_watch_action_only_changed"
-	// eventTypeAppDefinedWatchWithRebuildChanged represents app watch classes that participate in normal build-phase planning; concrete effects still come from reduced outcomes.
-	eventTypeAppDefinedWatchWithRebuildChanged eventType = "app_defined_watch_with_rebuild_changed"
-	// eventTypeIgnoredOrNoiseChanged represents ignored/noise-only batches.
-	eventTypeIgnoredOrNoiseChanged eventType = "ignored_or_noise_changed"
-	// eventTypeUnclassifiedNoWatchRuleChanged represents meaningful input with no matching watch rule.
-	eventTypeUnclassifiedNoWatchRuleChanged eventType = "unclassified_no_watch_rule_changed"
+	fw_event_type_requested_effects_changed event_type = "fw-requested-effects-changed"
+	// event_type_app_defined_watch_action_only_changed represents app watch classes that request direct actions without implicit build work.
+	event_type_app_defined_watch_action_only_changed event_type = "app-defined-watch-action-only-changed"
+	// event_type_app_defined_watch_with_rebuild_changed represents app watch classes that participate in normal build-phase planning; concrete effects still come from reduced outcomes.
+	event_type_app_defined_watch_with_rebuild_changed event_type = "app-defined-watch-with-rebuild-changed"
+	// event_type_ignored_or_noise_changed represents ignored/noise-only batches.
+	event_type_ignored_or_noise_changed event_type = "ignored-or-noise-changed"
+	// event_type_unclassified_no_watch_rule_changed represents meaningful input with no matching watch rule.
+	event_type_unclassified_no_watch_rule_changed event_type = "unclassified-no-watch-rule-changed"
 )
 
-// frontendTerminalBrowserAction is the single terminal browser action selected
+// frontend_terminal_browser_action is the single terminal browser action selected
 // for one batch.
-type frontendTerminalBrowserAction string
+type frontend_terminal_browser_action string
 
 const (
-	// frontendTerminalBrowserActionNone represents no browser action.
-	frontendTerminalBrowserActionNone frontendTerminalBrowserAction = "none"
-	// frontendTerminalBrowserActionCSSHotReload represents CSS-only hot reload.
-	frontendTerminalBrowserActionCSSHotReload frontendTerminalBrowserAction = "css_hot_reload"
-	// frontendTerminalBrowserActionNotifyVitePublicFileMapChanged notifies Vite that public file-map artifacts changed.
-	frontendTerminalBrowserActionNotifyVitePublicFileMapChanged frontendTerminalBrowserAction = "notify_vite_public_filemap_changed"
-	// frontendTerminalBrowserActionRevalidate represents browser revalidation.
-	frontendTerminalBrowserActionRevalidate frontendTerminalBrowserAction = "revalidate"
-	// frontendTerminalBrowserActionHardReload represents browser hard reload.
-	frontendTerminalBrowserActionHardReload frontendTerminalBrowserAction = "hard_reload"
+	// frontend_terminal_browser_action_none represents no browser action.
+	frontend_terminal_browser_action_none frontend_terminal_browser_action = "none"
+	// frontend_terminal_browser_action_css_hot_reload represents CSS-only hot reload.
+	frontend_terminal_browser_action_css_hot_reload frontend_terminal_browser_action = "css-hot-reload"
+	// frontend_terminal_browser_action_notify_vite_public_file_map_changed notifies Vite that public file-map artifacts changed.
+	frontend_terminal_browser_action_notify_vite_public_file_map_changed frontend_terminal_browser_action = "notify-vite-public-filemap-changed"
+	// frontend_terminal_browser_action_revalidate represents browser revalidation.
+	frontend_terminal_browser_action_revalidate frontend_terminal_browser_action = "revalidate"
+	// frontend_terminal_browser_action_hard_reload represents browser hard reload.
+	frontend_terminal_browser_action_hard_reload frontend_terminal_browser_action = "hard-reload"
 )
 
-// fwMutationEffectKey identifies one fw-owned backend-mutation
+// fw_mutation_effect_key identifies one fw-owned backend-mutation
 // effect registration key.
-type fwMutationEffectKey string
+type fw_mutation_effect_key string
 
-// fwNotificationDestinationKey identifies one fw-owned
+// fw_notif_destination_key identifies one fw-owned
 // notification destination registration key.
-type fwNotificationDestinationKey string
+type fw_notif_destination_key string
 
-// FrameworkNotificationFailurePolicy selects what Wave does when fw
+// fw_notif_failure_policy selects what Wave does when fw
 // notification transport fails.
-type FrameworkNotificationFailurePolicy string
+type fw_notif_failure_policy string
+
+const (
+	// fw_notif_failure_policy_fail_pipeline surfaces notification
+	// transport failure as pipeline failure.
+	fw_notif_failure_policy_fail_pipeline fw_notif_failure_policy = "fail-pipeline"
+	// fw_notif_failure_policy_restart_backend_without_go_compile requests
+	// backend restart without Go recompilation and skips frontend settling.
+	fw_notif_failure_policy_restart_backend_without_go_compile fw_notif_failure_policy = "restart-backend-without-go-compile"
+)
+
+type fw_notif_request struct {
+	destination_key fw_notif_destination_key
+	freshness_token string
+	trigger         string
+	metadata        map[string]string
+	wait_for_app    bool
+	wait_for_vite   bool
+	failure_policy  fw_notif_failure_policy
+}
+
+type fw_requested_effects struct {
+	backend_mutation_effect_keys    []fw_mutation_effect_key
+	backend_convergence_notif_queue []fw_notif_request
+}
+
+type fw_execution_registrations struct {
+	backend_mutation_effects_by_key           map[fw_mutation_effect_key]*tasks.Task[p3_batch_input, struct{}]
+	backend_convergence_notifs_by_destination map[fw_notif_destination_key]*tasks.Task[p4_fw_notif_task_input, struct{}]
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Public Exposure
+/////////////////////////////////////////////////////////////////////
+
+// FrameworkNotificationFailurePolicy controls how Wave handles delivery
+// failures when sending framework notifications during backend convergence.
+type FrameworkNotificationFailurePolicy = fw_notif_failure_policy
+
+// FrameworkNotification describes one framework notification emitted by Wave
+// after a batch converges.
+type FrameworkNotification = fw_notif
 
 const (
 	// FrameworkNotificationFailurePolicyFailPipeline surfaces notification
 	// transport failure as pipeline failure.
-	FrameworkNotificationFailurePolicyFailPipeline FrameworkNotificationFailurePolicy = "fail_pipeline"
+	FrameworkNotificationFailurePolicyFailPipeline FrameworkNotificationFailurePolicy = fw_notif_failure_policy_fail_pipeline
 	// FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile requests
 	// backend restart without Go recompilation and skips frontend settling.
-	FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile FrameworkNotificationFailurePolicy = "restart_backend_without_go_compile"
+	FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile FrameworkNotificationFailurePolicy = fw_notif_failure_policy_restart_backend_without_go_compile
 )
 
-type fwNotificationRequest struct {
-	destinationKey fwNotificationDestinationKey
-	freshnessToken string
-	trigger        string
-	metadata       map[string]string
-	waitForApp     bool
-	waitForVite    bool
-	failurePolicy  FrameworkNotificationFailurePolicy
-}
-
-type fwRequestedEffects struct {
-	backendMutationEffectKeys           []fwMutationEffectKey
-	backendConvergenceNotificationQueue []fwNotificationRequest
-}
-
-type fwExecutionRegistrations struct {
-	backendMutationEffectsByKey                  map[fwMutationEffectKey]*tasks.Task[p3_BatchInput, struct{}]
-	backendConvergenceNotificationsByDestination map[fwNotificationDestinationKey]*tasks.Task[p4_FWNotificationTaskInput, struct{}]
-}
-
-func fwRequestedEffectsFromPointer(
-	fwRequestedEffectsPointer *fwRequestedEffects,
-) fwRequestedEffects {
-	if fwRequestedEffectsPointer == nil {
-		return fwRequestedEffects{}
+func fw_requested_effects_from_pointer(
+	fw_requested_effects_pointer *fw_requested_effects,
+) fw_requested_effects {
+	if fw_requested_effects_pointer == nil {
+		return fw_requested_effects{}
 	}
-	return *fwRequestedEffectsPointer
+	return *fw_requested_effects_pointer
 }
 
-func newFWRequestedEffectsPointerIfAny(
-	fwRequestedEffectsValue fwRequestedEffects,
-) *fwRequestedEffects {
-	if !fwRequestedEffectsValue.hasAny() {
+func fw_new_requested_effects_pointer_if_any(
+	fw_requested_effects_val fw_requested_effects,
+) *fw_requested_effects {
+	if !fw_requested_effects_val.has_any() {
 		return nil
 	}
-	fwRequestedEffectsCopy := fwRequestedEffectsValue
-	return &fwRequestedEffectsCopy
+	fw_requested_effects_copy := fw_requested_effects_val
+	return &fw_requested_effects_copy
 }
 
-func (action frontendTerminalBrowserAction) priority() int {
+func (action frontend_terminal_browser_action) priority() int {
 	switch action {
-	case frontendTerminalBrowserActionHardReload:
+	case frontend_terminal_browser_action_hard_reload:
 		return 4
-	case frontendTerminalBrowserActionNotifyVitePublicFileMapChanged:
+	case frontend_terminal_browser_action_notify_vite_public_file_map_changed:
 		return 3
-	case frontendTerminalBrowserActionRevalidate:
+	case frontend_terminal_browser_action_revalidate:
 		return 2
-	case frontendTerminalBrowserActionCSSHotReload:
+	case frontend_terminal_browser_action_css_hot_reload:
 		return 1
 	default:
 		return 0
 	}
 }
 
-func (leftAction frontendTerminalBrowserAction) dominantWith(
-	rightAction frontendTerminalBrowserAction,
-) frontendTerminalBrowserAction {
-	if rightAction.priority() > leftAction.priority() {
-		return rightAction
+func (left frontend_terminal_browser_action) dominant_with(
+	right frontend_terminal_browser_action,
+) frontend_terminal_browser_action {
+	if right.priority() > left.priority() {
+		return right
 	}
-	return leftAction
+	return left
 }
 
-// observedBatchEvent is one normalized, already-classified batch event input.
+// observed_batch_event is one normalized, already-classified batch event input.
 //
 // The event type is expected to be produced by the watcher/classification layer;
 // this contract intentionally avoids path-shape guessing.
-type observedBatchEvent struct {
-	eventType eventType
+type observed_batch_event struct {
+	event_type event_type
 
-	// noiseOnly marks events that should not trigger user-visible work.
-	noiseOnly bool
-	// noOpConfigMutation marks config events where semantic config did not change.
-	noOpConfigMutation bool
-	// fwRequestedEffects carries fw-owned requested effects
+	// noise_only marks events that should not trigger user-visible work.
+	noise_only bool
+	// no_op_config_mutation marks config events where semantic config did not change.
+	no_op_config_mutation bool
+	// fw_requested_effects carries fw-owned requested effects
 	// discovered by watcher classification for this event.
-	fwRequestedEffects fwRequestedEffects
+	fw_requested_effects fw_requested_effects
 }
 
-// appRequestedOutcomes captures app-requested observable outcomes for one batch.
-type appRequestedOutcomes struct {
-	requestedTerminalBrowserAction frontendTerminalBrowserAction
-	requestRestart                 bool
-	requestGoCompile               bool
-	fwRequestedEffects             fwRequestedEffects
+// app_requested_outcomes captures app-requested observable outcomes for one batch.
+type app_requested_outcomes struct {
+	requested_terminal_browser_action frontend_terminal_browser_action
+	request_restart                   bool
+	request_go_compile                bool
+	fw_requested_effects              fw_requested_effects
 }
 
-// p1_Input is the phase-1 input contract in observable terms.
-type p1_Input struct {
-	mode         mode
-	generationID string
-	events       []observedBatchEvent
+// p1_input is the phase-1 input contract in observable terms.
+type p1_input struct {
+	mode          mode
+	generation_id string
+	events        []observed_batch_event
 
-	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
-	fwExecutionRegistrations                    *fwExecutionRegistrations
+	wave_public_file_map_notif_destination_key fw_notif_destination_key
+	fw_execution_registrations                 *fw_execution_registrations
 
-	appRequestedOutcomes appRequestedOutcomes
-	waitingForBuildRetry bool
+	app_requested_outcomes  app_requested_outcomes
+	waiting_for_build_retry bool
 }
 
-// p1_Facts is the minimal phase-1 output used by planners.
-type p1_Facts struct {
-	mode         mode
-	generationID string
+// p1_facts is the minimal phase-1 output used by planners.
+type p1_facts struct {
+	mode          mode
+	generation_id string
 
-	// eventTypes contains deduplicated actionable event types, preserving
+	// event_types contains deduplicated actionable event types, preserving
 	// first-seen input order.
-	eventTypes []eventType
+	event_types []event_type
 
-	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
-	fwExecutionRegistrations                    *fwExecutionRegistrations
+	wave_public_file_map_notif_destination_key fw_notif_destination_key
+	fw_execution_registrations                 *fw_execution_registrations
 
-	appRequestedOutcomes appRequestedOutcomes
-	fwRequestedEffects   fwRequestedEffects
-	waitingForBuildRetry bool
+	app_requested_outcomes  app_requested_outcomes
+	fw_requested_effects    fw_requested_effects
+	waiting_for_build_retry bool
 }
 
-// buildFacts reduces one phase-1 input into deterministic planner facts.
-func (input p1_Input) buildFacts() (p1_Facts, error) {
-	if modeError := input.mode.validate(); modeError != nil {
-		return p1_Facts{}, modeError
+// build_facts reduces one phase-1 input into deterministic planner facts.
+func (in p1_input) build_facts() (p1_facts, error) {
+	if err := in.mode.validate(); err != nil {
+		return p1_facts{}, err
 	}
-	normalizedGenerationID := strings.TrimSpace(input.generationID)
-	if normalizedGenerationID == "" {
-		return p1_Facts{}, errors.New(
+	normalized_generation_id := strings.TrimSpace(in.generation_id)
+	if normalized_generation_id == "" {
+		return p1_facts{}, errors.New(
 			"wavebuild: generation id is required",
 		)
 	}
 
-	appRequestedOutcomes, appRequestedOutcomesError := input.appRequestedOutcomes.reduce()
-	if appRequestedOutcomesError != nil {
-		return p1_Facts{}, appRequestedOutcomesError
+	app_requested_outcomes, err := in.app_requested_outcomes.reduce()
+	if err != nil {
+		return p1_facts{}, err
 	}
 
-	eventTypeSet := make(map[eventType]struct{}, len(input.events))
-	actionableEventTypes := make([]eventType, 0, len(input.events))
-	fwRequestedEffects := fwRequestedEffects{}
+	event_type_set := make(map[event_type]struct{}, len(in.events))
+	actionable_event_types := make([]event_type, 0, len(in.events))
+	fw_requested_effects := fw_requested_effects{}
 
-	for eventIndex, rawEvent := range input.events {
-		if rawEvent.noiseOnly {
+	for event_index, raw_event := range in.events {
+		if raw_event.noise_only {
 			continue
 		}
 
-		if rawEvent.eventType == eventTypeConfigFileChanged &&
-			rawEvent.noOpConfigMutation {
+		if raw_event.event_type == event_type_config_file_changed &&
+			raw_event.no_op_config_mutation {
 			continue
 		}
 
-		if !rawEvent.eventType.isSupported() {
-			return p1_Facts{}, fmt.Errorf(
+		if !raw_event.event_type.is_supported() {
+			return p1_facts{}, fmt.Errorf(
 				"wavebuild: unsupported event type %q at index %d",
-				rawEvent.eventType,
-				eventIndex,
+				raw_event.event_type,
+				event_index,
 			)
 		}
-		fwRequestedEffects = fwRequestedEffects.merge(
-			rawEvent.fwRequestedEffects,
+		fw_requested_effects = fw_requested_effects.merge(
+			raw_event.fw_requested_effects,
 		)
-		if _, alreadySeenEventType := eventTypeSet[rawEvent.eventType]; alreadySeenEventType {
+		if _, already_seen_event_type := event_type_set[raw_event.event_type]; already_seen_event_type {
 			continue
 		}
-		eventTypeSet[rawEvent.eventType] = struct{}{}
-		actionableEventTypes = append(actionableEventTypes, rawEvent.eventType)
+		event_type_set[raw_event.event_type] = struct{}{}
+		actionable_event_types = append(
+			actionable_event_types,
+			raw_event.event_type,
+		)
 	}
 
-	return p1_Facts{
-		mode:         input.mode,
-		generationID: normalizedGenerationID,
-		eventTypes:   actionableEventTypes,
-		wavePublicFileMapNotificationDestinationKey: fwNotificationDestinationKey(
+	return p1_facts{
+		mode:          in.mode,
+		generation_id: normalized_generation_id,
+		event_types:   actionable_event_types,
+		wave_public_file_map_notif_destination_key: fw_notif_destination_key(
 			strings.TrimSpace(
-				string(input.wavePublicFileMapNotificationDestinationKey),
+				string(in.wave_public_file_map_notif_destination_key),
 			),
 		),
-		fwExecutionRegistrations: input.fwExecutionRegistrations,
-		appRequestedOutcomes:     appRequestedOutcomes,
-		fwRequestedEffects:       fwRequestedEffects,
-		waitingForBuildRetry:     input.waitingForBuildRetry,
+		fw_execution_registrations: in.fw_execution_registrations,
+		app_requested_outcomes:     app_requested_outcomes,
+		fw_requested_effects:       fw_requested_effects,
+		waiting_for_build_retry:    in.waiting_for_build_retry,
 	}, nil
 }
 
-// FrameworkNotification is one framework-agnostic notification payload emitted
-// by Wave2 planning.
-type FrameworkNotification struct {
-	destinationKey fwNotificationDestinationKey
-	freshnessToken string
-	trigger        string
-	metadata       map[string]string
-	waitForApp     bool
-	waitForVite    bool
-	failurePolicy  FrameworkNotificationFailurePolicy
+// fw_notif is one framework-agnostic notification payload emitted by
+// Wave2 planning.
+type fw_notif struct {
+	destination_key fw_notif_destination_key
+	freshness_token string
+	trigger         string
+	metadata        map[string]string
+	wait_for_app    bool
+	wait_for_vite   bool
+	failure_policy  fw_notif_failure_policy
 }
 
 // DestinationKey returns framework notification destination registration key.
-func (notification FrameworkNotification) DestinationKey() string {
-	return string(notification.destinationKey)
+func (notif fw_notif) DestinationKey() string {
+	return string(notif.destination_key)
 }
 
 // FreshnessToken returns the freshness token for stale-attempt rejection.
-func (notification FrameworkNotification) FreshnessToken() string {
-	return notification.freshnessToken
+func (notif fw_notif) FreshnessToken() string {
+	return notif.freshness_token
 }
 
 // Trigger returns stable notification trigger text.
-func (notification FrameworkNotification) Trigger() string {
-	return notification.trigger
+func (notif fw_notif) Trigger() string {
+	return notif.trigger
 }
 
 // Metadata returns optional stable key/value metadata.
-func (notification FrameworkNotification) Metadata() map[string]string {
-	return notification.metadata
+func (notif fw_notif) Metadata() map[string]string {
+	return notif.metadata
 }
 
 // WaitForApp returns whether notification transport is app-readiness gated.
-func (notification FrameworkNotification) WaitForApp() bool {
-	return notification.waitForApp
+func (notif fw_notif) WaitForApp() bool {
+	return notif.wait_for_app
 }
 
 // WaitForVite returns whether notification transport is vite-readiness gated.
-func (notification FrameworkNotification) WaitForVite() bool {
-	return notification.waitForVite
+func (notif fw_notif) WaitForVite() bool {
+	return notif.wait_for_vite
 }
 
 // FailurePolicy returns policy used when notification transport fails.
-func (notification FrameworkNotification) FailurePolicy() FrameworkNotificationFailurePolicy {
-	return notification.failurePolicy
+func (notif fw_notif) FailurePolicy() FrameworkNotificationFailurePolicy {
+	return notif.failure_policy
 }
 
-func (fwRequestedEffects fwRequestedEffects) fwNotifications(
-	generationID string,
-) []FrameworkNotification {
-	if !fwRequestedEffects.hasBackendConvergenceNotifications() {
+func (effects fw_requested_effects) fw_notifications(
+	generation_id string,
+) []fw_notif {
+	if !effects.has_backend_convergence_notifs() {
 		return nil
 	}
-	fallbackFreshnessToken := strings.TrimSpace(generationID)
+	fallback_freshness_token := strings.TrimSpace(generation_id)
 	notifications := make(
-		[]FrameworkNotification,
+		[]fw_notif,
 		0,
-		len(fwRequestedEffects.backendConvergenceNotificationQueue),
+		len(effects.backend_convergence_notif_queue),
 	)
-	for _, request := range fwRequestedEffects.backendConvergenceNotificationQueue {
-		normalizedRequest := request.normalize()
-		if normalizedRequest.destinationKey == "" {
+	for _, request := range effects.backend_convergence_notif_queue {
+		normalized_request := request.normalize()
+		if normalized_request.destination_key == "" {
 			continue
 		}
-		if normalizedRequest.freshnessToken == "" {
-			normalizedRequest.freshnessToken = fallbackFreshnessToken
+		if normalized_request.freshness_token == "" {
+			normalized_request.freshness_token = fallback_freshness_token
 		}
 		notifications = append(
 			notifications,
-			FrameworkNotification{
-				destinationKey: normalizedRequest.destinationKey,
-				freshnessToken: normalizedRequest.freshnessToken,
-				trigger:        normalizedRequest.trigger,
-				metadata:       normalizedRequest.metadata,
-				waitForApp:     normalizedRequest.waitForApp,
-				waitForVite:    normalizedRequest.waitForVite,
-				failurePolicy:  normalizedRequest.failurePolicy,
+			fw_notif{
+				destination_key: normalized_request.destination_key,
+				freshness_token: normalized_request.freshness_token,
+				trigger:         normalized_request.trigger,
+				metadata:        normalized_request.metadata,
+				wait_for_app:    normalized_request.wait_for_app,
+				wait_for_vite:   normalized_request.wait_for_vite,
+				failure_policy:  normalized_request.failure_policy,
 			},
 		)
 	}
 	return notifications
 }
 
-func (fwRequestedEffects fwRequestedEffects) hasAny() bool {
-	return len(fwRequestedEffects.backendMutationEffectKeys) > 0 ||
-		len(fwRequestedEffects.backendConvergenceNotificationQueue) > 0
+func (effects fw_requested_effects) has_any() bool {
+	return len(effects.backend_mutation_effect_keys) > 0 ||
+		len(effects.backend_convergence_notif_queue) > 0
 }
 
-func (fwRequestedEffects fwRequestedEffects) hasBackendMutationEffects() bool {
-	return len(fwRequestedEffects.backendMutationEffectKeys) > 0
+func (effects fw_requested_effects) has_backend_mutation_effects() bool {
+	return len(effects.backend_mutation_effect_keys) > 0
 }
 
-func (fwRequestedEffects fwRequestedEffects) hasBackendConvergenceNotifications() bool {
+func (effects fw_requested_effects) has_backend_convergence_notifs() bool {
 	return len(
-		fwRequestedEffects.backendConvergenceNotificationQueue,
+		effects.backend_convergence_notif_queue,
 	) > 0
 }
 
-func (leftRequestedEffects fwRequestedEffects) merge(
-	rightRequestedEffects fwRequestedEffects,
-) fwRequestedEffects {
-	mergedMutationEffectKeys := make(
-		[]fwMutationEffectKey,
+func (left fw_requested_effects) merge(
+	right fw_requested_effects,
+) fw_requested_effects {
+	merged_mutation_effect_keys := make(
+		[]fw_mutation_effect_key,
 		0,
-		len(leftRequestedEffects.backendMutationEffectKeys)+
-			len(rightRequestedEffects.backendMutationEffectKeys),
+		len(left.backend_mutation_effect_keys)+
+			len(right.backend_mutation_effect_keys),
 	)
-	seenMutationEffectKeys := make(
-		map[fwMutationEffectKey]struct{},
-		len(leftRequestedEffects.backendMutationEffectKeys)+
-			len(rightRequestedEffects.backendMutationEffectKeys),
+	seen_mutation_effect_keys := make(
+		map[fw_mutation_effect_key]struct{},
+		len(left.backend_mutation_effect_keys)+
+			len(right.backend_mutation_effect_keys),
 	)
-	appendMutationEffectKey := func(effectKey fwMutationEffectKey) {
-		normalizedEffectKey := fwMutationEffectKey(
-			strings.TrimSpace(string(effectKey)),
+	append_mutation_effect_key := func(effect_key fw_mutation_effect_key) {
+		normalized_effect_key := fw_mutation_effect_key(
+			strings.TrimSpace(string(effect_key)),
 		)
-		if normalizedEffectKey == "" {
+		if normalized_effect_key == "" {
 			return
 		}
-		if _, alreadySeen := seenMutationEffectKeys[normalizedEffectKey]; alreadySeen {
+		if _, already_seen := seen_mutation_effect_keys[normalized_effect_key]; already_seen {
 			return
 		}
-		seenMutationEffectKeys[normalizedEffectKey] = struct{}{}
-		mergedMutationEffectKeys = append(
-			mergedMutationEffectKeys,
-			normalizedEffectKey,
+		seen_mutation_effect_keys[normalized_effect_key] = struct{}{}
+		merged_mutation_effect_keys = append(
+			merged_mutation_effect_keys,
+			normalized_effect_key,
 		)
 	}
-	for _, effectKey := range leftRequestedEffects.backendMutationEffectKeys {
-		appendMutationEffectKey(effectKey)
+	for _, effect_key := range left.backend_mutation_effect_keys {
+		append_mutation_effect_key(effect_key)
 	}
-	for _, effectKey := range rightRequestedEffects.backendMutationEffectKeys {
-		appendMutationEffectKey(effectKey)
+	for _, effect_key := range right.backend_mutation_effect_keys {
+		append_mutation_effect_key(effect_key)
 	}
 
-	mergedNotificationQueue := mergeFWNotificationQueue(
-		leftRequestedEffects.backendConvergenceNotificationQueue,
-		rightRequestedEffects.backendConvergenceNotificationQueue,
+	merged_notif_queue := fw_merge_notif_queue(
+		left.backend_convergence_notif_queue,
+		right.backend_convergence_notif_queue,
 	)
 
-	return fwRequestedEffects{
-		backendMutationEffectKeys:           mergedMutationEffectKeys,
-		backendConvergenceNotificationQueue: mergedNotificationQueue,
+	return fw_requested_effects{
+		backend_mutation_effect_keys:    merged_mutation_effect_keys,
+		backend_convergence_notif_queue: merged_notif_queue,
 	}
 }
 
-func mergeFWNotificationQueue(
-	leftQueue []fwNotificationRequest,
-	rightQueue []fwNotificationRequest,
-) []fwNotificationRequest {
-	mergedQueue := make(
-		[]fwNotificationRequest,
+func fw_merge_notif_queue(
+	left_queue []fw_notif_request,
+	right_queue []fw_notif_request,
+) []fw_notif_request {
+	merged_queue := make(
+		[]fw_notif_request,
 		0,
-		len(leftQueue)+len(rightQueue),
+		len(left_queue)+len(right_queue),
 	)
-	notificationIndexByDestination := make(
-		map[fwNotificationDestinationKey]int,
-		len(leftQueue)+len(rightQueue),
+	notif_index_by_destination := make(
+		map[fw_notif_destination_key]int,
+		len(left_queue)+len(right_queue),
 	)
-	appendNotification := func(notification fwNotificationRequest) {
-		normalizedNotification := notification.normalize()
-		if normalizedNotification.destinationKey == "" {
+	append_notif := func(notif fw_notif_request) {
+		normalized_notif := notif.normalize()
+		if normalized_notif.destination_key == "" {
 			return
 		}
-		existingIndex, alreadyExists := notificationIndexByDestination[normalizedNotification.destinationKey]
-		if alreadyExists {
-			mergedQueue[existingIndex] = mergedQueue[existingIndex].merge(
-				normalizedNotification,
+		existing_index, already_exists := notif_index_by_destination[normalized_notif.destination_key]
+		if already_exists {
+			merged_queue[existing_index] = merged_queue[existing_index].merge(
+				normalized_notif,
 			)
 			return
 		}
-		notificationIndexByDestination[normalizedNotification.destinationKey] = len(
-			mergedQueue,
+		notif_index_by_destination[normalized_notif.destination_key] = len(
+			merged_queue,
 		)
-		mergedQueue = append(mergedQueue, normalizedNotification)
+		merged_queue = append(merged_queue, normalized_notif)
 	}
-	for _, notification := range leftQueue {
-		appendNotification(notification)
+	for _, notif := range left_queue {
+		append_notif(notif)
 	}
-	for _, notification := range rightQueue {
-		appendNotification(notification)
+	for _, notif := range right_queue {
+		append_notif(notif)
 	}
-	return mergedQueue
+	return merged_queue
 }
 
-func (notification fwNotificationRequest) normalize() fwNotificationRequest {
-	normalizedNotification := notification
-	normalizedNotification.destinationKey = fwNotificationDestinationKey(
-		strings.TrimSpace(string(notification.destinationKey)),
+func (notif fw_notif_request) normalize() fw_notif_request {
+	normalized_notif := notif
+	normalized_notif.destination_key = fw_notif_destination_key(
+		strings.TrimSpace(string(notif.destination_key)),
 	)
-	normalizedNotification.freshnessToken = strings.TrimSpace(
-		notification.freshnessToken,
+	normalized_notif.freshness_token = strings.TrimSpace(
+		notif.freshness_token,
 	)
-	normalizedNotification.trigger = strings.TrimSpace(notification.trigger)
-	if normalizedNotification.failurePolicy == "" {
-		normalizedNotification.failurePolicy = FrameworkNotificationFailurePolicyFailPipeline
+	normalized_notif.trigger = strings.TrimSpace(notif.trigger)
+	if normalized_notif.failure_policy == "" {
+		normalized_notif.failure_policy = fw_notif_failure_policy_fail_pipeline
 	}
-	return normalizedNotification
+	return normalized_notif
 }
 
-func (existingNotification fwNotificationRequest) merge(
-	incomingNotification fwNotificationRequest,
-) fwNotificationRequest {
-	mergedNotification := existingNotification
-	if incomingNotification.freshnessToken != "" {
-		mergedNotification.freshnessToken = incomingNotification.freshnessToken
+func (left fw_notif_request) merge(
+	right fw_notif_request,
+) fw_notif_request {
+	merged_notif := left
+	if right.freshness_token != "" {
+		merged_notif.freshness_token = right.freshness_token
 	}
-	if incomingNotification.trigger != "" {
-		mergedNotification.trigger = incomingNotification.trigger
+	if right.trigger != "" {
+		merged_notif.trigger = right.trigger
 	}
-	if len(incomingNotification.metadata) > 0 {
-		if mergedNotification.metadata == nil {
-			mergedNotification.metadata = make(
+	if len(right.metadata) > 0 {
+		if merged_notif.metadata == nil {
+			merged_notif.metadata = make(
 				map[string]string,
-				len(incomingNotification.metadata),
+				len(right.metadata),
 			)
 		}
-		maps.Copy(mergedNotification.metadata, incomingNotification.metadata)
+		maps.Copy(merged_notif.metadata, right.metadata)
 	}
-	mergedNotification.waitForApp =
-		mergedNotification.waitForApp || incomingNotification.waitForApp
-	mergedNotification.waitForVite =
-		mergedNotification.waitForVite || incomingNotification.waitForVite
-	if incomingNotification.failurePolicy != "" {
-		mergedNotification.failurePolicy = incomingNotification.failurePolicy
+	merged_notif.wait_for_app =
+		merged_notif.wait_for_app || right.wait_for_app
+	merged_notif.wait_for_vite =
+		merged_notif.wait_for_vite || right.wait_for_vite
+	if right.failure_policy != "" {
+		merged_notif.failure_policy = right.failure_policy
 	}
-	return mergedNotification
+	return merged_notif
 }
 
 var (
-	errP1_InputRequired = errors.New(
+	err_p1_input_required = errors.New(
 		"wavebuild: phase-1 input is required",
 	)
-	errGenerationIDRequired = errors.New(
+	err_generation_id_required = errors.New(
 		"wavebuild: generation id is required",
 	)
 )
 
-type phaseEffectSets struct {
-	p1 p1_Effects
-	p2 p2_Effects
-	p3 p3_Effects
-	p4 p4_Effects
-	p5 p5_Effects
+type phase_effect_sets struct {
+	p1 p1_effects
+	p2 p2_effects
+	p3 p3_effects
+	p4 p4_effects
+	p5 p5_effects
 }
 
-var realPhaseEffectSets = phaseEffectSets{
-	p1: p1_EffectsDef,
-	p2: p2_EffectsDef,
-	p3: p3_EffectsDef,
-	p4: p4_EffectsDef,
-	p5: p5_EffectsDef,
+var real_phase_effect_sets = phase_effect_sets{
+	p1: p1_effects_def,
+	p2: p2_effects_def,
+	p3: p3_effects_def,
+	p4: p4_effects_def,
+	p5: p5_effects_def,
 }
 
-// runFivePhasePipeline executes one phase batch with one batch-scoped tasks
+// run_five_phase_pipeline executes one phase batch with one batch-scoped tasks
 // context.
 //
 // mode policy:
 // - dev runs phases 1-5.
 // - prod bypasses phases 1/3/4/5 and runs phase 2 only.
-func runFivePhasePipeline(
-	parentContext context.Context,
-	input p1_BatchInput,
-) (fivePhaseRunResult, error) {
-	return runFivePhasePipelineWithEffectSets(
-		parentContext,
+func run_five_phase_pipeline(
+	parent_context context.Context,
+	input p1_batch_input,
+) (five_phase_run_result, error) {
+	return run_five_phase_pipeline_with_effect_sets(
+		parent_context,
 		input,
-		realPhaseEffectSets,
+		real_phase_effect_sets,
 	)
 }
 
-func runFivePhasePipelineWithEffectSets(
-	parentContext context.Context,
-	input p1_BatchInput,
-	effects phaseEffectSets,
-) (fivePhaseRunResult, error) {
+func run_five_phase_pipeline_with_effect_sets(
+	parent_context context.Context,
+	input p1_batch_input,
+	effects phase_effect_sets,
+) (five_phase_run_result, error) {
 	if input.p1 == nil {
-		return fivePhaseRunResult{}, errP1_InputRequired
+		return five_phase_run_result{}, err_p1_input_required
 	}
-	normalizedGenerationID := strings.TrimSpace(input.p1.generationID)
-	if normalizedGenerationID == "" {
-		return fivePhaseRunResult{}, errGenerationIDRequired
+	normalized_generation_id := strings.TrimSpace(input.p1.generation_id)
+	if normalized_generation_id == "" {
+		return five_phase_run_result{}, err_generation_id_required
 	}
-	if modeError := input.p1.mode.validate(); modeError != nil {
-		return fivePhaseRunResult{}, modeError
+	if err := input.p1.mode.validate(); err != nil {
+		return five_phase_run_result{}, err
 	}
 
-	batchTaskContext := tasks.NewCtx(parentContext)
-	p1_RequestedEffects := canonicalP1_RequestedEffects()
-	if input.p1.mode != modeProd {
-		var p1_Error error
-		p1_RequestedEffects, p1_Error = effects.p1.planP1_RequestedEffects.Run(
-			batchTaskContext,
+	batch_task_context := tasks.NewCtx(parent_context)
+	p1_requested_effects := canonical_p1_requested_effects()
+	if input.p1.mode != mode_prod {
+		var err error
+		p1_requested_effects, err = effects.p1.plan_p1_requested_effects.Run(
+			batch_task_context,
 			input,
 		)
-		if p1_Error != nil {
-			return fivePhaseRunResult{}, p1_Error
+		if err != nil {
+			return five_phase_run_result{}, err
 		}
 	}
 
-	phaseBatchInput := phaseBatchInput{
-		mode:                     input.p1.mode,
-		generationID:             normalizedGenerationID,
-		fwExecutionRegistrations: p1_RequestedEffects.fwExecutionRegistrations,
+	phase_batch_input := phase_batch_input{
+		mode:                       input.p1.mode,
+		generation_id:              normalized_generation_id,
+		fw_execution_registrations: p1_requested_effects.fw_execution_registrations,
 	}
-	p2_Output, p2_Error := effects.p2.planP2_Output.Run(
-		batchTaskContext,
-		p2_BatchInput{
-			batch:               phaseBatchInput,
-			p1_RequestedEffects: p1_RequestedEffects,
+	p2_output, err := effects.p2.plan_p2_output.Run(
+		batch_task_context,
+		p2_batch_input{
+			batch:                phase_batch_input,
+			p1_requested_effects: p1_requested_effects,
 		},
 	)
-	if p2_Error != nil {
-		return fivePhaseRunResult{}, p2_Error
+	if err != nil {
+		return five_phase_run_result{}, err
 	}
-	if input.p1.mode == modeProd {
-		return fivePhaseRunResult{
-			p1_RequestedEffects: p1_RequestedEffects,
-			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
+	if input.p1.mode == mode_prod {
+		return five_phase_run_result{
+			p1_requested_effects: p1_requested_effects,
+			p2_requested_effects: p2_output.p2_requested_effects,
 		}, nil
 	}
 
-	p3_Output, p3_Error := effects.p3.planP4_RequestedEffects.Run(
-		batchTaskContext,
-		p3_BatchInput{
-			batch:               phaseBatchInput,
-			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
+	p3_output, err := effects.p3.plan_p4_requested_effects.Run(
+		batch_task_context,
+		p3_batch_input{
+			batch:                phase_batch_input,
+			p2_requested_effects: p2_output.p2_requested_effects,
 		},
 	)
-	if p3_Error != nil {
-		return fivePhaseRunResult{}, p3_Error
+	if err != nil {
+		return five_phase_run_result{}, err
 	}
-	p4_Output, p4_Error := effects.p4.planP5_RequestedEffects.Run(
-		batchTaskContext,
-		p4_BatchInput{
-			batch:               phaseBatchInput,
-			p4_RequestedEffects: p3_Output.p4_RequestedEffects,
+	p4_output, err := effects.p4.plan_p5_requested_effects.Run(
+		batch_task_context,
+		p4_batch_input{
+			batch:                phase_batch_input,
+			p4_requested_effects: p3_output.p4_requested_effects,
 		},
 	)
-	if p4_Error != nil {
-		return fivePhaseRunResult{}, p4_Error
+	if err != nil {
+		return five_phase_run_result{}, err
 	}
-	if p4_Output.requiresBackendRestartWithoutGoCompile {
-		healingP2_RequestedEffects := p2_RequestedEffects{
-			restartAppProcess:        true,
-			awaitBackendReadiness:    true,
-			fwExecutionRegistrations: p1_RequestedEffects.fwExecutionRegistrations,
+	if p4_output.requires_backend_restart_without_go_compile {
+		healing_p2_requested_effects := p2_requested_effects{
+			restart_app_process:        true,
+			await_backend_readiness:    true,
+			fw_execution_registrations: p1_requested_effects.fw_execution_registrations,
 		}
-		healingP3_Output, healingP3_Error := effects.p3.planP4_RequestedEffects.Run(
-			batchTaskContext,
-			p3_BatchInput{
-				batch:               phaseBatchInput,
-				p2_RequestedEffects: healingP2_RequestedEffects,
+		healing_p3_output, err := effects.p3.plan_p4_requested_effects.Run(
+			batch_task_context,
+			p3_batch_input{
+				batch:                phase_batch_input,
+				p2_requested_effects: healing_p2_requested_effects,
 			},
 		)
-		if healingP3_Error != nil {
-			return fivePhaseRunResult{}, healingP3_Error
+		if err != nil {
+			return five_phase_run_result{}, err
 		}
-		healingP4_Output, healingP4_Error := effects.p4.planP5_RequestedEffects.Run(
-			batchTaskContext,
-			p4_BatchInput{
-				batch:               phaseBatchInput,
-				p4_RequestedEffects: healingP3_Output.p4_RequestedEffects,
+		healing_p4_output, err := effects.p4.plan_p5_requested_effects.Run(
+			batch_task_context,
+			p4_batch_input{
+				batch:                phase_batch_input,
+				p4_requested_effects: healing_p3_output.p4_requested_effects,
 			},
 		)
-		if healingP4_Error != nil {
-			return fivePhaseRunResult{}, healingP4_Error
+		if err != nil {
+			return five_phase_run_result{}, err
 		}
-		p2_Output.p2_RequestedEffects = p2_Output.p2_RequestedEffects.merge(
-			healingP2_RequestedEffects,
+		p2_output.p2_requested_effects = p2_output.p2_requested_effects.merge(
+			healing_p2_requested_effects,
 		)
-		p3_Output = healingP3_Output
-		p4_Output = healingP4_Output
-		return fivePhaseRunResult{
-			p1_RequestedEffects: p1_RequestedEffects,
-			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
-			p3_Output:           p3_Output,
-			p4_Output:           p4_Output,
-			p5_CompletionSummary: p5_CompletionSummary{
-				terminalAction: frontendTerminalBrowserActionNone,
+		p3_output = healing_p3_output
+		p4_output = healing_p4_output
+		return five_phase_run_result{
+			p1_requested_effects: p1_requested_effects,
+			p2_requested_effects: p2_output.p2_requested_effects,
+			p3_output:            p3_output,
+			p4_output:            p4_output,
+			p5_completion_summary: p5_completion_summary{
+				terminal_action: frontend_terminal_browser_action_none,
 			},
-			fwNotifications: fwRequestedEffectsFromPointer(
-				p2_Output.p2_RequestedEffects.fwRequestedEffects,
-			).fwNotifications(
-				normalizedGenerationID,
+			fw_notifications: fw_requested_effects_from_pointer(
+				p2_output.p2_requested_effects.fw_requested_effects,
+			).fw_notifications(
+				normalized_generation_id,
 			),
 		}, nil
 	}
-	if p4_Output.skipFrontendSettling {
-		return fivePhaseRunResult{
-			p1_RequestedEffects: p1_RequestedEffects,
-			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
-			p3_Output:           p3_Output,
-			p4_Output:           p4_Output,
-			p5_CompletionSummary: p5_CompletionSummary{
-				terminalAction: frontendTerminalBrowserActionNone,
+	if p4_output.skip_frontend_settling {
+		return five_phase_run_result{
+			p1_requested_effects: p1_requested_effects,
+			p2_requested_effects: p2_output.p2_requested_effects,
+			p3_output:            p3_output,
+			p4_output:            p4_output,
+			p5_completion_summary: p5_completion_summary{
+				terminal_action: frontend_terminal_browser_action_none,
 			},
-			fwNotifications: fwRequestedEffectsFromPointer(
-				p2_Output.p2_RequestedEffects.fwRequestedEffects,
-			).fwNotifications(
-				normalizedGenerationID,
+			fw_notifications: fw_requested_effects_from_pointer(
+				p2_output.p2_requested_effects.fw_requested_effects,
+			).fw_notifications(
+				normalized_generation_id,
 			),
 		}, nil
 	}
-	p5_CompletionSummary, p5_Error := effects.p5.executeTerminalBrowserAction.Run(
-		batchTaskContext,
-		p5_BatchInput{
-			batch:               phaseBatchInput,
-			p5_RequestedEffects: p4_Output.p5_RequestedEffects,
+	p5_completion_summary, err := effects.p5.execute_terminal_browser_action.Run(
+		batch_task_context,
+		p5_batch_input{
+			batch:                phase_batch_input,
+			p5_requested_effects: p4_output.p5_requested_effects,
 		},
 	)
-	if p5_Error != nil {
-		return fivePhaseRunResult{}, p5_Error
+	if err != nil {
+		return five_phase_run_result{}, err
 	}
-	if p5_CompletionSummary.requiresBackendViteHealing {
-		healingP2_RequestedEffects := p2_RequestedEffects{
-			restartViteProcess:    true,
-			awaitBackendReadiness: true,
+	if p5_completion_summary.requires_backend_vite_healing {
+		healing_p2_requested_effects := p2_requested_effects{
+			restart_vite_process:    true,
+			await_backend_readiness: true,
 		}
-		healingP3_Output, healingP3_Error := effects.p3.planP4_RequestedEffects.Run(
-			batchTaskContext,
-			p3_BatchInput{
-				batch:               phaseBatchInput,
-				p2_RequestedEffects: healingP2_RequestedEffects,
+		healing_p3_output, err := effects.p3.plan_p4_requested_effects.Run(
+			batch_task_context,
+			p3_batch_input{
+				batch:                phase_batch_input,
+				p2_requested_effects: healing_p2_requested_effects,
 			},
 		)
-		if healingP3_Error != nil {
-			return fivePhaseRunResult{}, healingP3_Error
+		if err != nil {
+			return five_phase_run_result{}, err
 		}
-		healingP4_Output, healingP4_Error := effects.p4.planP5_RequestedEffects.Run(
-			batchTaskContext,
-			p4_BatchInput{
-				batch:               phaseBatchInput,
-				p4_RequestedEffects: healingP3_Output.p4_RequestedEffects,
+		healing_p4_output, err := effects.p4.plan_p5_requested_effects.Run(
+			batch_task_context,
+			p4_batch_input{
+				batch:                phase_batch_input,
+				p4_requested_effects: healing_p3_output.p4_requested_effects,
 			},
 		)
-		if healingP4_Error != nil {
-			return fivePhaseRunResult{}, healingP4_Error
+		if err != nil {
+			return five_phase_run_result{}, err
 		}
-		healingCompletionSummary, healingP5_Error := effects.p5.executeTerminalBrowserAction.Run(
-			batchTaskContext,
-			p5_BatchInput{
-				batch:               phaseBatchInput,
-				p5_RequestedEffects: healingP4_Output.p5_RequestedEffects,
+		healing_completion_summary, err := effects.p5.execute_terminal_browser_action.Run(
+			batch_task_context,
+			p5_batch_input{
+				batch:                phase_batch_input,
+				p5_requested_effects: healing_p4_output.p5_requested_effects,
 			},
 		)
-		if healingP5_Error != nil {
-			return fivePhaseRunResult{}, healingP5_Error
+		if err != nil {
+			return five_phase_run_result{}, err
 		}
-		p2_Output.p2_RequestedEffects = p2_Output.p2_RequestedEffects.merge(
-			healingP2_RequestedEffects,
+		p2_output.p2_requested_effects = p2_output.p2_requested_effects.merge(
+			healing_p2_requested_effects,
 		)
-		p3_Output = healingP3_Output
-		p4_Output = healingP4_Output
-		p5_CompletionSummary = healingCompletionSummary
+		p3_output = healing_p3_output
+		p4_output = healing_p4_output
+		p5_completion_summary = healing_completion_summary
 	}
-	return fivePhaseRunResult{
-		p1_RequestedEffects:  p1_RequestedEffects,
-		p2_RequestedEffects:  p2_Output.p2_RequestedEffects,
-		p3_Output:            p3_Output,
-		p4_Output:            p4_Output,
-		p5_CompletionSummary: p5_CompletionSummary,
-		fwNotifications: fwRequestedEffectsFromPointer(
-			p2_Output.p2_RequestedEffects.fwRequestedEffects,
-		).fwNotifications(
-			normalizedGenerationID,
+	return five_phase_run_result{
+		p1_requested_effects:  p1_requested_effects,
+		p2_requested_effects:  p2_output.p2_requested_effects,
+		p3_output:             p3_output,
+		p4_output:             p4_output,
+		p5_completion_summary: p5_completion_summary,
+		fw_notifications: fw_requested_effects_from_pointer(
+			p2_output.p2_requested_effects.fw_requested_effects,
+		).fw_notifications(
+			normalized_generation_id,
 		),
 	}, nil
 }
 
-func (mode mode) validate() error {
-	switch mode {
-	case modeDev, modeProd:
+func (current_mode mode) validate() error {
+	switch current_mode {
+	case mode_dev, mode_prod:
 		return nil
 	default:
-		return fmt.Errorf("wavebuild: unsupported mode %q", mode)
+		return fmt.Errorf("wavebuild: unsupported mode %q", current_mode)
 	}
 }
 
-func (eventType eventType) isSupported() bool {
-	switch eventType {
-	case eventTypeConfigFileChanged:
+func (event event_type) is_supported() bool {
+	switch event {
+	case event_type_config_file_changed:
 		return true
-	case eventTypeGoSourceChanged:
+	case event_type_go_source_changed:
 		return true
-	case eventTypeCriticalCSSSourceChanged:
+	case event_type_critical_css_source_changed:
 		return true
-	case eventTypeNormalCSSSourceChanged:
+	case event_type_normal_css_source_changed:
 		return true
-	case eventTypePublicStaticAssetChanged:
+	case event_type_public_static_asset_changed:
 		return true
-	case eventTypePrivateStaticAssetChanged:
+	case event_type_private_static_asset_changed:
 		return true
-	case eventTypeFWRequestedEffectsChanged:
+	case fw_event_type_requested_effects_changed:
 		return true
-	case eventTypeAppDefinedWatchActionOnlyChanged:
+	case event_type_app_defined_watch_action_only_changed:
 		return true
-	case eventTypeAppDefinedWatchWithRebuildChanged:
+	case event_type_app_defined_watch_with_rebuild_changed:
 		return true
-	case eventTypeIgnoredOrNoiseChanged:
+	case event_type_ignored_or_noise_changed:
 		return true
-	case eventTypeUnclassifiedNoWatchRuleChanged:
+	case event_type_unclassified_no_watch_rule_changed:
 		return true
 	default:
 		return false
 	}
 }
 
-func (rawOutcomes appRequestedOutcomes) reduce() (appRequestedOutcomes, error) {
-	reducedOutcomes := rawOutcomes
-	switch reducedOutcomes.requestedTerminalBrowserAction {
+func (outcomes app_requested_outcomes) reduce() (app_requested_outcomes, error) {
+	reduced_outcomes := outcomes
+	switch reduced_outcomes.requested_terminal_browser_action {
 	case "":
-		reducedOutcomes.requestedTerminalBrowserAction = frontendTerminalBrowserActionNone
-	case frontendTerminalBrowserActionNone,
-		frontendTerminalBrowserActionCSSHotReload,
-		frontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
-		frontendTerminalBrowserActionRevalidate,
-		frontendTerminalBrowserActionHardReload:
+		reduced_outcomes.requested_terminal_browser_action = frontend_terminal_browser_action_none
+	case frontend_terminal_browser_action_none,
+		frontend_terminal_browser_action_css_hot_reload,
+		frontend_terminal_browser_action_notify_vite_public_file_map_changed,
+		frontend_terminal_browser_action_revalidate,
+		frontend_terminal_browser_action_hard_reload:
 	default:
-		return appRequestedOutcomes{}, fmt.Errorf(
+		return app_requested_outcomes{}, fmt.Errorf(
 			"wavebuild: unsupported requested terminal browser action %q",
-			reducedOutcomes.requestedTerminalBrowserAction,
+			reduced_outcomes.requested_terminal_browser_action,
 		)
 	}
-	reducedOutcomes.fwRequestedEffects = fwRequestedEffects{}.merge(
-		reducedOutcomes.fwRequestedEffects,
+	reduced_outcomes.fw_requested_effects = fw_requested_effects{}.merge(
+		reduced_outcomes.fw_requested_effects,
 	)
-	for _, fwNotificationRequest := range reducedOutcomes.fwRequestedEffects.backendConvergenceNotificationQueue {
-		switch fwNotificationRequest.failurePolicy {
+	for _, fw_notif_request := range reduced_outcomes.fw_requested_effects.backend_convergence_notif_queue {
+		switch fw_notif_request.failure_policy {
 		case "",
-			FrameworkNotificationFailurePolicyFailPipeline,
-			FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile:
+			fw_notif_failure_policy_fail_pipeline,
+			fw_notif_failure_policy_restart_backend_without_go_compile:
 		default:
-			return appRequestedOutcomes{}, fmt.Errorf(
-				"wavebuild: unsupported fw notification failure policy %q",
-				fwNotificationRequest.failurePolicy,
+			return app_requested_outcomes{}, fmt.Errorf(
+				"wavebuild: unsupported fw-notif failure policy %q",
+				fw_notif_request.failure_policy,
 			)
 		}
 	}
-	return reducedOutcomes, nil
+	return reduced_outcomes, nil
 }
 
-func canonicalP1_RequestedEffects() p1_RequestedEffects {
-	return p1_RequestedEffects{
-		compileGoBinary:                 true,
-		buildCriticalCSS:                true,
-		buildNormalCSS:                  true,
-		processPublicStaticAssets:       true,
-		cleanupStalePublicStaticOutputs: true,
-		processPrivateStaticAssets:      true,
-		generatePublicFileMap:           true,
-		runRequestedBuildEffects:        true,
+func canonical_p1_requested_effects() p1_requested_effects {
+	return p1_requested_effects{
+		compile_go_binary:                   true,
+		build_critical_css:                  true,
+		build_normal_css:                    true,
+		process_public_static_assets:        true,
+		cleanup_stale_public_static_outputs: true,
+		process_private_static_assets:       true,
+		generate_public_file_map:            true,
+		run_requested_build_effects:         true,
 	}
 }

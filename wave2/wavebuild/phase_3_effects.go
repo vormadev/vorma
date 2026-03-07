@@ -10,205 +10,205 @@ import (
 /////// Effect Catalog
 /////////////////////////////////////////////////////////////////////
 
-type p3_Effects struct {
-	applyDevServerRestart    *tasks.Task[p3_BatchInput, struct{}]
-	queueRetryWaitRestart    *tasks.Task[p3_BatchInput, struct{}]
-	restartAppProcess        *tasks.Task[p3_BatchInput, struct{}]
-	restartViteProcess       *tasks.Task[p3_BatchInput, struct{}]
-	executeFWMutationEffects *tasks.Task[p3_BatchInput, struct{}]
-	planP4_RequestedEffects  *tasks.Task[p3_BatchInput, p3_Output]
+type p3_effects struct {
+	apply_dev_server_restart    *tasks.Task[p3_batch_input, struct{}]
+	queue_retry_wait_restart    *tasks.Task[p3_batch_input, struct{}]
+	restart_app_process         *tasks.Task[p3_batch_input, struct{}]
+	restart_vite_process        *tasks.Task[p3_batch_input, struct{}]
+	fw_execute_mutation_effects *tasks.Task[p3_batch_input, struct{}]
+	plan_p4_requested_effects   *tasks.Task[p3_batch_input, p3_output]
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Definitions
 /////////////////////////////////////////////////////////////////////
 
-var p3_EffectsDef = p3_Effects{
-	applyDevServerRestart:    p3_ApplyDevServerRestartTask,
-	queueRetryWaitRestart:    p3_QueueRetryWaitRestartTask,
-	restartAppProcess:        p3_RestartAppProcessTask,
-	restartViteProcess:       p3_RestartViteProcessTask,
-	executeFWMutationEffects: p3_ExecuteFWMutationEffectsTask,
-	planP4_RequestedEffects:  p3_PlanP4_RequestedEffectsTask,
+var p3_effects_def = p3_effects{
+	apply_dev_server_restart:    p3_apply_dev_server_restart_task,
+	queue_retry_wait_restart:    p3_queue_retry_wait_restart_task,
+	restart_app_process:         p3_restart_app_process_task,
+	restart_vite_process:        p3_restart_vite_process_task,
+	fw_execute_mutation_effects: p3_fw_execute_mutation_effects_task,
+	plan_p4_requested_effects:   p3_plan_p4_requested_effects_task,
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Tasks
 /////////////////////////////////////////////////////////////////////
 
-var p3_ApplyDevServerRestartTask = tasks.NewTask(
+var p3_apply_dev_server_restart_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
+		tasks_ctx *tasks.Ctx,
+		input p3_batch_input,
 	) (struct{}, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P3_APPLY_DEV_SERVER_RESTART) {
+		if record_test_effect(tasks_ctx, _LABEL_P3_APPLY_DEV_SERVER_RESTART) {
 			return struct{}{}, nil
 		}
 		return struct{}{}, nil
 	},
 )
 
-var p3_QueueRetryWaitRestartTask = tasks.NewTask(
+var p3_queue_retry_wait_restart_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
+		tasks_ctx *tasks.Ctx,
+		input p3_batch_input,
 	) (struct{}, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P3_QUEUE_RETRY_WAIT_RESTART) {
+		if record_test_effect(tasks_ctx, _LABEL_P3_QUEUE_RETRY_WAIT_RESTART) {
 			return struct{}{}, nil
 		}
 		return struct{}{}, nil
 	},
 )
 
-var p3_RestartAppProcessTask = tasks.NewTask(
+var p3_restart_app_process_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
+		tasks_ctx *tasks.Ctx,
+		input p3_batch_input,
 	) (struct{}, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P3_RESTART_APP_PROCESS) {
+		if record_test_effect(tasks_ctx, _LABEL_P3_RESTART_APP_PROCESS) {
 			return struct{}{}, nil
 		}
 		return struct{}{}, nil
 	},
 )
 
-var p3_RestartViteProcessTask = tasks.NewTask(
+var p3_restart_vite_process_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
+		tasks_ctx *tasks.Ctx,
+		input p3_batch_input,
 	) (struct{}, error) {
-		if recordTestEffect(tasksCtx, _LABEL_P3_RESTART_VITE_PROCESS) {
+		if record_test_effect(tasks_ctx, _LABEL_P3_RESTART_VITE_PROCESS) {
 			return struct{}{}, nil
 		}
 		return struct{}{}, nil
 	},
 )
 
-var p3_ExecuteFWMutationEffectsTask = tasks.NewTask(
+var p3_fw_execute_mutation_effects_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
+		tasks_ctx *tasks.Ctx,
+		input p3_batch_input,
 	) (struct{}, error) {
-		fwRequestedEffects := fwRequestedEffectsFromPointer(
-			input.p2_RequestedEffects.fwRequestedEffects,
+		fw_requested_effects := fw_requested_effects_from_pointer(
+			input.p2_requested_effects.fw_requested_effects,
 		)
-		if !fwRequestedEffects.hasBackendMutationEffects() {
+		if !fw_requested_effects.has_backend_mutation_effects() {
 			return struct{}{}, nil
 		}
-		if isTestEnv() {
-			for _, effectKey := range fwRequestedEffects.backendMutationEffectKeys {
-				recordTestEffect(
-					tasksCtx,
-					_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT+
+		if is_test_env() {
+			for _, effect_key := range fw_requested_effects.backend_mutation_effect_keys {
+				record_test_effect(
+					tasks_ctx,
+					_LABEL_P3_EXECUTE_Fw_MUTATION_EFFECT+
 						"["+
-						string(effectKey)+
+						string(effect_key)+
 						"]",
 				)
 			}
 			return struct{}{}, nil
 		}
-		registrations := input.p2_RequestedEffects.fwExecutionRegistrations
+		registrations := input.p2_requested_effects.fw_execution_registrations
 		if registrations == nil {
 			return struct{}{}, errors.New(
 				"wavebuild: fw execution registrations are required for backend mutation effects",
 			)
 		}
-		if len(registrations.backendMutationEffectsByKey) == 0 {
+		if len(registrations.backend_mutation_effects_by_key) == 0 {
 			return struct{}{}, errors.New(
 				"wavebuild: backend mutation fw effect registry is empty",
 			)
 		}
-		var ignoredResult struct{}
-		boundFWMutationTasks := make(
+		var ignored_result struct{}
+		bound_fw_mutation_tasks := make(
 			[]tasks.BoundTask,
 			0,
-			len(fwRequestedEffects.backendMutationEffectKeys),
+			len(fw_requested_effects.backend_mutation_effect_keys),
 		)
-		for _, effectKey := range fwRequestedEffects.backendMutationEffectKeys {
-			fwMutationTask, hasFWMutationTask := registrations.backendMutationEffectsByKey[effectKey]
-			if !hasFWMutationTask || fwMutationTask == nil {
+		for _, effect_key := range fw_requested_effects.backend_mutation_effect_keys {
+			fw_mutation_task, fw_has_mutation_task := registrations.backend_mutation_effects_by_key[effect_key]
+			if !fw_has_mutation_task || fw_mutation_task == nil {
 				return struct{}{}, errors.New(
 					"wavebuild: backend mutation fw effect task is not registered for key " +
 						string(
-							effectKey,
+							effect_key,
 						),
 				)
 			}
-			boundFWMutationTasks = append(
-				boundFWMutationTasks,
-				fwMutationTask.Bind(input, &ignoredResult),
+			bound_fw_mutation_tasks = append(
+				bound_fw_mutation_tasks,
+				fw_mutation_task.Bind(input, &ignored_result),
 			)
 		}
-		if runParallelError := tasksCtx.RunParallel(
-			boundFWMutationTasks...,
-		); runParallelError != nil {
-			return struct{}{}, runParallelError
+		if err := tasks_ctx.RunParallel(
+			bound_fw_mutation_tasks...,
+		); err != nil {
+			return struct{}{}, err
 		}
 		return struct{}{}, nil
 	},
 )
 
-var p3_PlanP4_RequestedEffectsTask = tasks.NewTask(
+var p3_plan_p4_requested_effects_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p3_BatchInput,
-	) (p3_Output, error) {
-		if input.p2_RequestedEffects.queueRetryWaitRestart {
-			if _, queuedRestartError := p3_QueueRetryWaitRestartTask.Run(
-				tasksCtx,
+		tasks_ctx *tasks.Ctx,
+		input p3_batch_input,
+	) (p3_output, error) {
+		if input.p2_requested_effects.queue_retry_wait_restart {
+			if _, err := p3_queue_retry_wait_restart_task.Run(
+				tasks_ctx,
 				input,
-			); queuedRestartError != nil {
-				return p3_Output{}, queuedRestartError
+			); err != nil {
+				return p3_output{}, err
 			}
-			return p3_Output{
-				p4_RequestedEffects: input.p2_RequestedEffects.deriveP4_RequestedEffects(),
+			return p3_output{
+				p4_requested_effects: input.p2_requested_effects.derive_p4_requested_effects(),
 			}, nil
 		}
 
-		var ignoredResult struct{}
-		backendMutationTasks := make([]tasks.BoundTask, 0, 4)
-		if input.p2_RequestedEffects.restartDevServerCycle {
-			backendMutationTasks = append(
-				backendMutationTasks,
-				p3_ApplyDevServerRestartTask.Bind(
+		var ignored_result struct{}
+		backend_mutation_tasks := make([]tasks.BoundTask, 0, 4)
+		if input.p2_requested_effects.restart_dev_server_cycle {
+			backend_mutation_tasks = append(
+				backend_mutation_tasks,
+				p3_apply_dev_server_restart_task.Bind(
 					input,
-					&ignoredResult,
+					&ignored_result,
 				),
 			)
 		}
-		if input.p2_RequestedEffects.restartAppProcess {
-			backendMutationTasks = append(
-				backendMutationTasks,
-				p3_RestartAppProcessTask.Bind(input, &ignoredResult),
+		if input.p2_requested_effects.restart_app_process {
+			backend_mutation_tasks = append(
+				backend_mutation_tasks,
+				p3_restart_app_process_task.Bind(input, &ignored_result),
 			)
 		}
-		if input.p2_RequestedEffects.restartViteProcess {
-			backendMutationTasks = append(
-				backendMutationTasks,
-				p3_RestartViteProcessTask.Bind(
+		if input.p2_requested_effects.restart_vite_process {
+			backend_mutation_tasks = append(
+				backend_mutation_tasks,
+				p3_restart_vite_process_task.Bind(
 					input,
-					&ignoredResult,
+					&ignored_result,
 				),
 			)
 		}
-		if fwRequestedEffectsFromPointer(
-			input.p2_RequestedEffects.fwRequestedEffects,
-		).hasBackendMutationEffects() {
-			backendMutationTasks = append(
-				backendMutationTasks,
-				p3_ExecuteFWMutationEffectsTask.Bind(
+		if fw_requested_effects_from_pointer(
+			input.p2_requested_effects.fw_requested_effects,
+		).has_backend_mutation_effects() {
+			backend_mutation_tasks = append(
+				backend_mutation_tasks,
+				p3_fw_execute_mutation_effects_task.Bind(
 					input,
-					&ignoredResult,
+					&ignored_result,
 				),
 			)
 		}
-		if len(backendMutationTasks) > 0 {
-			if runParallelError := tasksCtx.RunParallel(backendMutationTasks...); runParallelError != nil {
-				return p3_Output{}, runParallelError
+		if len(backend_mutation_tasks) > 0 {
+			if err := tasks_ctx.RunParallel(backend_mutation_tasks...); err != nil {
+				return p3_output{}, err
 			}
 		}
-		return p3_Output{
-			p4_RequestedEffects: input.p2_RequestedEffects.deriveP4_RequestedEffects(),
+		return p3_output{
+			p4_requested_effects: input.p2_requested_effects.derive_p4_requested_effects(),
 		}, nil
 	},
 )

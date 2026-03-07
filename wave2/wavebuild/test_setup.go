@@ -8,83 +8,83 @@ import (
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
-const waveInternalTestModeEnvVar = "__WAVE_INTERNAL_TEST_MODE"
+const wave_internal_test_mode_env_var = "__WAVE_INTERNAL_TEST_MODE"
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Labels
 /////////////////////////////////////////////////////////////////////
 
 const (
-	_LABEL_P2_BUILD_GO_BINARY               = "phase_2.build_go_binary"
-	_LABEL_P2_BUILD_CRITICAL_CSS            = "phase_2.build_critical_css"
-	_LABEL_P2_BUILD_NORMAL_CSS              = "phase_2.build_normal_css"
-	_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS  = "phase_2.process_public_static_assets"
-	_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC   = "phase_2.cleanup_stale_public_static"
-	_LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS = "phase_2.process_private_static_assets"
+	_LABEL_P2_BUILD_GO_BINARY               = "phase-2.build-go-binary"
+	_LABEL_P2_BUILD_CRITICAL_CSS            = "phase-2.build-critical-css"
+	_LABEL_P2_BUILD_NORMAL_CSS              = "phase-2.build-normal-css"
+	_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS  = "phase-2.process-public-static-assets"
+	_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC   = "phase-2.cleanup-stale-public-static"
+	_LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS = "phase-2.process-private-static-assets"
 
-	_LABEL_P3_APPLY_DEV_SERVER_RESTART   = "phase_3.apply_dev_server_restart"
-	_LABEL_P3_QUEUE_RETRY_WAIT_RESTART   = "phase_3.queue_retry_wait_restart"
-	_LABEL_P3_RESTART_APP_PROCESS        = "phase_3.restart_app_process"
-	_LABEL_P3_RESTART_VITE_PROCESS       = "phase_3.restart_vite_process"
-	_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT = "phase_3.execute_fw_mutation_effect"
+	_LABEL_P3_APPLY_DEV_SERVER_RESTART   = "phase-3.apply-dev-server-restart"
+	_LABEL_P3_QUEUE_RETRY_WAIT_RESTART   = "phase-3.queue-retry-wait-restart"
+	_LABEL_P3_RESTART_APP_PROCESS        = "phase-3.restart-app-process"
+	_LABEL_P3_RESTART_VITE_PROCESS       = "phase-3.restart-vite-process"
+	_LABEL_P3_EXECUTE_Fw_MUTATION_EFFECT = "phase-3.execute-fw-mutation-effect"
 
-	_LABEL_P4_AWAIT_BACKEND_READINESS = "phase_4.await_backend_readiness"
-	_LABEL_P4_EXECUTE_FW_NOTIFICATION = "phase_4.execute_fw_notification"
+	_LABEL_P4_AWAIT_BACKEND_READINESS = "phase-4.await-backend-readiness"
+	_LABEL_P4_EXECUTE_Fw_NOTIFICATION = "phase-4.execute-fw-notification"
 
-	_LABEL_P5_BROADCAST_CSS_HOT_RELOAD           = "phase_5.broadcast_css_hot_reload"
-	_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED = "phase_5.notify_vite_public_filemap_changed"
-	_LABEL_P5_BROADCAST_REVALIDATE               = "phase_5.broadcast_revalidate"
-	_LABEL_P5_BROADCAST_HARD_RELOAD              = "phase_5.broadcast_hard_reload"
-	_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE    = "phase_5.publish_no_reload_needed_notice"
+	_LABEL_P5_BROADCAST_CSS_HOT_RELOAD           = "phase-5.broadcast-css-hot-reload"
+	_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED = "phase-5.notify-vite-public-filemap-changed"
+	_LABEL_P5_BROADCAST_REVALIDATE               = "phase-5.broadcast-revalidate"
+	_LABEL_P5_BROADCAST_HARD_RELOAD              = "phase-5.broadcast-hard-reload"
+	_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE    = "phase-5.publish-no-reload-needed-notice"
 )
 
 /////////////////////////////////////////////////////////////////////
 /////// Test Recorder
 /////////////////////////////////////////////////////////////////////
 
-type testEffectRecorder struct {
-	mutex        sync.Mutex
-	effectLabels []string
+type test_effect_recorder struct {
+	mutex         sync.Mutex
+	effect_labels []string
 }
 
-type testEffectRecorderContextKey struct{}
+type test_effect_recorder_context_key struct{}
 
-func withTestEffectRecorder(
-	nativeContext context.Context,
-	effectRecorder *testEffectRecorder,
+func with_test_effect_recorder(
+	native_context context.Context,
+	effect_recorder *test_effect_recorder,
 ) context.Context {
 	return context.WithValue(
-		nativeContext,
-		testEffectRecorderContextKey{},
-		effectRecorder,
+		native_context,
+		test_effect_recorder_context_key{},
+		effect_recorder,
 	)
 }
 
-func (effectRecorder *testEffectRecorder) snapshotEffectLabels() []string {
-	effectRecorder.mutex.Lock()
-	defer effectRecorder.mutex.Unlock()
-	return append([]string(nil), effectRecorder.effectLabels...)
+func (recorder *test_effect_recorder) snapshot_effect_labels() []string {
+	recorder.mutex.Lock()
+	defer recorder.mutex.Unlock()
+	return append([]string(nil), recorder.effect_labels...)
 }
 
-func isTestEnv() bool {
-	return os.Getenv(waveInternalTestModeEnvVar) == "1"
+func is_test_env() bool {
+	return os.Getenv(wave_internal_test_mode_env_var) == "1"
 }
 
-func recordTestEffect(
-	tasksCtx *tasks.Ctx,
-	effectLabel string,
+func record_test_effect(
+	tasks_ctx *tasks.Ctx,
+	effect_label string,
 ) bool {
-	if !isTestEnv() {
+	if !is_test_env() {
 		return false
 	}
-	effectRecorder := tasksCtx.NativeContext().Value(
-		testEffectRecorderContextKey{},
-	).(*testEffectRecorder)
-	effectRecorder.mutex.Lock()
-	effectRecorder.effectLabels = append(
-		effectRecorder.effectLabels,
-		effectLabel,
+	effect_recorder := tasks_ctx.NativeContext().Value(
+		test_effect_recorder_context_key{},
+	).(*test_effect_recorder)
+	effect_recorder.mutex.Lock()
+	effect_recorder.effect_labels = append(
+		effect_recorder.effect_labels,
+		effect_label,
 	)
-	effectRecorder.mutex.Unlock()
+	effect_recorder.mutex.Unlock()
 	return true
 }

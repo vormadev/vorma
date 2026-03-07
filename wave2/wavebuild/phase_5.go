@@ -4,24 +4,24 @@ package wavebuild
 /////// Phase Contracts
 /////////////////////////////////////////////////////////////////////
 
-// p5_BatchInput is the frontend-settling input produced by phase 4.
-type p5_BatchInput struct {
-	batch               phaseBatchInput
-	p5_RequestedEffects p5_RequestedEffects
+// p5_batch_input is the frontend-settling input produced by phase 4.
+type p5_batch_input struct {
+	batch                phase_batch_input
+	p5_requested_effects p5_requested_effects
 }
 
-// p5_CompletionSummary captures frontend-settling completion output.
-type p5_CompletionSummary struct {
-	terminalAction             frontendTerminalBrowserAction
-	requiresBackendViteHealing bool
+// p5_completion_summary captures frontend-settling completion output.
+type p5_completion_summary struct {
+	terminal_action               frontend_terminal_browser_action
+	requires_backend_vite_healing bool
 }
 
-// fivePhaseRunResult captures the full five-phase pipeline execution.
-type fivePhaseRunResult struct {
-	p1_RequestedEffects  p1_RequestedEffects
-	p2_RequestedEffects  p2_RequestedEffects
-	p3_Output            p3_Output
-	p4_Output            p4_Output
-	p5_CompletionSummary p5_CompletionSummary
-	fwNotifications      []FrameworkNotification
+// five_phase_run_result captures the full five-phase pipeline execution.
+type five_phase_run_result struct {
+	p1_requested_effects  p1_requested_effects
+	p2_requested_effects  p2_requested_effects
+	p3_output             p3_output
+	p4_output             p4_output
+	p5_completion_summary p5_completion_summary
+	fw_notifications      []fw_notif
 }

@@ -8,171 +8,171 @@ import (
 /////// Phase Contracts
 /////////////////////////////////////////////////////////////////////
 
-// phaseBatchInput is the shared per-batch phase envelope passed after phase 1.
-type phaseBatchInput struct {
-	mode                     mode
-	generationID             string
-	fwExecutionRegistrations *fwExecutionRegistrations
+// phase_batch_input is the shared per-batch phase envelope passed after phase 1.
+type phase_batch_input struct {
+	mode                       mode
+	generation_id              string
+	fw_execution_registrations *fw_execution_registrations
 }
 
-// p1_BatchInput is the phase-1 input contract for one reduced batch.
-type p1_BatchInput struct {
-	p1 *p1_Input
+// p1_batch_input is the phase-1 input contract for one reduced batch.
+type p1_batch_input struct {
+	p1 *p1_input
 }
 
-// p1_RequestedEffects are phase-2 build effects plus carry-forward settle intents.
-type p1_RequestedEffects struct {
-	restartDevServerCycle           bool
-	compileGoBinary                 bool
-	buildCriticalCSS                bool
-	buildNormalCSS                  bool
-	processPublicStaticAssets       bool
-	cleanupStalePublicStaticOutputs bool
-	processPrivateStaticAssets      bool
-	generatePublicFileMap           bool
-	runRequestedBuildEffects        bool
-	queueRetryWaitRestart           bool
+// p1_requested_effects are phase-2 build effects plus carry-forward settle intents.
+type p1_requested_effects struct {
+	restart_dev_server_cycle            bool
+	compile_go_binary                   bool
+	build_critical_css                  bool
+	build_normal_css                    bool
+	process_public_static_assets        bool
+	cleanup_stale_public_static_outputs bool
+	process_private_static_assets       bool
+	generate_public_file_map            bool
+	run_requested_build_effects         bool
+	queue_retry_wait_restart            bool
 
-	requestBackendRestart                       bool
-	requestViteRestart                          bool
-	requestedTerminalBrowserAction              frontendTerminalBrowserAction
-	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
-	fwExecutionRegistrations                    *fwExecutionRegistrations
-	fwRequestedEffects                          *fwRequestedEffects
+	request_backend_restart                    bool
+	request_vite_restart                       bool
+	requested_terminal_browser_action          frontend_terminal_browser_action
+	wave_public_file_map_notif_destination_key fw_notif_destination_key
+	fw_execution_registrations                 *fw_execution_registrations
+	fw_requested_effects                       *fw_requested_effects
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Phase Reductions
 /////////////////////////////////////////////////////////////////////
 
-func (facts p1_Facts) hasEventType(
-	eventType eventType,
+func (facts p1_facts) has_event_type(
+	event_type event_type,
 ) bool {
-	return slices.Contains(facts.eventTypes, eventType)
+	return slices.Contains(facts.event_types, event_type)
 }
 
-func (facts p1_Facts) deriveImplicitBrowserActionIntent() frontendTerminalBrowserAction {
-	actionIntent := frontendTerminalBrowserActionNone
-	if facts.hasEventType(
-		eventTypeCriticalCSSSourceChanged,
+func (facts p1_facts) derive_implicit_browser_action_intent() frontend_terminal_browser_action {
+	action_intent := frontend_terminal_browser_action_none
+	if facts.has_event_type(
+		event_type_critical_css_source_changed,
 	) ||
-		facts.hasEventType(
-			eventTypeNormalCSSSourceChanged,
+		facts.has_event_type(
+			event_type_normal_css_source_changed,
 		) {
-		actionIntent = actionIntent.dominantWith(
-			frontendTerminalBrowserActionCSSHotReload,
+		action_intent = action_intent.dominant_with(
+			frontend_terminal_browser_action_css_hot_reload,
 		)
 	}
-	if facts.hasEventType(
-		eventTypePublicStaticAssetChanged,
+	if facts.has_event_type(
+		event_type_public_static_asset_changed,
 	) {
-		actionIntent = actionIntent.dominantWith(
-			frontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
+		action_intent = action_intent.dominant_with(
+			frontend_terminal_browser_action_notify_vite_public_file_map_changed,
 		)
 	}
-	if facts.hasEventType(
-		eventTypeGoSourceChanged,
+	if facts.has_event_type(
+		event_type_go_source_changed,
 	) ||
-		facts.hasEventType(
-			eventTypePrivateStaticAssetChanged,
+		facts.has_event_type(
+			event_type_private_static_asset_changed,
 		) {
-		actionIntent = actionIntent.dominantWith(
-			frontendTerminalBrowserActionHardReload,
+		action_intent = action_intent.dominant_with(
+			frontend_terminal_browser_action_hard_reload,
 		)
 	}
-	return actionIntent
+	return action_intent
 }
 
-func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
-	if facts.mode == modeDev &&
-		facts.waitingForBuildRetry {
-		return p1_RequestedEffects{
-			queueRetryWaitRestart: true,
+func (facts p1_facts) derive_p1_requested_effects() p1_requested_effects {
+	if facts.mode == mode_dev &&
+		facts.waiting_for_build_retry {
+		return p1_requested_effects{
+			queue_retry_wait_restart: true,
 		}
 	}
-	configChanged := facts.hasEventType(
-		eventTypeConfigFileChanged,
+	config_changed := facts.has_event_type(
+		event_type_config_file_changed,
 	)
-	goSourceChanged := facts.hasEventType(
-		eventTypeGoSourceChanged,
+	go_source_changed := facts.has_event_type(
+		event_type_go_source_changed,
 	)
-	criticalCSSChanged := facts.hasEventType(
-		eventTypeCriticalCSSSourceChanged,
+	critical_css_changed := facts.has_event_type(
+		event_type_critical_css_source_changed,
 	)
-	normalCSSChanged := facts.hasEventType(
-		eventTypeNormalCSSSourceChanged,
+	normal_css_changed := facts.has_event_type(
+		event_type_normal_css_source_changed,
 	)
-	publicStaticChanged := facts.hasEventType(
-		eventTypePublicStaticAssetChanged,
+	public_static_changed := facts.has_event_type(
+		event_type_public_static_asset_changed,
 	)
-	privateStaticChanged := facts.hasEventType(
-		eventTypePrivateStaticAssetChanged,
+	private_static_changed := facts.has_event_type(
+		event_type_private_static_asset_changed,
 	)
-	appDefinedWatchActionOnlyChanged := facts.hasEventType(
-		eventTypeAppDefinedWatchActionOnlyChanged,
+	app_defined_watch_action_only_changed := facts.has_event_type(
+		event_type_app_defined_watch_action_only_changed,
 	)
-	appDefinedWatchWithRebuildChanged := facts.hasEventType(
-		eventTypeAppDefinedWatchWithRebuildChanged,
+	app_defined_watch_with_rebuild_changed := facts.has_event_type(
+		event_type_app_defined_watch_with_rebuild_changed,
 	)
-	appDefinedWatchChanged := appDefinedWatchActionOnlyChanged ||
-		appDefinedWatchWithRebuildChanged
+	app_defined_watch_changed := app_defined_watch_action_only_changed ||
+		app_defined_watch_with_rebuild_changed
 
-	requestedFWEffects := facts.fwRequestedEffects
-	appRequestedOutcomes := appRequestedOutcomes{}
-	if appDefinedWatchChanged || requestedFWEffects.hasAny() {
-		appRequestedOutcomes = facts.appRequestedOutcomes
+	fw_requested_effects_val := facts.fw_requested_effects
+	app_requested_outcomes := app_requested_outcomes{}
+	if app_defined_watch_changed || fw_requested_effects_val.has_any() {
+		app_requested_outcomes = facts.app_requested_outcomes
 	}
-	requestedFWEffects = requestedFWEffects.merge(
-		appRequestedOutcomes.fwRequestedEffects,
+	fw_requested_effects_val = fw_requested_effects_val.merge(
+		app_requested_outcomes.fw_requested_effects,
 	)
-	mergedBrowserActionIntent := facts.deriveImplicitBrowserActionIntent().
-		dominantWith(
-			appRequestedOutcomes.requestedTerminalBrowserAction,
+	merged_browser_action_intent := facts.derive_implicit_browser_action_intent().
+		dominant_with(
+			app_requested_outcomes.requested_terminal_browser_action,
 		)
 
-	requestBackendRestart := goSourceChanged ||
-		appRequestedOutcomes.requestRestart
-	requestViteRestart := configChanged
+	request_backend_restart := go_source_changed ||
+		app_requested_outcomes.request_restart
+	request_vite_restart := config_changed
 
-	if facts.mode == modeProd {
-		requestBackendRestart = false
-		requestViteRestart = false
-		mergedBrowserActionIntent = frontendTerminalBrowserActionNone
-		requestedFWEffects = fwRequestedEffects{}
+	if facts.mode == mode_prod {
+		request_backend_restart = false
+		request_vite_restart = false
+		merged_browser_action_intent = frontend_terminal_browser_action_none
+		fw_requested_effects_val = fw_requested_effects{}
 	}
 
-	requestedEffects := p1_RequestedEffects{
-		restartDevServerCycle: configChanged,
-		compileGoBinary: goSourceChanged ||
-			appRequestedOutcomes.requestGoCompile,
-		buildCriticalCSS:                criticalCSSChanged,
-		buildNormalCSS:                  normalCSSChanged,
-		processPublicStaticAssets:       publicStaticChanged,
-		cleanupStalePublicStaticOutputs: publicStaticChanged,
-		processPrivateStaticAssets:      privateStaticChanged,
-		generatePublicFileMap:           publicStaticChanged,
+	requested_effects := p1_requested_effects{
+		restart_dev_server_cycle: config_changed,
+		compile_go_binary: go_source_changed ||
+			app_requested_outcomes.request_go_compile,
+		build_critical_css:                  critical_css_changed,
+		build_normal_css:                    normal_css_changed,
+		process_public_static_assets:        public_static_changed,
+		cleanup_stale_public_static_outputs: public_static_changed,
+		process_private_static_assets:       private_static_changed,
+		generate_public_file_map:            public_static_changed,
 
-		requestBackendRestart:                       requestBackendRestart,
-		requestViteRestart:                          requestViteRestart,
-		requestedTerminalBrowserAction:              mergedBrowserActionIntent,
-		wavePublicFileMapNotificationDestinationKey: facts.wavePublicFileMapNotificationDestinationKey,
-		fwExecutionRegistrations:                    facts.fwExecutionRegistrations,
-		fwRequestedEffects: newFWRequestedEffectsPointerIfAny(
-			requestedFWEffects,
+		request_backend_restart:                    request_backend_restart,
+		request_vite_restart:                       request_vite_restart,
+		requested_terminal_browser_action:          merged_browser_action_intent,
+		wave_public_file_map_notif_destination_key: facts.wave_public_file_map_notif_destination_key,
+		fw_execution_registrations:                 facts.fw_execution_registrations,
+		fw_requested_effects: fw_new_requested_effects_pointer_if_any(
+			fw_requested_effects_val,
 		),
 	}
-	if facts.mode == modeProd {
-		requestedEffects.restartDevServerCycle = false
+	if facts.mode == mode_prod {
+		requested_effects.restart_dev_server_cycle = false
 	}
 
-	requestedEffects.runRequestedBuildEffects =
-		requestedEffects.compileGoBinary ||
-			requestedEffects.buildCriticalCSS ||
-			requestedEffects.buildNormalCSS ||
-			requestedEffects.processPublicStaticAssets ||
-			requestedEffects.cleanupStalePublicStaticOutputs ||
-			requestedEffects.processPrivateStaticAssets ||
-			requestedEffects.generatePublicFileMap
+	requested_effects.run_requested_build_effects =
+		requested_effects.compile_go_binary ||
+			requested_effects.build_critical_css ||
+			requested_effects.build_normal_css ||
+			requested_effects.process_public_static_assets ||
+			requested_effects.cleanup_stale_public_static_outputs ||
+			requested_effects.process_private_static_assets ||
+			requested_effects.generate_public_file_map
 
-	return requestedEffects
+	return requested_effects
 }

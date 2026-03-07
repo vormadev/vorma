@@ -61,212 +61,212 @@ type Config struct {
 
 // Wave is the app-facing runtime surface.
 type Wave struct {
-	configFS       fs.FS
-	configPath     string
-	logger         *slog.Logger
-	runtimeSurface RuntimeSurface
-	rawConfigJSON  []byte
+	config_fs       fs.FS
+	config_path     string
+	logger          *slog.Logger
+	runtime_surface RuntimeSurface
+	raw_config_json []byte
 }
 
 // New constructs one Wave2 runtime instance.
-func New(config Config) *Wave {
-	if config.FS == nil {
+func New(cfg Config) *Wave {
+	if cfg.FS == nil {
 		panic("wave2.New: FS is required")
 	}
-	normalizedConfigPath, normalizeConfigPathError := normalizeConfigPathForFS(
-		config.ConfigPath,
+	normalized_config_path, err := normalize_config_path_for_fs(
+		cfg.ConfigPath,
 	)
-	if normalizeConfigPathError != nil {
-		panic("wave2.New: " + normalizeConfigPathError.Error())
+	if err != nil {
+		panic("wave2.New: " + err.Error())
 	}
 	return &Wave{
-		configFS:       config.FS,
-		configPath:     normalizedConfigPath,
-		logger:         config.Logger,
-		runtimeSurface: config.RuntimeSurface,
-		rawConfigJSON:  config.RawConfigJSON,
+		config_fs:       cfg.FS,
+		config_path:     normalized_config_path,
+		logger:          cfg.Logger,
+		runtime_surface: cfg.RuntimeSurface,
+		raw_config_json: cfg.RawConfigJSON,
 	}
 }
 
 // ConfigFS returns the configured filesystem root used by this runtime.
-func (waveRuntime *Wave) ConfigFS() fs.FS {
-	if waveRuntime == nil {
+func (w *Wave) ConfigFS() fs.FS {
+	if w == nil {
 		return nil
 	}
-	return waveRuntime.configFS
+	return w.config_fs
 }
 
 // ConfigFile returns the normalized config path relative to ConfigFS root.
-func (waveRuntime *Wave) ConfigFile() string {
-	if waveRuntime == nil {
+func (w *Wave) ConfigFile() string {
+	if w == nil {
 		return ""
 	}
-	return waveRuntime.configPath
+	return w.config_path
 }
 
 // Logger returns the configured logger.
-func (waveRuntime *Wave) Logger() *slog.Logger {
-	if waveRuntime == nil {
+func (w *Wave) Logger() *slog.Logger {
+	if w == nil {
 		return nil
 	}
-	if waveRuntime.logger == nil && waveRuntime.runtimeSurface != nil {
-		return waveRuntime.runtimeSurface.Logger()
+	if w.logger == nil && w.runtime_surface != nil {
+		return w.runtime_surface.Logger()
 	}
-	return waveRuntime.logger
+	return w.logger
 }
 
 // SetLogger replaces the runtime logger.
-func (waveRuntime *Wave) SetLogger(logger *slog.Logger) {
-	if waveRuntime == nil {
+func (w *Wave) SetLogger(logger *slog.Logger) {
+	if w == nil {
 		return
 	}
-	waveRuntime.logger = logger
+	w.logger = logger
 }
 
 // RawConfigJSON returns the raw config JSON.
-func (waveRuntime *Wave) RawConfigJSON() []byte {
-	if waveRuntime == nil {
+func (w *Wave) RawConfigJSON() []byte {
+	if w == nil {
 		return nil
 	}
-	return waveRuntime.rawConfigJSON
+	return w.raw_config_json
 }
 
 // RuntimeSurface returns the configured runtime adapter.
-func (waveRuntime *Wave) RuntimeSurface() RuntimeSurface {
-	if waveRuntime == nil {
+func (w *Wave) RuntimeSurface() RuntimeSurface {
+	if w == nil {
 		return nil
 	}
-	return waveRuntime.runtimeSurface
+	return w.runtime_surface
 }
 
 // IsDev returns whether this runtime is in development mode.
-func (waveRuntime *Wave) IsDev() bool {
-	return waveRuntime.mustRuntimeSurface("IsDev").IsDev()
+func (w *Wave) IsDev() bool {
+	return w.must_runtime_surface("IsDev").IsDev()
 }
 
 // MustGetPort returns the resolved application runtime port.
-func (waveRuntime *Wave) MustGetPort() int {
-	return waveRuntime.mustRuntimeSurface("MustGetPort").MustGetPort()
+func (w *Wave) MustGetPort() int {
+	return w.must_runtime_surface("MustGetPort").MustGetPort()
 }
 
 // SetModeToDev sets runtime mode to development.
-func (waveRuntime *Wave) SetModeToDev() {
-	waveRuntime.mustRuntimeSurface("SetModeToDev").SetModeToDev()
+func (w *Wave) SetModeToDev() {
+	w.must_runtime_surface("SetModeToDev").SetModeToDev()
 }
 
 // PublicPathPrefix returns the normalized configured public path prefix.
-func (waveRuntime *Wave) PublicPathPrefix() string {
-	return waveRuntime.mustRuntimeSurface("PublicPathPrefix").PublicPathPrefix()
+func (w *Wave) PublicPathPrefix() string {
+	return w.must_runtime_surface("PublicPathPrefix").PublicPathPrefix()
 }
 
 // DistDir returns the configured build output directory root.
-func (waveRuntime *Wave) DistDir() string {
-	return waveRuntime.mustRuntimeSurface("DistDir").DistDir()
+func (w *Wave) DistDir() string {
+	return w.must_runtime_surface("DistDir").DistDir()
 }
 
 // PrivateStaticDir returns the source directory for private static assets.
-func (waveRuntime *Wave) PrivateStaticDir() string {
-	return waveRuntime.mustRuntimeSurface("PrivateStaticDir").PrivateStaticDir()
+func (w *Wave) PrivateStaticDir() string {
+	return w.must_runtime_surface("PrivateStaticDir").PrivateStaticDir()
 }
 
 // ViteManifestLocation returns the expected path of the Vite manifest in build output.
-func (waveRuntime *Wave) ViteManifestLocation() string {
-	return waveRuntime.mustRuntimeSurface("ViteManifestLocation").
+func (w *Wave) ViteManifestLocation() string {
+	return w.must_runtime_surface("ViteManifestLocation").
 		ViteManifestLocation()
 }
 
 // StaticPrivateOutDir returns the private static output directory.
-func (waveRuntime *Wave) StaticPrivateOutDir() string {
-	return waveRuntime.mustRuntimeSurface("StaticPrivateOutDir").
+func (w *Wave) StaticPrivateOutDir() string {
+	return w.must_runtime_surface("StaticPrivateOutDir").
 		StaticPrivateOutDir()
 }
 
 // StaticPublicOutDir returns the public static output directory.
-func (waveRuntime *Wave) StaticPublicOutDir() string {
-	return waveRuntime.mustRuntimeSurface("StaticPublicOutDir").
+func (w *Wave) StaticPublicOutDir() string {
+	return w.must_runtime_surface("StaticPublicOutDir").
 		StaticPublicOutDir()
 }
 
 // PrivateFS returns the runtime private-assets filesystem.
-func (waveRuntime *Wave) PrivateFS() (fs.FS, error) {
-	return waveRuntime.mustRuntimeSurface("PrivateFS").PrivateFS()
+func (w *Wave) PrivateFS() (fs.FS, error) {
+	return w.must_runtime_surface("PrivateFS").PrivateFS()
 }
 
 // MustPrivateFS returns the private filesystem or panics if unavailable.
-func (waveRuntime *Wave) MustPrivateFS() fs.FS {
-	return waveRuntime.mustRuntimeSurface("MustPrivateFS").MustPrivateFS()
+func (w *Wave) MustPrivateFS() fs.FS {
+	return w.must_runtime_surface("MustPrivateFS").MustPrivateFS()
 }
 
 // PublicURL resolves one source public asset path to its built URL.
-func (waveRuntime *Wave) PublicURL(original string) string {
-	return waveRuntime.mustRuntimeSurface("PublicURL").PublicURL(original)
+func (w *Wave) PublicURL(original string) string {
+	return w.must_runtime_surface("PublicURL").PublicURL(original)
 }
 
 // CriticalCSS returns critical CSS content when available.
-func (waveRuntime *Wave) CriticalCSS() template.CSS {
-	return waveRuntime.mustRuntimeSurface("CriticalCSS").CriticalCSS()
+func (w *Wave) CriticalCSS() template.CSS {
+	return w.must_runtime_surface("CriticalCSS").CriticalCSS()
 }
 
 // CriticalCSSStyleElement returns one rendered critical-css <style> element.
-func (waveRuntime *Wave) CriticalCSSStyleElement() template.HTML {
-	return waveRuntime.mustRuntimeSurface("CriticalCSSStyleElement").
+func (w *Wave) CriticalCSSStyleElement() template.HTML {
+	return w.must_runtime_surface("CriticalCSSStyleElement").
 		CriticalCSSStyleElement()
 }
 
 // StyleSheetLinkElement returns one rendered non-critical stylesheet <link>.
-func (waveRuntime *Wave) StyleSheetLinkElement() template.HTML {
-	return waveRuntime.mustRuntimeSurface("StyleSheetLinkElement").
+func (w *Wave) StyleSheetLinkElement() template.HTML {
+	return w.must_runtime_surface("StyleSheetLinkElement").
 		StyleSheetLinkElement()
 }
 
 // RefreshScript returns one rendered dev refresh script.
-func (waveRuntime *Wave) RefreshScript() template.HTML {
-	return waveRuntime.mustRuntimeSurface("RefreshScript").RefreshScript()
+func (w *Wave) RefreshScript() template.HTML {
+	return w.must_runtime_surface("RefreshScript").RefreshScript()
 }
 
 // MustStaticMiddleware returns middleware that serves static public assets and
 // delegates all other requests to next.
-func (waveRuntime *Wave) MustStaticMiddleware(
+func (w *Wave) MustStaticMiddleware(
 	immutable bool,
 ) func(http.Handler) http.Handler {
-	return waveRuntime.mustRuntimeSurface("MustStaticMiddleware").
+	return w.must_runtime_surface("MustStaticMiddleware").
 		MustStaticMiddleware(immutable)
 }
 
-func (waveRuntime *Wave) mustRuntimeSurface(methodName string) RuntimeSurface {
-	if waveRuntime == nil {
-		panic("wave2." + methodName + ": Wave is required")
+func (w *Wave) must_runtime_surface(method_name string) RuntimeSurface {
+	if w == nil {
+		panic("wave2." + method_name + ": Wave is required")
 	}
-	if waveRuntime.runtimeSurface == nil {
+	if w.runtime_surface == nil {
 		panic(
-			"wave2." + methodName +
+			"wave2." + method_name +
 				": Config.RuntimeSurface is required for runtime-backed behavior",
 		)
 	}
-	return waveRuntime.runtimeSurface
+	return w.runtime_surface
 }
 
-func normalizeConfigPathForFS(configPath string) (string, error) {
-	trimmedConfigPath := strings.TrimSpace(configPath)
-	if trimmedConfigPath == "" {
+func normalize_config_path_for_fs(config_path string) (string, error) {
+	trimmed_config_path := strings.TrimSpace(config_path)
+	if trimmed_config_path == "" {
 		return "", fmt.Errorf("ConfigPath is required")
 	}
-	normalizedConfigPath := path.Clean(filepath.ToSlash(trimmedConfigPath))
-	if normalizedConfigPath == "." {
+	normalized_config_path := path.Clean(filepath.ToSlash(trimmed_config_path))
+	if normalized_config_path == "." {
 		return "", fmt.Errorf("ConfigPath is required")
 	}
-	if strings.HasPrefix(normalizedConfigPath, "/") {
+	if strings.HasPrefix(normalized_config_path, "/") {
 		return "", fmt.Errorf(
 			"ConfigPath must be relative to FS root: %q",
-			configPath,
+			config_path,
 		)
 	}
-	if normalizedConfigPath == ".." ||
-		strings.HasPrefix(normalizedConfigPath, "../") {
+	if normalized_config_path == ".." ||
+		strings.HasPrefix(normalized_config_path, "../") {
 		return "", fmt.Errorf(
 			"ConfigPath must not escape FS root: %q",
-			configPath,
+			config_path,
 		)
 	}
-	return normalizedConfigPath, nil
+	return normalized_config_path, nil
 }

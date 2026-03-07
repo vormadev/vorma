@@ -10,138 +10,138 @@ import (
 /////// Effect Catalog
 /////////////////////////////////////////////////////////////////////
 
-type p4_Effects struct {
-	awaitBackendReadiness   *tasks.Task[p4_BatchInput, struct{}]
-	executeFWNotifications  *tasks.Task[p4_BatchInput, p4_Output]
-	planP5_RequestedEffects *tasks.Task[p4_BatchInput, p4_Output]
+type p4_effects struct {
+	await_backend_readiness   *tasks.Task[p4_batch_input, struct{}]
+	fw_execute_notifs         *tasks.Task[p4_batch_input, p4_output]
+	plan_p5_requested_effects *tasks.Task[p4_batch_input, p4_output]
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Definitions
 /////////////////////////////////////////////////////////////////////
 
-var p4_EffectsDef = p4_Effects{
-	awaitBackendReadiness:   p4_AwaitBackendReadinessTask,
-	executeFWNotifications:  p4_ExecuteFWNotificationsTask,
-	planP5_RequestedEffects: p4_PlanP5_RequestedEffectsTask,
+var p4_effects_def = p4_effects{
+	await_backend_readiness:   p4_await_backend_readiness_task,
+	fw_execute_notifs:         p4_fw_execute_notifs_task,
+	plan_p5_requested_effects: p4_plan_p5_requested_effects_task,
 }
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Tasks
 /////////////////////////////////////////////////////////////////////
 
-var p4_AwaitBackendReadinessTask = tasks.NewTask(
+var p4_await_backend_readiness_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p4_BatchInput,
+		tasks_ctx *tasks.Ctx,
+		input p4_batch_input,
 	) (struct{}, error) {
-		if !input.p4_RequestedEffects.awaitBackendReadiness {
+		if !input.p4_requested_effects.await_backend_readiness {
 			return struct{}{}, nil
 		}
-		if recordTestEffect(tasksCtx, _LABEL_P4_AWAIT_BACKEND_READINESS) {
+		if record_test_effect(tasks_ctx, _LABEL_P4_AWAIT_BACKEND_READINESS) {
 			return struct{}{}, nil
 		}
 		return struct{}{}, nil
 	},
 )
 
-var p4_ExecuteFWNotificationsTask = tasks.NewTask(
+var p4_fw_execute_notifs_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p4_BatchInput,
-	) (p4_Output, error) {
-		fwRequestedEffects := fwRequestedEffectsFromPointer(
-			input.p4_RequestedEffects.fwRequestedEffects,
+		tasks_ctx *tasks.Ctx,
+		input p4_batch_input,
+	) (p4_output, error) {
+		fw_requested_effects := fw_requested_effects_from_pointer(
+			input.p4_requested_effects.fw_requested_effects,
 		)
-		if !fwRequestedEffects.hasBackendConvergenceNotifications() {
-			return p4_Output{}, nil
+		if !fw_requested_effects.has_backend_convergence_notifs() {
+			return p4_output{}, nil
 		}
-		if isTestEnv() {
-			for _, notification := range fwRequestedEffects.backendConvergenceNotificationQueue {
-				normalizedNotification := notification.normalize()
-				recordTestEffect(
-					tasksCtx,
-					_LABEL_P4_EXECUTE_FW_NOTIFICATION+
+		if is_test_env() {
+			for _, notif := range fw_requested_effects.backend_convergence_notif_queue {
+				normalized_notif := notif.normalize()
+				record_test_effect(
+					tasks_ctx,
+					_LABEL_P4_EXECUTE_Fw_NOTIFICATION+
 						"["+
-						string(normalizedNotification.destinationKey)+
+						string(normalized_notif.destination_key)+
 						"]",
 				)
 			}
-			return p4_Output{}, nil
+			return p4_output{}, nil
 		}
-		registrations := input.p4_RequestedEffects.fwExecutionRegistrations
+		registrations := input.p4_requested_effects.fw_execution_registrations
 		if registrations == nil {
-			return p4_Output{}, errors.New(
+			return p4_output{}, errors.New(
 				"wavebuild: fw execution registrations are required for backend convergence notifications",
 			)
 		}
 		if len(
-			registrations.backendConvergenceNotificationsByDestination,
+			registrations.backend_convergence_notifs_by_destination,
 		) == 0 {
-			return p4_Output{}, errors.New(
+			return p4_output{}, errors.New(
 				"wavebuild: backend convergence notification registry is empty",
 			)
 		}
-		for _, notification := range fwRequestedEffects.backendConvergenceNotificationQueue {
-			normalizedNotification := notification.normalize()
-			if normalizedNotification.destinationKey == "" {
+		for _, notif := range fw_requested_effects.backend_convergence_notif_queue {
+			normalized_notif := notif.normalize()
+			if normalized_notif.destination_key == "" {
 				continue
 			}
-			notificationTask, hasNotificationTask := registrations.backendConvergenceNotificationsByDestination[normalizedNotification.destinationKey]
-			if !hasNotificationTask || notificationTask == nil {
-				return p4_Output{}, errors.New(
+			notif_task, has_notif_task := registrations.backend_convergence_notifs_by_destination[normalized_notif.destination_key]
+			if !has_notif_task || notif_task == nil {
+				return p4_output{}, errors.New(
 					"wavebuild: backend convergence notification task is not registered for destination " +
 						string(
-							normalizedNotification.destinationKey,
+							normalized_notif.destination_key,
 						),
 				)
 			}
-			notificationForTask := normalizedNotification
-			_, notificationTaskError := notificationTask.Run(
-				tasksCtx,
-				p4_FWNotificationTaskInput{
-					batch:        input.batch,
-					notification: &notificationForTask,
+			notif_for_task := normalized_notif
+			_, err := notif_task.Run(
+				tasks_ctx,
+				p4_fw_notif_task_input{
+					batch: input.batch,
+					notif: &notif_for_task,
 				},
 			)
-			if notificationTaskError == nil {
+			if err == nil {
 				continue
 			}
-			if normalizedNotification.failurePolicy ==
-				FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile {
-				return p4_Output{
-					requiresBackendRestartWithoutGoCompile: true,
-					skipFrontendSettling:                   true,
+			if normalized_notif.failure_policy ==
+				fw_notif_failure_policy_restart_backend_without_go_compile {
+				return p4_output{
+					requires_backend_restart_without_go_compile: true,
+					skip_frontend_settling:                      true,
 				}, nil
 			}
-			return p4_Output{}, notificationTaskError
+			return p4_output{}, err
 		}
-		return p4_Output{}, nil
+		return p4_output{}, nil
 	},
 )
 
-var p4_PlanP5_RequestedEffectsTask = tasks.NewTask(
+var p4_plan_p5_requested_effects_task = tasks.NewTask(
 	func(
-		tasksCtx *tasks.Ctx,
-		input p4_BatchInput,
-	) (p4_Output, error) {
-		if _, awaitBackendReadinessError := p4_AwaitBackendReadinessTask.Run(
-			tasksCtx,
+		tasks_ctx *tasks.Ctx,
+		input p4_batch_input,
+	) (p4_output, error) {
+		if _, err := p4_await_backend_readiness_task.Run(
+			tasks_ctx,
 			input,
-		); awaitBackendReadinessError != nil {
-			return p4_Output{}, awaitBackendReadinessError
+		); err != nil {
+			return p4_output{}, err
 		}
-		fwNotificationExecutionOutput, notificationExecutionError := p4_ExecuteFWNotificationsTask.Run(
-			tasksCtx,
+		fw_notif_execution_output, err := p4_fw_execute_notifs_task.Run(
+			tasks_ctx,
 			input,
 		)
-		if notificationExecutionError != nil {
-			return p4_Output{}, notificationExecutionError
+		if err != nil {
+			return p4_output{}, err
 		}
-		return p4_Output{
-			p5_RequestedEffects:                    input.p4_RequestedEffects.p5_RequestedEffects,
-			requiresBackendRestartWithoutGoCompile: fwNotificationExecutionOutput.requiresBackendRestartWithoutGoCompile,
-			skipFrontendSettling:                   fwNotificationExecutionOutput.skipFrontendSettling,
+		return p4_output{
+			p5_requested_effects:                        input.p4_requested_effects.p5_requested_effects,
+			requires_backend_restart_without_go_compile: fw_notif_execution_output.requires_backend_restart_without_go_compile,
+			skip_frontend_settling:                      fw_notif_execution_output.skip_frontend_settling,
 		}, nil
 	},
 )
