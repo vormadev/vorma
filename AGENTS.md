@@ -7,6 +7,11 @@ pointless indirection and thinking it's an architecture improvement, when really
 it's just adding bloat and harming the quality, maintainability, and
 debuggability of the codebase.
 
+## Format Milliseconds as "Ms" or "ms" as appropriate
+
+Not spelled out, and not both caps (no "MS"). Do "Ms" or "ms", as is
+context-appropriate.
+
 ## Do Not Write Unnecessarily Defensive Code
 
 Contrary to popular opinion, being overly defensive and liberal in what inputs
@@ -402,11 +407,6 @@ just to say that each convenience helper should ACTUALLY add true convenience
 over other options, not just more options. For example, we don't need a
 `Reset()` function that sets a value to `0` when you can easily just do `Set(0)`
 (calling `Set(0)` is not actually any harder than calling `Reset()`).
-
-## Follow the Semantic Rules in `repodocs/SEMANTIC_RULES.md`
-
-Follow the semantic rules in `repodocs/SEMANTIC_RULES.md`, and any time we agree
-on new semantic rules, add them to that rules doc in short, simple terms.
 
 ## Generally Speaking, Avoid "Graceful Degradation" -- Fail Loud And Fast Instead
 

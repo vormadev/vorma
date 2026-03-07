@@ -9,6 +9,13 @@ Non-Negotiable Constraints
 - `wave2` runtime-facing package does not import `wave2/wavebuild`.
 - Wave core stays framework-agnostic.
 - Framework-specific behavior stays in framework-owned adapters/packages.
+- Authored source config is a build/dev concern, not a runtime concern.
+- Build/dev config selection uses one exact config file path relative to the
+  literal process CWD.
+- Do not do basename discovery, suffix matching, or `ProjectID`-based
+  disambiguation for source config selection.
+- Runtime `fs.FS` inputs are runtime-only and must not define authored-config
+  path semantics.
 - Wave core does not encode framework-domain event or signal vocabularies
   (for example, routes/template/public-filemap semantics).
 - Execution model is phased:
@@ -32,11 +39,61 @@ Non-Negotiable Constraints
 
 Package Surfaces
 - `wave2/wave.go`
-  - App-facing runtime API surface.
+  - App-facing runtime API surface backed by generated runtime artifacts, not
+    authored source-config discovery.
 - `wave2/wavebuild/wavebuild.go`
   - Build/dev phase contracts and phased-pipeline orchestration contract.
 - `wave2/wavefw/wavefw.go`
   - Framework-facing notification translation policy.
+
+Config Direction
+- Build/dev input is one exact source config file path relative to the literal
+  process CWD.
+- Source config fields with filesystem semantics are resolved relative to the
+  actual source config file location on disk.
+- Runtime `fs.FS` is for runtime asset/filesystem needs only (for example
+  `embed.FS` or `os.DirFS`) and does not participate in source-config
+  discovery.
+- Build/dev parses authored source config, normalizes it, and emits one fixed
+  generated runtime config file inside `DistStaticFS`.
+- `wave2.New` consumes `DistStaticFS`, loads that fixed generated runtime
+  config file, and does not discover or reparse authored source config.
+- Agreed public build/dev surface for `wavebuild.Build`:
+  ```go
+  type BuildOptions struct {
+  	// ConfigPath is the exact config file path relative to the literal
+  	// process CWD.
+  	ConfigPath string
+  	Logger     *slog.Logger
+  }
+
+  func Build(opts BuildOptions) error
+  ```
+- Agreed public runtime surface for `wave2.New`:
+  ```go
+  type Options struct {
+  	DistStaticFS fs.FS
+  	Logger       *slog.Logger
+  }
+
+  func New(opts Options) *Wave
+  ```
+- Agreed shared runtime-config artifact contract:
+  ```go
+  const RuntimeConfigPath = "wave_owned/runtime_cfg.json"
+
+  type RuntimeConfig struct {
+  	PublicPathPrefix string `json:"public_path_prefix"`
+  }
+  ```
+- Package-local runtime fields should stay as close to those public shapes as
+  possible and should not add extra convenience layers.
+- Runtime config carries only facts that are not already inferable from the
+  fixed dist layout. Right now that means `public_path_prefix` only.
+- All other runtime paths come from fixed `DistStaticFS` layout inference, not
+  from serialized runtime-config fields.
+- `ProjectID` is not part of the Wave2 source-config selection model unless a
+  new non-discovery semantic need appears.
 
 Canonical Batch Pipeline
 - Phase 1: Events
@@ -143,7 +200,10 @@ Open Checklist (Hardest First)
 - [ ] Implement real phase-4 backend convergence effects: backend readiness wait and fw notification execution/failure-policy paths.
 - [ ] Implement real phase-5 frontend settling effects: CSS hot reload, revalidate, hard reload, and notify-vite-public-filemap behavior.
 - [ ] Build fsnotify intake pipeline: watch registration, batching, dedupe, CHMOD/noise handling, CWD-relative paths, and classification into phase-1 events.
-- [ ] Implement config load + semantic diff path so config changes drive deterministic watcher/runtime/build behavior.
+- [ ] Implement authored-config parse + semantic diff in the build/dev layer
+  from one exact CWD-relative config path, then derive normalized build/dev
+  config, emit the fixed generated runtime config file, and produce
+  config-change facts for deterministic watcher/runtime/build behavior.
 - [ ] Wire concrete dev runtime boundaries: supervisor/lifecycle boundaries for app, vite, and refresh transport with concrete restart/readiness semantics.
 - [ ] Wire top-level Wave2 surfaces (`wave`, `wavebuild`, `wavefw`) to real pipeline while preserving strict runtime/buildtime dependency boundaries.
 - [ ] Execute testing in this order: matrix orchestration black-box tests, per-effect unit tests, then targeted real integration tests for cross-boundary flows.
@@ -153,6 +213,15 @@ Open Checklist (Hardest First)
 Do Not Do
 - Do not re-introduce runtime->buildtime imports.
 - Do not encode framework-specific endpoint names or file conventions in Wave2 core.
+- Do not re-introduce authored source-config discovery by basename, suffix, or
+  `ProjectID` tie-break rules.
+- Do not make runtime `fs.FS` the path basis for authored source config.
+- Do not make `wave2.New` discover or reparse authored source config.
+- Do not require caller-supplied runtime config paths or extra runtime
+  filesystem roots.
+- Do not serialize inferable dist-layout paths into runtime config.
+- Do not add a `RuntimeSurface` abstraction unless a concrete direct-call pain
+  proves it necessary.
 - Do not add compat/transitional wrappers.
 - Do not add planner-level dependency graphs that duplicate `kit/tasks`.
 - Do not add external DAG/topological execution engines.
