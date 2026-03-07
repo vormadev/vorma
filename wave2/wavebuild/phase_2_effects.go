@@ -1,6 +1,10 @@
 package wavebuild
 
-import "github.com/vormadev/vorma/kit/tasks"
+import (
+	"errors"
+
+	"github.com/vormadev/vorma/kit/tasks"
+)
 
 /////////////////////////////////////////////////////////////////////
 /////// Effect Catalog
@@ -46,7 +50,9 @@ var p2_build_go_binary_task = tasks.NewTask(
 		if record_test_effect(tasks_ctx, _LABEL_P2_BUILD_GO_BINARY) {
 			return struct{}{}, nil
 		}
-		return struct{}{}, nil
+		return struct{}{}, errors.New(
+			"wavebuild: phase-2 build_go_binary is not implemented",
+		)
 	},
 )
 
@@ -58,7 +64,9 @@ var p2_build_critical_css_task = tasks.NewTask(
 		if record_test_effect(tasks_ctx, _LABEL_P2_BUILD_CRITICAL_CSS) {
 			return struct{}{}, nil
 		}
-		return struct{}{}, nil
+		return struct{}{}, errors.New(
+			"wavebuild: phase-2 build_critical_css is not implemented",
+		)
 	},
 )
 
@@ -70,7 +78,9 @@ var p2_build_normal_css_task = tasks.NewTask(
 		if record_test_effect(tasks_ctx, _LABEL_P2_BUILD_NORMAL_CSS) {
 			return struct{}{}, nil
 		}
-		return struct{}{}, nil
+		return struct{}{}, errors.New(
+			"wavebuild: phase-2 build_normal_css is not implemented",
+		)
 	},
 )
 
@@ -79,10 +89,15 @@ var p2_process_public_static_assets_task = tasks.NewTask(
 		tasks_ctx *tasks.Ctx,
 		input p2_batch_input,
 	) (struct{}, error) {
-		if record_test_effect(tasks_ctx, _LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS) {
+		if record_test_effect(
+			tasks_ctx,
+			_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
+		) {
 			return struct{}{}, nil
 		}
-		return struct{}{}, nil
+		return struct{}{}, errors.New(
+			"wavebuild: phase-2 process_public_static_assets is not implemented",
+		)
 	},
 )
 
@@ -91,12 +106,17 @@ var p2_cleanup_stale_public_static_task = tasks.NewTask(
 		tasks_ctx *tasks.Ctx,
 		input p2_batch_input,
 	) (p2_build_outcome_facts, error) {
-		if record_test_effect(tasks_ctx, _LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC) {
+		if record_test_effect(
+			tasks_ctx,
+			_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
+		) {
 			return p2_build_outcome_facts{
 				public_file_map_artifacts_changed: true,
 			}, nil
 		}
-		return p2_build_outcome_facts{}, nil
+		return p2_build_outcome_facts{}, errors.New(
+			"wavebuild: phase-2 cleanup_stale_public_static is not implemented",
+		)
 	},
 )
 
@@ -105,10 +125,15 @@ var p2_process_private_static_assets_task = tasks.NewTask(
 		tasks_ctx *tasks.Ctx,
 		input p2_batch_input,
 	) (struct{}, error) {
-		if record_test_effect(tasks_ctx, _LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS) {
+		if record_test_effect(
+			tasks_ctx,
+			_LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS,
+		) {
 			return struct{}{}, nil
 		}
-		return struct{}{}, nil
+		return struct{}{}, errors.New(
+			"wavebuild: phase-2 process_private_static_assets is not implemented",
+		)
 	},
 )
 
@@ -122,20 +147,9 @@ var p2_generate_public_file_map_artifacts_task = tasks.NewTask(
 				public_file_map_artifacts_changed: true,
 			}, nil
 		}
-		if _, err := p2_process_public_static_assets_task.Run(
-			tasks_ctx,
-			input,
-		); err != nil {
-			return p2_build_outcome_facts{}, err
-		}
-		cleanup_facts, err := p2_cleanup_stale_public_static_task.Run(
-			tasks_ctx,
-			input,
+		return p2_build_outcome_facts{}, errors.New(
+			"wavebuild: phase-2 generate_public_file_map_artifacts is not implemented",
 		)
-		if err != nil {
-			return p2_build_outcome_facts{}, err
-		}
-		return cleanup_facts.merge(p2_build_outcome_facts{}), nil
 	},
 )
 

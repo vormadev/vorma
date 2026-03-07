@@ -104,6 +104,9 @@ Task Context Contract
 - `runFivePhasePipeline(...)` as the default path
 - `runFivePhasePipelineWithEffectSets(...)` as the injection shim used for test effect sets
 - Matrix-style task-selection tests use black-box effect-label recording with `__WAVE_INTERNAL_TEST_MODE=1`.
+- Matrix-style contract tests must explicitly cover non-mutually-exclusive lanes:
+- fw notification execution can coexist with terminal browser action.
+- notify-vite terminal action can be superseded by hard-reload policy while fw notifications still execute.
 - Native `context.Context` provides cancellation/deadline and is wrapped exactly once per batch.
 - Task identity and output reuse are owned by `kit/tasks`; phase planners do not duplicate that logic.
 - Test mode keeps planner/orchestrator logic real:
@@ -134,8 +137,18 @@ Open Checklist (Hardest First)
 - Pending-only, forward-looking next tasks.
 - No in-progress narration and no backward-looking changelog notes.
 - When done, remove the item instead of rewriting it as status prose.
-- [ ] Replace framework-domain enums in `wave2/wavebuild` (`framework_route_definition_changed`, `framework_template_changed`, `routes_changed`, `template_changed`, `public_file_map_changed`) with framework-agnostic contracts.
 - [ ] Keep all new symbols production-neutral and framework-agnostic while wiring real side effects.
+- [ ] Implement real phase-2 build effects: Go compile, CSS/esbuild, static asset processing, stale output cleanup, and public filemap generation.
+- [ ] Implement real phase-3 backend mutation effects: dev-server cycle restart, app restart, vite restart, and retry-queue behavior.
+- [ ] Implement real phase-4 backend convergence effects: backend readiness wait and fw notification execution/failure-policy paths.
+- [ ] Implement real phase-5 frontend settling effects: CSS hot reload, revalidate, hard reload, and notify-vite-public-filemap behavior.
+- [ ] Build fsnotify intake pipeline: watch registration, batching, dedupe, CHMOD/noise handling, CWD-relative paths, and classification into phase-1 events.
+- [ ] Implement config load + semantic diff path so config changes drive deterministic watcher/runtime/build behavior.
+- [ ] Wire concrete dev runtime boundaries: supervisor/lifecycle boundaries for app, vite, and refresh transport with concrete restart/readiness semantics.
+- [ ] Wire top-level Wave2 surfaces (`wave`, `wavebuild`, `wavefw`) to real pipeline while preserving strict runtime/buildtime dependency boundaries.
+- [ ] Execute testing in this order: matrix orchestration black-box tests, per-effect unit tests, then targeted real integration tests for cross-boundary flows.
+- [ ] Run Wave1/Vorma observable parity pass for known scenarios and confirm parity outcomes.
+- [ ] Run polish pass: user-facing logs, perf tuning, dead-code trimming, and public API surface trimming.
 
 Do Not Do
 - Do not re-introduce runtime->buildtime imports.

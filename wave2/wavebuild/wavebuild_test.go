@@ -82,6 +82,18 @@ func Test_run_five_phase_pipeline_explicit_effect_matrix(t *testing.T) {
 			},
 		},
 		{
+			name: "dev-public-static-change-without-destination-key-notifies-vite-without-backend-convergence",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_public_static_asset_changed},
+			},
+			expected_effect_labels: []string{
+				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
+				_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
+				_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED,
+			},
+		},
+		{
 			name: "dev-public-static-change-processes-assets-emits-fw-notif-and-notifies-vite",
 			mode: mode_dev,
 			events: []observed_batch_event{
@@ -96,6 +108,26 @@ func Test_run_five_phase_pipeline_explicit_effect_matrix(t *testing.T) {
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P4_EXECUTE_Fw_NOTIFICATION + "[fw.public-filemap-reload]",
 				_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED,
+			},
+		},
+		{
+			name: "dev-public-static-and-config-change-executes-fw-notif-and-hard-reload-instead-of-vite-notify",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_public_static_asset_changed},
+				{event_type: event_type_config_file_changed},
+			},
+			wave_public_file_map_notif_destination_key: fw_notif_destination_key(
+				"fw.public-filemap-reload",
+			),
+			expected_effect_labels: []string{
+				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
+				_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
+				_LABEL_P3_APPLY_DEV_SERVER_RESTART,
+				_LABEL_P3_RESTART_VITE_PROCESS,
+				_LABEL_P4_AWAIT_BACKEND_READINESS,
+				_LABEL_P4_EXECUTE_Fw_NOTIFICATION + "[fw.public-filemap-reload]",
+				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
 		},
 		{
@@ -151,6 +183,29 @@ func Test_run_five_phase_pipeline_explicit_effect_matrix(t *testing.T) {
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P4_EXECUTE_Fw_NOTIFICATION + "[fw.runtime-notify]",
 				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
+			},
+		},
+		{
+			name: "dev-fw-notif-and-app-requested-hard-reload-both-execute",
+			mode: mode_dev,
+			events: []observed_batch_event{
+				{event_type: event_type_app_defined_watch_action_only_changed},
+			},
+			app_requested_outcomes: app_requested_outcomes{
+				requested_terminal_browser_action: frontend_terminal_browser_action_hard_reload,
+				fw_requested_effects: fw_requested_effects{
+					backend_convergence_notif_queue: []fw_notif_request{
+						{
+							destination_key: "fw.runtime-notify",
+							trigger:         "fw-watch-change",
+						},
+					},
+				},
+			},
+			expected_effect_labels: []string{
+				_LABEL_P4_AWAIT_BACKEND_READINESS,
+				_LABEL_P4_EXECUTE_Fw_NOTIFICATION + "[fw.runtime-notify]",
+				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
 		},
 		{
@@ -257,6 +312,42 @@ func Test_run_five_phase_pipeline_explicit_effect_matrix(t *testing.T) {
 				{
 					event_type: event_type_ignored_or_noise_changed,
 					noise_only: true,
+				},
+			},
+			expected_effect_labels: []string{
+				_LABEL_P2_BUILD_GO_BINARY,
+				_LABEL_P2_BUILD_CRITICAL_CSS,
+				_LABEL_P2_BUILD_NORMAL_CSS,
+				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
+				_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
+				_LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS,
+			},
+		},
+		{
+			name: "prod-ignores-dev-runtime-and-fw-settling-requests",
+			mode: mode_prod,
+			events: []observed_batch_event{
+				{event_type: event_type_config_file_changed},
+				{event_type: event_type_go_source_changed},
+				{event_type: fw_event_type_requested_effects_changed},
+			},
+			wave_public_file_map_notif_destination_key: fw_notif_destination_key(
+				"fw.public-filemap-reload",
+			),
+			app_requested_outcomes: app_requested_outcomes{
+				requested_terminal_browser_action: frontend_terminal_browser_action_hard_reload,
+				request_restart:                   true,
+				request_go_compile:                true,
+				fw_requested_effects: fw_requested_effects{
+					backend_mutation_effect_keys: []fw_mutation_effect_key{
+						"fw.should-not-run-in-prod",
+					},
+					backend_convergence_notif_queue: []fw_notif_request{
+						{
+							destination_key: "fw.should-not-notify-in-prod",
+							trigger:         "prod-ignore",
+						},
+					},
 				},
 			},
 			expected_effect_labels: []string{
