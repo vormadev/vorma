@@ -7,12 +7,13 @@ import (
 )
 
 type pipelineEffectMatrixTestCase struct {
-	name                 string
-	mode                 mode
-	waitingForBuildRetry bool
-	events               []observedBatchEvent
-	appRequestedOutcomes appRequestedOutcomes
-	expectedEffectLabels []string
+	name                                        string
+	mode                                        mode
+	waitingForBuildRetry                        bool
+	events                                      []observedBatchEvent
+	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
+	appRequestedOutcomes                        appRequestedOutcomes
+	expectedEffectLabels                        []string
 }
 
 func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
@@ -33,7 +34,10 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			name: "dev_noop_config_mutation_produces_no_reload_notice",
 			mode: modeDev,
 			events: []observedBatchEvent{
-				{eventType: eventTypeConfigFileChanged, noOpConfigMutation: true},
+				{
+					eventType:          eventTypeConfigFileChanged,
+					noOpConfigMutation: true,
+				},
 			},
 			expectedEffectLabels: []string{
 				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
@@ -75,17 +79,20 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "dev_public_static_change_processes_assets_refreshes_framework_public_filemap_and_hard_reloads",
+			name: "dev_public_static_change_processes_assets_emits_fw_notification_and_notifies_vite",
 			mode: modeDev,
 			events: []observedBatchEvent{
 				{eventType: eventTypePublicStaticAssetChanged},
 			},
+			wavePublicFileMapNotificationDestinationKey: fwNotificationDestinationKey(
+				"fw.public_filemap_reload",
+			),
 			expectedEffectLabels: []string{
 				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
 				_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
-				_LABEL_P3_REFRESH_FRAMEWORK_PUBLIC_FILEMAP,
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
-				_LABEL_P5_BROADCAST_HARD_RELOAD,
+				_LABEL_P4_EXECUTE_FW_NOTIFICATION + "[fw.public_filemap_reload]",
+				_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED,
 			},
 		},
 		{
@@ -100,27 +107,47 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "dev_framework_route_definition_change_refreshes_framework_route_and_hard_reloads",
+			name: "dev_fw_requested_backend_mutation_effect_executes_and_hard_reloads",
 			mode: modeDev,
 			events: []observedBatchEvent{
-				{eventType: eventTypeFrameworkRouteDefinitionChanged},
+				{
+					eventType: eventTypeFWRequestedEffectsChanged,
+					fwRequestedEffects: fwRequestedEffects{
+						backendMutationEffectKeys: []fwMutationEffectKey{
+							"fw.reload_routes",
+						},
+					},
+				},
+			},
+			appRequestedOutcomes: appRequestedOutcomes{
+				requestedTerminalBrowserAction: frontendTerminalBrowserActionHardReload,
 			},
 			expectedEffectLabels: []string{
-				_LABEL_P3_REFRESH_FRAMEWORK_ROUTE,
+				_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT + "[fw.reload_routes]",
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
 		},
 		{
-			name: "dev_framework_template_change_refreshes_framework_template_and_hard_reloads",
+			name: "dev_fw_requested_notification_executes_and_allows_no_reload_terminal_action",
 			mode: modeDev,
 			events: []observedBatchEvent{
-				{eventType: eventTypeFrameworkTemplateChanged},
+				{
+					eventType: eventTypeFWRequestedEffectsChanged,
+					fwRequestedEffects: fwRequestedEffects{
+						backendConvergenceNotificationQueue: []fwNotificationRequest{
+							{
+								destinationKey: "fw.runtime_notify",
+								trigger:        "fw_watch_change",
+							},
+						},
+					},
+				},
 			},
 			expectedEffectLabels: []string{
-				_LABEL_P3_REFRESH_FRAMEWORK_TEMPLATE,
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
-				_LABEL_P5_BROADCAST_HARD_RELOAD,
+				_LABEL_P4_EXECUTE_FW_NOTIFICATION + "[fw.runtime_notify]",
+				_LABEL_P5_PUBLISH_NO_RELOAD_NEEDED_NOTICE,
 			},
 		},
 		{
@@ -150,17 +177,21 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 			},
 		},
 		{
-			name: "dev_app_action_only_framework_refresh_escalates_to_hard_reload",
+			name: "dev_app_action_only_fw_effect_request_executes_and_hard_reloads",
 			mode: modeDev,
 			events: []observedBatchEvent{
 				{eventType: eventTypeAppDefinedWatchActionOnlyChanged},
 			},
 			appRequestedOutcomes: appRequestedOutcomes{
-				requestFrameworkRefresh:        true,
-				requestedTerminalBrowserAction: frontendTerminalBrowserActionRevalidate,
+				requestedTerminalBrowserAction: frontendTerminalBrowserActionHardReload,
+				fwRequestedEffects: fwRequestedEffects{
+					backendMutationEffectKeys: []fwMutationEffectKey{
+						"fw.refresh_runtime_cache",
+					},
+				},
 			},
 			expectedEffectLabels: []string{
-				_LABEL_P3_REFRESH_FRAMEWORK_ROUTE,
+				_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT + "[fw.refresh_runtime_cache]",
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
@@ -191,7 +222,6 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 				_LABEL_P2_PROCESS_PUBLIC_STATIC_ASSETS,
 				_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC,
 				_LABEL_P3_RESTART_APP_PROCESS,
-				_LABEL_P3_REFRESH_FRAMEWORK_PUBLIC_FILEMAP,
 				_LABEL_P4_AWAIT_BACKEND_READINESS,
 				_LABEL_P5_BROADCAST_HARD_RELOAD,
 			},
@@ -203,10 +233,14 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 				{eventType: eventTypeNormalCSSSourceChanged},
 			},
 			appRequestedOutcomes: appRequestedOutcomes{
-				requestFrameworkRefresh:        true,
 				requestedTerminalBrowserAction: frontendTerminalBrowserActionHardReload,
 				requestRestart:                 true,
 				requestGoCompile:               true,
+				fwRequestedEffects: fwRequestedEffects{
+					backendMutationEffectKeys: []fwMutationEffectKey{
+						"fw.unused_without_app_defined_event",
+					},
+				},
 			},
 			expectedEffectLabels: []string{
 				_LABEL_P2_BUILD_NORMAL_CSS,
@@ -232,7 +266,10 @@ func TestRunFivePhasePipeline_ExplicitEffectMatrix(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			recordedEffectLabels := runPipelineAndRecordEffectLabels(t, testCase)
+			recordedEffectLabels := runPipelineAndRecordEffectLabels(
+				t,
+				testCase,
+			)
 			assertUnorderedEffectLabels(
 				t,
 				recordedEffectLabels,
@@ -257,9 +294,11 @@ func runPipelineAndRecordEffectLabels(
 		nativeContextWithRecorder,
 		p1_BatchInput{
 			p1: &p1_Input{
-				mode:                 testCase.mode,
-				generationID:         "test_generation",
-				events:               testCase.events,
+				mode:         testCase.mode,
+				generationID: "test_generation",
+				events:       testCase.events,
+				wavePublicFileMapNotificationDestinationKey: testCase.
+					wavePublicFileMapNotificationDestinationKey,
 				appRequestedOutcomes: testCase.appRequestedOutcomes,
 				waitingForBuildRetry: testCase.waitingForBuildRetry,
 			},

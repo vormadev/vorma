@@ -9,6 +9,8 @@ Non-Negotiable Constraints
 - `wave2` runtime-facing package does not import `wave2/wavebuild`.
 - Wave core stays framework-agnostic.
 - Framework-specific behavior stays in framework-owned adapters/packages.
+- Wave core does not encode framework-domain event or signal vocabularies
+  (for example, routes/template/public-filemap semantics).
 - Execution model is phased:
 - `events -> build -> backend_mutation -> backend_convergence -> frontend_settling`.
 - Symbol naming uses numeric labels:
@@ -34,13 +36,13 @@ Package Surfaces
 - `wave2/wavebuild/wavebuild.go`
   - Build/dev phase contracts and phased-pipeline orchestration contract.
 - `wave2/wavefw/wavefw.go`
-  - Framework-facing signal translation policy.
+  - Framework-facing notification translation policy.
 
 Canonical Batch Pipeline
 - Phase 1: Events
 - Raw watcher batch is reduced to typed facts and normalized event categories.
 - CHMOD policy remains explicit in event classification (empty-file CHMOD can be actionable; non-empty CHMOD-only noise is suppressible).
-- App-requested outcomes are applied only when app-defined watch event classes are present in the batch.
+- App-requested outcomes are applied when app-defined watch event classes are present or when framework-requested effect payloads are present.
 - Phase 2: Build
 - Planner reduces phase-1 facts into `phase1RequestedEffects`.
 - `phase1RequestedEffects` selects tasks in `phase2Effects`.
@@ -112,17 +114,27 @@ Task Context Contract
 - Phase-1 batch inputs are assembled directly with explicit execution scope.
 - Visibility stays out of core phase contracts: use plain runtime logging and explicit test effect-set injection.
 
-Framework Signal Contract
-- Framework signal vocabulary stays observable and transport-agnostic.
-- Signal payload shape remains stable:
-- `type`, `freshness_token`, `trigger`, `metadata`.
-- Signal translation remains framework-owned in `wave2/wavefw`.
+Framework Integration Contract
+- Wave2 framework integration uses two explicit lanes:
+- Framework-executed effects lane:
+- framework registers phase-targeted executable effects; Wave selects and runs them inside normal phase execution.
+- Framework-notification lane:
+- framework registers notification requests that Wave transports at backend-convergence boundaries before frontend-settling.
+- Notification requests are transport-agnostic at the contract boundary and include only stable observable metadata:
+- destination key
+- freshness token
+- trigger
+- metadata
+- readiness gating intent
+- failure policy intent
+- Wave2 does not define framework-domain signal/action enums; framework adapters own domain mapping.
 
 Open Checklist (Hardest First)
 - Checklist semantics:
 - Pending-only, forward-looking next tasks.
 - No in-progress narration and no backward-looking changelog notes.
 - When done, remove the item instead of rewriting it as status prose.
+- [ ] Replace framework-domain enums in `wave2/wavebuild` (`framework_route_definition_changed`, `framework_template_changed`, `routes_changed`, `template_changed`, `public_file_map_changed`) with framework-agnostic contracts.
 - [ ] Keep all new symbols production-neutral and framework-agnostic while wiring real side effects.
 
 Do Not Do

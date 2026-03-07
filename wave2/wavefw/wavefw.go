@@ -1,7 +1,7 @@
 // Package wavefw provides the framework-facing adapter API for Wave2.
 //
 // Framework adapters stay on the framework side and translate Wave2 framework
-// signals into framework-owned refresh actions.
+// notifications into framework-owned actions.
 package wavefw
 
 import (
@@ -11,109 +11,91 @@ import (
 	"github.com/vormadev/vorma/wave2/wavebuild"
 )
 
-// FrameworkRefreshActionType is one framework-owned refresh action intent.
+// FrameworkRefreshActionType is one framework-owned action intent.
 type FrameworkRefreshActionType string
 
-const (
-	// FrameworkRefreshActionTypeRefreshRoutes asks framework adapter to refresh route
-	// definition state.
-	FrameworkRefreshActionTypeRefreshRoutes FrameworkRefreshActionType = "refresh_routes"
-	// FrameworkRefreshActionTypeRefreshTemplate asks framework adapter to refresh template
-	// rendering shell state.
-	FrameworkRefreshActionTypeRefreshTemplate FrameworkRefreshActionType = "refresh_template"
-	// FrameworkRefreshActionTypeRefreshPublicFileMap asks framework adapter to refresh
-	// canonical public file-map state.
-	FrameworkRefreshActionTypeRefreshPublicFileMap FrameworkRefreshActionType = "refresh_public_file_map"
-)
-
 // FrameworkRefreshAction is one adapter action derived from generic framework
-// signals.
+// notifications.
 type FrameworkRefreshAction struct {
 	Type FrameworkRefreshActionType
-	// FreshnessToken is forwarded from framework signal freshness metadata for
+	// DestinationKey is forwarded from Wave notification destination key.
+	DestinationKey string
+	// FreshnessToken is forwarded from notification freshness metadata for
 	// stale-attempt rejection policy.
 	FreshnessToken string
-	// Trigger is forwarded from the originating framework signal for
+	// Trigger is forwarded from the originating notification for
 	// observability.
 	Trigger string
 	// Metadata carries stable optional context for adapter-owned transport.
 	Metadata map[string]string
+	// WaitForApp forwards app-readiness gating intent.
+	WaitForApp bool
+	// WaitForVite forwards Vite-readiness gating intent.
+	WaitForVite bool
+	// FailurePolicy forwards notification failure policy intent.
+	FailurePolicy wavebuild.FrameworkNotificationFailurePolicy
 }
 
-// SignalTranslationRule maps one generic framework signal type to one
-// framework refresh action type.
-type SignalTranslationRule struct {
-	SignalType wavebuild.FrameworkSignalType
-	ActionType FrameworkRefreshActionType
-}
-
-var defaultSignalTranslationRules = []SignalTranslationRule{
-	{
-		SignalType: wavebuild.FrameworkSignalTypeRoutesChanged,
-		ActionType: FrameworkRefreshActionTypeRefreshRoutes,
-	},
-	{
-		SignalType: wavebuild.FrameworkSignalTypeTemplateChanged,
-		ActionType: FrameworkRefreshActionTypeRefreshTemplate,
-	},
-	{
-		SignalType: wavebuild.FrameworkSignalTypePublicFileMapChanged,
-		ActionType: FrameworkRefreshActionTypeRefreshPublicFileMap,
-	},
+// NotificationTranslationRule maps one generic destination key to one
+// framework action type.
+type NotificationTranslationRule struct {
+	DestinationKey string
+	ActionType     FrameworkRefreshActionType
 }
 
 // Adapter describes one framework integration unit for Wave2.
 type Adapter struct {
 	Name string
-	// SignalTranslationRules convert Wave2 framework signals into framework-specific
-	// actions. Empty uses canonical translation rules.
-	SignalTranslationRules []SignalTranslationRule
+	// NotificationTranslationRules convert Wave2 framework notifications into
+	// framework-specific action types. If no rule exists for one destination,
+	// destination-key identity is used as action type.
+	NotificationTranslationRules []NotificationTranslationRule
 }
 
-// TranslateFrameworkSignals converts generic framework signals into
+// TranslateFrameworkNotifications converts generic framework notifications into
 // framework-owned refresh actions using adapter translation policy.
-func TranslateFrameworkSignals(
+func TranslateFrameworkNotifications(
 	adapter Adapter,
-	signals []wavebuild.FrameworkSignal,
+	notifications []wavebuild.FrameworkNotification,
 ) ([]FrameworkRefreshAction, error) {
-	if len(signals) == 0 {
+	if len(notifications) == 0 {
 		return nil, nil
 	}
-	rules := adapter.SignalTranslationRules
-	if len(rules) == 0 {
-		rules = defaultSignalTranslationRules
-	}
+	rules := adapter.NotificationTranslationRules
 
 	ruleBySignalType := make(
-		map[wavebuild.FrameworkSignalType]FrameworkRefreshActionType,
+		map[string]FrameworkRefreshActionType,
 		len(rules),
 	)
 	for _, rule := range rules {
-		if rule.SignalType == "" {
+		if rule.DestinationKey == "" {
 			return nil, errors.New(
-				"wavefw: signal translation rule signal type is required",
+				"wavefw: notification translation rule destination key is required",
 			)
 		}
 		if rule.ActionType == "" {
 			return nil, fmt.Errorf(
-				"wavefw: signal translation rule action type for %q is required",
-				rule.SignalType,
+				"wavefw: notification translation rule action type for %q is required",
+				rule.DestinationKey,
 			)
 		}
-		ruleBySignalType[rule.SignalType] = rule.ActionType
+		ruleBySignalType[rule.DestinationKey] = rule.ActionType
 	}
 
-	actions := make([]FrameworkRefreshAction, 0, len(signals))
-	seenActionKey := make(map[string]struct{}, len(signals))
-	for _, signal := range signals {
-		actionType, foundActionType := ruleBySignalType[signal.SignalType()]
+	actions := make([]FrameworkRefreshAction, 0, len(notifications))
+	seenActionKey := make(map[string]struct{}, len(notifications))
+	for _, notification := range notifications {
+		destinationKey := notification.DestinationKey()
+		actionType, foundActionType := ruleBySignalType[destinationKey]
 		if !foundActionType {
-			return nil, fmt.Errorf(
-				"wavefw: no framework refresh action mapping for framework signal type %q",
-				signal.SignalType(),
+			actionType = FrameworkRefreshActionType(destinationKey)
+		}
+		if actionType == "" {
+			return nil, errors.New(
+				"wavefw: framework refresh action type is required",
 			)
 		}
-		actionKey := string(actionType) + "|" + signal.FreshnessToken()
+		actionKey := string(actionType) + "|" + notification.FreshnessToken()
 		if _, alreadyAdded := seenActionKey[actionKey]; alreadyAdded {
 			continue
 		}
@@ -122,9 +104,13 @@ func TranslateFrameworkSignals(
 			actions,
 			FrameworkRefreshAction{
 				Type:           actionType,
-				FreshnessToken: signal.FreshnessToken(),
-				Trigger:        signal.Trigger(),
-				Metadata:       signal.Metadata(),
+				DestinationKey: destinationKey,
+				FreshnessToken: notification.FreshnessToken(),
+				Trigger:        notification.Trigger(),
+				Metadata:       notification.Metadata(),
+				WaitForApp:     notification.WaitForApp(),
+				WaitForVite:    notification.WaitForVite(),
+				FailurePolicy:  notification.FailurePolicy(),
 			},
 		)
 	}

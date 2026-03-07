@@ -12,8 +12,10 @@ type p3_BatchInput struct {
 
 // p4_RequestedEffects are backend-convergence effects requested by phase 3.
 type p4_RequestedEffects struct {
-	awaitBackendReadiness bool
-	p5_RequestedEffects   p5_RequestedEffects
+	awaitBackendReadiness    bool
+	fwExecutionRegistrations *fwExecutionRegistrations
+	fwRequestedEffects       *fwRequestedEffects
+	p5_RequestedEffects      p5_RequestedEffects
 }
 
 // p3_Output is the full phase-3 planner output consumed by phase 4.
@@ -46,16 +48,15 @@ func (p2_RequestedEffects p2_RequestedEffects) deriveP4_RequestedEffects() p4_Re
 	// effective browser-facing Vite endpoint (for example, port change).
 	if p2_RequestedEffects.restartDevServerCycle ||
 		p2_RequestedEffects.restartAppProcess ||
-		p2_RequestedEffects.restartViteProcess ||
-		p2_RequestedEffects.refreshFrameworkRoute ||
-		p2_RequestedEffects.refreshFrameworkTemplate ||
-		p2_RequestedEffects.refreshFrameworkPublicFileMap {
+		p2_RequestedEffects.restartViteProcess {
 		terminalBrowserAction = terminalBrowserAction.dominantWith(
 			frontendTerminalBrowserActionHardReload,
 		)
 	}
 	return p4_RequestedEffects{
-		awaitBackendReadiness: p2_RequestedEffects.awaitBackendReadiness,
+		awaitBackendReadiness:    p2_RequestedEffects.awaitBackendReadiness,
+		fwExecutionRegistrations: p2_RequestedEffects.fwExecutionRegistrations,
+		fwRequestedEffects:       p2_RequestedEffects.fwRequestedEffects,
 		p5_RequestedEffects: p5_RequestedEffects{
 			terminalBrowserAction: terminalBrowserAction,
 		},

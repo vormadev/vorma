@@ -23,5 +23,5 @@ type fivePhaseRunResult struct {
 	p3_Output            p3_Output
 	p4_Output            p4_Output
 	p5_CompletionSummary p5_CompletionSummary
-	frameworkSignals     []FrameworkSignal
+	fwNotifications      []FrameworkNotification
 }

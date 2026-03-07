@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/tasks"
@@ -50,10 +51,9 @@ const (
 	eventTypePublicStaticAssetChanged eventType = "public_static_asset_changed"
 	// eventTypePrivateStaticAssetChanged represents private static asset changes.
 	eventTypePrivateStaticAssetChanged eventType = "private_static_asset_changed"
-	// eventTypeFrameworkRouteDefinitionChanged represents framework route-definition changes.
-	eventTypeFrameworkRouteDefinitionChanged eventType = "framework_route_definition_changed"
-	// eventTypeFrameworkTemplateChanged represents framework template changes.
-	eventTypeFrameworkTemplateChanged eventType = "framework_template_changed"
+	// eventTypeFWRequestedEffectsChanged represents fw-requested
+	// effect payload changes carried by watcher classification.
+	eventTypeFWRequestedEffectsChanged eventType = "fw_requested_effects_changed"
 	// eventTypeAppDefinedWatchActionOnlyChanged represents app watch classes that request direct actions without implicit build work.
 	eventTypeAppDefinedWatchActionOnlyChanged eventType = "app_defined_watch_action_only_changed"
 	// eventTypeAppDefinedWatchWithRebuildChanged represents app watch classes that participate in normal build-phase planning; concrete effects still come from reduced outcomes.
@@ -80,6 +80,66 @@ const (
 	// frontendTerminalBrowserActionHardReload represents browser hard reload.
 	frontendTerminalBrowserActionHardReload frontendTerminalBrowserAction = "hard_reload"
 )
+
+// fwMutationEffectKey identifies one fw-owned backend-mutation
+// effect registration key.
+type fwMutationEffectKey string
+
+// fwNotificationDestinationKey identifies one fw-owned
+// notification destination registration key.
+type fwNotificationDestinationKey string
+
+// FrameworkNotificationFailurePolicy selects what Wave does when fw
+// notification transport fails.
+type FrameworkNotificationFailurePolicy string
+
+const (
+	// FrameworkNotificationFailurePolicyFailPipeline surfaces notification
+	// transport failure as pipeline failure.
+	FrameworkNotificationFailurePolicyFailPipeline FrameworkNotificationFailurePolicy = "fail_pipeline"
+	// FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile requests
+	// backend restart without Go recompilation and skips frontend settling.
+	FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile FrameworkNotificationFailurePolicy = "restart_backend_without_go_compile"
+)
+
+type fwNotificationRequest struct {
+	destinationKey fwNotificationDestinationKey
+	freshnessToken string
+	trigger        string
+	metadata       map[string]string
+	waitForApp     bool
+	waitForVite    bool
+	failurePolicy  FrameworkNotificationFailurePolicy
+}
+
+type fwRequestedEffects struct {
+	backendMutationEffectKeys           []fwMutationEffectKey
+	backendConvergenceNotificationQueue []fwNotificationRequest
+}
+
+type fwExecutionRegistrations struct {
+	backendMutationEffectsByKey                  map[fwMutationEffectKey]*tasks.Task[p3_BatchInput, struct{}]
+	backendConvergenceNotificationsByDestination map[fwNotificationDestinationKey]*tasks.Task[p4_FWNotificationTaskInput, struct{}]
+}
+
+func fwRequestedEffectsFromPointer(
+	fwRequestedEffectsPointer *fwRequestedEffects,
+) fwRequestedEffects {
+	if fwRequestedEffectsPointer == nil {
+		return fwRequestedEffects{}
+	}
+	return *fwRequestedEffectsPointer
+}
+
+func newFWRequestedEffectsPointerIfAny(
+	fwRequestedEffectsValue fwRequestedEffects,
+) *fwRequestedEffects {
+	if !fwRequestedEffectsValue.hasAny() {
+		return nil
+	}
+	fwRequestedEffectsCopy := fwRequestedEffectsValue
+	return &fwRequestedEffectsCopy
+}
 
 func (action frontendTerminalBrowserAction) priority() int {
 	switch action {
@@ -116,14 +176,17 @@ type observedBatchEvent struct {
 	noiseOnly bool
 	// noOpConfigMutation marks config events where semantic config did not change.
 	noOpConfigMutation bool
+	// fwRequestedEffects carries fw-owned requested effects
+	// discovered by watcher classification for this event.
+	fwRequestedEffects fwRequestedEffects
 }
 
 // appRequestedOutcomes captures app-requested observable outcomes for one batch.
 type appRequestedOutcomes struct {
-	requestFrameworkRefresh        bool
 	requestedTerminalBrowserAction frontendTerminalBrowserAction
 	requestRestart                 bool
 	requestGoCompile               bool
+	fwRequestedEffects             fwRequestedEffects
 }
 
 // p1_Input is the phase-1 input contract in observable terms.
@@ -131,6 +194,9 @@ type p1_Input struct {
 	mode         mode
 	generationID string
 	events       []observedBatchEvent
+
+	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
+	fwExecutionRegistrations                    *fwExecutionRegistrations
 
 	appRequestedOutcomes appRequestedOutcomes
 	waitingForBuildRetry bool
@@ -145,7 +211,11 @@ type p1_Facts struct {
 	// first-seen input order.
 	eventTypes []eventType
 
+	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
+	fwExecutionRegistrations                    *fwExecutionRegistrations
+
 	appRequestedOutcomes appRequestedOutcomes
+	fwRequestedEffects   fwRequestedEffects
 	waitingForBuildRetry bool
 }
 
@@ -168,6 +238,7 @@ func (input p1_Input) buildFacts() (p1_Facts, error) {
 
 	eventTypeSet := make(map[eventType]struct{}, len(input.events))
 	actionableEventTypes := make([]eventType, 0, len(input.events))
+	fwRequestedEffects := fwRequestedEffects{}
 
 	for eventIndex, rawEvent := range input.events {
 		if rawEvent.noiseOnly {
@@ -186,6 +257,9 @@ func (input p1_Input) buildFacts() (p1_Facts, error) {
 				eventIndex,
 			)
 		}
+		fwRequestedEffects = fwRequestedEffects.merge(
+			rawEvent.fwRequestedEffects,
+		)
 		if _, alreadySeenEventType := eventTypeSet[rawEvent.eventType]; alreadySeenEventType {
 			continue
 		}
@@ -194,98 +268,248 @@ func (input p1_Input) buildFacts() (p1_Facts, error) {
 	}
 
 	return p1_Facts{
-		mode:                 input.mode,
-		generationID:         normalizedGenerationID,
-		eventTypes:           actionableEventTypes,
-		appRequestedOutcomes: appRequestedOutcomes,
-		waitingForBuildRetry: input.waitingForBuildRetry,
+		mode:         input.mode,
+		generationID: normalizedGenerationID,
+		eventTypes:   actionableEventTypes,
+		wavePublicFileMapNotificationDestinationKey: fwNotificationDestinationKey(
+			strings.TrimSpace(
+				string(input.wavePublicFileMapNotificationDestinationKey),
+			),
+		),
+		fwExecutionRegistrations: input.fwExecutionRegistrations,
+		appRequestedOutcomes:     appRequestedOutcomes,
+		fwRequestedEffects:       fwRequestedEffects,
+		waitingForBuildRetry:     input.waitingForBuildRetry,
 	}, nil
 }
 
-// FrameworkSignalType is one framework-agnostic refresh signal intent.
-type FrameworkSignalType string
-
-const (
-	// FrameworkSignalTypeRoutesChanged signals route-definition refresh intent.
-	FrameworkSignalTypeRoutesChanged FrameworkSignalType = "routes_changed"
-	// FrameworkSignalTypeTemplateChanged signals template refresh intent.
-	FrameworkSignalTypeTemplateChanged FrameworkSignalType = "template_changed"
-	// FrameworkSignalTypePublicFileMapChanged signals public-file-map refresh intent.
-	FrameworkSignalTypePublicFileMapChanged FrameworkSignalType = "public_file_map_changed"
-)
-
-// FrameworkSignal is one framework-agnostic refresh signal payload.
-type FrameworkSignal struct {
-	signalType FrameworkSignalType
-	// freshnessToken prevents stale refresh work from winning.
+// FrameworkNotification is one framework-agnostic notification payload emitted
+// by Wave2 planning.
+type FrameworkNotification struct {
+	destinationKey fwNotificationDestinationKey
 	freshnessToken string
-	// trigger describes why the signal exists for observability.
-	trigger string
-	// metadata carries optional stable key/value context.
-	metadata map[string]string
+	trigger        string
+	metadata       map[string]string
+	waitForApp     bool
+	waitForVite    bool
+	failurePolicy  FrameworkNotificationFailurePolicy
 }
 
-// SignalType returns the framework signal type.
-func (signal FrameworkSignal) SignalType() FrameworkSignalType {
-	return signal.signalType
+// DestinationKey returns framework notification destination registration key.
+func (notification FrameworkNotification) DestinationKey() string {
+	return string(notification.destinationKey)
 }
 
-// FreshnessToken returns the freshness token carried by this signal.
-func (signal FrameworkSignal) FreshnessToken() string {
-	return signal.freshnessToken
+// FreshnessToken returns the freshness token for stale-attempt rejection.
+func (notification FrameworkNotification) FreshnessToken() string {
+	return notification.freshnessToken
 }
 
-// Trigger returns the stable trigger label for this signal.
-func (signal FrameworkSignal) Trigger() string {
-	return signal.trigger
+// Trigger returns stable notification trigger text.
+func (notification FrameworkNotification) Trigger() string {
+	return notification.trigger
 }
 
-// Metadata returns optional stable metadata context for this signal.
-func (signal FrameworkSignal) Metadata() map[string]string {
-	return signal.metadata
+// Metadata returns optional stable key/value metadata.
+func (notification FrameworkNotification) Metadata() map[string]string {
+	return notification.metadata
 }
 
-// frameworkSignals reduces backend-mutation effects into framework-agnostic
-// signals for framework adapter handoff.
-func (p2_RequestedEffects p2_RequestedEffects) frameworkSignals(
+// WaitForApp returns whether notification transport is app-readiness gated.
+func (notification FrameworkNotification) WaitForApp() bool {
+	return notification.waitForApp
+}
+
+// WaitForVite returns whether notification transport is vite-readiness gated.
+func (notification FrameworkNotification) WaitForVite() bool {
+	return notification.waitForVite
+}
+
+// FailurePolicy returns policy used when notification transport fails.
+func (notification FrameworkNotification) FailurePolicy() FrameworkNotificationFailurePolicy {
+	return notification.failurePolicy
+}
+
+func (fwRequestedEffects fwRequestedEffects) fwNotifications(
 	generationID string,
-) []FrameworkSignal {
-	freshnessToken := strings.TrimSpace(generationID)
-	if freshnessToken == "" {
+) []FrameworkNotification {
+	if !fwRequestedEffects.hasBackendConvergenceNotifications() {
 		return nil
 	}
-	signals := make([]FrameworkSignal, 0, 3)
-	if p2_RequestedEffects.refreshFrameworkRoute {
-		signals = append(
-			signals,
-			FrameworkSignal{
-				signalType:     FrameworkSignalTypeRoutesChanged,
-				freshnessToken: freshnessToken,
-				trigger:        "backend_mutation_refresh_framework_route",
+	fallbackFreshnessToken := strings.TrimSpace(generationID)
+	notifications := make(
+		[]FrameworkNotification,
+		0,
+		len(fwRequestedEffects.backendConvergenceNotificationQueue),
+	)
+	for _, request := range fwRequestedEffects.backendConvergenceNotificationQueue {
+		normalizedRequest := request.normalize()
+		if normalizedRequest.destinationKey == "" {
+			continue
+		}
+		if normalizedRequest.freshnessToken == "" {
+			normalizedRequest.freshnessToken = fallbackFreshnessToken
+		}
+		notifications = append(
+			notifications,
+			FrameworkNotification{
+				destinationKey: normalizedRequest.destinationKey,
+				freshnessToken: normalizedRequest.freshnessToken,
+				trigger:        normalizedRequest.trigger,
+				metadata:       normalizedRequest.metadata,
+				waitForApp:     normalizedRequest.waitForApp,
+				waitForVite:    normalizedRequest.waitForVite,
+				failurePolicy:  normalizedRequest.failurePolicy,
 			},
 		)
 	}
-	if p2_RequestedEffects.refreshFrameworkTemplate {
-		signals = append(
-			signals,
-			FrameworkSignal{
-				signalType:     FrameworkSignalTypeTemplateChanged,
-				freshnessToken: freshnessToken,
-				trigger:        "backend_mutation_refresh_framework_template",
-			},
+	return notifications
+}
+
+func (fwRequestedEffects fwRequestedEffects) hasAny() bool {
+	return len(fwRequestedEffects.backendMutationEffectKeys) > 0 ||
+		len(fwRequestedEffects.backendConvergenceNotificationQueue) > 0
+}
+
+func (fwRequestedEffects fwRequestedEffects) hasBackendMutationEffects() bool {
+	return len(fwRequestedEffects.backendMutationEffectKeys) > 0
+}
+
+func (fwRequestedEffects fwRequestedEffects) hasBackendConvergenceNotifications() bool {
+	return len(
+		fwRequestedEffects.backendConvergenceNotificationQueue,
+	) > 0
+}
+
+func (leftRequestedEffects fwRequestedEffects) merge(
+	rightRequestedEffects fwRequestedEffects,
+) fwRequestedEffects {
+	mergedMutationEffectKeys := make(
+		[]fwMutationEffectKey,
+		0,
+		len(leftRequestedEffects.backendMutationEffectKeys)+
+			len(rightRequestedEffects.backendMutationEffectKeys),
+	)
+	seenMutationEffectKeys := make(
+		map[fwMutationEffectKey]struct{},
+		len(leftRequestedEffects.backendMutationEffectKeys)+
+			len(rightRequestedEffects.backendMutationEffectKeys),
+	)
+	appendMutationEffectKey := func(effectKey fwMutationEffectKey) {
+		normalizedEffectKey := fwMutationEffectKey(
+			strings.TrimSpace(string(effectKey)),
+		)
+		if normalizedEffectKey == "" {
+			return
+		}
+		if _, alreadySeen := seenMutationEffectKeys[normalizedEffectKey]; alreadySeen {
+			return
+		}
+		seenMutationEffectKeys[normalizedEffectKey] = struct{}{}
+		mergedMutationEffectKeys = append(
+			mergedMutationEffectKeys,
+			normalizedEffectKey,
 		)
 	}
-	if p2_RequestedEffects.refreshFrameworkPublicFileMap {
-		signals = append(
-			signals,
-			FrameworkSignal{
-				signalType:     FrameworkSignalTypePublicFileMapChanged,
-				freshnessToken: freshnessToken,
-				trigger:        "backend_mutation_refresh_framework_public_filemap",
-			},
-		)
+	for _, effectKey := range leftRequestedEffects.backendMutationEffectKeys {
+		appendMutationEffectKey(effectKey)
 	}
-	return signals
+	for _, effectKey := range rightRequestedEffects.backendMutationEffectKeys {
+		appendMutationEffectKey(effectKey)
+	}
+
+	mergedNotificationQueue := mergeFWNotificationQueue(
+		leftRequestedEffects.backendConvergenceNotificationQueue,
+		rightRequestedEffects.backendConvergenceNotificationQueue,
+	)
+
+	return fwRequestedEffects{
+		backendMutationEffectKeys:           mergedMutationEffectKeys,
+		backendConvergenceNotificationQueue: mergedNotificationQueue,
+	}
+}
+
+func mergeFWNotificationQueue(
+	leftQueue []fwNotificationRequest,
+	rightQueue []fwNotificationRequest,
+) []fwNotificationRequest {
+	mergedQueue := make(
+		[]fwNotificationRequest,
+		0,
+		len(leftQueue)+len(rightQueue),
+	)
+	notificationIndexByDestination := make(
+		map[fwNotificationDestinationKey]int,
+		len(leftQueue)+len(rightQueue),
+	)
+	appendNotification := func(notification fwNotificationRequest) {
+		normalizedNotification := notification.normalize()
+		if normalizedNotification.destinationKey == "" {
+			return
+		}
+		existingIndex, alreadyExists := notificationIndexByDestination[normalizedNotification.destinationKey]
+		if alreadyExists {
+			mergedQueue[existingIndex] = mergedQueue[existingIndex].merge(
+				normalizedNotification,
+			)
+			return
+		}
+		notificationIndexByDestination[normalizedNotification.destinationKey] = len(
+			mergedQueue,
+		)
+		mergedQueue = append(mergedQueue, normalizedNotification)
+	}
+	for _, notification := range leftQueue {
+		appendNotification(notification)
+	}
+	for _, notification := range rightQueue {
+		appendNotification(notification)
+	}
+	return mergedQueue
+}
+
+func (notification fwNotificationRequest) normalize() fwNotificationRequest {
+	normalizedNotification := notification
+	normalizedNotification.destinationKey = fwNotificationDestinationKey(
+		strings.TrimSpace(string(notification.destinationKey)),
+	)
+	normalizedNotification.freshnessToken = strings.TrimSpace(
+		notification.freshnessToken,
+	)
+	normalizedNotification.trigger = strings.TrimSpace(notification.trigger)
+	if normalizedNotification.failurePolicy == "" {
+		normalizedNotification.failurePolicy = FrameworkNotificationFailurePolicyFailPipeline
+	}
+	return normalizedNotification
+}
+
+func (existingNotification fwNotificationRequest) merge(
+	incomingNotification fwNotificationRequest,
+) fwNotificationRequest {
+	mergedNotification := existingNotification
+	if incomingNotification.freshnessToken != "" {
+		mergedNotification.freshnessToken = incomingNotification.freshnessToken
+	}
+	if incomingNotification.trigger != "" {
+		mergedNotification.trigger = incomingNotification.trigger
+	}
+	if len(incomingNotification.metadata) > 0 {
+		if mergedNotification.metadata == nil {
+			mergedNotification.metadata = make(
+				map[string]string,
+				len(incomingNotification.metadata),
+			)
+		}
+		maps.Copy(mergedNotification.metadata, incomingNotification.metadata)
+	}
+	mergedNotification.waitForApp =
+		mergedNotification.waitForApp || incomingNotification.waitForApp
+	mergedNotification.waitForVite =
+		mergedNotification.waitForVite || incomingNotification.waitForVite
+	if incomingNotification.failurePolicy != "" {
+		mergedNotification.failurePolicy = incomingNotification.failurePolicy
+	}
+	return mergedNotification
 }
 
 var (
@@ -360,8 +584,9 @@ func runFivePhasePipelineWithEffectSets(
 	}
 
 	phaseBatchInput := phaseBatchInput{
-		mode:         input.p1.mode,
-		generationID: normalizedGenerationID,
+		mode:                     input.p1.mode,
+		generationID:             normalizedGenerationID,
+		fwExecutionRegistrations: p1_RequestedEffects.fwExecutionRegistrations,
 	}
 	p2_Output, p2_Error := effects.p2.planP2_Output.Run(
 		batchTaskContext,
@@ -399,6 +624,68 @@ func runFivePhasePipelineWithEffectSets(
 	)
 	if p4_Error != nil {
 		return fivePhaseRunResult{}, p4_Error
+	}
+	if p4_Output.requiresBackendRestartWithoutGoCompile {
+		healingP2_RequestedEffects := p2_RequestedEffects{
+			restartAppProcess:        true,
+			awaitBackendReadiness:    true,
+			fwExecutionRegistrations: p1_RequestedEffects.fwExecutionRegistrations,
+		}
+		healingP3_Output, healingP3_Error := effects.p3.planP4_RequestedEffects.Run(
+			batchTaskContext,
+			p3_BatchInput{
+				batch:               phaseBatchInput,
+				p2_RequestedEffects: healingP2_RequestedEffects,
+			},
+		)
+		if healingP3_Error != nil {
+			return fivePhaseRunResult{}, healingP3_Error
+		}
+		healingP4_Output, healingP4_Error := effects.p4.planP5_RequestedEffects.Run(
+			batchTaskContext,
+			p4_BatchInput{
+				batch:               phaseBatchInput,
+				p4_RequestedEffects: healingP3_Output.p4_RequestedEffects,
+			},
+		)
+		if healingP4_Error != nil {
+			return fivePhaseRunResult{}, healingP4_Error
+		}
+		p2_Output.p2_RequestedEffects = p2_Output.p2_RequestedEffects.merge(
+			healingP2_RequestedEffects,
+		)
+		p3_Output = healingP3_Output
+		p4_Output = healingP4_Output
+		return fivePhaseRunResult{
+			p1_RequestedEffects: p1_RequestedEffects,
+			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
+			p3_Output:           p3_Output,
+			p4_Output:           p4_Output,
+			p5_CompletionSummary: p5_CompletionSummary{
+				terminalAction: frontendTerminalBrowserActionNone,
+			},
+			fwNotifications: fwRequestedEffectsFromPointer(
+				p2_Output.p2_RequestedEffects.fwRequestedEffects,
+			).fwNotifications(
+				normalizedGenerationID,
+			),
+		}, nil
+	}
+	if p4_Output.skipFrontendSettling {
+		return fivePhaseRunResult{
+			p1_RequestedEffects: p1_RequestedEffects,
+			p2_RequestedEffects: p2_Output.p2_RequestedEffects,
+			p3_Output:           p3_Output,
+			p4_Output:           p4_Output,
+			p5_CompletionSummary: p5_CompletionSummary{
+				terminalAction: frontendTerminalBrowserActionNone,
+			},
+			fwNotifications: fwRequestedEffectsFromPointer(
+				p2_Output.p2_RequestedEffects.fwRequestedEffects,
+			).fwNotifications(
+				normalizedGenerationID,
+			),
+		}, nil
 	}
 	p5_CompletionSummary, p5_Error := effects.p5.executeTerminalBrowserAction.Run(
 		batchTaskContext,
@@ -458,7 +745,9 @@ func runFivePhasePipelineWithEffectSets(
 		p3_Output:            p3_Output,
 		p4_Output:            p4_Output,
 		p5_CompletionSummary: p5_CompletionSummary,
-		frameworkSignals: p2_Output.p2_RequestedEffects.frameworkSignals(
+		fwNotifications: fwRequestedEffectsFromPointer(
+			p2_Output.p2_RequestedEffects.fwRequestedEffects,
+		).fwNotifications(
 			normalizedGenerationID,
 		),
 	}, nil
@@ -487,9 +776,7 @@ func (eventType eventType) isSupported() bool {
 		return true
 	case eventTypePrivateStaticAssetChanged:
 		return true
-	case eventTypeFrameworkRouteDefinitionChanged:
-		return true
-	case eventTypeFrameworkTemplateChanged:
+	case eventTypeFWRequestedEffectsChanged:
 		return true
 	case eventTypeAppDefinedWatchActionOnlyChanged:
 		return true
@@ -519,6 +806,21 @@ func (rawOutcomes appRequestedOutcomes) reduce() (appRequestedOutcomes, error) {
 			"wavebuild: unsupported requested terminal browser action %q",
 			reducedOutcomes.requestedTerminalBrowserAction,
 		)
+	}
+	reducedOutcomes.fwRequestedEffects = fwRequestedEffects{}.merge(
+		reducedOutcomes.fwRequestedEffects,
+	)
+	for _, fwNotificationRequest := range reducedOutcomes.fwRequestedEffects.backendConvergenceNotificationQueue {
+		switch fwNotificationRequest.failurePolicy {
+		case "",
+			FrameworkNotificationFailurePolicyFailPipeline,
+			FrameworkNotificationFailurePolicyRestartBackendWithoutGoCompile:
+		default:
+			return appRequestedOutcomes{}, fmt.Errorf(
+				"wavebuild: unsupported fw notification failure policy %q",
+				fwNotificationRequest.failurePolicy,
+			)
+		}
 	}
 	return reducedOutcomes, nil
 }

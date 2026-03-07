@@ -10,8 +10,9 @@ import (
 
 // phaseBatchInput is the shared per-batch phase envelope passed after phase 1.
 type phaseBatchInput struct {
-	mode         mode
-	generationID string
+	mode                     mode
+	generationID             string
+	fwExecutionRegistrations *fwExecutionRegistrations
 }
 
 // p1_BatchInput is the phase-1 input contract for one reduced batch.
@@ -32,12 +33,12 @@ type p1_RequestedEffects struct {
 	runRequestedBuildEffects        bool
 	queueRetryWaitRestart           bool
 
-	requestBackendRestart                bool
-	requestViteRestart                   bool
-	requestFrameworkRouteRefresh         bool
-	requestFrameworkTemplateRefresh      bool
-	requestFrameworkPublicFileMapRefresh bool
-	requestedTerminalBrowserAction       frontendTerminalBrowserAction
+	requestBackendRestart                       bool
+	requestViteRestart                          bool
+	requestedTerminalBrowserAction              frontendTerminalBrowserAction
+	wavePublicFileMapNotificationDestinationKey fwNotificationDestinationKey
+	fwExecutionRegistrations                    *fwExecutionRegistrations
+	fwRequestedEffects                          *fwRequestedEffects
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -74,12 +75,6 @@ func (facts p1_Facts) deriveImplicitBrowserActionIntent() frontendTerminalBrowse
 	) ||
 		facts.hasEventType(
 			eventTypePrivateStaticAssetChanged,
-		) ||
-		facts.hasEventType(
-			eventTypeFrameworkRouteDefinitionChanged,
-		) ||
-		facts.hasEventType(
-			eventTypeFrameworkTemplateChanged,
 		) {
 		actionIntent = actionIntent.dominantWith(
 			frontendTerminalBrowserActionHardReload,
@@ -113,12 +108,6 @@ func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
 	privateStaticChanged := facts.hasEventType(
 		eventTypePrivateStaticAssetChanged,
 	)
-	frameworkRouteDefinitionChanged := facts.hasEventType(
-		eventTypeFrameworkRouteDefinitionChanged,
-	)
-	frameworkTemplateChanged := facts.hasEventType(
-		eventTypeFrameworkTemplateChanged,
-	)
 	appDefinedWatchActionOnlyChanged := facts.hasEventType(
 		eventTypeAppDefinedWatchActionOnlyChanged,
 	)
@@ -127,10 +116,15 @@ func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
 	)
 	appDefinedWatchChanged := appDefinedWatchActionOnlyChanged ||
 		appDefinedWatchWithRebuildChanged
+
+	requestedFWEffects := facts.fwRequestedEffects
 	appRequestedOutcomes := appRequestedOutcomes{}
-	if appDefinedWatchChanged {
+	if appDefinedWatchChanged || requestedFWEffects.hasAny() {
 		appRequestedOutcomes = facts.appRequestedOutcomes
 	}
+	requestedFWEffects = requestedFWEffects.merge(
+		appRequestedOutcomes.fwRequestedEffects,
+	)
 	mergedBrowserActionIntent := facts.deriveImplicitBrowserActionIntent().
 		dominantWith(
 			appRequestedOutcomes.requestedTerminalBrowserAction,
@@ -139,19 +133,12 @@ func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
 	requestBackendRestart := goSourceChanged ||
 		appRequestedOutcomes.requestRestart
 	requestViteRestart := configChanged
-	requestFrameworkRouteRefresh :=
-		frameworkRouteDefinitionChanged ||
-			appRequestedOutcomes.requestFrameworkRefresh
-	requestFrameworkTemplateRefresh := frameworkTemplateChanged
-	requestFrameworkPublicFileMapRefresh := publicStaticChanged
 
 	if facts.mode == modeProd {
 		requestBackendRestart = false
 		requestViteRestart = false
-		requestFrameworkRouteRefresh = false
-		requestFrameworkTemplateRefresh = false
-		requestFrameworkPublicFileMapRefresh = false
 		mergedBrowserActionIntent = frontendTerminalBrowserActionNone
+		requestedFWEffects = fwRequestedEffects{}
 	}
 
 	requestedEffects := p1_RequestedEffects{
@@ -165,12 +152,14 @@ func (facts p1_Facts) deriveP1_RequestedEffects() p1_RequestedEffects {
 		processPrivateStaticAssets:      privateStaticChanged,
 		generatePublicFileMap:           publicStaticChanged,
 
-		requestBackendRestart:                requestBackendRestart,
-		requestViteRestart:                   requestViteRestart,
-		requestFrameworkRouteRefresh:         requestFrameworkRouteRefresh,
-		requestFrameworkTemplateRefresh:      requestFrameworkTemplateRefresh,
-		requestFrameworkPublicFileMapRefresh: requestFrameworkPublicFileMapRefresh,
-		requestedTerminalBrowserAction:       mergedBrowserActionIntent,
+		requestBackendRestart:                       requestBackendRestart,
+		requestViteRestart:                          requestViteRestart,
+		requestedTerminalBrowserAction:              mergedBrowserActionIntent,
+		wavePublicFileMapNotificationDestinationKey: facts.wavePublicFileMapNotificationDestinationKey,
+		fwExecutionRegistrations:                    facts.fwExecutionRegistrations,
+		fwRequestedEffects: newFWRequestedEffectsPointerIfAny(
+			requestedFWEffects,
+		),
 	}
 	if facts.mode == modeProd {
 		requestedEffects.restartDevServerCycle = false

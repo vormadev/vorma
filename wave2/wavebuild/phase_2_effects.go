@@ -92,7 +92,9 @@ var p2_CleanupStalePublicStaticTask = tasks.NewTask(
 		input p2_BatchInput,
 	) (p2_BuildOutcomeFacts, error) {
 		if recordTestEffect(tasksCtx, _LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC) {
-			return p2_BuildOutcomeFacts{}, nil
+			return p2_BuildOutcomeFacts{
+				publicFileMapArtifactsChanged: true,
+			}, nil
 		}
 		return p2_BuildOutcomeFacts{}, nil
 	},
@@ -115,6 +117,11 @@ var p2_GeneratePublicFileMapArtifactsTask = tasks.NewTask(
 		tasksCtx *tasks.Ctx,
 		input p2_BatchInput,
 	) (p2_BuildOutcomeFacts, error) {
+		if isTestEnv() {
+			return p2_BuildOutcomeFacts{
+				publicFileMapArtifactsChanged: true,
+			}, nil
+		}
 		if _, publicStaticProcessingError := p2_ProcessPublicStaticAssetsTask.Run(
 			tasksCtx,
 			input,

@@ -22,15 +22,14 @@ const (
 	_LABEL_P2_CLEANUP_STALE_PUBLIC_STATIC   = "phase_2.cleanup_stale_public_static"
 	_LABEL_P2_PROCESS_PRIVATE_STATIC_ASSETS = "phase_2.process_private_static_assets"
 
-	_LABEL_P3_APPLY_DEV_SERVER_RESTART         = "phase_3.apply_dev_server_restart"
-	_LABEL_P3_QUEUE_RETRY_WAIT_RESTART         = "phase_3.queue_retry_wait_restart"
-	_LABEL_P3_RESTART_APP_PROCESS              = "phase_3.restart_app_process"
-	_LABEL_P3_RESTART_VITE_PROCESS             = "phase_3.restart_vite_process"
-	_LABEL_P3_REFRESH_FRAMEWORK_ROUTE          = "phase_3.refresh_framework_route"
-	_LABEL_P3_REFRESH_FRAMEWORK_TEMPLATE       = "phase_3.refresh_framework_template"
-	_LABEL_P3_REFRESH_FRAMEWORK_PUBLIC_FILEMAP = "phase_3.refresh_framework_public_filemap"
+	_LABEL_P3_APPLY_DEV_SERVER_RESTART   = "phase_3.apply_dev_server_restart"
+	_LABEL_P3_QUEUE_RETRY_WAIT_RESTART   = "phase_3.queue_retry_wait_restart"
+	_LABEL_P3_RESTART_APP_PROCESS        = "phase_3.restart_app_process"
+	_LABEL_P3_RESTART_VITE_PROCESS       = "phase_3.restart_vite_process"
+	_LABEL_P3_EXECUTE_FW_MUTATION_EFFECT = "phase_3.execute_fw_mutation_effect"
 
 	_LABEL_P4_AWAIT_BACKEND_READINESS = "phase_4.await_backend_readiness"
+	_LABEL_P4_EXECUTE_FW_NOTIFICATION = "phase_4.execute_fw_notification"
 
 	_LABEL_P5_BROADCAST_CSS_HOT_RELOAD           = "phase_5.broadcast_css_hot_reload"
 	_LABEL_P5_NOTIFY_VITE_PUBLIC_FILEMAP_CHANGED = "phase_5.notify_vite_public_filemap_changed"

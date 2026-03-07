@@ -24,12 +24,11 @@ type p2_RequestedEffects struct {
 	restartDevServerCycle          bool
 	restartAppProcess              bool
 	restartViteProcess             bool
-	refreshFrameworkRoute          bool
-	refreshFrameworkTemplate       bool
-	refreshFrameworkPublicFileMap  bool
 	awaitBackendReadiness          bool
 	queueRetryWaitRestart          bool
 	requestedTerminalBrowserAction frontendTerminalBrowserAction
+	fwExecutionRegistrations       *fwExecutionRegistrations
+	fwRequestedEffects             *fwRequestedEffects
 }
 
 // p2_Output is the full phase-2 planner output consumed by phase 3.
@@ -63,38 +62,56 @@ func (p1_RequestedEffects p1_RequestedEffects) deriveP2_RequestedEffects(
 	}
 
 	requestedTerminalBrowserAction := p1_RequestedEffects.requestedTerminalBrowserAction
+	requestedFWEffects := fwRequestedEffectsFromPointer(
+		p1_RequestedEffects.fwRequestedEffects,
+	)
 	if buildOutcomeFacts.publicFileMapArtifactsChanged ||
 		buildOutcomeFacts.publicFileMapArtifactsRepaired {
 		requestedTerminalBrowserAction = requestedTerminalBrowserAction.dominantWith(
 			frontendTerminalBrowserActionNotifyVitePublicFileMapChanged,
 		)
+		if p1_RequestedEffects.wavePublicFileMapNotificationDestinationKey != "" {
+			requestedFWEffects = requestedFWEffects.merge(
+				fwRequestedEffects{
+					backendConvergenceNotificationQueue: []fwNotificationRequest{
+						{
+							destinationKey: p1_RequestedEffects.wavePublicFileMapNotificationDestinationKey,
+							trigger:        "wave_public_filemap_artifacts_changed",
+						},
+					},
+				},
+			)
+		}
 	}
 
 	requestedEffects := p2_RequestedEffects{
 		restartDevServerCycle: p1_RequestedEffects.restartDevServerCycle,
 		restartAppProcess: p1_RequestedEffects.requestBackendRestart ||
 			p1_RequestedEffects.compileGoBinary,
-		restartViteProcess:       p1_RequestedEffects.requestViteRestart,
-		refreshFrameworkRoute:    p1_RequestedEffects.requestFrameworkRouteRefresh,
-		refreshFrameworkTemplate: p1_RequestedEffects.requestFrameworkTemplateRefresh,
-		refreshFrameworkPublicFileMap: p1_RequestedEffects.requestFrameworkPublicFileMapRefresh ||
-			buildOutcomeFacts.publicFileMapArtifactsChanged ||
-			buildOutcomeFacts.publicFileMapArtifactsRepaired,
+		restartViteProcess:             p1_RequestedEffects.requestViteRestart,
 		requestedTerminalBrowserAction: requestedTerminalBrowserAction,
+		fwExecutionRegistrations:       p1_RequestedEffects.fwExecutionRegistrations,
+		fwRequestedEffects: newFWRequestedEffectsPointerIfAny(
+			requestedFWEffects,
+		),
 	}
 	requestedEffects.awaitBackendReadiness =
 		requestedEffects.restartDevServerCycle ||
 			requestedEffects.restartAppProcess ||
 			requestedEffects.restartViteProcess ||
-			requestedEffects.refreshFrameworkRoute ||
-			requestedEffects.refreshFrameworkTemplate ||
-			requestedEffects.refreshFrameworkPublicFileMap
+			fwRequestedEffectsFromPointer(
+				requestedEffects.fwRequestedEffects,
+			).hasAny()
 	return requestedEffects
 }
 
 func (leftRequestedEffects p2_RequestedEffects) merge(
 	rightRequestedEffects p2_RequestedEffects,
 ) p2_RequestedEffects {
+	fwExecutionRegistrations := leftRequestedEffects.fwExecutionRegistrations
+	if fwExecutionRegistrations == nil {
+		fwExecutionRegistrations = rightRequestedEffects.fwExecutionRegistrations
+	}
 	return p2_RequestedEffects{
 		restartDevServerCycle: leftRequestedEffects.restartDevServerCycle ||
 			rightRequestedEffects.restartDevServerCycle,
@@ -102,18 +119,22 @@ func (leftRequestedEffects p2_RequestedEffects) merge(
 			rightRequestedEffects.restartAppProcess,
 		restartViteProcess: leftRequestedEffects.restartViteProcess ||
 			rightRequestedEffects.restartViteProcess,
-		refreshFrameworkRoute: leftRequestedEffects.refreshFrameworkRoute ||
-			rightRequestedEffects.refreshFrameworkRoute,
-		refreshFrameworkTemplate: leftRequestedEffects.refreshFrameworkTemplate ||
-			rightRequestedEffects.refreshFrameworkTemplate,
-		refreshFrameworkPublicFileMap: leftRequestedEffects.refreshFrameworkPublicFileMap ||
-			rightRequestedEffects.refreshFrameworkPublicFileMap,
 		awaitBackendReadiness: leftRequestedEffects.awaitBackendReadiness ||
 			rightRequestedEffects.awaitBackendReadiness,
 		queueRetryWaitRestart: leftRequestedEffects.queueRetryWaitRestart ||
 			rightRequestedEffects.queueRetryWaitRestart,
 		requestedTerminalBrowserAction: leftRequestedEffects.requestedTerminalBrowserAction.dominantWith(
 			rightRequestedEffects.requestedTerminalBrowserAction,
+		),
+		fwExecutionRegistrations: fwExecutionRegistrations,
+		fwRequestedEffects: newFWRequestedEffectsPointerIfAny(
+			fwRequestedEffectsFromPointer(
+				leftRequestedEffects.fwRequestedEffects,
+			).merge(
+				fwRequestedEffectsFromPointer(
+					rightRequestedEffects.fwRequestedEffects,
+				),
+			),
 		),
 	}
 }
