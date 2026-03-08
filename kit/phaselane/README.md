@@ -11,7 +11,8 @@ Use this package when you want:
 - dynamic lane count per phase
 - explicit phase barriers
 - detached (no-wait) lane work
-- centralized transition policies (`advance`, `jump`, `loop-back`, `repeat`, `stop`)
+- centralized transition policies (`advance`, `jump`, `loop-back`, `repeat`,
+  `stop`)
 - row-to-row awaited lane values
 
 ## Import
@@ -126,5 +127,5 @@ Use `CellWaitModeDetached` for no-wait callbacks.
 - detached callbacks run asynchronously
 - each detached launch returns one `DetachedLaneTicket`
 - detached callbacks may not return `StatePatch`
-- pending detached lane counts are visible in `CellRunInput.PendingDetachedByLane`
-
+- pending detached lane counts are visible in
+  `CellRunInput.PendingDetachedByLane`

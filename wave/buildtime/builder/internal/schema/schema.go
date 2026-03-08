@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"strings"
 
@@ -80,9 +81,7 @@ func (processor *Processor) BuildSchemaDocument() (map[string]any, error) {
 		if extensionError != nil {
 			return nil, extensionError
 		}
-		for extensionName, extensionProperty := range frameworkExtensionProperties {
-			properties[extensionName] = extensionProperty
-		}
+		maps.Copy(properties, frameworkExtensionProperties)
 	}
 
 	document := map[string]any{

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/phaselane"
@@ -31,7 +30,10 @@ type phase_task_input struct {
 	should_short_circuit_for_build_retry_wait bool
 	should_short_circuit_for_noop_batch       bool
 
-	batch_event_categorization batch_event_categorization
+	should_materialize_go_binary_state    bool
+	should_materialize_css_state          bool
+	should_materialize_static_asset_state bool
+	should_restart_backend_runtime        bool
 }
 
 type batch_watcher_event struct {
@@ -54,20 +56,6 @@ const (
 	batch_watcher_event_op_rename batch_watcher_event_op = "rename"
 	batch_watcher_event_op_chmod  batch_watcher_event_op = "chmod"
 )
-
-type batch_event_categorization struct {
-	event_count               int
-	config_change_count       int
-	hard_reload_count         int
-	build_go_binary           bool
-	build_critical_css        bool
-	build_normal_css          bool
-	process_public_static     bool
-	process_private_static    bool
-	requires_backend_restart  bool
-	prefer_revalidate         bool
-	short_circuit_build_retry bool
-}
 
 type backend_mutation_branch string
 
@@ -110,244 +98,6 @@ type event_execution_flow_decision struct {
 	should_short_circuit_for_config_restart   bool
 	should_short_circuit_for_build_retry_wait bool
 	should_short_circuit_for_noop_batch       bool
-}
-
-func normalize_batch_watcher_event_path_for_categorization(
-	raw_path string,
-) string {
-	trimmed_path := strings.TrimSpace(raw_path)
-	if trimmed_path == "" {
-		return ""
-	}
-	normalized_slashes_path := strings.ReplaceAll(trimmed_path, "\\", "/")
-	normalized_path := filepath.Clean(normalized_slashes_path)
-	if normalized_path == "." {
-		return ""
-	}
-	return strings.ReplaceAll(normalized_path, "\\", "/")
-}
-
-func is_config_change_path_for_batch_event_categorization(
-	normalized_path string,
-) bool {
-	config_file_name := strings.ToLower(
-		strings.TrimSpace(filepath.Base(normalized_path)),
-	)
-	if config_file_name == "wave.config.json" {
-		return true
-	}
-	return strings.HasPrefix(config_file_name, "wave.config.")
-}
-
-func should_treat_batch_event_as_critical_css(
-	normalized_path string,
-) bool {
-	return strings.HasSuffix(strings.ToLower(normalized_path), ".critical.css")
-}
-
-func should_treat_batch_event_as_normal_css(
-	normalized_path string,
-) bool {
-	normalized_lower_path := strings.ToLower(normalized_path)
-	return strings.HasSuffix(normalized_lower_path, ".css") &&
-		!should_treat_batch_event_as_critical_css(normalized_path)
-}
-
-func should_treat_batch_event_as_go_source(
-	normalized_path string,
-) bool {
-	return strings.HasSuffix(strings.ToLower(normalized_path), ".go")
-}
-
-func should_treat_batch_event_as_public_static(
-	normalized_path string,
-) bool {
-	normalized_lower_path := strings.ToLower(normalized_path)
-	return strings.Contains(normalized_lower_path, "/public/")
-}
-
-func should_treat_batch_event_as_private_static(
-	normalized_path string,
-) bool {
-	normalized_lower_path := strings.ToLower(normalized_path)
-	return strings.Contains(normalized_lower_path, "/private/")
-}
-
-func derive_batch_event_categorization(
-	batch_events []batch_watcher_event,
-) batch_event_categorization {
-	categorization := batch_event_categorization{}
-	for _, batch_event := range batch_events {
-		if batch_event.op == batch_watcher_event_op_chmod {
-			continue
-		}
-		normalized_path := normalize_batch_watcher_event_path_for_categorization(
-			batch_event.path,
-		)
-		if normalized_path == "" {
-			continue
-		}
-		if batch_event.waiting_for_build_retry {
-			categorization.short_circuit_build_retry = true
-		}
-		if is_config_change_path_for_batch_event_categorization(normalized_path) {
-			categorization.event_count++
-			categorization.config_change_count++
-			continue
-		}
-		if batch_event.run_on_change_only {
-			categorization.event_count++
-			continue
-		}
-		is_go_source := should_treat_batch_event_as_go_source(normalized_path)
-		if is_go_source && batch_event.treat_as_non_go {
-			is_go_source = false
-		}
-		if is_go_source {
-			categorization.event_count++
-			categorization.build_go_binary = true
-			categorization.hard_reload_count++
-			categorization.requires_backend_restart = true
-			if batch_event.only_run_client_defined_revalidate_func {
-				categorization.prefer_revalidate = true
-			}
-			continue
-		}
-		if should_treat_batch_event_as_critical_css(normalized_path) {
-			categorization.event_count++
-			categorization.build_critical_css = true
-			if batch_event.only_run_client_defined_revalidate_func {
-				categorization.prefer_revalidate = true
-			}
-			if batch_event.recompile_go_binary || batch_event.restart_app {
-				categorization.hard_reload_count++
-				categorization.requires_backend_restart = true
-			}
-			continue
-		}
-		if should_treat_batch_event_as_normal_css(normalized_path) {
-			categorization.event_count++
-			categorization.build_normal_css = true
-			if batch_event.only_run_client_defined_revalidate_func {
-				categorization.prefer_revalidate = true
-			}
-			if batch_event.recompile_go_binary || batch_event.restart_app {
-				categorization.hard_reload_count++
-				categorization.requires_backend_restart = true
-			}
-			continue
-		}
-		if should_treat_batch_event_as_public_static(normalized_path) {
-			categorization.event_count++
-			categorization.process_public_static = true
-			if batch_event.only_run_client_defined_revalidate_func {
-				categorization.prefer_revalidate = true
-			}
-			if batch_event.recompile_go_binary || batch_event.restart_app {
-				categorization.hard_reload_count++
-				categorization.requires_backend_restart = true
-			}
-			continue
-		}
-		if should_treat_batch_event_as_private_static(normalized_path) {
-			categorization.event_count++
-			categorization.process_private_static = true
-			categorization.hard_reload_count++
-			categorization.requires_backend_restart = true
-			if batch_event.only_run_client_defined_revalidate_func {
-				categorization.prefer_revalidate = true
-			}
-			continue
-		}
-		categorization.event_count++
-		if batch_event.only_run_client_defined_revalidate_func {
-			categorization.prefer_revalidate = true
-		}
-		if batch_event.run_on_change_only {
-			continue
-		}
-		if batch_event.recompile_go_binary {
-			categorization.build_go_binary = true
-		}
-		if batch_event.recompile_go_binary || batch_event.restart_app {
-			categorization.hard_reload_count++
-			categorization.requires_backend_restart = true
-		}
-	}
-	return categorization
-}
-
-func derive_defaults_from_batch_event_categorization(
-	categorization batch_event_categorization,
-) (
-	derived_app_stop_strategy app_stop_strategy,
-	derived_frontend_terminal_action frontend_terminal_action,
-	derived_should_short_circuit_for_config_restart bool,
-	derived_should_short_circuit_for_build_retry_wait bool,
-	derived_should_short_circuit_for_noop_batch bool,
-	derived_backend_mutation_branch backend_mutation_branch,
-) {
-	derived_app_stop_strategy = app_stop_strategy_none
-	derived_frontend_terminal_action = frontend_terminal_action_none
-	derived_should_short_circuit_for_config_restart = categorization.config_change_count > 0
-	derived_should_short_circuit_for_build_retry_wait = categorization.short_circuit_build_retry
-	derived_should_short_circuit_for_noop_batch = categorization.event_count == 0
-	derived_backend_mutation_branch = backend_mutation_branch_apply_normal_backend_mutations
-
-	if derived_should_short_circuit_for_config_restart {
-		derived_backend_mutation_branch = backend_mutation_branch_restart_dev_server_cycle
-		return derived_app_stop_strategy,
-			derived_frontend_terminal_action,
-			derived_should_short_circuit_for_config_restart,
-			derived_should_short_circuit_for_build_retry_wait,
-			derived_should_short_circuit_for_noop_batch,
-			derived_backend_mutation_branch
-	}
-	if derived_should_short_circuit_for_build_retry_wait {
-		derived_backend_mutation_branch = backend_mutation_branch_queue_retry_wait_restart
-		return derived_app_stop_strategy,
-			derived_frontend_terminal_action,
-			derived_should_short_circuit_for_config_restart,
-			derived_should_short_circuit_for_build_retry_wait,
-			derived_should_short_circuit_for_noop_batch,
-			derived_backend_mutation_branch
-	}
-	if derived_should_short_circuit_for_noop_batch {
-		return derived_app_stop_strategy,
-			derived_frontend_terminal_action,
-			derived_should_short_circuit_for_config_restart,
-			derived_should_short_circuit_for_build_retry_wait,
-			derived_should_short_circuit_for_noop_batch,
-			derived_backend_mutation_branch
-	}
-
-	switch {
-	case categorization.hard_reload_count == 1 &&
-		categorization.event_count == 1:
-		derived_app_stop_strategy = app_stop_strategy_single_event_hard_reload
-	case categorization.hard_reload_count > 0:
-		derived_app_stop_strategy = app_stop_strategy_batch_hard_reload
-	}
-
-	switch {
-	case categorization.hard_reload_count > 0:
-		derived_frontend_terminal_action = frontend_terminal_action_hard_reload
-	case categorization.process_public_static:
-		derived_frontend_terminal_action = frontend_terminal_action_notify_vite_public_filemap_changed
-	case categorization.prefer_revalidate:
-		derived_frontend_terminal_action = frontend_terminal_action_revalidate
-	case categorization.build_critical_css || categorization.build_normal_css:
-		derived_frontend_terminal_action = frontend_terminal_action_css_hot_reload
-	default:
-		derived_frontend_terminal_action = frontend_terminal_action_none
-	}
-
-	return derived_app_stop_strategy,
-		derived_frontend_terminal_action,
-		derived_should_short_circuit_for_config_restart,
-		derived_should_short_circuit_for_build_retry_wait,
-		derived_should_short_circuit_for_noop_batch,
-		derived_backend_mutation_branch
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -1534,23 +1284,21 @@ var execute_materialization_build_lane_task = tracked_task(_LABEL_TASK_EXECUTE_M
 	}
 	parallel_calls := make([]tasks.BoundTask, 0, 4)
 	should_materialize_any_build_state := false
-	if input.batch_event_categorization.build_go_binary {
+	if input.should_materialize_go_binary_state {
 		parallel_calls = append(
 			parallel_calls,
 			materialize_go_binary_state_task.Bind(input, nil),
 		)
 		should_materialize_any_build_state = true
 	}
-	if input.batch_event_categorization.build_critical_css ||
-		input.batch_event_categorization.build_normal_css {
+	if input.should_materialize_css_state {
 		parallel_calls = append(
 			parallel_calls,
 			materialize_css_state_task.Bind(input, nil),
 		)
 		should_materialize_any_build_state = true
 	}
-	if input.batch_event_categorization.process_public_static ||
-		input.batch_event_categorization.process_private_static {
+	if input.should_materialize_static_asset_state {
 		parallel_calls = append(
 			parallel_calls,
 			materialize_static_asset_state_task.Bind(input, nil),
@@ -2662,7 +2410,7 @@ var apply_normal_backend_mutations_task = tracked_task(_LABEL_TASK_APPLY_NORMAL_
 	input phase_task_input,
 ) (struct{}, error) {
 
-	if !input.batch_event_categorization.requires_backend_restart {
+	if !input.should_restart_backend_runtime {
 		return struct{}{}, nil
 	}
 	if _, err := restart_app_runtime_process_task.Run(tasks_ctx, input); err != nil {
@@ -2745,7 +2493,7 @@ var converge_backend_state_task = tracked_task(_LABEL_TASK_CONVERGE_BACKEND_STAT
 	input phase_task_input,
 ) (bool, error) {
 
-	if !input.batch_event_categorization.requires_backend_restart {
+	if !input.should_restart_backend_runtime {
 		return input.should_request_loop_back, nil
 	}
 	if _, err := derive_backend_convergence_requirements_task.Run(
@@ -3205,6 +2953,10 @@ const (
 	orchestrator_state_key_should_short_circuit_for_build_retry_wait = "should_short_circuit_for_build_retry_wait"
 	orchestrator_state_key_should_short_circuit_for_noop_batch       = "should_short_circuit_for_noop_batch"
 	orchestrator_state_key_should_loop_back_to_backend_mutation      = "should_loop_back_to_backend_mutation"
+	orchestrator_state_key_should_materialize_go_binary_state        = "should_materialize_go_binary_state"
+	orchestrator_state_key_should_materialize_css_state              = "should_materialize_css_state"
+	orchestrator_state_key_should_materialize_static_asset_state     = "should_materialize_static_asset_state"
+	orchestrator_state_key_should_restart_backend_runtime            = "should_restart_backend_runtime"
 )
 
 func phaselane_plan_with_tasks_ctx(
@@ -3718,29 +3470,14 @@ func phase_task_input_from_cell_run_input(
 		)
 	}
 	state_values := cell_run_input.StateSnapshot
-	batch_watcher_events, has_batch_watcher_events := state_values[orchestrator_state_key_batch_watcher_events]
-	parsed_batch_watcher_events := []batch_watcher_event(nil)
-	if has_batch_watcher_events {
-		typed_batch_watcher_events, ok := batch_watcher_events.([]batch_watcher_event)
-		if !ok {
+	if raw_batch_watcher_events, has_batch_watcher_events := state_values[orchestrator_state_key_batch_watcher_events]; has_batch_watcher_events {
+		if _, ok := raw_batch_watcher_events.([]batch_watcher_event); !ok {
 			return phase_task_input{}, fmt.Errorf(
 				"wavebuild: orchestrator batch watcher events has unexpected type %T",
-				batch_watcher_events,
+				raw_batch_watcher_events,
 			)
 		}
-		parsed_batch_watcher_events = typed_batch_watcher_events
 	}
-	derived_batch_event_categorization := derive_batch_event_categorization(
-		parsed_batch_watcher_events,
-	)
-	derived_app_stop_strategy,
-		derived_frontend_terminal_action,
-		derived_should_short_circuit_for_config_restart,
-		derived_should_short_circuit_for_build_retry_wait,
-		derived_should_short_circuit_for_noop_batch,
-		derived_backend_mutation_branch := derive_defaults_from_batch_event_categorization(
-		derived_batch_event_categorization,
-	)
 
 	raw_mode, has_mode := state_values[orchestrator_state_key_mode]
 	if !has_mode {
@@ -3771,7 +3508,7 @@ func phase_task_input_from_cell_run_input(
 	}
 	current_mode := parsed_mode
 
-	selected_app_stop_strategy := derived_app_stop_strategy
+	selected_app_stop_strategy := app_stop_strategy_none
 	if raw_app_stop_strategy, has_app_stop_strategy := state_values[orchestrator_state_key_app_stop_strategy]; has_app_stop_strategy {
 		normalized_app_stop_strategy := ""
 		switch typed_app_stop_strategy := raw_app_stop_strategy.(type) {
@@ -3830,7 +3567,7 @@ func phase_task_input_from_cell_run_input(
 		return phase_task_input{}, err_generation_id_required
 	}
 
-	selected_backend_mutation_branch := derived_backend_mutation_branch
+	selected_backend_mutation_branch := backend_mutation_branch_apply_normal_backend_mutations
 	if raw_backend_mutation_branch, has_backend_mutation_branch := state_values[orchestrator_state_key_backend_mutation_branch]; has_backend_mutation_branch {
 		normalized_backend_mutation_branch := ""
 		switch typed_backend_mutation_branch := raw_backend_mutation_branch.(type) {
@@ -3871,7 +3608,7 @@ func phase_task_input_from_cell_run_input(
 		}
 	}
 
-	selected_frontend_terminal_action := derived_frontend_terminal_action
+	selected_frontend_terminal_action := frontend_terminal_action_none
 	if raw_frontend_terminal_action, has_frontend_terminal_action := state_values[orchestrator_state_key_frontend_terminal_action]; has_frontend_terminal_action {
 		normalized_frontend_terminal_action := ""
 		switch typed_frontend_terminal_action := raw_frontend_terminal_action.(type) {
@@ -3928,7 +3665,7 @@ func phase_task_input_from_cell_run_input(
 		should_request_loop_back = typed_should_request_loop_back
 	}
 
-	should_short_circuit_for_config_restart := derived_should_short_circuit_for_config_restart
+	should_short_circuit_for_config_restart := false
 	if raw_should_short_circuit_for_config_restart, has_should_short_circuit_for_config_restart := state_values[orchestrator_state_key_should_short_circuit_for_config_restart]; has_should_short_circuit_for_config_restart {
 		typed_should_short_circuit_for_config_restart, ok := raw_should_short_circuit_for_config_restart.(bool)
 		if !ok {
@@ -3940,7 +3677,7 @@ func phase_task_input_from_cell_run_input(
 		should_short_circuit_for_config_restart = typed_should_short_circuit_for_config_restart
 	}
 
-	should_short_circuit_for_build_retry_wait := derived_should_short_circuit_for_build_retry_wait
+	should_short_circuit_for_build_retry_wait := false
 	if raw_should_short_circuit_for_build_retry_wait, has_should_short_circuit_for_build_retry_wait := state_values[orchestrator_state_key_should_short_circuit_for_build_retry_wait]; has_should_short_circuit_for_build_retry_wait {
 		typed_should_short_circuit_for_build_retry_wait, ok := raw_should_short_circuit_for_build_retry_wait.(bool)
 		if !ok {
@@ -3952,7 +3689,7 @@ func phase_task_input_from_cell_run_input(
 		should_short_circuit_for_build_retry_wait = typed_should_short_circuit_for_build_retry_wait
 	}
 
-	should_short_circuit_for_noop_batch := derived_should_short_circuit_for_noop_batch
+	should_short_circuit_for_noop_batch := false
 	if raw_should_short_circuit_for_noop_batch, has_should_short_circuit_for_noop_batch := state_values[orchestrator_state_key_should_short_circuit_for_noop_batch]; has_should_short_circuit_for_noop_batch {
 		typed_should_short_circuit_for_noop_batch, ok := raw_should_short_circuit_for_noop_batch.(bool)
 		if !ok {
@@ -3964,17 +3701,68 @@ func phase_task_input_from_cell_run_input(
 		should_short_circuit_for_noop_batch = typed_should_short_circuit_for_noop_batch
 	}
 
+	should_materialize_go_binary_state := false
+	if raw_should_materialize_go_binary_state, has_should_materialize_go_binary_state := state_values[orchestrator_state_key_should_materialize_go_binary_state]; has_should_materialize_go_binary_state {
+		typed_should_materialize_go_binary_state, ok := raw_should_materialize_go_binary_state.(bool)
+		if !ok {
+			return phase_task_input{}, fmt.Errorf(
+				"wavebuild: orchestrator materialize go binary state flag has unexpected type %T",
+				raw_should_materialize_go_binary_state,
+			)
+		}
+		should_materialize_go_binary_state = typed_should_materialize_go_binary_state
+	}
+
+	should_materialize_css_state := false
+	if raw_should_materialize_css_state, has_should_materialize_css_state := state_values[orchestrator_state_key_should_materialize_css_state]; has_should_materialize_css_state {
+		typed_should_materialize_css_state, ok := raw_should_materialize_css_state.(bool)
+		if !ok {
+			return phase_task_input{}, fmt.Errorf(
+				"wavebuild: orchestrator materialize css state flag has unexpected type %T",
+				raw_should_materialize_css_state,
+			)
+		}
+		should_materialize_css_state = typed_should_materialize_css_state
+	}
+
+	should_materialize_static_asset_state := false
+	if raw_should_materialize_static_asset_state, has_should_materialize_static_asset_state := state_values[orchestrator_state_key_should_materialize_static_asset_state]; has_should_materialize_static_asset_state {
+		typed_should_materialize_static_asset_state, ok := raw_should_materialize_static_asset_state.(bool)
+		if !ok {
+			return phase_task_input{}, fmt.Errorf(
+				"wavebuild: orchestrator materialize static asset state flag has unexpected type %T",
+				raw_should_materialize_static_asset_state,
+			)
+		}
+		should_materialize_static_asset_state = typed_should_materialize_static_asset_state
+	}
+
+	should_restart_backend_runtime := false
+	if raw_should_restart_backend_runtime, has_should_restart_backend_runtime := state_values[orchestrator_state_key_should_restart_backend_runtime]; has_should_restart_backend_runtime {
+		typed_should_restart_backend_runtime, ok := raw_should_restart_backend_runtime.(bool)
+		if !ok {
+			return phase_task_input{}, fmt.Errorf(
+				"wavebuild: orchestrator restart backend runtime flag has unexpected type %T",
+				raw_should_restart_backend_runtime,
+			)
+		}
+		should_restart_backend_runtime = typed_should_restart_backend_runtime
+	}
+
 	return phase_task_input{
-		mode:                                    current_mode,
-		gen_id:                                  generation_id,
-		step_index:                              cell_run_input.StepIndex,
-		app_stop_strategy:                       selected_app_stop_strategy,
-		backend_mutation_branch:                 selected_backend_mutation_branch,
-		frontend_terminal_action:                selected_frontend_terminal_action,
-		should_request_loop_back:                should_request_loop_back,
-		hook_stage:                              hook_stage_none,
-		batch_event_categorization:              derived_batch_event_categorization,
-		should_short_circuit_for_config_restart: should_short_circuit_for_config_restart,
+		mode:                                      current_mode,
+		gen_id:                                    generation_id,
+		step_index:                                cell_run_input.StepIndex,
+		app_stop_strategy:                         selected_app_stop_strategy,
+		backend_mutation_branch:                   selected_backend_mutation_branch,
+		frontend_terminal_action:                  selected_frontend_terminal_action,
+		should_request_loop_back:                  should_request_loop_back,
+		hook_stage:                                hook_stage_none,
+		should_materialize_go_binary_state:        should_materialize_go_binary_state,
+		should_materialize_css_state:              should_materialize_css_state,
+		should_materialize_static_asset_state:     should_materialize_static_asset_state,
+		should_restart_backend_runtime:            should_restart_backend_runtime,
+		should_short_circuit_for_config_restart:   should_short_circuit_for_config_restart,
 		should_short_circuit_for_build_retry_wait: should_short_circuit_for_build_retry_wait,
 		should_short_circuit_for_noop_batch:       should_short_circuit_for_noop_batch,
 	}, nil
