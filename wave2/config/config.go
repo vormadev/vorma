@@ -1,4 +1,4 @@
-package cfg
+package config
 
 import (
 	"encoding/json"
@@ -28,6 +28,24 @@ All filepath values may escape the directory against which they are resolved,
 but they must not be machine-absolute. If any filepath value is set by the user
 as machine-absolute, parsing must fail.
 
+DEFINITIONS:
+wave_work = _____________________
+go_compile = _____________________
+on_config_loaded = use this for ___________
+on_change_before_wave_work = use this for anything that wave work (e.g. ______) will rely on
+on_change_during_wave_work_before_go_compile = use this for anything wave work does not rely on but that go compilation does (e.g., ______)
+on_change_during_wave_work = use this for anything that is unrelated to wave work and go compilation
+on_change_after_wave_work = use this for anything that relies on the wave work
+
+DEFINITIONS:
+`wave_work` = the full Wave-owned batch workset execution (implicit file-change processing), including css/static processing, runtime/artifact updates, and `go_compile` when requested.
+`go_compile` = the step that compiles the Go app binary (if requested) and implies app restart semantics for that batch path. it is a subset of `wave_work`.
+`on_config_loaded` = use this for framework/plugin setup derived from parsed config (schema additions, watch include/exclude additions, framework defaults, endpoint wiring).
+`on_change_before_wave_work` = use this for on-change work that `wave_work` depends on (for example: fast route artifact regeneration that must exist before Wave classifies/executes downstream work for that batch).
+`on_change_during_wave_work_before_go_compile` = use this for work `wave_work` does not depend on, but `go_compile` depends on (for example: preparing/returning Go overlay inputs or generated sources consumed by compile).
+`on_change_during_wave_work` = use this for work independent of both `wave_work` dependencies and `go_compile` dependencies, safe to run concurrently with `wave_work` (for example: external notifications, telemetry, non-blocking side work).
+`on_change_after_wave_work` = use this for work that must observe completed `wave_work` outputs (for example: deferred runtime-reload decisions based on finalized artifacts, post-processing checks, endpoint-trigger actions that require finished outputs).
+
 */
 
 /////////////////////////////////////////////////////////////////////
@@ -54,14 +72,18 @@ type RawCore struct {
 	/////// full-stack only
 
 	PublicPathPrefix string
-	StaticAssetDirs  struct {
-		Private string
-		Public  string
-	}
-	CSSEntryFiles struct {
-		Critical    string
-		NonCritical string
-	}
+	StaticAssetDirs  RawStaticAssetDirs
+	CSSEntryFiles    RawCSSEntryFiles
+}
+
+type RawStaticAssetDirs struct {
+	Private string
+	Public  string
+}
+
+type RawCSSEntryFiles struct {
+	Critical    string
+	NonCritical string
 }
 
 type RawVite struct {
@@ -73,21 +95,26 @@ type RawVite struct {
 
 type RawWatch struct {
 	HealthcheckEndpoint string
-	Include             []struct {
-		Pattern       string // glob
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string   // pre, concurrent, concurrent-no-wait, post
-			Exclude []string // glob
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}
-	Exclude []string // glob
+	Include             []RawIncludeEntry
+	Exclude             []string // glob
+}
+
+type RawIncludeEntry struct {
+	Pattern                            string // glob
+	OnChangeHooks                      []RawOnChangeHook
+	RecompileGoBinary                  bool
+	RestartApp                         bool
+	OnlyRunClientDefinedRevalidateFunc bool
+	RunOnChangeOnly                    bool
+	SkipRebuildingNotification         bool
+	TreatAsNonGo                       bool
+}
+
+type RawOnChangeHook struct {
+	Cmd      string
+	Callback OnChangeRuntimeCallback `json:"-"`
+	Timing   string                  // pre, concurrent, concurrent-no-wait, post
+	Exclude  []string                // glob
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -95,10 +122,11 @@ type RawWatch struct {
 /////////////////////////////////////////////////////////////////////
 
 type Parsed struct {
-	ConfigPath strict.CWDRelPath
-	Core       ParsedCore
-	Vite       ParsedVite
-	Watch      ParsedWatch
+	ConfigPath  strict.CWDRelPath
+	ResolveRoot strict.CWDRelPath
+	Core        ParsedCore
+	Vite        ParsedVite
+	Watch       ParsedWatch
 }
 
 /////// CORE
@@ -144,10 +172,13 @@ type ParsedWatchIncludeEntry struct {
 	TreatAsNonGo                       bool
 }
 
+type OnChangeRuntimeCallback func() error
+
 type ParsedOnChangeHook struct {
-	Cmd     strict.Cmd
-	Timing  OnChangeHookTiming
-	Exclude []strict.CWDRelPath
+	Cmd      strict.Cmd
+	Callback OnChangeRuntimeCallback
+	Timing   OnChangeHookTiming
+	Exclude  []strict.CWDRelPath
 }
 
 type OnChangeHookTiming string
@@ -159,8 +190,8 @@ const (
 	OnChangeHookTimingPost             OnChangeHookTiming = "post"
 )
 
-func ConfigPathToRaw(path string) *Raw {
-	cfg_path := parse_path(path, "config file path")
+func ConfigPathToRaw(cwd_rel_path string) *Raw {
+	cfg_path := parse_path(cwd_rel_path, "config file path")
 	assert_is_file(cfg_path, "config file path")
 
 	json_bytes, err := os.ReadFile(string(cfg_path))
@@ -189,7 +220,7 @@ func RawToParsed(raw *Raw) *Parsed {
 	var reserved reserved_paths
 
 	// ConfigPath
-	// __TODO add test case for this
+	// __TODO add test case for this:
 	parsed.ConfigPath = raw.ConfigPath
 
 	// Core.ResolveRoot
@@ -200,6 +231,8 @@ func RawToParsed(raw *Raw) *Parsed {
 			parse_path(raw.Core.ResolveRoot, "Core.ResolveRoot"),
 		)
 	assert_is_dir(resolve_root, "Core.ResolveRoot")
+	// __TODO add test case for this:
+	parsed.ResolveRoot = resolve_root
 
 	// Core.MainAppEntry
 	parsed.Core.MainAppEntry = resolve_root.Join(
@@ -258,30 +291,34 @@ func RawToParsed(raw *Raw) *Parsed {
 		reserved.add(parsed.Core.StaticPublicDir)
 
 		// Core.CSSEntryFiles.Critical
-		parsed.Core.CriticalCSSEntry = resolve_root.Join(
-			parse_path(
-				raw.Core.CSSEntryFiles.Critical,
+		if strings.TrimSpace(raw.Core.CSSEntryFiles.Critical) != "" {
+			parsed.Core.CriticalCSSEntry = resolve_root.Join(
+				parse_path(
+					raw.Core.CSSEntryFiles.Critical,
+					"Core.CSSEntryFiles.Critical",
+				),
+			)
+			assert_is_file(
+				parsed.Core.CriticalCSSEntry,
 				"Core.CSSEntryFiles.Critical",
-			),
-		)
-		assert_is_file(
-			parsed.Core.CriticalCSSEntry,
-			"Core.CSSEntryFiles.Critical",
-		)
-		reserved.add(parsed.Core.CriticalCSSEntry)
+			)
+			reserved.add(parsed.Core.CriticalCSSEntry)
+		}
 
 		// Core.CSSEntryFiles.NonCritical
-		parsed.Core.NonCriticalCSSEntry = resolve_root.Join(
-			parse_path(
-				raw.Core.CSSEntryFiles.NonCritical,
+		if strings.TrimSpace(raw.Core.CSSEntryFiles.NonCritical) != "" {
+			parsed.Core.NonCriticalCSSEntry = resolve_root.Join(
+				parse_path(
+					raw.Core.CSSEntryFiles.NonCritical,
+					"Core.CSSEntryFiles.NonCritical",
+				),
+			)
+			assert_is_file(
+				parsed.Core.NonCriticalCSSEntry,
 				"Core.CSSEntryFiles.NonCritical",
-			),
-		)
-		assert_is_file(
-			parsed.Core.NonCriticalCSSEntry,
-			"Core.CSSEntryFiles.NonCritical",
-		)
-		reserved.add(parsed.Core.NonCriticalCSSEntry)
+			)
+			reserved.add(parsed.Core.NonCriticalCSSEntry)
+		}
 	}
 
 	using_vite := !reflect.DeepEqual(RawVite{}, raw.Vite)
@@ -453,9 +490,7 @@ func RawToParsed(raw *Raw) *Parsed {
 		)
 		parsed.Watch.Exclude = append(
 			parsed.Watch.Exclude,
-			resolve_root.Join(
-				parse_path(exclude, fmt.Sprintf("Watch.Exclude[%d]", i)),
-			),
+			resolve_root.Join(exclude),
 		)
 	}
 

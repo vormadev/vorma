@@ -1,20 +1,25 @@
 package set
 
-type Set[T comparable] map[T]struct{}
-
-func New[T comparable]() Set[T] {
-	return make(Set[T])
+type Set[T comparable] struct {
+	m map[T]struct{}
 }
 
-func (s Set[T]) Add(val T) Set[T] {
-	if s == nil {
-		s = New[T]()
+func (s *Set[T]) Add(val T) {
+	if s.m == nil {
+		s.m = make(map[T]struct{})
 	}
-	s[val] = struct{}{}
-	return s
+	s.m[val] = struct{}{}
 }
 
-func (s Set[T]) Contains(val T) bool {
-	_, ok := s[val]
+func (s *Set[T]) Contains(val T) bool {
+	_, ok := s.m[val]
 	return ok
+}
+
+func (s *Set[T]) ToSlice() []T {
+	slice := make([]T, 0, len(s.m))
+	for val := range s.m {
+		slice = append(slice, val)
+	}
+	return slice
 }

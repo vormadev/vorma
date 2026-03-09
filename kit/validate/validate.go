@@ -635,7 +635,7 @@ func (oc *ObjectChecker) validateFieldGroupConstraint(
 func (oc *ObjectChecker) validateFieldGroup(
 	fieldNames []string,
 ) (set.Set[string], int) {
-	truthySet := set.New[string]()
+	truthySet := set.Set[string]{}
 	var truthyCount int
 	for _, fieldName := range fieldNames {
 		if oc.getFieldValue(fieldName).isTruthy() {
@@ -670,7 +670,7 @@ func (c *AnyChecker) PermittedChars(allowedChars string) *AnyChecker {
 	if !ok {
 		return c
 	}
-	allowedCharsSet := set.New[rune]()
+	allowedCharsSet := set.Set[rune]{}
 	for _, char := range allowedChars {
 		allowedCharsSet.Add(char)
 	}

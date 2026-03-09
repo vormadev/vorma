@@ -1,4 +1,4 @@
-package cfg
+package config
 
 import (
 	"encoding/json"
@@ -94,17 +94,11 @@ func full_project_config(t *testing.T, root string) Raw {
 			ServerOnlyMode:    false,
 			SequentialGoBuild: true,
 			PublicPathPrefix:  "/static/",
-			StaticAssetDirs: struct {
-				Private string
-				Public  string
-			}{
+			StaticAssetDirs: RawStaticAssetDirs{
 				Private: "private",
 				Public:  "public",
 			},
-			CSSEntryFiles: struct {
-				Critical    string
-				NonCritical string
-			}{
+			CSSEntryFiles: RawCSSEntryFiles{
 				Critical:    "critical.css",
 				NonCritical: "noncritical.css",
 			},
@@ -117,29 +111,12 @@ func full_project_config(t *testing.T, root string) Raw {
 		},
 		Watch: RawWatch{
 			HealthcheckEndpoint: "/healthz",
-			Include: []struct {
-				Pattern       string
-				OnChangeHooks []struct {
-					Cmd     string
-					Timing  string
-					Exclude []string
-				}
-				RecompileGoBinary                  bool
-				RestartApp                         bool
-				OnlyRunClientDefinedRevalidateFunc bool
-				RunOnChangeOnly                    bool
-				SkipRebuildingNotification         bool
-				TreatAsNonGo                       bool
-			}{
+			Include: []RawIncludeEntry{
 				{
 					Pattern:           "src/**/*.go",
 					RecompileGoBinary: true,
 					RestartApp:        true,
-					OnChangeHooks: []struct {
-						Cmd     string
-						Timing  string
-						Exclude []string
-					}{
+					OnChangeHooks: []RawOnChangeHook{
 						{
 							Cmd:     "go generate ./...",
 							Timing:  "pre",
@@ -804,10 +781,7 @@ func TestRawToParsed_duplicate_reserved_path_panics(t *testing.T) {
 	full_project_fs(t, root)
 	raw := full_project_config(t, root)
 	// make critical and noncritical point to same file
-	raw.Core.CSSEntryFiles = struct {
-		Critical    string
-		NonCritical string
-	}{
+	raw.Core.CSSEntryFiles = RawCSSEntryFiles{
 		Critical:    "critical.css",
 		NonCritical: "critical.css",
 	}
@@ -886,20 +860,7 @@ func TestRawToParsed_vite_port_too_high_panics(t *testing.T) {
 func TestRawToParsed_watch_absolute_pattern_panics(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{Pattern: "/absolute/**"},
 	}
 	must_panic(t, "absolute watch pattern", func() {
@@ -910,20 +871,7 @@ func TestRawToParsed_watch_absolute_pattern_panics(t *testing.T) {
 func TestRawToParsed_watch_invalid_glob_panics(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{Pattern: "[invalid"},
 	}
 	must_panic(t, "invalid watch glob", func() {
@@ -952,27 +900,10 @@ func TestRawToParsed_watch_exclude_invalid_glob_panics(t *testing.T) {
 func TestRawToParsed_hook_empty_cmd_panics(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{Cmd: "  ", Timing: "pre"},
 			},
 		},
@@ -985,27 +916,10 @@ func TestRawToParsed_hook_empty_cmd_panics(t *testing.T) {
 func TestRawToParsed_hook_bad_timing_panics(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{Cmd: "echo hi", Timing: "banana"},
 			},
 		},
@@ -1018,27 +932,10 @@ func TestRawToParsed_hook_bad_timing_panics(t *testing.T) {
 func TestRawToParsed_hook_timing_case_insensitive(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{Cmd: "echo hi", Timing: "PRE"},
 				{Cmd: "echo hi", Timing: "Concurrent"},
 				{Cmd: "echo hi", Timing: "CONCURRENT-NO-WAIT"},
@@ -1066,27 +963,10 @@ func TestRawToParsed_hook_timing_case_insensitive(t *testing.T) {
 func TestRawToParsed_hook_exclude_absolute_panics(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{Cmd: "echo hi", Timing: "pre", Exclude: []string{"/abs/**"}},
 			},
 		},
@@ -1099,27 +979,10 @@ func TestRawToParsed_hook_exclude_absolute_panics(t *testing.T) {
 func TestRawToParsed_hook_exclude_invalid_glob_panics(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{Cmd: "echo hi", Timing: "pre", Exclude: []string{"[bad"}},
 			},
 		},
@@ -1146,27 +1009,10 @@ func TestRawToParsed_globs_resolved_against_resolve_root(t *testing.T) {
 			ServerOnlyMode: true,
 		},
 		Watch: RawWatch{
-			Include: []struct {
-				Pattern       string
-				OnChangeHooks []struct {
-					Cmd     string
-					Timing  string
-					Exclude []string
-				}
-				RecompileGoBinary                  bool
-				RestartApp                         bool
-				OnlyRunClientDefinedRevalidateFunc bool
-				RunOnChangeOnly                    bool
-				SkipRebuildingNotification         bool
-				TreatAsNonGo                       bool
-			}{
+			Include: []RawIncludeEntry{
 				{
 					Pattern: "src/**/*.go",
-					OnChangeHooks: []struct {
-						Cmd     string
-						Timing  string
-						Exclude []string
-					}{
+					OnChangeHooks: []RawOnChangeHook{
 						{
 							Cmd:     "echo hi",
 							Timing:  "pre",
@@ -1265,20 +1111,7 @@ func TestRawToParsed_vite_optional_config_file_omitted(t *testing.T) {
 func TestRawToParsed_watch_include_no_hooks(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern:           "**/*.go",
 			RecompileGoBinary: true,
@@ -1340,10 +1173,7 @@ func TestRawToParsed_absolute_static_private_dir_panics(t *testing.T) {
 	root := t.TempDir()
 	full_project_fs(t, root)
 	raw := full_project_config(t, root)
-	raw.Core.StaticAssetDirs = struct {
-		Private string
-		Public  string
-	}{
+	raw.Core.StaticAssetDirs = RawStaticAssetDirs{
 		Private: "/absolute/private",
 		Public:  "public",
 	}
@@ -1356,10 +1186,7 @@ func TestRawToParsed_absolute_static_public_dir_panics(t *testing.T) {
 	root := t.TempDir()
 	full_project_fs(t, root)
 	raw := full_project_config(t, root)
-	raw.Core.StaticAssetDirs = struct {
-		Private string
-		Public  string
-	}{
+	raw.Core.StaticAssetDirs = RawStaticAssetDirs{
 		Private: "private",
 		Public:  "/absolute/public",
 	}
@@ -1372,10 +1199,7 @@ func TestRawToParsed_absolute_critical_css_panics(t *testing.T) {
 	root := t.TempDir()
 	full_project_fs(t, root)
 	raw := full_project_config(t, root)
-	raw.Core.CSSEntryFiles = struct {
-		Critical    string
-		NonCritical string
-	}{
+	raw.Core.CSSEntryFiles = RawCSSEntryFiles{
 		Critical:    "/absolute/critical.css",
 		NonCritical: "noncritical.css",
 	}
@@ -1388,10 +1212,7 @@ func TestRawToParsed_absolute_non_critical_css_panics(t *testing.T) {
 	root := t.TempDir()
 	full_project_fs(t, root)
 	raw := full_project_config(t, root)
-	raw.Core.CSSEntryFiles = struct {
-		Critical    string
-		NonCritical string
-	}{
+	raw.Core.CSSEntryFiles = RawCSSEntryFiles{
 		Critical:    "critical.css",
 		NonCritical: "/absolute/noncritical.css",
 	}
@@ -1429,27 +1250,10 @@ func TestRawToParsed_absolute_vite_config_file_panics(t *testing.T) {
 func TestRawToParsed_hook_empty_timing_defaults_to_pre(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{Cmd: "echo hi", Timing: ""},
 			},
 		},
@@ -1468,27 +1272,10 @@ func TestRawToParsed_hook_empty_timing_defaults_to_pre(t *testing.T) {
 func TestRawToParsed_hook_multiple_excludes(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{
 			Pattern: "**/*.go",
-			OnChangeHooks: []struct {
-				Cmd     string
-				Timing  string
-				Exclude []string
-			}{
+			OnChangeHooks: []RawOnChangeHook{
 				{
 					Cmd:    "echo hi",
 					Timing: "pre",
@@ -1525,20 +1312,7 @@ func TestRawToParsed_hook_multiple_excludes(t *testing.T) {
 func TestRawToParsed_watch_include_dir_and_file_patterns(t *testing.T) {
 	root := t.TempDir()
 	raw := minimal_server_only_raw(t, root)
-	raw.Watch.Include = []struct {
-		Pattern       string
-		OnChangeHooks []struct {
-			Cmd     string
-			Timing  string
-			Exclude []string
-		}
-		RecompileGoBinary                  bool
-		RestartApp                         bool
-		OnlyRunClientDefinedRevalidateFunc bool
-		RunOnChangeOnly                    bool
-		SkipRebuildingNotification         bool
-		TreatAsNonGo                       bool
-	}{
+	raw.Watch.Include = []RawIncludeEntry{
 		{Pattern: "src/**/*.go", RecompileGoBinary: true},
 		{Pattern: "assets/**", TreatAsNonGo: true},
 		{Pattern: "config/*.json", RunOnChangeOnly: true},

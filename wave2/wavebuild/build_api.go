@@ -4,7 +4,7 @@ import (
 	"errors"
 	"log/slog"
 
-	cfg_pkg "github.com/vormadev/vorma/wave2/internal/cfg"
+	"github.com/vormadev/vorma/wave2/config"
 )
 
 /* INVARIANTS:
@@ -26,8 +26,8 @@ type BuildOptions struct {
 
 // Build runs one Wave2 build/dev entrypoint.
 func Build(opts BuildOptions) error {
-	raw_cfg := cfg_pkg.ConfigPathToRaw(opts.ConfigFile)
-	parsed_cfg := cfg_pkg.RawToParsed(raw_cfg)
+	raw_cfg := config.ConfigPathToRaw(opts.ConfigFile)
+	parsed_cfg := config.RawToParsed(raw_cfg)
 	_ = parsed_cfg
 	return errors.New("wavebuild: Build is not implemented")
 }
