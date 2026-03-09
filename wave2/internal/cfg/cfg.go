@@ -14,6 +14,8 @@ import (
 	"github.com/vormadev/vorma/kit/strict"
 )
 
+// __TODO ensure that the private static dir is not a child of the public static dir
+
 /* INVARIANTS:
 
 `Core.ResolveRoot` must be relative to the dir in which the config file lives
@@ -93,9 +95,10 @@ type RawWatch struct {
 /////////////////////////////////////////////////////////////////////
 
 type Parsed struct {
-	Core  ParsedCore
-	Vite  ParsedVite
-	Watch ParsedWatch
+	ConfigPath strict.CWDRelPath
+	Core       ParsedCore
+	Vite       ParsedVite
+	Watch      ParsedWatch
 }
 
 /////// CORE
@@ -185,10 +188,14 @@ func RawToParsed(raw *Raw) *Parsed {
 	var parsed Parsed
 	var reserved reserved_paths
 
+	// ConfigPath
+	// __TODO add test case for this
+	parsed.ConfigPath = raw.ConfigPath
+
 	// Core.ResolveRoot
 	// this resolves against config dir
 	// everything else resolves against this
-	resolve_root := strict.CWDRelPath(filepath.Dir(string(raw.ConfigPath))).
+	resolve_root := strict.CWDRelPath(filepath.Dir(string(parsed.ConfigPath))).
 		Join(
 			parse_path(raw.Core.ResolveRoot, "Core.ResolveRoot"),
 		)
@@ -334,28 +341,16 @@ func RawToParsed(raw *Raw) *Parsed {
 	)
 	for i, include := range raw.Watch.Include {
 		// Watch.Include[i].Pattern
-		pattern := strings.TrimSpace(include.Pattern)
-		if filepath.IsAbs(pattern) {
-			panic(
-				fmt.Sprintf(
-					"config: Watch.Include[%d].Pattern must be relative: %s",
-					i,
-					pattern,
-				),
-			)
-		}
-		if !doublestar.ValidatePathPattern(pattern) {
-			panic(
-				fmt.Sprintf(
-					"config: Watch.Include[%d].Pattern is not a valid glob pattern: %s",
-					i,
-					pattern,
-				),
-			)
-		}
-		parsed.Watch.Include[i].Pattern = resolve_root.Join(
-			parse_path(pattern, fmt.Sprintf("Watch.Include[%d].Pattern", i)),
+		pattern := parse_path(
+			include.Pattern,
+			fmt.Sprintf("Watch.Include[%d].Pattern", i),
 		)
+		assert_valid_pattern(pattern, fmt.Sprintf(
+			"config: Watch.Include[%d].Pattern: %s",
+			i,
+			pattern,
+		))
+		parsed.Watch.Include[i].Pattern = resolve_root.Join(pattern)
 
 		// Watch.Include[i].OnChangeHooks
 		parsed.Watch.Include[i].OnChangeHooks = make(
@@ -406,41 +401,26 @@ func RawToParsed(raw *Raw) *Parsed {
 			}
 
 			// Watch.Include[i].OnChangeHooks[j].Exclude
-			for k, exclude := range hook.Exclude {
-				exclude = strings.TrimSpace(exclude)
-				if filepath.IsAbs(exclude) {
-					panic(
-						fmt.Sprintf(
-							"config: Watch.Include[%d].OnChangeHooks[%d].Exclude[%d] must be relative: %s",
-							i,
-							j,
-							k,
-							exclude,
-						),
-					)
-				}
-				if !doublestar.ValidatePathPattern(exclude) {
-					panic(
-						fmt.Sprintf(
-							"config: Watch.Include[%d].OnChangeHooks[%d].Exclude[%d] is not a valid glob pattern: %s",
-							i,
-							j,
-							k,
-							exclude,
-						),
-					)
-				}
+			for k, _exclude := range hook.Exclude {
+				exclude := parse_path(
+					_exclude,
+					fmt.Sprintf(
+						"Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]",
+						i,
+						j,
+						k,
+					),
+				)
+				assert_valid_pattern(exclude, fmt.Sprintf(
+					"config: Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]: %s",
+					i,
+					j,
+					k,
+					exclude,
+				))
 				parsed.Watch.Include[i].OnChangeHooks[j].Exclude = append(
 					parsed.Watch.Include[i].OnChangeHooks[j].Exclude,
-					resolve_root.Join(parse_path(
-						exclude,
-						fmt.Sprintf(
-							"Watch.Include[%d].OnChangeHooks[%d].Exclude[%d]",
-							i,
-							j,
-							k,
-						),
-					)),
+					resolve_root.Join(exclude),
 				)
 			}
 		}
@@ -465,26 +445,12 @@ func RawToParsed(raw *Raw) *Parsed {
 	}
 
 	// Watch.Exclude
-	for i, exclude := range raw.Watch.Exclude {
-		exclude = strings.TrimSpace(exclude)
-		if filepath.IsAbs(exclude) {
-			panic(
-				fmt.Sprintf(
-					"config: Watch.Exclude[%d] must be relative: %s",
-					i,
-					exclude,
-				),
-			)
-		}
-		if !doublestar.ValidatePathPattern(exclude) {
-			panic(
-				fmt.Sprintf(
-					"config: Watch.Exclude[%d] is not a valid glob pattern: %s",
-					i,
-					exclude,
-				),
-			)
-		}
+	for i, _exclude := range raw.Watch.Exclude {
+		exclude := parse_path(_exclude, fmt.Sprintf("Watch.Exclude[%d]", i))
+		assert_valid_pattern(
+			exclude,
+			fmt.Sprintf("config: Watch.Exclude[%d]: %s", i, exclude),
+		)
 		parsed.Watch.Exclude = append(
 			parsed.Watch.Exclude,
 			resolve_root.Join(
@@ -532,6 +498,12 @@ func assert_is_file(value strict.CWDRelPath, label string) {
 	}
 }
 
+func assert_valid_pattern(pattern strict.CWDRelPath, label string) {
+	if !doublestar.ValidatePathPattern(string(pattern)) {
+		panic("config: invalid glob pattern: " + label)
+	}
+}
+
 func parse_path(path any, label string) strict.CWDRelPath {
 	switch p := path.(type) {
 	case string, strict.CWDRelPath:
@@ -539,7 +511,10 @@ func parse_path(path any, label string) strict.CWDRelPath {
 		if filepath.IsAbs(path_str) {
 			panic("config: unexpected absolute path: " + label)
 		}
-		return strict.CWDRelPath(filepath.Clean(strings.TrimSpace(fmt.Sprint(p))))
+		// __TODO test that all paths are os-specific
+		return strict.CWDRelPath(filepath.FromSlash(
+			filepath.Clean(strings.TrimSpace(fmt.Sprint(p))),
+		))
 	default:
 		panic("config: unexpected type in clean_trim")
 	}
