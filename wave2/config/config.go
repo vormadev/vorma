@@ -28,6 +28,11 @@ All filepath values may escape the directory against which they are resolved,
 but they must not be machine-absolute. If any filepath value is set by the user
 as machine-absolute, parsing must fail.
 
+INVARIANTS:
+
+newer/higher-priority batch supersedes pending side effects from older batch,
+a failed hook aborts the whole batch pipeline (panic/fatal policy).
+
 DEFINITIONS:
 wave_work = _____________________
 go_compile = _____________________
@@ -47,6 +52,52 @@ DEFINITIONS:
 `on_change_after_wave_work` = use this for work that must observe completed `wave_work` outputs (for example: deferred runtime-reload decisions based on finalized artifacts, post-processing checks, endpoint-trigger actions that require finished outputs).
 
 */
+
+type Checkpoint string
+
+const (
+	CheckpointCycleStart              Checkpoint = "cycle_start"
+	CheckpointWaveBuildStart          Checkpoint = "wave_build_start"
+	CheckpointWaveBuildGoCompileStart Checkpoint = "wave_build_go_compile_start"
+	// CheckpointWaveBuildEnd implies completion of Go compilation if applicable.
+	CheckpointWaveBuildEnd Checkpoint = "wave_build_end"
+	CheckpointCycleEnd     Checkpoint = "cycle_end"
+)
+
+type BuildCtx struct {
+	IsDev           bool
+	PreviousBuildID string
+	// Empty before wave_work completes
+	CurrentBuildID string
+}
+
+type RequiredWork string
+
+const (
+	// RequiredWorkGoCompile implies RequiredWorkAppRestart
+	RequiredWorkGoCompile              RequiredWork = "go_compile"
+	RequiredWorkAppRestart             RequiredWork = "app_restart"
+	RequiredWorkFrontendSoftRevalidate RequiredWork = "frontend_soft_revalidate"
+)
+
+type BuildHook struct {
+	// Glob. If empty, runs with each build.
+	Pattern strict.CWDRelPath
+	Cmd     strict.Cmd
+	CmdDir  strict.CWDRelPath
+	// Callback is not available via JSON config. It is used by frameworks plugins.
+	Callback func(*BuildCtx) error
+	StartAt  Checkpoint
+	FinishBy Checkpoint
+
+	// What used to be TreatAsNonGo we can handle via a new
+	// AppGoSrcPattern global field, which was the reason
+	// for the TreatAsNonGo carve-out bool in the first
+	// place.
+
+	RequiredWork                     RequiredWork
+	IncludeFrontendRebuildingOverlay bool
+}
 
 /////////////////////////////////////////////////////////////////////
 /////// Raw Incoming JSON Config
