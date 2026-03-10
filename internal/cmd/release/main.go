@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma/internal/coalescepath"
+	"github.com/vormadev/vorma/kit/envutil"
 	t "github.com/vormadev/vorma/lab/cliutil"
 	"github.com/vormadev/vorma/lab/coalescecmd"
 	"github.com/vormadev/vorma/lab/parseutil"
@@ -19,6 +20,7 @@ const (
 	canonicalVersionFilePath = "./internal/__LAST_RELEASE.txt"
 	rootPackageJSONPath      = "./package.json"
 	createPackageJSONPath    = "./typescript/vorma/create/package.json"
+	releaseUnsafeModeEnvVar  = "UNSAFE"
 )
 
 type packageJSONVersionFile struct {
@@ -103,6 +105,11 @@ func runUnifiedReleaseProcess() (releaseErr *releaseProcessError) {
 	targetVersion := promptTargetVersion()
 	validatePrereleaseIdentifierPolicyOrExit(targetVersion)
 	releaseHasPreTag := versionHasPreReleaseTag(targetVersion)
+
+	isUnsafeMode := envutil.GetBool(releaseUnsafeModeEnvVar, false)
+	if isUnsafeMode && !releaseHasPreTag {
+		t.Exit("you can't run unsafe mode on a non-pre release", nil)
+	}
 
 	t.Plain("Result: ")
 	t.Red(currentCanonicalVersion)

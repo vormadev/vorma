@@ -5,6 +5,9 @@
 release: full-gate
 	@go run ./internal/cmd/release
 
+release-unsafe:
+	@UNSAFE=1 go run ./internal/cmd/release
+
 full-gate:
 	@go run ./internal/cmd/full_gate
 

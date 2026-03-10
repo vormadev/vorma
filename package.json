@@ -1,6 +1,6 @@
 {
 	"name": "vorma",
-	"version": "0.85.0-pre.3",
+	"version": "0.85.0-pre.4",
 	"description": "The Golang metaframework, powered by Vite.",
 	"type": "module",
 	"sideEffects": false,
