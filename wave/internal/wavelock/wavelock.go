@@ -50,12 +50,12 @@ func newProjectLock(
 		lock: lockfile.NewPIDLockWithOptions(
 			lockPath,
 			lockfile.Options{
-				HeldError:                    ErrLockHeld,
-				AcquireRetryLimit:            lockAcquireRetryLimit,
-				AcquireRetryDelay:            lockAcquireRetryDelay,
-				InvalidPIDLockStaleThreshold: invalidLockStaleThreshold,
-				FileWriteMode:                fileWriteMode,
-				DirectoryWriteMode:           directoryWriteMode,
+				HeldError: ErrLockHeld,
+				// AcquireRetryLimit:            lockAcquireRetryLimit,
+				// AcquireRetryDelay:            lockAcquireRetryDelay,
+				// InvalidPIDLockStaleThreshold: invalidLockStaleThreshold,
+				// FileWriteMode:                fileWriteMode,
+				// DirectoryWriteMode:           directoryWriteMode,
 			},
 		),
 	}
