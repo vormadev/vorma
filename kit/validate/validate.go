@@ -675,7 +675,7 @@ func (c *AnyChecker) PermittedChars(allowedChars string) *AnyChecker {
 		allowedCharsSet.Add(char)
 	}
 	for _, char := range str {
-		if !allowedCharsSet.Contains(char) {
+		if !allowedCharsSet.Has(char) {
 			c.failF("%s contains invalid character: %q", c.label, char)
 			return c
 		}

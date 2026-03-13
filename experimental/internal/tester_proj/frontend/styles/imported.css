@@ -1,0 +1,8 @@
+p {
+	color: green;
+	background: url("bob.txt");
+}
+
+li {
+	background: url("asdf/asdf2.txt")
+}
