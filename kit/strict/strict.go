@@ -14,6 +14,9 @@ import (
 type CWDRelPath string
 type MachAbsPath string
 
+func (p CWDRelPath) Str() string  { return string(p) }
+func (p MachAbsPath) Str() string { return string(p) }
+
 // Panics if absolute.
 // Runs `strings.TrimSpace`, `filepath.Clean`, `filepath.FromSlash`,
 // and casts as `strict.CWDRelPath`.
