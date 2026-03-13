@@ -19,41 +19,27 @@ import (
 )
 
 const (
-	lockFileLeaseSchemaVersion = 1
+	lease_schema_version = 1
 
-	defaultAcquireRetryLimit                     = 12
-	defaultAcquireRetryDelay                     = 20 * time.Millisecond
-	defaultInvalidLockStaleThreshold             = 1200 * time.Millisecond
-	defaultLeaseHeartbeatInterval                = 250 * time.Millisecond
-	defaultLeaseStaleThreshold                   = 3 * time.Second
-	defaultFileWriteMode             fs.FileMode = 0o644
-	defaultDirectoryWriteMode        fs.FileMode = 0o755
+	acquire_retry_limit                    = 3
+	acquire_retry_delay                    = 20 * time.Millisecond
+	invalid_lock_stale_thresh              = 1200 * time.Millisecond
+	default_heartbeat_interval             = 250 * time.Millisecond
+	default_stale_threshold                = 3 * time.Second
+	file_write_mode            fs.FileMode = 0o644
+	directory_write_mode       fs.FileMode = 0o755
 )
 
 // ErrLockHeld reports that another process currently owns the lock file.
 var ErrLockHeld = errors.New("lock file is already held by another process")
 
-var leaseOwnerIdentifierSequence uint64
+var owner_id_sequence uint64
 
 // Options controls lock-file behavior.
 type Options struct {
 	// HeldError is wrapped when an active owner is detected.
 	// Defaults to ErrLockHeld when unset.
 	HeldError error
-	// AcquireRetryLimit is the number of retry attempts after a stale-lock remove
-	// race before giving up.
-	AcquireRetryLimit int
-	// AcquireRetryDelay is the delay between lock acquisition retries.
-	AcquireRetryDelay time.Duration
-	// InvalidPIDLockStaleThreshold is the age threshold before reclaiming lock
-	// files that do not contain a parseable lease record.
-	InvalidPIDLockStaleThreshold time.Duration
-	// FileWriteMode is used when creating lock files.
-	FileWriteMode fs.FileMode
-	// DirectoryWriteMode is used when creating parent directories.
-	DirectoryWriteMode fs.FileMode
-	// ProcessAppearsAlive is ignored and retained only for API stability.
-	ProcessAppearsAlive func(processID int) bool
 	// LeaseHeartbeatInterval controls heartbeat write cadence while lock is held.
 	// Defaults to 250ms when unset.
 	LeaseHeartbeatInterval time.Duration
@@ -66,204 +52,187 @@ type Options struct {
 
 // PIDLock manages exclusive ownership for one lock-file path using lease files.
 type PIDLock struct {
-	path         string
-	options      resolvedOptions
-	mu           sync.Mutex
-	held         bool
-	leaseOwnerID string
-	leaseStopCh  chan struct{}
-	leaseDoneCh  chan struct{}
+	path        string
+	options     resolved_options
+	mu          sync.Mutex
+	held        bool
+	lease_owner string
+	lease_stop  chan struct{}
+	lease_done  chan struct{}
 }
 
-// lockFileSnapshot captures one stable read of lock-file state.
-type lockFileSnapshot struct {
-	rawData   []byte
-	modified  time.Time
-	lease     lockFileLeaseRecord
-	leaseMode bool
+// lease_snapshot captures one stable read of lock-file state.
+type lease_snapshot struct {
+	raw_data   []byte
+	modified   time.Time
+	record     lease_record
+	lease_mode bool
 }
 
-type lockFileLeaseRecord struct {
+// lease_record is the on-disk JSON structure inside a lock file.
+// Fields are exported solely for json.Marshal/Unmarshal.
+type lease_record struct {
 	Version               int    `json:"version"`
 	OwnerID               string `json:"ownerID"`
 	PID                   int    `json:"pid"`
 	LastHeartbeatUnixNano int64  `json:"lastHeartbeatUnixNano"`
 }
 
-// resolvedOptions stores normalized runtime lock options.
-type resolvedOptions struct {
-	heldError                 error
-	acquireRetryLimit         int
-	acquireRetryDelay         time.Duration
-	invalidLockStaleThreshold time.Duration
-	fileWriteMode             fs.FileMode
-	directoryWriteMode        fs.FileMode
-	processAppearsAlive       func(processID int) bool
-	leaseHeartbeatInterval    time.Duration
-	leaseStaleThreshold       time.Duration
-	onLeaseLost               func()
+// resolved_options stores normalized runtime lock options.
+type resolved_options struct {
+	held_error         error
+	heartbeat_interval time.Duration
+	stale_threshold    time.Duration
+	on_lease_lost      func()
 }
 
 // NewPIDLock creates a lock using default lock options.
-func NewPIDLock(lockFilePath string) *PIDLock {
-	return NewPIDLockWithOptions(lockFilePath, Options{})
+func NewPIDLock(lock_file_path string) *PIDLock {
+	return NewPIDLockWithOptions(lock_file_path, Options{})
 }
 
 // NewPIDLockWithOptions creates a lock with explicit options.
-func NewPIDLockWithOptions(lockFilePath string, options Options) *PIDLock {
+func NewPIDLockWithOptions(lock_file_path string, options Options) *PIDLock {
 	return &PIDLock{
-		path:    lockFilePath,
-		options: resolveOptions(options),
+		path:    lock_file_path,
+		options: resolve_options(options),
 	}
 }
 
 // Path returns the full lock-file path.
-func (pidLock *PIDLock) Path() string {
-	if pidLock == nil {
+func (lock *PIDLock) Path() string {
+	if lock == nil {
 		return ""
 	}
-	return pidLock.path
+	return lock.path
 }
 
 // Acquire obtains lock ownership or returns a held error.
-func (pidLock *PIDLock) Acquire() error {
-	if pidLock == nil {
+func (lock *PIDLock) Acquire() error {
+	if lock == nil {
 		return errors.New("lock is nil")
 	}
 
-	pidLock.mu.Lock()
-	defer pidLock.mu.Unlock()
+	lock.mu.Lock()
+	defer lock.mu.Unlock()
 
-	if strings.TrimSpace(pidLock.path) == "" {
+	if strings.TrimSpace(lock.path) == "" {
 		return errors.New("lock path is empty")
 	}
-	if pidLock.held {
+	if lock.held {
 		return nil
 	}
 
-	if ensureDirectoryError := os.MkdirAll(
-		filepath.Dir(pidLock.path),
-		pidLock.options.directoryWriteMode,
-	); ensureDirectoryError != nil {
-		return fmt.Errorf("create lock directory: %w", ensureDirectoryError)
+	if err := os.MkdirAll(
+		filepath.Dir(lock.path),
+		directory_write_mode,
+	); err != nil {
+		return fmt.Errorf("create lock directory: %w", err)
 	}
 
-	leaseOwnerID := buildLeaseOwnerIDForCurrentProcess()
-	for attemptIndex := 0; attemptIndex < pidLock.options.acquireRetryLimit; attemptIndex++ {
-		acquired, lockHeldError, acquireAttemptError :=
-			pidLock.tryAcquireSingleAttempt(leaseOwnerID)
-		if acquireAttemptError != nil {
-			return acquireAttemptError
+	owner_id := build_owner_id()
+	for attempt := 0; attempt < acquire_retry_limit; attempt++ {
+		acquired, held_err, attempt_err := lock.try_acquire(owner_id)
+		if attempt_err != nil {
+			return attempt_err
 		}
-		if lockHeldError != nil {
-			return lockHeldError
+		if held_err != nil {
+			return held_err
 		}
 		if acquired {
-			pidLock.held = true
-			pidLock.leaseOwnerID = leaseOwnerID
-			pidLock.startLeaseHeartbeatLoopLocked(leaseOwnerID)
+			lock.held = true
+			lock.lease_owner = owner_id
+			lock.start_heartbeat_locked(owner_id)
 			return nil
 		}
-		time.Sleep(pidLock.options.acquireRetryDelay)
+		time.Sleep(acquire_retry_delay)
 	}
 
 	return fmt.Errorf("acquire lock: contention exceeded retry budget")
 }
 
 // Release drops lock ownership by removing the lock file.
-func (pidLock *PIDLock) Release() error {
-	if pidLock == nil {
+func (lock *PIDLock) Release() error {
+	if lock == nil {
 		return nil
 	}
 
-	pidLock.mu.Lock()
-	if !pidLock.held {
-		pidLock.mu.Unlock()
+	lock.mu.Lock()
+	if !lock.held {
+		lock.mu.Unlock()
 		return nil
 	}
-	leaseOwnerID := pidLock.leaseOwnerID
-	leaseStopCh := pidLock.leaseStopCh
-	leaseDoneCh := pidLock.leaseDoneCh
-	pidLock.held = false
-	pidLock.leaseOwnerID = ""
-	pidLock.leaseStopCh = nil
-	pidLock.leaseDoneCh = nil
-	pidLock.mu.Unlock()
+	owner_id := lock.lease_owner
+	stop_ch := lock.lease_stop
+	done_ch := lock.lease_done
+	lock.held = false
+	lock.lease_owner = ""
+	lock.lease_stop = nil
+	lock.lease_done = nil
+	lock.mu.Unlock()
 
-	if leaseStopCh != nil {
-		close(leaseStopCh)
+	if stop_ch != nil {
+		close(stop_ch)
 	}
-	if leaseDoneCh != nil {
-		<-leaseDoneCh
+	if done_ch != nil {
+		<-done_ch
 	}
 
-	_, removeError := pidLock.tryRemoveLockIfOwned(leaseOwnerID)
-	if removeError != nil {
-		return removeError
+	_, err := lock.try_remove_if_owned(owner_id)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 // Held reports whether Acquire has succeeded in-process and has not been released.
-func (pidLock *PIDLock) Held() bool {
-	if pidLock == nil {
+func (lock *PIDLock) Held() bool {
+	if lock == nil {
 		return false
 	}
-	pidLock.mu.Lock()
-	defer pidLock.mu.Unlock()
-	return pidLock.held
+	lock.mu.Lock()
+	defer lock.mu.Unlock()
+	return lock.held
 }
 
-// tryAcquireSingleAttempt tries O_EXCL create, then stale lock reclamation.
-func (pidLock *PIDLock) tryAcquireSingleAttempt(
-	leaseOwnerID string,
-) (bool, error, error) {
-	created, createError := pidLock.tryCreateLockFileForOwner(leaseOwnerID)
-	if createError != nil {
-		return false, nil, createError
+// try_acquire tries O_EXCL create, then stale lock reclamation.
+func (lock *PIDLock) try_acquire(owner_id string) (bool, error, error) {
+	created, err := lock.try_create(owner_id)
+	if err != nil {
+		return false, nil, err
 	}
 	if created {
 		return true, nil, nil
 	}
 
-	snapshot, snapshotFound, snapshotError := pidLock.readLockFileSnapshot()
-	if snapshotError != nil {
-		return false, nil, snapshotError
+	snap, found, err := lock.read_snapshot()
+	if err != nil {
+		return false, nil, err
 	}
-	if !snapshotFound {
+	if !found {
 		return false, nil, nil
 	}
 
-	if snapshot.leaseMode {
-		ownerProcessAppearsAlive := true
-		if pidLock.options.processAppearsAlive != nil {
-			ownerProcessAppearsAlive = pidLock.options.processAppearsAlive(
-				snapshot.lease.PID,
-			)
-		}
-		if ownerProcessAppearsAlive && !isLeaseRecordStale(
-			snapshot.lease,
-			pidLock.options.leaseStaleThreshold,
-		) {
+	if snap.lease_mode {
+		alive := process_appears_alive(snap.record.PID)
+		stale := is_lease_stale(snap.record, lock.options.stale_threshold)
+		if alive && !stale {
 			return false, fmt.Errorf(
 				"%w (pid %d)",
-				pidLock.options.heldError,
-				snapshot.lease.PID,
+				lock.options.held_error,
+				snap.record.PID,
 			), nil
 		}
-	} else if !isInvalidLockSnapshotStale(
-		snapshot.modified,
-		pidLock.options.invalidLockStaleThreshold,
-	) {
+	} else if !is_invalid_lock_stale(snap.modified) {
 		return false, fmt.Errorf(
 			"%w (owner unavailable)",
-			pidLock.options.heldError,
+			lock.options.held_error,
 		), nil
 	}
 
-	removed, removeError := pidLock.tryRemoveSnapshotIfUnchanged(snapshot)
-	if removeError != nil {
-		return false, nil, removeError
+	removed, err := lock.try_remove_if_unchanged(snap)
+	if err != nil {
+		return false, nil, err
 	}
 	if !removed {
 		return false, nil, nil
@@ -272,203 +241,171 @@ func (pidLock *PIDLock) tryAcquireSingleAttempt(
 	return false, nil, nil
 }
 
-// tryCreateLockFileForOwner performs one atomic lock-file create.
-func (pidLock *PIDLock) tryCreateLockFileForOwner(
-	leaseOwnerID string,
-) (bool, error) {
-	file, openError := os.OpenFile(
-		pidLock.path,
+// try_create performs one atomic lock-file create.
+func (lock *PIDLock) try_create(owner_id string) (bool, error) {
+	file, err := os.OpenFile(
+		lock.path,
 		os.O_WRONLY|os.O_CREATE|os.O_EXCL,
-		pidLock.options.fileWriteMode,
+		file_write_mode,
 	)
-	if openError != nil {
-		if os.IsExist(openError) {
+	if err != nil {
+		if os.IsExist(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("create lock file: %w", openError)
+		return false, fmt.Errorf("create lock file: %w", err)
 	}
 
 	written := false
 	defer func() {
 		if !written {
 			_ = file.Close()
-			_ = os.Remove(pidLock.path)
+			_ = os.Remove(lock.path)
 		}
 	}()
 
-	lockFileLeaseRecord := buildLeaseRecordForOwner(leaseOwnerID)
-	encodedLockData, encodeError := encodeLeaseRecord(lockFileLeaseRecord)
-	if encodeError != nil {
-		return false, encodeError
+	rec := build_lease_record(owner_id)
+	encoded, err := encode_lease_record(rec)
+	if err != nil {
+		return false, err
 	}
 
-	if _, writeError := file.Write(encodedLockData); writeError != nil {
-		return false, fmt.Errorf("write lock file lease: %w", writeError)
+	if _, err := file.Write(encoded); err != nil {
+		return false, fmt.Errorf("write lock file lease: %w", err)
 	}
-	if closeError := file.Close(); closeError != nil {
-		return false, fmt.Errorf("close lock file: %w", closeError)
+	if err := file.Close(); err != nil {
+		return false, fmt.Errorf("close lock file: %w", err)
 	}
 	written = true
 	return true, nil
 }
 
-// readLockFileSnapshot loads lock content and metadata.
-func (pidLock *PIDLock) readLockFileSnapshot() (lockFileSnapshot, bool, error) {
-	lockRawData, readError := os.ReadFile(pidLock.path)
-	if readError != nil {
-		if os.IsNotExist(readError) {
-			return lockFileSnapshot{}, false, nil
+// read_snapshot loads lock content and metadata.
+func (lock *PIDLock) read_snapshot() (lease_snapshot, bool, error) {
+	raw_data, err := os.ReadFile(lock.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return lease_snapshot{}, false, nil
 		}
-		return lockFileSnapshot{}, false, fmt.Errorf(
-			"read lock file: %w",
-			readError,
-		)
+		return lease_snapshot{}, false, fmt.Errorf("read lock file: %w", err)
 	}
 
-	lockFileInfo, statError := os.Stat(pidLock.path)
-	if statError != nil {
-		if os.IsNotExist(statError) {
-			return lockFileSnapshot{}, false, nil
+	info, err := os.Stat(lock.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return lease_snapshot{}, false, nil
 		}
-		return lockFileSnapshot{}, false, fmt.Errorf(
-			"stat lock file: %w",
-			statError,
-		)
+		return lease_snapshot{}, false, fmt.Errorf("stat lock file: %w", err)
 	}
 
-	lockFileLeaseRecord, leaseRecordParsed := parseLeaseRecordFromLockData(
-		lockRawData,
-	)
-	return lockFileSnapshot{
-		rawData:   lockRawData,
-		modified:  lockFileInfo.ModTime(),
-		lease:     lockFileLeaseRecord,
-		leaseMode: leaseRecordParsed,
+	rec, parsed := parse_lease_record(raw_data)
+	return lease_snapshot{
+		raw_data:   raw_data,
+		modified:   info.ModTime(),
+		record:     rec,
+		lease_mode: parsed,
 	}, true, nil
 }
 
-// tryRemoveSnapshotIfUnchanged removes the lock file only if content matches.
-func (pidLock *PIDLock) tryRemoveSnapshotIfUnchanged(
-	snapshot lockFileSnapshot,
+// try_remove_if_unchanged removes the lock file only if content matches.
+func (lock *PIDLock) try_remove_if_unchanged(
+	snap lease_snapshot,
 ) (bool, error) {
-	currentRawData, readError := os.ReadFile(pidLock.path)
-	if readError != nil {
-		if os.IsNotExist(readError) {
+	current_data, err := os.ReadFile(lock.path)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("re-read lock file: %w", readError)
+		return false, fmt.Errorf("re-read lock file: %w", err)
 	}
 
-	if !bytes.Equal(currentRawData, snapshot.rawData) {
+	if !bytes.Equal(current_data, snap.raw_data) {
 		return false, nil
 	}
 
-	if removeError := os.Remove(pidLock.path); removeError != nil {
-		if os.IsNotExist(removeError) {
+	if err := os.Remove(lock.path); err != nil {
+		if os.IsNotExist(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("remove stale lock file: %w", removeError)
+		return false, fmt.Errorf("remove stale lock file: %w", err)
 	}
 	return true, nil
 }
 
-// tryRemoveLockIfOwned removes the lock file only when owner id matches.
-func (pidLock *PIDLock) tryRemoveLockIfOwned(
-	leaseOwnerID string,
-) (bool, error) {
-	snapshot, snapshotFound, snapshotError := pidLock.readLockFileSnapshot()
-	if snapshotError != nil {
-		return false, snapshotError
+// try_remove_if_owned removes the lock file only when owner id matches.
+func (lock *PIDLock) try_remove_if_owned(owner_id string) (bool, error) {
+	snap, found, err := lock.read_snapshot()
+	if err != nil {
+		return false, err
 	}
-	if !snapshotFound {
+	if !found {
 		return false, nil
 	}
-	if !snapshot.leaseMode {
+	if !snap.lease_mode {
 		return false, nil
 	}
-	if snapshot.lease.OwnerID != leaseOwnerID {
+	if snap.record.OwnerID != owner_id {
 		return false, nil
 	}
-	removed, removeError := pidLock.tryRemoveSnapshotIfUnchanged(snapshot)
-	if removeError != nil {
-		return false, fmt.Errorf("release lock: %w", removeError)
+	removed, err := lock.try_remove_if_unchanged(snap)
+	if err != nil {
+		return false, fmt.Errorf("release lock: %w", err)
 	}
 	return removed, nil
 }
 
-// parseLeaseRecordFromLockData parses lease JSON from lock-file bytes.
-func parseLeaseRecordFromLockData(
-	lockRawData []byte,
-) (lockFileLeaseRecord, bool) {
-	var lockFileLeaseRecord lockFileLeaseRecord
-	if decodeError := json.Unmarshal(
-		lockRawData,
-		&lockFileLeaseRecord,
-	); decodeError != nil {
-		return lockFileLeaseRecord, false
+// parse_lease_record parses lease JSON from lock-file bytes.
+func parse_lease_record(raw_data []byte) (lease_record, bool) {
+	var rec lease_record
+	if err := json.Unmarshal(raw_data, &rec); err != nil {
+		return rec, false
 	}
-	if lockFileLeaseRecord.Version != lockFileLeaseSchemaVersion {
-		return lockFileLeaseRecord, false
+	if rec.Version != lease_schema_version {
+		return rec, false
 	}
-	if strings.TrimSpace(lockFileLeaseRecord.OwnerID) == "" {
-		return lockFileLeaseRecord, false
+	if strings.TrimSpace(rec.OwnerID) == "" {
+		return rec, false
 	}
-	if lockFileLeaseRecord.PID <= 0 {
-		return lockFileLeaseRecord, false
+	if rec.PID <= 0 {
+		return rec, false
 	}
-	if lockFileLeaseRecord.LastHeartbeatUnixNano <= 0 {
-		return lockFileLeaseRecord, false
+	if rec.LastHeartbeatUnixNano <= 0 {
+		return rec, false
 	}
-	return lockFileLeaseRecord, true
+	return rec, true
 }
 
-// isLeaseRecordStale reports whether the lease heartbeat is older than threshold.
-func isLeaseRecordStale(
-	lockFileLeaseRecord lockFileLeaseRecord,
-	leaseStaleThreshold time.Duration,
-) bool {
-	return time.Since(
-		time.Unix(0, lockFileLeaseRecord.LastHeartbeatUnixNano),
-	) >= leaseStaleThreshold
+// is_lease_stale reports whether the lease heartbeat is older than threshold.
+func is_lease_stale(rec lease_record, threshold time.Duration) bool {
+	return time.Since(time.Unix(0, rec.LastHeartbeatUnixNano)) >= threshold
 }
 
-// isInvalidLockSnapshotStale reports whether invalid lock data is old enough to reclaim.
-func isInvalidLockSnapshotStale(
-	lockModifiedAt time.Time,
-	invalidLockStaleThreshold time.Duration,
-) bool {
-	return time.Since(lockModifiedAt) >= invalidLockStaleThreshold
+// is_invalid_lock_stale reports whether invalid lock data is old enough to reclaim.
+func is_invalid_lock_stale(modified_at time.Time) bool {
+	return time.Since(modified_at) >= invalid_lock_stale_thresh
 }
 
-// defaultProcessAppearsAlive reports whether processID likely still exists.
-func defaultProcessAppearsAlive(processID int) bool {
-	if processID <= 0 {
+// process_appears_alive reports whether the given pid likely still exists.
+func process_appears_alive(pid int) bool {
+	if pid <= 0 {
 		return false
 	}
 
-	process, findProcessError := os.FindProcess(processID)
-	if findProcessError != nil {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
 		return false
 	}
 
-	signalProbeError := process.Signal(syscall.Signal(0))
-	if signalProbeError == nil {
+	sig_err := proc.Signal(syscall.Signal(0))
+	if sig_err == nil {
 		return true
 	}
-	if errors.Is(signalProbeError, os.ErrProcessDone) {
+	if errors.Is(sig_err, os.ErrProcessDone) {
 		return false
 	}
-
-	signalProbeErrorMessage := strings.ToLower(signalProbeError.Error())
-	if strings.Contains(signalProbeErrorMessage, "no such process") ||
-		strings.Contains(signalProbeErrorMessage, "process already finished") ||
-		strings.Contains(signalProbeErrorMessage, "process has already exited") {
+	if errors.Is(sig_err, syscall.ESRCH) {
 		return false
 	}
-	if strings.Contains(signalProbeErrorMessage, "operation not permitted") ||
-		strings.Contains(signalProbeErrorMessage, "permission denied") ||
-		strings.Contains(signalProbeErrorMessage, "access is denied") ||
-		strings.Contains(signalProbeErrorMessage, "not supported") {
+	if errors.Is(sig_err, syscall.EPERM) {
 		return true
 	}
 
@@ -476,239 +413,193 @@ func defaultProcessAppearsAlive(processID int) bool {
 	return true
 }
 
-// buildLeaseRecordForOwner returns one lease record snapshot for lock ownership.
-func buildLeaseRecordForOwner(leaseOwnerID string) lockFileLeaseRecord {
-	return lockFileLeaseRecord{
-		Version:               lockFileLeaseSchemaVersion,
-		OwnerID:               leaseOwnerID,
+// build_lease_record returns one lease record snapshot for lock ownership.
+func build_lease_record(owner_id string) lease_record {
+	return lease_record{
+		Version:               lease_schema_version,
+		OwnerID:               owner_id,
 		PID:                   os.Getpid(),
 		LastHeartbeatUnixNano: time.Now().UTC().UnixNano(),
 	}
 }
 
-// encodeLeaseRecord encodes a lease record as compact JSON with trailing newline.
-func encodeLeaseRecord(
-	lockFileLeaseRecord lockFileLeaseRecord,
-) ([]byte, error) {
-	encodedLockData, encodeError := json.Marshal(lockFileLeaseRecord)
-	if encodeError != nil {
-		return nil, fmt.Errorf("encode lock file lease: %w", encodeError)
+// encode_lease_record encodes a lease record as compact JSON with trailing newline.
+func encode_lease_record(rec lease_record) ([]byte, error) {
+	data, err := json.Marshal(rec)
+	if err != nil {
+		return nil, fmt.Errorf("encode lock file lease: %w", err)
 	}
-	encodedLockData = append(encodedLockData, '\n')
-	return encodedLockData, nil
+	data = append(data, '\n')
+	return data, nil
 }
 
-// buildLeaseOwnerIDForCurrentProcess allocates one unique owner id.
-func buildLeaseOwnerIDForCurrentProcess() string {
-	ownerSequence := atomic.AddUint64(
-		&leaseOwnerIdentifierSequence,
-		1,
-	)
+// build_owner_id allocates one unique owner id for the current process.
+func build_owner_id() string {
+	seq := atomic.AddUint64(&owner_id_sequence, 1)
 	return fmt.Sprintf(
 		"%d-%d-%d",
 		os.Getpid(),
 		time.Now().UTC().UnixNano(),
-		ownerSequence,
+		seq,
 	)
 }
 
-// startLeaseHeartbeatLoopLocked launches heartbeat writes for one owner id.
-func (pidLock *PIDLock) startLeaseHeartbeatLoopLocked(leaseOwnerID string) {
-	if pidLock.options.leaseHeartbeatInterval <= 0 {
+// start_heartbeat_locked launches heartbeat writes for one owner id.
+func (lock *PIDLock) start_heartbeat_locked(owner_id string) {
+	if lock.options.heartbeat_interval <= 0 {
 		return
 	}
 
-	pidLock.leaseStopCh = make(chan struct{})
-	pidLock.leaseDoneCh = make(chan struct{})
-	go pidLock.runLeaseHeartbeatLoop(
-		leaseOwnerID,
-		pidLock.leaseStopCh,
-		pidLock.leaseDoneCh,
-	)
+	lock.lease_stop = make(chan struct{})
+	lock.lease_done = make(chan struct{})
+	go lock.run_heartbeat_loop(owner_id, lock.lease_stop, lock.lease_done)
 }
 
-// runLeaseHeartbeatLoop periodically refreshes lock heartbeat while held.
-func (pidLock *PIDLock) runLeaseHeartbeatLoop(
-	leaseOwnerID string,
-	leaseStopCh <-chan struct{},
-	leaseDoneCh chan<- struct{},
+// run_heartbeat_loop periodically refreshes lock heartbeat while held.
+func (lock *PIDLock) run_heartbeat_loop(
+	owner_id string,
+	stop_ch <-chan struct{},
+	done_ch chan<- struct{},
 ) {
-	defer close(leaseDoneCh)
-	leaseHeartbeatTicker := time.NewTicker(
-		pidLock.options.leaseHeartbeatInterval,
-	)
-	defer leaseHeartbeatTicker.Stop()
+	defer close(done_ch)
+	ticker := time.NewTicker(lock.options.heartbeat_interval)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case <-leaseStopCh:
+		case <-stop_ch:
 			return
-		case <-leaseHeartbeatTicker.C:
-			ownershipLost, refreshError := pidLock.refreshLeaseHeartbeatForOwner(
-				leaseOwnerID,
-			)
-			if refreshError != nil || ownershipLost {
-				pidLock.handleLeaseLoss(leaseOwnerID)
+		case <-ticker.C:
+			lost, err := lock.refresh_heartbeat(owner_id)
+			if err != nil || lost {
+				lock.handle_lease_loss(owner_id)
 				return
 			}
 		}
 	}
 }
 
-// handleLeaseLoss marks in-process ownership as lost and invokes callback.
-func (pidLock *PIDLock) handleLeaseLoss(leaseOwnerID string) {
-	if pidLock == nil {
+// handle_lease_loss marks in-process ownership as lost and invokes callback.
+func (lock *PIDLock) handle_lease_loss(owner_id string) {
+	if lock == nil {
 		return
 	}
 
-	pidLock.mu.Lock()
-	if !pidLock.held || pidLock.leaseOwnerID != leaseOwnerID {
-		pidLock.mu.Unlock()
+	lock.mu.Lock()
+	if !lock.held || lock.lease_owner != owner_id {
+		lock.mu.Unlock()
 		return
 	}
-	pidLock.held = false
-	pidLock.leaseOwnerID = ""
-	pidLock.leaseStopCh = nil
-	pidLock.leaseDoneCh = nil
-	onLeaseLost := pidLock.options.onLeaseLost
-	pidLock.mu.Unlock()
+	lock.held = false
+	lock.lease_owner = ""
+	lock.lease_stop = nil
+	lock.lease_done = nil
+	callback := lock.options.on_lease_lost
+	lock.mu.Unlock()
 
-	if onLeaseLost != nil {
-		onLeaseLost()
+	if callback != nil {
+		callback()
 	}
 }
 
-// refreshLeaseHeartbeatForOwner updates heartbeat when owner still controls file.
-func (pidLock *PIDLock) refreshLeaseHeartbeatForOwner(
-	leaseOwnerID string,
-) (bool, error) {
-	lockFile, openError := os.OpenFile(
-		pidLock.path,
-		os.O_RDWR,
-		pidLock.options.fileWriteMode,
-	)
-	if openError != nil {
-		if os.IsNotExist(openError) {
+// refresh_heartbeat updates heartbeat when owner still controls the file.
+func (lock *PIDLock) refresh_heartbeat(owner_id string) (bool, error) {
+	file, err := os.OpenFile(lock.path, os.O_RDWR, file_write_mode)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return true, nil
 		}
-		return false, fmt.Errorf(
-			"open lock file for heartbeat: %w",
-			openError,
-		)
+		return false, fmt.Errorf("open lock file for heartbeat: %w", err)
 	}
-	defer lockFile.Close()
+	defer file.Close()
 
-	lockFileInfoAtOpen, statAtOpenError := lockFile.Stat()
-	if statAtOpenError != nil {
+	info_at_open, err := file.Stat()
+	if err != nil {
 		return false, fmt.Errorf(
 			"stat lock file descriptor for heartbeat: %w",
-			statAtOpenError,
+			err,
 		)
 	}
 
-	lockRawData, readError := io.ReadAll(lockFile)
-	if readError != nil {
-		return false, fmt.Errorf("read lock file for heartbeat: %w", readError)
+	raw_data, err := io.ReadAll(file)
+	if err != nil {
+		return false, fmt.Errorf("read lock file for heartbeat: %w", err)
 	}
 
-	lockLeaseRecord, leaseRecordParsed := parseLeaseRecordFromLockData(lockRawData)
-	if !leaseRecordParsed {
+	rec, parsed := parse_lease_record(raw_data)
+	if !parsed {
 		return true, nil
 	}
-	if lockLeaseRecord.OwnerID != leaseOwnerID {
+	if rec.OwnerID != owner_id {
 		return true, nil
 	}
 
-	lockFileInfoAtPath, statPathError := os.Stat(pidLock.path)
-	if statPathError != nil {
-		if os.IsNotExist(statPathError) {
+	info_at_path, err := os.Stat(lock.path)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return true, nil
 		}
 		return false, fmt.Errorf(
 			"stat lock file path for heartbeat: %w",
-			statPathError,
+			err,
 		)
 	}
-	if !os.SameFile(lockFileInfoAtOpen, lockFileInfoAtPath) {
+	if !os.SameFile(info_at_open, info_at_path) {
 		return true, nil
 	}
 
-	lockLeaseRecord.LastHeartbeatUnixNano = time.Now().UTC().UnixNano()
-	encodedLeaseRecord, encodeError := encodeLeaseRecord(lockLeaseRecord)
-	if encodeError != nil {
-		return false, encodeError
+	rec.LastHeartbeatUnixNano = time.Now().UTC().UnixNano()
+	encoded, err := encode_lease_record(rec)
+	if err != nil {
+		return false, err
 	}
 
-	if truncateError := lockFile.Truncate(0); truncateError != nil {
+	if err := file.Truncate(0); err != nil {
 		return false, fmt.Errorf(
 			"truncate lock file for heartbeat: %w",
-			truncateError,
+			err,
 		)
 	}
-	if _, seekError := lockFile.Seek(0, 0); seekError != nil {
-		return false, fmt.Errorf("seek lock file for heartbeat: %w", seekError)
+	if _, err := file.Seek(0, 0); err != nil {
+		return false, fmt.Errorf("seek lock file for heartbeat: %w", err)
 	}
-	if _, writeError := lockFile.Write(encodedLeaseRecord); writeError != nil {
-		return false, fmt.Errorf("write lock file heartbeat: %w", writeError)
+	if _, err := file.Write(encoded); err != nil {
+		return false, fmt.Errorf("write lock file heartbeat: %w", err)
 	}
 
-	lockFileInfoAfterWrite, statAfterWriteError := os.Stat(pidLock.path)
-	if statAfterWriteError != nil {
-		if os.IsNotExist(statAfterWriteError) {
+	info_after_write, err := os.Stat(lock.path)
+	if err != nil {
+		if os.IsNotExist(err) {
 			return true, nil
 		}
 		return false, fmt.Errorf(
 			"stat lock file path after heartbeat write: %w",
-			statAfterWriteError,
+			err,
 		)
 	}
-	if !os.SameFile(lockFileInfoAtOpen, lockFileInfoAfterWrite) {
+	if !os.SameFile(info_at_open, info_after_write) {
 		return true, nil
 	}
 
 	return false, nil
 }
 
-// resolveOptions applies defaults and validation to lock options.
-func resolveOptions(options Options) resolvedOptions {
-	resolved := resolvedOptions{
-		heldError:                 options.HeldError,
-		acquireRetryLimit:         options.AcquireRetryLimit,
-		acquireRetryDelay:         options.AcquireRetryDelay,
-		invalidLockStaleThreshold: options.InvalidPIDLockStaleThreshold,
-		fileWriteMode:             options.FileWriteMode,
-		directoryWriteMode:        options.DirectoryWriteMode,
-		processAppearsAlive:       options.ProcessAppearsAlive,
-		leaseHeartbeatInterval:    options.LeaseHeartbeatInterval,
-		leaseStaleThreshold:       options.LeaseStaleThreshold,
-		onLeaseLost:               options.OnLeaseLost,
+// resolve_options applies defaults to lock options.
+func resolve_options(options Options) resolved_options {
+	resolved := resolved_options{
+		held_error:         options.HeldError,
+		heartbeat_interval: options.LeaseHeartbeatInterval,
+		stale_threshold:    options.LeaseStaleThreshold,
+		on_lease_lost:      options.OnLeaseLost,
 	}
-	if resolved.heldError == nil {
-		resolved.heldError = ErrLockHeld
+	if resolved.held_error == nil {
+		resolved.held_error = ErrLockHeld
 	}
-	if resolved.acquireRetryLimit <= 0 {
-		resolved.acquireRetryLimit = defaultAcquireRetryLimit
+	if resolved.heartbeat_interval <= 0 {
+		resolved.heartbeat_interval = default_heartbeat_interval
 	}
-	if resolved.acquireRetryDelay <= 0 {
-		resolved.acquireRetryDelay = defaultAcquireRetryDelay
-	}
-	if resolved.invalidLockStaleThreshold <= 0 {
-		resolved.invalidLockStaleThreshold = defaultInvalidLockStaleThreshold
-	}
-	if resolved.fileWriteMode == 0 {
-		resolved.fileWriteMode = defaultFileWriteMode
-	}
-	if resolved.directoryWriteMode == 0 {
-		resolved.directoryWriteMode = defaultDirectoryWriteMode
-	}
-	if resolved.processAppearsAlive == nil {
-		resolved.processAppearsAlive = defaultProcessAppearsAlive
-	}
-	if resolved.leaseHeartbeatInterval <= 0 {
-		resolved.leaseHeartbeatInterval = defaultLeaseHeartbeatInterval
-	}
-	if resolved.leaseStaleThreshold <= 0 {
-		resolved.leaseStaleThreshold = defaultLeaseStaleThreshold
+	if resolved.stale_threshold <= 0 {
+		resolved.stale_threshold = default_stale_threshold
 	}
 	return resolved
 }
