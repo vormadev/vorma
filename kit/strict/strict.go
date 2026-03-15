@@ -17,6 +17,17 @@ type MachAbsPath string
 func (p CWDRelPath) Str() string  { return string(p) }
 func (p MachAbsPath) Str() string { return string(p) }
 
+func (p CWDRelPath) MustAbs() MachAbsPath {
+	abs, err := filepath.Abs(string(p))
+	if err != nil {
+		panic(fmt.Sprintf(
+			"[strict.CWDRelPath.Abs]: failed to get absolute path of %q: %v",
+			string(p), err,
+		))
+	}
+	return MachAbsPath(abs)
+}
+
 // Panics if absolute.
 // Runs `strings.TrimSpace`, `filepath.Clean`, `filepath.FromSlash`,
 // and casts as `strict.CWDRelPath`.
