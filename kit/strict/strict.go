@@ -38,8 +38,8 @@ func (p CWDRelPath) MustNormalize() CWDRelPath {
 	return MustNormalize(p)
 }
 
-func (p CWDRelPath) Join(path string) CWDRelPath {
-	return CWDRelPath(filepath.Join(string(p), path))
+func (p CWDRelPath) Join(elem ...string) CWDRelPath {
+	return CWDRelPath(filepath.Join(append([]string{string(p)}, elem...)...))
 }
 
 func (p CWDRelPath) Dir() CWDRelPath {

@@ -41,6 +41,26 @@ func (s *Set[T]) Has(val T) bool {
 	return ok
 }
 
+// HasAll returns true if the set contains all the specified values.
+func (s *Set[T]) HasAll(val ...T) bool {
+	for _, v := range val {
+		if _, ok := s.m[v]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// HasAny returns true if the set contains any of the specified values.
+func (s *Set[T]) HasAny(val ...T) bool {
+	for _, v := range val {
+		if _, ok := s.m[v]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // Slice returns a slice containing all elements in the set. The order of elements is not guaranteed.
 func (s *Set[T]) Slice() []T {
 	slice := make([]T, 0, len(s.m))
