@@ -1,11 +1,8 @@
-// Package wave is the end-user runtime API for Wave applications.
-//
-// Application code should only need this package to construct runtime behavior
-// and attach middleware/templating helpers.
 package wave
 
 import (
-	"encoding/json"
+	_ "embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -13,721 +10,829 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
-	"sort"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 
-	"github.com/vormadev/vorma/wave/internal/waveruntimecore"
-	"github.com/vormadev/vorma/wave/waveconfig"
-	"github.com/vormadev/vorma/wave/waveenv"
+	"github.com/vormadev/vorma/wave/internal/constants"
+
+	"github.com/vormadev/vorma/kit/bytesutil"
+	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/cryptoutil"
+	"github.com/vormadev/vorma/kit/envutil"
+	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/jsonutil"
+	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/middleware"
+	"github.com/vormadev/vorma/kit/response"
 )
 
-var defaultPortResolver = waveenv.NewResolver()
-
-// GetIsDev reports whether Wave is running in development mode.
-func GetIsDev() bool {
-	return waveenv.GetIsDev()
+type RuntimeConfig struct {
+	PublicPathPrefix      string
+	IsUsingCriticalCSS    bool
+	IsUsingNonCriticalCSS bool
 }
 
-// SetModeToDev marks the current process as development mode.
-func SetModeToDev() {
-	waveenv.SetModeToDev()
-}
-
-// MustGetPort returns the application runtime port.
-// In dev mode it resolves and caches a framework-controlled free port.
-// It panics in dev mode if a free port cannot be resolved.
-// It panics in non-dev mode when PORT is missing or invalid.
-func MustGetPort() int {
-	if defaultPortResolver == nil {
-		defaultPortResolver = waveenv.NewResolver()
-	}
-	return defaultPortResolver.MustGetPort()
-}
-
-// Config configures Wave initialization.
-type Config struct {
-	// Required -- filesystem root used to discover/read the raw config file
-	// addressed by ConfigPath.
-	FS fs.FS
-
-	// Required -- config-path selector relative to Config.FS root. This can be
-	// a simple basename (for example "wave.config.json") or a slash path.
-	ConfigPath string
-
-	// Optional logger.
-	Logger *slog.Logger
-}
-
-// Wave provides the app-facing runtime API surface.
+// Do not instantiate directly. Use `wave.New()` instead.
 type Wave struct {
-	cfg        waveconfig.ParsedConfig
-	configPath string
-	runtime    *waveruntimecore.Runtime
+	// Must be rooted at waveout/static.
+	// If you are using embed.FS from an ancestor directory,
+	// use fs.Sub to get a correctly rooted fs.FS.
+	static_fs fs.FS
+	logger    *slog.Logger
+	caches
 }
 
-// New constructs a Wave runtime instance from one config file path rooted in
-// one filesystem.
-func New(c Config) *Wave {
-	if c.FS == nil {
-		panic("wave.New: FS is required")
+func (w *Wave) ensure_proper_instantiation() {
+	if w.static_fs == nil {
+		panic("[waveruntime]: Wave must be instantiated via New()")
 	}
-
-	normalizedConfigPath, normalizeErr := normalizeWaveConfigPathForFS(
-		c.ConfigPath,
-	)
-	if normalizeErr != nil {
-		panic("wave.New: " + normalizeErr.Error())
-	}
-
-	configPathRelativeToConfigFS, rawConfigJSON, resolveConfigErr := resolveWaveConfigPathAndRawConfigJSON(
-		c.FS,
-		normalizedConfigPath,
-	)
-	if resolveConfigErr != nil {
-		panic("wave.New: " + resolveConfigErr.Error())
-	}
-	projectID, projectIDError := parseProjectIDFromWaveConfigJSONHeader(
-		rawConfigJSON,
-		configPathRelativeToConfigFS,
-	)
-	if projectIDError != nil {
-		panic("wave.New: " + projectIDError.Error())
-	}
-	currentWorkingDirectoryRelativeConfigPath, resolveConfigPathRelativeToCurrentWorkingDirectoryError := resolveWaveConfigPathRelativeToCurrentWorkingDirectory(
-		normalizedConfigPath,
-		projectID,
-	)
-	if resolveConfigPathRelativeToCurrentWorkingDirectoryError != nil {
-		panic(
-			"wave.New: " +
-				resolveConfigPathRelativeToCurrentWorkingDirectoryError.Error(),
-		)
-	}
-	if strings.TrimSpace(currentWorkingDirectoryRelativeConfigPath) == "" {
-		panic(
-			fmt.Sprintf(
-				"wave.New: resolve config path %q with Core.ProjectID %q relative to current working directory: contract violation (no matching file discovered)",
-				normalizedConfigPath,
-				projectID,
-			),
-		)
-	}
-	// Parsed config paths are anchored to the deterministic CWD discovery match,
-	// not to Config.FS abstraction roots.
-	configPathForParsingAndMachinePaths := currentWorkingDirectoryRelativeConfigPath
-	distStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll := deriveDistStaticPathRelativeToConfigFS(
-		configPathForParsingAndMachinePaths,
-	)
-
-	parsedConfig, parseError := waveconfig.ParseConfigJSONWithConfigPath(
-		rawConfigJSON,
-		configPathForParsingAndMachinePaths,
-	)
-	if parseError != nil {
-		panic("wave.New: " + parseError.Error())
-	}
-	if parsedConfig.Core() == nil {
-		panic("wave.New: parsed config core section is required")
-	}
-
-	distStaticPathRelativeToConfigFS := deriveDistStaticPathRelativeToConfigFS(
-		configPathRelativeToConfigFS,
-	)
-	resolvedDistStaticPath := path.Clean(
-		filepath.ToSlash(distStaticPathRelativeToConfigFS),
-	)
-	if !fs.ValidPath(resolvedDistStaticPath) {
-		panic(
-			fmt.Sprintf(
-				"wave.New: resolved dist static path %q is invalid",
-				resolvedDistStaticPath,
-			),
-		)
-	}
-	if ensureDistStaticDirectoryError := ensureDistStaticDirectoryExistsForWaveConfigFS(
-		c.FS,
-		resolvedDistStaticPath,
-		distStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll,
-	); ensureDistStaticDirectoryError != nil {
-		panic(
-			"wave.New: " +
-				ensureDistStaticDirectoryError.Error(),
-		)
-	}
-
-	distStaticFS, distStaticFSErr := fs.Sub(c.FS, resolvedDistStaticPath)
-	if distStaticFSErr != nil {
-		panic(
-			fmt.Sprintf(
-				"wave.New: resolve dist static fs %q: %v",
-				resolvedDistStaticPath,
-				distStaticFSErr,
-			),
-		)
-	}
-
-	clonedRawConfigJSON := append([]byte(nil), rawConfigJSON...)
-
-	waveRuntime := &Wave{
-		cfg:        parsedConfig,
-		configPath: configPathForParsingAndMachinePaths,
-	}
-	waveRuntime.runtime = waveruntimecore.New(
-		waveruntimecore.Config{
-			ParsedConfig:  parsedConfig,
-			RawConfigJSON: clonedRawConfigJSON,
-			DistStaticFS:  distStaticFS,
-			Logger:        c.Logger,
-			IsDevMode:     GetIsDev(),
-			PortResolver:  waveenv.NewResolverForMode(GetIsDev()),
-		},
-	)
-
-	return waveRuntime
 }
 
-func normalizeWaveConfigPathForFS(configPath string) (string, error) {
-	trimmedConfigPath := strings.TrimSpace(configPath)
-	if trimmedConfigPath == "" {
-		return "", fmt.Errorf("ConfigPath is required")
-	}
-	normalizedConfigPath := path.Clean(filepath.ToSlash(trimmedConfigPath))
-	if normalizedConfigPath == "." {
-		return "", fmt.Errorf("ConfigPath is required")
-	}
-	if strings.HasPrefix(normalizedConfigPath, "/") {
-		return "", fmt.Errorf(
-			"ConfigPath must be relative to FS root: %q",
-			configPath,
-		)
-	}
-	if normalizedConfigPath == ".." ||
-		strings.HasPrefix(normalizedConfigPath, "../") {
-		return "", fmt.Errorf(
-			"ConfigPath must not escape FS root: %q",
-			configPath,
-		)
-	}
-	return normalizedConfigPath, nil
+type Options struct {
+	// Must be rooted at .waveout/static.
+	// Ignored in dev, required in prod.
+	//
+	// If you are using embed.FS from an ancestor directory,
+	// use fs.Sub to get a correctly rooted fs.FS.
+	//
+	// If you are using embed.FS, it's better to leave
+	// this nil in dev and only provide it in prod via
+	// build tags, to speed up your dev server compilation
+	// time.
+	DistStaticFS fs.FS
+	Logger       *slog.Logger
 }
 
-func deriveDistStaticPathRelativeToConfigFS(
-	configPathRelativeToConfigFS string,
-) string {
-	normalizedConfigPathRelativeToConfigFS := path.Clean(
-		filepath.ToSlash(configPathRelativeToConfigFS),
-	)
-	normalizedConfigDirectoryRelativeToConfigFS := path.Dir(
-		normalizedConfigPathRelativeToConfigFS,
-	)
-	if normalizedConfigDirectoryRelativeToConfigFS == "." {
-		return path.Clean(path.Join(".wavedist", "static"))
+func New(opts Options) *Wave {
+	w := &Wave{
+		static_fs: opts.DistStaticFS,
+		logger:    opts.Logger,
 	}
-	return path.Clean(
-		path.Join(
-			normalizedConfigDirectoryRelativeToConfigFS,
-			".wavedist",
-			"static",
-		),
-	)
-}
-
-func ensureDistStaticDirectoryExistsForWaveConfigFS(
-	configFS fs.FS,
-	distStaticPathRelativeToConfigFS string,
-	distStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll string,
-) error {
-	if configFS == nil {
-		return fmt.Errorf("config FS is required")
+	if !IsDev() && w.static_fs == nil {
+		panic("[waveruntime]: DistStaticFS must be provided in production")
 	}
-	distStaticPathInfo, distStaticPathStatError := fs.Stat(
-		configFS,
-		distStaticPathRelativeToConfigFS,
-	)
-	if distStaticPathStatError == nil {
-		if !distStaticPathInfo.IsDir() {
-			return fmt.Errorf(
-				"dist static path %q is not a directory",
-				distStaticPathRelativeToConfigFS,
-			)
-		}
-		return nil
-	}
-	if !os.IsNotExist(distStaticPathStatError) {
-		return fmt.Errorf(
-			"resolve dist static fs %q: %w",
-			distStaticPathRelativeToConfigFS,
-			distStaticPathStatError,
-		)
-	}
-
-	trimmedDistStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll := strings.TrimSpace(
-		distStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll,
-	)
-	if trimmedDistStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll == "" {
-		return fmt.Errorf(
-			"resolve dist static fs %q: auto-create requires config path discovery relative to current working directory; contract violation: %w",
-			distStaticPathRelativeToConfigFS,
-			distStaticPathStatError,
-		)
-	}
-	distStaticDirectoryPathForMkdirAll := filepath.Clean(filepath.FromSlash(
-		trimmedDistStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll,
-	))
-	if strings.TrimSpace(distStaticDirectoryPathForMkdirAll) == "" {
-		return fmt.Errorf(
-			"resolve dist static fs %q: %w",
-			distStaticPathRelativeToConfigFS,
-			distStaticPathStatError,
-		)
-	}
-	if distStaticDirectoryPathForMkdirAll == "." {
-		return fmt.Errorf(
-			"create dist static directory %q: invalid directory path",
-			trimmedDistStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll,
-		)
-	}
-	if strings.HasPrefix(distStaticDirectoryPathForMkdirAll, ".."+string(filepath.Separator)) ||
-		distStaticDirectoryPathForMkdirAll == ".." {
-		return fmt.Errorf(
-			"create dist static directory %q: path escapes current working directory",
-			trimmedDistStaticPathRelativeToCurrentWorkingDirectoryForMkdirAll,
-		)
-	}
-	if mkdirAllError := os.MkdirAll(
-		distStaticDirectoryPathForMkdirAll,
-		0o755,
-	); mkdirAllError != nil {
-		return fmt.Errorf(
-			"create dist static directory %q: %w",
-			distStaticDirectoryPathForMkdirAll,
-			mkdirAllError,
-		)
-	}
-	verifiedDistStaticPathInfo, verifyDistStaticPathError := fs.Stat(
-		configFS,
-		distStaticPathRelativeToConfigFS,
-	)
-	if verifyDistStaticPathError != nil {
-		return fmt.Errorf(
-			"verify dist static fs %q after create: %w",
-			distStaticPathRelativeToConfigFS,
-			verifyDistStaticPathError,
-		)
-	}
-	if !verifiedDistStaticPathInfo.IsDir() {
-		return fmt.Errorf(
-			"dist static path %q is not a directory",
-			distStaticPathRelativeToConfigFS,
-		)
-	}
-	return nil
-}
-
-type waveConfigPathDiscoveryCandidate struct {
-	configPathRelativeToFS string
-	projectID              string
-	rawConfigJSON          []byte
-}
-
-type waveProjectIDHeader struct {
-	Core struct {
-		ProjectID string `json:"ProjectID"`
-	} `json:"Core"`
-}
-
-func resolveWaveConfigPathRelativeToCurrentWorkingDirectory(
-	normalizedConfigPath string,
-	targetProjectID string,
-) (string, error) {
-	currentWorkingDirectoryConfigFS := os.DirFS(".")
-	discoveryCandidates, discoveryError := discoverWaveConfigPathCandidates(
-		currentWorkingDirectoryConfigFS,
-		normalizedConfigPath,
-	)
-	if discoveryError != nil {
-		return "", discoveryError
-	}
-	if len(discoveryCandidates) == 0 {
-		return "", nil
-	}
-	trimmedTargetProjectID := strings.TrimSpace(targetProjectID)
-	if trimmedTargetProjectID == "" {
-		return "", fmt.Errorf(
-			"Core.ProjectID is required for current-working-directory config discovery",
-		)
-	}
-	projectMatchedCandidates := make(
-		[]waveConfigPathDiscoveryCandidate,
-		0,
-		len(discoveryCandidates),
-	)
-	for _, currentCandidate := range discoveryCandidates {
-		if strings.TrimSpace(currentCandidate.projectID) == trimmedTargetProjectID {
-			projectMatchedCandidates = append(
-				projectMatchedCandidates,
-				currentCandidate,
-			)
-		}
-	}
-	if len(projectMatchedCandidates) == 0 {
-		return "", nil
-	}
-	if len(projectMatchedCandidates) == 1 {
-		return projectMatchedCandidates[0].configPathRelativeToFS, nil
-	}
-	directCandidate := findDirectConfigPathDiscoveryCandidate(
-		projectMatchedCandidates,
-		normalizedConfigPath,
-	)
-	if directCandidate != nil {
-		return directCandidate.configPathRelativeToFS, nil
-	}
-	return "", formatWaveConfigPathDiscoveryAmbiguousError(
-		normalizedConfigPath,
-		projectMatchedCandidates,
-		trimmedTargetProjectID,
-	)
-}
-
-func resolveWaveConfigPathAndRawConfigJSON(
-	configFS fs.FS,
-	normalizedConfigPath string,
-) (string, []byte, error) {
-	if configFS == nil || strings.TrimSpace(normalizedConfigPath) == "" {
-		return "", nil, fmt.Errorf("config FS and ConfigPath are required")
-	}
-	discoveryCandidates, discoveryError := discoverWaveConfigPathCandidates(
-		configFS,
-		normalizedConfigPath,
-	)
-	if discoveryError != nil {
-		return "", nil, discoveryError
-	}
-	if len(discoveryCandidates) == 0 {
-		return "", nil, fmt.Errorf(
-			"read config %q: file not found",
-			normalizedConfigPath,
-		)
-	}
-
-	if len(discoveryCandidates) == 1 {
-		return discoveryCandidates[0].configPathRelativeToFS, append(
-			[]byte(nil),
-			discoveryCandidates[0].rawConfigJSON...,
-		), nil
-	}
-
-	directCandidate := findDirectConfigPathDiscoveryCandidate(
-		discoveryCandidates,
-		normalizedConfigPath,
-	)
-	if directCandidate == nil {
-		return "", nil, formatWaveConfigPathDiscoveryAmbiguousError(
-			normalizedConfigPath,
-			discoveryCandidates,
+	if IsDev() {
+		static_dir := envutil.GetStr(
+			constants.ENV_KEY_DEV_RUNTIME_STATIC_DIR,
 			"",
 		)
-	}
-	targetProjectID := strings.TrimSpace(directCandidate.projectID)
-	if targetProjectID == "" {
-		return "", nil, fmt.Errorf(
-			"config %q is missing Core.ProjectID; cannot resolve config path deterministically",
-			normalizedConfigPath,
-		)
-	}
-	projectMatchedCandidates := make(
-		[]waveConfigPathDiscoveryCandidate,
-		0,
-		len(discoveryCandidates),
-	)
-	for _, currentCandidate := range discoveryCandidates {
-		if strings.TrimSpace(currentCandidate.projectID) == targetProjectID {
-			projectMatchedCandidates = append(
-				projectMatchedCandidates,
-				currentCandidate,
+		if static_dir == "" {
+			panic(
+				"[waveruntime]: env var " + constants.ENV_KEY_DEV_RUNTIME_STATIC_DIR + " must be set in dev",
 			)
 		}
+		w.static_fs = os.DirFS(static_dir)
 	}
-	if len(projectMatchedCandidates) != 1 {
-		return "", nil, formatWaveConfigPathDiscoveryAmbiguousError(
-			normalizedConfigPath,
-			discoveryCandidates,
-			targetProjectID,
+	if w.logger == nil {
+		w.logger = colorlog.New("wave")
+	}
+	w.init_caches()
+	return w
+}
+
+func (w *Wave) Port() int {
+	w.ensure_proper_instantiation()
+	return Port()
+}
+
+func IsDev() bool {
+	return envutil.GetBool(constants.ENV_KEY_DEV_RUNTIME_IS_DEV, false)
+}
+
+// Returns the PORT env var. Panics if not set or not an int.
+func Port() int {
+	p := envutil.GetInt("PORT", 0)
+	if p <= 0 || p > 65535 {
+		panic("[waveruntime]: PORT environment variable is not valid")
+	}
+	return p
+}
+
+func PortStr() string {
+	return strconv.Itoa(Port())
+}
+
+/////// CACHES
+
+type caches struct {
+	public_fs                     *prod_cache[fs.FS]
+	private_fs                    *prod_cache[fs.FS]
+	runtime_cfg                   *prod_cache[RuntimeConfig]
+	public_static_filemap         *prod_cache[map[string]string]
+	private_static_filemap        *prod_cache[map[string]string]
+	critical_css                  *prod_cache[string]
+	critical_css_style_el_details *prod_cache[*critical_css_style_el_details]
+	inverse_public_static_filemap *prod_cache[map[string]string]
+	public_filemap_data_url_els   *prod_cache[template.HTML]
+}
+
+func (w *Wave) init_caches() {
+	w.public_fs = cache(w.__UNCACHED__public_fs)
+	w.private_fs = cache(w.__UNCACHED__private_fs)
+	w.runtime_cfg = cache(w.__UNCACHED__runtime_cfg)
+	w.public_static_filemap = cache(w.__UNCACHED__public_static_filemap)
+	w.private_static_filemap = cache(w.__UNCACHED__private_static_filemap)
+	w.critical_css = cache(w.__UNCACHED__critical_css)
+	w.critical_css_style_el_details = cache(
+		w.__UNCACHED__critical_css_style_el_details,
+	)
+	w.inverse_public_static_filemap = cache(
+		w.__UNCACHED__inverse_public_static_filemap,
+	)
+	w.public_filemap_data_url_els = cache(
+		w.__UNCACHED__public_filemap_data_url_els,
+	)
+}
+
+/////// PUBLIC FS
+
+func (w *Wave) __UNCACHED__public_fs() (fs.FS, error) {
+	return fs.Sub(w.static_fs, strip_seg1(constants.STATIC_ASSETS_PUBLIC_DIR))
+}
+
+func (w *Wave) PublicFS() (fs.FS, error) {
+	w.ensure_proper_instantiation()
+	return w.public_fs.get()
+}
+
+func (w *Wave) MustPublicFS() fs.FS {
+	public_fs, err := w.PublicFS()
+	if err != nil {
+		panic("[waveruntime]: failed to get public FS: " + err.Error())
+	}
+	return public_fs
+}
+
+/////// PRIVATE FS
+
+func (w *Wave) __UNCACHED__private_fs() (fs.FS, error) {
+	return fs.Sub(w.static_fs, strip_seg1(constants.STATIC_ASSETS_PRIVATE_DIR))
+}
+
+func (w *Wave) PrivateFS() (fs.FS, error) {
+	w.ensure_proper_instantiation()
+	return w.private_fs.get()
+}
+
+func (w *Wave) MustPrivateFS() fs.FS {
+	private_fs, err := w.PrivateFS()
+	if err != nil {
+		panic("[waveruntime]: failed to get private FS: " + err.Error())
+	}
+	return private_fs
+}
+
+/////// INTERNAL FS
+
+func (w *Wave) __internal_fs() (fs.FS, error) {
+	return fs.Sub(w.static_fs, strip_seg1(constants.STATIC_INTERNAL_DIR))
+}
+
+/////// RUNTIME CONFIG
+
+func (w *Wave) __UNCACHED__runtime_cfg() (RuntimeConfig, error) {
+	internal_fs, err := w.__internal_fs()
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	runtime_cfg_bytes, err := fs.ReadFile(
+		internal_fs,
+		constants.RUNTIME_CFG_JSON_FILENAME,
+	)
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	runtime_cfg, err := jsonutil.Parse[RuntimeConfig](runtime_cfg_bytes)
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+	return runtime_cfg, nil
+}
+
+func (w *Wave) RuntimeConfig() (RuntimeConfig, error) {
+	w.ensure_proper_instantiation()
+	return w.runtime_cfg.get()
+}
+
+func (w *Wave) MustRuntimeConfig() RuntimeConfig {
+	runtime_cfg, err := w.RuntimeConfig()
+	if err != nil {
+		panic("[waveruntime]: failed to get runtime config: " + err.Error())
+	}
+	return runtime_cfg
+}
+
+/////// PUBLIC PATH PREFIX
+
+func (w *Wave) PublicPathPrefix() (string, error) {
+	runtime_cfg, err := w.RuntimeConfig()
+	if err != nil {
+		return "", err
+	}
+	return runtime_cfg.PublicPathPrefix, nil
+}
+
+func (w *Wave) MustPublicPathPrefix() string {
+	public_path_prefix, err := w.PublicPathPrefix()
+	if err != nil {
+		panic("[waveruntime]: failed to get public path prefix: " + err.Error())
+	}
+	return public_path_prefix
+}
+
+/////// PUBLIC STATIC FILEMAP
+
+func (w *Wave) __UNCACHED__public_static_filemap() (map[string]string, error) {
+	internal_fs, err := w.__internal_fs()
+	if err != nil {
+		return nil, err
+	}
+	public_filemap_bytes, err := fs.ReadFile(
+		internal_fs,
+		constants.PUBLIC_FILEMAP_JSON_FILENAME,
+	)
+	if err != nil {
+		return nil, err
+	}
+	public_filemap, err := jsonutil.Parse[map[string]string](
+		public_filemap_bytes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return public_filemap, nil
+}
+
+func (w *Wave) PublicStaticFilemap() (map[string]string, error) {
+	w.ensure_proper_instantiation()
+	return w.public_static_filemap.get()
+}
+
+func (w *Wave) MustPublicStaticFilemap() map[string]string {
+	public_static_filemap, err := w.PublicStaticFilemap()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get public static filemap: " + err.Error(),
 		)
 	}
-	selectedCandidate := projectMatchedCandidates[0]
-	return selectedCandidate.configPathRelativeToFS, append(
-		[]byte(nil),
-		selectedCandidate.rawConfigJSON...,
+	return public_static_filemap
+}
+
+/////// PRIVATE STATIC FILEMAP
+
+func (w *Wave) __UNCACHED__private_static_filemap() (map[string]string, error) {
+	internal_fs, err := w.__internal_fs()
+	if err != nil {
+		return nil, err
+	}
+	private_filemap_bytes, err := fs.ReadFile(
+		internal_fs,
+		constants.PRIVATE_FILEMAP_JSON_FILENAME,
+	)
+	if err != nil {
+		return nil, err
+	}
+	private_filemap, err := jsonutil.Parse[map[string]string](
+		private_filemap_bytes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return private_filemap, nil
+}
+
+func (w *Wave) PrivateStaticFilemap() (map[string]string, error) {
+	w.ensure_proper_instantiation()
+	return w.private_static_filemap.get()
+}
+
+func (w *Wave) MustPrivateStaticFilemap() map[string]string {
+	private_static_filemap, err := w.PrivateStaticFilemap()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get private static filemap: " + err.Error(),
+		)
+	}
+	return private_static_filemap
+}
+
+/////// PUBLIC URL
+
+func (w *Wave) PublicURL(original string) (string, error) {
+	w.ensure_proper_instantiation()
+	runtime_cfg, err := w.RuntimeConfig()
+	if err != nil {
+		return "", err
+	}
+	fm, err := w.PublicStaticFilemap()
+	if err != nil {
+		return "", err
+	}
+	hashed, ok := fm[original]
+	if !ok {
+		return original, errors.New(
+			"original file not found in public static filemap: " + original,
+		)
+	}
+	return path.Join(runtime_cfg.PublicPathPrefix, hashed), nil
+}
+
+func (w *Wave) MustPublicURL(original string) string {
+	public_url, err := w.PublicURL(original)
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get public URL for " + original + ": " + err.Error(),
+		)
+	}
+	return public_url
+}
+
+/////// CRITICAL CSS
+
+func (w *Wave) __UNCACHED__critical_css() (string, error) {
+	internal_fs, err := w.__internal_fs()
+	if err != nil {
+		return "", err
+	}
+	critical_css_bytes, err := fs.ReadFile(
+		internal_fs,
+		constants.CRITICAL_CSS_FILENAME,
+	)
+	if err != nil {
+		return "", err
+	}
+	return string(critical_css_bytes), nil
+}
+
+func (w *Wave) CriticalCSS() (string, error) {
+	w.ensure_proper_instantiation()
+	return w.critical_css.get()
+}
+
+func (w *Wave) MustCriticalCSS() string {
+	critical_css, err := w.CriticalCSS()
+	if err != nil {
+		panic("[waveruntime]: failed to get critical CSS: " + err.Error())
+	}
+	return critical_css
+}
+
+type critical_css_style_el_details struct {
+	style_el template.HTML
+	csp_hash string
+}
+
+func (w *Wave) __UNCACHED__critical_css_style_el_details() (*critical_css_style_el_details, error) {
+	critical_css, err := w.CriticalCSS()
+	if err != nil {
+		return nil, err
+	}
+	el := htmlutil.Element{
+		Tag: "style",
+		AttributesKnownSafe: map[string]string{
+			"id": constants.CRITICAL_CSS_EL_ID,
+		},
+		DangerousInnerHTML: critical_css,
+	}
+	csp_hash, err := htmlutil.ComputeContentSha256(&el)
+	if err != nil {
+		return nil, err
+	}
+	style_el, err := htmlutil.RenderElement(&el)
+	if err != nil {
+		return nil, err
+	}
+	return &critical_css_style_el_details{
+		style_el: style_el,
+		csp_hash: csp_hash,
+	}, nil
+}
+
+func (w *Wave) CriticalCSSStyleEl() (template.HTML, error) {
+	w.ensure_proper_instantiation()
+	details, err := w.critical_css_style_el_details.get()
+	if err != nil {
+		return "", err
+	}
+	return details.style_el, nil
+}
+
+func (w *Wave) MustCriticalCSSStyleEl() template.HTML {
+	style_el, err := w.CriticalCSSStyleEl()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get critical CSS style element: " + err.Error(),
+		)
+	}
+	return style_el
+}
+
+func (w *Wave) CriticalCSSStyleElCSPHash() (string, error) {
+	w.ensure_proper_instantiation()
+	details, err := w.critical_css_style_el_details.get()
+	if err != nil {
+		return "", err
+	}
+	return details.csp_hash, nil
+}
+
+func (w *Wave) MustCriticalCSSStyleElCSPHash() string {
+	csp_hash, err := w.CriticalCSSStyleElCSPHash()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get critical CSS style element CSP hash: " + err.Error(),
+		)
+	}
+	return csp_hash
+}
+
+/////// NON-CRITICAL CSS
+
+func (w *Wave) NonCriticalCSSStyleSheetURL() (string, error) {
+	return w.PublicURL(constants.NON_CRITICAL_CSS_FILENAME)
+}
+
+func (w *Wave) MustNonCriticalCSSStyleSheetURL() string {
+	url, err := w.NonCriticalCSSStyleSheetURL()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get non-critical CSS stylesheet URL: " + err.Error(),
+		)
+	}
+	return url
+}
+
+func (w *Wave) NonCriticalCSSLinkEl() (template.HTML, error) {
+	url, err := w.NonCriticalCSSStyleSheetURL()
+	if err != nil {
+		return "", err
+	}
+	el := htmlutil.Element{
+		Tag: "link",
+		AttributesKnownSafe: map[string]string{
+			"rel":  "stylesheet",
+			"id":   constants.NON_CRITICAL_CSS_EL_ID,
+			"href": url,
+		},
+	}
+	return htmlutil.RenderElement(&el)
+}
+
+func (w *Wave) MustNonCriticalCSSLinkEl() template.HTML {
+	link_el, err := w.NonCriticalCSSLinkEl()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get non-critical CSS link element: " + err.Error(),
+		)
+	}
+	return link_el
+}
+
+/////// CRITICAL CSS + NON-CRITICAL CSS HELPER
+
+func (w *Wave) CSSEls() (template.HTML, error) {
+	var parts []string
+	runtime_cfg, err := w.RuntimeConfig()
+	if err != nil {
+		return "", err
+	}
+	if runtime_cfg.IsUsingCriticalCSS {
+		el, err := w.CriticalCSSStyleEl()
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, string(el))
+	}
+	if runtime_cfg.IsUsingNonCriticalCSS {
+		el, err := w.NonCriticalCSSLinkEl()
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, string(el))
+	}
+	return template.HTML(strings.Join(parts, "\n")), nil
+}
+
+func (w *Wave) MustCSSEls() template.HTML {
+	els, err := w.CSSEls()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get CSS elements: " + err.Error(),
+		)
+	}
+	return els
+}
+
+/////// PUBLIC FILEMAP CLIENT INJECTION
+
+func (w *Wave) __UNCACHED__public_filemap_data_url_els() (template.HTML, error) {
+	fm, err := w.PublicStaticFilemap()
+	if err != nil {
+		// No public filemap available (e.g., public static not configured)
+		return "", nil
+	}
+	if _, ok := fm[constants.PUBLIC_FILEMAP_FILENAME]; !ok {
+		return "", nil
+	}
+
+	url, err := w.PublicURL(constants.PUBLIC_FILEMAP_FILENAME)
+	if err != nil {
+		return "", err
+	}
+
+	preload_el := htmlutil.Element{
+		Tag: "link",
+		AttributesKnownSafe: map[string]string{
+			"rel":         "preload",
+			"href":        url,
+			"as":          "fetch",
+			"crossorigin": "anonymous",
+		},
+	}
+	meta_el := htmlutil.Element{
+		Tag: "meta",
+		AttributesKnownSafe: map[string]string{
+			"id":       constants.PUBLIC_FILEMAP_META_EL_ID,
+			"data-url": url,
+		},
+	}
+
+	preload_html, err := htmlutil.RenderElement(&preload_el)
+	if err != nil {
+		return "", err
+	}
+	meta_html, err := htmlutil.RenderElement(&meta_el)
+	if err != nil {
+		return "", err
+	}
+
+	return preload_html + "\n" + meta_html, nil
+}
+
+// On client, do something like this:
+//
+//	const filemapURL = document.getElementById("wave-public-filemap-url").dataset.url;
+//	const filemap = await (await fetch(filemapURL)).json();
+//	const getPublicURL = (srcPath) => filemap[srcPath] || srcPath;
+func (w *Wave) PublicFilemapDataURLEls() (template.HTML, error) {
+	w.ensure_proper_instantiation()
+	return w.public_filemap_data_url_els.get()
+}
+
+// On client, do something like this:
+//
+//	const filemapURL = document.getElementById("wave-public-filemap-url").dataset.url;
+//	const filemap = await (await fetch(filemapURL)).json();
+//	const getPublicURL = (srcPath) => filemap[srcPath] || srcPath;
+func (w *Wave) MustPublicFilemapDataURLEls() template.HTML {
+	els, err := w.PublicFilemapDataURLEls()
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to get filemap URL elements: " + err.Error(),
+		)
+	}
+	return els
+}
+
+/////// STATIC ASSET SERVING
+
+func (w *Wave) StaticFileServerHandler(
+	add_immutable_cache_headers bool,
+) (http.Handler, error) {
+	public_fs, err := w.PublicFS()
+	if err != nil {
+		return nil, err
+	}
+	public_path_prefix, err := w.PublicPathPrefix()
+	if err != nil {
+		return nil, err
+	}
+	if add_immutable_cache_headers {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().
+				Set("Cache-Control", "public, max-age=31536000, immutable")
+			http.StripPrefix(public_path_prefix, http.FileServer(http.FS(public_fs))).
+				ServeHTTP(w, r)
+		}), nil
+	}
+	return http.StripPrefix(
+		public_path_prefix,
+		http.FileServer(http.FS(public_fs)),
 	), nil
 }
 
-func discoverWaveConfigPathCandidates(
-	configFS fs.FS,
-	normalizedConfigPath string,
-) ([]waveConfigPathDiscoveryCandidate, error) {
-	shouldMatchBySuffix := strings.Contains(normalizedConfigPath, "/")
-	expectedConfigBasename := path.Base(normalizedConfigPath)
-	discoveryCandidates := make([]waveConfigPathDiscoveryCandidate, 0, 8)
+func (w *Wave) MustStaticFileServerHandler(
+	add_immutable_cache_headers bool,
+) http.Handler {
+	handler, err := w.StaticFileServerHandler(add_immutable_cache_headers)
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to create static file server handler: " + err.Error(),
+		)
+	}
+	return handler
+}
 
-	walkError := fs.WalkDir(configFS, ".", func(
-		entryPath string,
-		entry fs.DirEntry,
-		walkError error,
-	) error {
-		if walkError != nil {
-			return walkError
-		}
-		if entry == nil || entry.IsDir() {
-			return nil
-		}
-
-		normalizedEntryPath := path.Clean(filepath.ToSlash(entryPath))
-		if normalizedEntryPath == "." {
-			return nil
-		}
-		if shouldMatchBySuffix {
-			if normalizedEntryPath != normalizedConfigPath &&
-				!strings.HasSuffix(normalizedEntryPath, "/"+normalizedConfigPath) {
-				return nil
+func (w *Wave) StaticFileServerMiddleware(
+	add_immutable_cache_headers bool,
+) (func(http.Handler) http.Handler, error) {
+	handler, err := w.StaticFileServerHandler(add_immutable_cache_headers)
+	if err != nil {
+		return nil, err
+	}
+	fn := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(_w http.ResponseWriter, r *http.Request) {
+			ss, err := w.should_serve_as_public_asset(r.URL.Path)
+			if err == nil && ss {
+				handler.ServeHTTP(_w, r)
+				return
 			}
-		} else if path.Base(normalizedEntryPath) != expectedConfigBasename {
-			return nil
-		}
-
-		rawConfigJSON, readError := fs.ReadFile(configFS, normalizedEntryPath)
-		if readError != nil {
-			return fmt.Errorf(
-				"read discovered config candidate %q: %w",
-				normalizedEntryPath,
-				readError,
-			)
-		}
-		projectID, projectIDError := parseProjectIDFromWaveConfigJSONHeader(
-			rawConfigJSON,
-			normalizedEntryPath,
-		)
-		if projectIDError != nil {
-			return projectIDError
-		}
-		discoveryCandidates = append(
-			discoveryCandidates,
-			waveConfigPathDiscoveryCandidate{
-				configPathRelativeToFS: normalizedEntryPath,
-				projectID:              projectID,
-				rawConfigJSON:          append([]byte(nil), rawConfigJSON...),
-			},
-		)
-		return nil
-	})
-	if walkError != nil {
-		return nil, fmt.Errorf("discover config path candidates: %w", walkError)
+			next.ServeHTTP(_w, r)
+		})
 	}
-	sort.SliceStable(discoveryCandidates, func(leftIndex, rightIndex int) bool {
-		return discoveryCandidates[leftIndex].configPathRelativeToFS <
-			discoveryCandidates[rightIndex].configPathRelativeToFS
-	})
-	return discoveryCandidates, nil
+	return fn, nil
 }
 
-func parseProjectIDFromWaveConfigJSONHeader(
-	rawConfigJSON []byte,
-	configPathRelativeToFS string,
-) (string, error) {
-	var projectIDHeader waveProjectIDHeader
-	if unmarshalError := json.Unmarshal(rawConfigJSON, &projectIDHeader); unmarshalError != nil {
-		return "", fmt.Errorf(
-			"parse config %q while resolving Core.ProjectID for discovery: %w",
-			configPathRelativeToFS,
-			unmarshalError,
+func (w *Wave) MustStaticFileServerMiddleware(
+	add_immutable_cache_headers bool,
+) func(http.Handler) http.Handler {
+	middleware, err := w.StaticFileServerMiddleware(add_immutable_cache_headers)
+	if err != nil {
+		panic(
+			"[waveruntime]: failed to create static file server middleware: " + err.Error(),
 		)
 	}
-	projectID := strings.TrimSpace(projectIDHeader.Core.ProjectID)
-	if projectID == "" {
-		return "", fmt.Errorf(
-			"config %q is missing Core.ProjectID required for deterministic discovery",
-			configPathRelativeToFS,
-		)
-	}
-	return projectID, nil
+	return middleware
 }
 
-func findDirectConfigPathDiscoveryCandidate(
-	discoveryCandidates []waveConfigPathDiscoveryCandidate,
-	normalizedConfigPath string,
-) *waveConfigPathDiscoveryCandidate {
-	for candidateIndex := range discoveryCandidates {
-		if discoveryCandidates[candidateIndex].configPathRelativeToFS ==
-			normalizedConfigPath {
-			return &discoveryCandidates[candidateIndex]
-		}
+func (w *Wave) should_serve_as_public_asset(_path string) (bool, error) {
+	public_path_prefix, err := w.PublicPathPrefix()
+	if err != nil {
+		return false, err
 	}
-	return nil
+	if public_path_prefix == "" || public_path_prefix == "/" {
+		return w.get_is_public_asset(_path)
+	}
+	return strings.HasPrefix(_path, public_path_prefix), nil
 }
 
-func formatWaveConfigPathDiscoveryAmbiguousError(
-	normalizedConfigPath string,
-	discoveryCandidates []waveConfigPathDiscoveryCandidate,
-	projectID string,
-) error {
-	if len(discoveryCandidates) == 0 {
-		return fmt.Errorf(
-			"no configs discovered matching ConfigPath semantics for %q",
-			normalizedConfigPath,
-		)
+func (w *Wave) get_is_public_asset(_path string) (bool, error) {
+	inverse, err := w.inverse_public_static_filemap.get()
+	if err != nil {
+		return false, err
 	}
-	candidateDescriptions := make([]string, 0, len(discoveryCandidates))
-	for _, currentCandidate := range discoveryCandidates {
-		candidateDescriptions = append(
-			candidateDescriptions,
-			fmt.Sprintf(
-				"%s (Core.ProjectID=%q)",
-				currentCandidate.configPathRelativeToFS,
-				currentCandidate.projectID,
-			),
-		)
+	_, is_public_asset := inverse[strings.TrimPrefix(_path, "/")]
+	return is_public_asset, nil
+}
+
+func (w *Wave) __UNCACHED__inverse_public_static_filemap() (map[string]string, error) {
+	fm, err := w.PublicStaticFilemap()
+	if err != nil {
+		return nil, err
 	}
-	if strings.TrimSpace(projectID) == "" {
-		return fmt.Errorf(
-			"ambiguous config discovery for ConfigPath %q; multiple candidates found: %s",
-			normalizedConfigPath,
-			strings.Join(candidateDescriptions, ", "),
-		)
+	inverse := make(map[string]string, len(fm))
+	for k, v := range fm {
+		inverse[v] = k
 	}
-	return fmt.Errorf(
-		"ambiguous config discovery for ConfigPath %q and Core.ProjectID %q; candidates: %s",
-		normalizedConfigPath,
-		projectID,
-		strings.Join(candidateDescriptions, ", "),
+	return inverse, nil
+}
+
+/////// FAVICON REDIRECT
+
+// FaviconRedirect returns middleware that redirects requests for
+// /favicon.ico to the hashed public asset URL. Falls through to the
+// next handler if the favicon is not found in the public filemap.
+func (w *Wave) FaviconRedirect() func(http.Handler) http.Handler {
+	w.ensure_proper_instantiation()
+	return middleware.ToHandlerMiddleware(
+		"/favicon.ico",
+		[]string{http.MethodGet, http.MethodHead},
+		func(_w http.ResponseWriter, r *http.Request) {
+			url, err := w.PublicURL("favicon.ico")
+			if err != nil {
+				res := response.New(_w)
+				res.NotFound()
+				return
+			}
+			http.Redirect(_w, r, url, http.StatusFound)
+		},
 	)
 }
 
-// Logger returns the Wave logger instance.
-func (w *Wave) Logger() *slog.Logger {
-	return w.runtime.Logger()
+/////// DEV REFRESH
+
+func (w *Wave) DevRefreshScriptEl() template.HTML {
+	return GetDevRefreshScriptEl()
 }
 
-// RawConfigJSON returns the raw bytes of the configuration file.
-func (w *Wave) RawConfigJSON() []byte {
-	if w == nil {
-		return nil
-	}
-	return w.runtime.RawConfigJSON()
+func (w *Wave) DevRefreshScriptElCSPHash() string {
+	return GetDevRefreshScriptElCSPHash()
 }
 
-// ParsedConfig returns the parsed Wave config used by this runtime.
-func (w *Wave) ParsedConfig() waveconfig.ParsedConfig {
-	if w == nil {
-		return nil
-	}
-	return w.cfg
-}
-
-// IsDev returns true if running in development mode.
-func (w *Wave) IsDev() bool {
-	if w == nil {
-		return GetIsDev()
-	}
-	return w.runtime.IsDev()
-}
-
-// MustGetPort returns the application runtime port.
-func (w *Wave) MustGetPort() int {
-	if w == nil {
-		return MustGetPort()
-	}
-	return w.runtime.MustGetPort()
-}
-
-// SetModeToDev sets the environment to development mode.
-func (w *Wave) SetModeToDev() {
-	if w != nil {
-		w.runtime.SetDevMode()
-	}
-	SetModeToDev()
-}
-
-// PublicPathPrefix returns the normalized configured public path prefix.
-func (w *Wave) PublicPathPrefix() string {
-	return w.runtime.PublicPathPrefix()
-}
-
-// DistDir returns the configured build output directory root.
-func (w *Wave) DistDir() string {
-	return w.runtime.DistDir()
-}
-
-// PrivateStaticDir returns the source directory for private static assets.
-func (w *Wave) PrivateStaticDir() string {
-	return w.runtime.PrivateStaticDir()
-}
-
-// ViteManifestLocation returns the expected path of the Vite manifest in build
-// output.
-func (w *Wave) ViteManifestLocation() string {
-	return w.runtime.ViteManifestLocation()
-}
-
-// StaticPrivateOutDir returns the private static output directory.
-func (w *Wave) StaticPrivateOutDir() string {
-	return w.runtime.StaticPrivateOutDir()
-}
-
-// StaticPublicOutDir returns the public static output directory.
-func (w *Wave) StaticPublicOutDir() string {
-	return w.runtime.StaticPublicOutDir()
-}
-
-// ConfigFile returns the normalized config file path in parser path-basis
-// semantics (the CWD-relative config discovery result used by wave.New).
-func (w *Wave) ConfigFile() string {
-	if w == nil {
+// GetDevRefreshScriptEl returns a <script> tag containing the browser sync
+// client. Returns empty string in production.
+func GetDevRefreshScriptEl() template.HTML {
+	if !IsDev() {
 		return ""
 	}
-	return w.configPath
+	return template.HTML(
+		fmt.Sprintf("<script>%s</script>", refresh_script_inner_html()),
+	)
 }
 
-// PrivateFS returns the runtime private-assets filesystem.
-func (w *Wave) PrivateFS() (fs.FS, error) {
-	return w.runtime.PrivateFS()
+// GetDevRefreshScriptElCSPHash returns the base64-encoded SHA-256 hash of
+// the refresh script content, suitable for Content-Security-Policy
+// script-src directives. Returns empty string in production.
+func GetDevRefreshScriptElCSPHash() string {
+	if !IsDev() {
+		return ""
+	}
+	return bytesutil.ToBase64(
+		cryptoutil.Sha256Hash([]byte(refresh_script_inner_html())),
+	)
 }
 
-// MustPrivateFS returns the private filesystem or panics if unavailable.
-func (w *Wave) MustPrivateFS() fs.FS {
-	return w.runtime.MustPrivateFS()
+//go:embed refresh_script.js
+var refresh_script_tmpl string
+
+func refresh_script_inner_html() string {
+	if !IsDev() {
+		return ""
+	}
+	p := envutil.GetStr(constants.ENV_KEY_DEV_RUNTIME_REFRESH_PORT, "")
+	if p == "" {
+		panic(fmt.Sprintf(
+			"dev refresh script: environment variable %s is not set",
+			constants.ENV_KEY_DEV_RUNTIME_REFRESH_PORT,
+		))
+	}
+	t := envutil.GetStr(constants.ENV_KEY_DEV_RUNTIME_REFRESH_TOKEN, "")
+	if t == "" {
+		panic(fmt.Sprintf(
+			"dev refresh script: environment variable %s is not set",
+			constants.ENV_KEY_DEV_RUNTIME_REFRESH_TOKEN,
+		))
+	}
+	s := strings.ReplaceAll(
+		refresh_script_tmpl,
+		"__REPLACE_ME_WITH_REFRESH_PORT__",
+		p,
+	)
+	return strings.ReplaceAll(
+		s,
+		"__REPLACE_ME_WITH_REFRESH_TOKEN__",
+		t,
+	)
 }
 
-// PublicURL resolves one source public asset path to its built URL.
-func (w *Wave) PublicURL(original string) string {
-	return w.runtime.PublicURL(original)
+/////////////////////////////////////////////////////////////////////
+/////// Internal utils
+/////////////////////////////////////////////////////////////////////
+
+// NOTE: We intentionally do not cache errors in case they are transient,
+// which can theoretically happen if you are using the physical file system
+// in prod (e.g., `os.DirFS`) rather than an `embed.FS`.
+
+type prod_cache[T any] struct {
+	val atomic.Pointer[cache_res[T]]
+	mu  sync.Mutex
+	fn  func() (T, error)
 }
 
-// CriticalCSS returns critical CSS content when available.
-func (w *Wave) CriticalCSS() template.CSS {
-	return w.runtime.CriticalCSS()
+type cache_res[T any] struct {
+	val T
+	err error
 }
 
-// CriticalCSSStyleElement returns one rendered critical-css <style> element.
-func (w *Wave) CriticalCSSStyleElement() template.HTML {
-	return w.runtime.CriticalCSSStyleElement()
+func cache[T any](fn func() (T, error)) *prod_cache[T] {
+	return &prod_cache[T]{fn: fn}
 }
 
-// StyleSheetLinkElement returns one rendered non-critical stylesheet <link>.
-func (w *Wave) StyleSheetLinkElement() template.HTML {
-	return w.runtime.StyleSheetLinkElement()
+func (pc *prod_cache[T]) get() (T, error) {
+	if IsDev() {
+		return pc.fn()
+	}
+	if r := pc.val.Load(); r != nil {
+		return r.val, r.err
+	}
+	pc.mu.Lock()
+	defer pc.mu.Unlock()
+	if r := pc.val.Load(); r != nil {
+		return r.val, r.err
+	}
+	val, err := pc.fn()
+	if err == nil {
+		pc.val.Store(&cache_res[T]{val: val})
+	}
+	return val, err
 }
 
-// RefreshScript returns one rendered dev refresh script.
-func (w *Wave) RefreshScript() template.HTML {
-	return w.runtime.RefreshScript()
-}
-
-// MustStaticMiddleware returns middleware that serves static public assets and
-// delegates all other requests to next.
-func (w *Wave) MustStaticMiddleware(
-	immutable bool,
-) func(http.Handler) http.Handler {
-	return w.runtime.MustStaticMiddleware(immutable)
+func strip_seg1(p string) string {
+	split := matcher.ParseSegments(p)
+	if len(split) <= 1 {
+		return ""
+	}
+	return path.Join(split[1:]...)
 }

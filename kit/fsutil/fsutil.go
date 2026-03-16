@@ -67,7 +67,10 @@ func CopyDir(src, dst string) error {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
 
-		fileInfo, err := entry.Info()
+		// Use os.Lstat so symlinks are detected rather than followed.
+		// entry.Info() calls os.Stat under the hood, which resolves
+		// symlinks and makes the ModeSymlink check a no-op.
+		fileInfo, err := os.Lstat(srcPath)
 		if err != nil {
 			return err
 		}
@@ -93,8 +96,8 @@ func CopyDir(src, dst string) error {
 	return nil
 }
 
-// CopyFile copies a single file from src to dest
-func CopyFile(src, dest string) error {
+// CopyFile copies a single file from src to dest.
+func CopyFile(src, dest string) (err error) {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -129,7 +132,12 @@ func CopyFile(src, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() {
+		if err != nil {
+			destFile.Close()
+			os.Remove(dest)
+		}
+	}()
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return err

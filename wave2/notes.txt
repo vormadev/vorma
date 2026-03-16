@@ -1,7 +1,0 @@
-Flow should be:
-
-watcher/listener batches raw []fsnotify.Event
-supervisor calls evtparse with cfg.Parsed + caller context
-evtparse returns orchestration workset/intent
-supervisor passes that intent into orchestrator
-orchestrator executes phases/tasks based on that intent
