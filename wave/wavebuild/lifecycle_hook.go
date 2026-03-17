@@ -34,8 +34,7 @@ func (h LifecycleHook) to_validated_hook(
 		is_go_compile:          h.IsGoCompile,
 		start_at:               CheckpointOrder(h.StartAt),
 		finish_by:              CheckpointOrder(h.FinishBy),
-		downstream:             h.DownstreamEffect,
-		show_overlay:           h.IncludeFrontendRebuildingOverlay,
+		effects:                h.Effects,
 		dev_only:               h.DevOnly,
 		prod_only:              h.ProdOnly,
 	}
@@ -47,15 +46,15 @@ func (h LifecycleHook) to_validated_hook(
 	}
 
 	if v.is_go_compile {
-		if h.StartAt != "" || h.FinishBy != "" || h.DownstreamEffect != "" {
+		if h.StartAt != "" || h.FinishBy != "" || len(h.Effects) > 0 {
 			return nil, fmt.Errorf(
-				"%s: IsGoCompile cannot be combined with StartAt, FinishBy, or DownstreamEffect",
+				"%s: IsGoCompile cannot be combined with StartAt, FinishBy, or Effects",
 				label,
 			)
 		}
-		v.start_at = CheckpointOrder(Checkpoint_3_GoCompile)
-		v.finish_by = CheckpointOrder(Checkpoint_3_GoCompile)
-		v.downstream = DownstreamEffectAppRestart
+		v.start_at = CheckpointOrder(Checkpoint_4_GoCompile)
+		v.finish_by = CheckpointOrder(Checkpoint_4_GoCompile)
+		v.effects = []Effect{EffectRestartApp}
 	}
 
 	if !v.is_go_compile {
@@ -63,7 +62,7 @@ func (h LifecycleHook) to_validated_hook(
 			v.start_at = CheckpointOrder(Checkpoint_1_CycleStart)
 		}
 		if h.FinishBy == "" {
-			v.finish_by = CheckpointOrder(Checkpoint_6_Cleanup)
+			v.finish_by = CheckpointOrder(Checkpoint_7_CycleEnd)
 		}
 	}
 
@@ -89,10 +88,12 @@ func (h LifecycleHook) to_validated_hook(
 			h.FinishBy,
 		)
 	}
-	if !is_valid_downstream_effect(v.downstream) {
-		return nil, fmt.Errorf(
-			"%s has invalid DownstreamEffect: %s", label, h.DownstreamEffect,
-		)
+	for _, effect := range v.effects {
+		if !is_valid_hook_effect(effect) {
+			return nil, fmt.Errorf(
+				"%s has invalid Effect: %s", label, effect,
+			)
+		}
 	}
 	if v.dev_only && v.prod_only {
 		return nil, fmt.Errorf(
@@ -101,10 +102,14 @@ func (h LifecycleHook) to_validated_hook(
 	}
 
 	for j, pattern := range v.watch_include_patterns {
-		v.watch_include_patterns[j] = to_recursive_pattern(root_dir, pattern)
+		v.watch_include_patterns[j] = to_catch_all_pattern_if_dir(
+			root_dir.Join(pattern.MustNormalize().Str()),
+		)
 	}
 	for j, pattern := range v.watch_exclude_patterns {
-		v.watch_exclude_patterns[j] = to_recursive_pattern(root_dir, pattern)
+		v.watch_exclude_patterns[j] = to_catch_all_pattern_if_dir(
+			root_dir.Join(pattern.MustNormalize().Str()),
+		)
 	}
 
 	return v, nil
@@ -123,8 +128,7 @@ type validated_lifecycle_hook struct {
 	is_go_compile bool
 	start_at      CheckpointOrd
 	finish_by     CheckpointOrd
-	downstream    DownstreamEffect
-	show_overlay  bool
+	effects       []Effect
 	dev_only      bool
 	prod_only     bool
 }

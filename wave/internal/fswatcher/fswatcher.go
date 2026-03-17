@@ -37,9 +37,6 @@ func NewWatcher(opts ...WatcherOptions) *Watcher {
 		opts_to_use = opts[0]
 	}
 
-	if filepath.IsAbs(opts_to_use.WatchRoot.Str()) {
-		panic("[NewWatcher]: watch root must be a CWD-relative path")
-	}
 	if opts_to_use.DebounceDuration <= 0 {
 		opts_to_use.DebounceDuration = 30 * time.Millisecond
 	}
@@ -48,7 +45,9 @@ func NewWatcher(opts ...WatcherOptions) *Watcher {
 	}
 
 	return &Watcher{
-		watch_root:        strict.MustNormalize(opts_to_use.WatchRoot),
+		watch_root: strict.MustNormalizeCWDRelPath(
+			opts_to_use.WatchRoot,
+		),
 		debounce_duration: opts_to_use.DebounceDuration,
 		logger:            opts_to_use.Logger,
 		on_add_path:       opts_to_use.OnAddPath,
@@ -68,21 +67,15 @@ type Watcher struct {
 
 // SetWatchRoot updates the watch root and immediately reconciles.
 func (watcher *Watcher) SetWatchRoot(new_root strict.CWDRelPath) {
-	if filepath.IsAbs(new_root.Str()) {
-		panic(
-			"[Watcher.SetWatchRoot]: watch root must be a CWD-relative path",
-		)
-	}
-
 	watcher.mu.Lock()
 	defer watcher.mu.Unlock()
 
-	watcher.watch_root = strict.MustNormalize(new_root)
+	watcher.watch_root = strict.MustNormalizeCWDRelPath(new_root)
 
 	if watcher.watcher != nil {
 		if err := watcher.reconcile_watch_dirs(watcher.watcher); err != nil {
 			watcher.logger.Error(
-				"[Watcher.SetWatchRoot]: failed to reconcile after watch root change",
+				"[Watcher.SetWatchRoot]: Failed to reconcile after watch root change",
 				"error",
 				err,
 			)
@@ -98,7 +91,7 @@ func (watcher *Watcher) Watch(
 	_watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		panic(
-			"[Watcher.Watch]: failed to create fsnotify watcher: " + err.Error(),
+			"[Watcher.Watch]: Failed to create fsnotify watcher: " + err.Error(),
 		)
 	}
 	defer _watcher.Close()
@@ -106,7 +99,7 @@ func (watcher *Watcher) Watch(
 
 	if err := watcher.reconcile_watch_dirs(_watcher); err != nil {
 		panic(
-			"[Watcher.Watch]: failed to reconcile watch directories: " + err.Error(),
+			"[Watcher.Watch]: Failed to reconcile watch directories: " + err.Error(),
 		)
 	}
 	watcher.mu.Unlock()
@@ -194,7 +187,7 @@ func (watcher *Watcher) reconcile_watch_dirs(
 		if err != nil {
 			return err
 		}
-		currently_watched_dirs.Add(strict.MustNormalize(rel))
+		currently_watched_dirs.Add(strict.MustNormalizeCWDRelPath(rel))
 	}
 
 	desired_watched_dirs := &set.Set[strict.CWDRelPath]{}
@@ -211,7 +204,7 @@ func (watcher *Watcher) reconcile_watch_dirs(
 				) {
 					return filepath.SkipDir
 				}
-				desired_watched_dirs.Add(strict.MustNormalize(path))
+				desired_watched_dirs.Add(strict.MustNormalizeCWDRelPath(path))
 			}
 			return nil
 		},
@@ -271,7 +264,7 @@ const (
 // fsnotify to report a CHMOD as the only event when file
 // contents are cleared.
 func ReduceEvt(_evt fsnotify.Event) *Evt {
-	path := strict.MustNormalize(_evt.Name)
+	path := strict.MustNormalizeCWDRelPath(_evt.Name)
 
 	stat, stat_err := os.Stat(path.Str())
 	is_non_empty_file := stat_err == nil && !stat.IsDir() && stat.Size() > 0

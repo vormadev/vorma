@@ -2,10 +2,9 @@ package docsync
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
-	"github.com/vormadev/vorma/wave/waveconfig"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/vormadev/vorma/wave/buildtime/builder"
+	"github.com/vormadev/vorma/wave"
 )
 
 const generatedMarker = "<!-- GENERATED_BY: internal/site/backend/cmd/sync_docs -->"
@@ -223,16 +222,13 @@ func SyncAllReadmes() (Result, error) {
 
 // SyncAndResolvePublicURLs runs README sync and then rewrites generated doc URLs
 // using the current Wave public file map.
-func SyncAndResolvePublicURLs(
-	cfg waveconfig.ParsedConfig,
-	log *slog.Logger,
-) (Result, error) {
+func SyncAndResolvePublicURLs() (Result, error) {
 	res, err := SyncAllReadmes()
 	if err != nil {
 		return res, err
 	}
 
-	rewritten, err := ResolveGeneratedDocsPublicURLs(cfg, log)
+	rewritten, err := ResolveGeneratedDocsPublicURLs()
 	if err != nil {
 		return res, err
 	}
@@ -241,44 +237,61 @@ func SyncAndResolvePublicURLs(
 }
 
 // ResolveGeneratedDocsPublicURLs rewrites generated docs URLs using the current
-// public file map. It uses granular public static processing for speed.
-func ResolveGeneratedDocsPublicURLs(
-	cfg waveconfig.ParsedConfig,
-	log *slog.Logger,
-) (int, error) {
-	assetMap, publicPathPrefix, err := loadPublicAssetMap(cfg, log)
+// public file map.
+func ResolveGeneratedDocsPublicURLs() (int, error) {
+	assetMap, publicPathPrefix, err := loadPublicAssetMap()
 	if err != nil {
 		return 0, err
 	}
 	return rewriteGeneratedDocsWithAssetMap(assetMap, publicPathPrefix)
 }
 
-func loadPublicAssetMap(
-	cfg waveconfig.ParsedConfig,
-	log *slog.Logger,
-) (map[string]string, string, error) {
-	if cfg == nil {
-		return nil, "", fmt.Errorf("wave config is required for URL resolution")
-	}
-
-	waveBuilder := builder.NewBuilder(cfg, log)
-	defer waveBuilder.Close()
-
-	if err := waveBuilder.ProcessPublicFilesOnly(); err != nil {
-		return nil, "", fmt.Errorf("process public files: %w", err)
-	}
-
-	fileMap, err := waveBuilder.LoadPublicFileMap()
+func loadPublicAssetMap() (map[string]string, string, error) {
+	wd, err := os.Getwd()
 	if err != nil {
-		return nil, "", fmt.Errorf("load public file map: %w", err)
+		return nil, "", fmt.Errorf("get cwd: %w", err)
 	}
 
-	assetMap := make(map[string]string, len(fileMap))
-	for key, val := range fileMap {
-		assetMap[key] = val.DistName
+	repoRoot, err := findRepoRoot(wd)
+	if err != nil {
+		return nil, "", err
 	}
 
-	return assetMap, cfg.PublicPathPrefix(), nil
+	staticRootRel, err := filepath.Rel(
+		wd,
+		repoRoot,
+		"internal/site/backend/.waveout/static",
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve Wave static root: %w", err)
+	}
+
+	if wave.IsDev() && os.Getenv("WAVE_DEV_STATIC_DIR") == "" {
+		// sync_docs also runs from Wave lifecycle hook processes. Those
+		// processes already carry WAVE_IS_DEV=true, but they do not get the
+		// runtime static-dir env var because they are not the supervised app.
+		if err := os.Setenv("WAVE_DEV_STATIC_DIR", staticRootRel); err != nil {
+			return nil, "", fmt.Errorf("set WAVE_DEV_STATIC_DIR: %w", err)
+		}
+	}
+
+	waveRuntime := wave.New(wave.Options{
+		DistStaticFS: os.DirFS(staticRootRel),
+	})
+	assetMap, err := waveRuntime.PublicStaticFilemap()
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, "", nil
+		}
+		return nil, "", fmt.Errorf("load Wave public static filemap: %w", err)
+	}
+
+	publicPathPrefix, err := waveRuntime.PublicPathPrefix()
+	if err != nil {
+		return nil, "", fmt.Errorf("load Wave public path prefix: %w", err)
+	}
+
+	return assetMap, publicPathPrefix, nil
 }
 
 func rewriteGeneratedDocsWithAssetMap(

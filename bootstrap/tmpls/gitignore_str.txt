@@ -1,7 +1,1 @@
-# Node
-**/node_modules/
-
-# Wave
-backend/.wavedist/static/*
-!backend/.wavedist/static/.keep
-backend/.wavedist/main*
+node_modules/

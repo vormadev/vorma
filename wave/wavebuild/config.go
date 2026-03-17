@@ -75,7 +75,7 @@ func (c *validated_config) private_dir_pattern() strict.CWDRelPath {
 	if !c.using_private_static() {
 		panic("private_dir_pattern called but no private static dir configured")
 	}
-	return add_catch_all(c.core.StaticAssetDirs.Private)
+	return to_catch_all_pattern(c.core.StaticAssetDirs.Private)
 }
 
 // panics if no public static dir configured. check `using_public_static()` first.
@@ -83,7 +83,7 @@ func (c *validated_config) public_dir_pattern() strict.CWDRelPath {
 	if !c.using_public_static() {
 		panic("public_dir_pattern called but no public static dir configured")
 	}
-	return add_catch_all(c.core.StaticAssetDirs.Public)
+	return to_catch_all_pattern(c.core.StaticAssetDirs.Public)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -127,8 +127,6 @@ type unsafe_vite struct {
 	ViteConfigFile          *strict.CWDRelPath
 }
 
-type unsafe_lifecycle_hook struct{ LifecycleHook }
-
 type LifecycleHook struct {
 	// Optional human-readable name for this hook, used in build logs.
 	// If not set, defaults to "lifecycle hook index N".
@@ -145,8 +143,8 @@ type LifecycleHook struct {
 	StartAt  Checkpoint
 	FinishBy Checkpoint
 
-	DownstreamEffect                 DownstreamEffect
-	IncludeFrontendRebuildingOverlay bool
+	// Effects are the effects this hook causes in the current build cycle.
+	Effects []Effect
 
 	DevOnly  bool
 	ProdOnly bool
@@ -188,7 +186,7 @@ func check_dir(p strict.CWDRelPath, label string) error {
 func config_path_to_unsafe_config(
 	_config_path strict.CWDRelPath,
 ) (*unsafe_config, error) {
-	cfg_path := strict.MustNormalize(_config_path)
+	cfg_path := strict.MustNormalizeCWDRelPath(_config_path)
 	if err := check_file(cfg_path, "config path"); err != nil {
 		return nil, err
 	}
@@ -209,35 +207,6 @@ func config_path_to_unsafe_config(
 	raw.ConfigPath = cfg_path
 	raw.raw_file_json = json_bytes
 	return &raw, nil
-}
-
-func add_catch_all(path strict.CWDRelPath) strict.CWDRelPath {
-	if strings.HasSuffix(path.Str(), "**/*") {
-		return path
-	}
-	return path.Join("**/*")
-}
-
-// to_recursive_pattern joins a pattern with root, and if the result
-// is an existing directory, appends "**/*".
-func to_recursive_pattern(
-	root strict.CWDRelPath, pattern strict.CWDRelPath,
-) strict.CWDRelPath {
-	p := root.Join(pattern.MustNormalize().Str())
-	if ok, err := p.IsDir(); err == nil && ok {
-		p = add_catch_all(p)
-	}
-	return p
-}
-
-func paths_overlap(a strict.CWDRelPath, b strict.CWDRelPath) bool {
-	if a == b {
-		return true
-	}
-	matches_a, a_err := path_match(add_catch_all(a), b)
-	matches_b, b_err := path_match(add_catch_all(b), a)
-	// if the patterns are invalid, be conservative and assume they overlap
-	return matches_a || matches_b || a_err != nil || b_err != nil
 }
 
 func has_waveout_conflict(p strict.CWDRelPath) bool {
@@ -264,7 +233,7 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 		p strict.CWDRelPath,
 		label string,
 	) error {
-		if paths_overlap(p, waveout_dir) || has_waveout_conflict(p) {
+		if check_overlap(p, waveout_dir) || has_waveout_conflict(p) {
 			return fmt.Errorf(
 				"%s %q overlaps with %q, which is reserved by Wave for build output. Please choose a different path.",
 				label,
@@ -316,8 +285,12 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 		return nil, err
 	}
 	vc.root_dir = vc.config_path.Dir().Join(__raw.RootDir.MustNormalize().Str())
-	if err := check_no_waveout_conflict(vc.root_dir, "RootDir"); err != nil {
-		return nil, err
+	if !check_within_or_equal(vc.root_dir, vc.config_path) {
+		return nil, fmt.Errorf(
+			"ConfigPath %q must be within or equal to RootDir %q",
+			vc.root_dir,
+			vc.config_path,
+		)
 	}
 	if err := check_dir_and_reserve(vc.root_dir, "RootDir"); err != nil {
 		return nil, err
@@ -339,9 +312,8 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 		len(__raw.Core.GlobalWatchExcludePatterns),
 	)
 	for i, pattern := range __raw.Core.GlobalWatchExcludePatterns {
-		vc.core.GlobalWatchExcludePatterns[i] = to_recursive_pattern(
-			vc.root_dir,
-			pattern,
+		vc.core.GlobalWatchExcludePatterns[i] = to_catch_all_pattern_if_dir(
+			vc.root_dir.Join(pattern.MustNormalize().Str()),
 		)
 	}
 
@@ -410,7 +382,7 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 		}
 	}
 	if using_private && using_public &&
-		paths_overlap(
+		check_overlap(
 			vc.core.StaticAssetDirs.Private,
 			vc.core.StaticAssetDirs.Public,
 		) {

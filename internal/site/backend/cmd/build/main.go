@@ -10,10 +10,7 @@ import (
 func main() {
 	appRuntime := app.App
 
-	if _, err := docsync.SyncAndResolvePublicURLs(
-		appRuntime.Wave.ParsedConfig(),
-		appRuntime.Logger(),
-	); err != nil {
+	if _, err := docsync.SyncAndResolvePublicURLs(); err != nil {
 		panic(err)
 	}
 	vormabuild.Build(appRuntime)

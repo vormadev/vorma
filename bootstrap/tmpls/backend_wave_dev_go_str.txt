@@ -2,13 +2,6 @@
 
 package backend
 
-import (
-	"os"
+import "github.com/vormadev/vorma/wave"
 
-	"github.com/vormadev/vorma/wave"
-)
-
-var Wave = wave.New(wave.Config{
-	FS:         os.DirFS("backend"),
-	ConfigPath: "wave.config.json",
-})
+var Wave = wave.New(wave.Options{})

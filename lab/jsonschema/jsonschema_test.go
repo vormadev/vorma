@@ -27,3 +27,13 @@ func TestOptionalString_DefaultDescriptionDoesNotUseInvalidQuotedFormatting(
 		t.Fatalf("expected %q, got %q", want, got)
 	}
 }
+
+func TestRequiredArray_PropagatesMinItems(t *testing.T) {
+	got := RequiredArray(Def{
+		Items:    Entry{Type: TypeString},
+		MinItems: 1,
+	})
+	if got.MinItems != 1 {
+		t.Fatalf("expected MinItems=1, got %d", got.MinItems)
+	}
+}

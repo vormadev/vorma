@@ -130,7 +130,7 @@ func (sp *StaticProcessor) PhysicalFilemap(
 			if err != nil {
 				return err
 			}
-			src_path := strict.MustNormalize(path)
+			src_path := strict.MustNormalizeCWDRelPath(path)
 
 			// Reuse cached hash when the file was NOT in the watcher's
 			// changed set and mtime+size are unchanged.

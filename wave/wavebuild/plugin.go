@@ -4,30 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 	"sync"
 
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/kit/strict"
 	"github.com/vormadev/vorma/lab/jsonschema"
-	"github.com/vormadev/vorma/wave/internal/workset"
 )
 
 type Plugin struct {
 	Name           string
 	Config         PluginConfig
 	LifecycleHooks []LifecycleHook
-
-	// __TODO -- hmm, this seems like it shouldn't be global:
-
-	// OwnsPublicStaticFrontendSettling, when true, tells Wave that this
-	// plugin handles browser settling for public static asset
-	// changes (e.g. via vite notification). Wave will not add a
-	// default HardReloadBrowser effect for public static changes.
-	// The plugin is responsible for producing the correct effect
-	// via its own hooks.
-	OwnsPublicStaticFrontendSettling bool
 }
 
 // RawJSON is nil when the plugin's config section is absent from the
@@ -48,8 +36,7 @@ type PluginConfig struct {
 	JSONKey string
 
 	// JSONSchema is the JSON schema entry for the plugin's config
-	// section. Used when writing the config schema file. Required
-	// when Key is set.
+	// section. Used when writing the config schema file. Optional.
 	JSONSchema jsonschema.Entry
 
 	// ParseJSON is called with the plugin's raw JSON config section
@@ -60,14 +47,13 @@ type PluginConfig struct {
 	// closure). Called on every config reload, even when the
 	// plugin's section is absent, in which case ctx.RawJSON is nil
 	// and the plugin is responsible for clearing any captured
-	// config state it wants reset.
-	// Required when Key is set.
+	// config state it wants reset. Optional.
 	ParseFunc PluginConfigParseFunc
 }
 
 // PluginResult lets a plugin inject additional effects into the
 // current build cycle. Return nil for "nothing extra."
-type PluginResult struct{ ExtraEffects *set.Set[workset.Effect] }
+type PluginResult struct{ ExtraEffects *set.Set[Effect] }
 
 /////////////////////////////////////////////////////////////////////
 /////// Validated plugin types
@@ -89,13 +75,6 @@ func validate_plugin_config(
 				plugin_cfg.JSONKey,
 			)
 		}
-		// __TODO wait why is ParseFunc required??
-		if plugin_cfg.ParseFunc == nil {
-			return nil, fmt.Errorf(
-				"plugin config key %q is set but ParseFunc is nil",
-				plugin_cfg.JSONKey,
-			)
-		}
 	}
 	return &validated_plugin_config{
 		json_key:    plugin_cfg.JSONKey,
@@ -104,17 +83,11 @@ func validate_plugin_config(
 	}, nil
 }
 
-type validated_plugin_runtime struct {
-	hooks                                []validated_lifecycle_hook
-	owns_public_static_frontend_settling bool
-}
-
-func validate_plugin_runtime(
+func validate_plugin_hooks(
 	plugin_name string,
 	_hooks []LifecycleHook,
-	owns_public_static_settling bool,
 	root_dir strict.CWDRelPath,
-) (*validated_plugin_runtime, error) {
+) ([]validated_lifecycle_hook, error) {
 	hooks := make([]validated_lifecycle_hook, len(_hooks))
 	for i := range _hooks {
 		label := fmt.Sprintf("plugin %q idx %d hook", plugin_name, i)
@@ -128,10 +101,7 @@ func validate_plugin_runtime(
 		vh.plugin_name = plugin_name
 		hooks[i] = *vh
 	}
-	return &validated_plugin_runtime{
-		hooks:                                hooks,
-		owns_public_static_frontend_settling: owns_public_static_settling,
-	}, nil
+	return hooks, nil
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -139,8 +109,8 @@ func validate_plugin_runtime(
 /////////////////////////////////////////////////////////////////////
 
 // PluginCtx is the execution context passed to a plugin hook's Fn.
-// It provides read access to the current cycle's state and WaitFor*
-// methods that block until the host reaches a given checkpoint.
+// It provides read access to the current cycle's state and WaitFor /
+// BlockAt methods for synchronizing with build checkpoints.
 //
 // Config accessors (RootDir, BinaryOutputPath, User*Dir/Entry) are
 // provided by the embedded *ConfigReader.
@@ -150,15 +120,15 @@ type PluginCtx struct {
 	hook *validated_lifecycle_hook
 	ctx  context.Context
 
-	gates [7]chan struct{}
+	gates [8]chan struct{}
 }
 
 func new_plugin_ctx(
 	ss *super_state,
 	hook *validated_lifecycle_hook,
 ) *PluginCtx {
-	var gates [7]chan struct{}
-	for i := 1; i <= 6; i++ {
+	var gates [8]chan struct{}
+	for i := 1; i <= 7; i++ {
 		gates[i] = make(chan struct{})
 	}
 	return &PluginCtx{
@@ -175,9 +145,7 @@ func new_plugin_ctx(
 
 func (p *PluginCtx) Context() context.Context { return p.ctx }
 
-func (p *PluginCtx) Triggers() *set.Set[workset.Trigger] { return p.ss.cycle_triggers }
-
-func (p *PluginCtx) EvtPaths() *set.Set[strict.CWDRelPath] { return p.ss.cycle_evt_paths }
+func (p *PluginCtx) EvtPaths() []strict.CWDRelPath { return p.ss.cycle_evt_paths.Slice() }
 
 func (p *PluginCtx) IsInitialBuild() bool { return p.ss.cycle_is_initial }
 
@@ -225,8 +193,8 @@ func (p *PluginCtx) ReadPublicFileMap() PublicFileMapResult {
 // ContributePublicFiles adds files to the public filemap. Must be called by
 // the end of checkpoint 2, otherwise the contributions will be rejected and
 // an error will be returned. If the underlying hook spans multiple checkpoints
-// and may not finish its contributions in time, use `BlockAtCheckpoint(2)` to
-// hold the window open until ready.
+// and may not finish its contributions in time, use `BlockAt(2)` to hold the
+// window open until ready.
 func (p *PluginCtx) ContributePublicFiles(files map[string][]byte) error {
 	p.ss.cycle_shared.mu.Lock()
 	defer p.ss.cycle_shared.mu.Unlock()
@@ -241,19 +209,28 @@ func (p *PluginCtx) ContributePublicFiles(files map[string][]byte) error {
 	if p.ss.cycle_shared.public_contributions == nil {
 		p.ss.cycle_shared.public_contributions = make(map[string][]byte)
 	}
-	maps.Copy(p.ss.cycle_shared.public_contributions, files)
+	for logical_path, bytes := range files {
+		if _, exists := p.ss.cycle_shared.public_contributions[logical_path]; exists {
+			return fmt.Errorf(
+				"plugin %q contributed overlapping public file %q",
+				p.hook.plugin_name,
+				logical_path,
+			)
+		}
+		p.ss.cycle_shared.public_contributions[logical_path] = bytes
+	}
 	return nil
 }
 
 // ViteProdBuild runs `vite build` synchronously using the vite
 // config from the Wave config. The plugin controls where the output
-// goes via opts. Panics if vite is not configured.
+// goes via opts. Returns an error if vite is not configured.
 func (p *PluginCtx) ViteProdBuild(opts ViteProdBuildOpts) error {
 	if p.ss.vite_build_cfg == nil {
-		panic(fmt.Sprintf(
+		return fmt.Errorf(
 			"plugin %q: ViteProdBuild called but Vite is not configured",
 			p.hook.plugin_name,
-		))
+		)
 	}
 	return run_vite_prod_build(
 		p.ss.vite_build_cfg, opts, p.ss.hook_env(), p.ss.logger,
@@ -264,13 +241,14 @@ func (p *PluginCtx) ViteProdBuild(opts ViteProdBuildOpts) error {
 /////// Checkpoint waiting and blocking
 /////////////////////////////////////////////////////////////////////
 
-func (p *PluginCtx) WaitForPostAssetPipeline() error { return p.wait_for(2) }
-func (p *PluginCtx) WaitForGoCompile() error         { return p.wait_for(3) }
-func (p *PluginCtx) WaitForPostCompile() error       { return p.wait_for(4) }
-func (p *PluginCtx) WaitForPostBackendSettle() error { return p.wait_for(5) }
-func (p *PluginCtx) WaitForCycleEnd() error          { return p.wait_for(6) }
-
-func (p *PluginCtx) wait_for(checkpoint CheckpointOrd) error {
+func (p *PluginCtx) WaitFor(checkpoint CheckpointOrd) error {
+	if !is_valid_checkpoint_ord(checkpoint) {
+		panic(fmt.Sprintf(
+			"%s: WaitFor checkpoint %d, but checkpoint ordinals must be between 1 and 7",
+			p.hook.name,
+			checkpoint,
+		))
+	}
 	if checkpoint <= p.hook.start_at {
 		panic(fmt.Sprintf(
 			"%s: WaitFor checkpoint %d, "+
@@ -289,21 +267,33 @@ func (p *PluginCtx) wait_for(checkpoint CheckpointOrd) error {
 	}
 }
 
-// BlockAtCheckpoint registers a hold on the given checkpoint,
+// BlockAt registers a hold on the given checkpoint,
 // preventing the build from advancing past it until the returned
 // release function is called. Use this when a spanning hook (e.g.
 // StartAt=2, FinishBy=3) needs to guarantee that its checkpoint-2
 // work completes before the main goroutine proceeds past
 // checkpoint 2.
 //
+// For same-checkpoint blocking, call BlockAt immediately at hook
+// entry or immediately after WaitFor(checkpoint) returns.
+// Once the scheduler closes a checkpoint for new holds, BlockAt on
+// that checkpoint panics.
+//
 // The checkpoint must be >= the hook's StartAt. Panics otherwise.
 //
 // The returned release function is safe to call multiple times;
 // only the first call has any effect.
-func (p *PluginCtx) BlockAtCheckpoint(checkpoint CheckpointOrd) func() {
+func (p *PluginCtx) BlockAt(checkpoint CheckpointOrd) func() {
+	if !is_valid_checkpoint_ord(checkpoint) {
+		panic(fmt.Sprintf(
+			"%s: BlockAt(%d), but checkpoint ordinals must be between 1 and 7",
+			p.hook.name,
+			checkpoint,
+		))
+	}
 	if checkpoint < p.hook.start_at {
 		panic(fmt.Sprintf(
-			"%s: BlockAtCheckpoint(%d), "+
+			"%s: BlockAt(%d), "+
 				"but StartAt is checkpoint %d — cannot block a "+
 				"checkpoint before the hook's own start",
 			p.hook.name,
@@ -311,7 +301,7 @@ func (p *PluginCtx) BlockAtCheckpoint(checkpoint CheckpointOrd) func() {
 			p.hook.start_at,
 		))
 	}
-	return p.ss.cycle_holds.hold(checkpoint)
+	return p.ss.cycle_holds.hold(checkpoint, p.hook.name)
 }
 
 // signal_checkpoint is called by the scheduler when a checkpoint is
@@ -331,11 +321,12 @@ func (p *PluginCtx) signal_checkpoint(checkpoint CheckpointOrd) {
 
 // checkpoint_holds tracks active holds that prevent the build from
 // advancing past a checkpoint. Holds are registered by plugin hooks
-// via BlockAtCheckpoint and awaited by the hook scheduler.
+// via BlockAt and awaited by the hook scheduler.
 type checkpoint_holds struct {
-	mu      sync.Mutex
-	counts  map[CheckpointOrd]int
-	waiters map[CheckpointOrd][]chan struct{}
+	mu          sync.Mutex
+	counts      map[CheckpointOrd]int
+	waiters     map[CheckpointOrd][]chan struct{}
+	closed_upto CheckpointOrd
 }
 
 func new_checkpoint_holds() *checkpoint_holds {
@@ -347,9 +338,20 @@ func new_checkpoint_holds() *checkpoint_holds {
 
 // hold increments the hold count for the given checkpoint and
 // returns a release function. The release function is idempotent.
-func (ch *checkpoint_holds) hold(checkpoint CheckpointOrd) func() {
+func (ch *checkpoint_holds) hold(
+	checkpoint CheckpointOrd,
+	hook_name string,
+) func() {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
+	if checkpoint <= ch.closed_upto {
+		panic(fmt.Sprintf(
+			"%s: BlockAt(%d), but checkpoint %d is already closed for new holds",
+			hook_name,
+			checkpoint,
+			checkpoint,
+		))
+	}
 	ch.counts[checkpoint]++
 	var once sync.Once
 	return func() {
@@ -367,18 +369,21 @@ func (ch *checkpoint_holds) hold(checkpoint CheckpointOrd) func() {
 	}
 }
 
-// wait blocks until all holds on the given checkpoint are released.
-// Returns immediately if there are no active holds.
-func (ch *checkpoint_holds) wait(checkpoint CheckpointOrd) {
+// close_and_wait closes the checkpoint for new holds and then blocks
+// until all already-registered holds on that checkpoint are released.
+func (ch *checkpoint_holds) close_and_wait(checkpoint CheckpointOrd) {
 	ch.mu.Lock()
-	if ch.counts[checkpoint] == 0 {
-		ch.mu.Unlock()
-		return
+	if checkpoint > ch.closed_upto {
+		ch.closed_upto = checkpoint
 	}
-	w := make(chan struct{})
-	ch.waiters[checkpoint] = append(ch.waiters[checkpoint], w)
+	for ch.counts[checkpoint] > 0 {
+		w := make(chan struct{})
+		ch.waiters[checkpoint] = append(ch.waiters[checkpoint], w)
+		ch.mu.Unlock()
+		<-w
+		ch.mu.Lock()
+	}
 	ch.mu.Unlock()
-	<-w
 }
 
 /////////////////////////////////////////////////////////////////////

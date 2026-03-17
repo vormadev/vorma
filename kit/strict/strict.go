@@ -28,10 +28,9 @@ func (p CWDRelPath) MustAbs() MachAbsPath {
 	return MachAbsPath(abs)
 }
 
-// Panics if absolute.
-// Runs `strings.TrimSpace`, `filepath.Clean`, `filepath.FromSlash`,
+// Panics if absolute. Runs `strings.TrimSpace`, `filepath.Clean`, `filepath.FromSlash`,
 // and casts as `strict.CWDRelPath`.
-func MustNormalize[P string | CWDRelPath](path P) CWDRelPath {
+func MustNormalizeCWDRelPath[P string | CWDRelPath](path P) CWDRelPath {
 	if filepath.IsAbs(string(path)) {
 		panic(
 			"[strict.MustNormalize]: path must be CWD-relative, not absolute: " + path,
@@ -42,11 +41,10 @@ func MustNormalize[P string | CWDRelPath](path P) CWDRelPath {
 	)
 }
 
-// Panics if absolute.
-// Runs `strings.TrimSpace`, `filepath.Clean`, `filepath.FromSlash`,
+// Panics if absolute. Runs `strings.TrimSpace`, `filepath.Clean`, `filepath.FromSlash`,
 // and casts as `strict.CWDRelPath`.
 func (p CWDRelPath) MustNormalize() CWDRelPath {
-	return MustNormalize(p)
+	return MustNormalizeCWDRelPath(p)
 }
 
 func (p CWDRelPath) Join(elem ...string) CWDRelPath {

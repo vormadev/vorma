@@ -73,7 +73,7 @@ func Bundle(
 		if strings.HasPrefix(raw, "<") {
 			continue
 		}
-		imports.Add(strict.MustNormalize(raw))
+		imports.Add(strict.MustNormalizeCWDRelPath(raw))
 	}
 
 	// esbuild seems to include this anyway, but add manually to be sure
@@ -109,7 +109,13 @@ func url_rewriter(
 						}, nil
 					}
 
-					lookup := parsed.Path
+					lookup := strings.TrimPrefix(parsed.Path, "/")
+					if strings.HasPrefix(lookup, ".") {
+						panic(
+							"[wave]: CSS URL paths must not be relative (must not start with '.' or '..')",
+						)
+					}
+
 					suffix := ""
 					if parsed.RawQuery != "" || parsed.Fragment != "" {
 						suffix = raw[len(lookup):]

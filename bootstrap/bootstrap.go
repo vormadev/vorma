@@ -265,10 +265,10 @@ func (o Options) derived() derivedOptions {
 		// Resolve Docker template fields
 		if do.IsMonorepo {
 			do.DockerWorkdirCommand = "\nWORKDIR /app/" + do.AppPathFromModuleRoot
-			do.DockerBinaryPath = "/app/" + do.AppPathFromModuleRoot + "/backend/.wavedist/main"
+			do.DockerBinaryPath = "/app/" + do.AppPathFromModuleRoot + "/backend/.waveout/main"
 		} else {
 			do.DockerWorkdirCommand = "" // No extra WORKDIR needed
-			do.DockerBinaryPath = "/app/backend/.wavedist/main"
+			do.DockerBinaryPath = "/app/backend/.waveout/main"
 		}
 	}
 
@@ -308,7 +308,7 @@ func MustInit(o Options) {
 		"backend/src/router",
 		"backend/cmd/serve",
 		"backend/cmd/build",
-		"backend/.wavedist/static/internal",
+		"backend/.waveout/static/internal",
 		"frontend/src/components",
 		"frontend/src/routes",
 		"frontend/src/styles",
@@ -327,7 +327,7 @@ func MustInit(o Options) {
 		"tmpls/cmd_build_main_go_tmpl.txt",
 	)
 	do.mustWriteTmpl(
-		"backend/.wavedist/static/.keep",
+		"backend/.waveout/static/.keep",
 		"tmpls/dist_static_keep_tmpl.txt",
 	)
 	mustWriteStr(

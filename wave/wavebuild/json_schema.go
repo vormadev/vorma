@@ -15,7 +15,7 @@ var (
 	json_cfg_key_lifecycle_hooks = reserved_json_cfg_keys[3] // "LifecycleHooks"
 )
 
-func build_schema(vc *validated_plugin_config) jsonschema.Entry {
+func build_schema(plugin_cfgs []*validated_plugin_config) jsonschema.Entry {
 	props := map[string]jsonschema.Entry{
 		json_cfg_key_root_dir: jsonschema.RequiredString(jsonschema.Def{
 			Description: "Root directory for resolving all other paths. Relative to the config file directory.",
@@ -25,8 +25,14 @@ func build_schema(vc *validated_plugin_config) jsonschema.Entry {
 		json_cfg_key_lifecycle_hooks: build_lifecycle_hooks_schema(),
 	}
 
-	if vc != nil && vc.json_key != "" {
-		props[vc.json_key] = vc.json_schema
+	for _, plugin_cfg := range plugin_cfgs {
+		if plugin_cfg == nil || plugin_cfg.json_key == "" {
+			continue
+		}
+		if plugin_cfg.json_schema.IsZero() {
+			continue
+		}
+		props[plugin_cfg.json_key] = plugin_cfg.json_schema
 	}
 
 	return jsonschema.Entry{
@@ -142,9 +148,9 @@ func build_lifecycle_hook_entry_schema() jsonschema.Entry {
 				},
 			}),
 			"WatchIncludePatterns": jsonschema.RequiredArray(jsonschema.Def{
-				// __TODO is there a way to specific "at least one item" in jsonschema?
 				Description: "Glob patterns that activate this hook when matched. Relative to RootDir. Directories are auto-expanded. Must have at least one pattern.",
 				Items:       jsonschema.Entry{Type: jsonschema.TypeString},
+				MinItems:    1,
 			}),
 			"WatchExcludePatterns": jsonschema.OptionalArray(jsonschema.Def{
 				Description: "Glob patterns excluded from this hook's watch scope. Relative to RootDir. Directories are auto-expanded.",
@@ -154,43 +160,46 @@ func build_lifecycle_hook_entry_schema() jsonschema.Entry {
 				Description: "Shell command to execute when the hook fires.",
 			}),
 			"IsGoCompile": jsonschema.OptionalBoolean(jsonschema.Def{
-				Description: "Convenience bool that, when true, sets StartAt and FinishBy to 'go_compile' and implies 'app_restart'. Cannot be combined with StartAt, FinishBy, or DownstreamEffect.",
+				Description: "Convenience bool that, when true, sets StartAt and FinishBy to 'go_compile' and implies 'restart_app'. Cannot be combined with StartAt, FinishBy, or Effects.",
 			}),
 			"StartAt": jsonschema.OptionalString(jsonschema.Def{
 				Description: "Earliest checkpoint at which the hook may begin execution.",
 				Enum: []string{
 					Checkpoint_1_CycleStart.Str(),
-					Checkpoint_2_PostAssetPipeline.Str(),
-					Checkpoint_3_GoCompile.Str(),
-					Checkpoint_4_PostGoCompile.Str(),
-					Checkpoint_5_PostServiceRestart.Str(),
-					Checkpoint_6_Cleanup.Str(),
+					Checkpoint_2_UserlandPublicFilemapReady.Str(),
+					Checkpoint_3_FullPublicFilemapFinalized.Str(),
+					Checkpoint_4_GoCompile.Str(),
+					Checkpoint_5_GoCompileComplete.Str(),
+					Checkpoint_6_ServiceRestarted.Str(),
+					Checkpoint_7_CycleEnd.Str(),
 				},
 			}),
 			"FinishBy": jsonschema.OptionalString(jsonschema.Def{
 				Description: "Latest checkpoint by which the hook must have completed.",
 				Enum: []string{
 					Checkpoint_1_CycleStart.Str(),
-					Checkpoint_2_PostAssetPipeline.Str(),
-					Checkpoint_3_GoCompile.Str(),
-					Checkpoint_4_PostGoCompile.Str(),
-					Checkpoint_5_PostServiceRestart.Str(),
-					Checkpoint_6_Cleanup.Str(),
+					Checkpoint_2_UserlandPublicFilemapReady.Str(),
+					Checkpoint_3_FullPublicFilemapFinalized.Str(),
+					Checkpoint_4_GoCompile.Str(),
+					Checkpoint_5_GoCompileComplete.Str(),
+					Checkpoint_6_ServiceRestarted.Str(),
+					Checkpoint_7_CycleEnd.Str(),
 				},
 			}),
-			"DownstreamEffect": jsonschema.OptionalString(jsonschema.Def{
-				Description: "What downstream action this hook's completion triggers.",
-				Enum: []string{
-					DownstreamEffectAppRestart.Str(),
-					DownstreamEffectHardReloadBrowser.Str(),
-					DownstreamEffectClientDataRevalidate.Str(),
+			"Effects": jsonschema.OptionalArray(jsonschema.Def{
+				Description: "What effects this hook causes in the current build cycle.",
+				Items: jsonschema.Entry{
+					Type: jsonschema.TypeString,
+					Enum: []string{
+						EffectRestartApp.Str(),
+						EffectHardReloadBrowser.Str(),
+						EffectRevalidateClientData.Str(),
+						EffectProcessPrivateStatic.Str(),
+						EffectShowFrontendRebuildingOverlay.Str(),
+						EffectNoFrontendSettling.Str(),
+					},
 				},
 			}),
-			"IncludeFrontendRebuildingOverlay": jsonschema.OptionalBoolean(
-				jsonschema.Def{
-					Description: "When true, a rebuilding overlay is shown in the browser while this hook runs.",
-				},
-			),
 			"DevOnly": jsonschema.OptionalBoolean(jsonschema.Def{
 				Description: "When true, this hook only runs in dev mode.",
 			}),

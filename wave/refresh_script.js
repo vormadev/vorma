@@ -11,9 +11,12 @@ const REFRESH_PAYLOAD_KEY = {
 	change_type: "change_type",
 	critical_css: "critical_css",
 	non_critical_css_url: "non_critical_css_url",
+	build_error: "build_error",
 };
 const CHANGE_TYPE = {
 	show_rebuilding_overlay: "show_rebuilding_overlay",
+	hide_rebuilding_overlay: "hide_rebuilding_overlay",
+	build_error: "build_error",
 	hard_reload: "hard_reload",
 	critical_css: "critical_css",
 	non_critical_css: "non_critical_css",
@@ -56,6 +59,45 @@ refresh_ws_url.search = "";
 refresh_ws_url.hash = "";
 
 const ws = new WebSocket(refresh_ws_url.toString());
+let is_data_revalidating = false;
+
+function upsert_rebuilding_overlay(inner_html, background_color) {
+	let el = document.getElementById(EL_IDS.rebuilding_overlay);
+	if (!el) {
+		el = document.createElement("div");
+		el.id = EL_IDS.rebuilding_overlay;
+		el.style.display = "flex";
+		el.style.position = "fixed";
+		el.style.inset = "0";
+		el.style.width = "100%";
+		el.style.color = "white";
+		el.style.textAlign = "center";
+		el.style.padding = "10px";
+		el.style.zIndex = "1000";
+		el.style.fontFamily = "monospace";
+		el.style.fontSize = "7vw";
+		el.style.fontWeight = "bold";
+		el.style.textShadow = "2px 2px 2px #000";
+		el.style.justifyContent = "center";
+		el.style.alignItems = "center";
+		el.style.opacity = "0";
+		el.style.transition = "opacity 0.05s";
+		document.body.appendChild(el);
+		setTimeout(() => {
+			el.style.opacity = "1";
+		}, 12);
+	}
+	el.innerHTML = inner_html;
+	el.style.backgroundColor = background_color;
+	return el;
+}
+
+function hide_rebuilding_overlay() {
+	if (is_data_revalidating) {
+		return;
+	}
+	document.getElementById(EL_IDS.rebuilding_overlay)?.remove();
+}
 
 ws.onmessage = (e) => {
 	const parsed = JSON.parse(e.data);
@@ -63,36 +105,20 @@ ws.onmessage = (e) => {
 	const non_critical_css_url =
 		parsed[REFRESH_PAYLOAD_KEY.non_critical_css_url];
 	const critical_css = parsed[REFRESH_PAYLOAD_KEY.critical_css];
+	const build_error = parsed[REFRESH_PAYLOAD_KEY.build_error];
 
 	if (change_type === CHANGE_TYPE.show_rebuilding_overlay) {
 		log_info("Rebuilding");
-		const current_el = document.getElementById(EL_IDS.rebuilding_overlay);
-		if (!current_el) {
-			const el = document.createElement("div");
-			el.id = EL_IDS.rebuilding_overlay;
-			el.innerHTML = "Rebuilding...";
-			el.style.display = "flex";
-			el.style.position = "fixed";
-			el.style.inset = "0";
-			el.style.width = "100%";
-			el.style.backgroundColor = "#333a";
-			el.style.color = "white";
-			el.style.textAlign = "center";
-			el.style.padding = "10px";
-			el.style.zIndex = "1000";
-			el.style.fontFamily = "monospace";
-			el.style.fontSize = "7vw";
-			el.style.fontWeight = "bold";
-			el.style.textShadow = "2px 2px 2px #000";
-			el.style.justifyContent = "center";
-			el.style.alignItems = "center";
-			el.style.opacity = "0";
-			el.style.transition = "opacity 0.05s";
-			document.body.appendChild(el);
-			setTimeout(() => {
-				el.style.opacity = "1";
-			}, 12);
-		}
+		upsert_rebuilding_overlay("Rebuilding...", "#333a");
+	}
+
+	if (change_type === CHANGE_TYPE.hide_rebuilding_overlay) {
+		hide_rebuilding_overlay();
+	}
+
+	if (change_type === CHANGE_TYPE.build_error) {
+		log_err("Build error", build_error);
+		upsert_rebuilding_overlay("Build error", "#700e");
 	}
 
 	if (change_type === CHANGE_TYPE.hard_reload) {
@@ -128,6 +154,7 @@ ws.onmessage = (e) => {
 	}
 
 	if (change_type === CHANGE_TYPE.data_revalidate) {
+		is_data_revalidating = true;
 		if (window[SYMBOLS.data_revalidate_fn]) {
 			log_info("Revalidating data");
 			Promise.resolve()
@@ -139,13 +166,13 @@ ws.onmessage = (e) => {
 					log_err("Data revalidation failed", err);
 				})
 				.finally(() => {
-					document
-						.getElementById(EL_IDS.rebuilding_overlay)
-						?.remove();
+					is_data_revalidating = false;
+					hide_rebuilding_overlay();
 				});
 		} else {
+			is_data_revalidating = false;
 			log_err("Data revalidation function not found");
-			document.getElementById(EL_IDS.rebuilding_overlay)?.remove();
+			hide_rebuilding_overlay();
 		}
 	}
 };

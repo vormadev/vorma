@@ -4,7 +4,6 @@ import (
 	"flag"
 	"log"
 
-	"site/backend"
 	"site/backend/internal/docsync"
 )
 
@@ -17,10 +16,7 @@ func main() {
 	flag.Parse()
 
 	if *rewriteOnly {
-		rewritten, err := docsync.ResolveGeneratedDocsPublicURLs(
-			backend.Wave.ParsedConfig(),
-			backend.Wave.Logger(),
-		)
+		rewritten, err := docsync.ResolveGeneratedDocsPublicURLs()
 		if err != nil {
 			log.Fatalf("rewrite docs URLs failed: %v", err)
 		}
@@ -28,10 +24,7 @@ func main() {
 		return
 	}
 
-	res, err := docsync.SyncAndResolvePublicURLs(
-		backend.Wave.ParsedConfig(),
-		backend.Wave.Logger(),
-	)
+	res, err := docsync.SyncAndResolvePublicURLs()
 	if err != nil {
 		log.Fatalf("sync docs failed: %v", err)
 	}

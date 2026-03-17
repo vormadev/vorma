@@ -15,7 +15,10 @@ import (
 	"github.com/vormadev/vorma/kit/procutil"
 )
 
-const vite_grace_period = 2 * time.Second
+const (
+	vite_grace_period  = 2 * time.Second
+	vite_ready_timeout = 10 * time.Second
+)
 
 /////////////////////////////////////////////////////////////////////
 /////// Vite build config (shared by dev supervisor and prod build)
@@ -93,7 +96,7 @@ func (vs *vite_supervisor) start() error {
 		args = append(args, "--config", vs.cfg.config_file)
 	}
 
-	vs.logger.Info("Starting vite dev server",
+	vs.logger.Info("Starting Vite dev server",
 		"command", strings.Join(args, " "),
 		"port", vs.port,
 	)
@@ -110,11 +113,11 @@ func (vs *vite_supervisor) start() error {
 
 	if err := cmd.Start(); err != nil {
 		vs.mu.Unlock()
-		return fmt.Errorf("failed to start vite dev server: %w", err)
+		return fmt.Errorf("Failed to start Vite dev server: %w", err)
 	}
 
 	if err := write_pid_file(vs.pid_file, cmd.Process.Pid); err != nil {
-		vs.logger.Warn("failed to write vite pid file", "err", err)
+		vs.logger.Warn("Failed to write Vite pid file", "err", err)
 	}
 
 	vs.cmd = cmd
@@ -128,10 +131,18 @@ func (vs *vite_supervisor) start() error {
 
 	vs.mu.Unlock()
 
-	vs.logger.Info(fmt.Sprintf(
-		"vite dev server started → http://localhost:%d",
-		vs.port,
-	))
+	if err := poll_http_ready_endpoint(
+		done,
+		&vs.exit_err,
+		fmt.Sprintf("http://127.0.0.1:%d/@vite/client", vs.port),
+		"Vite dev server",
+		vite_ready_timeout,
+	); err != nil {
+		vs.stop()
+		return err
+	}
+
+	vs.logger.Info("⟶ Vite dev server ready", "port", vs.port)
 
 	// watch for unexpected vite exit
 	go vs.watch_for_crash()
@@ -158,8 +169,8 @@ func (vs *vite_supervisor) watch_for_crash() {
 
 	if !was_intentional {
 		vs.logger.Warn(
-			"vite dev server exited unexpectedly — " +
-				"restart wave to recover vite",
+			"Vite dev server exited unexpectedly — " +
+				"restart Wave to recover Vite",
 		)
 	}
 }
@@ -177,16 +188,16 @@ func (vs *vite_supervisor) stop() {
 	done := vs.done
 	vs.mu.Unlock()
 
-	vs.logger.Info("Stopping vite dev server")
+	vs.logger.Info("Stopping Vite dev server")
 
 	procutil.RequestStop(pid)
 
 	select {
 	case <-done:
-		vs.logger.Info("vite dev server stopped")
+		vs.logger.Info("Vite dev server stopped")
 	case <-time.After(vite_grace_period):
 		vs.logger.Info(
-			"Vite did not stop within grace period, killing",
+			"Vite did not stop within grace period. Killing instead.",
 		)
 		procutil.ForceKill(pid)
 		<-done
@@ -252,9 +263,9 @@ func run_vite_prod_build(
 	if err := cmd.Run(); err != nil {
 		captured := strings.TrimSpace(stderr_buf.String())
 		if captured != "" {
-			return fmt.Errorf("vite build (prod) failed: %w: %s", err, captured)
+			return fmt.Errorf("Vite build (prod) failed: %w: %s", err, captured)
 		}
-		return fmt.Errorf("vite build (prod) failed: %w", err)
+		return fmt.Errorf("Vite build (prod) failed: %w", err)
 	}
 
 	// move the temp manifest to the caller's desired location
@@ -263,12 +274,12 @@ func run_vite_prod_build(
 	)
 	if err := os.Rename(temp_manifest, opts.ManifestOut); err != nil {
 		return fmt.Errorf(
-			"failed to move vite manifest from %s to %s: %w",
+			"Failed to move Vite manifest from %s to %s: %w",
 			temp_manifest, opts.ManifestOut, err,
 		)
 	}
 
-	logger.Info("vite build (prod) complete",
+	logger.Info("Vite build (prod) complete",
 		"manifest", opts.ManifestOut,
 		"outDir", opts.OutDir,
 	)

@@ -2,6 +2,7 @@ package wavebuild
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -15,7 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/id"
@@ -29,30 +29,8 @@ import (
 	"github.com/vormadev/vorma/wave/internal/cssbundle"
 	"github.com/vormadev/vorma/wave/internal/fswatcher"
 	"github.com/vormadev/vorma/wave/internal/staticproc"
-	"github.com/vormadev/vorma/wave/internal/workset"
 	"golang.org/x/sync/errgroup"
 )
-
-/////////////////////////////////////////////////////////////////////
-/////// Helpers
-/////////////////////////////////////////////////////////////////////
-
-func path_match(
-	pattern strict.CWDRelPath,
-	path strict.CWDRelPath,
-) (bool, error) {
-	match, err := doublestar.PathMatch(pattern.Str(), path.Str())
-	if err != nil {
-		return false, fmt.Errorf(
-			"invalid pattern: %w", err,
-		)
-	}
-	return match, nil
-}
-
-func extension(path strict.CWDRelPath) string {
-	return filepath.Ext(path.Str())
-}
 
 /////////////////////////////////////////////////////////////////////
 /////// Build step (table-driven build orchestration)
@@ -88,10 +66,8 @@ type super_state struct {
 	logger             *slog.Logger
 
 	// plugin
-	plugin         *Plugin                   // raw definition, nil if no plugin
-	plugin_name    string                    // empty if no plugin
-	plugin_cfg     *validated_plugin_config  // validated early, stable across reloads
-	plugin_runtime *validated_plugin_runtime // re-validated on each config reload
+	plugins     []*Plugin
+	plugin_cfgs []*validated_plugin_config
 
 	all_hooks []validated_lifecycle_hook
 
@@ -109,14 +85,14 @@ type super_state struct {
 
 	// watch loop state (guarded by mu)
 	mu                   sync.Mutex
-	pending_triggers     *set.Set[workset.Trigger]
+	pending_triggers     *set.Set[trigger]
 	pending_evt_paths    *set.Set[strict.CWDRelPath]
 	pending_hook_indices *set.Set[int]
 	is_building          bool
 	build_cycle_id       string
 
 	// per-cycle state (set at top of run_build, valid for its duration)
-	cycle_triggers   *set.Set[workset.Trigger]
+	cycle_triggers   *set.Set[trigger]
 	cycle_evt_paths  *set.Set[strict.CWDRelPath]
 	cycle_is_initial bool
 	cycle_shared     *plugin_shared_state
@@ -193,8 +169,8 @@ func (s *super_state) write_runtime_cfg() error {
 }
 
 // reload_config orchestrates a full config reload: parse and
-// validate the user config, call the plugin's Config.Parse (if
-// any), then re-validate the plugin's runtime hooks against the
+// validate the user config, call each plugin's Config.Parse (if
+// any), then re-validate the plugins' hooks against the
 // new root_dir.
 func (s *super_state) reload_config() error {
 	old_root := strict.CWDRelPath("")
@@ -207,23 +183,20 @@ func (s *super_state) reload_config() error {
 		return err
 	}
 
-	plugin_runtime, err := s.validate_plugin_runtime_for_cfg(cfg)
+	if err := s.run_plugin_config_parse(cfg); err != nil {
+		return err
+	}
+
+	plugin_hooks, err := s.validate_plugin_hooks_for_cfg(cfg)
 	if err != nil {
 		return err
 	}
 
 	all_hooks := slices.Clone(cfg.lifecycle_hooks)
-	if plugin_runtime != nil {
-		all_hooks = append(all_hooks, plugin_runtime.hooks...)
-	}
-
-	if err := s.run_plugin_config_parse(cfg); err != nil {
-		return err
-	}
+	all_hooks = append(all_hooks, plugin_hooks...)
 
 	s.cfg = cfg
 	s.vite_build_cfg = vite_build_cfg
-	s.plugin_runtime = plugin_runtime
 	s.all_hooks = all_hooks
 
 	if !s.cfg.using_private_static() {
@@ -246,11 +219,11 @@ func (s *super_state) reload_config() error {
 	return nil
 }
 
-// run_plugin_config_parse extracts the plugin's config section from
-// the raw config JSON and calls the plugin's Parse function with a
+// run_plugin_config_parse extracts each plugin's config section from
+// the raw config JSON and calls its Parse function with a
 // ConfigReader that provides access to the validated user config.
 func (s *super_state) run_plugin_config_parse(cfg *validated_config) error {
-	if s.plugin_cfg == nil || s.plugin_cfg.json_key == "" {
+	if len(s.plugin_cfgs) == 0 {
 		return nil
 	}
 	if len(cfg.raw_file_json) == 0 {
@@ -260,63 +233,79 @@ func (s *super_state) run_plugin_config_parse(cfg *validated_config) error {
 	if err := json.Unmarshal(cfg.raw_file_json, &sections); err != nil {
 		return fmt.Errorf("failed to parse config sections: %w", err)
 	}
-	section, exists := sections[s.plugin_cfg.json_key]
-	var raw_json *json.RawMessage
-	if exists {
-		raw_json = &section
-	}
-	parse_fn_ctx := &PluginConfigParseCtx{
-		RawJSON:    raw_json,
-		UserConfig: &UserConfig{validated_config: cfg},
-	}
-	if err := s.plugin_cfg.parse_fn(parse_fn_ctx); err != nil {
-		return fmt.Errorf(
-			"config section %q: %w", s.plugin_cfg.json_key, err,
-		)
+	for _, plugin_cfg := range s.plugin_cfgs {
+		if plugin_cfg == nil || plugin_cfg.json_key == "" ||
+			plugin_cfg.parse_fn == nil {
+			continue
+		}
+		section, exists := sections[plugin_cfg.json_key]
+		var raw_json *json.RawMessage
+		if exists {
+			raw_json = &section
+		}
+		parse_fn_ctx := &PluginConfigParseCtx{
+			RawJSON:    raw_json,
+			UserConfig: &UserConfig{validated_config: cfg},
+		}
+		if err := plugin_cfg.parse_fn(parse_fn_ctx); err != nil {
+			return fmt.Errorf(
+				"config section %q: %w", plugin_cfg.json_key, err,
+			)
+		}
 	}
 	return nil
 }
 
-// Re-validates the plugin's runtime hooks against the given root_dir.
+// Re-validates all plugin hooks against the given root_dir.
 // Called on every config reload so that watch patterns are resolved
 // against the (possibly changed) root_dir.
-func (s *super_state) validate_plugin_runtime_for_cfg(
+func (s *super_state) validate_plugin_hooks_for_cfg(
 	cfg *validated_config,
-) (*validated_plugin_runtime, error) {
-	if s.plugin == nil {
+) ([]validated_lifecycle_hook, error) {
+	if len(s.plugins) == 0 {
 		return nil, nil
 	}
-	vr, err := validate_plugin_runtime(
-		s.plugin_name,
-		s.plugin.LifecycleHooks,
-		s.plugin.OwnsPublicStaticFrontendSettling,
-		cfg.root_dir,
+	plugin_hooks := make(
+		[]validated_lifecycle_hook,
+		0,
+		len(s.plugins),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("plugin runtime validation failed: %w", err)
+	for _, plugin := range s.plugins {
+		hooks, err := validate_plugin_hooks(
+			strings.TrimSpace(plugin.Name),
+			plugin.LifecycleHooks,
+			cfg.root_dir,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("plugin hook validation failed: %w", err)
+		}
+		plugin_hooks = append(plugin_hooks, hooks...)
 	}
-	return vr, nil
+	return plugin_hooks, nil
 }
 
-func (s *super_state) derive_opts(
-	triggers *set.Set[workset.Trigger],
-) workset.DeriveOpts {
-	return workset.DeriveOpts{
-		Triggers:          triggers,
-		HasPrivateStatic:  s.cfg.using_private_static(),
-		HasPublicStatic:   s.cfg.using_public_static(),
-		HasCriticalCSS:    s.cfg.using_critical_css(),
-		HasNonCriticalCSS: s.cfg.using_non_critical_css(),
-		PluginOwnsPublicStaticFrontendSettling: s.plugin_runtime != nil &&
-			s.plugin_runtime.owns_public_static_frontend_settling,
+func (s *super_state) new_derive_workset_opts(
+	triggers *set.Set[trigger],
+	no_frontend_settling bool,
+) derive_workset_opts {
+	return derive_workset_opts{
+		triggers:             triggers,
+		has_private_static:   s.cfg.using_private_static(),
+		has_public_static:    s.cfg.using_public_static(),
+		has_critical_css:     s.cfg.using_critical_css(),
+		has_non_critical_css: s.cfg.using_non_critical_css(),
+		no_frontend_settling: no_frontend_settling,
 	}
 }
 
 func (s *super_state) log_build_err(err error) {
 	s.logger.Warn(fmt.Sprintf(
-		"build error — %s — edit the offending watched files to retry",
+		"Build error — %s — edit the offending watched files to retry",
 		err,
 	))
+	if s.browser != nil {
+		s.browser.show_build_error(err.Error())
+	}
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -475,13 +464,12 @@ func (s *super_state) build_scheduled_hooks(
 			continue
 		}
 		sh := scheduled_hook{
-			name:         vh.name,
-			start_at:     vh.start_at,
-			finish_by:    vh.finish_by,
-			downstream:   vh.downstream,
-			show_overlay: vh.show_overlay,
-			cmd:          vh.cmd,
-			fn:           vh.fn,
+			name:      vh.name,
+			start_at:  vh.start_at,
+			finish_by: vh.finish_by,
+			effects:   vh.effects,
+			cmd:       vh.cmd,
+			fn:        vh.fn,
 		}
 		if vh.fn != nil {
 			sh.plugin_ctx = new_plugin_ctx(s, &hooks[i])
@@ -496,7 +484,7 @@ func (s *super_state) build_scheduled_hooks(
 /////////////////////////////////////////////////////////////////////
 
 type classify_result struct {
-	trigger workset.Trigger
+	trigger trigger
 	matched bool
 }
 
@@ -515,7 +503,7 @@ func (s *super_state) classify_evt(evt fswatcher.Evt) (classify_result, error) {
 		}
 		if priv_match {
 			return classify_result{
-				trigger: workset.PrivateStaticSrcChanged, matched: true,
+				trigger: private_static_src_changed, matched: true,
 			}, nil
 		}
 	}
@@ -530,7 +518,7 @@ func (s *super_state) classify_evt(evt fswatcher.Evt) (classify_result, error) {
 		}
 		if pub_match {
 			return classify_result{
-				trigger: workset.PublicStaticSrcChanged, matched: true,
+				trigger: public_static_src_changed, matched: true,
 			}, nil
 		}
 	}
@@ -541,7 +529,7 @@ func (s *super_state) classify_evt(evt fswatcher.Evt) (classify_result, error) {
 		s.critical_css_patterns != nil &&
 		s.critical_css_patterns.Has(evt.Path) {
 		return classify_result{
-			trigger: workset.CriticalCSSSrcChanged, matched: true,
+			trigger: critical_css_src_changed, matched: true,
 		}, nil
 	}
 
@@ -550,7 +538,7 @@ func (s *super_state) classify_evt(evt fswatcher.Evt) (classify_result, error) {
 		s.non_critical_css_patterns != nil &&
 		s.non_critical_css_patterns.Has(evt.Path) {
 		return classify_result{
-			trigger: workset.NonCriticalCSSSrcChanged, matched: true,
+			trigger: non_critical_css_src_changed, matched: true,
 		}, nil
 	}
 
@@ -592,11 +580,8 @@ func (s *super_state) get_public_filemap(
 	s.logger.Debug("Getting public filemap")
 	var err error
 	sp := &staticproc.StaticProcessor{
-		SrcDir: s.cfg.core.StaticAssetDirs.Public,
-		PassthroughDirnames: []string{
-			constants.PUBLIC_STATIC_EXCLUDE_DIR_1,
-			constants.PUBLIC_STATIC_EXCLUDE_DIR_2,
-		},
+		SrcDir:              s.cfg.core.StaticAssetDirs.Public,
+		PassthroughDirnames: []string{constants.PUBLIC_STATIC_EXCLUDE_DIR},
 		OutDir: s.cfg_path.Dir().Join(
 			constants.DIST_DIRNAME,
 			constants.STATIC_ASSETS_PUBLIC_DIR,
@@ -672,7 +657,7 @@ func (s *super_state) apply_diff(
 /////////////////////////////////////////////////////////////////////
 
 type build_params struct {
-	triggers     *set.Set[workset.Trigger]
+	triggers     *set.Set[trigger]
 	evt_paths    *set.Set[strict.CWDRelPath]
 	hook_indices *set.Set[int]
 	should_abort func() bool
@@ -698,18 +683,19 @@ func (s *super_state) wipe_internal_dir() error {
 //
 // The build is driven by a table of checkpoint/phase pairs:
 //
-//	Checkpoint 1 → Phase A: asset pipeline (wave-owned)
-//	Checkpoint 2 → Phase B: finalize public filemap (merge plugin contributions, apply diffs, write filemap JSON)
-//	Checkpoint 3 (compilation hooks run here by contract) → Phase C: no-op
-//	Checkpoint 4 → Phase D: backend settling (app restart)
-//	Checkpoint 5 → Phase E: frontend settling (browser signals)
-//	Checkpoint 6 → (no phase — cycle end)
+//	Checkpoint 1 (cycle_start) → Phase A: public asset pipeline (wave-owned)
+//	Checkpoint 2 (userland_public_filemap_ready) → Phase B: finalize public filemap (merge plugin contributions, apply diffs, write filemap JSON)
+//	Checkpoint 3 (full_public_filemap_finalized) → Phase C: private asset pipeline (wave-owned)
+//	Checkpoint 4 (go_compile) → Phase D: no-op
+//	Checkpoint 5 (go_compile_complete) → Phase E: backend settling (app restart)
+//	Checkpoint 6 (service_restarted) → Phase F: frontend settling (browser signals)
+//	Checkpoint 7 (cycle_end) → (no phase — cycle end)
 //
 // At each step the loop: starts all hooks with start_at=N, checks
 // for abort, awaits all hooks with finish_by=N, merges their
 // effects, then runs the phase. Hooks span checkpoints for
-// concurrency: start_at=1, finish_by=3 runs concurrently across
-// the asset pipeline, checkpoint 2, and compilation.
+// concurrency: start_at=1, finish_by=4 runs concurrently across
+// the public asset pipeline, checkpoints 2 and 3, and compilation.
 func (s *super_state) run_build(p build_params) (bool, error) {
 	var wave_processing_duration time.Duration
 
@@ -751,22 +737,41 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 
 	cycle_hooks := slices.Clone(s.all_hooks)
 
-	// ensure public_fm is always initialized so downstream phases
-	// never encounter a nil filemap
+	has_matched_no_frontend_settling_hook := false
+	if p.hook_indices != nil {
+		for i, hook := range cycle_hooks {
+			if !p.hook_indices.Has(i) {
+				continue
+			}
+			if slices.Contains(hook.effects, EffectNoFrontendSettling) {
+				has_matched_no_frontend_settling_hook = true
+			}
+			if has_matched_no_frontend_settling_hook {
+				break
+			}
+		}
+	}
+
+	// ensure public_fm is always initialized
 	if s.public_fm == nil {
 		s.public_fm = s.new_public_phantom_filemap()
 	}
 
 	// compute effects from triggers
-	fx := workset.Derive(s.derive_opts(p.triggers))
-	force_private_diff := p.triggers.Has(workset.ConfigChanged) &&
+	fx := derive_workset(
+		s.new_derive_workset_opts(
+			p.triggers,
+			has_matched_no_frontend_settling_hook,
+		),
+	)
+	force_private_diff := p.triggers.Has(config_changed) &&
 		!s.cfg.using_private_static()
-	force_public_diff := p.triggers.Has(workset.ConfigChanged) &&
+	force_public_diff := p.triggers.Has(config_changed) &&
 		!s.cfg.using_public_static()
 
 	// initial dev builds always start the server
 	if p.is_initial && s.is_dev {
-		fx.Add(workset.RestartAppServer)
+		fx.Add(EffectRestartApp)
 	}
 
 	// compute hook env once for this cycle — picks up any config changes
@@ -776,12 +781,13 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 	hooks := s.build_scheduled_hooks(p.hook_indices, cycle_hooks)
 
 	for _, h := range hooks {
-		if h.show_overlay {
-			fx.Add(workset.ShowRebuildingOverlay)
-		}
-		switch h.downstream {
-		case DownstreamEffectAppRestart, DownstreamEffectHardReloadBrowser:
-			fx.Add(workset.ShowRebuildingOverlay)
+		for _, effect := range h.effects {
+			switch effect {
+			case EffectRestartApp,
+				EffectHardReloadBrowser,
+				EffectShowFrontendRebuildingOverlay:
+				fx.Add(EffectShowFrontendRebuildingOverlay)
+			}
 		}
 	}
 
@@ -798,7 +804,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 	stop_started := false
 	ensure_stop_started := func() {
 		if stop_started || !s.is_dev ||
-			!fx.Has(workset.RestartAppServer) ||
+			!fx.Has(EffectRestartApp) ||
 			s.supervisor == nil {
 			return
 		}
@@ -818,21 +824,21 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 	ensure_stop_started()
 
 	if s.is_dev && !p.is_initial && s.browser != nil &&
-		fx.Has(workset.ShowRebuildingOverlay) {
+		fx.Has(EffectShowFrontendRebuildingOverlay) {
 		s.browser.send_rebuilding()
 	}
 
 	// Phase closures capture fx and p from the enclosing scope.
 	// Each returns (aborted, error).
 
-	phase_asset_pipeline := func() (bool, error) {
+	phase_public_asset_pipeline := func() (bool, error) {
 		phase_start := time.Now()
 
 		// Nuke internal dir to clear stale artifacts from
 		// features that may have been disabled (e.g. critical
 		// CSS removed from config). The directory is re-created
 		// immediately and repopulated during the build phases.
-		if p.triggers.Has(workset.ConfigChanged) {
+		if p.triggers.Has(config_changed) {
 			if err := s.wipe_internal_dir(); err != nil {
 				return false, fmt.Errorf(
 					"failed to clear internal dir: %w",
@@ -844,39 +850,23 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 			return false, fmt.Errorf("failed to write runtime config: %w", err)
 		}
 
-		// get static filemaps in parallel
-		var g errgroup.Group
-		if fx.Has(workset.BuildPrivateFilemap) {
-			g.Go(func() error { return s.get_private_filemap(p.evt_paths) })
-		}
-		if fx.Has(workset.BuildPublicFilemap) {
-			g.Go(func() error { return s.get_public_filemap(p.evt_paths) })
-		}
-		if err := g.Wait(); err != nil {
-			return false, err
+		// get public filemap
+		if fx.Has(effect_build_public_filemap) {
+			if err := s.get_public_filemap(p.evt_paths); err != nil {
+				return false, err
+			}
 		}
 
 		// css bundles in parallel
 		var g2 errgroup.Group
-		if fx.Has(workset.BuildCriticalCSS) {
+		if fx.Has(effect_build_critical_css) {
 			g2.Go(s.build_critical_css)
 		}
-		if fx.Has(workset.BuildNonCriticalCSS) {
+		if fx.Has(effect_build_non_critical_css) {
 			g2.Go(s.build_non_critical_css)
 		}
 		if err := g2.Wait(); err != nil {
 			return false, err
-		}
-
-		// apply private diffs only (public is deferred to phase B)
-		if (fx.Has(workset.BuildPrivateFilemap) || force_private_diff) &&
-			s.private_fm != nil {
-			if err := s.apply_diff(
-				s.private_fm,
-				s.cfg_path.Dir().Join(constants.DIST_DIRNAME, constants.STATIC_INTERNAL_DIR, constants.PRIVATE_FILEMAP_JSON_FILENAME),
-			); err != nil {
-				return false, err
-			}
 		}
 
 		// mark public filemap as userland-committed — phase A is done,
@@ -904,6 +894,16 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 		plugin_contributed_to_filemap := len(contributions) > 0
 
 		if plugin_contributed_to_filemap {
+			public_fm_map := s.public_fm.Map()
+			for logical_path := range contributions {
+				if _, exists := public_fm_map[logical_path]; exists {
+					return false, fmt.Errorf(
+						"plugin public file contribution overlaps with existing public file %q",
+						logical_path,
+					)
+				}
+			}
+
 			// merge plugin contributions into the public filemap
 			s.public_fm.Set(contributions)
 
@@ -916,9 +916,9 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 		// generate client-side filemap JSON for browser consumption
 		needs_public_write := force_public_diff ||
 			plugin_contributed_to_filemap || fx.HasAny(
-			workset.BuildPublicFilemap,
-			workset.BuildCriticalCSS,
-			workset.BuildNonCriticalCSS,
+			effect_build_public_filemap,
+			effect_build_critical_css,
+			effect_build_non_critical_css,
 		)
 
 		if needs_public_write {
@@ -952,6 +952,30 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 
 		wave_processing_duration += time.Since(phase_start)
 
+		return false, nil
+	}
+
+	phase_private_asset_pipeline := func() (bool, error) {
+		phase_start := time.Now()
+
+		if fx.Has(effect_build_private_filemap) {
+			if err := s.get_private_filemap(p.evt_paths); err != nil {
+				return false, err
+			}
+		}
+
+		if (fx.Has(effect_build_private_filemap) || force_private_diff) &&
+			s.private_fm != nil {
+			if err := s.apply_diff(
+				s.private_fm,
+				s.cfg_path.Dir().Join(constants.DIST_DIRNAME, constants.STATIC_INTERNAL_DIR, constants.PRIVATE_FILEMAP_JSON_FILENAME),
+			); err != nil {
+				return false, err
+			}
+		}
+
+		wave_processing_duration += time.Since(phase_start)
+
 		s.logger.Info(
 			"Static processing complete",
 			"duration",
@@ -963,7 +987,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 
 	phase_backend_settle := func() (bool, error) {
 		bin_out := s.cfg.core.binary_output_path_abs
-		if s.is_dev && fx.Has(workset.RestartAppServer) {
+		if s.is_dev && fx.Has(EffectRestartApp) {
 			if stop_done != nil {
 				<-stop_done
 				s.pending_stop_done = nil
@@ -989,15 +1013,19 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 	}
 
 	phase_frontend_settle := func() (bool, error) {
+		if has_matched_no_frontend_settling_hook ||
+			fx.Has(EffectNoFrontendSettling) {
+			return false, nil
+		}
 		if s.cfg.core.ServerOnlyMode {
 			return false, nil
 		}
 		if s.is_dev && !p.is_initial && s.browser != nil {
 			needs_settle := fx.HasAny(
-				workset.HardReloadBrowser,
-				workset.ClientDataRevalidate,
-				workset.BuildCriticalCSS,
-				workset.BuildNonCriticalCSS,
+				EffectHardReloadBrowser,
+				EffectRevalidateClientData,
+				effect_build_critical_css,
+				effect_build_non_critical_css,
 			)
 
 			if needs_settle {
@@ -1005,7 +1033,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 					return true, nil
 				}
 				non_critical_css_url := ""
-				if fx.Has(workset.BuildNonCriticalCSS) {
+				if fx.Has(effect_build_non_critical_css) {
 					non_critical_css_url = path.Join(
 						s.cfg.core.PublicPathPrefix,
 						s.public_fm.Map()[constants.NON_CRITICAL_CSS_FILENAME],
@@ -1024,12 +1052,13 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 	// The build step table. Each entry pairs a checkpoint with an
 	// optional phase that runs after the checkpoint's hooks complete.
 	steps := []build_step{
-		{1, phase_asset_pipeline},
+		{1, phase_public_asset_pipeline},
 		{2, phase_finalize_public},
-		{3, nil},
-		{4, phase_backend_settle},
-		{5, phase_frontend_settle},
-		{6, nil},
+		{3, phase_private_asset_pipeline},
+		{4, nil},
+		{5, phase_backend_settle},
+		{6, phase_frontend_settle},
+		{7, nil},
 	}
 
 	for _, step := range steps {
@@ -1042,7 +1071,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 		hook_fx, err := scheduler.await_checkpoint(step.checkpoint)
 		if err != nil {
 			if p.should_abort() {
-				s.logger.Warn("hook error (superseded by new events)",
+				s.logger.Warn("Hook error (superseded by new events)",
 					"error", err,
 				)
 				return false, nil
@@ -1063,6 +1092,10 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 				return true, err
 			}
 		}
+	}
+
+	if s.is_dev && !p.is_initial && s.browser != nil {
+		s.browser.hide_rebuilding()
 	}
 
 	return true, nil
@@ -1111,7 +1144,7 @@ func (s *super_state) drain_and_build() {
 
 		// full rebuild: reload config, discard incremental paths,
 		// and run all hooks
-		if triggers != nil && triggers.Has(workset.ConfigChanged) {
+		if triggers != nil && triggers.Has(config_changed) {
 			if err := s.reload_config(); err != nil {
 				log_err_and_unlock(err)
 				return
@@ -1122,7 +1155,7 @@ func (s *super_state) drain_and_build() {
 
 		// ensure non-nil triggers for derive
 		if triggers == nil {
-			triggers = &set.Set[workset.Trigger]{}
+			triggers = &set.Set[trigger]{}
 		}
 
 		completed, err := s.run_build(build_params{
@@ -1175,7 +1208,7 @@ func (s *super_state) handle_watch_evts(evts []fswatcher.Evt) error {
 	// skip classification — just ensure drain_and_build is running
 	s.mu.Lock()
 	if s.pending_triggers != nil &&
-		s.pending_triggers.Has(workset.ConfigChanged) {
+		s.pending_triggers.Has(config_changed) {
 		if !s.is_building {
 			s.is_building = true
 			go s.drain_and_build()
@@ -1186,7 +1219,7 @@ func (s *super_state) handle_watch_evts(evts []fswatcher.Evt) error {
 	s.mu.Unlock()
 
 	// classify events into triggers and hook indices
-	triggers := &set.Set[workset.Trigger]{}
+	triggers := &set.Set[trigger]{}
 	hook_indices := &set.Set[int]{}
 	evt_paths := &set.Set[strict.CWDRelPath]{}
 	var parse_err error
@@ -1216,10 +1249,10 @@ func (s *super_state) handle_watch_evts(evts []fswatcher.Evt) error {
 				s.logger.Info(
 					"Config changed, triggering full build",
 				)
-				triggers.Add(workset.ConfigChanged)
+				triggers.Add(config_changed)
 				break
 			}
-			s.logger.Info("config file unchanged")
+			s.logger.Info("Config file unchanged")
 			continue
 		}
 
@@ -1308,23 +1341,27 @@ func (s *super_state) is_globally_excluded(
 /////// Entrypoint
 /////////////////////////////////////////////////////////////////////
 
+//go:embed default_gitignore.txt
+var default_gitignore []byte
+
 type BuildOpts struct {
 	// Must be relative to your literal process CWD.
 	ConfigPath strict.CWDRelPath
 	IsDev      bool
 	Logger     *slog.Logger
-	Plugin     *Plugin
+	Plugins    []*Plugin
 }
 
 func Build(opts BuildOpts) {
 	build_ctx, build_cancel := context.WithCancel(context.Background())
 	defer build_cancel()
+	build_exit_code := 0
 
 	logger := opts.Logger
 	if logger == nil {
 		logger = colorlog.New("wave")
 	}
-	cfg_path := strict.MustNormalize(opts.ConfigPath)
+	cfg_path := strict.MustNormalizeCWDRelPath(opts.ConfigPath)
 
 	// validate config path exists
 	if is_file, err := cfg_path.IsFile(); err != nil || !is_file {
@@ -1346,19 +1383,46 @@ func Build(opts BuildOpts) {
 	// contribution. This is the only plugin work that happens before
 	// the user config is parsed — everything else (Config.Parse,
 	// runtime hook validation) requires a validated config.
-	if opts.Plugin != nil {
-		s.plugin = opts.Plugin
-		s.plugin_name = strings.TrimSpace(opts.Plugin.Name)
-		if s.plugin_name == "" {
-			s.logger.Error("plugin name cannot be empty")
-			os.Exit(1)
+	if len(opts.Plugins) > 0 {
+		s.plugins = make([]*Plugin, 0, len(opts.Plugins))
+		s.plugin_cfgs = make([]*validated_plugin_config, 0, len(opts.Plugins))
+		used_json_keys := make(map[string]string)
+		for i, plugin := range opts.Plugins {
+			if plugin == nil {
+				s.logger.Error(
+					fmt.Sprintf("Plugin at index %d cannot be nil", i),
+				)
+				os.Exit(1)
+			}
+			plugin_name := strings.TrimSpace(plugin.Name)
+			if plugin_name == "" {
+				s.logger.Error(
+					fmt.Sprintf("Plugin at index %d name cannot be empty", i),
+				)
+				os.Exit(1)
+			}
+			plugin_cfg, err := validate_plugin_config(plugin.Config)
+			if err != nil {
+				s.logger.Error(
+					"Plugin config validation failed: " + err.Error(),
+				)
+				os.Exit(1)
+			}
+			if plugin_cfg.json_key != "" {
+				if prior_plugin_name, exists := used_json_keys[plugin_cfg.json_key]; exists {
+					s.logger.Error(fmt.Sprintf(
+						"Plugin config key %q is used by both %q and %q",
+						plugin_cfg.json_key,
+						prior_plugin_name,
+						plugin_name,
+					))
+					os.Exit(1)
+				}
+				used_json_keys[plugin_cfg.json_key] = plugin_name
+			}
+			s.plugins = append(s.plugins, plugin)
+			s.plugin_cfgs = append(s.plugin_cfgs, plugin_cfg)
 		}
-		vc, err := validate_plugin_config(opts.Plugin.Config)
-		if err != nil {
-			s.logger.Error("plugin config validation failed: " + err.Error())
-			os.Exit(1)
-		}
-		s.plugin_cfg = vc
 	}
 
 	// ensure output directories
@@ -1368,7 +1432,7 @@ func Build(opts BuildOpts) {
 		waveout.Join(constants.STATIC_ASSETS_PUBLIC_DIR).Str(),
 		waveout.Join(constants.STATIC_INTERNAL_DIR).Str(),
 	); err != nil {
-		s.logger.Error("failed to ensure output directories: " + err.Error())
+		s.logger.Error("Failed to ensure output directories: " + err.Error())
 		os.Exit(1)
 	}
 	if err := os.WriteFile(
@@ -1376,18 +1440,26 @@ func Build(opts BuildOpts) {
 		[]byte("//go:embed directives require at least one file to compile\n"),
 		0644,
 	); err != nil {
-		s.logger.Error("failed to write .keep file: " + err.Error())
+		s.logger.Error("Failed to write .keep file: " + err.Error())
+		os.Exit(1)
+	}
+	if err := os.WriteFile(
+		waveout.Join(".gitignore").Str(),
+		default_gitignore,
+		0644,
+	); err != nil {
+		s.logger.Error("Failed to write .gitignore: " + err.Error())
 		os.Exit(1)
 	}
 
 	// build and write config schema
 	// Done early so users get IDE autocomplete even if their config
-	// is currently broken. Uses the plugin's static schema contribution.
+	// is currently broken. Uses the plugins' static schema contributions.
 	json_schema_bytes, err := jsonutil.SerializePretty(
-		build_schema(s.plugin_cfg),
+		build_schema(s.plugin_cfgs),
 	)
 	if err != nil {
-		s.logger.Error("failed to serialize config schema: " + err.Error())
+		s.logger.Error("Failed to serialize config schema: " + err.Error())
 		os.Exit(1)
 	}
 	if err := os.WriteFile(
@@ -1395,7 +1467,7 @@ func Build(opts BuildOpts) {
 		append(json_schema_bytes, '\n'),
 		0644,
 	); err != nil {
-		s.logger.Error("failed to write config schema: " + err.Error())
+		s.logger.Error("Failed to write config schema: " + err.Error())
 		os.Exit(1)
 	}
 
@@ -1416,10 +1488,41 @@ func Build(opts BuildOpts) {
 		)
 		if err := s.lock.Acquire(); err != nil {
 			s.logger.Error(
-				"another wave dev server is already running for this project",
+				"Another wave dev server is already running for this project",
 			)
 			os.Exit(1)
 		}
+	}
+
+	var sig_ch chan os.Signal
+	if s.is_dev {
+		var cleanup_once sync.Once
+		dev_cleanup := func() {
+			cleanup_once.Do(func() {
+				build_cancel()
+				if sig_ch != nil {
+					signal.Stop(sig_ch)
+				}
+				if s.supervisor != nil {
+					s.supervisor.stop()
+				}
+				if s.vite_sup != nil {
+					s.vite_sup.stop()
+				}
+				if s.browser != nil {
+					s.browser.stop()
+				}
+				if s.lock != nil {
+					s.lock.Release()
+				}
+			})
+		}
+		defer func() {
+			dev_cleanup()
+			if build_exit_code != 0 {
+				os.Exit(build_exit_code)
+			}
+		}()
 	}
 
 	// dev-only setup: supervisors, browser sync, signal handler
@@ -1431,8 +1534,9 @@ func Build(opts BuildOpts) {
 		// find a free port for the app server
 		port, err := netutil.GetFreePort(8080)
 		if err != nil {
-			s.logger.Error("failed to find free port: " + err.Error())
-			os.Exit(1)
+			s.logger.Error("Failed to find free port: " + err.Error())
+			build_exit_code = 1
+			return
 		}
 		s.dev_port = port
 
@@ -1441,8 +1545,9 @@ func Build(opts BuildOpts) {
 			vite_default_port := int(s.cfg.vite.DefaultPort)
 			vite_port, err := netutil.GetFreePort(vite_default_port)
 			if err != nil {
-				s.logger.Error("failed to find free vite port: " + err.Error())
-				os.Exit(1)
+				s.logger.Error("Failed to find free Vite port: " + err.Error())
+				build_exit_code = 1
+				return
 			}
 			s.vite_port = vite_port
 
@@ -1455,8 +1560,9 @@ func Build(opts BuildOpts) {
 			)
 
 			if err := s.vite_sup.start(); err != nil {
-				s.logger.Error("failed to start vite: " + err.Error())
-				os.Exit(1)
+				s.logger.Error("Failed to start Vite: " + err.Error())
+				build_exit_code = 1
+				return
 			}
 		}
 
@@ -1465,17 +1571,19 @@ func Build(opts BuildOpts) {
 			refresh_port, err := netutil.GetRandomFreePort()
 			if err != nil {
 				s.logger.Error(
-					"failed to find free refresh port: " + err.Error(),
+					"Failed to find free refresh port: " + err.Error(),
 				)
-				os.Exit(1)
+				build_exit_code = 1
+				return
 			}
 			s.refresh_port = refresh_port
 			refresh_token, err := id.New(12)
 			if err != nil {
 				s.logger.Error(
-					"failed to generate browser refresh token: " + err.Error(),
+					"Failed to generate browser refresh token: " + err.Error(),
 				)
-				os.Exit(1)
+				build_exit_code = 1
+				return
 			}
 			s.refresh_token = refresh_token
 			s.browser = new_browser_sync(
@@ -1499,11 +1607,11 @@ func Build(opts BuildOpts) {
 		// signal handling: first signal is graceful, second is
 		// immediate. PID files left by interrupted cleanup are
 		// handled on the next startup by kill_stale_pid.
-		sig_ch := make(chan os.Signal, 2)
+		sig_ch = make(chan os.Signal, 2)
 		signal.Notify(sig_ch, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
 			sig := <-sig_ch
-			s.logger.Info("Received signal, shutting down",
+			s.logger.Info("Received signal. Shutting down.",
 				"signal", sig,
 			)
 
@@ -1512,35 +1620,24 @@ func Build(opts BuildOpts) {
 			// second signal exits immediately
 			go func() {
 				<-sig_ch
-				s.logger.Info("received second signal, exiting immediately")
+				s.logger.Info("Received second signal. Forcing exit.")
 				os.Exit(1)
 			}()
-
-			s.supervisor.stop()
-			if s.vite_sup != nil {
-				s.vite_sup.stop()
-			}
-			if s.browser != nil {
-				s.browser.stop()
-			}
-			if s.lock != nil {
-				s.lock.Release()
-			}
-			os.Exit(0)
 		}()
 	}
 
 	// initial build
-	initial_triggers := &set.Set[workset.Trigger]{}
-	initial_triggers.Add(workset.ConfigChanged)
+	initial_triggers := &set.Set[trigger]{}
+	initial_triggers.Add(config_changed)
 	if _, err := s.run_build(build_params{
 		triggers:     initial_triggers,
 		hook_indices: s.all_applicable_hook_indices(),
 		should_abort: func() bool { return build_ctx.Err() != nil },
 		is_initial:   true,
 	}); err != nil {
-		s.logger.Error("initial build failed: " + err.Error())
-		os.Exit(1)
+		s.logger.Error("Initial build failed: " + err.Error())
+		build_exit_code = 1
+		return
 	}
 
 	// watch loop (dev only)
@@ -1548,7 +1645,7 @@ func Build(opts BuildOpts) {
 		s.watcher = fswatcher.NewWatcher(fswatcher.WatcherOptions{
 			WatchRoot: s.cfg.root_dir,
 			OnRemovePath: func(p strict.CWDRelPath) {
-				s.logger.Info("removing watch on", "path", p)
+				s.logger.Info("Removing watch on", "path", p)
 			},
 		})
 

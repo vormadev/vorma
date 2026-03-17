@@ -1,9 +1,10 @@
 {
-	"$schema": ".wavedist/static/internal/schema.json",
+	"$schema": ".waveout/schema.json",
+	"RootDir": "../",
 	"Core": {
-		"ProjectID": "{{.GoImportBase}}",
-		"ResolveRoot": "../",
-		"MainAppEntry": "backend/cmd/serve",
+		"BinaryName": "main",
+		"HealthcheckEndpoint": "/healthz",
+		"PublicPathPrefix": "/",
 		"StaticAssetDirs": {
 			"Private": "backend/assets",
 			"Public": "frontend/assets"
@@ -11,8 +12,7 @@
 		"CSSEntryFiles": {
 			"Critical": "frontend/src/styles/main.critical.css",
 			"NonCritical": "frontend/src/styles/main.css"
-		},
-		"PublicPathPrefix": "/"
+		}
 	},
 	"Vorma": {
 		"MainBuildEntry": "backend/cmd/build",
@@ -27,8 +27,5 @@
 	"Vite": {
 		"JSPackageManagerBaseCmd": "{{.JSPackageManagerBaseCmd}}"
 	},
-	"Watch": {
-		"HealthcheckEndpoint": "/healthz",
-		"Include": []
-	}
+	"LifecycleHooks": []
 }

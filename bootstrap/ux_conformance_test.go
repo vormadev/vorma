@@ -292,9 +292,7 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 	}
 
 	for _, requiredFragment := range []string{
-		"wave.New(wave.Config{",
-		"os.DirFS(\"backend\")",
-		"ConfigPath: \"wave.config.json\"",
+		"wave.New(wave.Options{})",
 	} {
 		if !strings.Contains(string(devTemplate), requiredFragment) {
 			t.Fatalf(
@@ -317,10 +315,11 @@ func TestBootstrapWaveTemplateSetUsesDevProdSplitFiles(t *testing.T) {
 
 	for _, requiredFragment := range []string{
 		"//go:build prod",
-		"//go:embed all:.wavedist/static wave.config.json",
-		"wave.New(wave.Config{",
-		"FS:         embedFS",
-		"ConfigPath: \"wave.config.json\"",
+		"//go:embed all:.waveout/static",
+		"io/fs",
+		"fs.Sub(embedFS, \".waveout/static\")",
+		"wave.New(wave.Options{",
+		"DistStaticFS: distStaticFS",
 	} {
 		if !strings.Contains(string(prodTemplate), requiredFragment) {
 			t.Fatalf(
@@ -338,9 +337,10 @@ func TestBootstrapWaveConfigTemplateUsesConfigRelativePaths(t *testing.T) {
 	}
 
 	for _, requiredFragment := range []string{
-		"\"ProjectID\": \"",
-		"\"ResolveRoot\": \"../\"",
-		"\"MainAppEntry\": \"backend/cmd/serve\"",
+		"\"$schema\": \".waveout/schema.json\"",
+		"\"RootDir\": \"../\"",
+		"\"BinaryName\": \"main\"",
+		"\"HealthcheckEndpoint\": \"/healthz\"",
 		"\"Private\": \"backend/assets\"",
 		"\"Public\": \"frontend/assets\"",
 		"\"ServerRouteDefinitionPatterns\": [\"backend/src/**/*.go\"]",
@@ -352,8 +352,19 @@ func TestBootstrapWaveConfigTemplateUsesConfigRelativePaths(t *testing.T) {
 			)
 		}
 	}
-	if strings.Contains(string(waveConfigTemplate), "\"ConfigLocation\"") {
-		t.Fatal("did not expect wave config template to contain ConfigLocation")
+	for _, forbiddenFragment := range []string{
+		"\"ProjectID\":",
+		"\"ResolveRoot\":",
+		"\"MainAppEntry\":",
+		"\"Watch\":",
+		"\"ConfigLocation\"",
+	} {
+		if strings.Contains(string(waveConfigTemplate), forbiddenFragment) {
+			t.Fatalf(
+				"did not expect wave config template to contain %q",
+				forbiddenFragment,
+			)
+		}
 	}
 }
 

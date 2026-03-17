@@ -13,7 +13,6 @@ import (
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/wave/internal/constants"
-	"github.com/vormadev/vorma/wave/internal/workset"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -24,12 +23,15 @@ type refresh_payload struct {
 	ChangeType        change_type `json:"change_type"`
 	CriticalCSS       string      `json:"critical_css,omitempty"`
 	NonCriticalCSSURL string      `json:"non_critical_css_url,omitempty"`
+	BuildError        string      `json:"build_error,omitempty"`
 }
 
 type change_type string
 
 const (
 	change_type_show_rebuilding_overlay change_type = "show_rebuilding_overlay"
+	change_type_hide_rebuilding_overlay change_type = "hide_rebuilding_overlay"
+	change_type_build_error             change_type = "build_error"
 	change_type_hard_reload             change_type = "hard_reload"
 	change_type_critical_css            change_type = "critical_css"
 	change_type_non_critical_css        change_type = "non_critical_css"
@@ -125,7 +127,7 @@ func (bs *browser_sync) start() {
 		)
 		if err := bs.server.ListenAndServe(); err != nil &&
 			err != http.ErrServerClosed {
-			bs.logger.Error("browser sync server failed", "err", err)
+			bs.logger.Error("Browser sync server failed", "err", err)
 		}
 	}()
 }
@@ -137,27 +139,42 @@ func (bs *browser_sync) stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = bs.server.Shutdown(ctx)
-	bs.logger.Info("browser sync server stopped")
+	bs.logger.Info("Browser sync server stopped")
 }
 
 // send_rebuilding tells all connected browsers to show the
 // rebuilding overlay. Called before the build starts.
 func (bs *browser_sync) send_rebuilding() {
-	bs.logger.Info("Showing rebuilding overlay")
+	bs.logger.Debug("Showing rebuilding overlay")
 	bs.clients.broadcast(refresh_payload{
 		ChangeType: change_type_show_rebuilding_overlay,
 	})
 }
 
+func (bs *browser_sync) hide_rebuilding() {
+	bs.logger.Debug("Hiding rebuilding overlay")
+	bs.clients.broadcast(refresh_payload{
+		ChangeType: change_type_hide_rebuilding_overlay,
+	})
+}
+
+func (bs *browser_sync) show_build_error(build_err string) {
+	bs.logger.Debug("Showing build error overlay")
+	bs.clients.broadcast(refresh_payload{
+		ChangeType: change_type_build_error,
+		BuildError: build_err,
+	})
+}
+
 // settle tells all connected browsers what happened after a build
 // cycle completes. The effect set determines the message type.
-// HardReloadBrowser supersedes everything else.
+// Hard reload supersedes everything else.
 func (bs *browser_sync) settle(
-	fx *set.Set[workset.Effect],
+	fx *set.Set[Effect],
 	critical_css []byte,
 	non_critical_css_url string,
 ) {
-	if fx.Has(workset.HardReloadBrowser) {
+	if fx.Has(EffectHardReloadBrowser) {
 		bs.logger.Info("Hard reloading browser")
 		bs.clients.broadcast(refresh_payload{
 			ChangeType: change_type_hard_reload,
@@ -165,24 +182,24 @@ func (bs *browser_sync) settle(
 		return
 	}
 
-	if fx.Has(workset.ClientDataRevalidate) {
+	if fx.Has(EffectRevalidateClientData) {
 		bs.logger.Info("Triggering client data revalidation")
 		bs.clients.broadcast(refresh_payload{
 			ChangeType: change_type_data_revalidate,
 		})
-		// do not early return because
-		// ClientDataRevalidate can be combined with CSS hot refresh
+		// do not early return because revalidate_client_data
+		// can be combined with CSS hot refresh
 	}
 
-	if fx.HasAny(workset.BuildCriticalCSS, workset.BuildNonCriticalCSS) {
+	if fx.HasAny(effect_build_critical_css, effect_build_non_critical_css) {
 		bs.logger.Info("Hot reloading CSS")
-		if fx.Has(workset.BuildCriticalCSS) {
+		if fx.Has(effect_build_critical_css) {
 			bs.clients.broadcast(refresh_payload{
 				ChangeType:  change_type_critical_css,
 				CriticalCSS: bytesutil.ToBase64(critical_css),
 			})
 		}
-		if fx.Has(workset.BuildNonCriticalCSS) {
+		if fx.Has(effect_build_non_critical_css) {
 			bs.clients.broadcast(refresh_payload{
 				ChangeType:        change_type_non_critical_css,
 				NonCriticalCSSURL: non_critical_css_url,

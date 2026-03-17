@@ -45,7 +45,6 @@ const (
 	ENV_KEY_BUILDTIME_ROOT_DIR        = "WAVE_ROOT_DIR"
 	ENV_KEY_BUILDTIME_BUILD_TAGS      = "WAVE_BUILD_TAGS"
 
-	/////// PUBLIC STATIC ASSET HASHING EXCLUDE DIRS
-	PUBLIC_STATIC_EXCLUDE_DIR_1 = "__nohash"  // <user-public-assets-src>/__nohash/
-	PUBLIC_STATIC_EXCLUDE_DIR_2 = "prehashed" // <user-public-assets-src>/prehashed/
+	/////// PUBLIC STATIC ASSET HASHING EXCLUDE DIR
+	PUBLIC_STATIC_EXCLUDE_DIR = "__prehashed" // <user-public-assets-src>/__prehashed/*
 )

@@ -46,13 +46,6 @@ func (sv *supervisor) update(
 	sv.mu.Unlock()
 }
 
-// restart stops any running process and starts a new one. Blocks
-// until the new process passes the healthcheck or fails.
-func (sv *supervisor) restart() error {
-	sv.stop()
-	return sv.start()
-}
-
 func (sv *supervisor) start() error {
 	sv.mu.Lock()
 
@@ -69,11 +62,11 @@ func (sv *supervisor) start() error {
 
 	if err := cmd.Start(); err != nil {
 		sv.mu.Unlock()
-		return fmt.Errorf("failed to start app server: %w", err)
+		return fmt.Errorf("Failed to start app server: %w", err)
 	}
 
 	if err := write_pid_file(sv.pid_file, cmd.Process.Pid); err != nil {
-		sv.logger.Warn("failed to write app pid file", "err", err)
+		sv.logger.Warn("Failed to write app pid file", "err", err)
 	}
 
 	sv.logger.Info("Starting app server",
@@ -96,13 +89,19 @@ func (sv *supervisor) start() error {
 
 	// poll healthcheck without holding the lock — this allows
 	// stop() to acquire the lock if wave is shutting down.
-	if err := sv.poll_health(done); err != nil {
+	if err := poll_http_ready_endpoint(
+		done,
+		&sv.exit_err,
+		fmt.Sprintf("http://localhost:%d%s", sv.port, sv.health),
+		"app server",
+		supervisor_ready_timeout,
+	); err != nil {
 		sv.stop()
 		return err
 	}
 
 	sv.logger.Info(
-		"⟶ App server ready ",
+		"⟶ App server ready",
 		"url",
 		fmt.Sprintf("http://localhost:%d", sv.port),
 	)
@@ -127,10 +126,10 @@ func (sv *supervisor) stop() {
 
 	select {
 	case <-done:
-		sv.logger.Info("app server stopped")
+		sv.logger.Info("App server stopped")
 	case <-time.After(supervisor_grace_period):
 		sv.logger.Info(
-			"App server did not stop within grace period, killing",
+			"App server did not stop within grace period. Killing instead.",
 		)
 		procutil.ForceKill(pid)
 		<-done
@@ -145,25 +144,34 @@ func (sv *supervisor) stop() {
 	sv.mu.Unlock()
 }
 
-func (sv *supervisor) poll_health(done chan struct{}) error {
-	url := fmt.Sprintf("http://localhost:%d%s", sv.port, sv.health)
+func poll_http_ready_endpoint(
+	done chan struct{},
+	exit_err *error,
+	url string,
+	process_label string,
+	timeout time.Duration,
+) error {
 	client := &http.Client{Timeout: 1 * time.Second}
-	deadline := time.Now().Add(supervisor_ready_timeout)
+	deadline := time.Now().Add(timeout)
 
 	current_delay := 0 * time.Millisecond
 	delay_inc_amt := 20 * time.Millisecond
 	max_delay := 200 * time.Millisecond
 
 	for time.Now().Before(deadline) {
-		// check if process died before becoming ready
 		select {
 		case <-done:
-			if sv.exit_err != nil {
+			if *exit_err != nil {
 				return fmt.Errorf(
-					"app server exited during startup: %w", sv.exit_err,
+					"%s exited during startup: %w",
+					process_label,
+					*exit_err,
 				)
 			}
-			return fmt.Errorf("app server exited during startup (exit 0)")
+			return fmt.Errorf(
+				"%s exited during startup (exit 0)",
+				process_label,
+			)
 		default:
 		}
 
@@ -175,13 +183,14 @@ func (sv *supervisor) poll_health(done chan struct{}) error {
 			}
 		}
 
-		// 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 200, 200, ...
 		current_delay = min(current_delay+delay_inc_amt, max_delay)
 		time.Sleep(current_delay)
 	}
 
 	return fmt.Errorf(
-		"app server not ready after %s (healthcheck: %s)",
-		supervisor_ready_timeout, url,
+		"%s not ready after %s (endpoint: %s)",
+		process_label,
+		timeout,
+		url,
 	)
 }

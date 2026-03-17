@@ -1,9 +1,10 @@
 {
-	"$schema": ".wavedist/static/internal/schema.json",
+	"$schema": ".waveout/schema.json",
+	"RootDir": "../",
 	"Core": {
-		"ProjectID": "internal-site",
-		"ResolveRoot": "../",
-		"MainAppEntry": "backend/cmd/serve",
+		"BinaryName": "main",
+		"HealthcheckEndpoint": "/healthz",
+		"PublicPathPrefix": "/",
 		"StaticAssetDirs": {
 			"Private": "backend/assets",
 			"Public": "frontend/assets"
@@ -11,8 +12,7 @@
 		"CSSEntryFiles": {
 			"Critical": "frontend/src/styles/main.critical.css",
 			"NonCritical": "frontend/src/styles/main.css"
-		},
-		"PublicPathPrefix": "/"
+		}
 	},
 	"Vorma": {
 		"MainBuildEntry": "backend/cmd/build",
@@ -27,34 +27,25 @@
 	"Vite": {
 		"JSPackageManagerBaseCmd": "pnpm"
 	},
-	"Watch": {
-		"HealthcheckEndpoint": "/healthz",
-		"Include": [
-			{
-				"Pattern": "backend/assets/markdown/**/*.md",
-				"OnlyRunClientDefinedRevalidateFunc": true,
-				"SkipRebuildingNotification": true
-			},
-			{
-				"Pattern": "**/README.md",
-				"RunOnChangeOnly": true,
-				"SkipRebuildingNotification": true,
-				"OnChangeHooks": [
-					{
-						"Cmd": "go run ./backend/cmd/sync_docs"
-					}
-				]
-			},
-			{
-				"Pattern": "frontend/assets/**/*",
-				"SkipRebuildingNotification": true,
-				"OnChangeHooks": [
-					{
-						"Cmd": "go run ./backend/cmd/sync_docs --rewrite-only",
-						"Timing": "post"
-					}
-				]
-			}
-		]
-	}
+	"LifecycleHooks": [
+		{
+			"WatchIncludePatterns": ["backend/assets/markdown/**/*.md"],
+			"Effects": ["revalidate_client_data"],
+			"DevOnly": true
+		},
+		{
+			"WatchIncludePatterns": ["**/README.md"],
+			"Cmd": "go run ./backend/cmd/sync_docs",
+			"StartAt": "cycle_start",
+			"FinishBy": "cycle_start",
+			"DevOnly": true
+		},
+		{
+			"WatchIncludePatterns": ["frontend/assets/**/*"],
+			"Cmd": "go run ./backend/cmd/sync_docs --rewrite-only",
+			"StartAt": "go_compile",
+			"FinishBy": "go_compile",
+			"DevOnly": true
+		}
+	]
 }

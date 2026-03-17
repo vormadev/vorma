@@ -14,19 +14,17 @@ import (
 
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/kit/strict"
-	"github.com/vormadev/vorma/wave/internal/workset"
 )
 
 type scheduled_hook struct {
-	sched_id     int // assigned by new_hook_scheduler; unique across all hooks
-	name         string
-	start_at     CheckpointOrd
-	finish_by    CheckpointOrd
-	downstream   DownstreamEffect
-	show_overlay bool
+	sched_id  int // assigned by new_hook_scheduler; unique across all hooks
+	name      string
+	start_at  CheckpointOrd
+	finish_by CheckpointOrd
+	effects   []Effect
 
 	// exactly one of cmd or fn may be set; both empty is valid
-	// (the hook exists solely for its downstream effect)
+	// (the hook exists solely for its effects)
 	cmd        string
 	fn         func(ctx *PluginCtx) (*PluginResult, error)
 	plugin_ctx *PluginCtx
@@ -38,7 +36,7 @@ func (h *scheduled_hook) is_noop() bool {
 
 type hook_result struct {
 	err      error
-	extras   *set.Set[workset.Effect] // non-nil only for plugin hooks
+	extras   *set.Set[Effect] // non-nil only for plugin hooks
 	duration time.Duration
 }
 
@@ -89,17 +87,18 @@ func new_hook_scheduler(
 }
 
 // start_hooks_at signals the checkpoint on all plugin contexts (so
-// WaitFor* calls unblock) and then launches all hooks whose StartAt
+// WaitFor calls unblock) and then launches all hooks whose StartAt
 // matches the given checkpoint.
 func (hs *hook_scheduler) start_hooks_at(checkpoint CheckpointOrd) {
 	// signal checkpoint on every plugin ctx, not just those starting
-	// here — a plugin started earlier may be blocking on WaitFor*.
+	// here — a plugin started earlier may be blocking on WaitFor.
 	for i := range hs.hooks {
 		if hs.hooks[i].plugin_ctx != nil {
 			hs.hooks[i].plugin_ctx.signal_checkpoint(checkpoint)
 		}
 	}
 
+	var plugin_fn_started []chan struct{}
 	for _, h := range hs.hooks {
 		if h.start_at != checkpoint {
 			continue
@@ -113,10 +112,13 @@ func (hs *hook_scheduler) start_hooks_at(checkpoint CheckpointOrd) {
 		hs.logger.Info(fmt.Sprintf("Running %s", h.name))
 
 		if h.fn != nil {
-			go func(h scheduled_hook) {
+			started := make(chan struct{})
+			plugin_fn_started = append(plugin_fn_started, started)
+			go func(h scheduled_hook, started chan struct{}) {
+				close(started)
 				start := time.Now()
 				result, err := h.fn(h.plugin_ctx)
-				var extras *set.Set[workset.Effect]
+				var extras *set.Set[Effect]
 				if result != nil {
 					extras = result.ExtraEffects
 				}
@@ -128,7 +130,7 @@ func (hs *hook_scheduler) start_hooks_at(checkpoint CheckpointOrd) {
 						duration: time.Since(start),
 					},
 				}
-			}(h)
+			}(h, started)
 		} else {
 			go func(h scheduled_hook) {
 				start := time.Now()
@@ -143,11 +145,21 @@ func (hs *hook_scheduler) start_hooks_at(checkpoint CheckpointOrd) {
 			}(h)
 		}
 	}
+
+	for _, started := range plugin_fn_started {
+		<-started
+	}
+
+	// Same-checkpoint BlockAt(...) is supported when called immediately at
+	// hook entry or immediately after WaitFor(checkpoint) returns.
+	if len(plugin_fn_started) > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // await_checkpoint waits for all hooks whose FinishBy matches the
-// given checkpoint. Returns the set of workset effects implied by
-// completed hooks' DownstreamEffect values (with implication chains
+// given checkpoint. Returns the set of cycle effects implied by
+// completed hooks' Effects values (with implication chains
 // pre-resolved), plus any extra effects returned by plugin hooks.
 // Also waits for all checkpoint holds to be released before
 // returning.
@@ -158,7 +170,7 @@ func (hs *hook_scheduler) start_hooks_at(checkpoint CheckpointOrd) {
 // first hook error, cancelling all running hooks immediately.
 func (hs *hook_scheduler) await_checkpoint(
 	checkpoint CheckpointOrd,
-) (*set.Set[workset.Effect], error) {
+) (*set.Set[Effect], error) {
 	expected := make(map[int]scheduled_hook)
 	for _, h := range hs.hooks {
 		if h.finish_by == checkpoint {
@@ -166,7 +178,7 @@ func (hs *hook_scheduler) await_checkpoint(
 		}
 	}
 
-	fx := &set.Set[workset.Effect]{}
+	fx := &set.Set[Effect]{}
 
 	// check for early arrivals from previous checkpoint reads
 	for id, tagged := range hs.collected {
@@ -202,8 +214,9 @@ func (hs *hook_scheduler) await_checkpoint(
 		hs.apply_hook_result(h, tagged.result, fx)
 	}
 
-	// wait for all checkpoint holds to be released
-	hs.holds.wait(checkpoint)
+	// close the checkpoint for new holds, then wait for any already-
+	// registered holds to be released.
+	hs.holds.close_and_wait(checkpoint)
 
 	return fx, nil
 }
@@ -211,7 +224,7 @@ func (hs *hook_scheduler) await_checkpoint(
 func (hs *hook_scheduler) apply_hook_result(
 	h scheduled_hook,
 	r hook_result,
-	fx *set.Set[workset.Effect],
+	fx *set.Set[Effect],
 ) {
 	if !h.is_noop() {
 		hs.logger.Info(
@@ -219,11 +232,10 @@ func (hs *hook_scheduler) apply_hook_result(
 			"duration", r.duration,
 		)
 	}
-	for _, e := range downstream_to_effects(h.downstream) {
-		fx.Add(e)
-	}
-	if h.show_overlay {
-		fx.Add(workset.ShowRebuildingOverlay)
+	for _, effect := range h.effects {
+		for _, implied_effect := range hook_effect_to_effects(effect) {
+			fx.Add(implied_effect)
+		}
 	}
 	if r.extras != nil {
 		for e := range r.extras.Range() {
@@ -233,28 +245,34 @@ func (hs *hook_scheduler) apply_hook_result(
 }
 
 // abort cancels the context, killing all running hook processes and
-// unblocking any plugin WaitFor* calls.
+// unblocking any plugin WaitFor calls.
 func (hs *hook_scheduler) abort() {
 	hs.cancel()
 }
 
-// downstream_to_effects maps a DownstreamEffect to the full set of
-// workset effects it implies, including implication chains.
-func downstream_to_effects(d DownstreamEffect) []workset.Effect {
-	switch d {
-	case DownstreamEffectAppRestart:
-		return []workset.Effect{
-			workset.RestartAppServer,
-			workset.ShowRebuildingOverlay,
-			workset.HardReloadBrowser,
+// hook_effect_to_effects maps a hook Effect to the full set of cycle
+// effects it implies, including implication chains.
+func hook_effect_to_effects(e Effect) []Effect {
+	switch e {
+	case EffectRestartApp:
+		return []Effect{
+			EffectRestartApp,
+			EffectShowFrontendRebuildingOverlay,
+			EffectHardReloadBrowser,
 		}
-	case DownstreamEffectHardReloadBrowser:
-		return []workset.Effect{
-			workset.ShowRebuildingOverlay,
-			workset.HardReloadBrowser,
+	case EffectHardReloadBrowser:
+		return []Effect{
+			EffectShowFrontendRebuildingOverlay,
+			EffectHardReloadBrowser,
 		}
-	case DownstreamEffectClientDataRevalidate:
-		return []workset.Effect{workset.ClientDataRevalidate}
+	case EffectRevalidateClientData:
+		return []Effect{EffectRevalidateClientData}
+	case EffectProcessPrivateStatic:
+		return []Effect{effect_build_private_filemap}
+	case EffectShowFrontendRebuildingOverlay:
+		return []Effect{EffectShowFrontendRebuildingOverlay}
+	case EffectNoFrontendSettling:
+		return []Effect{EffectNoFrontendSettling}
 	}
 	return nil
 }

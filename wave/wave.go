@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"path"
@@ -117,23 +118,35 @@ func PortStr() string {
 /////// CACHES
 
 type caches struct {
-	public_fs                     *prod_cache[fs.FS]
-	private_fs                    *prod_cache[fs.FS]
-	runtime_cfg                   *prod_cache[RuntimeConfig]
-	public_static_filemap         *prod_cache[map[string]string]
-	private_static_filemap        *prod_cache[map[string]string]
-	critical_css                  *prod_cache[string]
-	critical_css_style_el_details *prod_cache[*critical_css_style_el_details]
-	inverse_public_static_filemap *prod_cache[map[string]string]
-	public_filemap_data_url_els   *prod_cache[template.HTML]
+	public_fs                        *prod_cache[fs.FS]
+	private_fs                       *prod_cache[fs.FS]
+	runtime_cfg                      *prod_cache[RuntimeConfig]
+	public_static_filemap_canonical  *prod_cache[map[string]string]
+	public_static_filemap_exposed    *prod_cache[map[string]string]
+	private_static_filemap_canonical *prod_cache[map[string]string]
+	private_static_filemap_exposed   *prod_cache[map[string]string]
+	critical_css                     *prod_cache[string]
+	critical_css_style_el_details    *prod_cache[*critical_css_style_el_details]
+	inverse_public_static_filemap    *prod_cache[map[string]string]
+	public_filemap_data_url_els      *prod_cache[template.HTML]
 }
 
 func (w *Wave) init_caches() {
 	w.public_fs = cache(w.__UNCACHED__public_fs)
 	w.private_fs = cache(w.__UNCACHED__private_fs)
 	w.runtime_cfg = cache(w.__UNCACHED__runtime_cfg)
-	w.public_static_filemap = cache(w.__UNCACHED__public_static_filemap)
-	w.private_static_filemap = cache(w.__UNCACHED__private_static_filemap)
+	w.public_static_filemap_canonical = cache(
+		w.__UNCACHED__public_static_filemap_canonical,
+	)
+	w.public_static_filemap_exposed = cache(
+		w.__UNCACHED__public_static_filemap_exposed,
+	)
+	w.private_static_filemap_canonical = cache(
+		w.__UNCACHED__private_static_filemap_canonical,
+	)
+	w.private_static_filemap_exposed = cache(
+		w.__UNCACHED__private_static_filemap_exposed,
+	)
 	w.critical_css = cache(w.__UNCACHED__critical_css)
 	w.critical_css_style_el_details = cache(
 		w.__UNCACHED__critical_css_style_el_details,
@@ -244,7 +257,7 @@ func (w *Wave) MustPublicPathPrefix() string {
 
 /////// PUBLIC STATIC FILEMAP
 
-func (w *Wave) __UNCACHED__public_static_filemap() (map[string]string, error) {
+func (w *Wave) __UNCACHED__public_static_filemap_canonical() (map[string]string, error) {
 	internal_fs, err := w.__internal_fs()
 	if err != nil {
 		return nil, err
@@ -265,9 +278,17 @@ func (w *Wave) __UNCACHED__public_static_filemap() (map[string]string, error) {
 	return public_filemap, nil
 }
 
+func (w *Wave) __UNCACHED__public_static_filemap_exposed() (map[string]string, error) {
+	public_filemap, err := w.public_static_filemap_canonical.get()
+	if err != nil {
+		return nil, err
+	}
+	return maps.Clone(public_filemap), nil
+}
+
 func (w *Wave) PublicStaticFilemap() (map[string]string, error) {
 	w.ensure_proper_instantiation()
-	return w.public_static_filemap.get()
+	return w.public_static_filemap_exposed.get()
 }
 
 func (w *Wave) MustPublicStaticFilemap() map[string]string {
@@ -282,7 +303,7 @@ func (w *Wave) MustPublicStaticFilemap() map[string]string {
 
 /////// PRIVATE STATIC FILEMAP
 
-func (w *Wave) __UNCACHED__private_static_filemap() (map[string]string, error) {
+func (w *Wave) __UNCACHED__private_static_filemap_canonical() (map[string]string, error) {
 	internal_fs, err := w.__internal_fs()
 	if err != nil {
 		return nil, err
@@ -303,9 +324,17 @@ func (w *Wave) __UNCACHED__private_static_filemap() (map[string]string, error) {
 	return private_filemap, nil
 }
 
+func (w *Wave) __UNCACHED__private_static_filemap_exposed() (map[string]string, error) {
+	private_filemap, err := w.private_static_filemap_canonical.get()
+	if err != nil {
+		return nil, err
+	}
+	return maps.Clone(private_filemap), nil
+}
+
 func (w *Wave) PrivateStaticFilemap() (map[string]string, error) {
 	w.ensure_proper_instantiation()
-	return w.private_static_filemap.get()
+	return w.private_static_filemap_exposed.get()
 }
 
 func (w *Wave) MustPrivateStaticFilemap() map[string]string {
@@ -320,30 +349,32 @@ func (w *Wave) MustPrivateStaticFilemap() map[string]string {
 
 /////// PUBLIC URL
 
-func (w *Wave) PublicURL(original string) (string, error) {
+func (w *Wave) PublicURL(src_path string) (string, error) {
 	w.ensure_proper_instantiation()
 	runtime_cfg, err := w.RuntimeConfig()
 	if err != nil {
 		return "", err
 	}
-	fm, err := w.PublicStaticFilemap()
+	fm, err := w.public_static_filemap_canonical.get()
 	if err != nil {
 		return "", err
 	}
-	hashed, ok := fm[original]
+
+	src_path = strings.TrimPrefix(strings.TrimSpace(src_path), "/")
+	hashed, ok := fm[src_path]
 	if !ok {
-		return original, errors.New(
-			"original file not found in public static filemap: " + original,
+		return src_path, errors.New(
+			"file not found in public static filemap: " + src_path,
 		)
 	}
 	return path.Join(runtime_cfg.PublicPathPrefix, hashed), nil
 }
 
-func (w *Wave) MustPublicURL(original string) string {
-	public_url, err := w.PublicURL(original)
+func (w *Wave) MustPublicURL(src_path string) string {
+	public_url, err := w.PublicURL(src_path)
 	if err != nil {
 		panic(
-			"[waveruntime]: failed to get public URL for " + original + ": " + err.Error(),
+			"[waveruntime]: failed to get public URL for " + src_path + ": " + err.Error(),
 		)
 	}
 	return public_url
@@ -575,7 +606,13 @@ func (w *Wave) __UNCACHED__public_filemap_data_url_els() (template.HTML, error) 
 //
 //	const filemapURL = document.getElementById("wave-public-filemap-url").dataset.url;
 //	const filemap = await (await fetch(filemapURL)).json();
-//	const getPublicURL = (srcPath) => filemap[srcPath] || srcPath;
+//	function getPublicURL(srcPath) {
+//		srcPath = srcPath.trim();
+//		if (srcPath.startsWith("/")) {
+//			srcPath = srcPath.slice(1);
+//		}
+//		return filemap[srcPath] || srcPath;
+//	}
 func (w *Wave) PublicFilemapDataURLEls() (template.HTML, error) {
 	w.ensure_proper_instantiation()
 	return w.public_filemap_data_url_els.get()
@@ -585,7 +622,13 @@ func (w *Wave) PublicFilemapDataURLEls() (template.HTML, error) {
 //
 //	const filemapURL = document.getElementById("wave-public-filemap-url").dataset.url;
 //	const filemap = await (await fetch(filemapURL)).json();
-//	const getPublicURL = (srcPath) => filemap[srcPath] || srcPath;
+//	function getPublicURL(srcPath) {
+//		srcPath = srcPath.trim();
+//		if (srcPath.startsWith("/")) {
+//			srcPath = srcPath.slice(1);
+//		}
+//		return filemap[srcPath] || srcPath;
+//	}
 func (w *Wave) MustPublicFilemapDataURLEls() template.HTML {
 	els, err := w.PublicFilemapDataURLEls()
 	if err != nil {
@@ -688,7 +731,7 @@ func (w *Wave) get_is_public_asset(_path string) (bool, error) {
 }
 
 func (w *Wave) __UNCACHED__inverse_public_static_filemap() (map[string]string, error) {
-	fm, err := w.PublicStaticFilemap()
+	fm, err := w.public_static_filemap_canonical.get()
 	if err != nil {
 		return nil, err
 	}
@@ -702,8 +745,8 @@ func (w *Wave) __UNCACHED__inverse_public_static_filemap() (map[string]string, e
 /////// FAVICON REDIRECT
 
 // FaviconRedirect returns middleware that redirects requests for
-// /favicon.ico to the hashed public asset URL. Falls through to the
-// next handler if the favicon is not found in the public filemap.
+// /favicon.ico to the hashed public asset URL. Returns 404 if the
+// favicon is not found in the public filemap.
 func (w *Wave) FaviconRedirect() func(http.Handler) http.Handler {
 	w.ensure_proper_instantiation()
 	return middleware.ToHandlerMiddleware(
