@@ -43,29 +43,27 @@ func main() {
 
 	repoconcat.MustConcat(OUTDIR+"FULL_SYSTEM.txt", []string{
 		"/wave/**/*",
+		"/internal/pkg/prodcache/**/*",
 
 		"/vorma2/**/*",
 		"/typescript/vorma/**/*",
 
-		"/kit/headels/**/*",
-		"/kit/htmlutil/**/*",
-		"/kit/internal/matchercore/**/*",
-		"/kit/internal/muxcore/**/*",
-		"/kit/matcher/**/*",
-		"/kit/mux/**/*",
-		"/kit/nestedmatcher/**/*",
-		"/kit/nestedmux/**/*",
-		"/kit/response/**/*",
-		"/kit/tasks/**/*",
-		"/kit/validate/**/*",
-
 		"/typescript/kit/matcher/**/*",
 		"/typescript/kit/url/**/*",
+
+		"/kit/headels/**/*",
+		"/kit/htmlutil/**/*",
+		"/kit/matcher/**/*",
+		"/kit/mux/**/*",
+		"/kit/response/**/*",
+		"/kit/tasks/**/*",
+		"/lab/tsgen/**/*",
+		"/kit/validate/**/*",
+		"/lab/viteutil/**/*",
 
 		"!**/*.test.ts",
 		"!**/*.bench.ts",
 		"!**/*_test.go",
 		"!**/bench.txt",
 	})
-
 }
