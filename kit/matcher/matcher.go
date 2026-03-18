@@ -4,7 +4,7 @@
 // path, including support for dynamic params and splats.
 package matcher
 
-import "github.com/vormadev/vorma/kit/internal/matchercore"
+import "github.com/vormadev/vorma/kit/matcher/internal/matchercore"
 
 type (
 	// Params stores dynamic path parameter values extracted from a match.

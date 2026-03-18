@@ -51,6 +51,11 @@ func (w *Wave) ensure_proper_instantiation() {
 	}
 }
 
+func (w *Wave) StaticRootFS() fs.FS {
+	w.ensure_proper_instantiation()
+	return w.static_fs
+}
+
 type Options struct {
 	// Must be rooted at .waveout/static.
 	// Ignored in dev, required in prod.

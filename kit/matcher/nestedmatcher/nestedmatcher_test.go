@@ -3,7 +3,7 @@ package nestedmatcher_test
 import (
 	"testing"
 
-	"github.com/vormadev/vorma/kit/nestedmatcher"
+	"github.com/vormadev/vorma/kit/matcher/nestedmatcher"
 )
 
 func TestNewAndOptionGetters(t *testing.T) {

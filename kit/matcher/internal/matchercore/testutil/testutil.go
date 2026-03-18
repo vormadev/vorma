@@ -7,7 +7,7 @@ package testutil
 import (
 	"strings"
 
-	"github.com/vormadev/vorma/kit/internal/matchercore"
+	"github.com/vormadev/vorma/kit/matcher/internal/matchercore"
 )
 
 // PatternOptionShape describes option fields relevant to pattern

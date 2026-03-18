@@ -1,15 +1,18 @@
-import type {
-	BuildtimeImportKey,
-	BuildtimeImportPromise,
-} from "./src/runtime.ts";
+type BuildtimeImportPromise = Promise<Record<string, any>>;
+type BuildtimeImportKey<T extends BuildtimeImportPromise> = keyof Awaited<T>;
 
 export function route<IP extends BuildtimeImportPromise>(
-	// oxlint-disable-next-line no-unused-vars
 	pattern: string,
-	// oxlint-disable-next-line no-unused-vars
 	importPromise: IP,
-	// oxlint-disable-next-line no-unused-vars
 	componentKey: BuildtimeImportKey<IP>,
-	// oxlint-disable-next-line no-unused-vars
 	errorBoundaryKey?: BuildtimeImportKey<IP>,
-): void {}
+): void {
+	console.log(
+		JSON.stringify({
+			Pattern: pattern,
+			Module: importPromise,
+			ExportKey: componentKey,
+			ErrorExportKey: errorBoundaryKey ?? "",
+		}),
+	);
+}

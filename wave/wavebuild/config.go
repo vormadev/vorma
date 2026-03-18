@@ -511,40 +511,30 @@ func (r *reserved_paths) add(p strict.CWDRelPath, label string) error {
 
 type UserConfig struct{ *validated_config }
 
-func (r *UserConfig) RootDir() strict.CWDRelPath {
+func (r *UserConfig) PublicPathPrefix() string { return r.core.PublicPathPrefix }
+
+func (r *UserConfig) PrivateStaticSourceDir() strict.CWDRelPath {
+	return r.core.StaticAssetDirs.Private
+}
+
+func (r *UserConfig) PublicStaticSourceDir() strict.CWDRelPath {
+	return r.core.StaticAssetDirs.Public
+}
+
+func (r *UserConfig) UserRootDir() strict.CWDRelPath {
 	return r.root_dir
+}
+
+func (r *UserConfig) WaveOutDir() strict.CWDRelPath {
+	return r.config_path.Dir().Join(constants.DIST_DIRNAME)
+}
+
+func (r *UserConfig) WaveOutRuntimeStaticDir() strict.CWDRelPath {
+	return r.WaveOutDir().Join(constants.STATIC_DIRNAME)
 }
 
 // BinaryOutputPathAbs returns the path where the compiled binary should
 // be written (e.g. ".waveout/myapp").
 func (r *UserConfig) BinaryOutputPathAbs() strict.MachAbsPath {
 	return r.core.binary_output_path_abs
-}
-
-func (r *UserConfig) PublicStaticDir() (strict.CWDRelPath, bool) {
-	if !r.using_public_static() {
-		return "", false
-	}
-	return r.core.StaticAssetDirs.Public, true
-}
-
-func (r *UserConfig) PrivateStaticDir() (strict.CWDRelPath, bool) {
-	if !r.using_private_static() {
-		return "", false
-	}
-	return r.core.StaticAssetDirs.Private, true
-}
-
-func (r *UserConfig) CriticalCSSEntry() (strict.CWDRelPath, bool) {
-	if !r.using_critical_css() {
-		return "", false
-	}
-	return r.core.CSSEntryFiles.Critical, true
-}
-
-func (r *UserConfig) NonCriticalCSSEntry() (strict.CWDRelPath, bool) {
-	if !r.using_non_critical_css() {
-		return "", false
-	}
-	return r.core.CSSEntryFiles.NonCritical, true
 }

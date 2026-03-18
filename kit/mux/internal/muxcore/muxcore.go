@@ -10,7 +10,7 @@ import (
 	"github.com/vormadev/vorma/kit/contextutil"
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/nestedmatcher"
+	"github.com/vormadev/vorma/kit/matcher/nestedmatcher"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
 )

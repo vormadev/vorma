@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/nestedmux"
+	"github.com/vormadev/vorma/kit/mux/nestedmux"
 	"github.com/vormadev/vorma/kit/tasks"
 )
 
@@ -758,7 +758,9 @@ func TestRunNestedTasks(t *testing.T) {
 		nestedmux.AddTaskHandler(nr, "/items", parentHandler)
 		nestedmux.AddTaskHandler(nr, "/items/:id", childHandler)
 
-		nativeRequestCtx, cancelRequest := context.WithCancel(context.Background())
+		nativeRequestCtx, cancelRequest := context.WithCancel(
+			context.Background(),
+		)
 		t.Cleanup(cancelRequest)
 
 		req := httptest.NewRequest(
@@ -1275,7 +1277,10 @@ func TestRunTasksWithoutPatternMap(t *testing.T) {
 		t.Fatal("expected non-nil tasks results")
 	}
 	if results.Map != nil {
-		t.Fatalf("expected nil pattern map in no-map mode, got %#v", results.Map)
+		t.Fatalf(
+			"expected nil pattern map in no-map mode, got %#v",
+			results.Map,
+		)
 	}
 	if len(results.Slice) < 2 {
 		t.Fatalf("slice length = %d, want at least 2", len(results.Slice))

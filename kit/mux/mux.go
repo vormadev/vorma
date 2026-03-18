@@ -23,8 +23,8 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/headels"
-	"github.com/vormadev/vorma/kit/internal/muxcore"
 	"github.com/vormadev/vorma/kit/matcher"
+	"github.com/vormadev/vorma/kit/mux/internal/muxcore"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
@@ -356,7 +356,10 @@ type AnyRoute interface {
 	getTaskHandler() tasks.AnyTask
 	getHTTPMws() []httpMiddlewareWithOptions
 	getTaskMws() []taskMiddlewareWithOptions
-	taskMiddlewareChain(rt *Router, mm *methodMatcher) []taskMiddlewareWithOptions
+	taskMiddlewareChain(
+		rt *Router,
+		mm *methodMatcher,
+	) []taskMiddlewareWithOptions
 	getNeedsTasksCtx() bool
 	httpChain(rt *Router, mm *methodMatcher) http.Handler
 }
@@ -1225,9 +1228,7 @@ func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
 
 // Head creates a new HeadEls instance and registers it with the response proxy.
 func (rd *ReqData[I]) HeadEls() *headels.HeadEls {
-	e := headels.New()
-	rd.responseProxy.AddHeadEls(e)
-	return e
+	return rd.responseProxy.HeadEls()
 }
 
 // Redirect sets a redirect on the response proxy. Defaults to 302 if no code

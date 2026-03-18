@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/internal/matchercore/testutil"
+	"github.com/vormadev/vorma/kit/matcher/internal/matchercore/testutil"
 )
 
 var NestedPatterns = []string{

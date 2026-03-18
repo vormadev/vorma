@@ -5,7 +5,7 @@
 // are accumulated together as one ordered match stack.
 package nestedmatcher
 
-import "github.com/vormadev/vorma/kit/internal/matchercore"
+import "github.com/vormadev/vorma/kit/matcher/internal/matchercore"
 
 type (
 	// Params stores dynamic path parameter values extracted from a match.

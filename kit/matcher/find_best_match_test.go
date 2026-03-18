@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/internal/matchercore/testutil"
+	"github.com/vormadev/vorma/kit/matcher/internal/matchercore/testutil"
 )
 
 const NOT_FOUND = "NOT FOUND"

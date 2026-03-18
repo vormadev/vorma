@@ -112,8 +112,7 @@ func validate_plugin_hooks(
 // It provides read access to the current cycle's state and WaitFor /
 // BlockAt methods for synchronizing with build checkpoints.
 //
-// Config accessors (RootDir, BinaryOutputPath, User*Dir/Entry) are
-// provided by the embedded *ConfigReader.
+// Config accessors are provided by the embedded *UserConfig.
 type PluginCtx struct {
 	*UserConfig
 	ss   *super_state
@@ -144,6 +143,8 @@ func new_plugin_ctx(
 /////////////////////////////////////////////////////////////////////
 
 func (p *PluginCtx) Context() context.Context { return p.ctx }
+
+func (p *PluginCtx) IsDev() bool { return p.ss.is_dev }
 
 func (p *PluginCtx) EvtPaths() []strict.CWDRelPath { return p.ss.cycle_evt_paths.Slice() }
 

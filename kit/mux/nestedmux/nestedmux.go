@@ -10,9 +10,9 @@ import (
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/genericsutil"
-	"github.com/vormadev/vorma/kit/internal/muxcore"
+	"github.com/vormadev/vorma/kit/matcher/nestedmatcher"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/nestedmatcher"
+	"github.com/vormadev/vorma/kit/mux/internal/muxcore"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
 )
