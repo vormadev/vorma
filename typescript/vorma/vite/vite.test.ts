@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import type { ConfigEnv, Plugin, UserConfig } from "vite";
@@ -60,9 +60,9 @@ function buildPluginConfig(map: Record<string, string> = {}) {
 		rollupInput: ["frontend/src/vorma.entry.tsx", "frontend/src/admin.tsx"],
 		publicPathPrefix: "/static/",
 		buildtimePublicURLFuncName: "waveBuildtimeURL",
-		distDir: canonicalPublicFileMapFixture.distDir,
 		ignoredPatterns: ["**/.DS_Store", "**/*~"],
 		dedupeList: ["react", "react-dom"],
+		importMetaURL: import.meta.url,
 	};
 }
 
@@ -297,7 +297,6 @@ describe("vorma vite plugin static public URL transform behavior", () => {
 			...buildPluginConfig({
 				"images/logo.svg": "wave_out_images_logo_deadbeef.svg",
 			}),
-			distDir: resolve(process.cwd(), "dist"),
 		});
 
 		await expect(

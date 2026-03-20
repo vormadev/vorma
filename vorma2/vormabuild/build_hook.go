@@ -1,6 +1,8 @@
 package vormabuild
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,6 +27,12 @@ func (s *plugin_state) build_hook(
 		return nil, fmt.Errorf("vorma2 config not parsed")
 	}
 
+	release := ctx.BlockAt(
+		wavebuild.CheckpointOrder(
+			wavebuild.Checkpoint_2_UserlandPublicFilemapReady,
+		),
+	)
+
 	is_dev := ctx.IsDev()
 
 	/////// Phase 1: checkpoint 1–2 window
@@ -37,14 +45,17 @@ func (s *plugin_state) build_hook(
 		return nil, fmt.Errorf("frontend route discovery: %w", err)
 	}
 
-	backend_pkgs, err := discover_backend_packages(cfg.user_root_dir)
+	backend_pkgs, err := discover_backend_packages(
+		cfg.user_root_dir,
+		cfg.gen_out_dir,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("backend package discovery: %w", err)
 	}
-	if err := fsutil.EnsureDir(cfg.ts_gen_out_dir.Str()); err != nil {
+	if err := fsutil.EnsureDir(cfg.gen_out_dir.Str()); err != nil {
 		return nil, fmt.Errorf("creating gen output dir: %w", err)
 	}
-	if err := write_imports_gen(cfg.ts_gen_out_dir, backend_pkgs); err != nil {
+	if err := write_imports_gen(cfg.gen_out_dir, backend_pkgs); err != nil {
 		return nil, fmt.Errorf("writing imports.gen.go: %w", err)
 	}
 
@@ -68,6 +79,8 @@ func (s *plugin_state) build_hook(
 		return nil, fmt.Errorf("contributing route manifest: %w", err)
 	}
 
+	release()
+
 	if err := write_index_ts(cfg, frontend_routes, s.app, ctx); err != nil {
 		return nil, fmt.Errorf("writing index.ts: %w", err)
 	}
@@ -83,12 +96,16 @@ func (s *plugin_state) build_hook(
 
 	public_fm := ctx.ReadPublicFileMap()
 
-	if err := write_filemap_ts(cfg, public_fm.Filemap); err != nil {
+	if err := write_gen_filemaps(cfg, public_fm.Filemap); err != nil {
 		return nil, fmt.Errorf("writing filemap.ts: %w", err)
 	}
 
 	if is_dev {
-		snapshot, err := build_dev_snapshot(cfg, frontend_routes)
+		snapshot, err := build_dev_snapshot(
+			cfg,
+			frontend_routes,
+			ctx.VitePort(),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("building dev snapshot: %w", err)
 		}
@@ -111,11 +128,14 @@ func (s *plugin_state) build_hook(
 func build_dev_snapshot(
 	cfg *parsed_vorma_config,
 	routes []discovered_route,
+	vite_port int,
 ) (*types.RuntimeSnapshot, error) {
 	build_id, err := id.New(12)
 	if err != nil {
 		return nil, fmt.Errorf("generating build ID: %w", err)
 	}
+
+	vite_base := fmt.Sprintf("http://localhost:%d", vite_port)
 
 	snapshot := &types.RuntimeSnapshot{
 		BuildID:          build_id,
@@ -130,7 +150,7 @@ func build_dev_snapshot(
 		snapshot.Paths[types.RoutePattern(r.pattern)] = &types.RoutePath{
 			OriginalPattern: types.RoutePattern(r.pattern),
 			ImportPath: types.SitePublicPath(
-				"/" + filepath.ToSlash(r.module_path.Str()),
+				vite_base + "/" + filepath.ToSlash(r.module_path.Str()),
 			),
 			ExportKey:      r.export_key,
 			ErrorExportKey: r.error_export_key,
@@ -167,13 +187,7 @@ func build_prod_snapshot(
 
 	public_path_prefix := ctx.PublicPathPrefix()
 
-	build_id, err := id.New(12)
-	if err != nil {
-		return nil, fmt.Errorf("generating build ID: %w", err)
-	}
-
 	snapshot := &types.RuntimeSnapshot{
-		BuildID:          build_id,
 		RootTemplatePath: cfg.root_template_path,
 		UIVariant:        cfg.ui_variant,
 		Paths: make(
@@ -220,7 +234,31 @@ func build_prod_snapshot(
 		}
 	}
 
+	// content-addressed build ID: changes exactly when client-visible
+	// outputs change, stays stable otherwise
+	build_id, err := compute_prod_build_id(snapshot)
+	if err != nil {
+		return nil, fmt.Errorf("computing prod build ID: %w", err)
+	}
+	snapshot.BuildID = build_id
+
 	return snapshot, nil
+}
+
+// compute_prod_build_id hashes the fully-populated snapshot (with
+// empty BuildID) to produce a deterministic build identifier. The
+// snapshot contains all client-visible state — route paths, chunk
+// hashes, CSS bundles, deps — so the ID changes exactly when any
+// of those change. json.Marshal sorts map keys, so output is stable.
+func compute_prod_build_id(
+	snapshot *types.RuntimeSnapshot,
+) (string, error) {
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		return "", fmt.Errorf("marshalling snapshot: %w", err)
+	}
+	hash := sha256.Sum256(data)
+	return base64.RawURLEncoding.EncodeToString(hash[:16]), nil
 }
 
 func write_runtime_snapshot(
@@ -247,7 +285,7 @@ func write_runtime_snapshot(
 	return os.WriteFile(out_path, append(data, '\n'), 0644)
 }
 
-func write_filemap_ts(
+func write_gen_filemaps(
 	cfg *parsed_vorma_config,
 	filemap map[string]string,
 ) error {
@@ -270,9 +308,19 @@ func write_filemap_ts(
 	)
 
 	out_path := filepath.Join(
-		cfg.ts_gen_out_dir.Str(), constants.GENERATED_TS_FILEMAP_FILENAME,
+		cfg.gen_out_dir.Str(), constants.GENERATED_TS_FILEMAP_FILENAME,
 	)
-	return os.WriteFile(out_path, []byte(b.String()), 0644)
+	err := os.WriteFile(out_path, []byte(b.String()), 0644)
+	if err != nil {
+		return fmt.Errorf("writing generated filemap: %w", err)
+	}
+
+	data, err := json.Marshal(filemap)
+	if err != nil {
+		return fmt.Errorf("marshalling filemap JSON: %w", err)
+	}
+	out_path = filepath.Join(cfg.gen_out_dir.Str(), "filemap.json")
+	return os.WriteFile(out_path, data, 0644)
 }
 
 func site_public_path(prefix string, file string) types.SitePublicPath {

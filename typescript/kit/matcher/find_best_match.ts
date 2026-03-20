@@ -20,29 +20,20 @@ type BestMatch = {
 
 type DfsBestState = {
 	best: BestMatch | null;
-	bestScore: number;
-	foundMatch: boolean;
+	best_score: number;
+	found: boolean;
 };
 
-function dfsBest(props: {
-	registry: PatternRegistry;
-	node: SegmentNode;
-	segments: string[];
-	depth: number;
-	score: number;
-	state: DfsBestState;
-	checkTrailingSlash: boolean;
-}): void {
-	const {
-		registry,
-		node,
-		segments,
-		depth,
-		score,
-		state,
-		checkTrailingSlash,
-	} = props;
-	const atNormalEnd = checkTrailingSlash && depth === segments.length - 1;
+function dfs_best(
+	registry: PatternRegistry,
+	node: SegmentNode,
+	segments: string[],
+	depth: number,
+	score: number,
+	state: DfsBestState,
+	check_trailing: boolean,
+): void {
+	const at_normal_end = check_trailing && depth === segments.length - 1;
 
 	if (node.pattern.length > 0) {
 		const rp = registry.dynamicPatterns.get(node.pattern);
@@ -50,17 +41,17 @@ function dfsBest(props: {
 			if (
 				depth === segments.length ||
 				node.nodeType === NODE_SPLAT ||
-				atNormalEnd
+				at_normal_end
 			) {
-				if (!state.foundMatch || score > state.bestScore) {
+				if (!state.found || score > state.best_score) {
 					state.best = {
 						registeredPattern: rp,
 						params: {},
 						splatValues: [],
 						score,
 					};
-					state.bestScore = score;
-					state.foundMatch = true;
+					state.best_score = score;
+					state.found = true;
 				}
 			}
 		}
@@ -71,18 +62,18 @@ function dfsBest(props: {
 	if (node.children !== null) {
 		const child = node.children.get(segments[depth]!);
 		if (child) {
-			dfsBest({
+			dfs_best(
 				registry,
-				node: child,
+				child,
 				segments,
-				depth: depth + 1,
-				score: score + SCORE_STATIC_MATCH,
+				depth + 1,
+				score + SCORE_STATIC_MATCH,
 				state,
-				checkTrailingSlash,
-			});
+				check_trailing,
+			);
 
 			if (
-				state.foundMatch &&
+				state.found &&
 				depth + 1 === segments.length &&
 				child.pattern !== ""
 			) {
@@ -95,29 +86,29 @@ function dfsBest(props: {
 		switch (child.nodeType) {
 			case NODE_DYNAMIC:
 				if (segments[depth] !== "") {
-					dfsBest({
+					dfs_best(
 						registry,
-						node: child,
+						child,
 						segments,
-						depth: depth + 1,
-						score: score + SCORE_DYNAMIC,
+						depth + 1,
+						score + SCORE_DYNAMIC,
 						state,
-						checkTrailingSlash,
-					});
+						check_trailing,
+					);
 				}
 				break;
 
 			case NODE_SPLAT:
 				if (child.pattern.length > 0) {
 					const rp = registry.dynamicPatterns.get(child.pattern);
-					if (rp && !state.foundMatch) {
+					if (rp && !state.found) {
 						state.best = {
 							registeredPattern: rp,
 							params: {},
 							splatValues: [],
 							score: 0,
 						};
-						state.foundMatch = true;
+						state.found = true;
 					}
 				}
 				break;
@@ -127,10 +118,9 @@ function dfsBest(props: {
 
 export function findBestMatch(
 	registry: PatternRegistry,
-	realPath: string,
+	real_path: string,
 ): BestMatch | null {
-	// Check static patterns first
-	const rr = registry.staticPatterns.get(realPath);
+	const rr = registry.staticPatterns.get(real_path);
 	if (rr) {
 		return {
 			registeredPattern: rr,
@@ -140,22 +130,16 @@ export function findBestMatch(
 		};
 	}
 
-	const segments = parseSegments(realPath);
-	const hasTrailingSlash =
-		realPath.length > 0 && realPath[realPath.length - 1] === "/";
+	const segments = parseSegments(real_path);
+	const has_trailing =
+		real_path.length > 0 && real_path[real_path.length - 1] === "/";
 
-	// Check static pattern without trailing slash
-	if (hasTrailingSlash) {
-		const pathWithoutTrailingSlash = realPath.substring(
-			0,
-			realPath.length - 1,
-		);
-		const rrWithoutSlash = registry.staticPatterns.get(
-			pathWithoutTrailingSlash,
-		);
-		if (rrWithoutSlash) {
+	if (has_trailing) {
+		const without_slash = real_path.substring(0, real_path.length - 1);
+		const rr_no_slash = registry.staticPatterns.get(without_slash);
+		if (rr_no_slash) {
 			return {
-				registeredPattern: rrWithoutSlash,
+				registeredPattern: rr_no_slash,
 				params: {},
 				splatValues: [],
 				score: 0,
@@ -163,28 +147,18 @@ export function findBestMatch(
 		}
 	}
 
-	// Search for dynamic patterns
 	const state: DfsBestState = {
 		best: null,
-		bestScore: 0,
-		foundMatch: false,
+		best_score: 0,
+		found: false,
 	};
 
-	dfsBest({
-		registry,
-		node: registry.rootNode,
-		segments,
-		depth: 0,
-		score: 0,
-		state,
-		checkTrailingSlash: hasTrailingSlash,
-	});
+	dfs_best(registry, registry.rootNode, segments, 0, 0, state, has_trailing);
 
-	if (!state.foundMatch || !state.best) {
+	if (!state.found || !state.best) {
 		return null;
 	}
 
-	// Populate params
 	if (state.best.registeredPattern.numberOfDynamicParamSegs > 0) {
 		const params: Params = {};
 		for (
@@ -200,7 +174,6 @@ export function findBestMatch(
 		state.best.params = params;
 	}
 
-	// Populate splat values
 	if (
 		state.best.registeredPattern.normalizedPattern === "/*" ||
 		state.best.registeredPattern.lastSegIsNonRootSplat

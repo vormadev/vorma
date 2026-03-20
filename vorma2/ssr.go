@@ -16,32 +16,23 @@ const vorma_symbol_str = "__vorma_internal__"
 const ssr_template_str = `<script type="module">
 globalThis[Symbol.for("{{.VormaSymbol}}")] = {};
 const x = globalThis[Symbol.for("{{.VormaSymbol}}")];
-x.patternToWaitFnMap = {};
-x.isDev = {{.IsDev}};
-x.viteDevURL = {{.ViteDevURL}};
-x.publicPathPrefix = "{{.PublicPathPrefix}}";
-x.deploymentID = {{.DeploymentID}};
-x.routeManifestURL = {{.RouteManifestURL}};
-x.runtimeRouteSnapshot = {
-	outermostServerError: {{.OutermostServerError}},
-	outermostServerErrorIdx: {{.OutermostServerErrorIdx}},
-	matchedPatterns: {{.MatchedPatterns}},
-	loadersData: {{.LoadersDataJSON}},
-	importURLs: {{.ImportURLs}},
-	exportKeys: {{.ExportKeys}},
-	errorExportKeys: {{.ErrorExportKeys}},
-	hasRootData: {{.HasRootData}},
+x.is_dev = {{.IsDev}};
+x.public_path_prefix = "{{.PublicPathPrefix}}";
+x.deployment_id = {{.DeploymentID}};
+x.route_manifest_url = {{.RouteManifestURL}};
+x.snapshot = {
+	outermost_server_error: {{.OutermostServerError}},
+	outermost_server_error_idx: {{.OutermostServerErrorIdx}},
+	matched_patterns: {{.MatchedPatterns}},
+	loaders_data: {{.LoadersDataJSON}},
+	import_urls: {{.ImportURLs}},
+	export_keys: {{.ExportKeys}},
+	error_export_keys: {{.ErrorExportKeys}},
+	has_root_data: {{.HasRootData}},
 	params: {{.Params}},
-	splatValues: {{.SplatValues}},
-	outermostClientError: undefined,
-	outermostClientErrorIdx: undefined,
-	outermostError: {{.OutermostServerError}},
-	outermostErrorIdx: {{.OutermostServerErrorIdx}},
-	buildID: {{.BuildID}},
-	rootElementID: "{{.RootElementID}}",
-	activeComponents: null,
-	activeErrorBoundary: undefined,
-	clientLoadersData: [],
+	splat_values: {{.SplatValues}},
+	build_id: {{.BuildID}},
+	root_element_id: "{{.RootElementID}}",
 };
 </script>`
 
@@ -52,7 +43,6 @@ var ssr_template = template.Must(
 type ssr_input struct {
 	VormaSymbol             string
 	IsDev                   bool
-	ViteDevURL              string
 	PublicPathPrefix        string
 	DeploymentID            string
 	RouteManifestURL        string

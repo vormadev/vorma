@@ -4,4 +4,4 @@ package backend
 
 import "github.com/vormadev/vorma/wave"
 
-var Wave = wave.New(wave.Options{})
+var WaveOpts = wave.Options{}

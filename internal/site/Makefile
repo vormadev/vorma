@@ -10,7 +10,7 @@ build: pre
 
 # call with `make run port=whatever`
 run:
-	@PORT=$(port) ./backend/.wavedist/main
+	@PORT=$(port) ./backend/.waveout/main
 
 vercel-install-go:
 	@curl -L https://go.dev/dl/go1.24.0.linux-amd64.tar.gz | tar -C /tmp -xz

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/mux/internal/muxcore"
 	"github.com/vormadev/vorma/kit/validate"
 )
 
@@ -33,7 +32,6 @@ func TestRouterBasics(t *testing.T) {
 			MountRoot:              "/api",
 		}
 		r := NewRouter(opts)
-
 		if r.DynamicParamPrefix() != '@' {
 			t.Error("DynamicParamPrefix not set correctly")
 		}
@@ -49,7 +47,7 @@ func TestRouterBasics(t *testing.T) {
 	})
 
 	t.Run("MountRoot_Normalization", func(t *testing.T) {
-		testCases := []struct {
+		cases := []struct {
 			input    string
 			expected string
 		}{
@@ -60,8 +58,7 @@ func TestRouterBasics(t *testing.T) {
 			{"/api/", "/api/"},
 			{"api/v1", "/api/v1/"},
 		}
-
-		for _, tc := range testCases {
+		for _, tc := range cases {
 			r := NewRouter(&Options{MountRoot: tc.input})
 			if got := r.MountRoot(); got != tc.expected {
 				t.Errorf(
@@ -77,22 +74,15 @@ func TestRouterBasics(t *testing.T) {
 
 func TestHTTPHandlers(t *testing.T) {
 	methods := []string{
-		http.MethodGet,
-		http.MethodHead,
-		http.MethodPost,
-		http.MethodPut,
-		http.MethodPatch,
-		http.MethodDelete,
-		http.MethodConnect,
-		http.MethodOptions,
-		http.MethodTrace,
+		http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut,
+		http.MethodPatch, http.MethodDelete, http.MethodConnect,
+		http.MethodOptions, http.MethodTrace,
 	}
 
 	for _, method := range methods {
 		t.Run("Method_"+method, func(t *testing.T) {
 			r := NewRouter(nil)
 			called := false
-
 			AddHTTPHandlerFunc(
 				r,
 				method,
@@ -118,8 +108,6 @@ func TestHTTPHandlers(t *testing.T) {
 
 	t.Run("HEAD_Fallback_To_GET", func(t *testing.T) {
 		r := NewRouter(nil)
-
-		// Only register GET handler
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
@@ -131,7 +119,6 @@ func TestHTTPHandlers(t *testing.T) {
 			},
 		)
 
-		// Make HEAD request
 		req := httptest.NewRequest(http.MethodHead, "/test", nil)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
@@ -147,123 +134,120 @@ func TestHTTPHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run(
-		"HEAD_Fallback_To_GET_PreservesNoBodyOnValidationError",
-		func(t *testing.T) {
-			type parseInput struct {
-				Name string `json:"name"`
-			}
-
-			r := NewRouter(&Options{
-				ParseInput: func(req *http.Request, inputPtr any) error {
-					return &validate.ValidationError{
-						Err: errors.New("invalid input"),
-					}
+	t.Run("HEAD_Fallback_PreservesNoBodyOnValidationError", func(t *testing.T) {
+		type parse_input struct {
+			Name string `json:"name"`
+		}
+		r := NewRouter(&Options{
+			ParseInput: func(req *http.Request, input_ptr any) error {
+				return &validate.ValidationError{
+					Err: errors.New("invalid input"),
+				}
+			},
+		})
+		AddTaskHandler(
+			r,
+			http.MethodGet,
+			"/validate",
+			TaskHandlerFromFunc(
+				func(rd *ReqData[parse_input]) (map[string]string, error) {
+					return map[string]string{"ok": "true"}, nil
 				},
-			})
-			AddTaskHandler(
-				r,
-				http.MethodGet,
-				"/validate",
-				TaskHandlerFromFunc(
-					func(rd *ReqData[parseInput]) (map[string]string, error) {
-						return map[string]string{"ok": "true"}, nil
-					},
-				),
+			),
+		)
+
+		req := httptest.NewRequest(http.MethodHead, "/validate", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400, got %d", w.Code)
+		}
+		if w.Body.Len() > 0 {
+			t.Fatalf(
+				"expected empty body for HEAD fallback validation error, got %q",
+				w.Body.String(),
 			)
+		}
+	})
 
-			req := httptest.NewRequest(http.MethodHead, "/validate", nil)
-			w := httptest.NewRecorder()
-			r.ServeHTTP(w, req)
-
-			if w.Code != http.StatusBadRequest {
-				t.Fatalf("expected status 400, got %d", w.Code)
-			}
-			if w.Body.Len() > 0 {
-				t.Fatalf(
-					"expected empty body for HEAD fallback validation error, got %q",
-					w.Body.String(),
-				)
-			}
-		},
-	)
-
-	t.Run("HEAD_Fallback_To_GET_PreservesInferredHeaders", func(t *testing.T) {
+	t.Run("HEAD_Fallback_PreservesInferredHeaders", func(t *testing.T) {
 		r := NewRouter(nil)
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/inferred-headers",
 			func(w http.ResponseWriter, r *http.Request) {
-				_, _ = w.Write([]byte("<html><body>head parity</body></html>"))
+				w.Write([]byte("<html><body>head parity</body></html>"))
 			},
 		)
 
-		getReq := httptest.NewRequest(http.MethodGet, "/inferred-headers", nil)
-		getResp := httptest.NewRecorder()
-		r.ServeHTTP(getResp, getReq)
+		get_req := httptest.NewRequest(http.MethodGet, "/inferred-headers", nil)
+		get_resp := httptest.NewRecorder()
+		r.ServeHTTP(get_resp, get_req)
 
-		headReq := httptest.NewRequest(
+		head_req := httptest.NewRequest(
 			http.MethodHead,
 			"/inferred-headers",
 			nil,
 		)
-		headResp := httptest.NewRecorder()
-		r.ServeHTTP(headResp, headReq)
+		head_resp := httptest.NewRecorder()
+		r.ServeHTTP(head_resp, head_req)
 
-		if headResp.Code != getResp.Code {
+		if head_resp.Code != get_resp.Code {
 			t.Fatalf(
-				"expected HEAD fallback status %d to match GET status, got %d",
-				getResp.Code,
-				headResp.Code,
+				"HEAD status %d != GET status %d",
+				head_resp.Code,
+				get_resp.Code,
 			)
 		}
-		if headResp.Header().Get("Content-Type") !=
-			getResp.Header().Get("Content-Type") {
+		if head_resp.Header().
+			Get("Content-Type") !=
+			get_resp.Header().
+				Get("Content-Type") {
 			t.Fatalf(
-				"expected HEAD fallback content type %q to match GET content type %q",
-				headResp.Header().Get("Content-Type"),
-				getResp.Header().Get("Content-Type"),
+				"HEAD Content-Type %q != GET Content-Type %q",
+				head_resp.Header().
+					Get("Content-Type"),
+				get_resp.Header().Get("Content-Type"),
 			)
 		}
-		expectedContentLength := strconv.Itoa(getResp.Body.Len())
-		if headResp.Header().Get("Content-Length") != expectedContentLength {
+		expected_cl := strconv.Itoa(get_resp.Body.Len())
+		if head_resp.Header().Get("Content-Length") != expected_cl {
 			t.Fatalf(
-				"expected HEAD fallback content length %q, got %q",
-				expectedContentLength,
-				headResp.Header().Get("Content-Length"),
+				"HEAD Content-Length %q, want %q",
+				head_resp.Header().Get("Content-Length"),
+				expected_cl,
 			)
 		}
-		if headResp.Body.Len() > 0 {
+		if head_resp.Body.Len() > 0 {
 			t.Fatalf(
-				"expected empty body for HEAD fallback inferred-header response, got %q",
-				headResp.Body.String(),
+				"expected empty body for HEAD, got %q",
+				head_resp.Body.String(),
 			)
 		}
 	})
 }
 
 func TestTaskHandlers(t *testing.T) {
-	type TestInput struct {
+	type test_input struct {
 		Name string `json:"name"`
 	}
-	type TestOutput struct {
+	type test_output struct {
 		Message string `json:"message"`
 	}
 
 	t.Run("Basic_TaskHandler", func(t *testing.T) {
 		r := NewRouter(&Options{
-			ParseInput: func(req *http.Request, inputPtr any) error {
-				return json.NewDecoder(req.Body).Decode(inputPtr)
+			ParseInput: func(req *http.Request, input_ptr any) error {
+				return json.NewDecoder(req.Body).Decode(input_ptr)
 			},
 		})
-
 		handler := TaskHandlerFromFunc(
-			func(rd *ReqData[TestInput]) (TestOutput, error) {
-				return TestOutput{Message: "Hello " + rd.Input().Name}, nil
+			func(rd *ReqData[test_input]) (test_output, error) {
+				return test_output{Message: "Hello " + rd.Input().Name}, nil
 			},
 		)
-
 		AddTaskHandler(r, http.MethodPost, "/greet", handler)
 
 		body := strings.NewReader(`{"name":"World"}`)
@@ -274,8 +258,7 @@ func TestTaskHandlers(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
-
-		var resp TestOutput
+		var resp test_output
 		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("Failed to unmarshal response: %v", err)
 		}
@@ -286,13 +269,11 @@ func TestTaskHandlers(t *testing.T) {
 
 	t.Run("TaskHandler_With_None_Input", func(t *testing.T) {
 		r := NewRouter(nil)
-
 		handler := TaskHandlerFromFunc(
-			func(rd *ReqData[None]) (TestOutput, error) {
-				return TestOutput{Message: "No input needed"}, nil
+			func(rd *ReqData[None]) (test_output, error) {
+				return test_output{Message: "No input needed"}, nil
 			},
 		)
-
 		AddTaskHandler(r, http.MethodGet, "/status", handler)
 
 		req := httptest.NewRequest(http.MethodGet, "/status", nil)
@@ -302,8 +283,7 @@ func TestTaskHandlers(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Errorf("Expected status 200, got %d", w.Code)
 		}
-
-		var resp TestOutput
+		var resp test_output
 		json.Unmarshal(w.Body.Bytes(), &resp)
 		if resp.Message != "No input needed" {
 			t.Errorf("Expected 'No input needed', got %q", resp.Message)
@@ -314,196 +294,165 @@ func TestTaskHandlers(t *testing.T) {
 func TestGetParams(t *testing.T) {
 	t.Run("Dynamic_Params", func(t *testing.T) {
 		r := NewRouter(nil)
-		var capturedParams Params
-
+		var captured Params
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/users/:id",
 			func(w http.ResponseWriter, req *http.Request) {
-				capturedParams = GetParams(req)
+				captured = GetParams(req)
 				w.WriteHeader(http.StatusOK)
 			},
 		)
-
 		req := httptest.NewRequest(http.MethodGet, "/users/123", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		if id := capturedParams["id"]; id != "123" {
-			t.Errorf("Expected param id='123', got %q", id)
+		r.ServeHTTP(httptest.NewRecorder(), req)
+		if captured["id"] != "123" {
+			t.Errorf("Expected param id='123', got %q", captured["id"])
 		}
 	})
 
 	t.Run("Multiple_Params", func(t *testing.T) {
 		r := NewRouter(nil)
-		var capturedParams Params
-
-		AddHTTPHandlerFunc(r, http.MethodGet, "/users/:userId/posts/:postId",
+		var captured Params
+		AddHTTPHandlerFunc(
+			r,
+			http.MethodGet,
+			"/users/:userId/posts/:postId",
 			func(w http.ResponseWriter, req *http.Request) {
-				capturedParams = GetParams(req)
+				captured = GetParams(req)
 				w.WriteHeader(http.StatusOK)
-			})
-
+			},
+		)
 		req := httptest.NewRequest(http.MethodGet, "/users/456/posts/789", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		if userId := capturedParams["userId"]; userId != "456" {
-			t.Errorf("Expected userId='456', got %q", userId)
+		r.ServeHTTP(httptest.NewRecorder(), req)
+		if captured["userId"] != "456" {
+			t.Errorf("Expected userId='456', got %q", captured["userId"])
 		}
-		if postId := capturedParams["postId"]; postId != "789" {
-			t.Errorf("Expected postId='789', got %q", postId)
+		if captured["postId"] != "789" {
+			t.Errorf("Expected postId='789', got %q", captured["postId"])
 		}
 	})
 
 	t.Run("Splat_Values", func(t *testing.T) {
 		r := NewRouter(nil)
-		var capturedSplat []string
-
+		var captured []string
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/files/*",
 			func(w http.ResponseWriter, req *http.Request) {
-				capturedSplat = GetSplatValues(req)
+				captured = GetSplatValues(req)
 				w.WriteHeader(http.StatusOK)
 			},
 		)
-
 		req := httptest.NewRequest(
 			http.MethodGet,
 			"/files/path/to/file.txt",
 			nil,
 		)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(httptest.NewRecorder(), req)
 		expected := []string{"path", "to", "file.txt"}
-		if !sliceEqual(capturedSplat, expected) {
-			t.Errorf(
-				"Expected splat values %v, got %v",
-				expected,
-				capturedSplat,
-			)
+		if !slice_equal(captured, expected) {
+			t.Errorf("Expected splat %v, got %v", expected, captured)
 		}
 	})
 }
 
 func TestParams_NoParamsReturnsNilMap(t *testing.T) {
 	router := NewRouter(nil)
-
-	requestCount := 0
-	var firstRequestParams Params
-	var secondRequestParams Params
+	request_count := 0
+	var first_params, second_params Params
 
 	AddHTTPHandlerFunc(
 		router,
 		http.MethodGet,
 		"/no-params",
 		func(w http.ResponseWriter, req *http.Request) {
-			requestCount++
-
+			request_count++
 			params := GetParams(req)
-			if requestCount == 1 {
-				firstRequestParams = params
+			if request_count == 1 {
+				first_params = params
 			}
-			if requestCount == 2 {
-				secondRequestParams = params
+			if request_count == 2 {
+				second_params = params
 			}
-
 			w.WriteHeader(http.StatusOK)
 		},
 	)
 
-	firstRequest := httptest.NewRequest(http.MethodGet, "/no-params", nil)
-	firstResponseRecorder := httptest.NewRecorder()
-	router.ServeHTTP(firstResponseRecorder, firstRequest)
+	router.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/no-params", nil),
+	)
+	router.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/no-params", nil),
+	)
 
-	secondRequest := httptest.NewRequest(http.MethodGet, "/no-params", nil)
-	secondResponseRecorder := httptest.NewRecorder()
-	router.ServeHTTP(secondResponseRecorder, secondRequest)
-
-	if firstRequestParams != nil {
+	if first_params != nil {
 		t.Fatalf(
-			"expected first request no-params map to be nil, got %#v",
-			firstRequestParams,
+			"expected first no-params map to be nil, got %#v",
+			first_params,
 		)
 	}
-	if secondRequestParams != nil {
+	if second_params != nil {
 		t.Fatalf(
-			"expected second request no-params map to be nil, got %#v",
-			secondRequestParams,
+			"expected second no-params map to be nil, got %#v",
+			second_params,
 		)
 	}
 }
 
 func TestInjectTasksCtxMiddleware_NoParamsReturnsNilMap(t *testing.T) {
-	requestCount := 0
-	var firstRequestParams Params
-	var secondRequestParams Params
-	var firstRequestProxyIsNil bool
-	var secondRequestProxyIsNil bool
+	request_count := 0
+	var first_params, second_params Params
+	var first_proxy_nil, second_proxy_nil bool
 
 	handler := InjectTasksCtxMiddleware(
 		http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			requestCount++
-
+			request_count++
 			params := GetParams(req)
-			if requestCount == 1 {
-				firstRequestParams = params
+			if request_count == 1 {
+				first_params = params
 			}
-			if requestCount == 2 {
-				secondRequestParams = params
+			if request_count == 2 {
+				second_params = params
 			}
-			requestData := muxcore.DataFromRequest(req)
-			if requestData == nil {
+			// Access internal rd_transport to check proxy is nil.
+			rd := request_store.Value(req.Context())
+			if rd == nil {
 				t.Fatal("expected request data to be present")
 			}
-			if requestCount == 1 {
-				firstRequestProxyIsNil = requestData.ResponseProxy() == nil
+			if request_count == 1 {
+				first_proxy_nil = rd.response_proxy == nil
 			}
-			if requestCount == 2 {
-				secondRequestProxyIsNil = requestData.ResponseProxy() == nil
+			if request_count == 2 {
+				second_proxy_nil = rd.response_proxy == nil
 			}
-
 			w.WriteHeader(http.StatusNoContent)
 		}),
 	)
 
-	firstRequest := httptest.NewRequest(
-		http.MethodGet,
-		"/middleware-no-params",
-		nil,
+	handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/middleware-no-params", nil),
 	)
-	firstResponseRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(firstResponseRecorder, firstRequest)
-
-	secondRequest := httptest.NewRequest(
-		http.MethodGet,
-		"/middleware-no-params",
-		nil,
+	handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/middleware-no-params", nil),
 	)
-	secondResponseRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(secondResponseRecorder, secondRequest)
 
-	if firstRequestParams != nil {
-		t.Fatalf(
-			"expected first middleware request no-params map to be nil, got %#v",
-			firstRequestParams,
-		)
+	if first_params != nil {
+		t.Fatalf("expected first params nil, got %#v", first_params)
 	}
-	if secondRequestParams != nil {
-		t.Fatalf(
-			"expected second middleware request no-params map to be nil, got %#v",
-			secondRequestParams,
-		)
+	if second_params != nil {
+		t.Fatalf("expected second params nil, got %#v", second_params)
 	}
-	if !firstRequestProxyIsNil || !secondRequestProxyIsNil {
+	if !first_proxy_nil || !second_proxy_nil {
 		t.Fatalf(
-			"expected InjectTasksCtxMiddleware request proxy to stay nil; first=%v second=%v",
-			firstRequestProxyIsNil,
-			secondRequestProxyIsNil,
+			"expected proxy nil; first=%v second=%v",
+			first_proxy_nil,
+			second_proxy_nil,
 		)
 	}
 }
@@ -512,7 +461,6 @@ func TestHTTPMiddleware(t *testing.T) {
 	t.Run("Global_Middleware_Order", func(t *testing.T) {
 		r := NewRouter(nil)
 		var order []string
-
 		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
@@ -521,7 +469,6 @@ func TestHTTPMiddleware(t *testing.T) {
 				},
 			)
 		})
-
 		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
@@ -530,7 +477,6 @@ func TestHTTPMiddleware(t *testing.T) {
 				},
 			)
 		})
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
@@ -540,24 +486,19 @@ func TestHTTPMiddleware(t *testing.T) {
 			},
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/test", nil),
+		)
 		expected := []string{"global1", "global2", "handler"}
-		if !sliceEqual(order, expected) {
-			t.Errorf(
-				"Wrong execution order. Expected %v, got %v",
-				expected,
-				order,
-			)
+		if !slice_equal(order, expected) {
+			t.Errorf("Expected order %v, got %v", expected, order)
 		}
 	})
 
 	t.Run("Method_Level_Middleware", func(t *testing.T) {
 		r := NewRouter(nil)
 		var order []string
-
 		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
@@ -566,7 +507,6 @@ func TestHTTPMiddleware(t *testing.T) {
 				},
 			)
 		})
-
 		AddMethodLevelHTTPMiddleware(
 			r,
 			http.MethodGet,
@@ -579,7 +519,6 @@ func TestHTTPMiddleware(t *testing.T) {
 				)
 			},
 		)
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
@@ -589,24 +528,19 @@ func TestHTTPMiddleware(t *testing.T) {
 			},
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/test", nil),
+		)
 		expected := []string{"global", "method", "handler"}
-		if !sliceEqual(order, expected) {
-			t.Errorf(
-				"Wrong execution order. Expected %v, got %v",
-				expected,
-				order,
-			)
+		if !slice_equal(order, expected) {
+			t.Errorf("Expected order %v, got %v", expected, order)
 		}
 	})
 
 	t.Run("Pattern_Level_Middleware", func(t *testing.T) {
 		r := NewRouter(nil)
 		var order []string
-
 		route := AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
@@ -615,7 +549,6 @@ func TestHTTPMiddleware(t *testing.T) {
 				order = append(order, "handler")
 			},
 		)
-
 		AddPatternLevelHTTPMiddleware(
 			route,
 			func(next http.Handler) http.Handler {
@@ -628,104 +561,83 @@ func TestHTTPMiddleware(t *testing.T) {
 			},
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/test", nil),
+		)
 		if order[0] != "pattern" || order[1] != "handler" {
-			t.Errorf(
-				"Wrong execution order. Expected [pattern handler], got %v",
-				order,
-			)
+			t.Errorf("Expected [pattern handler], got %v", order)
 		}
 	})
 
 	t.Run("Middleware_With_If", func(t *testing.T) {
 		r := NewRouter(nil)
-		var middlewareCalled bool
-
+		var mw_called bool
 		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
-					middlewareCalled = true
+					mw_called = true
 					next.ServeHTTP(w, req)
 				},
 			)
 		}, &MiddlewareOptions{
-			If: func(req *http.Request) bool {
-				return !strings.HasPrefix(req.URL.Path, "/public/")
-			},
+			If: func(req *http.Request) bool { return !strings.HasPrefix(req.URL.Path, "/public/") },
 		})
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/public/assets",
-			func(w http.ResponseWriter, req *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, req *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/api/data",
-			func(w http.ResponseWriter, req *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, req *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
 
-		// Test public path (middleware should be skipped)
-		middlewareCalled = false
-		req := httptest.NewRequest(http.MethodGet, "/public/assets", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		if middlewareCalled {
+		mw_called = false
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/public/assets", nil),
+		)
+		if mw_called {
 			t.Error("Middleware should not run for /public/ paths")
 		}
 
-		// Test API path (middleware should run)
-		middlewareCalled = false
-		req = httptest.NewRequest(http.MethodGet, "/api/data", nil)
-		w = httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		if !middlewareCalled {
+		mw_called = false
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/api/data", nil),
+		)
+		if !mw_called {
 			t.Error("Middleware should run for non-public paths")
 		}
 	})
 
 	t.Run("Middleware_Short_Circuit", func(t *testing.T) {
 		r := NewRouter(nil)
-		var handlerCalled bool
-
+		var handler_called bool
 		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
-					// Don't call next
 				},
 			)
 		})
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/test",
-			func(w http.ResponseWriter, req *http.Request) {
-				handlerCalled = true
-			},
+			func(w http.ResponseWriter, req *http.Request) { handler_called = true },
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/test", nil))
 		if w.Code != http.StatusUnauthorized {
 			t.Errorf("Expected status 401, got %d", w.Code)
 		}
-		if handlerCalled {
+		if handler_called {
 			t.Error(
 				"Handler should not be called when middleware short-circuits",
 			)
@@ -734,56 +646,47 @@ func TestHTTPMiddleware(t *testing.T) {
 }
 
 func TestTaskMiddleware(t *testing.T) {
-	type AuthInfo struct {
-		UserID string
-	}
+	type auth_info struct{ UserID string }
 
-	t.Run("Task_Middleware_Basic", func(t *testing.T) {
+	t.Run("Basic", func(t *testing.T) {
 		r := NewRouter(nil)
-		var middlewareCalled bool
-
-		taskMw := TaskMiddlewareFromFunc(
-			func(rd *ReqData[None]) (AuthInfo, error) {
-				middlewareCalled = true
-				return AuthInfo{UserID: "123"}, nil
-			},
+		var mw_called bool
+		AddGlobalTaskMiddleware(
+			r,
+			TaskMiddlewareFromFunc(func(rd *ReqData[None]) (auth_info, error) {
+				mw_called = true
+				return auth_info{UserID: "123"}, nil
+			}),
 		)
-
-		AddGlobalTaskMiddleware(r, taskMw)
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/test",
-			func(w http.ResponseWriter, req *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, req *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/test", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
-		if !middlewareCalled {
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/test", nil),
+		)
+		if !mw_called {
 			t.Error("Task middleware was not called")
 		}
 	})
 
-	t.Run("Task_Middleware_With_If", func(t *testing.T) {
+	t.Run("With_If", func(t *testing.T) {
 		r := NewRouter(nil)
-		var middlewareCalled bool
-
-		taskMw := TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
-			middlewareCalled = true
-			return None{}, nil
-		})
-
-		AddGlobalTaskMiddleware(r, taskMw, &MiddlewareOptions{
-			If: func(req *http.Request) bool {
-				return strings.HasPrefix(req.URL.Path, "/api/")
+		var mw_called bool
+		AddGlobalTaskMiddleware(
+			r,
+			TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+				mw_called = true
+				return None{}, nil
+			}),
+			&MiddlewareOptions{
+				If: func(req *http.Request) bool { return strings.HasPrefix(req.URL.Path, "/api/") },
 			},
-		})
-
+		)
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
@@ -797,26 +700,28 @@ func TestTaskMiddleware(t *testing.T) {
 			func(w http.ResponseWriter, req *http.Request) {},
 		)
 
-		// Test API path
-		middlewareCalled = false
-		req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-		r.ServeHTTP(httptest.NewRecorder(), req)
-		if !middlewareCalled {
+		mw_called = false
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/api/test", nil),
+		)
+		if !mw_called {
 			t.Error("Task middleware should run for /api/ paths")
 		}
 
-		// Test public path
-		middlewareCalled = false
-		req = httptest.NewRequest(http.MethodGet, "/public/test", nil)
-		r.ServeHTTP(httptest.NewRecorder(), req)
-		if middlewareCalled {
+		mw_called = false
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/public/test", nil),
+		)
+		if mw_called {
 			t.Error("Task middleware should not run for /public/ paths")
 		}
 	})
 }
 
 func TestNotFound(t *testing.T) {
-	t.Run("Default_NotFound", func(t *testing.T) {
+	t.Run("Default", func(t *testing.T) {
 		r := NewRouter(nil)
 		AddHTTPHandlerFunc(
 			r,
@@ -825,29 +730,24 @@ func TestNotFound(t *testing.T) {
 			func(w http.ResponseWriter, req *http.Request) {},
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/notfound", nil)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/notfound", nil))
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
 	})
 
-	t.Run("Custom_NotFound", func(t *testing.T) {
+	t.Run("Custom", func(t *testing.T) {
 		r := NewRouter(nil)
-		SetGlobalNotFoundHTTPHandler(
-			r,
+		r.SetGlobalNotFoundHTTPHandler(
 			http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 				w.Write([]byte("Custom 404"))
 			}),
 		)
 
-		req := httptest.NewRequest(http.MethodGet, "/notfound", nil)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/notfound", nil))
 		if w.Code != http.StatusNotFound {
 			t.Errorf("Expected status 404, got %d", w.Code)
 		}
@@ -861,21 +761,17 @@ func TestMountRoot(t *testing.T) {
 	t.Run("Strip_MountRoot", func(t *testing.T) {
 		r := NewRouter(&Options{MountRoot: "/api"})
 		var called bool
-
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/users",
-			func(w http.ResponseWriter, req *http.Request) {
-				called = true
-			},
+			func(w http.ResponseWriter, req *http.Request) { called = true },
 		)
 
-		// Request with mount root prefix
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
-
+		r.ServeHTTP(
+			httptest.NewRecorder(),
+			httptest.NewRequest(http.MethodGet, "/api/users", nil),
+		)
 		if !called {
 			t.Error("Handler should be called when mount root is stripped")
 		}
@@ -883,7 +779,6 @@ func TestMountRoot(t *testing.T) {
 
 	t.Run("MountRoot_Method", func(t *testing.T) {
 		r := NewRouter(&Options{MountRoot: "/api"})
-
 		if r.MountRoot() != "/api/" {
 			t.Errorf("Expected '/api/', got %q", r.MountRoot())
 		}
@@ -896,9 +791,7 @@ func TestMountRoot(t *testing.T) {
 		r := NewRouter(&Options{MountRoot: "/api"})
 		defer func() {
 			if recover() == nil {
-				t.Fatal(
-					"expected panic when MountRoot receives more than one argument",
-				)
+				t.Fatal("expected panic")
 			}
 		}()
 		_ = r.MountRoot("users", "extra")
@@ -906,32 +799,30 @@ func TestMountRoot(t *testing.T) {
 }
 
 func TestValidation(t *testing.T) {
-	type ValidatedInput struct {
+	type validated_input struct {
 		Email string `json:"email"`
 	}
 
 	t.Run("Validation_Error", func(t *testing.T) {
 		r := NewRouter(&Options{
-			ParseInput: func(req *http.Request, inputPtr any) error {
-				// Simulate validation error
+			ParseInput: func(req *http.Request, input_ptr any) error {
 				return &validate.ValidationError{
 					Err: errors.New("Invalid email format"),
 				}
 			},
 		})
-
-		handler := TaskHandlerFromFunc(
-			func(rd *ReqData[ValidatedInput]) (None, error) {
-				return None{}, nil
-			},
+		AddTaskHandler(
+			r,
+			http.MethodPost,
+			"/validate",
+			TaskHandlerFromFunc(
+				func(rd *ReqData[validated_input]) (None, error) { return None{}, nil },
+			),
 		)
 
-		AddTaskHandler(r, http.MethodPost, "/validate", handler)
-
 		body := strings.NewReader(`{"email":"invalid"}`)
-		req := httptest.NewRequest(http.MethodPost, "/validate", body)
 		w := httptest.NewRecorder()
-		r.ServeHTTP(w, req)
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/validate", body))
 
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("Expected status 400, got %d", w.Code)
@@ -944,7 +835,6 @@ func TestValidation(t *testing.T) {
 
 func TestAllRoutes(t *testing.T) {
 	r := NewRouter(nil)
-
 	AddHTTPHandlerFunc(
 		r,
 		http.MethodGet,
@@ -969,40 +859,93 @@ func TestAllRoutes(t *testing.T) {
 		t.Errorf("Expected 3 routes, got %d", len(routes))
 	}
 
-	// Verify routes have correct patterns and methods
 	patterns := make(map[string]map[string]bool)
 	for _, route := range routes {
-		pattern := route.OriginalPattern()
-		method := route.Method()
-		if patterns[pattern] == nil {
-			patterns[pattern] = make(map[string]bool)
+		p := route.OriginalPattern()
+		m := route.Method()
+		if patterns[p] == nil {
+			patterns[p] = make(map[string]bool)
 		}
-		patterns[pattern][method] = true
+		patterns[p][m] = true
 	}
-
 	if !patterns["/users"][http.MethodGet] {
-		t.Error("Missing GET /users route")
+		t.Error("Missing GET /users")
 	}
 	if !patterns["/users"][http.MethodPost] {
-		t.Error("Missing POST /users route")
+		t.Error("Missing POST /users")
 	}
 	if !patterns["/posts"][http.MethodGet] {
-		t.Error("Missing GET /posts route")
+		t.Error("Missing GET /posts")
 	}
 
-	// Mutating the returned slice must not mutate router-owned route storage.
 	routes[0] = nil
-	routesAfterMutation := r.AllRoutes()
-	if len(routesAfterMutation) == 0 {
-		t.Fatal("expected non-empty routes after mutation attempt")
-	}
-	if routesAfterMutation[0] == nil {
+	after := r.AllRoutes()
+	if len(after) == 0 || after[0] == nil {
 		t.Fatal("AllRoutes should return a defensive copy")
 	}
 }
 
-// Helper functions
-func sliceEqual(a, b []string) bool {
+func TestTasksCtxAvailability(t *testing.T) {
+	t.Run("InHTTPHandler_WithTaskMiddleware", func(t *testing.T) {
+		router := NewRouter(nil)
+		AddGlobalTaskMiddleware(
+			router,
+			TaskMiddlewareFromFunc(
+				func(rd *ReqData[None]) (None, error) { return None{}, nil },
+			),
+		)
+		AddHTTPHandlerFunc(
+			router,
+			"GET",
+			"/test",
+			func(w http.ResponseWriter, r *http.Request) {
+				if GetTasksCtx(r) == nil {
+					t.Error("TasksCtx is nil in HTTP handler")
+					http.Error(w, "nil", http.StatusInternalServerError)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			},
+		)
+
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest("GET", "/test", nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rec.Code)
+		}
+	})
+
+	t.Run("InTaskMiddleware", func(t *testing.T) {
+		router := NewRouter(nil)
+		AddGlobalTaskMiddleware(
+			router,
+			TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
+				if rd.TasksCtx() == nil {
+					t.Error("TasksCtx is nil in task middleware")
+				}
+				return None{}, nil
+			}),
+		)
+		AddHTTPHandlerFunc(
+			router,
+			"GET",
+			"/test",
+			func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
+		)
+
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest("GET", "/test", nil))
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", rec.Code)
+		}
+	})
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// HELPERS
+/////////////////////////////////////////////////////////////////////
+
+func slice_equal(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -1014,7 +957,69 @@ func sliceEqual(a, b []string) bool {
 	return true
 }
 
-// Benchmarks
+/////////////////////////////////////////////////////////////////////
+/////// BENCHMARKS
+/////////////////////////////////////////////////////////////////////
+
+func setup_api_router() *Router {
+	r := NewRouter(nil)
+	logging := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = r.Method + " " + r.URL.Path
+			next.ServeHTTP(w, r)
+		})
+	}
+	auth := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") == "" {
+				next.ServeHTTP(w, r)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+	AddGlobalHTTPMiddleware(r, logging)
+	AddGlobalHTTPMiddleware(r, auth)
+
+	ok := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	AddHTTPHandlerFunc(r, http.MethodGet, "/api/users", ok)
+	AddHTTPHandlerFunc(r, http.MethodGet, "/api/users/:id", ok)
+	AddHTTPHandlerFunc(
+		r,
+		http.MethodPost,
+		"/api/users",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusCreated) },
+	)
+	AddHTTPHandlerFunc(r, http.MethodPut, "/api/users/:id", ok)
+	AddHTTPHandlerFunc(
+		r,
+		http.MethodDelete,
+		"/api/users/:id",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) },
+	)
+	AddHTTPHandlerFunc(r, http.MethodGet, "/api/users/:userId/posts", ok)
+	AddHTTPHandlerFunc(
+		r,
+		http.MethodGet,
+		"/api/users/:userId/posts/:postId",
+		ok,
+	)
+	return r
+}
+
+func setup_large_router(n int) *Router {
+	r := NewRouter(nil)
+	ok := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
+	for i := 0; i < n; i++ {
+		path := fmt.Sprintf("/route%d", i)
+		if i%2 == 0 {
+			AddHTTPHandlerFunc(r, http.MethodGet, "/static/path/"+path, ok)
+		} else {
+			AddHTTPHandlerFunc(r, http.MethodGet, "/dynamic/:param/"+path, ok)
+		}
+	}
+	return r
+}
+
 func BenchmarkRouter(b *testing.B) {
 	b.Run("SimpleStaticRoute", func(b *testing.B) {
 		r := NewRouter(nil)
@@ -1022,14 +1027,10 @@ func BenchmarkRouter(b *testing.B) {
 			r,
 			http.MethodGet,
 			"/ping",
-			func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
-
 		req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1043,14 +1044,10 @@ func BenchmarkRouter(b *testing.B) {
 			r,
 			http.MethodGet,
 			"/users/:id",
-			func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
-
 		req := httptest.NewRequest(http.MethodGet, "/users/123", nil)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1062,23 +1059,17 @@ func BenchmarkRouter(b *testing.B) {
 		r := NewRouter(nil)
 		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					next.ServeHTTP(w, r)
-				},
+				func(w http.ResponseWriter, r *http.Request) { next.ServeHTTP(w, r) },
 			)
 		})
 		AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
 			"/test",
-			func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
-
 		req := httptest.NewRequest(http.MethodGet, "/test", nil)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1087,20 +1078,18 @@ func BenchmarkRouter(b *testing.B) {
 	})
 
 	b.Run("RESTfulAPI", func(b *testing.B) {
-		r := setupAPIRouterForBenchmarks()
+		r := setup_api_router()
 		paths := []string{
 			"/api/users",
 			"/api/users/123",
 			"/api/users/456/posts",
 			"/api/users/789/posts/999",
 		}
-
 		reqs := make([]*http.Request, len(paths))
-		for i, path := range paths {
-			reqs[i] = httptest.NewRequest(http.MethodGet, path, nil)
+		for i, p := range paths {
+			reqs[i] = httptest.NewRequest(http.MethodGet, p, nil)
 		}
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1109,10 +1098,9 @@ func BenchmarkRouter(b *testing.B) {
 	})
 
 	b.Run("LargeRouterMatch", func(b *testing.B) {
-		r := setupLargeRouterForBenchmarks(100)
+		r := setup_large_router(100)
 		req := httptest.NewRequest(http.MethodGet, "/dynamic/param/99", nil)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1121,10 +1109,9 @@ func BenchmarkRouter(b *testing.B) {
 	})
 
 	b.Run("WorstCaseMatch", func(b *testing.B) {
-		r := setupLargeRouterForBenchmarks(100)
+		r := setup_large_router(100)
 		req := httptest.NewRequest(http.MethodGet, "/nomatch", nil)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1138,18 +1125,14 @@ func BenchmarkRouter(b *testing.B) {
 			r,
 			http.MethodGet,
 			"/api/:version/users/:userId/posts/:postId/comments/:commentId",
-			func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
+			func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
 		)
-
 		req := httptest.NewRequest(
 			http.MethodGet,
 			"/api/v1/users/123/posts/456/comments/789",
 			nil,
 		)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1159,34 +1142,30 @@ func BenchmarkRouter(b *testing.B) {
 
 	b.Run("TaskHandler", func(b *testing.B) {
 		r := NewRouter(&Options{
-			ParseInput: func(req *http.Request, inputPtr any) error {
+			ParseInput: func(req *http.Request, input_ptr any) error {
 				if req.Body != nil {
 					defer req.Body.Close()
-					return json.NewDecoder(req.Body).Decode(inputPtr)
+					return json.NewDecoder(req.Body).Decode(input_ptr)
 				}
 				return nil
 			},
 		})
-
-		type Input struct {
+		type input struct {
 			Value int `json:"value"`
 		}
-		type Output struct {
+		type output struct {
 			Result int `json:"result"`
 		}
-
-		handler := TaskHandlerFromFunc(
-			func(rd *ReqData[Input]) (Output, error) {
-				return Output{Result: rd.Input().Value * 2}, nil
-			},
+		AddTaskHandler(r, http.MethodPost, "/double",
+			TaskHandlerFromFunc(func(rd *ReqData[input]) (output, error) {
+				return output{Result: rd.Input().Value * 2}, nil
+			}))
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/double",
+			strings.NewReader(`{"value":42}`),
 		)
-
-		AddTaskHandler(r, http.MethodPost, "/double", handler)
-
-		body := strings.NewReader(`{"value":42}`)
-		req := httptest.NewRequest(http.MethodPost, "/double", body)
 		w := httptest.NewRecorder()
-
 		b.ResetTimer()
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -1194,190 +1173,4 @@ func BenchmarkRouter(b *testing.B) {
 			r.ServeHTTP(w, req)
 		}
 	})
-}
-
-// Helper to create a typical API router setup
-func setupAPIRouterForBenchmarks() *Router {
-	r := NewRouter(nil)
-
-	// Common middleware
-	loggingMW := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Simulate basic logging overhead
-			_ = r.Method + " " + r.URL.Path
-			next.ServeHTTP(w, r)
-		})
-	}
-
-	authMW := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Simulate auth check overhead
-			if r.Header.Get("Authorization") == "" {
-				next.ServeHTTP(w, r)
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-
-	// Global middleware
-	AddGlobalHTTPMiddleware(r, loggingMW)
-	AddGlobalHTTPMiddleware(r, authMW)
-
-	// REST-style routes
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodGet,
-		"/api/users",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodGet,
-		"/api/users/:id",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodPost,
-		"/api/users",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusCreated)
-		},
-	)
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodPut,
-		"/api/users/:id",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodDelete,
-		"/api/users/:id",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		},
-	)
-
-	// Nested resources
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodGet,
-		"/api/users/:userId/posts",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-	AddHTTPHandlerFunc(
-		r,
-		http.MethodGet,
-		"/api/users/:userId/posts/:postId",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-
-	return r
-}
-
-// Helper to create a router with many routes
-func setupLargeRouterForBenchmarks(numRoutes int) *Router {
-	r := NewRouter(nil)
-
-	// Add a mix of static and dynamic routes
-	for i := 0; i < numRoutes; i++ {
-		path := fmt.Sprintf("/route%d", i)
-		if i%2 == 0 {
-			AddHTTPHandlerFunc(
-				r,
-				http.MethodGet,
-				"/static/path/"+path,
-				func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusOK)
-				},
-			)
-		} else {
-			AddHTTPHandlerFunc(r, http.MethodGet, "/dynamic/:param/"+path, func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			})
-		}
-	}
-
-	return r
-}
-
-func TestTasksCtxIsAvailableInHTTPHandler(t *testing.T) {
-	router := NewRouter(nil)
-
-	// Add a task middleware to force TasksCtx creation
-	taskMw := TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
-		return None{}, nil
-	})
-	AddGlobalTaskMiddleware(router, taskMw)
-
-	// Register an HTTP handler that tries to access TasksCtx
-	AddHTTPHandlerFunc(
-		router,
-		"GET",
-		"/test",
-		func(w http.ResponseWriter, r *http.Request) {
-			// This should work because we have task middleware
-			tasksCtx := GetTasksCtx(r)
-			if tasksCtx == nil {
-				t.Error("TasksCtx is nil in HTTP handler")
-				http.Error(w, "TasksCtx is nil", http.StatusInternalServerError)
-				return
-			}
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-
-	// Make a test request
-	req := httptest.NewRequest("GET", "/test", nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", rec.Code)
-	}
-}
-
-func TestTasksCtxIsAvailableInTaskMiddleware(t *testing.T) {
-	router := NewRouter(nil)
-
-	// Create a task middleware that verifies TasksCtx is available
-	taskMw := TaskMiddlewareFromFunc(func(rd *ReqData[None]) (None, error) {
-		if rd.TasksCtx() == nil {
-			t.Error("TasksCtx is nil in task middleware")
-		}
-		return None{}, nil
-	})
-
-	AddGlobalTaskMiddleware(router, taskMw)
-
-	// Register a simple HTTP handler
-	AddHTTPHandlerFunc(
-		router,
-		"GET",
-		"/test",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		},
-	)
-
-	// Make a test request
-	req := httptest.NewRequest("GET", "/test", nil)
-	rec := httptest.NewRecorder()
-
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", rec.Code)
-	}
 }

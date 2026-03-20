@@ -12,9 +12,9 @@ import (
 
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/htmlutil"
-	"github.com/vormadev/vorma/kit/matcher/nestedmatcher"
+	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/mux/nestedmux"
+	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/lab/viteutil"
@@ -27,9 +27,9 @@ const (
 	json_query_key  = "vorma_json"
 	root_element_id = "vorma-root"
 
-	tmpl_key_head         = "VormaHead"
+	tmpl_key_head         = "VormaHeadEls"
 	tmpl_key_ssr_script   = "VormaSSRScript"
-	tmpl_key_ssr_hash     = "VormaSSRScriptHash"
+	tmpl_key_ssr_hash     = "VormaSSRScriptSha256Hash"
 	tmpl_key_body_scripts = "VormaBodyScripts"
 	tmpl_key_root_id      = "VormaRootID"
 )
@@ -39,18 +39,21 @@ const (
 /////////////////////////////////////////////////////////////////////
 
 type route_data_json struct {
-	OutermostServerError    string     `json:"outermostServerError,omitempty"`
-	OutermostServerErrorIdx *int       `json:"outermostServerErrorIdx,omitempty"`
-	ErrorExportKeys         []string   `json:"errorExportKeys,omitempty"`
-	MatchedPatterns         []string   `json:"matchedPatterns,omitempty"`
-	LoadersData             []any      `json:"loadersData,omitempty"`
-	ImportURLs              []string   `json:"importURLs,omitempty"`
-	ExportKeys              []string   `json:"exportKeys,omitempty"`
-	HasRootData             bool       `json:"hasRootData,omitempty"`
-	Params                  mux.Params `json:"params,omitempty"`
-	SplatValues             []string   `json:"splatValues,omitempty"`
-	Deps                    []string   `json:"deps,omitempty"`
-	CSSBundles              []string   `json:"cssBundles,omitempty"`
+	OutermostServerError    string              `json:"outermostServerError,omitempty"`
+	OutermostServerErrorIdx *int                `json:"outermostServerErrorIdx,omitempty"`
+	ErrorExportKeys         []string            `json:"errorExportKeys,omitempty"`
+	MatchedPatterns         []string            `json:"matchedPatterns,omitempty"`
+	LoadersData             []any               `json:"loadersData,omitempty"`
+	ImportURLs              []string            `json:"importURLs,omitempty"`
+	ExportKeys              []string            `json:"exportKeys,omitempty"`
+	HasRootData             bool                `json:"hasRootData,omitempty"`
+	Params                  mux.Params          `json:"params,omitempty"`
+	SplatValues             []string            `json:"splatValues,omitempty"`
+	Deps                    []string            `json:"deps,omitempty"`
+	Title                   *htmlutil.Element   `json:"title,omitempty"`
+	MetaHeadEls             []*htmlutil.Element `json:"metaHeadEls,omitempty"`
+	RestHeadEls             []*htmlutil.Element `json:"restHeadEls,omitempty"`
+	CSSBundles              []string            `json:"cssBundles,omitempty"`
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -108,53 +111,25 @@ type route_metadata_cache struct {
 	error_export_keys []string
 	deps              []string
 	css_bundles       []string
-
-	// static prod head: computed once when no dynamic head elements
-	static_prod_head_once sync.Once
-	static_prod_head      template.HTML
-	static_prod_head_err  error
 }
 
-func (c *route_metadata_cache) get_static_prod_head(
-	head_inst *headels.Instance,
-	css_els template.HTML,
-) (template.HTML, error) {
-	c.static_prod_head_once.Do(func() {
-		var elements []*htmlutil.Element
-		for _, dep := range c.deps {
-			elements = append(elements, &htmlutil.Element{
-				Tag: "link",
-				AttributesKnownSafe: map[string]string{
-					"rel":  "modulepreload",
-					"href": dep,
-				},
-				SelfClosing: true,
-			})
-		}
-		for _, css := range c.css_bundles {
-			elements = append(elements, &htmlutil.Element{
-				Tag: "link",
-				AttributesKnownSafe: map[string]string{
-					"rel":  "stylesheet",
-					"href": css,
-				},
-				SelfClosing: true,
-			})
-		}
-		sorted := head_inst.ToSortedAndPreEscapedHeadEls(elements)
-		rendered, err := head_inst.Render(sorted)
-		if err != nil {
-			c.static_prod_head_err = err
-			return
-		}
-		c.static_prod_head = rendered + "\n" + css_els
-	})
-	return c.static_prod_head, c.static_prod_head_err
+func static_head_cache_key(deps, css []string) string {
+	var sb strings.Builder
+	for _, d := range deps {
+		sb.WriteString(d)
+		sb.WriteByte(0)
+	}
+	sb.WriteByte('|')
+	for _, c := range css {
+		sb.WriteString(c)
+		sb.WriteByte(0)
+	}
+	return sb.String()
 }
 
 func route_data_cache_key(
 	build_id string,
-	matches []*nestedmatcher.Match,
+	matches []*matcher.NestedMatch,
 ) string {
 	var sb strings.Builder
 	sb.Grow(len(build_id) + len(matches)*16 + 2)
@@ -169,8 +144,24 @@ func route_data_cache_key(
 
 func (v *Vorma) get_or_build_route_metadata_cache(
 	snapshot *types.RuntimeSnapshot,
-	matches []*nestedmatcher.Match,
+	matches []*matcher.NestedMatch,
 ) *route_metadata_cache {
+	// In dev, prune stale entries when the build ID changes
+	if wave.IsDev() {
+		last_bid, _ := v.route_data_cache_bid.Load().(string)
+		if last_bid != snapshot.BuildID {
+			v.route_data_cache.Range(func(key, _ any) bool {
+				v.route_data_cache.Delete(key)
+				return true
+			})
+			v.static_prod_head_cache.Range(func(key, _ any) bool {
+				v.static_prod_head_cache.Delete(key)
+				return true
+			})
+			v.route_data_cache_bid.Store(snapshot.BuildID)
+		}
+	}
+
 	key := route_data_cache_key(snapshot.BuildID, matches)
 	if val, ok := v.route_data_cache.Load(key); ok {
 		return val.(*route_metadata_cache)
@@ -182,7 +173,7 @@ func (v *Vorma) get_or_build_route_metadata_cache(
 
 func build_route_metadata_cache(
 	snapshot *types.RuntimeSnapshot,
-	matches []*nestedmatcher.Match,
+	matches []*matcher.NestedMatch,
 ) *route_metadata_cache {
 	n := len(matches)
 	meta := &route_metadata_cache{
@@ -282,13 +273,20 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	v.maybe_reregister_patterns(snapshot)
+
 	requested_build_id := r.URL.Query().Get(json_query_key)
 	is_json := requested_build_id != ""
 
 	w.Header().Set(BuildIDHeaderKey, snapshot.BuildID)
 
-	// stale build check
+	// stale build check — tell the client to reload without the JSON param
 	if is_json && requested_build_id != snapshot.BuildID {
+		reload_url := *r.URL
+		q := reload_url.Query()
+		q.Del(json_query_key)
+		reload_url.RawQuery = q.Encode()
+		w.Header().Set("X-Vorma-Reload", reload_url.String())
 		w.Header().
 			Set("Cache-Control", "private, max-age=0, must-revalidate, no-cache")
 		res.OK()
@@ -323,14 +321,14 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// match routes
-	match_results, found := nestedmux.FindMatches(v.loaders_router, r)
+	match_results, found := mux.FindNestedMatches(v.loaders_router, r)
 	if !found {
 		res.NotFound()
 		return
 	}
 
 	// run loader tasks
-	tasks_results := nestedmux.RunTasksWithoutPatternMap(
+	tasks_results := mux.RunNestedTasks(
 		v.loaders_router, r, match_results,
 	)
 	if tasks_results == nil {
@@ -354,8 +352,12 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 	// build route data
 	rd := v.build_route_data(snapshot, match_results, tasks_results)
 
-	w.Header().
-		Set("Cache-Control", "private, max-age=0, must-revalidate, no-cache")
+	// Set a conservative default cache control header only if the
+	// loaders didn't already set one via response proxies.
+	if w.Header().Get("Cache-Control") == "" {
+		w.Header().
+			Set("Cache-Control", "private, max-age=0, must-revalidate, no-cache")
+	}
 
 	if is_json {
 		v.serve_loaders_json(res, rd)
@@ -370,7 +372,7 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	v.serve_loaders_html(w, r, res, rd, snapshot, default_head_els)
+	v.serve_loaders_html(r, res, rd, snapshot, default_head_els)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -391,12 +393,13 @@ type route_data struct {
 	splat_values        []string
 	deps                []string
 	css_bundles         []string
+	loader_head_els     []*htmlutil.Element
 }
 
 func (v *Vorma) build_route_data(
 	snapshot *types.RuntimeSnapshot,
-	match_results *nestedmatcher.Results,
-	tasks_results *nestedmux.TasksResults,
+	match_results *matcher.FindNestedMatchesResults,
+	tasks_results *mux.NestedTasksResults,
 ) *route_data {
 	matches := match_results.Matches
 	metadata := v.get_or_build_route_metadata_cache(snapshot, matches)
@@ -422,12 +425,20 @@ func (v *Vorma) build_route_data(
 	for i := range matches {
 		result := tasks_results.Slice[i]
 		rd.loaders_data[i] = result.Data()
+
 		if result.Err() != nil && rd.outermost_error_idx == nil {
 			idx := i
 			rd.outermost_error_idx = &idx
 			rd.outermost_error = v.resolve_client_error(
 				result.Err(), rd.matched_patterns[i],
 			)
+		} else if result.RanTask() && result.Err() == nil {
+			if reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(rd.loaders_data[i]) {
+				v.logger.Warn(
+					"Do not return nil values from loaders unless the underlying type is an empty struct or you are returning an error.",
+					"pattern", rd.matched_patterns[i],
+				)
+			}
 		}
 	}
 
@@ -438,6 +449,22 @@ func (v *Vorma) build_route_data(
 		rd.import_urls = rd.import_urls[:cut]
 		rd.export_keys = rd.export_keys[:cut]
 		rd.error_export_keys = rd.error_export_keys[:cut]
+	}
+
+	// collect head elements from loaders before error boundary
+	head_cut := len(matches)
+	if rd.outermost_error_idx != nil {
+		head_cut = *rd.outermost_error_idx
+	}
+	for i := 0; i < head_cut && i < len(tasks_results.ResponseProxies); i++ {
+		proxy := tasks_results.ResponseProxies[i]
+		if proxy == nil {
+			continue
+		}
+		els := proxy.HeadEls()
+		if els != nil {
+			rd.loader_head_els = append(rd.loader_head_els, els.Collect()...)
+		}
 	}
 
 	return rd
@@ -451,6 +478,8 @@ func (v *Vorma) serve_loaders_json(
 	res response.Response,
 	rd *route_data,
 ) {
+	sorted := v.head_els_inst.ToSortedAndPreEscapedHeadEls(rd.loader_head_els)
+
 	params := rd.params
 	if params == nil {
 		params = mux.Params{}
@@ -472,6 +501,9 @@ func (v *Vorma) serve_loaders_json(
 		Params:                  params,
 		SplatValues:             splat,
 		Deps:                    rd.deps,
+		Title:                   sorted.Title,
+		MetaHeadEls:             sorted.Meta,
+		RestHeadEls:             sorted.Rest,
 		CSSBundles:              rd.css_bundles,
 	}
 
@@ -489,7 +521,6 @@ func (v *Vorma) serve_loaders_json(
 /////////////////////////////////////////////////////////////////////
 
 func (v *Vorma) serve_loaders_html(
-	w http.ResponseWriter,
 	r *http.Request,
 	res response.Response,
 	rd *route_data,
@@ -507,19 +538,49 @@ func (v *Vorma) serve_loaders_html(
 
 	// head elements — use static prod cache when possible
 	var rendered_head template.HTML
-	if !is_dev && len(default_head_els) == 0 && rd.metadata != nil {
-		rendered_head, err = rd.metadata.get_static_prod_head(
-			v.head_els_inst,
-			template.HTML(v.Wave.MustCSSEls()),
-		)
-		if err != nil {
-			v.logger.Error("failed to render static head", "error", err)
-			res.InternalServerError()
-			return
+	if !is_dev && len(default_head_els) == 0 && len(rd.loader_head_els) == 0 {
+		cache_key := static_head_cache_key(rd.deps, rd.css_bundles)
+		if cached, ok := v.static_prod_head_cache.Load(cache_key); ok {
+			rendered_head = cached.(template.HTML)
+		} else {
+			var elements []*htmlutil.Element
+			for _, dep := range rd.deps {
+				elements = append(elements, &htmlutil.Element{
+					Tag: "link",
+					AttributesKnownSafe: map[string]string{
+						"rel":  "modulepreload",
+						"href": dep,
+					},
+					SelfClosing: true,
+				})
+			}
+			for _, css := range rd.css_bundles {
+				elements = append(elements, &htmlutil.Element{
+					Tag: "link",
+					AttributesKnownSafe: map[string]string{
+						"rel":  "stylesheet",
+						"href": css,
+					},
+					Attributes: map[string]string{
+						"data-vorma-css-bundle": css,
+					},
+					SelfClosing: true,
+				})
+			}
+			sorted := v.head_els_inst.ToSortedAndPreEscapedHeadEls(elements)
+			rendered, render_err := v.head_els_inst.Render(sorted)
+			if render_err != nil {
+				v.logger.Error("failed to render static head", "error", render_err)
+				res.InternalServerError()
+				return
+			}
+			rendered_head = rendered + "\n" + template.HTML(v.Wave.MustCSSEls())
+			v.static_prod_head_cache.Store(cache_key, rendered_head)
 		}
 	} else {
 		var head_elements []*htmlutil.Element
 		head_elements = append(head_elements, default_head_els...)
+		head_elements = append(head_elements, rd.loader_head_els...)
 
 		if !is_dev {
 			for _, dep := range rd.deps {
@@ -538,6 +599,9 @@ func (v *Vorma) serve_loaders_html(
 					AttributesKnownSafe: map[string]string{
 						"rel":  "stylesheet",
 						"href": css,
+					},
+					Attributes: map[string]string{
+						"data-vorma-css-bundle": css,
 					},
 					SelfClosing: true,
 				})
@@ -573,17 +637,9 @@ func (v *Vorma) serve_loaders_html(
 		return
 	}
 
-	vite_dev_url := ""
-	if is_dev {
-		vite_dev_url = fmt.Sprintf(
-			"http://127.0.0.1:%s", viteutil.GetVitePortStr(),
-		)
-	}
-
 	ssr, err := build_ssr_script(ssr_input{
 		VormaSymbol:             vorma_symbol_str,
 		IsDev:                   is_dev,
-		ViteDevURL:              vite_dev_url,
 		PublicPathPrefix:        v.Wave.MustPublicPathPrefix(),
 		RouteManifestURL:        route_manifest_url,
 		BuildID:                 snapshot.BuildID,
@@ -611,6 +667,7 @@ func (v *Vorma) serve_loaders_html(
 		client_path := strings.TrimPrefix(snapshot.ClientEntryPath.Str(), "/")
 		dev_opts := viteutil.ToDevScriptsOptions{
 			ClientEntry: client_path,
+			Port:        v.Wave.DevVitePort(),
 		}
 		if snapshot.UIVariant == "react" {
 			dev_opts.Variant = viteutil.VariantReact
@@ -682,22 +739,4 @@ func (v *Vorma) serve_actions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set(BuildIDHeaderKey, snapshot.BuildID)
 	v.actions_router.ServeHTTP(w, r)
-}
-
-/////////////////////////////////////////////////////////////////////
-/////// Convenience setup
-/////////////////////////////////////////////////////////////////////
-
-func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
-	r := mux.NewRouter()
-	loaders, actions := v.Loaders(), v.Actions()
-	r.AddHTTPHandler("GET", loaders.HandlerMountPattern(), loaders.Handler())
-	for m := range actions.SupportedMethods() {
-		r.AddHTTPHandler(m, actions.HandlerMountPattern(), actions.Handler())
-	}
-	return r
-}
-
-func (v *Vorma) MustStaticMiddleware() func(http.Handler) http.Handler {
-	return v.Wave.MustStaticFileServerMiddleware(true)
 }

@@ -83,7 +83,9 @@ type SitemapItem struct {
 
 type Sitemap []SitemapItem
 
-func (inst *Instance) PageDetails(r *http.Request) (detailedPage *DetailedPage, err error) {
+func (inst *Instance) PageDetails(
+	r *http.Request,
+) (detailedPage *DetailedPage, err error) {
 	cleanPath := filepath.Clean(r.URL.Path)
 
 	if p, ok := inst.pageDetailsCache.Get(cleanPath); ok && !inst.IsDev {
@@ -109,7 +111,9 @@ func (inst *Instance) PageDetails(r *http.Request) (detailedPage *DetailedPage, 
 
 	if pageBase.IsFolder && cleanPath != "/" {
 		eg.Go(func() error {
-			sm, err := inst.generateSitemap(generateSitemapInput{CleanPath: cleanPath, IsIndex: true})
+			sm, err := inst.generateSitemap(
+				generateSitemapInput{CleanPath: cleanPath, IsIndex: true},
+			)
 			if err != nil {
 				log.Println("Error generating sitemap in getPageDetails: ", err)
 				return err
@@ -120,7 +124,9 @@ func (inst *Instance) PageDetails(r *http.Request) (detailedPage *DetailedPage, 
 	}
 
 	eg.Go(func() error {
-		sm, err := inst.generateSitemap(generateSitemapInput{CleanPath: cleanPath, IsIndex: false})
+		sm, err := inst.generateSitemap(
+			generateSitemapInput{CleanPath: cleanPath, IsIndex: false},
+		)
 		if err != nil {
 			log.Println("Error generating sitemap in getPageDetails: ", err)
 			return err
@@ -182,7 +188,9 @@ type generateSitemapInnerData struct {
 	DirToUse string
 }
 
-func (inst *Instance) generateSitemap(input generateSitemapInput) (*generateSitemapOutput, error) {
+func (inst *Instance) generateSitemap(
+	input generateSitemapInput,
+) (*generateSitemapOutput, error) {
 	var innerData *generateSitemapInnerData
 
 	if x, ok := inst.sitemapCache.Load(input); ok && !inst.IsDev {
@@ -238,7 +246,11 @@ func (inst *Instance) generateSitemap(input generateSitemapInput) (*generateSite
 
 	sitemap := Sitemap{}
 	if innerData.DirToUse == "/" {
-		item := SitemapItem{Title: "Home", URL: "/", IsActive: input.CleanPath == "/"}
+		item := SitemapItem{
+			Title:    "Home",
+			URL:      "/",
+			IsActive: input.CleanPath == "/",
+		}
 		sitemap = append(sitemap, item)
 	}
 	for _, p := range innerData.Pages {
@@ -261,7 +273,10 @@ func (inst *Instance) generateSitemap(input generateSitemapInput) (*generateSite
 	return output, nil
 }
 
-func (inst *Instance) processDirectChildren(directChildren []fs.DirEntry, dirToUse string) ([]*Page, bool, error) {
+func (inst *Instance) processDirectChildren(
+	directChildren []fs.DirEntry,
+	dirToUse string,
+) ([]*Page, bool, error) {
 	type result struct {
 		index int
 		page  *Page
@@ -279,7 +294,8 @@ func (inst *Instance) processDirectChildren(directChildren []fs.DirEntry, dirToU
 			defer wg.Done()
 
 			name := strings.TrimSuffix(file.Name(), ".md")
-			if file.Type().IsRegular() && !strings.HasSuffix(file.Name(), ".md") {
+			if file.Type().IsRegular() &&
+				!strings.HasSuffix(file.Name(), ".md") {
 				return
 			}
 			if name == "_index" {
@@ -289,7 +305,9 @@ func (inst *Instance) processDirectChildren(directChildren []fs.DirEntry, dirToU
 				return
 			}
 
-			pageBase, found, err := inst.getPageBase(filepath.Join(dirToUse, name))
+			pageBase, found, err := inst.getPageBase(
+				filepath.Join(dirToUse, name),
+			)
 			if err != nil {
 				errChan <- err
 				return
@@ -336,7 +354,9 @@ var notFoundPage = &Page{
 	Content: "# 404\n\nNothing found.",
 }
 
-func (inst *Instance) getPageBase(cleanPath string) (p *Page, found bool, err error) {
+func (inst *Instance) getPageBase(
+	cleanPath string,
+) (p *Page, found bool, err error) {
 	var ok bool
 	if p, ok = inst.basePageCache.Get(cleanPath); ok && !inst.IsDev {
 		return p, true, nil
@@ -371,7 +391,10 @@ func (inst *Instance) readPageFile(cleanPath string) (bool, []byte, error) {
 		return false, nil, err
 	}
 
-	fileBytes, err = fs.ReadFile(inst.FS, "markdown"+filepath.Join(cleanPath, "_index.md"))
+	fileBytes, err = fs.ReadFile(
+		inst.FS,
+		"markdown"+filepath.Join(cleanPath, "_index.md"),
+	)
 	if err != nil {
 		return false, nil, err
 	}
@@ -379,7 +402,11 @@ func (inst *Instance) readPageFile(cleanPath string) (bool, []byte, error) {
 	return true, fileBytes, nil
 }
 
-func (inst *Instance) parseMarkdown(fileBytes []byte, cleanPath string, isFolder bool) (*Page, error) {
+func (inst *Instance) parseMarkdown(
+	fileBytes []byte,
+	cleanPath string,
+	isFolder bool,
+) (*Page, error) {
 	var p Page
 	rest, err := inst.FrontmatterParser(bytes.NewReader(fileBytes), &p)
 	if err != nil {
@@ -405,7 +432,9 @@ func (inst *Instance) parseMarkdown(fileBytes []byte, cleanPath string, isFolder
 // Patterns use the default semantics of the kit/matcher package (e.g.,
 // "/docs/*" for nested paths, "/docs/:slug" for dynamic segments, or
 // "/docs" for an exact match). To include everything, pass "/*".
-func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) http.Handler {
+func (md *Instance) PlainTextMiddleware(
+	patterns ...string,
+) func(http.Handler) http.Handler {
 	m := matcher.New(nil)
 	for _, p := range patterns {
 		m.RegisterPattern(p)
@@ -420,7 +449,8 @@ func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) h
 
 			accept := r.Header.Get("Accept")
 			normalizedAccept := strings.ToLower(accept)
-			if !strings.Contains(normalizedAccept, "text/plain") && !strings.Contains(normalizedAccept, "text/markdown") {
+			if !strings.Contains(normalizedAccept, "text/plain") &&
+				!strings.Contains(normalizedAccept, "text/markdown") {
 				next.ServeHTTP(w, r)
 				return
 			}

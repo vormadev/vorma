@@ -8,15 +8,11 @@ import (
 	"os"
 	"path"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/htmlutil"
-	"github.com/vormadev/vorma/kit/netutil"
 	"github.com/vormadev/vorma/lab/stringsutil"
 )
-
-const defaultDevVitePort = 5199
 
 type ManifestChunk struct {
 	Src            string   `json:"src"`
@@ -83,7 +79,10 @@ func FindAllDependencies(manifest Manifest, importPath string) []string {
 }
 
 // FindRelativeEntrypointPath finds the manifest key for a given entry point file
-func FindRelativeEntrypointPath(manifest Manifest, entrypointToFind string) (string, error) {
+func FindRelativeEntrypointPath(
+	manifest Manifest,
+	entrypointToFind string,
+) (string, error) {
 	normalizedEntrypointToFind := normalizeViteManifestPath(entrypointToFind)
 
 	for key, chunk := range manifest {
@@ -123,21 +122,27 @@ const (
 type ToDevScriptsOptions struct {
 	ClientEntry string
 	Variant     Variant
+	Port        int
 }
 
 func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	var htmlBuilder strings.Builder
 	var err error
 
-	port, resolvePortError := resolveVitePortStrict(strings.TrimSpace(GetVitePortStr()))
-	if resolvePortError != nil {
-		return "", resolvePortError
+	if options.ClientEntry == "" {
+		return "", fmt.Errorf("ClientEntry is required")
+	}
+	if options.Port <= 0 {
+		return "", fmt.Errorf("Port must be a positive integer")
 	}
 
 	if options.Variant == VariantReact {
 		var b stringsutil.Builder
 
-		b.Linef(`import RefreshRuntime from "http://127.0.0.1:%s/@react-refresh";`, port)
+		b.Linef(
+			`import RefreshRuntime from "http://127.0.0.1:%s/@react-refresh";`,
+			options.Port,
+		)
 		b.Line("RefreshRuntime.injectIntoGlobalHook(window);")
 		b.Line("window.$RefreshReg$ = () => {};")
 		b.Line("window.$RefreshSig$ = () => (type) => type;")
@@ -154,7 +159,11 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	}
 
 	err = htmlutil.RenderModuleScriptToBuilder(
-		fmt.Sprintf("http://127.0.0.1:%s/@vite/client", port), &htmlBuilder,
+		fmt.Sprintf(
+			"http://localhost:%d/@vite/client",
+			options.Port,
+		),
+		&htmlBuilder,
 	)
 	if err != nil {
 		return "", fmt.Errorf("could not render vite script: %w", err)
@@ -162,8 +171,8 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 
 	err = htmlutil.RenderModuleScriptToBuilder(
 		fmt.Sprintf(
-			"http://127.0.0.1:%s/%s",
-			port,
+			"http://localhost:%d/%s",
+			options.Port,
 			stripPrecedingSlash(options.ClientEntry),
 		),
 		&htmlBuilder,
@@ -175,44 +184,9 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 	return template.HTML(htmlBuilder.String()), nil
 }
 
-func resolveVitePortStrict(port string) (string, error) {
-	if strings.TrimSpace(port) == "" {
-		return "", errors.New("__VITE_PORT is not set")
-	}
-	parsedPort, parseError := strconv.Atoi(port)
-	if parseError != nil || parsedPort <= 0 || parsedPort > 65535 {
-		return "", fmt.Errorf("__VITE_PORT is invalid: %q", port)
-	}
-	return strconv.Itoa(parsedPort), nil
-}
-
 func stripPrecedingSlash(s string) string {
 	if strings.HasPrefix(s, "/") {
 		return s[1:]
 	}
 	return s
-}
-
-const PortEnvName = "__VITE_PORT"
-
-func InitPort(defaultPort int) (int, error) {
-	if defaultPort <= 0 || defaultPort > 65535 {
-		defaultPort = defaultDevVitePort
-	}
-
-	vitePort, err := netutil.GetFreePort(defaultPort)
-	if err != nil {
-		return 0, err
-	}
-
-	err = os.Setenv(PortEnvName, fmt.Sprintf("%d", vitePort))
-	if err != nil {
-		return 0, err
-	}
-
-	return vitePort, nil
-}
-
-func GetVitePortStr() string {
-	return os.Getenv(PortEnvName)
 }

@@ -132,4 +132,4 @@ run-create: tsreset npmbuild nuke-node-modules
 		node ../typescript/vorma/create/dist/main.js --local-test
 
 sum:
-	@go run ./internal/cmd/sum
+	@go run ./internal/scripts/sum.local

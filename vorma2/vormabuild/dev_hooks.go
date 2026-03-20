@@ -17,6 +17,12 @@ func (s *plugin_state) route_fast_path_hook(
 		return nil, nil
 	}
 
+	release := ctx.BlockAt(
+		wavebuild.CheckpointOrder(
+			wavebuild.Checkpoint_2_UserlandPublicFilemapReady,
+		),
+	)
+
 	// skip if Go files also changed in this batch — main hook
 	// handles the full rebuild and contributes the manifest
 	for _, p := range ctx.EvtPaths() {
@@ -57,6 +63,8 @@ func (s *plugin_state) route_fast_path_hook(
 		return nil, fmt.Errorf("contributing route manifest: %w", err)
 	}
 
+	release()
+
 	// index.ts
 	if err := write_index_ts(cfg, routes, s.app, ctx); err != nil {
 		return nil, fmt.Errorf("writing index.ts: %w", err)
@@ -70,7 +78,7 @@ func (s *plugin_state) route_fast_path_hook(
 	}
 
 	// rewrite runtime snapshot (dev only)
-	snapshot, err := build_dev_snapshot(cfg, routes)
+	snapshot, err := build_dev_snapshot(cfg, routes, ctx.VitePort())
 	if err != nil {
 		return nil, fmt.Errorf("building dev snapshot: %w", err)
 	}
@@ -97,7 +105,7 @@ func (s *plugin_state) filemap_refresh_hook(
 	}
 
 	public_fm := ctx.ReadPublicFileMap()
-	if err := write_filemap_ts(cfg, public_fm.Filemap); err != nil {
+	if err := write_gen_filemaps(cfg, public_fm.Filemap); err != nil {
 		return nil, fmt.Errorf("writing filemap.ts: %w", err)
 	}
 

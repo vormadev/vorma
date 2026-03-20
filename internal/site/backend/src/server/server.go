@@ -23,7 +23,7 @@ func Init() (addr string, handler http.Handler) {
 	r.AddGlobalHTTPMiddleware(secureheaders.Middleware)
 	r.AddGlobalHTTPMiddleware(healthcheck.Healthz)
 	r.AddGlobalHTTPMiddleware(robotstxt.Allow)
-	r.AddGlobalHTTPMiddleware(markdown.Markdown.PlainTextMiddleware(
+	r.AddGlobalHTTPMiddleware(markdown.Markdown().PlainTextMiddleware(
 		"/docs", "/docs/*",
 		"/blog", "/blog/*",
 	))

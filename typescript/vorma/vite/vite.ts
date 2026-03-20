@@ -1,218 +1,83 @@
-import { readFileSync, statSync } from "node:fs";
-import { isAbsolute, join, normalize, sep } from "node:path";
-import type { ConfigEnv, Plugin, UserConfig, ViteDevServer } from "vite";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ConfigEnv, Plugin, UserConfig } from "vite";
 
 export type VormaVitePluginConfig = {
 	rollupInput: ReadonlyArray<string>;
 	publicPathPrefix: string;
 	buildtimePublicURLFuncName: string;
-	distDir: string;
 	ignoredPatterns: ReadonlyArray<string>;
 	dedupeList: ReadonlyArray<string>;
+	importMetaURL: string;
 };
 
-const FILEMAP_CHANGED_NOTIFY_ENDPOINT_PATH = "/__wave_notify_filemap_changed";
-
-function mergeRollupInput(
-	vormaRollupInput: ReadonlyArray<string>,
-	existingRollupInput: unknown,
+function merge_rollup_input(
+	vorma_input: ReadonlyArray<string>,
+	existing_input: unknown,
 ): Array<string> | Record<string, string> {
-	if (typeof existingRollupInput === "string") {
-		return [...vormaRollupInput, existingRollupInput];
+	if (typeof existing_input === "string") {
+		return [...vorma_input, existing_input];
 	}
-
-	if (Array.isArray(existingRollupInput)) {
-		return [...vormaRollupInput, ...existingRollupInput];
+	if (Array.isArray(existing_input)) {
+		return [...vorma_input, ...existing_input];
 	}
-
-	if (
-		typeof existingRollupInput === "object" &&
-		existingRollupInput !== null
-	) {
-		const existingObjectInput = existingRollupInput as Record<
-			string,
-			string
-		>;
-		const mergedObjectInput: Record<string, string> = {
-			...existingObjectInput,
-		};
-		const usedInputKeys = new Set(Object.keys(existingObjectInput));
-		let nextInternalKeyIndex = 0;
-
-		for (
-			let inputIndex = 0;
-			inputIndex < vormaRollupInput.length;
-			inputIndex++
-		) {
-			let internalKey = `__vorma_internal_entry_${nextInternalKeyIndex}`;
-			while (usedInputKeys.has(internalKey)) {
-				nextInternalKeyIndex++;
-				internalKey = `__vorma_internal_entry_${nextInternalKeyIndex}`;
+	if (typeof existing_input === "object" && existing_input !== null) {
+		const existing_obj = existing_input as Record<string, string>;
+		const merged: Record<string, string> = { ...existing_obj };
+		const used_keys = new Set(Object.keys(existing_obj));
+		let next_idx = 0;
+		for (let i = 0; i < vorma_input.length; i++) {
+			let key = `__vorma_internal_entry_${next_idx}`;
+			while (used_keys.has(key)) {
+				next_idx++;
+				key = `__vorma_internal_entry_${next_idx}`;
 			}
-			mergedObjectInput[internalKey] = vormaRollupInput[inputIndex] || "";
-			usedInputKeys.add(internalKey);
-			nextInternalKeyIndex++;
+			merged[key] = vorma_input[i] || "";
+			used_keys.add(key);
+			next_idx++;
 		}
-
-		return mergedObjectInput;
+		return merged;
 	}
-
-	return [...vormaRollupInput];
+	return [...vorma_input];
 }
 
-type UserConfigServerWatchIgnored = NonNullable<
-	NonNullable<UserConfig["server"]>["watch"]
->["ignored"];
+type WatchIgnored = NonNullable<
+	NonNullable<NonNullable<UserConfig["server"]>["watch"]>["ignored"]
+>;
 
-function mergeServerWatchIgnoredPatterns(
-	existingIgnoredPatterns: UserConfigServerWatchIgnored,
-	vormaIgnoredPatterns: ReadonlyArray<string>,
-): UserConfigServerWatchIgnored {
-	if (Array.isArray(existingIgnoredPatterns)) {
-		return [...existingIgnoredPatterns, ...vormaIgnoredPatterns];
+function merge_watch_ignored(
+	existing: WatchIgnored | undefined,
+	vorma_patterns: ReadonlyArray<string>,
+): WatchIgnored {
+	if (Array.isArray(existing)) {
+		return [...existing, ...vorma_patterns];
 	}
-
-	if (existingIgnoredPatterns !== undefined) {
-		return [
-			existingIgnoredPatterns,
-			...vormaIgnoredPatterns,
-		] as UserConfigServerWatchIgnored;
+	if (existing !== undefined) {
+		return [existing, ...vorma_patterns] as WatchIgnored;
 	}
-
-	return [...vormaIgnoredPatterns] as UserConfigServerWatchIgnored;
+	return [...vorma_patterns] as WatchIgnored;
 }
 
 export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
-	let cachedMap: Record<string, string> | null = null;
-	let cachedRefMtime: number = 0;
-	let cachedFileMapMtime: number = 0;
-	let cachedFileMapPath = "";
-	let isDev = false;
-	let resolvedStaticDistDirPath: string | null = null;
+	const gen_dir = dirname(fileURLToPath(config.importMetaURL));
+	const filemap_path = join(gen_dir, "filemap.json");
 
-	type CanonicalPublicFileMap = Record<
-		string,
-		{ dist: string; hash: string; prehashed: boolean }
-	>;
-
-	function getResolvedStaticDistDirPath(): string {
-		if (!resolvedStaticDistDirPath) {
-			const trimmedDistDir = config.distDir.trim();
-			if (trimmedDistDir === "") {
-				throw new Error("[vorma-vite-plugin] distDir cannot be empty.");
-			}
-			if (isAbsolute(trimmedDistDir)) {
-				throw new Error(
-					`[vorma-vite-plugin] distDir must be relative, got ${trimmedDistDir}.`,
-				);
-			}
-			resolvedStaticDistDirPath = join(
-				normalize(trimmedDistDir),
-				"static",
-			);
-		}
-		return resolvedStaticDistDirPath;
-	}
-
-	function getResolvedPublicFileMapRefPath(): string {
-		return join(
-			getResolvedStaticDistDirPath(),
-			"internal",
-			"public_file_map_file_ref.txt",
-		);
-	}
-
-	function getResolvedStaticPublicOutDir(): string {
-		return join(getResolvedStaticDistDirPath(), "assets", "public");
-	}
-
-	function resolveCanonicalPublicFileMapPathFromRef(
-		refTargetPath: string,
-	): string {
-		const trimmedRefTargetPath = refTargetPath.trim();
-		if (trimmedRefTargetPath === "") {
-			throw new Error("[vorma-vite-plugin] public filemap ref is empty.");
-		}
-
-		const staticPublicOutDir = getResolvedStaticPublicOutDir();
-		const resolvedCanonicalPath = normalize(
-			join(staticPublicOutDir, trimmedRefTargetPath),
-		);
-		const normalizedStaticPublicOutDir = staticPublicOutDir.endsWith(sep)
-			? staticPublicOutDir
-			: `${staticPublicOutDir}${sep}`;
-		if (
-			resolvedCanonicalPath !== staticPublicOutDir &&
-			!resolvedCanonicalPath.startsWith(normalizedStaticPublicOutDir)
-		) {
-			throw new Error(
-				`[vorma-vite-plugin] public filemap ref escapes static public out dir: ${trimmedRefTargetPath}`,
-			);
-		}
-
-		return resolvedCanonicalPath;
-	}
-
-	function flattenCanonicalPublicFileMap(
-		canonicalPublicFileMap: CanonicalPublicFileMap,
-	): Record<string, string> {
-		const flattenedMap: Record<string, string> = {};
-		for (const [sourcePath, value] of Object.entries(
-			canonicalPublicFileMap,
-		)) {
-			if (!value || typeof value.dist !== "string" || value.dist === "") {
-				throw new Error(
-					`[vorma-vite-plugin] canonical public filemap entry is missing dist for ${sourcePath}.`,
-				);
-			}
-			flattenedMap[sourcePath] = value.dist;
-		}
-		return flattenedMap;
-	}
-
-	function getFilemap(): Record<string, string> {
-		const resolvedRefPath = getResolvedPublicFileMapRefPath();
-		const refStat = statSync(resolvedRefPath);
-		const refContent = readFileSync(resolvedRefPath, "utf-8");
-		const resolvedCanonicalPath =
-			resolveCanonicalPublicFileMapPathFromRef(refContent);
-		const canonicalStat = statSync(resolvedCanonicalPath);
-
-		const refMtime = refStat.mtimeMs;
-		const canonicalMtime = canonicalStat.mtimeMs;
-		if (
-			cachedMap &&
-			cachedFileMapPath === resolvedCanonicalPath &&
-			cachedRefMtime === refMtime &&
-			cachedFileMapMtime === canonicalMtime
-		) {
-			return cachedMap;
-		}
-
-		const canonicalContent = readFileSync(resolvedCanonicalPath, "utf-8");
-		const canonicalPublicFileMap = JSON.parse(
-			canonicalContent,
-		) as CanonicalPublicFileMap;
-		cachedMap = flattenCanonicalPublicFileMap(canonicalPublicFileMap);
-		cachedRefMtime = refMtime;
-		cachedFileMapMtime = canonicalMtime;
-		cachedFileMapPath = resolvedCanonicalPath;
-		return cachedMap;
+	function read_filemap(): Record<string, string> {
+		return JSON.parse(readFileSync(filemap_path, "utf-8"));
 	}
 
 	return {
 		name: "vorma-vite-plugin",
 
 		config(c: UserConfig, { command }: ConfigEnv) {
-			isDev = command === "serve";
-
 			const mp = c.build?.modulePreload;
 			const roi = c.build?.rollupOptions?.input;
 			const ign = c.server?.watch?.ignored;
 			const dedupe = c.resolve?.dedupe;
 
 			return {
-				base: isDev ? "/" : config.publicPathPrefix,
+				base: command === "serve" ? "/" : config.publicPathPrefix,
 				build: {
 					target: "es2022",
 					emptyOutDir: false,
@@ -222,7 +87,7 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 					},
 					rollupOptions: {
 						...c.build?.rollupOptions,
-						input: mergeRollupInput(config.rollupInput, roi),
+						input: merge_rollup_input(config.rollupInput, roi),
 						preserveEntrySignatures: "exports-only",
 						output: {
 							assetFileNames:
@@ -235,13 +100,11 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 				server: {
 					headers: {
 						...c.server?.headers,
-						// ensure versions of dynamic imports without the latest
-						// hmr updates are not cached by the browser during dev
 						"cache-control": "no-store",
 					},
 					watch: {
 						...c.server?.watch,
-						ignored: mergeServerWatchIgnoredPatterns(
+						ignored: merge_watch_ignored(
 							ign,
 							config.ignoredPatterns,
 						),
@@ -256,93 +119,42 @@ export default function vormaVitePlugin(config: VormaVitePluginConfig): Plugin {
 			};
 		},
 
-		/**
-		 * Configures the dev server with a generic filemap-changed notify endpoint.
-		 * Wave calls this endpoint after updating public static files, which:
-		 * 1. Clears the cached filemap so the next transform reads fresh data
-		 * 2. Invalidates all modules in Vite's module graph
-		 * 3. Triggers a browser reload via Vite's HMR websocket
-		 *
-		 * This is much faster than cycling Vite (stopping and restarting the process).
-		 */
-		configureServer(server: ViteDevServer) {
-			server.middlewares.use((req, res, next) => {
-				if (req.url !== FILEMAP_CHANGED_NOTIFY_ENDPOINT_PATH) {
-					return next();
-				}
-
-				console.log(
-					"[vorma-vite-plugin] Filemap-changed notification received",
-				);
-
-				// Clear the filemap cache so the next transform reads fresh data
-				cachedMap = null;
-				cachedRefMtime = 0;
-				cachedFileMapMtime = 0;
-				cachedFileMapPath = "";
-
-				// Invalidate all modules in Vite's module graph.
-				// This is simpler than tracking which specific modules use
-				// waveBuildtimeURL() and fast enough for typical project sizes
-				// (a few ms for hundreds of modules).
-				for (const mod of server.moduleGraph.idToModuleMap.values()) {
-					server.moduleGraph.invalidateModule(mod);
-				}
-
-				// Trigger a full browser reload via Vite's HMR websocket.
-				// The browser will re-request modules, Vite will re-transform them
-				// (cache miss due to invalidation), and they'll get the new URLs.
-				server.ws.send({ type: "full-reload" });
-
-				res.statusCode = 200;
-				res.end("ok");
-			});
-		},
-
 		transform(code: string, id: string) {
-			const isNodeModules = /node_modules/.test(id);
-			if (isNodeModules) return null;
+			if (/node_modules/.test(id)) return null;
 
 			const regex = new RegExp(
 				`${config.buildtimePublicURLFuncName}\\s*\\(\\s*(["'\`])(.*?)\\1\\s*\\)`,
 				"g",
 			);
+			if (!regex.test(code)) return null;
 
-			const needsReplacement = regex.test(code);
-			if (!needsReplacement) return null;
+			const filemap = read_filemap();
+			const missing: string[] = [];
 
-			// Get the current filemap from canonical Wave output.
-			const filemap = getFilemap();
-			const missingStaticPublicAssets = new Set<string>();
-
-			const replacedCode = code.replace(
+			const replaced = code.replace(
 				regex,
-				(_fullMatch: string, _quoteChar: string, assetPath: string) => {
-					const hashed = filemap[assetPath];
+				(full_match: string, _quote: string, asset_path: string) => {
+					const hashed = filemap[asset_path];
 					if (!hashed) {
-						missingStaticPublicAssets.add(assetPath);
-						return _fullMatch;
+						missing.push(asset_path);
+						return full_match;
 					}
 					return `"${config.publicPathPrefix}${hashed}"`;
 				},
 			);
 
-			if (missingStaticPublicAssets.size > 0) {
-				const unresolvedCalls = Array.from(missingStaticPublicAssets)
+			if (missing.length > 0) {
+				const calls = missing
 					.sort()
-					.map(
-						(assetPath) =>
-							`${config.buildtimePublicURLFuncName}("${assetPath}")`,
-					)
+					.map((p) => `${config.buildtimePublicURLFuncName}("${p}")`)
 					.join(", ");
-
 				throw new Error(
-					`[vorma-vite-plugin] unresolved static public asset lookup(s): ${unresolvedCalls}`,
+					`[vorma-vite-plugin] unresolved static public asset(s): ${calls}`,
 				);
 			}
 
-			if (replacedCode === code) return null;
-			return replacedCode;
+			if (replaced === code) return null;
+			return replaced;
 		},
 	};
 }

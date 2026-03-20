@@ -250,7 +250,11 @@ func TestObjectCheckerErrorIdempotent(t *testing.T) {
 		t.Fatal("expected validation errors")
 	}
 	if err1.Error() != err2.Error() {
-		t.Fatalf("expected idempotent errors, got %q then %q", err1.Error(), err2.Error())
+		t.Fatalf(
+			"expected idempotent errors, got %q then %q",
+			err1.Error(),
+			err2.Error(),
+		)
 	}
 	if strings.Count(err2.Error(), "Name is required") != 1 {
 		t.Fatalf("expected exactly one Name error, got %q", err2.Error())
@@ -291,11 +295,11 @@ type Status struct {
 	Active string // "true" or "false"
 }
 
-const statusErr = "status must be 'true' or 'false'"
+const status_err = "status must be 'true' or 'false'"
 
 func (s *Status) Validate() error {
 	if s.Active != "true" && s.Active != "false" {
-		return errors.New(statusErr)
+		return errors.New(status_err)
 	}
 	return nil
 }
@@ -313,12 +317,16 @@ func TestValidatorInterface(t *testing.T) {
 	}
 
 	// Bad profile status
-	u2 := User{Username: "john", Password: "password123", Profile: Profile{Status: &Status{}}}
+	u2 := User{
+		Username: "john",
+		Password: "password123",
+		Profile:  Profile{Status: &Status{}},
+	}
 	err = Any("user", u2).Required().Error()
 	if err == nil {
 		t.Error("expected validation error")
 	} else {
-		if !strings.Contains(err.Error(), statusErr) {
+		if !strings.Contains(err.Error(), status_err) {
 			t.Error("expected status validation error")
 		}
 	}
@@ -421,7 +429,10 @@ func TestComplexNestedStructures(t *testing.T) {
 				"emp1": {ID: 1, Name: "John"},
 			},
 			Offices: []Office{
-				{Location: "", Capacity: 0}, // We don't have validation for this yet
+				{
+					Location: "",
+					Capacity: 0,
+				}, // We don't have validation for this yet
 			},
 		}
 		err := Any("company", &company).Required().Error()
@@ -473,19 +484,19 @@ func TestComplexNestedStructures(t *testing.T) {
 
 		// should work because Child is not marked as required
 		p1 := &ParentOptionalChild{Child: nil}
-		if err := attemptValidation("", p1); err != nil {
+		if err := attempt_validation("", p1); err != nil {
 			t.Errorf("p1: unexpected error: %v", err)
 		}
 
 		// should fail because Child is marked as required
 		p2 := &ParentRequiredChild{Child: nil}
-		if err := attemptValidation("", p2); err == nil {
+		if err := attempt_validation("", p2); err == nil {
 			t.Error("p2: expected error for nil Child")
 		}
 
 		// should fail because Child value is invalid
 		p3 := &ParentOptionalChild{Child: &Child{A: "b"}}
-		if err := attemptValidation("", p3); err == nil {
+		if err := attempt_validation("", p3); err == nil {
 			t.Error("p3: expected error for invalid Child value")
 		}
 
@@ -493,19 +504,19 @@ func TestComplexNestedStructures(t *testing.T) {
 
 		// should work because Child is not marked as required
 		p12 := ParentOptionalChild{Child: nil}
-		if err := attemptValidation("", p12); err != nil {
+		if err := attempt_validation("", p12); err != nil {
 			t.Errorf("p12: unexpected error: %v", err)
 		}
 
 		// should fail because Child is marked as required
 		p22 := ParentRequiredChild{Child: nil}
-		if err := attemptValidation("", p22); err == nil {
+		if err := attempt_validation("", p22); err == nil {
 			t.Error("p22: expected error for nil Child")
 		}
 
 		// should fail because Child value is invalid
 		p32 := ParentOptionalChild{Child: &Child{A: "b"}}
-		if err := attemptValidation("", p32); err == nil {
+		if err := attempt_validation("", p32); err == nil {
 			t.Error("p32: expected error for invalid Child value")
 		}
 	})
@@ -538,21 +549,21 @@ func (c *Child) Validate() error {
 	return v.Error()
 }
 
-// Test safeDereference and getObjectState
-func TestSafeDereference(t *testing.T) {
+// Test safe_deref and get_type_state
+func TestSafeDeref(t *testing.T) {
 	str := "test"
-	ptrValue := reflect.ValueOf(&str)
-	derefValue := safeDereference(ptrValue)
+	ptr_value := reflect.ValueOf(&str)
+	deref_value := safe_deref(ptr_value)
 
-	if derefValue.Kind() != reflect.String {
-		t.Errorf("expected string, got %v", derefValue.Kind())
+	if deref_value.Kind() != reflect.String {
+		t.Errorf("expected string, got %v", deref_value.Kind())
 	}
 
-	nonPtrValue := reflect.ValueOf(str)
-	derefValue = safeDereference(nonPtrValue)
+	non_ptr_value := reflect.ValueOf(str)
+	deref_value = safe_deref(non_ptr_value)
 
-	if derefValue.Kind() != reflect.String {
-		t.Errorf("expected string, got %v", derefValue.Kind())
+	if deref_value.Kind() != reflect.String {
+		t.Errorf("expected string, got %v", deref_value.Kind())
 	}
 }
 
@@ -565,22 +576,22 @@ func TestFieldGroupConstraint(t *testing.T) {
 	}
 
 	// Create a custom constraint function for testing
-	requireAtLeastOne := func(truthyCount, totalFields int) string {
-		if truthyCount == 0 {
+	require_at_least_one := func(truthy_count, total_fields int) string {
+		if truthy_count == 0 {
 			return "at least one of %s fields is required"
 		}
 		return ""
 	}
 
-	requireExactlyOne := func(truthyCount, totalFields int) string {
-		if truthyCount != 1 {
+	require_exactly_one := func(truthy_count, total_fields int) string {
+		if truthy_count != 1 {
 			return "exactly one of %s fields is required"
 		}
 		return ""
 	}
 
-	requireAll := func(truthyCount, totalFields int) string {
-		if truthyCount != totalFields {
+	require_all := func(truthy_count, total_fields int) string {
+		if truthy_count != total_fields {
 			return "all %s fields are required"
 		}
 		return ""
@@ -590,7 +601,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// No fields provided
 		form := TestForm{}
 		oc := Object(&form)
-		oc = oc.validateFieldGroupConstraint("contact", []string{"Email", "Phone"}, requireAtLeastOne)
+		oc = oc.validate_field_group_constraint(
+			"contact",
+			[]string{"Email", "Phone"},
+			require_at_least_one,
+		)
 		if err := oc.Error(); err == nil {
 			t.Error("expected error when no fields provided")
 		} else if !strings.Contains(err.Error(), "at least one of contact fields is required") {
@@ -600,7 +615,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// One field provided
 		form.Email = "test@example.com"
 		oc = Object(&form)
-		oc = oc.validateFieldGroupConstraint("contact", []string{"Email", "Phone"}, requireAtLeastOne)
+		oc = oc.validate_field_group_constraint(
+			"contact",
+			[]string{"Email", "Phone"},
+			require_at_least_one,
+		)
 		if err := oc.Error(); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -610,7 +629,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// No fields provided
 		form := TestForm{}
 		oc := Object(&form)
-		oc = oc.validateFieldGroupConstraint("identifier", []string{"Email", "Phone", "Username"}, requireExactlyOne)
+		oc = oc.validate_field_group_constraint(
+			"identifier",
+			[]string{"Email", "Phone", "Username"},
+			require_exactly_one,
+		)
 		if err := oc.Error(); err == nil {
 			t.Error("expected error when no fields provided")
 		}
@@ -618,7 +641,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// One field provided
 		form.Email = "test@example.com"
 		oc = Object(&form)
-		oc = oc.validateFieldGroupConstraint("identifier", []string{"Email", "Phone", "Username"}, requireExactlyOne)
+		oc = oc.validate_field_group_constraint(
+			"identifier",
+			[]string{"Email", "Phone", "Username"},
+			require_exactly_one,
+		)
 		if err := oc.Error(); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -626,7 +653,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// Multiple fields provided
 		form.Phone = "555-1234"
 		oc = Object(&form)
-		oc = oc.validateFieldGroupConstraint("identifier", []string{"Email", "Phone", "Username"}, requireExactlyOne)
+		oc = oc.validate_field_group_constraint(
+			"identifier",
+			[]string{"Email", "Phone", "Username"},
+			require_exactly_one,
+		)
 		if err := oc.Error(); err == nil {
 			t.Error("expected error when multiple fields provided")
 		}
@@ -636,7 +667,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// No fields provided
 		form := TestForm{}
 		oc := Object(&form)
-		oc = oc.validateFieldGroupConstraint("user info", []string{"Email", "Phone", "Username"}, requireAll)
+		oc = oc.validate_field_group_constraint(
+			"user info",
+			[]string{"Email", "Phone", "Username"},
+			require_all,
+		)
 		if err := oc.Error(); err == nil {
 			t.Error("expected error when no fields provided")
 		}
@@ -645,7 +680,11 @@ func TestFieldGroupConstraint(t *testing.T) {
 		form.Email = "test@example.com"
 		form.Phone = "555-1234"
 		oc = Object(&form)
-		oc = oc.validateFieldGroupConstraint("user info", []string{"Email", "Phone", "Username"}, requireAll)
+		oc = oc.validate_field_group_constraint(
+			"user info",
+			[]string{"Email", "Phone", "Username"},
+			require_all,
+		)
 		if err := oc.Error(); err == nil {
 			t.Error("expected error when not all fields provided")
 		}
@@ -653,14 +692,18 @@ func TestFieldGroupConstraint(t *testing.T) {
 		// All fields provided
 		form.Username = "testuser"
 		oc = Object(&form)
-		oc = oc.validateFieldGroupConstraint("user info", []string{"Email", "Phone", "Username"}, requireAll)
+		oc = oc.validate_field_group_constraint(
+			"user info",
+			[]string{"Email", "Phone", "Username"},
+			require_all,
+		)
 		if err := oc.Error(); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }
 
-// Test edge cases
+// Test error collector edge cases
 func TestECEdgeCases(t *testing.T) {
 	t.Run("EmptyMap", func(t *testing.T) {
 		m := map[string]any{}
@@ -718,7 +761,10 @@ func TestECEdgeCases(t *testing.T) {
 		v.Optional("Children")
 		err = v.Error()
 		if err != nil {
-			t.Errorf("unexpected error for empty but non-required child field: %v", err)
+			t.Errorf(
+				"unexpected error for empty but non-required child field: %v",
+				err,
+			)
 		}
 	})
 }
@@ -821,15 +867,17 @@ func TestValidationError(t *testing.T) {
 		}
 
 		// Test wrapped validation error
-		wrappedErr := fmt.Errorf("wrapped: %w", err)
-		if !IsValidationError(wrappedErr) {
+		wrapped_err := fmt.Errorf("wrapped: %w", err)
+		if !IsValidationError(wrapped_err) {
 			t.Error("expected wrapped err to be detected as ValidationError")
 		}
 
 		// Test non-validation error
-		regularErr := errors.New("regular error")
-		if IsValidationError(regularErr) {
-			t.Error("non-validation error incorrectly identified as ValidationError")
+		regular_err := errors.New("regular error")
+		if IsValidationError(regular_err) {
+			t.Error(
+				"non-validation error incorrectly identified as ValidationError",
+			)
 		}
 	})
 
@@ -842,8 +890,11 @@ func TestValidationError(t *testing.T) {
 			t.Fatal("expected validation error")
 		}
 
-		originalMsg := err.Error()
-		if !strings.Contains(originalMsg, "username must be at least 3 characters") {
+		original_msg := err.Error()
+		if !strings.Contains(
+			original_msg,
+			"username must be at least 3 characters",
+		) {
 			t.Error("validation error should contain original error message")
 		}
 	})
@@ -863,23 +914,23 @@ func (s *MyStruct) Validate() error {
 type MySlice []*MyStruct
 
 func TestSliceWithNilItems(t *testing.T) {
-	Bob := MySlice{&MyStruct{Name: "Bob"}}
-	Empty := MySlice{&MyStruct{}}
-	Nil := MySlice{nil}
+	bob := MySlice{&MyStruct{Name: "Bob"}}
+	empty := MySlice{&MyStruct{}}
+	nil_item := MySlice{nil}
 
-	err := attemptValidation("Bob", Bob)
+	err := attempt_validation("bob", bob)
 	if err != nil {
 		t.Errorf("unexpected error for non-empty slice: %v", err)
 	}
 
-	err = attemptValidation("Empty", Empty)
+	err = attempt_validation("empty", empty)
 	if err == nil {
 		t.Error("expected error for empty struct in slice")
 	}
 
-	err = attemptValidation("Nil", Nil)
+	err = attempt_validation("nil_item", nil_item)
 	if err != nil {
-		// because when an item is nil, we do not try to call safeRunOwnValidate on it
+		// because when an item is nil, we do not try to call Validate on it
 		t.Error("expected no error for nil item in slice")
 	}
 }

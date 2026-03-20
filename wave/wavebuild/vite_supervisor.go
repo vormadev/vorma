@@ -134,7 +134,7 @@ func (vs *vite_supervisor) start() error {
 	if err := poll_http_ready_endpoint(
 		done,
 		&vs.exit_err,
-		fmt.Sprintf("http://127.0.0.1:%d/@vite/client", vs.port),
+		fmt.Sprintf("http://localhost:%d/@vite/client", vs.port),
 		"Vite dev server",
 		vite_ready_timeout,
 	); err != nil {

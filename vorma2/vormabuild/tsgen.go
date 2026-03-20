@@ -283,7 +283,7 @@ func build_vite_config_ts(input tsgen_input) string {
 
 	dedupe := dedupe_lists[cfg.ui_variant]
 	wave_out_dir := filepath.ToSlash(input.ctx.WaveOutDir().Str())
-	ts_gen_dir := filepath.ToSlash(cfg.ts_gen_out_dir.Str())
+	gen_dir := filepath.ToSlash(cfg.gen_out_dir.Str())
 
 	var sb strings.Builder
 	sb.WriteString("\n// Vorma Vite Config\n\n")
@@ -325,12 +325,12 @@ export type StaticPublicAsset = keyof typeof staticPublicAssetMap;
 		"\tbuildtimePublicURLFuncName: %q,\n",
 		cfg.buildtime_public_url_func_name,
 	)
-	fmt.Fprintf(&sb, "\tdistDir: %q,\n", wave_out_dir)
+	sb.WriteString("\timportMetaURL: import.meta.url,\n")
 
 	sb.WriteString("\tignoredPatterns: [\n")
 	fmt.Fprintf(&sb, "\t\t\"**/*.go\",\n")
 	fmt.Fprintf(&sb, "\t\t%q,\n", "**/"+wave_out_dir+"/**/*")
-	fmt.Fprintf(&sb, "\t\t%q,\n", "**/"+ts_gen_dir+"/**/*")
+	fmt.Fprintf(&sb, "\t\t%q,\n", "**/"+gen_dir+"/**/*")
 	sb.WriteString("\t],\n")
 
 	sb.WriteString("\tdedupeList: [\n")
@@ -385,7 +385,7 @@ func write_index_ts(
 		return err
 	}
 	out_path := filepath.Join(
-		cfg.ts_gen_out_dir.Str(), constants.GENERATED_TS_INDEX_FILENAME,
+		cfg.gen_out_dir.Str(), constants.GENERATED_TS_INDEX_FILENAME,
 	)
 	return os.WriteFile(out_path, content, 0644)
 }

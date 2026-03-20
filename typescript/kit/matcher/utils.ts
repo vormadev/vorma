@@ -3,11 +3,11 @@ export function parseSegments(path: string): string[] {
 		return path === "/" ? [""] : [];
 	}
 
-	const startIdx = path.startsWith("/") ? 1 : 0;
+	const start_idx = path.startsWith("/") ? 1 : 0;
 	const segments: string[] = [];
-	let start = startIdx;
+	let start = start_idx;
 
-	for (let i = startIdx; i < path.length; i++) {
+	for (let i = start_idx; i < path.length; i++) {
 		if (path[i] === "/") {
 			if (i > start) {
 				segments.push(path.substring(start, i));

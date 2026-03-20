@@ -5,4 +5,7 @@
 		"internal/site/frontend/src/vorma.gen",
 		"vormaclient/create/dist",
 	],
+	"rules": {
+		"curly": "error",
+	},
 }

@@ -15,6 +15,8 @@
 		}
 	},
 	"Vorma": {
+		"GoCompileCmdDev": "go build -tags $WAVE_BUILD_TAGS -o $WAVE_BIN_OUTPUT_PATH ./backend/cmd/serve",
+		"GoCompileCmdProd": "go build -tags $WAVE_BUILD_TAGS -o $WAVE_BIN_OUTPUT_PATH ./backend/cmd/serve",
 		"MainBuildEntry": "backend/cmd/build",
 		"UIVariant": "solid",
 		"HTMLTemplateLocation": "entry.go.html",
@@ -29,22 +31,13 @@
 	},
 	"LifecycleHooks": [
 		{
+			"WatchIncludePatterns": ["**/*.go"],
+			"IsGoCompile": true,
+			"Cmd": "go build -tags $WAVE_BUILD_TAGS -o $WAVE_BIN_OUTPUT_PATH ./backend/cmd/serve"
+		},
+		{
 			"WatchIncludePatterns": ["backend/assets/markdown/**/*.md"],
 			"Effects": ["revalidate_client_data"],
-			"DevOnly": true
-		},
-		{
-			"WatchIncludePatterns": ["**/README.md"],
-			"Cmd": "go run ./backend/cmd/sync_docs",
-			"StartAt": "cycle_start",
-			"FinishBy": "cycle_start",
-			"DevOnly": true
-		},
-		{
-			"WatchIncludePatterns": ["frontend/assets/**/*"],
-			"Cmd": "go run ./backend/cmd/sync_docs --rewrite-only",
-			"StartAt": "go_compile",
-			"FinishBy": "go_compile",
 			"DevOnly": true
 		}
 	]

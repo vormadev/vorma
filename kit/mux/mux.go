@@ -1,30 +1,31 @@
-// Package mux provides typed HTTP task routing with pattern matching,
-// middleware, and nested route execution.
+// Package mux provides typed HTTP routing with pattern matching, middleware
+// composition, and nested route execution.
 //
-// It is optimized for Vorma/Wave runtime use-cases where handlers are modeled
-// as typed tasks instead of untyped `http.HandlerFunc` chains. The package
-// supports:
-// - request input decoding into typed structs
-// - nested pattern routing with params/splats
-// - task middleware and HTTP middleware composition
-// - deterministic task execution and result aggregation
+// It supports two routing models:
+//   - Router: resolves one best-match route per request (traditional routing).
+//   - NestedRouter: resolves hierarchical ancestor matches (loader/layout routing).
 //
-// Package mux is framework-agnostic and can be used directly outside Vorma.
+// Handlers may be standard http.Handlers or typed task handlers that return
+// JSON-serializable data through a tasks.Ctx execution context.
 package mux
 
 import (
+	"context"
+	"fmt"
+	"maps"
 	"net/http"
 	"path"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/vormadev/vorma/kit/colorlog"
+	"github.com/vormadev/vorma/kit/contextutil"
 	"github.com/vormadev/vorma/kit/genericsutil"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/mux/internal/muxcore"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/tasks"
@@ -32,116 +33,583 @@ import (
 )
 
 var (
-	muxLog       = colorlog.New("mux")
-	emptyHTTPMws = []httpMiddlewareWithOptions{}
-	emptyTaskMws = []taskMiddlewareWithOptions{}
+	mux_log       = colorlog.New("mux")
+	nested_log    = colorlog.New("nestedmux")
+	request_store = contextutil.NewStore[*rd_transport](
+		"__vorma_kit_mux_request_data",
+	)
+	empty_params   = make(Params, 0)
+	empty_splat    = []string{}
+	empty_http_mws = []http_mw_with_opts{}
+	empty_task_mws = []task_mw_with_opts{}
+	none_instance  = None{}
+
+	req_data_pool = sync.Pool{
+		New: func() any { return &ReqData[None]{} },
+	}
+
+	needs_tasks_ctx_type = reflect.TypeFor[TasksCtxRequirer]()
 )
 
 /////////////////////////////////////////////////////////////////////
-/////// PUBLIC API
+/////// PUBLIC BASE TYPES
 /////////////////////////////////////////////////////////////////////
-
-// NOTES:
-// Order of registration of handlers does not matter. Order of middleware
-// registration DOES matter. For traditional middleware, it will run sequentially,
-// first to last. For task middleware, they will run with maximum parallelism based
-// on the dependency graph of the associated underlying tasks, but their response
-// proxies will be merged according to the rules of response.Proxy (which means
-// that ordering sometimes matters in tie-breaking scenarios). See response.Proxy
-// and tasks.Task documentation and source code for more details.
 
 type (
-	// None is the no-input marker for route and middleware generics.
-	None = genericsutil.None
-	// TaskHandler is a task-backed route handler.
+	None                      = genericsutil.None
 	TaskHandler[I any, O any] = tasks.Task[*ReqData[I], O]
-	// Params contains route params extracted by matcher.
-	Params = matcher.Params
+	Params                    = matcher.Params
+	HTTPMiddleware            = func(http.Handler) http.Handler
+	TaskMiddlewareFunc[O any] func(*ReqData[None]) (O, error)
+	TaskMiddleware[O any]     = tasks.Task[*ReqData[None], O]
+	TaskHandlerFunc[I, O any] func(*ReqData[I]) (O, error)
 )
 
-// ReqData is the request-scoped data passed to task handlers and task middleware.
+// ReqData is request-scoped data passed to task handlers and middleware.
 type ReqData[I any] struct {
-	params        Params
-	splatVals     []string
-	tasksCtx      *tasks.Ctx
-	input         I
-	req           *http.Request
-	responseProxy *response.Proxy
+	params         Params
+	splat_vals     []string
+	tasks_ctx      *tasks.Ctx
+	input          I
+	req            *http.Request
+	response_proxy *response.Proxy
 }
 
 // MiddlewareOptions configures conditional middleware execution.
 type MiddlewareOptions struct {
-	// Return true if the middleware should be run for this request.
-	// If nil, the middleware will always run.
 	If func(r *http.Request) bool
 }
 
-type (
-	// HTTPMiddleware is standard net/http middleware.
-	HTTPMiddleware = func(http.Handler) http.Handler
-	// TaskMiddlewareFunc creates task middleware from a function.
-	TaskMiddlewareFunc[O any] func(*ReqData[None]) (O, error)
-	// TaskMiddleware is task-based middleware run in a tasks.Ctx.
-	TaskMiddleware[O any] = tasks.Task[*ReqData[None], O]
-	// TaskHandlerFunc creates a task route handler from a function.
-	TaskHandlerFunc[I any, O any] func(*ReqData[I]) (O, error)
-)
+/////////////////////////////////////////////////////////////////////
+/////// ROUTER
+/////////////////////////////////////////////////////////////////////
 
-// Router matches routes by method and path and executes HTTP/task middleware layers.
+// Options configures Router matching and input parsing.
+type Options struct {
+	MountRoot              string
+	DynamicParamPrefix     rune
+	SplatSegmentIdentifier rune
+	ParseInput             func(r *http.Request, inputPtr any) error
+}
+
+// Router matches one best route per request and executes its handler pipeline.
 type Router struct {
-	parseInput            func(r *http.Request, iPtr any) error
-	httpMws               []httpMiddlewareWithOptions
-	taskMws               []taskMiddlewareWithOptions
-	httpMiddlewareVersion atomic.Uint64
-	taskMiddlewareVersion atomic.Uint64
-	methodToMatcherMap    map[string]*methodMatcher
-	matcherOpts           *matcher.Options
-	notFoundHandler       http.Handler
-	mountRoot             string
-	allRoutes             []AnyRoute
+	mw_versions
+	parse_input     func(r *http.Request, iPtr any) error
+	http_mws        []http_mw_with_opts
+	task_mws        []task_mw_with_opts
+	method_matchers map[string]*method_matcher
+	matcher_opts    *matcher.Options
+	not_found       http.Handler
+	mount_root      string
+	all_routes      []AnyRoute
 }
 
-// AllRoutes returns a snapshot copy of every registered route.
+// NewRouter creates a Router.
+func NewRouter(options ...*Options) *Router {
+	var opts *Options
+	if len(options) > 0 {
+		opts = options[0]
+	}
+	if opts == nil {
+		opts = new(Options)
+	}
+	mopts := &matcher.Options{
+		DynamicParamPrefix:     or_default(opts.DynamicParamPrefix, ':'),
+		SplatSegmentIdentifier: or_default(opts.SplatSegmentIdentifier, '*'),
+	}
+	return &Router{
+		parse_input:     opts.ParseInput,
+		method_matchers: make(map[string]*method_matcher),
+		matcher_opts:    mopts,
+		mount_root:      normalize_mount_root(opts.MountRoot),
+		http_mws:        empty_http_mws,
+		task_mws:        empty_task_mws,
+	}
+}
+
+// AllRoutes returns a snapshot of all registered routes.
 func (rt *Router) AllRoutes() []AnyRoute {
-	allRoutesCopy := make([]AnyRoute, len(rt.allRoutes))
-	copy(allRoutesCopy, rt.allRoutes)
-	return allRoutesCopy
+	out := make([]AnyRoute, len(rt.all_routes))
+	copy(out, rt.all_routes)
+	return out
 }
 
-// DynamicParamPrefix returns the matcher's dynamic param prefix rune.
-func (rt *Router) DynamicParamPrefix() rune {
-	return rt.matcherOpts.DynamicParamPrefix
-}
+// DynamicParamPrefix returns the configured dynamic param prefix.
+func (rt *Router) DynamicParamPrefix() rune { return rt.matcher_opts.DynamicParamPrefix }
 
-// SplatSegmentIdentifier returns the matcher's splat segment identifier rune.
-func (rt *Router) SplatSegmentIdentifier() rune {
-	return rt.matcherOpts.SplatSegmentIdentifier
-}
+// SplatSegmentIdentifier returns the configured splat identifier.
+func (rt *Router) SplatSegmentIdentifier() rune { return rt.matcher_opts.SplatSegmentIdentifier }
 
-// Takes zero or one pattern strings. If no arguments are provided, returns
-// the mount root, otherwise returns the mount root joined with the
-// provided pattern. For example, if mux.MountRoot() were to return "/api/",
-// then mux.MountRoot("foo") would return "/api/foo". Panics if you pass more
-// than one argument.
-func (rt *Router) MountRoot(optionalPatternToAppend ...string) string {
-	if len(optionalPatternToAppend) == 0 {
-		return rt.mountRoot
+// MountRoot returns the mount root, optionally joined with a pattern.
+// Panics if more than one argument is provided.
+func (rt *Router) MountRoot(pattern ...string) string {
+	if len(pattern) == 0 {
+		return rt.mount_root
 	}
-	if len(optionalPatternToAppend) > 1 {
-		panic("MountRoot accepts zero or one optional pattern")
+	if len(pattern) > 1 {
+		panic("MountRoot accepts zero or one argument")
 	}
-	return path.Join(rt.mountRoot, optionalPatternToAppend[0])
+	return path.Join(rt.mount_root, pattern[0])
 }
 
-// TasksCtxRequirer marks HTTP handlers that require tasks context injection.
+// SetGlobalNotFoundHTTPHandler sets the fallback handler for unmatched requests.
+func (rt *Router) SetGlobalNotFoundHTTPHandler(
+	h http.Handler,
+) {
+	rt.not_found = h
+}
+
+// ServeHTTP matches the request and executes the resolved route pipeline.
+func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	path_to_use := r.URL.Path
+	if rt.mount_root != "" && strings.HasPrefix(path_to_use, rt.mount_root) {
+		path_to_use = "/" + path_to_use[len(rt.mount_root):]
+	}
+
+	best := rt.find_best(r.Method, path_to_use)
+	if !best.did_match {
+		if rt.not_found != nil {
+			rt.not_found.ServeHTTP(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+		return
+	}
+
+	match := best.match
+	mm := best.mm
+	route := mm.routes[match.OriginalPattern()]
+
+	// Fast path: pure HTTP handler without task middleware.
+	if route.get_handler_type() == "http" &&
+		!rt.has_any_task_mw(mm, route) &&
+		!route.get_needs_tasks_ctx() {
+		if len(match.Params) > 0 || len(match.SplatValues) > 0 {
+			r = request_store.RequestWithContextValue(r, &rd_transport{
+				params: match.Params, splat_vals: match.SplatValues, req: r,
+			})
+		}
+		h := route.http_chain(rt, mm)
+		if best.head_fallback {
+			treat_get_as_head(h, w, r)
+		} else {
+			h.ServeHTTP(w, r)
+		}
+		return
+	}
+
+	// Slow path: create tasks context and full request data.
+	tctx := tasks.NewCtx(r.Context())
+	r = request_store.RequestWithContextValue(r, &rd_transport{
+		params: match.Params, splat_vals: match.SplatValues,
+		tasks_ctx: tctx, req: r, response_proxy: response.NewProxy(),
+	})
+
+	getter := mm.req_data_getters[match.OriginalPattern()]
+	rd, err := getter.get_req_data(r, tctx, match)
+	if err != nil {
+		code := http.StatusInternalServerError
+		msg := "Internal Server Error"
+		if validate.IsValidationError(err) {
+			code = http.StatusBadRequest
+			msg = err.Error()
+			mux_log.Error(
+				"Validation error",
+				"error",
+				err,
+				"pattern",
+				match.OriginalPattern(),
+			)
+		} else {
+			mux_log.Error("Internal server error", "error", err, "pattern", match.OriginalPattern())
+		}
+		write_error_with_head(best.head_fallback, w, r, code, msg)
+		return
+	}
+
+	var final http.Handler
+	if route.get_handler_type() == "http" {
+		final = route.http_chain(rt, mm)
+	} else {
+		final = rt.task_final_handler(route, rd)
+	}
+	h := rt.apply_mw_pipeline(tctx, rd, mm, route, final)
+	if best.head_fallback {
+		treat_get_as_head(h, w, r)
+	} else {
+		h.ServeHTTP(w, r)
+	}
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// ROUTE
+/////////////////////////////////////////////////////////////////////
+
+// Route stores registration metadata and handlers for a method+pattern pair.
+type Route[I, O any] struct {
+	genericsutil.ZeroHelper[I, O]
+	mw_versions
+	router           *Router
+	method           string
+	original_pattern string
+	http_mws         []http_mw_with_opts
+	task_mws         []task_mw_with_opts
+	handler_type     string
+	user_http        http.Handler
+	task_handler     tasks.AnyTask
+	needs_tasks_ctx  bool
+	compiled_http    atomic.Value
+	compiled_task_mw atomic.Value
+}
+
+// AnyRoute is the type-erased route interface.
+type AnyRoute interface {
+	OriginalPattern() string
+	Method() string
+	genericsutil.AnyZeroHelper
+	get_handler_type() string
+	get_http_handler() http.Handler
+	get_task_handler() tasks.AnyTask
+	get_http_mws() []http_mw_with_opts
+	get_task_mws() []task_mw_with_opts
+	get_needs_tasks_ctx() bool
+	http_chain(rt *Router, mm *method_matcher) http.Handler
+	task_mw_chain(rt *Router, mm *method_matcher) []task_mw_with_opts
+}
+
+func (r *Route[I, O]) OriginalPattern() string { return r.original_pattern }
+func (r *Route[I, O]) Method() string          { return r.method }
+
+func (r *Route[I, O]) get_handler_type() string       { return r.handler_type }
+func (r *Route[I, O]) get_http_handler() http.Handler { return r.user_http }
+
+func (r *Route[I, O]) get_task_handler() tasks.AnyTask   { return r.task_handler }
+func (r *Route[I, O]) get_http_mws() []http_mw_with_opts { return r.http_mws }
+func (r *Route[I, O]) get_task_mws() []task_mw_with_opts { return r.task_mws }
+
+func (r *Route[I, O]) get_needs_tasks_ctx() bool { return r.needs_tasks_ctx }
+
+/////////////////////////////////////////////////////////////////////
+/////// ROUTE REGISTRATION
+/////////////////////////////////////////////////////////////////////
+
+// AddTaskHandler registers a task-based route handler.
+func AddTaskHandler[I, O any](
+	router *Router, method, pattern string, handler *TaskHandler[I, O],
+) *Route[I, O] {
+	route := new_route[I, O](router, method, pattern)
+	route.handler_type = "task"
+	route.task_handler = handler
+	mm := router.get_or_create_mm(method)
+	mm.req_data_getters[pattern] = create_req_data_getter(route)
+	router.register_route(route)
+	return route
+}
+
+// AddHTTPHandler registers an http.Handler route.
+func AddHTTPHandler(
+	router *Router, method, pattern string, handler http.Handler,
+) *Route[any, any] {
+	route := new_route[any, any](router, method, pattern)
+	route.handler_type = "http"
+	route.user_http = handler
+	route.needs_tasks_ctx = reflectutil.DoesTypeImplementInterface(
+		reflect.TypeOf(handler), needs_tasks_ctx_type,
+	)
+	mm := router.get_or_create_mm(method)
+	mm.req_data_getters[pattern] = create_req_data_getter(route)
+	router.register_route(route)
+	return route
+}
+
+// AddHTTPHandlerFunc registers an http.HandlerFunc route.
+func AddHTTPHandlerFunc(
+	router *Router, method, pattern string, fn http.HandlerFunc,
+) *Route[any, any] {
+	return AddHTTPHandler(router, method, pattern, fn)
+}
+
+func (rt *Router) AddHTTPHandler(
+	method, pattern string,
+	h http.Handler,
+) *Route[any, any] {
+	return AddHTTPHandler(rt, method, pattern, h)
+}
+
+func (rt *Router) AddHTTPHandlerFunc(
+	method, pattern string,
+	fn http.HandlerFunc,
+) *Route[any, any] {
+	return AddHTTPHandlerFunc(rt, method, pattern, fn)
+}
+
+// TaskHandlerFromFunc creates a TaskHandler from a function.
+func TaskHandlerFromFunc[I, O any](
+	fn TaskHandlerFunc[I, O],
+) *TaskHandler[I, O] {
+	return tasks.NewTask(
+		func(_ *tasks.Ctx, rd *ReqData[I]) (O, error) { return fn(rd) },
+	)
+}
+
+// TaskMiddlewareFromFunc creates TaskMiddleware from a function.
+func TaskMiddlewareFromFunc[O any](
+	fn TaskMiddlewareFunc[O],
+) *TaskMiddleware[O] {
+	return tasks.NewTask(
+		func(_ *tasks.Ctx, rd *ReqData[None]) (O, error) { return fn(rd) },
+	)
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// MIDDLEWARE REGISTRATION
+/////////////////////////////////////////////////////////////////////
+
+func AddGlobalHTTPMiddleware(
+	rt *Router,
+	mw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
+	rt.http_mws = append(
+		rt.http_mws,
+		http_mw_with_opts{mw: mw, opts: first_opt(opts)},
+	)
+	rt.http_ver.Add(1)
+}
+
+func AddGlobalTaskMiddleware[O any](
+	rt *Router,
+	mw *TaskMiddleware[O],
+	opts ...*MiddlewareOptions,
+) {
+	rt.task_mws = append(
+		rt.task_mws,
+		task_mw_with_opts{mw: mw, opts: first_opt(opts)},
+	)
+	rt.task_ver.Add(1)
+}
+
+func (rt *Router) AddGlobalHTTPMiddleware(
+	mw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
+	AddGlobalHTTPMiddleware(rt, mw, opts...)
+}
+
+func AddMethodLevelHTTPMiddleware(
+	rt *Router,
+	method string,
+	mw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
+	mm := rt.get_or_create_mm(method)
+	mm.http_mws = append(
+		mm.http_mws,
+		http_mw_with_opts{mw: mw, opts: first_opt(opts)},
+	)
+	mm.http_ver.Add(1)
+}
+
+func AddMethodLevelTaskMiddleware[O any](
+	rt *Router,
+	method string,
+	mw *TaskMiddleware[O],
+	opts ...*MiddlewareOptions,
+) {
+	mm := rt.get_or_create_mm(method)
+	mm.task_mws = append(
+		mm.task_mws,
+		task_mw_with_opts{mw: mw, opts: first_opt(opts)},
+	)
+	mm.task_ver.Add(1)
+}
+
+func (rt *Router) AddMethodLevelHTTPMiddleware(
+	method string,
+	mw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
+	AddMethodLevelHTTPMiddleware(rt, method, mw, opts...)
+}
+
+func AddPatternLevelHTTPMiddleware[I, O any](
+	route *Route[I, O],
+	mw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
+	route.http_mws = append(
+		route.http_mws,
+		http_mw_with_opts{mw: mw, opts: first_opt(opts)},
+	)
+	route.http_ver.Add(1)
+}
+
+func AddPatternLevelTaskMiddleware[PI, PO, MWO any](
+	route *Route[PI, PO],
+	mw *TaskMiddleware[MWO],
+	opts ...*MiddlewareOptions,
+) {
+	route.task_mws = append(
+		route.task_mws,
+		task_mw_with_opts{mw: mw, opts: first_opt(opts)},
+	)
+	route.task_ver.Add(1)
+}
+
+func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(
+	mw HTTPMiddleware,
+	opts ...*MiddlewareOptions,
+) {
+	AddPatternLevelHTTPMiddleware(route, mw, opts...)
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// REQ DATA METHODS
+/////////////////////////////////////////////////////////////////////
+
+func (rd *ReqData[I]) Params() Params          { return rd.params }
+func (rd *ReqData[I]) Param(key string) string { return rd.params[key] }
+func (rd *ReqData[I]) SplatValues() []string   { return rd.splat_vals }
+func (rd *ReqData[I]) TasksCtx() *tasks.Ctx    { return rd.tasks_ctx }
+func (rd *ReqData[I]) Request() *http.Request  { return rd.req }
+
+func (rd *ReqData[I]) ResponseProxy() *response.Proxy { return rd.response_proxy }
+func (rd *ReqData[I]) Input() I                       { return rd.input }
+
+func (rd *ReqData[I]) SetTasksCtx(ctx *tasks.Ctx)   { rd.tasks_ctx = ctx }
+func (rd *ReqData[I]) get_input() any               { return rd.input }
+func (rd *ReqData[I]) get_underlying_req_data() any { return rd }
+
+// ResetForReuse reinitializes fields for pooled reuse.
+func (rd *ReqData[I]) ResetForReuse(
+	params Params,
+	splat []string,
+	input I,
+	r *http.Request,
+	proxy *response.Proxy,
+) {
+	rd.params = params
+	rd.splat_vals = splat
+	rd.input = input
+	rd.req = r
+	rd.response_proxy = proxy
+	rd.tasks_ctx = nil
+}
+
+// ClearForPool zeroes fields before returning to a pool.
+func (rd *ReqData[I]) ClearForPool() {
+	var zero I
+	rd.params = nil
+	rd.splat_vals = nil
+	rd.tasks_ctx = nil
+	rd.input = zero
+	rd.req = nil
+	rd.response_proxy = nil
+}
+
+// --- Response proxy convenience helpers ---
+
+func (rd *ReqData[I]) HeadEls() *headels.HeadEls { return rd.response_proxy.HeadEls() }
+func (rd *ReqData[I]) Redirect(url string, code ...int) (bool, error) {
+	return rd.response_proxy.Redirect(rd.req, url, code...)
+}
+func (rd *ReqData[I]) SetResponseStatus(status int, text ...string) {
+	rd.response_proxy.SetStatus(status, text...)
+}
+
+func (rd *ReqData[I]) SetResponseCookie(
+	c *http.Cookie,
+) {
+	rd.response_proxy.SetCookie(c)
+}
+
+func (rd *ReqData[I]) SetResponseHeader(
+	k, v string,
+) {
+	rd.response_proxy.SetHeader(k, v)
+}
+
+func (rd *ReqData[I]) AddResponseHeader(
+	k, v string,
+) {
+	rd.response_proxy.AddHeader(k, v)
+}
+
+func (rd *ReqData[I]) ResponseStatus() (int, string) { return rd.response_proxy.Status() }
+
+func (rd *ReqData[I]) ResponseHeader(
+	k string,
+) string {
+	return rd.response_proxy.Header(k)
+}
+
+func (rd *ReqData[I]) ResponseHeaders(
+	k string,
+) []string {
+	return rd.response_proxy.Headers(k)
+}
+
+func (rd *ReqData[I]) ResponseCookies() []*http.Cookie { return rd.response_proxy.Cookies() }
+
+func (rd *ReqData[I]) ResponseLocation() string { return rd.response_proxy.Location() }
+
+func (rd *ReqData[I]) IsResponseError() bool { return rd.response_proxy.IsError() }
+
+func (rd *ReqData[I]) IsResponseRedirect() bool { return rd.response_proxy.IsRedirect() }
+
+func (rd *ReqData[I]) IsResponseSuccess() bool { return rd.response_proxy.IsSuccess() }
+
+/////////////////////////////////////////////////////////////////////
+/////// REQUEST DATA ACCESS
+/////////////////////////////////////////////////////////////////////
+
+// GetTasksCtx extracts the tasks context from a request.
+func GetTasksCtx(r *http.Request) *tasks.Ctx {
+	if rd := request_store.Value(r.Context()); rd != nil {
+		return rd.tasks_ctx
+	}
+	return nil
+}
+
+// RequestWithTasksCtx returns a request carrying only a tasks context.
+func RequestWithTasksCtx(r *http.Request, ctx *tasks.Ctx) *http.Request {
+	return request_store.RequestWithContextValue(r, &rd_transport{
+		tasks_ctx: ctx, req: r,
+	})
+}
+
+// GetParam returns one route param by key.
+func GetParam(r *http.Request, key string) string { return GetParams(r)[key] }
+
+// GetParams returns all route params for the request.
+func GetParams(r *http.Request) Params {
+	if rd := request_store.Value(r.Context()); rd != nil {
+		return rd.params
+	}
+	return nil
+}
+
+// GetSplatValues returns all matched splat segments.
+func GetSplatValues(r *http.Request) []string {
+	if rd := request_store.Value(r.Context()); rd != nil &&
+		rd.splat_vals != nil {
+		return rd.splat_vals
+	}
+	return empty_splat
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// TASKS CTX REQUIRER
+/////////////////////////////////////////////////////////////////////
+
+// TasksCtxRequirer marks HTTP handlers that need a tasks context injected.
 type TasksCtxRequirer interface {
 	http.Handler
 	NeedsTasksCtx()
 }
 
-var handlerNeedsTasksCtxImplReflectType = reflect.TypeFor[TasksCtxRequirer]()
-
-// TasksCtxRequirerFunc adapts a function to a TasksCtxRequirer handler.
+// TasksCtxRequirerFunc adapts a function to a TasksCtxRequirer.
 type TasksCtxRequirerFunc func(http.ResponseWriter, *http.Request)
 
 func (h TasksCtxRequirerFunc) ServeHTTP(
@@ -150,532 +618,716 @@ func (h TasksCtxRequirerFunc) ServeHTTP(
 ) {
 	h(w, r)
 }
+
 func (h TasksCtxRequirerFunc) NeedsTasksCtx() {}
 
-// Options configures router matching behavior and task input parsing.
-type Options struct {
-	// Used for mounting a router at a specific path, e.g., "/api/". If set,
-	// the router will strip the provided mount root from the beginning of
-	// incoming url paths before matching them against registered patterns.
-	MountRoot              string
-	DynamicParamPrefix     rune // Optional. Defaults to ':'.
-	SplatSegmentIdentifier rune // Optional. Defaults to '*'.
-	// Required if using task handlers. Do validation or whatever you want here,
-	// and mutate the input ptr to the desired value (this is what will ultimately
-	// be returned by c.Input()).
-	ParseInput func(r *http.Request, inputPtr any) error
+// InjectTasksCtxMiddleware ensures requests carry a tasks context.
+func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if GetTasksCtx(r) != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		tctx := tasks.NewCtx(r.Context())
+		next.ServeHTTP(
+			w,
+			request_store.RequestWithContextValue(r, &rd_transport{
+				tasks_ctx: tctx, req: r,
+			}),
+		)
+	})
 }
 
-// NewRouter creates a router with optional matcher and mount configuration.
-func NewRouter(options ...*Options) *Router {
-	var opts *Options
-	if len(options) > 0 {
-		opts = options[0]
-	}
+/////////////////////////////////////////////////////////////////////
+/////// NESTED ROUTER
+/////////////////////////////////////////////////////////////////////
 
+// NestedOptions configures NestedRouter pattern matching.
+type NestedOptions struct {
+	DynamicParamPrefix             rune
+	SplatSegmentIdentifier         rune
+	ExplicitIndexSegmentIdentifier string
+}
+
+// NestedRouter stores nested route patterns and optional task handlers.
+type NestedRouter struct {
+	mu              sync.RWMutex
+	matcher_inst    *matcher.Matcher
+	routes          map[string]AnyNestedRoute
+	compiled_routes atomic.Value // compiled_routes_snapshot
+}
+
+// NewNestedRouter creates a NestedRouter.
+func NewNestedRouter(opts *NestedOptions) *NestedRouter {
 	if opts == nil {
-		opts = new(Options)
+		opts = new(NestedOptions)
 	}
-	matcherOpts := muxcore.BuildMatcherOptions(muxcore.MatcherOptionsInput{
-		DynamicParamPrefix:     opts.DynamicParamPrefix,
-		SplatSegmentIdentifier: opts.SplatSegmentIdentifier,
-	})
-	mountRootToUse := muxcore.NormalizeMountRoot(opts.MountRoot)
-	return &Router{
-		parseInput:         opts.ParseInput,
-		methodToMatcherMap: make(map[string]*methodMatcher),
-		matcherOpts:        matcherOpts,
-		mountRoot:          mountRootToUse,
-		httpMws:            emptyHTTPMws,
-		taskMws:            emptyTaskMws,
-	}
-}
-
-// TaskHandlers are used for JSON responses only, and they are intended to
-// be particularly convenient for sending JSON. If you need to send a different
-// content type, use a traditional http.Handler instead.
-func TaskHandlerFromFunc[I any, O any](
-	taskHandlerFunc TaskHandlerFunc[I, O],
-) *TaskHandler[I, O] {
-	return tasks.NewTask(func(c *tasks.Ctx, rd *ReqData[I]) (O, error) {
-		return taskHandlerFunc(rd)
-	})
-}
-
-// TaskMiddlewareFromFunc converts a function into task middleware.
-func TaskMiddlewareFromFunc[O any](
-	userFunc TaskMiddlewareFunc[O],
-) *TaskMiddleware[O] {
-	return tasks.NewTask(func(c *tasks.Ctx, rd *ReqData[None]) (O, error) {
-		return userFunc(rd)
-	})
-}
-
-// AddGlobalTaskMiddleware registers task middleware for all routes.
-func AddGlobalTaskMiddleware[O any](
-	router *Router,
-	taskMw *TaskMiddleware[O],
-	opts ...*MiddlewareOptions,
-) {
-	router.taskMws = append(router.taskMws, taskMiddlewareWithOptions{
-		mw:   taskMw,
-		opts: getFirstOpt(opts),
-	})
-	router.incrementTaskMiddlewareVersion()
-}
-
-// AddGlobalHTTPMiddleware registers HTTP middleware for all routes.
-func AddGlobalHTTPMiddleware(
-	router *Router,
-	httpMw HTTPMiddleware,
-	opts ...*MiddlewareOptions,
-) {
-	router.httpMws = append(router.httpMws, httpMiddlewareWithOptions{
-		mw:   httpMw,
-		opts: getFirstOpt(opts),
-	})
-	router.incrementHTTPMiddlewareVersion()
-}
-
-// AddGlobalHTTPMiddleware registers HTTP middleware on the receiver router.
-func (rt *Router) AddGlobalHTTPMiddleware(
-	httpMw HTTPMiddleware,
-	opts ...*MiddlewareOptions,
-) {
-	AddGlobalHTTPMiddleware(rt, httpMw, opts...)
-}
-
-// AddMethodLevelTaskMiddleware registers task middleware for one method.
-func AddMethodLevelTaskMiddleware[O any](
-	router *Router,
-	method string,
-	taskMw *TaskMiddleware[O],
-	opts ...*MiddlewareOptions,
-) {
-	mm := router.getOrCreateMethodMatcher(method)
-	mm.taskMws = append(mm.taskMws, taskMiddlewareWithOptions{
-		mw:   taskMw,
-		opts: getFirstOpt(opts),
-	})
-	mm.incrementTaskMiddlewareVersion()
-}
-
-// AddMethodLevelHTTPMiddleware registers HTTP middleware for one method.
-func AddMethodLevelHTTPMiddleware(
-	router *Router,
-	method string,
-	httpMw HTTPMiddleware,
-	opts ...*MiddlewareOptions,
-) {
-	mm := router.getOrCreateMethodMatcher(method)
-	mm.httpMws = append(mm.httpMws, httpMiddlewareWithOptions{
-		mw:   httpMw,
-		opts: getFirstOpt(opts),
-	})
-	mm.incrementHTTPMiddlewareVersion()
-}
-
-// AddMethodLevelHTTPMiddleware registers HTTP middleware for one method on the receiver router.
-func (rt *Router) AddMethodLevelHTTPMiddleware(
-	method string,
-	httpMw HTTPMiddleware,
-	opts ...*MiddlewareOptions,
-) {
-	AddMethodLevelHTTPMiddleware(rt, method, httpMw, opts...)
-}
-
-// AddPatternLevelTaskMiddleware registers task middleware for one route pattern.
-func AddPatternLevelTaskMiddleware[PI any, PO any, MWO any](
-	route *Route[PI, PO],
-	taskMw *TaskMiddleware[MWO],
-	opts ...*MiddlewareOptions,
-) {
-	route.taskMws = append(route.taskMws, taskMiddlewareWithOptions{
-		mw:   taskMw,
-		opts: getFirstOpt(opts),
-	})
-	route.incrementTaskMiddlewareVersion()
-}
-
-// AddPatternLevelHTTPMiddleware registers HTTP middleware for one route pattern.
-func AddPatternLevelHTTPMiddleware[I any, O any](
-	route *Route[I, O],
-	httpMw HTTPMiddleware,
-	opts ...*MiddlewareOptions,
-) {
-	route.httpMws = append(route.httpMws, httpMiddlewareWithOptions{
-		mw:   httpMw,
-		opts: getFirstOpt(opts),
-	})
-	route.incrementHTTPMiddlewareVersion()
-}
-
-// AddPatternLevelHTTPMiddleware registers HTTP middleware on the receiver route.
-func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(
-	httpMw HTTPMiddleware,
-	opts ...*MiddlewareOptions,
-) {
-	AddPatternLevelHTTPMiddleware(route, httpMw, opts...)
-}
-
-// SetGlobalNotFoundHTTPHandler sets the fallback handler used when no route matches.
-func SetGlobalNotFoundHTTPHandler(router *Router, httpHandler http.Handler) {
-	router.notFoundHandler = httpHandler
-}
-
-// SetGlobalNotFoundHTTPHandler sets the receiver router's not-found handler.
-func (rt *Router) SetGlobalNotFoundHTTPHandler(httpHandler http.Handler) {
-	SetGlobalNotFoundHTTPHandler(rt, httpHandler)
-}
-
-// Route stores registration metadata and handlers for a method+pattern pair.
-type Route[I, O any] struct {
-	genericsutil.ZeroHelper[I, O]
-	router                *Router
-	method                string
-	originalPattern       string
-	httpMws               []httpMiddlewareWithOptions
-	taskMws               []taskMiddlewareWithOptions
-	httpMiddlewareVersion atomic.Uint64
-	taskMiddlewareVersion atomic.Uint64
-	handlerType           string
-	userHTTPHandler       http.Handler
-	taskHandler           tasks.AnyTask
-	needsTasksCtx         bool
-	compiledHTTP          atomic.Value
-	compiledTaskMws       atomic.Value
-}
-
-// AnyRoute is the internal polymorphic route contract used by Router.
-type AnyRoute interface {
-	OriginalPattern() string
-	Method() string
-	genericsutil.AnyZeroHelper
-	getHandlerType() string
-	getHTTPHandler() http.Handler
-	getTaskHandler() tasks.AnyTask
-	getHTTPMws() []httpMiddlewareWithOptions
-	getTaskMws() []taskMiddlewareWithOptions
-	taskMiddlewareChain(
-		rt *Router,
-		mm *methodMatcher,
-	) []taskMiddlewareWithOptions
-	getNeedsTasksCtx() bool
-	httpChain(rt *Router, mm *methodMatcher) http.Handler
-}
-
-// OriginalPattern returns the route pattern as registered.
-func (route *Route[I, O]) OriginalPattern() string {
-	return route.originalPattern
-}
-
-// Method returns the registered HTTP method.
-func (route *Route[I, O]) Method() string {
-	return route.method
-}
-
-// TaskHandlers are used for JSON responses only, and they are intended to
-// be particularly convenient for sending JSON. If you need to send a different
-// content type, use a traditional http.Handler instead.
-func AddTaskHandler[I any, O any](
-	router *Router, method, pattern string, taskHandler *TaskHandler[I, O],
-) *Route[I, O] {
-	route := newRouteStruct[I, O](router, method, pattern)
-	route.handlerType = "task"
-	route.taskHandler = taskHandler
-	mm := router.getOrCreateMethodMatcher(method)
-	mm.reqDataGetters[pattern] = createReqDataGetter(route)
-	router.registerRoute(route)
-	return route
-}
-
-// AddHTTPHandlerFunc registers an http.HandlerFunc route.
-func AddHTTPHandlerFunc(
-	router *Router, method, pattern string, httpHandlerFunc http.HandlerFunc,
-) *Route[any, any] {
-	return AddHTTPHandler(router, method, pattern, httpHandlerFunc)
-}
-
-// AddHTTPHandlerFunc registers an http.HandlerFunc route on the receiver router.
-func (rt *Router) AddHTTPHandlerFunc(
-	method, pattern string,
-	httpHandlerFunc http.HandlerFunc,
-) *Route[any, any] {
-	return AddHTTPHandlerFunc(rt, method, pattern, httpHandlerFunc)
-}
-
-// AddHTTPHandler registers an http.Handler route.
-func AddHTTPHandler(
-	router *Router, method, pattern string, httpHandler http.Handler,
-) *Route[any, any] {
-	route := newRouteStruct[any, any](router, method, pattern)
-	route.handlerType = "http"
-	route.userHTTPHandler = httpHandler
-	route.needsTasksCtx = reflectutil.DoesTypeImplementInterface(
-		reflect.TypeOf(httpHandler), handlerNeedsTasksCtxImplReflectType,
-	)
-	mm := router.getOrCreateMethodMatcher(method)
-	mm.reqDataGetters[pattern] = createReqDataGetter(route)
-	router.registerRoute(route)
-	return route
-}
-
-// AddHTTPHandler registers an http.Handler route on the receiver router.
-func (rt *Router) AddHTTPHandler(
-	method, pattern string,
-	httpHandler http.Handler,
-) *Route[any, any] {
-	return AddHTTPHandler(rt, method, pattern, httpHandler)
-}
-
-// Params returns matched route params.
-func (rd *ReqData[I]) Params() Params { return rd.params }
-
-// Param returns a single matched route param.
-func (rd *ReqData[I]) Param(key string) string { return rd.params[key] }
-
-// SplatValues returns matched splat segments.
-func (rd *ReqData[I]) SplatValues() []string { return rd.splatVals }
-
-// TasksCtx returns the request's task context.
-func (rd *ReqData[I]) TasksCtx() *tasks.Ctx { return rd.tasksCtx }
-
-// Request returns the underlying HTTP request.
-func (rd *ReqData[I]) Request() *http.Request { return rd.req }
-
-// ResponseProxy returns the response proxy associated with the request.
-func (rd *ReqData[I]) ResponseProxy() *response.Proxy { return rd.responseProxy }
-
-// Input returns parsed input for the route handler.
-func (rd *ReqData[I]) Input() I { return rd.input }
-
-// SetTasksCtx sets the task context used by the handler execution.
-func (rd *ReqData[I]) SetTasksCtx(tasksCtx *tasks.Ctx) {
-	rd.tasksCtx = tasksCtx
-}
-
-// ResetForReuse resets request data fields for pooled reuse.
-func (rd *ReqData[I]) ResetForReuse(
-	params Params,
-	splatValues []string,
-	input I,
-	req *http.Request,
-	responseProxy *response.Proxy,
-) {
-	rd.params = params
-	rd.splatVals = splatValues
-	rd.input = input
-	rd.req = req
-	rd.responseProxy = responseProxy
-	rd.tasksCtx = nil
-}
-
-// ClearForPool clears request data fields before returning to a pool.
-func (rd *ReqData[I]) ClearForPool() {
-	var zeroInput I
-	rd.params = nil
-	rd.splatVals = nil
-	rd.tasksCtx = nil
-	rd.input = zeroInput
-	rd.req = nil
-	rd.responseProxy = nil
-}
-
-// GetTasksCtx returns the request's tasks context when present.
-func GetTasksCtx(r *http.Request) *tasks.Ctx {
-	return muxcore.GetTasksCtx(r)
-}
-
-// RequestWithTasksCtx returns a request carrying the provided tasks context.
-func RequestWithTasksCtx(
-	request *http.Request,
-	tasksCtx *tasks.Ctx,
-) *http.Request {
-	return muxcore.RequestWithTasksCtx(request, tasksCtx)
-}
-
-// GetParam returns one route param by key.
-func GetParam(r *http.Request, key string) string {
-	return muxcore.GetParam(r, key)
-}
-
-// GetParams returns all route params for the request.
-func GetParams(r *http.Request) Params {
-	return muxcore.GetParams(r)
-}
-
-// GetSplatValues returns all matched splat values for the request.
-func GetSplatValues(r *http.Request) []string {
-	return muxcore.GetSplatValues(r)
-}
-
-// ServeHTTP matches the request and executes the resolved route pipeline.
-func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	pathToUse := r.URL.Path
-	if rt.mountRoot != "" && strings.HasPrefix(pathToUse, rt.mountRoot) {
-		pathToUse = "/" + pathToUse[len(rt.mountRoot):]
-	}
-	best := rt.findBestMatcherAndMatch(r.Method, pathToUse)
-	if !best.didMatch {
-		if rt.notFoundHandler != nil {
-			rt.notFoundHandler.ServeHTTP(w, r)
-		} else {
-			http.NotFound(w, r)
-		}
-		return
-	}
-	match := best.match
-	mm := best.methodMatcher
-	route := mm.routes[match.OriginalPattern()]
-	// Fast path for pure HTTP handlers without task middleware
-	if route.getHandlerType() == "http" &&
-		!rt.hasAnyTaskMiddleware(mm, route) &&
-		!route.getNeedsTasksCtx() {
-		if len(match.Params) > 0 || len(match.SplatValues) > 0 {
-			r = muxcore.RequestWithData(
-				r,
-				muxcore.NewRequestData(
-					match.Params,
-					match.SplatValues,
-					nil,
-					r,
-					nil,
-				),
-			)
-		}
-		handler := route.httpChain(rt, mm)
-		if best.headFellBackToGet {
-			treatGetAsHead(handler, w, r)
-		} else {
-			handler.ServeHTTP(w, r)
-		}
-		return
-	}
-	// Slow path: create TasksCtx and full request data
-	tasksCtx := tasks.NewCtx(r.Context())
-	r = muxcore.RequestWithData(
-		r,
-		muxcore.NewRequestData(
-			match.Params,
-			match.SplatValues,
-			tasksCtx,
-			r,
-			response.NewProxy(),
+	mopts := &matcher.Options{
+		DynamicParamPrefix: or_default(
+			opts.DynamicParamPrefix,
+			':',
 		),
-	)
-	reqGetter := mm.reqDataGetters[match.OriginalPattern()]
-	reqData, err := reqGetter.getReqData(r, tasksCtx, match)
-	if err != nil {
-		if validate.IsValidationError(err) {
-			muxLog.Error(
-				"Validation error",
-				"error",
-				err,
-				"pattern",
-				match.OriginalPattern(),
-			)
-			writeErrorResponseWithHeadFallbackSupport(
-				best.headFellBackToGet,
-				w,
-				r,
-				http.StatusBadRequest,
-				err.Error(),
-			)
-		} else {
-			muxLog.Error("Internal server error", "error", err, "pattern", match.OriginalPattern())
-			writeErrorResponseWithHeadFallbackSupport(
-				best.headFellBackToGet,
-				w,
-				r,
-				http.StatusInternalServerError,
-				"Internal Server Error",
-			)
-		}
-		return
+		SplatSegmentIdentifier: or_default(
+			opts.SplatSegmentIdentifier,
+			'*',
+		),
+		ExplicitIndexSegmentIdentifier: opts.ExplicitIndexSegmentIdentifier,
+		Quiet:                          false,
 	}
-	var finalHandler http.Handler
-	if route.getHandlerType() == "http" {
-		finalHandler = route.httpChain(rt, mm)
-	} else {
-		finalHandler = rt.createTaskFinalHandler(route, reqData)
+	nr := &NestedRouter{
+		matcher_inst: matcher.New(mopts),
+		routes:       make(map[string]AnyNestedRoute),
 	}
-	handlerWithMW := rt.runAppropriateMws(
-		tasksCtx,
-		reqData,
-		mm,
-		route,
-		finalHandler,
-	)
-	if best.headFellBackToGet {
-		treatGetAsHead(handlerWithMW, w, r)
-	} else {
-		handlerWithMW.ServeHTTP(w, r)
+	nr.compiled_routes.Store(compiled_routes_snapshot{
+		routes:    make([]compiled_route, 0),
+		index_map: make(map[string]int),
+	})
+	return nr
+}
+
+// AllRoutes returns a snapshot copy of registered routes.
+func (nr *NestedRouter) AllRoutes() map[string]AnyNestedRoute {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	out := make(map[string]AnyNestedRoute, len(nr.routes))
+	maps.Copy(out, nr.routes)
+	return out
+}
+
+// IsRegistered reports whether a pattern is registered.
+func (nr *NestedRouter) IsRegistered(pattern string) bool {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	_, ok := nr.routes[pattern]
+	return ok
+}
+
+// HasTaskHandler reports whether a pattern is registered with a handler.
+func (nr *NestedRouter) HasTaskHandler(pattern string) bool {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	route, ok := nr.routes[pattern]
+	return ok && route.get_nested_task_handler() != nil
+}
+
+func (nr *NestedRouter) ExplicitIndexSegmentIdentifier() string {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	return nr.matcher_inst.ExplicitIndexSegmentIdentifier()
+}
+func (nr *NestedRouter) DynamicParamPrefix() rune {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	return nr.matcher_inst.DynamicParamPrefix()
+}
+func (nr *NestedRouter) SplatSegmentIdentifier() rune {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	return nr.matcher_inst.SplatSegmentIdentifier()
+}
+
+// Matcher returns a copy of the nested matcher.
+func (nr *NestedRouter) Matcher() *matcher.Matcher {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	cp := matcher.New(nr.current_matcher_opts(true))
+	for pat := range nr.routes {
+		cp.RegisterPattern(pat)
 	}
+	return cp
 }
 
 /////////////////////////////////////////////////////////////////////
-/////// PRIVATE API
+/////// NESTED ROUTE
 /////////////////////////////////////////////////////////////////////
 
-func applyHTTPMiddlewareWithOptions(
-	mwWithOpts httpMiddlewareWithOptions,
-	handler http.Handler,
-) http.Handler {
-	if mwWithOpts.opts != nil && mwWithOpts.opts.If != nil {
-		originalHandler := handler
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !mwWithOpts.opts.If(r) {
-				originalHandler.ServeHTTP(w, r)
-			} else {
-				mwWithOpts.mw(originalHandler).ServeHTTP(w, r)
+// NestedRoute stores metadata and an optional task handler for one nested pattern.
+type NestedRoute[O any] struct {
+	genericsutil.ZeroHelper[None, O]
+	router           *NestedRouter
+	original_pattern string
+	task_handler     tasks.AnyTask
+}
+
+// AnyNestedRoute is the type-erased nested route interface.
+type AnyNestedRoute interface {
+	OriginalPattern() string
+	genericsutil.AnyZeroHelper
+	get_nested_task_handler() tasks.AnyTask
+}
+
+func (r *NestedRoute[O]) OriginalPattern() string { return r.original_pattern }
+
+func (r *NestedRoute[O]) get_nested_task_handler() tasks.AnyTask { return r.task_handler }
+
+/////////////////////////////////////////////////////////////////////
+/////// NESTED REGISTRATION
+/////////////////////////////////////////////////////////////////////
+
+// AddNestedTaskHandler registers a nested pattern with a task handler.
+func AddNestedTaskHandler[O any](
+	router *NestedRouter, pattern string, handler *TaskHandler[None, O],
+) *NestedRoute[O] {
+	route := &NestedRoute[O]{
+		router: router, original_pattern: pattern, task_handler: handler,
+	}
+	must_register_nested(route)
+	return route
+}
+
+// AddNestedPatternWithoutHandler registers a nested pattern with no handler.
+func AddNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
+	route := &NestedRoute[None]{
+		router: router, original_pattern: pattern, task_handler: nil,
+	}
+	must_register_nested(route)
+}
+
+// AddPatternWithoutHandlerIfMissing registers a pattern without a handler
+// only when it is not already present. Returns true if a new route was added.
+func (nr *NestedRouter) AddPatternWithoutHandlerIfMissing(pattern string) bool {
+	if nr == nil {
+		return false
+	}
+	nr.mu.Lock()
+	defer nr.mu.Unlock()
+	if _, ok := nr.routes[pattern]; ok {
+		return false
+	}
+	route := &NestedRoute[None]{
+		router: nr, original_pattern: pattern, task_handler: nil,
+	}
+	nr.matcher_inst.RegisterPattern(pattern)
+	nr.routes[pattern] = route
+	nr.add_compiled(compiled_route{pattern: pattern, has_handler: false})
+	return true
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// NESTED TASK RESULTS
+/////////////////////////////////////////////////////////////////////
+
+// NestedTasksResult stores execution output for one matched nested pattern.
+type NestedTasksResult struct {
+	pattern  string
+	data     any
+	err      error
+	ran_task bool
+}
+
+func (r *NestedTasksResult) Pattern() string { return r.pattern }
+func (r *NestedTasksResult) OK() bool        { return r.err == nil }
+func (r *NestedTasksResult) Data() any       { return r.data }
+func (r *NestedTasksResult) Err() error      { return r.err }
+func (r *NestedTasksResult) RanTask() bool   { return r.ran_task }
+
+// NestedTasksResults contains ordered task results for nested matches.
+type NestedTasksResults struct {
+	Params          Params
+	SplatValues     []string
+	Slice           []*NestedTasksResult
+	ResponseProxies []*response.Proxy
+}
+
+// HasTaskHandlerAt reports whether the result at index i ran a task handler.
+func (r *NestedTasksResults) HasTaskHandlerAt(i int) bool {
+	if i < 0 || i >= len(r.Slice) {
+		return false
+	}
+	return r.Slice[i].ran_task
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// NESTED MATCHING AND EXECUTION
+/////////////////////////////////////////////////////////////////////
+
+// FindNestedMatches resolves nested route matches for the request path.
+func FindNestedMatches(
+	nr *NestedRouter, r *http.Request,
+) (*matcher.FindNestedMatchesResults, bool) {
+	nr.mu.RLock()
+	defer nr.mu.RUnlock()
+	return nr.matcher_inst.FindNestedMatches(r.URL.Path)
+}
+
+// FindNestedMatchesAndRunTasks finds matches and executes all matched handlers.
+func FindNestedMatchesAndRunTasks(
+	nr *NestedRouter, r *http.Request,
+) (*NestedTasksResults, bool) {
+	results, ok := FindNestedMatches(nr, r)
+	if !ok {
+		return nil, false
+	}
+	return RunNestedTasks(nr, r, results), true
+}
+
+// RunNestedTasks executes all task handlers for the matched routes in parallel.
+//
+// This function uses object pooling for ReqData[None]. Safety depends on task
+// execution completing before pooled objects are returned, which is guaranteed
+// by the blocking WaitGroup/single-goroutine execution pattern below.
+func RunNestedTasks(
+	nr *NestedRouter,
+	r *http.Request,
+	find_results *matcher.FindNestedMatchesResults,
+) *NestedTasksResults {
+	tasks_ctx := GetTasksCtx(r)
+	if tasks_ctx == nil {
+		nested_log.Error("No TasksCtx found in request for RunNestedTasks")
+		return nil
+	}
+
+	matches := find_results.Matches
+	n := len(matches)
+	if n == 0 {
+		return nil
+	}
+
+	results := &NestedTasksResults{
+		Params:          find_results.Params,
+		SplatValues:     find_results.SplatValues,
+		Slice:           make([]*NestedTasksResult, n),
+		ResponseProxies: make([]*response.Proxy, n),
+	}
+	results_buf := make([]NestedTasksResult, n)
+
+	snap := nr.current_compiled_snapshot()
+	bound := make([]nested_bound_task, 0, n)
+	var root_cancel context.CancelFunc
+
+	defer func() {
+		if root_cancel != nil {
+			root_cancel()
+		}
+		for i := range bound {
+			if bt := &bound[i]; bt.req_data != nil {
+				bt.req_data.ClearForPool()
+				req_data_pool.Put(bt.req_data)
 			}
+		}
+	}()
+
+	for i, match := range matches {
+		pat := match.OriginalPattern()
+		res := &results_buf[i]
+		res.pattern = pat
+		results.Slice[i] = res
+
+		idx, ok := snap.index_map[pat]
+		if !ok || idx >= len(snap.routes) {
+			continue
+		}
+		cr := &snap.routes[idx]
+		if !cr.has_handler {
+			continue
+		}
+
+		res.ran_task = true
+		proxy := response.NewProxy()
+		results.ResponseProxies[i] = proxy
+
+		rd := req_data_pool.Get().(*ReqData[None])
+		rd.ResetForReuse(
+			results.Params,
+			results.SplatValues,
+			none_instance,
+			r,
+			proxy,
+		)
+
+		bound = append(bound, nested_bound_task{
+			task_handler: cr.task_handler, req_data: rd, result: res,
 		})
 	}
-	return mwWithOpts.mw(handler)
+
+	// Execute tasks. We intentionally avoid tasksCtx.RunParallel here because
+	// its fail-fast cancellation masks per-route errors. Instead, we build a
+	// directional cancellation chain: a parent failure cancels only descendants.
+	if len(bound) > 0 {
+		if len(bound) == 1 {
+			bound[0].req_data.SetTasksCtx(tasks_ctx)
+		} else {
+			current := tasks_ctx
+			for i := range bound {
+				bt := &bound[i]
+				if i < len(bound)-1 {
+					child_native, cancel := context.WithCancel(current.NativeContext())
+					if root_cancel == nil {
+						root_cancel = cancel
+					}
+					child := current.WithNativeContext(child_native)
+					bt.req_data.SetTasksCtx(child)
+					bt.cancel_descendants = cancel
+					current = child
+					continue
+				}
+				bt.req_data.SetTasksCtx(current)
+			}
+		}
+		run_nested_bound(bound)
+	}
+
+	return results
 }
 
-func applyHTTPMiddlewares(
-	handler http.Handler,
-	routeMws []httpMiddlewareWithOptions,
-	methodMws []httpMiddlewareWithOptions,
-	globalMws []httpMiddlewareWithOptions,
-) http.Handler { // Apply in reverse order for proper nesting
-	for i := len(routeMws) - 1; i >= 0; i-- { // Pattern-level middlewares (innermost)
-		handler = applyHTTPMiddlewareWithOptions(routeMws[i], handler)
-	}
-	for i := len(methodMws) - 1; i >= 0; i-- { // Method-level middlewares
-		handler = applyHTTPMiddlewareWithOptions(methodMws[i], handler)
-	}
-	for i := len(globalMws) - 1; i >= 0; i-- { // Global middlewares (outermost)
-		handler = applyHTTPMiddlewareWithOptions(globalMws[i], handler)
-	}
-	return handler
+/////////////////////////////////////////////////////////////////////
+/////// NESTED ROUTER MANAGEMENT
+/////////////////////////////////////////////////////////////////////
+
+// ReplaceRoutes atomically replaces all routes with a new set.
+func (nr *NestedRouter) ReplaceRoutes(new_routes map[string]AnyNestedRoute) {
+	nr.mu.Lock()
+	defer nr.mu.Unlock()
+	nr.replace_routes_locked(new_routes)
 }
 
-type middlewareBoundTask struct {
-	taskToRun tasks.AnyTask
-	input     *ReqData[None]
+// RebuildPreservingHandlers atomically rebuilds the router, preserving
+// routes that have task handlers and replacing handler-less routes with
+// the provided patterns. Intended for dev-time hot rebuilds.
+func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
+	nr.mu.Lock()
+	defer nr.mu.Unlock()
+
+	new_routes := make(map[string]AnyNestedRoute)
+	for pat, route := range nr.routes {
+		if route.get_nested_task_handler() != nil {
+			new_routes[pat] = route
+		}
+	}
+	for _, pat := range patterns {
+		if _, ok := new_routes[pat]; !ok {
+			new_routes[pat] = &NestedRoute[None]{
+				router: nr, original_pattern: pat, task_handler: nil,
+			}
+		}
+	}
+	nr.replace_routes_locked(new_routes)
 }
 
-func (m *middlewareBoundTask) Run(ctx *tasks.Ctx) error {
-	_, err := m.taskToRun.RunWithAnyInput(ctx, m.input)
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE TYPES
+/////////////////////////////////////////////////////////////////////
+
+type rd_transport struct {
+	params         Params
+	splat_vals     []string
+	tasks_ctx      *tasks.Ctx
+	req            *http.Request
+	response_proxy *response.Proxy
+}
+
+type mw_versions struct {
+	http_ver atomic.Uint64
+	task_ver atomic.Uint64
+}
+
+type http_mw_with_opts struct {
+	mw   HTTPMiddleware
+	opts *MiddlewareOptions
+}
+
+type task_mw_with_opts struct {
+	mw   tasks.AnyTask
+	opts *MiddlewareOptions
+}
+
+type method_matcher struct {
+	mw_versions
+	matcher_inst     *matcher.Matcher
+	http_mws         []http_mw_with_opts
+	task_mws         []task_mw_with_opts
+	routes           map[string]AnyRoute
+	req_data_getters map[string]req_data_getter
+}
+
+type compiled_route struct {
+	pattern      string
+	task_handler tasks.AnyTask
+	has_handler  bool
+}
+
+type compiled_routes_snapshot struct {
+	routes    []compiled_route
+	index_map map[string]int
+}
+
+type find_best_result struct {
+	mm            *method_matcher
+	match         *matcher.BestMatch
+	did_match     bool
+	head_fallback bool
+}
+
+type req_data_marker interface {
+	get_input() any
+	get_underlying_req_data() any
+	Params() Params
+	SplatValues() []string
+	TasksCtx() *tasks.Ctx
+	Request() *http.Request
+	ResponseProxy() *response.Proxy
+}
+
+type req_data_getter interface {
+	get_req_data(
+		*http.Request,
+		*tasks.Ctx,
+		*matcher.BestMatch,
+	) (req_data_marker, error)
+}
+
+type req_data_getter_impl[I any] func(*http.Request, *tasks.Ctx, *matcher.BestMatch) (*ReqData[I], error)
+
+func (f req_data_getter_impl[I]) get_req_data(
+	r *http.Request, ctx *tasks.Ctx, m *matcher.BestMatch,
+) (req_data_marker, error) {
+	return f(r, ctx, m)
+}
+
+type nested_bound_task struct {
+	task_handler       tasks.AnyTask
+	req_data           *ReqData[None]
+	result             *NestedTasksResult
+	cancel_descendants context.CancelFunc
+}
+
+type mw_bound_task struct {
+	task  tasks.AnyTask
+	input *ReqData[None]
+}
+
+func (m *mw_bound_task) Run(ctx *tasks.Ctx) error {
+	_, err := m.task.RunWithAnyInput(ctx, m.input)
 	return err
 }
 
-func (rt *Router) createTaskFinalHandler(
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE: ROUTER INTERNALS
+/////////////////////////////////////////////////////////////////////
+
+func or_default[T comparable](val, fallback T) T {
+	var zero T
+	if val == zero {
+		return fallback
+	}
+	return val
+}
+
+func first_opt(opts []*MiddlewareOptions) *MiddlewareOptions {
+	if len(opts) > 0 {
+		return opts[0]
+	}
+	return nil
+}
+
+func normalize_mount_root(root string) string {
+	if root == "" || root == "/" {
+		return ""
+	}
+	if root[0] != '/' {
+		root = "/" + root
+	}
+	if root[len(root)-1] != '/' {
+		root = root + "/"
+	}
+	return root
+}
+
+func new_route[I, O any](rt *Router, method, pattern string) *Route[I, O] {
+	return &Route[I, O]{
+		router: rt, method: method, original_pattern: pattern,
+		http_mws: empty_http_mws, task_mws: empty_task_mws,
+	}
+}
+
+func (rt *Router) register_route(route AnyRoute) {
+	mm := rt.get_or_create_mm(route.Method())
+	mm.matcher_inst.RegisterPattern(route.OriginalPattern())
+	mm.routes[route.OriginalPattern()] = route
+	rt.all_routes = append(rt.all_routes, route)
+}
+
+func (rt *Router) get_or_create_mm(method string) *method_matcher {
+	if mm, ok := rt.method_matchers[method]; ok {
+		return mm
+	}
+	mm := &method_matcher{
+		matcher_inst:     matcher.New(rt.matcher_opts),
+		routes:           make(map[string]AnyRoute),
+		req_data_getters: make(map[string]req_data_getter),
+		http_mws:         empty_http_mws,
+		task_mws:         empty_task_mws,
+	}
+	rt.method_matchers[method] = mm
+	return mm
+}
+
+func create_req_data_getter[I, O any](route *Route[I, O]) req_data_getter {
+	return req_data_getter_impl[I](
+		func(r *http.Request, ctx *tasks.Ctx, match *matcher.BestMatch) (*ReqData[I], error) {
+			rd := new(ReqData[I])
+			rd.params = match.Params
+			rd.splat_vals = match.SplatValues
+			rd.tasks_ctx = ctx
+			rd.req = r
+			rd.response_proxy = response.NewProxy()
+			ptr := route.IPtr()
+			if route.handler_type == "task" &&
+				route.router.parse_input != nil &&
+				!genericsutil.IsNone(route.I()) {
+				if err := route.router.parse_input(rd.Request(), ptr); err != nil {
+					return nil, err
+				}
+			}
+			rd.input = *(ptr.(*I))
+			return rd, nil
+		},
+	)
+}
+
+func (rt *Router) find_best(method, real_path string) *find_best_result {
+	is_head := method == http.MethodHead
+	if is_head {
+		if mm, ok := rt.method_matchers[http.MethodHead]; ok {
+			if m, ok := mm.matcher_inst.FindBestMatch(real_path); ok {
+				return &find_best_result{mm: mm, match: m, did_match: true}
+			}
+		}
+		method = http.MethodGet
+	}
+	mm, ok := rt.method_matchers[method]
+	if !ok {
+		return &find_best_result{}
+	}
+	m, ok := mm.matcher_inst.FindBestMatch(real_path)
+	if !ok {
+		return &find_best_result{}
+	}
+	return &find_best_result{
+		mm:            mm,
+		match:         m,
+		did_match:     true,
+		head_fallback: is_head,
+	}
+}
+
+func (rt *Router) has_any_task_mw(mm *method_matcher, route AnyRoute) bool {
+	return len(route.get_task_mws()) > 0 || len(mm.task_mws) > 0 ||
+		len(rt.task_mws) > 0
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE: HTTP MIDDLEWARE CHAIN (VERSION-CACHED)
+/////////////////////////////////////////////////////////////////////
+
+type cached_http_chain struct {
+	handler                        http.Handler
+	global_ver, method_ver, rt_ver uint64
+}
+
+func (r *Route[I, O]) http_chain(rt *Router, mm *method_matcher) http.Handler {
+	gv := rt.http_ver.Load()
+	mv := mm.http_ver.Load()
+	rv := r.http_ver.Load()
+	if c, ok := r.compiled_http.Load().(*cached_http_chain); ok &&
+		c.global_ver == gv && c.method_ver == mv && c.rt_ver == rv {
+		return c.handler
+	}
+	h := apply_http_mws(
+		r.get_http_handler(),
+		r.http_mws,
+		mm.http_mws,
+		rt.http_mws,
+	)
+	r.compiled_http.Store(
+		&cached_http_chain{
+			handler:    h,
+			global_ver: gv,
+			method_ver: mv,
+			rt_ver:     rv,
+		},
+	)
+	return h
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE: TASK MIDDLEWARE CHAIN (VERSION-CACHED)
+/////////////////////////////////////////////////////////////////////
+
+type cached_task_mw_chain struct {
+	middlewares                    []task_mw_with_opts
+	global_ver, method_ver, rt_ver uint64
+}
+
+func (r *Route[I, O]) task_mw_chain(
+	rt *Router,
+	mm *method_matcher,
+) []task_mw_with_opts {
+	gv := rt.task_ver.Load()
+	mv := mm.task_ver.Load()
+	rv := r.task_ver.Load()
+	if c, ok := r.compiled_task_mw.Load().(*cached_task_mw_chain); ok &&
+		c.global_ver == gv && c.method_ver == mv && c.rt_ver == rv {
+		return c.middlewares
+	}
+	total := len(rt.task_mws) + len(mm.task_mws) + len(r.task_mws)
+	var mws []task_mw_with_opts
+	if total > 0 {
+		mws = make([]task_mw_with_opts, 0, total)
+		mws = append(mws, rt.task_mws...)
+		mws = append(mws, mm.task_mws...)
+		mws = append(mws, r.task_mws...)
+	}
+	r.compiled_task_mw.Store(&cached_task_mw_chain{
+		middlewares: mws, global_ver: gv, method_ver: mv, rt_ver: rv,
+	})
+	return mws
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE: MIDDLEWARE APPLICATION
+/////////////////////////////////////////////////////////////////////
+
+func apply_http_mw(mwo http_mw_with_opts, h http.Handler) http.Handler {
+	if mwo.opts != nil && mwo.opts.If != nil {
+		orig := h
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if mwo.opts.If(r) {
+				mwo.mw(orig).ServeHTTP(w, r)
+			} else {
+				orig.ServeHTTP(w, r)
+			}
+		})
+	}
+	return mwo.mw(h)
+}
+
+func apply_http_mws(
+	h http.Handler,
+	route_mws, method_mws, global_mws []http_mw_with_opts,
+) http.Handler {
+	for i := len(route_mws) - 1; i >= 0; i-- {
+		h = apply_http_mw(route_mws[i], h)
+	}
+	for i := len(method_mws) - 1; i >= 0; i-- {
+		h = apply_http_mw(method_mws[i], h)
+	}
+	for i := len(global_mws) - 1; i >= 0; i-- {
+		h = apply_http_mw(global_mws[i], h)
+	}
+	return h
+}
+
+func (rt *Router) task_final_handler(
 	route AnyRoute,
-	reqDataMarker reqDataMarker,
+	rdm req_data_marker,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
-		taskHandler := route.getTaskHandler()
-		inputData := reqDataMarker.getUnderlyingReqDataInstance()
-		data, err := taskHandler.RunWithAnyInput(
-			reqDataMarker.TasksCtx(),
-			inputData,
-		)
+		data, err := route.get_task_handler().
+			RunWithAnyInput(rdm.TasksCtx(), rdm.get_underlying_req_data())
 		if err != nil {
-			muxLog.Error(
+			mux_log.Error(
 				"Error executing task handler",
 				"error",
 				err,
@@ -685,14 +1337,14 @@ func (rt *Router) createTaskFinalHandler(
 			res.InternalServerError()
 			return
 		}
-		responseProxy := reqDataMarker.ResponseProxy()
-		responseProxy.ApplyToResponseWriter(w, r)
-		if responseProxy.IsError() || responseProxy.IsRedirect() {
-			return // Don't write JSON after error/redirect
+		proxy := rdm.ResponseProxy()
+		proxy.ApplyToResponseWriter(w, r)
+		if proxy.IsError() || proxy.IsRedirect() {
+			return
 		}
 		if reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(data) {
-			muxLog.Warn(
-				"Do not return nil values from task handlers unless: (i) the underlying type is an empty struct or pointer to an empty struct; or (ii) you are returning an error.",
+			mux_log.Warn(
+				"Do not return nil values from task handlers unless the type is an empty struct or you are returning an error.",
 				"pattern",
 				route.OriginalPattern(),
 			)
@@ -701,52 +1353,41 @@ func (rt *Router) createTaskFinalHandler(
 	})
 }
 
-func (rt *Router) runAppropriateMws(
-	tasksCtx *tasks.Ctx,
-	reqDataMarker reqDataMarker,
-	methodMatcher *methodMatcher,
-	routeMarker AnyRoute,
-	finalHandler http.Handler,
+func (rt *Router) apply_mw_pipeline(
+	tctx *tasks.Ctx, rdm req_data_marker,
+	mm *method_matcher, route AnyRoute, final http.Handler,
 ) http.Handler {
-	var handlerWithHTTPMws http.Handler
-	if routeMarker.getHandlerType() == "http" {
-		handlerWithHTTPMws = finalHandler
+	var with_http http.Handler
+	if route.get_handler_type() == "http" {
+		with_http = final
 	} else {
-		handlerWithHTTPMws = applyHTTPMiddlewares(finalHandler, routeMarker.getHTTPMws(), methodMatcher.httpMws, rt.httpMws)
+		with_http = apply_http_mws(final, route.get_http_mws(), mm.http_mws, rt.http_mws)
 	}
-	collected := routeMarker.taskMiddlewareChain(rt, methodMatcher)
+	collected := route.task_mw_chain(rt, mm)
 	if len(collected) == 0 {
-		return handlerWithHTTPMws
+		return with_http
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		boundTasks := make([]tasks.BoundTask, 0, len(collected))
+		bound := make([]tasks.BoundTask, 0, len(collected))
 		proxies := make([]*response.Proxy, 0, len(collected))
-		for _, taskWithOpts := range collected {
-			if taskWithOpts.opts != nil && taskWithOpts.opts.If != nil &&
-				!taskWithOpts.opts.If(r) {
+		for _, tw := range collected {
+			if tw.opts != nil && tw.opts.If != nil && !tw.opts.If(r) {
 				continue
 			}
-			proxy := response.NewProxy()
-			rdForMw := &ReqData[None]{
-				params:        reqDataMarker.Params(),
-				splatVals:     reqDataMarker.SplatValues(),
-				tasksCtx:      tasksCtx,
-				input:         None{},
-				req:           r,
-				responseProxy: proxy,
+			p := response.NewProxy()
+			rd := &ReqData[None]{
+				params: rdm.Params(), splat_vals: rdm.SplatValues(),
+				tasks_ctx: tctx, input: None{}, req: r, response_proxy: p,
 			}
-			proxies = append(proxies, proxy)
-			boundTasks = append(boundTasks, &middlewareBoundTask{
-				taskToRun: taskWithOpts.mw,
-				input:     rdForMw,
-			})
+			proxies = append(proxies, p)
+			bound = append(bound, &mw_bound_task{task: tw.mw, input: rd})
 		}
-		if len(boundTasks) == 0 {
-			handlerWithHTTPMws.ServeHTTP(w, r)
+		if len(bound) == 0 {
+			with_http.ServeHTTP(w, r)
 			return
 		}
-		if err := tasksCtx.RunParallel(boundTasks...); err != nil {
-			muxLog.Error(
+		if err := tctx.RunParallel(bound...); err != nil {
+			mux_log.Error(
 				"Error during parallel middleware execution",
 				"error",
 				err,
@@ -763,536 +1404,192 @@ func (rt *Router) runAppropriateMws(
 		if merged.IsError() || merged.IsRedirect() {
 			return
 		}
-		handlerWithHTTPMws.ServeHTTP(w, r)
+		with_http.ServeHTTP(w, r)
 	})
 }
 
-func newRouteStruct[I any, O any](
-	router *Router,
-	method, originalPattern string,
-) *Route[I, O] {
-	return &Route[I, O]{
-		router: router, method: method, originalPattern: originalPattern,
-		httpMws: emptyHTTPMws, taskMws: emptyTaskMws,
-	}
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE: HEAD RESPONSE HANDLING
+/////////////////////////////////////////////////////////////////////
+
+type head_writer struct {
+	header        http.Header
+	status        int
+	wrote_header  bool
+	bytes_written int
 }
 
-func (rt *Router) registerRoute(route AnyRoute) {
-	methodMatcher := rt.getOrCreateMethodMatcher(route.Method())
-	methodMatcher.matcher.RegisterPattern(route.OriginalPattern())
-	methodMatcher.routes[route.OriginalPattern()] = route
-	rt.allRoutes = append(rt.allRoutes, route)
-}
+func (hw *head_writer) Header() http.Header { return hw.header }
 
-func createReqDataGetter[I any, O any](route *Route[I, O]) reqDataGetter {
-	return reqDataGetterImpl[I](
-		func(r *http.Request, tasksCtx *tasks.Ctx, match *matcher.BestMatch) (*ReqData[I], error) {
-			reqData := new(ReqData[I])
-			reqData.params = match.Params
-			reqData.splatVals = match.SplatValues
-			reqData.tasksCtx = tasksCtx
-			reqData.req = r
-			reqData.responseProxy = response.NewProxy()
-			inputPtr := route.IPtr()
-			if route.handlerType == "task" && route.router.parseInput != nil &&
-				!genericsutil.IsNone(route.I()) {
-				if err := route.router.parseInput(reqData.Request(), inputPtr); err != nil {
-					return nil, err
-				}
-			}
-			reqData.input = *(inputPtr.(*I))
-			return reqData, nil
-		},
-	)
-}
-
-func (rt *Router) getOrCreateMethodMatcher(method string) *methodMatcher {
-	if mm, ok := rt.methodToMatcherMap[method]; ok {
-		return mm
-	}
-	mm := &methodMatcher{
-		matcher:        matcher.New(rt.matcherOpts),
-		routes:         make(map[string]AnyRoute),
-		reqDataGetters: make(map[string]reqDataGetter),
-		httpMws:        emptyHTTPMws,
-		taskMws:        emptyTaskMws,
-	}
-	rt.methodToMatcherMap[method] = mm
-	return mm
-}
-
-type findBestOutput struct {
-	methodMatcher     *methodMatcher
-	match             *matcher.BestMatch
-	didMatch          bool
-	headFellBackToGet bool
-}
-
-func (rt *Router) findBestMatcherAndMatch(
-	method string,
-	realPath string,
-) *findBestOutput {
-	isHead := method == http.MethodHead
-	if isHead {
-		if headMatcher, ok := rt.methodToMatcherMap[http.MethodHead]; ok {
-			if match, found := headMatcher.matcher.FindBestMatch(realPath); found {
-				return &findBestOutput{
-					methodMatcher: headMatcher,
-					match:         match,
-					didMatch:      true,
-				}
-			}
-		}
-		method = http.MethodGet
-	}
-	methodMatcher, ok := rt.methodToMatcherMap[method]
-	if !ok {
-		return &findBestOutput{}
-	}
-	match, ok := methodMatcher.matcher.FindBestMatch(realPath)
-	if !ok {
-		return &findBestOutput{}
-	}
-	return &findBestOutput{
-		methodMatcher:     methodMatcher,
-		match:             match,
-		didMatch:          true,
-		headFellBackToGet: isHead,
-	}
-}
-
-func (rt *Router) hasAnyTaskMiddleware(
-	methodMatcher *methodMatcher,
-	route AnyRoute,
-) bool {
-	return len(route.getTaskMws()) > 0 ||
-		len(methodMatcher.taskMws) > 0 ||
-		len(rt.taskMws) > 0
-}
-
-type httpMiddlewareWithOptions struct {
-	mw   HTTPMiddleware
-	opts *MiddlewareOptions
-}
-
-type taskMiddlewareWithOptions struct {
-	mw   tasks.AnyTask
-	opts *MiddlewareOptions
-}
-
-type methodMatcher struct {
-	matcher               *matcher.Matcher
-	httpMws               []httpMiddlewareWithOptions
-	taskMws               []taskMiddlewareWithOptions
-	httpMiddlewareVersion atomic.Uint64
-	taskMiddlewareVersion atomic.Uint64
-	routes                map[string]AnyRoute
-	reqDataGetters        map[string]reqDataGetter
-}
-
-func getFirstOpt(opts []*MiddlewareOptions) *MiddlewareOptions {
-	if len(opts) > 0 {
-		return opts[0]
-	}
-	return nil
-}
-
-func (rt *Router) incrementHTTPMiddlewareVersion() {
-	if rt == nil {
+func (hw *head_writer) WriteHeader(code int) {
+	if hw.wrote_header {
 		return
 	}
-	rt.httpMiddlewareVersion.Add(1)
+	hw.wrote_header = true
+	hw.status = code
 }
 
-func (rt *Router) currentHTTPMiddlewareVersion() uint64 {
-	if rt == nil {
-		return 0
-	}
-	return rt.httpMiddlewareVersion.Load()
-}
-
-func (rt *Router) incrementTaskMiddlewareVersion() {
-	if rt == nil {
-		return
-	}
-	rt.taskMiddlewareVersion.Add(1)
-}
-
-func (rt *Router) currentTaskMiddlewareVersion() uint64 {
-	if rt == nil {
-		return 0
-	}
-	return rt.taskMiddlewareVersion.Load()
-}
-
-func (mm *methodMatcher) incrementHTTPMiddlewareVersion() {
-	if mm == nil {
-		return
-	}
-	mm.httpMiddlewareVersion.Add(1)
-}
-
-func (mm *methodMatcher) currentHTTPMiddlewareVersion() uint64 {
-	if mm == nil {
-		return 0
-	}
-	return mm.httpMiddlewareVersion.Load()
-}
-
-func (mm *methodMatcher) incrementTaskMiddlewareVersion() {
-	if mm == nil {
-		return
-	}
-	mm.taskMiddlewareVersion.Add(1)
-}
-
-func (mm *methodMatcher) currentTaskMiddlewareVersion() uint64 {
-	if mm == nil {
-		return 0
-	}
-	return mm.taskMiddlewareVersion.Load()
-}
-
-func (route *Route[I, O]) incrementHTTPMiddlewareVersion() {
-	if route == nil {
-		return
-	}
-	route.httpMiddlewareVersion.Add(1)
-}
-
-func (route *Route[I, O]) currentHTTPMiddlewareVersion() uint64 {
-	if route == nil {
-		return 0
-	}
-	return route.httpMiddlewareVersion.Load()
-}
-
-func (route *Route[I, O]) incrementTaskMiddlewareVersion() {
-	if route == nil {
-		return
-	}
-	route.taskMiddlewareVersion.Add(1)
-}
-
-func (route *Route[I, O]) currentTaskMiddlewareVersion() uint64 {
-	if route == nil {
-		return 0
-	}
-	return route.taskMiddlewareVersion.Load()
-}
-
-func (route *Route[I, O]) getHandlerType() string { return route.handlerType }
-
-func (route *Route[I, O]) getHTTPHandler() http.Handler { return route.userHTTPHandler }
-
-func (route *Route[I, O]) getTaskHandler() tasks.AnyTask { return route.taskHandler }
-
-func (route *Route[I, O]) getHTTPMws() []httpMiddlewareWithOptions { return route.httpMws }
-
-func (route *Route[I, O]) getTaskMws() []taskMiddlewareWithOptions { return route.taskMws }
-
-func (route *Route[I, O]) getNeedsTasksCtx() bool { return route.needsTasksCtx }
-
-type compiledHTTPCacheEntry struct {
-	handler                      http.Handler
-	globalHTTPMiddlewareVersion  uint64
-	methodHTTPMiddlewareVersion  uint64
-	patternHTTPMiddlewareVersion uint64
-}
-
-func (r *Route[I, O]) httpChain(rt *Router, mm *methodMatcher) http.Handler {
-	globalHTTPMiddlewareVersion := rt.currentHTTPMiddlewareVersion()
-	methodHTTPMiddlewareVersion := mm.currentHTTPMiddlewareVersion()
-	patternHTTPMiddlewareVersion := r.currentHTTPMiddlewareVersion()
-
-	cachedValue, hasCachedValue := r.compiledHTTP.Load().(*compiledHTTPCacheEntry)
-	if hasCachedValue &&
-		cachedValue != nil &&
-		cachedValue.globalHTTPMiddlewareVersion == globalHTTPMiddlewareVersion &&
-		cachedValue.methodHTTPMiddlewareVersion == methodHTTPMiddlewareVersion &&
-		cachedValue.patternHTTPMiddlewareVersion == patternHTTPMiddlewareVersion {
-		return cachedValue.handler
-	}
-	compiledHandler := applyHTTPMiddlewares(
-		r.getHTTPHandler(),
-		r.httpMws,
-		mm.httpMws,
-		rt.httpMws,
-	)
-	r.compiledHTTP.Store(&compiledHTTPCacheEntry{
-		handler:                      compiledHandler,
-		globalHTTPMiddlewareVersion:  globalHTTPMiddlewareVersion,
-		methodHTTPMiddlewareVersion:  methodHTTPMiddlewareVersion,
-		patternHTTPMiddlewareVersion: patternHTTPMiddlewareVersion,
-	})
-	return compiledHandler
-}
-
-type compiledTaskMiddlewareCacheEntry struct {
-	middlewares                  []taskMiddlewareWithOptions
-	globalTaskMiddlewareVersion  uint64
-	methodTaskMiddlewareVersion  uint64
-	patternTaskMiddlewareVersion uint64
-}
-
-func (route *Route[I, O]) taskMiddlewareChain(
-	rt *Router,
-	mm *methodMatcher,
-) []taskMiddlewareWithOptions {
-	globalTaskMiddlewareVersion := rt.currentTaskMiddlewareVersion()
-	methodTaskMiddlewareVersion := mm.currentTaskMiddlewareVersion()
-	patternTaskMiddlewareVersion := route.currentTaskMiddlewareVersion()
-
-	cachedValue, hasCachedValue := route.compiledTaskMws.Load().(*compiledTaskMiddlewareCacheEntry)
-	if hasCachedValue &&
-		cachedValue != nil &&
-		cachedValue.globalTaskMiddlewareVersion == globalTaskMiddlewareVersion &&
-		cachedValue.methodTaskMiddlewareVersion == methodTaskMiddlewareVersion &&
-		cachedValue.patternTaskMiddlewareVersion == patternTaskMiddlewareVersion {
-		return cachedValue.middlewares
-	}
-
-	taskMwsRoute := route.getTaskMws()
-	totalCount := len(rt.taskMws) + len(mm.taskMws) + len(taskMwsRoute)
-	if totalCount == 0 {
-		route.compiledTaskMws.Store(
-			&compiledTaskMiddlewareCacheEntry{
-				middlewares:                  nil,
-				globalTaskMiddlewareVersion:  globalTaskMiddlewareVersion,
-				methodTaskMiddlewareVersion:  methodTaskMiddlewareVersion,
-				patternTaskMiddlewareVersion: patternTaskMiddlewareVersion,
-			},
-		)
-		return nil
-	}
-
-	compiledMiddlewares := make([]taskMiddlewareWithOptions, 0, totalCount)
-	compiledMiddlewares = append(compiledMiddlewares, rt.taskMws...)
-	compiledMiddlewares = append(compiledMiddlewares, mm.taskMws...)
-	compiledMiddlewares = append(compiledMiddlewares, taskMwsRoute...)
-
-	route.compiledTaskMws.Store(
-		&compiledTaskMiddlewareCacheEntry{
-			middlewares:                  compiledMiddlewares,
-			globalTaskMiddlewareVersion:  globalTaskMiddlewareVersion,
-			methodTaskMiddlewareVersion:  methodTaskMiddlewareVersion,
-			patternTaskMiddlewareVersion: patternTaskMiddlewareVersion,
-		},
-	)
-	return compiledMiddlewares
-}
-
-type reqDataMarker interface {
-	getInput() any
-	getUnderlyingReqDataInstance() any
-	Params() Params
-	SplatValues() []string
-	TasksCtx() *tasks.Ctx
-	Request() *http.Request
-	ResponseProxy() *response.Proxy
-}
-
-func (rd *ReqData[I]) getInput() any                     { return rd.input }
-func (rd *ReqData[I]) getUnderlyingReqDataInstance() any { return rd }
-
-type reqDataGetter interface {
-	getReqData(
-		r *http.Request, tasksCtx *tasks.Ctx, match *matcher.BestMatch,
-	) (reqDataMarker, error)
-}
-
-type reqDataGetterImpl[I any] func(
-	*http.Request, *tasks.Ctx, *matcher.BestMatch,
-) (*ReqData[I], error)
-
-func (f reqDataGetterImpl[I]) getReqData(
-	r *http.Request, tasksCtx *tasks.Ctx, m *matcher.BestMatch,
-) (reqDataMarker, error) {
-	return f(r, tasksCtx, m)
-}
-
-type headResponseWriter struct {
-	header       http.Header
-	statusCode   int
-	wroteHeader  bool
-	bytesWritten int
-}
-
-func newHeadResponseWriter() *headResponseWriter {
-	return &headResponseWriter{
-		header:     make(http.Header),
-		statusCode: http.StatusOK,
-	}
-}
-
-func (hw *headResponseWriter) Header() http.Header {
-	return hw.header
-}
-
-func (hw *headResponseWriter) WriteHeader(statusCode int) {
-	if hw.wroteHeader {
-		return
-	}
-	hw.wroteHeader = true
-	hw.statusCode = statusCode
-}
-
-func (hw *headResponseWriter) Write(data []byte) (int, error) {
-	if !hw.wroteHeader {
+func (hw *head_writer) Write(data []byte) (int, error) {
+	if !hw.wrote_header {
 		hw.WriteHeader(http.StatusOK)
 	}
-
-	if len(data) > 0 &&
-		hw.header.Get("Content-Type") == "" &&
+	if len(data) > 0 && hw.header.Get("Content-Type") == "" &&
 		hw.header.Get("Transfer-Encoding") == "" {
-		sniffLength := len(data)
-		if sniffLength > 512 {
-			sniffLength = 512
+		n := len(data)
+		if n > 512 {
+			n = 512
 		}
-		hw.header.Set(
-			"Content-Type",
-			http.DetectContentType(data[:sniffLength]),
-		)
+		hw.header.Set("Content-Type", http.DetectContentType(data[:n]))
 	}
-
-	hw.bytesWritten += len(data)
+	hw.bytes_written += len(data)
 	return len(data), nil
 }
 
-func treatGetAsHead(
-	handler http.Handler,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	headWriter := newHeadResponseWriter()
-	handler.ServeHTTP(headWriter, r)
-
-	for k, values := range headWriter.Header() {
-		for _, v := range values {
+func treat_get_as_head(h http.Handler, w http.ResponseWriter, r *http.Request) {
+	hw := &head_writer{header: make(http.Header), status: http.StatusOK}
+	h.ServeHTTP(hw, r)
+	for k, vals := range hw.Header() {
+		for _, v := range vals {
 			w.Header().Add(k, v)
 		}
 	}
-
 	if w.Header().Get("Content-Length") == "" &&
 		w.Header().Get("Transfer-Encoding") == "" {
-		w.Header().Set(
-			"Content-Length",
-			strconv.Itoa(headWriter.bytesWritten),
-		)
+		w.Header().Set("Content-Length", strconv.Itoa(hw.bytes_written))
 	}
-	w.WriteHeader(headWriter.statusCode)
+	w.WriteHeader(hw.status)
 }
 
-func writeErrorResponseWithHeadFallbackSupport(
-	headFellBackToGet bool,
+func write_error_with_head(
+	is_head bool,
 	w http.ResponseWriter,
 	r *http.Request,
-	statusCode int,
-	errorText string,
+	code int,
+	msg string,
 ) {
-	errorHandler := http.HandlerFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, errorText, statusCode)
-		},
-	)
-	if headFellBackToGet {
-		treatGetAsHead(errorHandler, w, r)
-		return
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, msg, code)
+	})
+	if is_head {
+		treat_get_as_head(h, w, r)
+	} else {
+		h.ServeHTTP(w, r)
 	}
-	errorHandler.ServeHTTP(w, r)
 }
 
-// InjectTasksCtxMiddleware ensures requests have a tasks context in request store.
-// This is primarily useful when nested task execution is used outside Router.ServeHTTP.
-func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if GetTasksCtx(r) != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
+/////////////////////////////////////////////////////////////////////
+/////// PRIVATE: NESTED ROUTER INTERNALS
+/////////////////////////////////////////////////////////////////////
 
-		tasksCtx := tasks.NewCtx(r.Context())
-		next.ServeHTTP(
-			w,
-			muxcore.RequestWithData(
-				r,
-				muxcore.NewRequestDataWithTasksCtxOnly(r, tasksCtx),
-			),
-		)
+func (nr *NestedRouter) current_compiled_snapshot() compiled_routes_snapshot {
+	snap, ok := nr.compiled_routes.Load().(compiled_routes_snapshot)
+	if !ok {
+		return compiled_routes_snapshot{}
+	}
+	return snap
+}
+
+func (nr *NestedRouter) add_compiled(cr compiled_route) {
+	snap := nr.current_compiled_snapshot()
+	new_routes := make([]compiled_route, len(snap.routes)+1)
+	copy(new_routes, snap.routes)
+	new_routes[len(snap.routes)] = cr
+	new_idx := make(map[string]int, len(snap.index_map)+1)
+	maps.Copy(new_idx, snap.index_map)
+	new_idx[cr.pattern] = len(snap.routes)
+	nr.compiled_routes.Store(
+		compiled_routes_snapshot{routes: new_routes, index_map: new_idx},
+	)
+}
+
+func must_register_nested[O any](route *NestedRoute[O]) {
+	route.router.mu.Lock()
+	defer route.router.mu.Unlock()
+	if _, ok := route.router.routes[route.original_pattern]; ok {
+		panic(fmt.Sprintf(
+			"Pattern '%s' is already registered in NestedRouter.",
+			route.original_pattern,
+		))
+	}
+	route.router.matcher_inst.RegisterPattern(route.original_pattern)
+	route.router.routes[route.original_pattern] = route
+	route.router.add_compiled(compiled_route{
+		pattern:      route.original_pattern,
+		task_handler: route.task_handler,
+		has_handler:  route.task_handler != nil,
 	})
 }
 
+func (nr *NestedRouter) replace_routes_locked(
+	new_routes map[string]AnyNestedRoute,
+) {
+	cp := make(map[string]AnyNestedRoute, len(new_routes))
+	maps.Copy(cp, new_routes)
+
+	new_matcher := matcher.New(nr.current_matcher_opts(true))
+	for pat := range cp {
+		new_matcher.RegisterPattern(pat)
+	}
+
+	compiled := make([]compiled_route, 0, len(cp))
+	idx := make(map[string]int, len(cp))
+	for pat, route := range cp {
+		th := route.get_nested_task_handler()
+		idx[pat] = len(compiled)
+		compiled = append(compiled, compiled_route{
+			pattern: pat, task_handler: th, has_handler: th != nil,
+		})
+	}
+
+	nr.matcher_inst = new_matcher
+	nr.routes = cp
+	nr.compiled_routes.Store(
+		compiled_routes_snapshot{routes: compiled, index_map: idx},
+	)
+}
+
+func (nr *NestedRouter) current_matcher_opts(quiet bool) *matcher.Options {
+	return &matcher.Options{
+		DynamicParamPrefix:             nr.matcher_inst.DynamicParamPrefix(),
+		SplatSegmentIdentifier:         nr.matcher_inst.SplatSegmentIdentifier(),
+		ExplicitIndexSegmentIdentifier: nr.matcher_inst.ExplicitIndexSegmentIdentifier(),
+		Quiet:                          quiet,
+	}
+}
+
 /////////////////////////////////////////////////////////////////////
-/////// REQ DATA HELPERS TO REDUCE DIRECT RESPONSE PROXY USAGE
+/////// PRIVATE: NESTED TASK EXECUTION
 /////////////////////////////////////////////////////////////////////
 
-// Head creates a new HeadEls instance and registers it with the response proxy.
-func (rd *ReqData[I]) HeadEls() *headels.HeadEls {
-	return rd.responseProxy.HeadEls()
+func (bt *nested_bound_task) run() error {
+	data, err := bt.task_handler.RunWithAnyInput(
+		bt.req_data.TasksCtx(),
+		bt.req_data,
+	)
+	bt.result.data = data
+	bt.result.err = err
+	if err != nil && bt.cancel_descendants != nil {
+		bt.cancel_descendants()
+	}
+	return err
 }
 
-// Redirect sets a redirect on the response proxy. Defaults to 302 if no code
-// is provided. It returns the same result contract as response.Proxy.Redirect.
-func (rd *ReqData[I]) Redirect(url string, code ...int) (bool, error) {
-	return rd.responseProxy.Redirect(rd.req, url, code...)
-}
-
-// SetResponseStatus sets the status code and optional error text on the response proxy.
-func (rd *ReqData[I]) SetResponseStatus(status int, errorText ...string) {
-	rd.responseProxy.SetStatus(status, errorText...)
-}
-
-// SetResponseCookie adds a cookie to the response proxy.
-func (rd *ReqData[I]) SetResponseCookie(cookie *http.Cookie) {
-	rd.responseProxy.SetCookie(cookie)
-}
-
-// SetResponseHeader sets a header on the response proxy, replacing any existing values for that key.
-func (rd *ReqData[I]) SetResponseHeader(key, value string) {
-	rd.responseProxy.SetHeader(key, value)
-}
-
-// AddResponseHeader appends a header value to the response proxy without replacing existing values.
-func (rd *ReqData[I]) AddResponseHeader(key, value string) {
-	rd.responseProxy.AddHeader(key, value)
-}
-
-// ResponseStatus returns the status code and error text from the response proxy.
-func (rd *ReqData[I]) ResponseStatus() (int, string) {
-	return rd.responseProxy.Status()
-}
-
-// ResponseHeader returns the first value for a header on the response proxy, or empty string if not set.
-func (rd *ReqData[I]) ResponseHeader(key string) string {
-	return rd.responseProxy.Header(key)
-}
-
-// ResponseHeaders returns all values for a header on the response proxy.
-func (rd *ReqData[I]) ResponseHeaders(key string) []string {
-	return rd.responseProxy.Headers(key)
-}
-
-// ResponseCookies returns all cookies set on the response proxy.
-func (rd *ReqData[I]) ResponseCookies() []*http.Cookie {
-	return rd.responseProxy.Cookies()
-}
-
-// ResponseLocation returns the redirect URL from the response proxy, if a redirect has been set.
-func (rd *ReqData[I]) ResponseLocation() string {
-	return rd.responseProxy.Location()
-}
-
-// IsResponseError returns true if the response proxy status is 400 or higher.
-func (rd *ReqData[I]) IsResponseError() bool {
-	return rd.responseProxy.IsError()
-}
-
-// IsResponseRedirect returns true if a redirect has been set on the response proxy.
-func (rd *ReqData[I]) IsResponseRedirect() bool {
-	return rd.responseProxy.IsRedirect()
-}
-
-// IsResponseSuccess returns true if the response proxy status is in the 2xx range.
-func (rd *ReqData[I]) IsResponseSuccess() bool {
-	return rd.responseProxy.IsSuccess()
+func run_nested_bound(bound []nested_bound_task) {
+	switch len(bound) {
+	case 0:
+		return
+	case 1:
+		_ = bound[0].run()
+		return
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(bound) - 1)
+	for i := 1; i < len(bound); i++ {
+		go func(bt *nested_bound_task) {
+			defer wg.Done()
+			_ = bt.run()
+		}(&bound[i])
+	}
+	_ = bound[0].run()
+	wg.Wait()
 }

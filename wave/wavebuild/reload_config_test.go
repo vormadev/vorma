@@ -112,7 +112,11 @@ func TestReloadConfig_UsesPluginHooksDerivedFromCurrentParsedConfig(
 		t.Fatalf("first reload all_hooks len = %d, want 1", len(s.all_hooks))
 	}
 	if got := s.all_hooks[0].name; got != "first parsed hook" {
-		t.Fatalf("first reload hook name = %q, want %q", got, "first parsed hook")
+		t.Fatalf(
+			"first reload hook name = %q, want %q",
+			got,
+			"first parsed hook",
+		)
 	}
 
 	write_config("second parsed hook")
@@ -123,6 +127,10 @@ func TestReloadConfig_UsesPluginHooksDerivedFromCurrentParsedConfig(
 		t.Fatalf("second reload all_hooks len = %d, want 1", len(s.all_hooks))
 	}
 	if got := s.all_hooks[0].name; got != "second parsed hook" {
-		t.Fatalf("second reload hook name = %q, want %q", got, "second parsed hook")
+		t.Fatalf(
+			"second reload hook name = %q, want %q",
+			got,
+			"second parsed hook",
+		)
 	}
 }

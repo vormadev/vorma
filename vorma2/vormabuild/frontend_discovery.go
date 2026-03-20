@@ -176,7 +176,7 @@ func discover_routes(
 	var routes []discovered_route
 	seen := &set.Set[string]{}
 
-	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(stdout.String()), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -197,7 +197,11 @@ func discover_routes(
 
 		// module path comes back absolute from our esbuild plugin —
 		// convert to CWD-relative
-		rel_module, err := filepath.Rel(".", out.Module)
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("getting cwd: %w", err)
+		}
+		rel_module, err := filepath.Rel(cwd, out.Module)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"route(%q): cannot relativize module %q: %w",

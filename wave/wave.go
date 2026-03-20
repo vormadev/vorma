@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 
 	"github.com/vormadev/vorma/wave/internal/constants"
+	"github.com/vormadev/vorma/wave/internal/staticproc"
 
 	"github.com/vormadev/vorma/kit/bytesutil"
 	"github.com/vormadev/vorma/kit/colorlog"
@@ -76,7 +77,7 @@ func New(opts Options) *Wave {
 		static_fs: opts.DistStaticFS,
 		logger:    opts.Logger,
 	}
-	if !IsDev() && w.static_fs == nil {
+	if !IsBuildtime() && !IsDev() && w.static_fs == nil {
 		panic("[waveruntime]: DistStaticFS must be provided in production")
 	}
 	if IsDev() {
@@ -98,9 +99,26 @@ func New(opts Options) *Wave {
 	return w
 }
 
+func IsBuildtime() bool {
+	return envutil.GetBool(constants.ENV_KEY_BUILDTIME_BUILD_TAGS, false)
+}
+
 func (w *Wave) Port() int {
 	w.ensure_proper_instantiation()
 	return Port()
+}
+
+func (w *Wave) DevVitePort() int {
+	if !IsDev() {
+		panic("[waveruntime]: DevVitePort is only available in dev")
+	}
+	vite_port := envutil.GetInt(constants.ENV_KEY_DEV_RUNTIME_VITE_PORT, 0)
+	if vite_port == 0 {
+		panic(
+			"[waveruntime]: env var " + constants.ENV_KEY_DEV_RUNTIME_VITE_PORT + " must be set in dev",
+		)
+	}
+	return vite_port
 }
 
 func IsDev() bool {
@@ -186,7 +204,18 @@ func (w *Wave) MustPublicFS() fs.FS {
 /////// PRIVATE FS
 
 func (w *Wave) __UNCACHED__private_fs() (fs.FS, error) {
-	return fs.Sub(w.static_fs, strip_seg1(constants.STATIC_ASSETS_PRIVATE_DIR))
+	initial_fs, err := fs.Sub(
+		w.static_fs,
+		strip_seg1(constants.STATIC_ASSETS_PRIVATE_DIR),
+	)
+	if err != nil {
+		return nil, err
+	}
+	filemap, err := w.private_static_filemap_canonical.get()
+	if err != nil {
+		return nil, err
+	}
+	return staticproc.ToSyntheticFS(initial_fs, filemap), nil
 }
 
 func (w *Wave) PrivateFS() (fs.FS, error) {

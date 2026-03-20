@@ -28,36 +28,36 @@
 	],
 	"exports": {
 		"./client": {
-			"import": "./npm_dist/typescript/vorma/client/index.js",
-			"types": "./npm_dist/typescript/vorma/client/index.d.ts"
+			"import": "./npm_dist/vorma2/client/_index.js",
+			"types": "./npm_dist/vorma2/client/_index.d.ts"
 		},
 		"./client/__internal": {
-			"import": "./npm_dist/typescript/vorma/client/internal.js",
-			"types": "./npm_dist/typescript/vorma/client/internal.d.ts"
+			"import": "./npm_dist/vorma2/client/_internal.js",
+			"types": "./npm_dist/vorma2/client/_internal.d.ts"
 		},
 		"./client/__internal/hmr_dev": {
-			"import": "./npm_dist/typescript/vorma/client/internal/hmr_dev.js",
-			"types": "./npm_dist/typescript/vorma/client/internal/hmr_dev.d.ts"
+			"import": "./npm_dist/vorma2/client/_hmr_dev.js",
+			"types": "./npm_dist/vorma2/client/_hmr_dev.d.ts"
 		},
 		"./buildtime": {
-			"import": "./npm_dist/typescript/vorma/client/buildtime.js",
-			"types": "./npm_dist/typescript/vorma/client/buildtime.d.ts"
+			"import": "./npm_dist/vorma2/client/_buildtime.js",
+			"types": "./npm_dist/vorma2/client/_buildtime.d.ts"
 		},
 		"./testing": {
-			"import": "./npm_dist/typescript/vorma/client/testing.js",
-			"types": "./npm_dist/typescript/vorma/client/testing.d.ts"
+			"import": "./npm_dist/vorma2/client/_testing.js",
+			"types": "./npm_dist/vorma2/client/_testing.d.ts"
 		},
 		"./react": {
-			"import": "./npm_dist/typescript/vorma/ui-adapters/react/index.js",
-			"types": "./npm_dist/typescript/vorma/ui-adapters/react/index.d.ts"
+			"import": "./npm_dist/vorma2/client/ui-adapters/react/_index.js",
+			"types": "./npm_dist/vorma2/client/ui-adapters/react/_index.d.ts"
 		},
 		"./solid": {
-			"import": "./npm_dist/typescript/vorma/ui-adapters/solid/index.js",
-			"types": "./npm_dist/typescript/vorma/ui-adapters/solid/index.d.ts"
+			"import": "./npm_dist/vorma2/client/ui-adapters/solid/_index.js",
+			"types": "./npm_dist/vorma2/client/ui-adapters/solid/_index.d.ts"
 		},
 		"./preact": {
-			"import": "./npm_dist/typescript/vorma/ui-adapters/preact/index.js",
-			"types": "./npm_dist/typescript/vorma/ui-adapters/preact/index.d.ts"
+			"import": "./npm_dist/vorma2/client/ui-adapters/preact/_index.js",
+			"types": "./npm_dist/vorma2/client/ui-adapters/preact/_index.d.ts"
 		},
 		"./vite": {
 			"import": "./npm_dist/typescript/vorma/vite/vite.js",
@@ -121,6 +121,7 @@
 		"LICENSE",
 		"README.md",
 		"tsconfig.base.json",
+		"vorma2/",
 		"typescript/",
 		"internal/site/frontend/assets/vorma-banner.webp",
 		"!**/node_modules/",
@@ -140,10 +141,9 @@
 		"@vitest/coverage-v8": "^4.0.18",
 		"esbuild": "^0.25.12",
 		"esbuild-plugin-solid": "^0.6.0",
-		"history": "5.3.0",
 		"jsdom": "^26.1.0",
-		"oxfmt": "^0.35.0",
-		"oxlint": "^1.50.0",
+		"oxfmt": "^0.41.0",
+		"oxlint": "^1.56.0",
 		"oxlint-tsgolint": "^0.15.0",
 		"preact": "^10.28.4",
 		"react": "^19.2.4",

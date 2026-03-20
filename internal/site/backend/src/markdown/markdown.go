@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"site/backend/src/app"
 	"site/backend/src/define/loader"
@@ -46,15 +47,17 @@ var goldmarkInstance = goldmark.New(
 	goldmark.WithRendererOptions(html.WithUnsafe()),
 )
 
-var Markdown = fsmarkdown.New(fsmarkdown.Options{
-	FS:    app.App.MustPrivateFS(),
-	IsDev: app.App.IsDev(),
-	FrontmatterParser: func(r io.Reader, v any) ([]byte, error) {
-		return frontmatter.Parse(r, v)
-	},
-	MarkdownParser: func(b []byte, w io.Writer) error {
-		return goldmarkInstance.Convert(b, w)
-	},
+var Markdown = sync.OnceValue(func() *fsmarkdown.Instance {
+	return fsmarkdown.New(fsmarkdown.Options{
+		FS:    app.App.MustPrivateFS(),
+		IsDev: wave.IsDev(),
+		FrontmatterParser: func(r io.Reader, v any) ([]byte, error) {
+			return frontmatter.Parse(r, v)
+		},
+		MarkdownParser: func(b []byte, w io.Writer) error {
+			return goldmarkInstance.Convert(b, w)
+		},
+	})
 })
 
 var _ = loader.Define(
@@ -62,7 +65,7 @@ var _ = loader.Define(
 	func(c *loader.Ctx) (*RootData, error) {
 		r, rp := c.Request(), c.ResponseProxy()
 
-		if !wave.GetIsDev() {
+		if !wave.IsDev() {
 			// Because this app has no user-specific data, we can cache responses
 			// aggressively.
 			if vorma.IsJSONRequest(r) {
@@ -89,7 +92,7 @@ var _ = loader.Define(
 var _ = loader.Define(
 	"/*",
 	func(c *loader.Ctx) (*fsmarkdown.DetailedPage, error) {
-		data, err := Markdown.PageDetails(c.Request())
+		data, err := Markdown().PageDetails(c.Request())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get page details: %w", err)
 		}

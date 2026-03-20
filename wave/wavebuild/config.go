@@ -270,13 +270,6 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 		}
 		return p, check_dir_and_reserve(p, label)
 	}
-	var join_and_check_dir = func(_p strict.CWDRelPath, label string) (strict.CWDRelPath, error) {
-		p := vc.root_dir.Join(_p.MustNormalize().Str())
-		if err := check_no_waveout_conflict(p, label); err != nil {
-			return p, err
-		}
-		return p, check_dir(p, label)
-	}
 
 	/////// Top level
 
@@ -446,13 +439,11 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 	)
 	vc.vite.UsingVite = vc.vite.JSPackageManagerBaseCmd != ""
 	if vc.vite.UsingVite {
-		var err error
 		// do not reserve the js package manager cmd dir
-		vc.vite.JSPackageManagerCmdDir, err = join_and_check_dir(
-			__raw.Vite.JSPackageManagerCmdDir,
-			"Vite.JSPackageManagerCmdDir",
+		vc.vite.JSPackageManagerCmdDir = vc.root_dir.Join(
+			__raw.Vite.JSPackageManagerCmdDir.MustNormalize().Str(),
 		)
-		if err != nil {
+		if err := check_dir(vc.vite.JSPackageManagerCmdDir, "Vite.JSPackageManagerCmdDir"); err != nil {
 			return nil, err
 		}
 		vc.vite.DefaultPort = __raw.Vite.DefaultPort

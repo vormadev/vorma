@@ -10,13 +10,13 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/vormadev/vorma/internal/pkg/prodcache"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/headels"
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/kit/mux/nestedmux"
 	"github.com/vormadev/vorma/kit/validate"
 	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/vorma2/internal/constants"
@@ -33,9 +33,12 @@ type (
 	None                 = mux.None
 	Action[I any, O any] = mux.TaskHandler[I, O]
 	Loader[O any]        = mux.TaskHandler[None, O]
-	LoaderReqData        = nestedmux.ReqData
+	LoaderReqData        = mux.ReqData[mux.None]
 	ActionReqData[I any] = mux.ReqData[I]
 	AdHocType            = tsgen.AdHocType
+
+	LoaderFunc[Ctx any, O any]        = func(*Ctx) (O, error)
+	ActionFunc[Ctx any, I any, O any] = func(*Ctx) (O, error)
 )
 
 const BuildIDHeaderKey = "X-Vorma-Build-Id"
@@ -85,20 +88,25 @@ type ActionsRouterOptions struct {
 
 // Do not instantiate directly. Use `vorma2.NewVormaApp()` instead.
 type Vorma struct {
-	*wave.Wave
-	logger               *slog.Logger
-	loaders_router       *nestedmux.Router
-	actions_router       *mux.Router
-	supported_methods    map[string]bool
-	get_default_head_els DefaultHeadElsFunc
-	get_head_dedupe_keys HeadDedupeKeysFunc
-	get_root_tmpl_data   RootTemplateDataFunc
-	ad_hoc_types         []*AdHocType
-	extra_ts_code        string
-	head_els_inst        *headels.Instance
-	runtime_snapshot     *prodcache.Cache[*types.RuntimeSnapshot]
-	root_template        *prodcache.Cache[*template.Template]
-	route_data_cache     sync.Map
+	*wave.Wave             // set via Init() at runtime, not needed at buildtime
+	get_wave               func() *wave.Wave
+	logger                 *slog.Logger
+	loaders_router         *mux.NestedRouter
+	actions_router         *mux.Router
+	supported_methods      map[string]bool
+	get_default_head_els   DefaultHeadElsFunc
+	get_head_dedupe_keys   HeadDedupeKeysFunc
+	get_root_tmpl_data     RootTemplateDataFunc
+	ad_hoc_types           []*AdHocType
+	extra_ts_code          string
+	head_els_inst          *headels.Instance
+	runtime_snapshot       *prodcache.Cache[*types.RuntimeSnapshot]
+	root_template          *prodcache.Cache[*template.Template]
+	route_data_cache       sync.Map
+	route_data_cache_bid   atomic.Value // last build ID seen by the cache
+	static_prod_head_cache sync.Map     // static_head_cache_key → template.HTML
+	patterns_bid           atomic.Value // build ID for which patterns are registered
+	server_addr            string
 
 	loaders_handler_once sync.Once
 	loaders_handler      mux.TasksCtxRequirerFunc
@@ -107,7 +115,7 @@ type Vorma struct {
 }
 
 type VormaAppConfig struct {
-	Wave                 *wave.Wave
+	Wave                 func() *wave.Wave
 	DefaultHeadElsFunc   DefaultHeadElsFunc
 	HeadDedupeKeysFunc   HeadDedupeKeysFunc
 	RootTemplateDataFunc RootTemplateDataFunc
@@ -124,7 +132,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	}
 
 	v := &Vorma{
-		Wave:                 o.Wave,
+		get_wave:             o.Wave,
 		logger:               o.Logger,
 		get_default_head_els: o.DefaultHeadElsFunc,
 		get_head_dedupe_keys: o.HeadDedupeKeysFunc,
@@ -137,7 +145,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	}
 
 	// head elements instance (reused across requests)
-	v.head_els_inst = headels.NewInstance("vorma2")
+	v.head_els_inst = headels.NewInstance("vorma")
 	if o.HeadDedupeKeysFunc != nil {
 		dedupe_head := headels.New()
 		o.HeadDedupeKeysFunc(dedupe_head)
@@ -149,7 +157,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	if explicit_index == "" {
 		explicit_index = "_index"
 	}
-	v.loaders_router = nestedmux.NewRouter(&nestedmux.Options{
+	v.loaders_router = mux.NewNestedRouter(&mux.NestedOptions{
 		DynamicParamPrefix:             o.LoadersRouterOptions.DynamicParamPrefix,
 		SplatSegmentIdentifier:         o.LoadersRouterOptions.SplatSegmentIdentifier,
 		ExplicitIndexSegmentIdentifier: explicit_index,
@@ -182,6 +190,67 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 }
 
 /////////////////////////////////////////////////////////////////////
+/////// Initialization
+/////////////////////////////////////////////////////////////////////
+
+// MustInit eagerly loads the runtime snapshot and root template,
+// registers route patterns on the nested router, and computes the
+// server address. Panics on any failure so broken deploys crash at
+// startup instead of serving 500s on first request.
+func (v *Vorma) MustInit() {
+	v.Wave = v.get_wave()
+	snapshot, err := v.runtime_snapshot.Get()
+	if err != nil {
+		panic(fmt.Sprintf("[vorma2]: failed to load runtime snapshot: %v", err))
+	}
+	if _, err := v.root_template.Get(); err != nil {
+		panic(fmt.Sprintf("[vorma2]: failed to load root template: %v", err))
+	}
+	for pattern := range snapshot.Paths {
+		v.loaders_router.AddPatternWithoutHandlerIfMissing(pattern.Str())
+	}
+	v.patterns_bid.Store(snapshot.BuildID)
+	v.server_addr = fmt.Sprintf(":%d", wave.Port())
+	v.logger.Info("vorma2 initialized", "build_id", snapshot.BuildID)
+}
+
+func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
+	v.MustInit()
+	r := mux.NewRouter()
+	loaders, actions := v.Loaders(), v.Actions()
+	r.AddHTTPHandler("GET", loaders.HandlerMountPattern(), loaders.Handler())
+	for m := range actions.SupportedMethods() {
+		r.AddHTTPHandler(m, actions.HandlerMountPattern(), actions.Handler())
+	}
+	return r
+}
+
+func (v *Vorma) MustStaticMiddleware() func(http.Handler) http.Handler {
+	return v.Wave.MustStaticFileServerMiddleware(true)
+}
+
+func (v *Vorma) ServerAddr() string { return v.server_addr }
+
+// maybe_reregister_patterns adds any new route patterns to the
+// nested router when the build ID changes during dev. This handles
+// routes added after the initial MustInit registration.
+func (v *Vorma) maybe_reregister_patterns(
+	snapshot *types.RuntimeSnapshot,
+) {
+	if !wave.IsDev() {
+		return
+	}
+	last_bid, _ := v.patterns_bid.Load().(string)
+	if last_bid == snapshot.BuildID {
+		return
+	}
+	for pattern := range snapshot.Paths {
+		v.loaders_router.AddPatternWithoutHandlerIfMissing(pattern.Str())
+	}
+	v.patterns_bid.Store(snapshot.BuildID)
+}
+
+/////////////////////////////////////////////////////////////////////
 /////// Build-internal accessors
 /////////////////////////////////////////////////////////////////////
 
@@ -191,7 +260,7 @@ type BuildInternals struct{ v *Vorma }
 
 func (v *Vorma) ForBuild() BuildInternals { return BuildInternals{v: v} }
 
-func (bi BuildInternals) LoadersRouter() *nestedmux.Router {
+func (bi BuildInternals) LoadersRouter() *mux.NestedRouter {
 	return bi.v.loaders_router
 }
 func (bi BuildInternals) ActionsRouter() *mux.Router {
@@ -276,7 +345,7 @@ func RegisterLoader[O any, CtxPtr ~*Ctx, Ctx any](
 	pattern string,
 	fn func(CtxPtr) (O, error),
 	decorate_ctx func(*LoaderReqData) CtxPtr,
-) {
+) *Loader[O] {
 	if fn == nil {
 		panic("[vorma2]: RegisterLoader: fn cannot be nil")
 	}
@@ -288,7 +357,8 @@ func RegisterLoader[O any, CtxPtr ~*Ctx, Ctx any](
 			return fn(decorate_ctx(req_data))
 		},
 	)
-	nestedmux.AddTaskHandler(app.loaders_router, pattern, task)
+	mux.AddNestedTaskHandler(app.loaders_router, pattern, task)
+	return task
 }
 
 func RegisterAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
@@ -297,7 +367,7 @@ func RegisterAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 	pattern string,
 	fn func(CtxPtr) (O, error),
 	decorate_ctx func(*ActionReqData[I]) CtxPtr,
-) {
+) *Action[I, O] {
 	if fn == nil {
 		panic("[vorma2]: RegisterAction: fn cannot be nil")
 	}
@@ -310,6 +380,7 @@ func RegisterAction[I any, O any, CtxPtr ~*Ctx, Ctx any](
 		},
 	)
 	mux.AddTaskHandler(app.actions_router, method, pattern, task)
+	return task
 }
 
 /////////////////////////////////////////////////////////////////////

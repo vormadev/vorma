@@ -3,9 +3,12 @@ package vormabuild
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
+	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/kit/strict"
 	"github.com/vormadev/vorma/vorma2"
@@ -31,7 +34,7 @@ type parsed_vorma_config struct {
 	root_template_path               types.PrivateFSRelPath
 	client_entry_path                strict.CWDRelPath
 	client_route_definition_patterns []strict.CWDRelPath
-	ts_gen_out_dir                   strict.CWDRelPath
+	gen_out_dir                      strict.CWDRelPath
 	buildtime_public_url_func_name   string
 }
 
@@ -47,7 +50,7 @@ func NewPlugin(app *vorma2.Vorma) *wavebuild.Plugin {
 	}
 	state := &plugin_state{app: app}
 	plugin := &wavebuild.Plugin{
-		Name: "vorma2",
+		Name: "vorma",
 		Config: wavebuild.PluginConfig{
 			JSONKey:   json_cfg_key,
 			ParseFunc: state.parse_config,
@@ -146,13 +149,13 @@ func (s *plugin_state) parse_config(
 		client_route_definition_patterns[i] = joined
 	}
 
-	// ts_gen_out_dir: CWD-relative, joined with root dir
-	ts_gen_out_raw := strings.TrimSpace(raw.TSGenOutDir)
-	if ts_gen_out_raw == "" {
+	// gen_out_dir: CWD-relative, joined with root dir
+	gen_out_raw := strings.TrimSpace(raw.TSGenOutDir)
+	if gen_out_raw == "" {
 		return fmt.Errorf("Vorma.TSGenOutDir is required")
 	}
-	ts_gen_out_dir := ctx.UserRootDir().Join(
-		strict.MustNormalizeCWDRelPath(ts_gen_out_raw).Str(),
+	gen_out_dir := ctx.UserRootDir().Join(
+		strict.MustNormalizeCWDRelPath(gen_out_raw).Str(),
 	)
 
 	// buildtime_public_url_func_name
@@ -167,13 +170,19 @@ func (s *plugin_state) parse_config(
 		root_template_path:               root_template_path,
 		client_entry_path:                client_entry_path,
 		client_route_definition_patterns: client_route_definition_patterns,
-		ts_gen_out_dir:                   ts_gen_out_dir,
+		gen_out_dir:                      gen_out_dir,
 		buildtime_public_url_func_name:   buildtime_func,
 	}
 
+	// ensure gen dir has placeholder files so Vite can start
+	if err := fsutil.EnsureDir(s.cfg.gen_out_dir.Str()); err != nil {
+		return fmt.Errorf("creating gen output dir: %w", err)
+	}
+	write_placeholders(s.cfg, ctx)
+
 	// update plugin hooks now that we have parsed config
 	exclude := []strict.CWDRelPath{
-		strict.CWDRelPath(s.cfg.ts_gen_out_dir.Str()),
+		strict.CWDRelPath(s.cfg.gen_out_dir.Str()),
 	}
 
 	s.plugin.LifecycleHooks = []wavebuild.LifecycleHook{
@@ -239,4 +248,66 @@ func (s *plugin_state) vorma_runtime_dir(
 	ctx *wavebuild.PluginCtx,
 ) strict.CWDRelPath {
 	return ctx.WaveOutRuntimeStaticDir().Join(constants.RUNTIME_DIRNAME)
+}
+
+// __TODO de-duplicate this so it just takes inputs/outputs in both places
+func write_placeholders(
+	cfg *parsed_vorma_config,
+	ctx *wavebuild.PluginConfigParseCtx,
+) {
+	gen := cfg.gen_out_dir.Str()
+	wave_out_dir := filepath.ToSlash(ctx.WaveOutDir().Str())
+	gen_dir := filepath.ToSlash(gen)
+
+	ignored := []string{
+		"**/*.go",
+		"**/" + wave_out_dir + "/**/*",
+		"**/" + gen_dir + "/**/*",
+	}
+	ignored_json := "["
+	for i, p := range ignored {
+		if i > 0 {
+			ignored_json += ", "
+		}
+		ignored_json += fmt.Sprintf("%q", p)
+	}
+	ignored_json += "]"
+
+	os.WriteFile(
+		filepath.Join(gen, "filemap.json"),
+		[]byte("{}"),
+		0644,
+	)
+
+	os.WriteFile(
+		filepath.Join(gen, constants.GENERATED_TS_FILEMAP_FILENAME),
+		[]byte("export const staticPublicAssetMap = {} as const;\n"),
+		0644,
+	)
+
+	os.WriteFile(
+		filepath.Join(gen, constants.GENERATED_TS_INDEX_FILENAME),
+		[]byte(fmt.Sprintf(`const routes = [] as const;
+export const vormaAppConfig = {
+	actionsRouterMountRoot: "/api/",
+	actionsDynamicRune: ":",
+	actionsSplatRune: "*",
+	loadersDynamicRune: ":",
+	loadersSplatRune: "*",
+	loadersExplicitIndexSegmentIdentifier: "_index",
+	importMetaURL: import.meta.url,
+} as const;
+export const vormaViteConfig = {
+	rollupInput: [],
+	publicPathPrefix: "/",
+	buildtimePublicURLFuncName: %q,
+	ignoredPatterns: %s,
+	dedupeList: [],
+	importMetaURL: import.meta.url,
+} as const;
+import { staticPublicAssetMap } from "./filemap";
+export { staticPublicAssetMap };
+`, cfg.buildtime_public_url_func_name, ignored_json)),
+		0644,
+	)
 }

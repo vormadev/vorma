@@ -67,7 +67,7 @@ export const SEG_TYPES = {
 /////// REGISTRATION
 /////////////////////////////////////////////////////////////////////
 
-function createSegmentNode(): SegmentNode {
+function create_segment_node(): SegmentNode {
 	return {
 		pattern: "",
 		nodeType: NODE_STATIC,
@@ -78,51 +78,66 @@ function createSegmentNode(): SegmentNode {
 	};
 }
 
-function findOrCreateChild(node: SegmentNode, segment: string): SegmentNode {
-	if (segment === "*" || (segment.length > 0 && segment[0] === ":")) {
+function find_or_create_child(node: SegmentNode, segment: string): SegmentNode {
+	// Empty-string segments (index) go into static children map.
+	if (segment.length === 0) {
+		if (node.children === null)
+			node.children = new Map<string, SegmentNode>();
+		let child = node.children.get("");
+		if (child) return child;
+		child = create_segment_node();
+		child.nodeType = NODE_STATIC;
+		node.children.set("", child);
+		return child;
+	}
+
+	if (segment[0] === ":") {
 		for (const child of node.dynChildren) {
-			if (child.paramName === segment.substring(1)) return child;
+			if (
+				child.nodeType === NODE_DYNAMIC &&
+				child.paramName === segment.substring(1)
+			)
+				return child;
 		}
-		return addDynamicChild(node, segment);
+		const child = create_segment_node();
+		child.nodeType = NODE_DYNAMIC;
+		child.paramName = segment.substring(1);
+		node.dynChildren.push(child);
+		return child;
+	}
+
+	if (segment === "*") {
+		for (const child of node.dynChildren) {
+			if (child.nodeType === NODE_SPLAT) return child;
+		}
+		const child = create_segment_node();
+		child.nodeType = NODE_SPLAT;
+		node.dynChildren.push(child);
+		return child;
 	}
 
 	if (node.children === null) node.children = new Map<string, SegmentNode>();
-
 	let child = node.children.get(segment);
 	if (child) return child;
-
-	child = createSegmentNode();
+	child = create_segment_node();
 	child.nodeType = NODE_STATIC;
 	node.children.set(segment, child);
 	return child;
 }
 
-function addDynamicChild(node: SegmentNode, segment: string): SegmentNode {
-	const child = createSegmentNode();
-	if (segment === "*") {
-		child.nodeType = NODE_SPLAT;
-	} else {
-		child.nodeType = NODE_DYNAMIC;
-		child.paramName = segment.substring(1);
-	}
-	node.dynChildren.push(child);
-	return child;
-}
-
-function getSegmentType(props: {
-	segment: string;
-	dynamicPrefix: string;
-	splatRune: string;
-}): SegType {
-	const { segment, dynamicPrefix, splatRune } = props;
+function classify_segment(
+	segment: string,
+	dynamic_prefix: string,
+	splat_rune: string,
+): SegType {
 	if (segment === "") return SEG_TYPES.index;
-	if (segment.length === 1 && segment === splatRune) return SEG_TYPES.splat;
-	if (segment.length > 0 && segment[0] === dynamicPrefix)
+	if (segment.length === 1 && segment === splat_rune) return SEG_TYPES.splat;
+	if (segment.length > 0 && segment[0] === dynamic_prefix)
 		return SEG_TYPES.dynamic;
 	return SEG_TYPES.static;
 }
 
-function isStatic(segments: Segment[]): boolean {
+function is_static(segments: Segment[]): boolean {
 	for (const segment of segments) {
 		if (
 			segment.segType === SEG_TYPES.splat ||
@@ -134,72 +149,72 @@ function isStatic(segments: Segment[]): boolean {
 	return true;
 }
 
-function normalizePattern(
-	originalPattern: string,
+function normalize_pattern(
+	original: string,
 	config: PatternRegistry["config"],
 ): RegisteredPattern {
-	let normalizedPattern = originalPattern;
+	let normalized = original;
 
 	if (config.usingExplicitIndexSegment) {
-		if (normalizedPattern.endsWith("/")) {
-			if (normalizedPattern !== "/") {
-				throw new Error(`bad trailing slash: ${originalPattern}`);
+		if (normalized.endsWith("/")) {
+			if (normalized !== "/") {
+				throw new Error(`bad trailing slash: ${original}`);
 			}
-			normalizedPattern = normalizedPattern.replace(/\/+$/, "");
+			normalized = normalized.replace(/\/+$/, "");
 		}
-		if (normalizedPattern.endsWith(config.slashIndexSegment)) {
-			normalizedPattern = normalizedPattern.slice(
+		if (normalized.endsWith(config.slashIndexSegment)) {
+			normalized = normalized.slice(
 				0,
 				-config.explicitIndexSegment.length,
 			);
 		}
 	}
 
-	const rawSegments = parseSegments(normalizedPattern);
+	const raw_segments = parseSegments(normalized);
 	const segments: Segment[] = [];
-	let numberOfDynamicParamSegs = 0;
+	let num_dynamic = 0;
 
-	for (const seg of rawSegments) {
-		let normalizedVal = seg;
-		const segType = getSegmentType({
-			segment: seg,
-			dynamicPrefix: config.dynamicParamPrefixRune,
-			splatRune: config.splatSegmentRune,
-		});
+	for (const seg of raw_segments) {
+		let val = seg;
+		const seg_type = classify_segment(
+			seg,
+			config.dynamicParamPrefixRune,
+			config.splatSegmentRune,
+		);
 
-		if (segType === SEG_TYPES.dynamic) {
-			numberOfDynamicParamSegs++;
-			normalizedVal = ":" + seg.substring(1);
+		if (seg_type === SEG_TYPES.dynamic) {
+			num_dynamic++;
+			val = ":" + seg.substring(1);
 		}
-		if (segType === SEG_TYPES.splat) {
-			normalizedVal = "*";
+		if (seg_type === SEG_TYPES.splat) {
+			val = "*";
 		}
 
-		segments.push({ normalizedVal, segType });
+		segments.push({ normalizedVal: val, segType: seg_type });
 	}
 
-	const segLen = segments.length;
-	let lastType: SegType =
-		segLen > 0 ? segments[segLen - 1]!.segType : SEG_TYPES.static;
+	const seg_len = segments.length;
+	const last_type: SegType =
+		seg_len > 0 ? segments[seg_len - 1]!.segType : SEG_TYPES.static;
 
-	let finalNormalizedPattern = "/";
+	let final_pattern = "/";
 	for (let i = 0; i < segments.length; i++) {
-		finalNormalizedPattern += segments[i]!.normalizedVal;
-		if (i < segLen - 1) finalNormalizedPattern += "/";
+		final_pattern += segments[i]!.normalizedVal;
+		if (i < seg_len - 1) final_pattern += "/";
 	}
 
-	if (finalNormalizedPattern.endsWith("/") && lastType !== SEG_TYPES.index) {
-		finalNormalizedPattern = finalNormalizedPattern.replace(/\/+$/, "");
+	if (final_pattern.endsWith("/") && last_type !== SEG_TYPES.index) {
+		final_pattern = final_pattern.replace(/\/+$/, "");
 	}
 
 	return {
-		originalPattern,
-		normalizedPattern: finalNormalizedPattern,
+		originalPattern: original,
+		normalizedPattern: final_pattern,
 		normalizedSegments: segments,
-		lastSegType: lastType,
-		lastSegIsNonRootSplat: lastType === SEG_TYPES.splat && segLen > 1,
-		lastSegIsIndex: lastType === SEG_TYPES.index,
-		numberOfDynamicParamSegs,
+		lastSegType: last_type,
+		lastSegIsNonRootSplat: last_type === SEG_TYPES.splat && seg_len > 1,
+		lastSegIsIndex: last_type === SEG_TYPES.index,
+		numberOfDynamicParamSegs: num_dynamic,
 	};
 }
 
@@ -221,57 +236,58 @@ export function createPatternRegistry(
 	return {
 		staticPatterns: new Map(),
 		dynamicPatterns: new Map(),
-		rootNode: createSegmentNode(),
+		rootNode: create_segment_node(),
 		config,
 	};
 }
 
 export function registerPattern(
 	registry: PatternRegistry,
-	originalPattern: string,
+	original: string,
 ): RegisteredPattern {
-	const normalized = normalizePattern(originalPattern, registry.config);
-	const existingPattern =
-		registry.staticPatterns.get(normalized.normalizedPattern) ||
-		registry.dynamicPatterns.get(normalized.normalizedPattern);
+	const rp = normalize_pattern(original, registry.config);
 
-	if (existingPattern) {
-		if (existingPattern.originalPattern === originalPattern) {
-			return existingPattern;
+	// Check for collision or idempotent re-registration.
+	const existing =
+		registry.staticPatterns.get(rp.normalizedPattern) ||
+		registry.dynamicPatterns.get(rp.normalizedPattern);
+
+	if (existing) {
+		if (existing.originalPattern === original) {
+			return existing;
 		}
-
 		throw new Error(
-			`normalized pattern collision: "${originalPattern}" and "${existingPattern.originalPattern}" both normalize to "${normalized.normalizedPattern}"`,
+			`normalized pattern collision: "${original}" and "${existing.originalPattern}" both normalize to "${rp.normalizedPattern}"`,
 		);
 	}
 
-	if (isStatic(normalized.normalizedSegments)) {
-		registry.staticPatterns.set(normalized.normalizedPattern, normalized);
-		return normalized;
+	if (is_static(rp.normalizedSegments)) {
+		registry.staticPatterns.set(rp.normalizedPattern, rp);
+		return rp;
 	}
 
-	registry.dynamicPatterns.set(normalized.normalizedPattern, normalized);
+	registry.dynamicPatterns.set(rp.normalizedPattern, rp);
 
 	let current = registry.rootNode;
-	let nodeScore = 0;
+	let node_score = 0;
 
-	for (let i = 0; i < normalized.normalizedSegments.length; i++) {
-		const segment = normalized.normalizedSegments[i]!;
-		const child = findOrCreateChild(current, segment.normalizedVal);
+	for (let i = 0; i < rp.normalizedSegments.length; i++) {
+		const segment = rp.normalizedSegments[i]!;
+		const child = find_or_create_child(current, segment.normalizedVal);
 
 		if (segment.segType === SEG_TYPES.dynamic) {
-			nodeScore += SCORE_DYNAMIC;
+			node_score += SCORE_DYNAMIC;
 		} else if (segment.segType !== SEG_TYPES.splat) {
-			nodeScore += SCORE_STATIC_MATCH;
+			node_score += SCORE_STATIC_MATCH;
 		}
 
-		if (i === normalized.normalizedSegments.length - 1) {
-			child.finalScore = nodeScore;
-			child.pattern = normalized.normalizedPattern;
+		if (i === rp.normalizedSegments.length - 1) {
+			child.finalScore = node_score;
+			child.pattern = rp.normalizedPattern;
 		}
 
 		current = child;
 	}
 
-	return normalized;
+	return rp;
 }

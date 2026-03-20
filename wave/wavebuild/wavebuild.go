@@ -335,10 +335,10 @@ func (s *super_state) hook_env() []string {
 			Str(),
 	}
 	if s.is_dev {
-		env = append(env, constants.ENV_KEY_DEV_BUILDTIME_IS_DEV+"=true")
+		env = append(env, constants.ENV_KEY_DEV_BUILDTIME_IS_DEV+"=1")
 		env = append(env, constants.ENV_KEY_BUILDTIME_BUILD_TAGS+"=dev")
 	} else {
-		env = append(env, constants.ENV_KEY_DEV_BUILDTIME_IS_DEV+"=false")
+		env = append(env, constants.ENV_KEY_DEV_BUILDTIME_IS_DEV+"=0")
 		env = append(env, constants.ENV_KEY_BUILDTIME_BUILD_TAGS+"=prod")
 	}
 	return env
@@ -355,8 +355,12 @@ func (s *super_state) app_env() []string {
 	)
 	env := []string{
 		fmt.Sprintf("%s=%d", constants.ENV_KEY_RUNTIME_PORT, s.dev_port),
-		constants.ENV_KEY_DEV_RUNTIME_IS_DEV + "=true",
+		constants.ENV_KEY_DEV_RUNTIME_IS_DEV + "=1",
 		constants.ENV_KEY_DEV_RUNTIME_STATIC_DIR + "=" + static_dir,
+		constants.ENV_KEY_DEV_RUNTIME_VITE_PORT + "=" + fmt.Sprintf(
+			"%d",
+			s.vite_port,
+		),
 	}
 	if s.refresh_port > 0 {
 		env = append(

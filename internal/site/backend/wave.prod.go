@@ -12,6 +12,6 @@ import (
 //go:embed all:.waveout/static
 var embedFS embed.FS
 
-var Wave = wave.New(wave.Options{
+var WaveOpts = wave.Options{
 	DistStaticFS: fsutil.MustSub(embedFS, ".waveout/static"),
-})
+}

@@ -11,11 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
 	"github.com/vormadev/vorma/internal/coalescepath"
@@ -24,18 +22,14 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	buildCacheVersion = 2
-)
+const cache_version = 2
 
-var targetDir = "./npm_dist"
-var buildCachePath = "./npm_dist/.buildts_cache.json"
-var buildInputPaths = []string{
+var target_dir = "./npm_dist"
+var cache_path = "./npm_dist/.buildts_cache.json"
+
+var input_paths = []string{
 	"./typescript/kit",
-	"./typescript/vorma/client",
-	"./typescript/vorma/ui-adapters/react",
-	"./typescript/vorma/ui-adapters/preact",
-	"./typescript/vorma/ui-adapters/solid",
+	"./vorma2/client",
 	"./typescript/vorma/vite",
 	"./typescript/vorma/create",
 	"./internal/cmd/buildts",
@@ -43,85 +37,92 @@ var buildInputPaths = []string{
 	"./pnpm-lock.yaml",
 	"./tsconfig.base.json",
 }
-var buildOutputPaths = []string{
-	targetDir,
+
+var output_paths = []string{
+	target_dir,
 	"./typescript/vorma/create/dist",
 }
-var tscRunMutex sync.Mutex
 
 func main() {
-	coalesceError := coalescecmd.Run(coalescecmd.Options{
+	err := coalescecmd.Run(coalescecmd.Options{
 		Key:                    coalescepath.BuildTSCommandKey,
 		FailIfRunning:          coalescepath.BuildTSFailIfRunningKeys,
 		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-		Func: func() error {
-			if err := run(); err != nil {
-				return fmt.Errorf(
-					"failed to build TypeScript packages: %w",
-					err,
-				)
-			}
-			return nil
-		},
+		Func:                   run,
 	})
-	if coalesceError != nil {
-		log.Fatalf("%v", coalesceError)
+	if err != nil {
+		log.Fatalf("%v", err)
 	}
 }
 
 func run() error {
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	if err := os.MkdirAll(target_dir, 0755); err != nil {
 		return fmt.Errorf("failed to create target dir: %w", err)
 	}
 
-	cachedHashes, err := readBuildCache()
+	cached, _ := read_cache()
+	input_hash, err := hash_file_set(input_paths, skip_input)
+	if err != nil {
+		return err
+	}
+	output_hash, err := hash_file_set(output_paths, skip_output)
 	if err != nil {
 		return err
 	}
 
-	inputHash, err := hashBuildInputs()
-	if err != nil {
-		return err
-	}
-
-	currentOutputHash, err := hashBuildOutputs()
-	if err != nil {
-		return err
-	}
-
-	if cachedHashes != nil &&
-		cachedHashes.Version == buildCacheVersion &&
-		cachedHashes.InputHash == inputHash &&
-		cachedHashes.OutputHash == currentOutputHash {
-		log.Println("buildts: inputs and outputs unchanged; skipping build")
+	if cached != nil &&
+		cached.Version == cache_version &&
+		cached.InputHash == input_hash &&
+		cached.OutputHash == output_hash {
+		log.Println("buildts: unchanged; skipping")
 		return nil
 	}
 
-	if err := cleanBuildOutputs(); err != nil {
+	// Clean and rebuild.
+	for _, p := range output_paths {
+		os.RemoveAll(p)
+	}
+	if err := os.MkdirAll(target_dir, 0755); err != nil {
+		return fmt.Errorf("failed to recreate target dir: %w", err)
+	}
+
+	if err := build_all(); err != nil {
 		return err
 	}
 
-	if err := runBuildStages(); err != nil {
-		return err
-	}
+	remove_test_files()
 
-	if err := removeTestFiles(); err != nil {
-		return err
-	}
-
-	if err := assertBuildOutputsAreConsistent(); err != nil {
-		return err
-	}
-
-	updatedOutputHash, err := hashBuildOutputs()
+	final_hash, err := hash_file_set(output_paths, skip_output)
 	if err != nil {
 		return err
 	}
+	return write_cache(build_cache{
+		Version:    cache_version,
+		InputHash:  input_hash,
+		OutputHash: final_hash,
+	})
+}
 
-	if err := writeBuildCache(buildHashes{
-		Version:    buildCacheVersion,
-		InputHash:  inputHash,
-		OutputHash: updatedOutputHash,
+/////////////////////////////////////////////////////////////////////
+/////// Build stages
+/////////////////////////////////////////////////////////////////////
+
+func build_all() error {
+	// Stage 1: independent packages.
+	if err := run_parallel("stage-1", []build_task{
+		{"kit", build_kit},
+		{"client", build_client},
+		{"vite", build_vite},
+		{"create", build_create},
+	}); err != nil {
+		return err
+	}
+
+	// Stage 2: UI adapters depend on client.
+	if err := run_parallel("stage-2", []build_task{
+		{"react", build_react},
+		{"solid", build_solid},
+		{"preact", build_preact},
 	}); err != nil {
 		return err
 	}
@@ -129,137 +130,12 @@ func run() error {
 	return nil
 }
 
-func cleanBuildOutputs() error {
-	for _, outputPath := range buildOutputPaths {
-		if err := os.RemoveAll(outputPath); err != nil {
-			return fmt.Errorf(
-				"failed to clean output path %s: %w",
-				outputPath,
-				err,
-			)
-		}
-	}
-
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return fmt.Errorf("failed to recreate target dir: %w", err)
-	}
-
-	return nil
-}
-
-type buildTask struct {
-	name string
-	run  func() error
-}
-
-type buildHashes struct {
-	Version    int    `json:"version"`
-	InputHash  string `json:"input_hash"`
-	OutputHash string `json:"output_hash"`
-}
-
-func runBuildStages() error {
-	// Stage 1 contains independent packages.
-	if err := runTasksInParallel(
-		"stage-1",
-		[]buildTask{
-			{
-				name: "kit",
-				run:  buildKit,
-			},
-			{
-				name: "client",
-				run:  buildClient,
-			},
-			{
-				name: "vite",
-				run:  buildVite,
-			},
-			{
-				name: "create",
-				run:  buildCreate,
-			},
-		},
-	); err != nil {
-		return err
-	}
-
-	// Stage 2 adapters depend on the client API surface.
-	if err := runTasksInParallel(
-		"stage-2",
-		[]buildTask{
-			{
-				name: "react",
-				run:  buildReact,
-			},
-			{
-				name: "solid",
-				run:  buildSolid,
-			},
-			{
-				name: "preact",
-				run:  buildPreact,
-			},
-		},
-	); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func runTasksInParallel(stageName string, tasks []buildTask) error {
-	if len(tasks) == 0 {
-		return nil
-	}
-
-	parallelism := runtime.NumCPU()
-	if parallelism < 1 {
-		parallelism = 1
-	}
-	if parallelism > len(tasks) {
-		parallelism = len(tasks)
-	}
-	if parallelism > 4 {
-		parallelism = 4
-	}
-
-	log.Printf(
-		"%s: starting %d tasks with parallelism=%d",
-		stageName,
-		len(tasks),
-		parallelism,
-	)
-
-	var g errgroup.Group
-	g.SetLimit(parallelism)
-
-	for _, task := range tasks {
-		task := task
-		g.Go(func() error {
-			log.Printf("%s: started", task.name)
-			if err := task.run(); err != nil {
-				return fmt.Errorf("%s failed: %w", task.name, err)
-			}
-			log.Printf("%s: completed", task.name)
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("%s failed: %w", stageName, err)
-	}
-
-	log.Printf("%s: completed", stageName)
-	return nil
-}
-
-func buildKit() error {
+func build_kit() error {
 	tsconfig := "./typescript/kit/tsconfig.json"
-	if err := runTSC(tsconfig); err != nil {
+	if err := run_tsgo(tsconfig); err != nil {
 		return err
 	}
-	if err := build("kit", esbuild.BuildOptions{
+	return run_esbuild("kit", esbuild.BuildOptions{
 		Sourcemap:   esbuild.SourceMapLinked,
 		Target:      esbuild.ESNext,
 		Format:      esbuild.FormatESModule,
@@ -285,18 +161,15 @@ func buildKit() error {
 		External: []string{"vorma"},
 		Outdir:   "./npm_dist/typescript/kit",
 		Tsconfig: tsconfig,
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
-func buildClient() error {
-	tsconfig := "./typescript/vorma/client/tsconfig.json"
-	if err := runTSC(tsconfig); err != nil {
+func build_client() error {
+	tsconfig := "./vorma2/client/tsconfig.json"
+	if err := run_tsgo(tsconfig); err != nil {
 		return err
 	}
-	if err := build("client", esbuild.BuildOptions{
+	return run_esbuild("client", esbuild.BuildOptions{
 		Sourcemap:   esbuild.SourceMapLinked,
 		Target:      esbuild.ESNext,
 		Format:      esbuild.FormatESModule,
@@ -305,29 +178,24 @@ func buildClient() error {
 		Write:       true,
 		Bundle:      true,
 		EntryPoints: []string{
-			"./typescript/vorma/client/index.ts",
-			"./typescript/vorma/client/internal.ts",
-			"./typescript/vorma/client/buildtime.ts",
-			"./typescript/vorma/client/internal/hmr_dev.ts",
-			"./typescript/vorma/client/testing.ts",
+			"./vorma2/client/_index.ts",
+			"./vorma2/client/_internal.ts",
+			"./vorma2/client/_testing.ts",
+			"./vorma2/client/_buildtime.ts",
+			"./vorma2/client/_hmr_dev.ts",
 		},
-		External: []string{
-			"vorma",
-		},
-		Outdir:   "./npm_dist/typescript/vorma/client",
+		External: []string{"vorma"},
+		Outdir:   "./npm_dist/vorma2/client",
 		Tsconfig: tsconfig,
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
-func buildReact() error {
-	tsconfig := "./typescript/vorma/ui-adapters/react/tsconfig.json"
-	if err := runTSC(tsconfig); err != nil {
+func build_react() error {
+	tsconfig := "./vorma2/client/ui-adapters/react/tsconfig.json"
+	if err := run_tsgo(tsconfig); err != nil {
 		return err
 	}
-	if err := build("react", esbuild.BuildOptions{
+	return run_esbuild("react", esbuild.BuildOptions{
 		Sourcemap:   esbuild.SourceMapLinked,
 		Target:      esbuild.ESNext,
 		Format:      esbuild.FormatESModule,
@@ -335,39 +203,31 @@ func buildReact() error {
 		Splitting:   true,
 		Write:       true,
 		Bundle:      true,
-		EntryPoints: []string{"./typescript/vorma/ui-adapters/react/index.ts"},
-		External: []string{
-			"vorma",
-			"react", "react-dom",
-		},
-		Outdir:   "./npm_dist/typescript/vorma/ui-adapters/react",
-		Tsconfig: tsconfig,
-	}); err != nil {
-		return err
-	}
-	return nil
+		EntryPoints: []string{"./vorma2/client/ui-adapters/react/_index.ts"},
+		External:    []string{"vorma", "react", "react-dom"},
+		Outdir:      "./npm_dist/vorma2/client/ui-adapters/react",
+		Tsconfig:    tsconfig,
+	})
 }
 
-func buildSolid() error {
-	if err := runTSC("./typescript/vorma/ui-adapters/solid/tsconfig.json"); err != nil {
+func build_solid() error {
+	if err := run_tsgo("./vorma2/client/ui-adapters/solid/tsconfig.json"); err != nil {
 		return err
 	}
-
-	// we need babel transforms via esbuild-plugin-solid
+	// Solid needs babel transforms via esbuild-plugin-solid.
 	if err := executil.RunCmd("node", "./internal/cmd/buildts/build-solid.mjs"); err != nil {
-		return fmt.Errorf("failed to run build-solid.mjs: %w", err)
+		return fmt.Errorf("build-solid.mjs failed: %w", err)
 	}
-
 	log.Println("solid: esbuild (via node) succeeded")
 	return nil
 }
 
-func buildPreact() error {
-	tsconfig := "./typescript/vorma/ui-adapters/preact/tsconfig.json"
-	if err := runTSC(tsconfig); err != nil {
+func build_preact() error {
+	tsconfig := "./vorma2/client/ui-adapters/preact/tsconfig.json"
+	if err := run_tsgo(tsconfig); err != nil {
 		return err
 	}
-	if err := build("preact", esbuild.BuildOptions{
+	return run_esbuild("preact", esbuild.BuildOptions{
 		Sourcemap:   esbuild.SourceMapLinked,
 		Target:      esbuild.ESNext,
 		Format:      esbuild.FormatESModule,
@@ -375,27 +235,24 @@ func buildPreact() error {
 		Splitting:   true,
 		Write:       true,
 		Bundle:      true,
-		EntryPoints: []string{"./typescript/vorma/ui-adapters/preact/index.ts"},
+		EntryPoints: []string{"./vorma2/client/ui-adapters/preact/_index.ts"},
 		External: []string{
 			"vorma",
 			"preact", "preact/hooks",
 			"@preact/signals",
 			"preact/jsx-runtime", "preact/compat", "preact/test-utils",
 		},
-		Outdir:   "./npm_dist/typescript/vorma/ui-adapters/preact",
+		Outdir:   "./npm_dist/vorma2/client/ui-adapters/preact",
 		Tsconfig: tsconfig,
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
-func buildVite() error {
+func build_vite() error {
 	tsconfig := "./typescript/vorma/vite/tsconfig.json"
-	if err := runTSC(tsconfig); err != nil {
+	if err := run_tsgo(tsconfig); err != nil {
 		return err
 	}
-	if err := build("vite", esbuild.BuildOptions{
+	return run_esbuild("vite", esbuild.BuildOptions{
 		Sourcemap:   esbuild.SourceMapLinked,
 		Target:      esbuild.ESNext,
 		Format:      esbuild.FormatESModule,
@@ -409,21 +266,19 @@ func buildVite() error {
 			"vite",
 			"node:fs",
 			"node:path",
+			"node:url",
 		},
 		Outdir:   "./npm_dist/typescript/vorma/vite",
 		Tsconfig: tsconfig,
-	}); err != nil {
-		return err
-	}
-	return nil
+	})
 }
 
-func buildCreate() error {
+func build_create() error {
 	tsconfig := "./typescript/vorma/create/tsconfig.json"
-	if err := runTSC(tsconfig); err != nil {
+	if err := run_tsgo(tsconfig); err != nil {
 		return err
 	}
-	if err := build("create", esbuild.BuildOptions{
+	return run_esbuild("create", esbuild.BuildOptions{
 		Sourcemap:   esbuild.SourceMapLinked,
 		Target:      esbuild.ESNext,
 		Format:      esbuild.FormatESModule,
@@ -432,521 +287,285 @@ func buildCreate() error {
 		Bundle:      true,
 		EntryPoints: []string{"./typescript/vorma/create/main.ts"},
 		External: []string{
-			"node:child_process",
-			"node:fs",
-			"node:os",
-			"node:path",
-			"node:process",
-			"node:readline",
-			"node:stream",
-			"node:util",
-			"node:url",
+			"node:child_process", "node:fs", "node:os", "node:path",
+			"node:process", "node:readline", "node:stream", "node:util", "node:url",
 		},
 		Outdir:   "./typescript/vorma/create/dist",
 		Tsconfig: tsconfig,
-	}); err != nil {
-		return err
+	})
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Parallelism
+/////////////////////////////////////////////////////////////////////
+
+type build_task struct {
+	name string
+	fn   func() error
+}
+
+func run_parallel(stage string, tasks []build_task) error {
+	n := runtime.NumCPU()
+	if n > len(tasks) {
+		n = len(tasks)
 	}
+	if n > 4 {
+		n = 4
+	}
+	if n < 1 {
+		n = 1
+	}
+
+	log.Printf("%s: %d tasks, parallelism=%d", stage, len(tasks), n)
+
+	var g errgroup.Group
+	g.SetLimit(n)
+	for _, t := range tasks {
+		t := t
+		g.Go(func() error {
+			log.Printf("%s: started", t.name)
+			if err := t.fn(); err != nil {
+				return fmt.Errorf("%s: %w", t.name, err)
+			}
+			log.Printf("%s: done", t.name)
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("%s: %w", stage, err)
+	}
+	log.Printf("%s: done", stage)
 	return nil
 }
 
 /////////////////////////////////////////////////////////////////////
-/////// Build helpers
+/////// tsgo + esbuild runners
 /////////////////////////////////////////////////////////////////////
 
-func readBuildCache() (*buildHashes, error) {
-	cacheContents, err := os.ReadFile(buildCachePath)
+func run_tsgo(tsconfig string) error {
+	args := []string{
+		"tsgo",
+		"--project", tsconfig,
+		"--declaration",
+		"--emitDeclarationOnly",
+		"--outDir", target_dir,
+		"--noEmit", "false",
+		"--rootDir", "./",
+		"--sourceMap",
+		"--declarationMap",
+	}
+	log.Printf("running: pnpm %s", strings.Join(args, " "))
+	cmd := exec.Command("pnpm", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("tsgo failed for %s: %w", tsconfig, err)
+	}
+	log.Printf("tsgo succeeded (%s)", tsconfig)
+	return nil
+}
+
+func run_esbuild(label string, opts esbuild.BuildOptions) error {
+	result := esbuild.Build(opts)
+	if len(result.Errors) > 0 {
+		for _, e := range result.Errors {
+			log.Printf("%s: %s", label, e.Text)
+		}
+		return fmt.Errorf("%s: esbuild failed", label)
+	}
+	if len(result.Warnings) > 0 {
+		for _, w := range result.Warnings {
+			log.Printf("%s: %s", label, w.Text)
+		}
+		return fmt.Errorf("%s: esbuild had warnings", label)
+	}
+	log.Printf("%s: esbuild succeeded", label)
+	return nil
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Test file cleanup
+/////////////////////////////////////////////////////////////////////
+
+func remove_test_files() {
+	os.RemoveAll(filepath.Join(target_dir, "vorma2/client/tests"))
+
+	filepath.Walk(
+		target_dir,
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if strings.Contains(path, ".test.") ||
+				strings.Contains(path, ".bench.") {
+				os.Remove(path)
+			}
+			return nil
+		},
+	)
+
+	log.Println("test files removed")
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Build cache
+/////////////////////////////////////////////////////////////////////
+
+type build_cache struct {
+	Version    int    `json:"version"`
+	InputHash  string `json:"input_hash"`
+	OutputHash string `json:"output_hash"`
+}
+
+func read_cache() (*build_cache, error) {
+	data, err := os.ReadFile(cache_path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to read build cache: %w", err)
 	}
-
-	var cache buildHashes
-	if err := json.Unmarshal(cacheContents, &cache); err != nil {
-		log.Printf("buildts: ignoring invalid cache file (%v)", err)
+	var c build_cache
+	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, nil
 	}
-
-	if cache.Version != buildCacheVersion {
+	if c.Version != cache_version {
 		return nil, nil
 	}
-
-	return &cache, nil
+	return &c, nil
 }
 
-func writeBuildCache(cache buildHashes) error {
-	cacheContents, err := json.Marshal(cache)
+func write_cache(c build_cache) error {
+	data, err := json.Marshal(c)
 	if err != nil {
 		return fmt.Errorf("failed to marshal build cache: %w", err)
 	}
-
-	if err := os.WriteFile(buildCachePath, cacheContents, 0644); err != nil {
-		return fmt.Errorf("failed to write build cache: %w", err)
-	}
-
-	return nil
+	return os.WriteFile(cache_path, data, 0644)
 }
 
-func hashBuildInputs() (string, error) {
-	return hashFileSet(buildInputPaths, shouldSkipInputPath)
+/////////////////////////////////////////////////////////////////////
+/////// File hashing
+/////////////////////////////////////////////////////////////////////
+
+type file_entry struct {
+	hash_path string
+	real_path string
 }
 
-func hashBuildOutputs() (string, error) {
-	return hashFileSet(buildOutputPaths, shouldSkipOutputPath)
-}
-
-type fileHashEntry struct {
-	hashPath string
-	realPath string
-}
-
-func hashFileSet(
+func hash_file_set(
 	roots []string,
-	shouldSkipPath func(path string, isDir bool) bool,
+	should_skip func(string, bool) bool,
 ) (string, error) {
-	hasher := sha256.New()
-	files := make([]fileHashEntry, 0, 256)
-	presentRoots := make([]string, 0, len(roots))
-	missingRoots := make([]string, 0, len(roots))
+	h := sha256.New()
+	var files []file_entry
+	var present, missing []string
 
 	for _, root := range roots {
-		cleanRoot := filepath.Clean(root)
-		if shouldSkipPath(cleanRoot, true) {
+		clean := filepath.Clean(root)
+		if should_skip(clean, true) {
 			continue
 		}
-
-		fileInfo, err := os.Stat(cleanRoot)
+		info, err := os.Stat(clean)
 		if errors.Is(err, os.ErrNotExist) {
-			missingRoots = append(missingRoots, filepath.ToSlash(cleanRoot))
+			missing = append(missing, filepath.ToSlash(clean))
 			continue
 		}
 		if err != nil {
-			return "", fmt.Errorf("failed to stat %s: %w", cleanRoot, err)
+			return "", fmt.Errorf("stat %s: %w", clean, err)
 		}
-
-		presentRoots = append(presentRoots, filepath.ToSlash(cleanRoot))
-		if !fileInfo.IsDir() {
-			files = append(files, fileHashEntry{
-				hashPath: filepath.ToSlash(cleanRoot),
-				realPath: cleanRoot,
+		present = append(present, filepath.ToSlash(clean))
+		if !info.IsDir() {
+			files = append(files, file_entry{
+				hash_path: filepath.ToSlash(clean),
+				real_path: clean,
 			})
 			continue
 		}
-
-		if err := filepath.WalkDir(cleanRoot, func(path string, d os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-
-			cleanPath := filepath.Clean(path)
-			if shouldSkipPath(cleanPath, d.IsDir()) {
-				if d.IsDir() {
-					return filepath.SkipDir
+		filepath.WalkDir(
+			clean,
+			func(path string, d os.DirEntry, walk_err error) error {
+				if walk_err != nil {
+					return walk_err
 				}
-				return nil
-			}
-
-			if d.IsDir() {
-				return nil
-			}
-
-			files = append(files, fileHashEntry{
-				hashPath: filepath.ToSlash(cleanPath),
-				realPath: cleanPath,
-			})
-			return nil
-		}); err != nil {
-			return "", fmt.Errorf("failed to walk %s: %w", cleanRoot, err)
-		}
-	}
-
-	sort.Strings(presentRoots)
-	sort.Strings(missingRoots)
-	sort.Slice(files, func(i int, j int) bool {
-		return files[i].hashPath < files[j].hashPath
-	})
-
-	for _, root := range presentRoots {
-		if _, err := io.WriteString(hasher, "ROOT:"+root+"\n"); err != nil {
-			return "", fmt.Errorf("failed to hash present roots: %w", err)
-		}
-	}
-	for _, root := range missingRoots {
-		if _, err := io.WriteString(hasher, "MISSING:"+root+"\n"); err != nil {
-			return "", fmt.Errorf("failed to hash missing roots: %w", err)
-		}
-	}
-	for _, file := range files {
-		if _, err := io.WriteString(hasher, "FILE:"+file.hashPath+"\n"); err != nil {
-			return "", fmt.Errorf(
-				"failed to hash file path (%s): %w",
-				file.hashPath,
-				err,
-			)
-		}
-
-		contents, err := os.ReadFile(file.realPath)
-		if err != nil {
-			return "", fmt.Errorf(
-				"failed to read file for hash (%s): %w",
-				file.realPath,
-				err,
-			)
-		}
-		if _, err := hasher.Write(contents); err != nil {
-			return "", fmt.Errorf(
-				"failed to hash file contents (%s): %w",
-				file.hashPath,
-				err,
-			)
-		}
-		if _, err := hasher.Write([]byte{0}); err != nil {
-			return "", fmt.Errorf(
-				"failed to hash file separator (%s): %w",
-				file.hashPath,
-				err,
-			)
-		}
-	}
-
-	return hex.EncodeToString(hasher.Sum(nil)), nil
-}
-
-func shouldSkipInputPath(path string, isDir bool) bool {
-	normalizedPath := filepath.ToSlash(filepath.Clean(path))
-
-	if pathHasSegment(normalizedPath, ".git") ||
-		pathHasSegment(normalizedPath, "node_modules") {
-		return true
-	}
-
-	if normalizedPath == filepath.ToSlash(filepath.Clean(targetDir)) ||
-		strings.HasPrefix(
-			normalizedPath,
-			filepath.ToSlash(filepath.Clean(targetDir))+"/",
-		) {
-		return true
-	}
-
-	if normalizedPath == "typescript/vorma/create/dist" ||
-		strings.HasPrefix(normalizedPath, "typescript/vorma/create/dist/") {
-		return true
-	}
-
-	// Ignore package output produced by `create`.
-	if isDir && filepath.Base(normalizedPath) == "dist" &&
-		strings.Contains(normalizedPath, "typescript/vorma/create") {
-		return true
-	}
-
-	return false
-}
-
-func shouldSkipOutputPath(path string, _ bool) bool {
-	normalizedPath := filepath.ToSlash(filepath.Clean(path))
-	if pathHasSegment(normalizedPath, ".git") ||
-		pathHasSegment(normalizedPath, "node_modules") {
-		return true
-	}
-	if normalizedPath == filepath.ToSlash(filepath.Clean(buildCachePath)) {
-		return true
-	}
-
-	return false
-}
-
-func pathHasSegment(path string, segment string) bool {
-	if path == segment {
-		return true
-	}
-	if strings.HasPrefix(path, segment+"/") {
-		return true
-	}
-	if strings.Contains(path, "/"+segment+"/") {
-		return true
-	}
-	if strings.HasSuffix(path, "/"+segment) {
-		return true
-	}
-	return false
-}
-
-func runTSC(tsConfig string) error {
-	tscRunMutex.Lock()
-	defer tscRunMutex.Unlock()
-
-	args := []string{
-		"tsc",
-		"--project", tsConfig,
-		"--declaration",
-		"--emitDeclarationOnly",
-		"--outDir", "./npm_dist",
-		"--noEmit", "false",
-		"--rootDir", "./",
-		"--sourceMap",
-		"--declarationMap",
-	}
-	log.Printf("running command: pnpm %s", strings.Join(args, " "))
-	cmd := exec.Command("pnpm", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run tsc for %s: %w", tsConfig, err)
-	}
-
-	log.Printf("tsc succeeded (%s)", tsConfig)
-	return nil
-}
-
-func build(label string, opts esbuild.BuildOptions) error {
-	result := esbuild.Build(opts)
-
-	if len(result.Errors) > 0 {
-		for _, err := range result.Errors {
-			log.Println(fmt.Sprintf("%s:", label), err.Text)
-		}
-		return fmt.Errorf("%s: esbuild failed", label)
-	}
-
-	if len(result.Warnings) > 0 {
-		for _, warn := range result.Warnings {
-			log.Println(fmt.Sprintf("%s:", label), warn.Text)
-		}
-		return fmt.Errorf("%s: esbuild had warnings", label)
-	}
-
-	log.Printf("%s: esbuild succeeded\n", label)
-	return nil
-}
-
-func removeTestFiles() error {
-	if err := os.RemoveAll(filepath.Join(targetDir, "typescript/vorma/client/src/tests")); err != nil {
-		return fmt.Errorf("failed to remove client test declarations: %w", err)
-	}
-
-	err := filepath.Walk(
-		targetDir,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-
-			// Remove test files and their source maps
-			if strings.Contains(path, ".test.") ||
-				strings.Contains(path, ".bench.") {
-				return os.Remove(path)
-			}
-
-			return nil
-		},
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to remove test files: %w", err)
-	}
-
-	log.Println("Test files removed successfully")
-	return nil
-}
-
-func assertBuildOutputsAreConsistent() error {
-	if err := assertClientTestDeclarationsAbsent(); err != nil {
-		return err
-	}
-	if err := assertClientDeclarationsHaveSourceFiles(); err != nil {
-		return err
-	}
-	if err := assertNoOrphanClientChunks(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func assertClientTestDeclarationsAbsent() error {
-	clientTestsPath := filepath.Join(
-		targetDir,
-		"typescript/vorma/client/src/tests",
-	)
-	if _, err := os.Stat(clientTestsPath); err == nil {
-		return fmt.Errorf(
-			"client test declarations leaked into build output: %s",
-			filepath.ToSlash(clientTestsPath),
-		)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("failed to stat %s: %w", filepath.ToSlash(clientTestsPath), err)
-	}
-	return nil
-}
-
-func assertClientDeclarationsHaveSourceFiles() error {
-	clientSrcDistPath := filepath.Join(targetDir, "typescript/vorma/client/src")
-	if _, err := os.Stat(clientSrcDistPath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("failed to stat client dist source path: %w", err)
-	}
-
-	var staleDeclarationPaths []string
-	err := filepath.WalkDir(
-		clientSrcDistPath,
-		func(path string, d os.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.IsDir() {
-				return nil
-			}
-			if !strings.HasSuffix(path, ".d.ts") {
-				return nil
-			}
-
-			relativeDistPath, err := filepath.Rel(targetDir, path)
-			if err != nil {
-				return fmt.Errorf(
-					"failed to compute relative path for %s: %w",
-					filepath.ToSlash(path),
-					err,
-				)
-			}
-			relativeDistPath = filepath.ToSlash(relativeDistPath)
-			relativeSourcePathWithoutDeclarationSuffix := strings.TrimSuffix(
-				relativeDistPath,
-				".d.ts",
-			)
-
-			candidateSourcePaths := []string{
-				"./" + relativeSourcePathWithoutDeclarationSuffix + ".ts",
-				"./" + relativeSourcePathWithoutDeclarationSuffix + ".tsx",
-				"./" + relativeSourcePathWithoutDeclarationSuffix + ".d.ts",
-			}
-
-			for _, sourcePath := range candidateSourcePaths {
-				if _, err := os.Stat(sourcePath); err == nil {
+				cp := filepath.Clean(path)
+				if should_skip(cp, d.IsDir()) {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
 					return nil
-				} else if !errors.Is(err, os.ErrNotExist) {
-					return fmt.Errorf("failed to stat source candidate %s: %w", filepath.ToSlash(sourcePath), err)
 				}
-			}
-
-			staleDeclarationPaths = append(
-				staleDeclarationPaths,
-				relativeDistPath,
-			)
-			return nil
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("failed to validate client declarations: %w", err)
-	}
-
-	if len(staleDeclarationPaths) > 0 {
-		sort.Strings(staleDeclarationPaths)
-		return fmt.Errorf(
-			"client build output contains declarations without source files: %s",
-			strings.Join(staleDeclarationPaths, ", "),
+				if !d.IsDir() {
+					files = append(files, file_entry{
+						hash_path: filepath.ToSlash(cp),
+						real_path: cp,
+					})
+				}
+				return nil
+			},
 		)
 	}
 
-	return nil
-}
-
-func assertNoOrphanClientChunks() error {
-	clientDistPath := filepath.Join(targetDir, "typescript/vorma/client")
-	if _, err := os.Stat(clientDistPath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("failed to stat client dist path: %w", err)
-	}
-
-	reachableChunks, err := collectReachableClientChunks(clientDistPath)
-	if err != nil {
-		return err
-	}
-
-	chunkPaths, err := filepath.Glob(
-		filepath.Join(clientDistPath, "chunk-*.js"),
+	sort.Strings(present)
+	sort.Strings(missing)
+	sort.Slice(
+		files,
+		func(i, j int) bool { return files[i].hash_path < files[j].hash_path },
 	)
-	if err != nil {
-		return fmt.Errorf("failed to glob client chunks: %w", err)
+
+	for _, r := range present {
+		io.WriteString(h, "ROOT:"+r+"\n")
 	}
-
-	var orphanChunkNames []string
-	for _, chunkPath := range chunkPaths {
-		chunkName := filepath.Base(chunkPath)
-		if _, ok := reachableChunks[chunkName]; !ok {
-			orphanChunkNames = append(orphanChunkNames, chunkName)
-		}
+	for _, r := range missing {
+		io.WriteString(h, "MISSING:"+r+"\n")
 	}
-
-	if len(orphanChunkNames) > 0 {
-		sort.Strings(orphanChunkNames)
-		return fmt.Errorf(
-			"client build output contains orphan chunks: %s",
-			strings.Join(orphanChunkNames, ", "),
-		)
-	}
-
-	return nil
-}
-
-func collectReachableClientChunks(
-	clientDistPath string,
-) (map[string]struct{}, error) {
-	entryPaths := []string{
-		filepath.Join(clientDistPath, "index.js"),
-		filepath.Join(clientDistPath, "internal.js"),
-		filepath.Join(clientDistPath, "internal/hmr_dev.js"),
-		filepath.Join(clientDistPath, "buildtime.js"),
-	}
-
-	chunkImportPattern := regexp.MustCompile(
-		`(?:from\s+|import\()\s*["'](?:\./|\.\./)+(chunk-[^"']+\.js)["']`,
-	)
-	reachableChunks := make(map[string]struct{})
-	visitedScriptPaths := make(map[string]struct{})
-
-	scriptQueue := make([]string, 0, len(entryPaths))
-	for _, entryPath := range entryPaths {
-		if _, err := os.Stat(entryPath); err == nil {
-			scriptQueue = append(scriptQueue, entryPath)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("failed to stat entry script %s: %w", filepath.ToSlash(entryPath), err)
-		}
-	}
-
-	for len(scriptQueue) > 0 {
-		currentScriptPath := scriptQueue[0]
-		scriptQueue = scriptQueue[1:]
-		if _, seen := visitedScriptPaths[currentScriptPath]; seen {
-			continue
-		}
-		visitedScriptPaths[currentScriptPath] = struct{}{}
-
-		fileContents, err := os.ReadFile(currentScriptPath)
+	for _, f := range files {
+		io.WriteString(h, "FILE:"+f.hash_path+"\n")
+		contents, err := os.ReadFile(f.real_path)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to read script %s: %w",
-				filepath.ToSlash(currentScriptPath),
-				err,
-			)
+			return "", fmt.Errorf("read %s: %w", f.real_path, err)
 		}
-
-		for _, match := range chunkImportPattern.FindAllStringSubmatch(string(fileContents), -1) {
-			chunkName := match[1]
-			if _, seen := reachableChunks[chunkName]; seen {
-				continue
-			}
-			reachableChunks[chunkName] = struct{}{}
-			scriptQueue = append(
-				scriptQueue,
-				filepath.Join(clientDistPath, chunkName),
-			)
-		}
+		h.Write(contents)
+		h.Write([]byte{0})
 	}
 
-	return reachableChunks, nil
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func skip_input(path string, is_dir bool) bool {
+	p := filepath.ToSlash(filepath.Clean(path))
+	if has_segment(p, ".git") || has_segment(p, "node_modules") {
+		return true
+	}
+	td := filepath.ToSlash(filepath.Clean(target_dir))
+	if p == td || strings.HasPrefix(p, td+"/") {
+		return true
+	}
+	if p == "typescript/vorma/create/dist" ||
+		strings.HasPrefix(p, "typescript/vorma/create/dist/") {
+		return true
+	}
+	if is_dir && filepath.Base(p) == "dist" &&
+		strings.Contains(p, "typescript/vorma/create") {
+		return true
+	}
+	return false
+}
+
+func skip_output(path string, _ bool) bool {
+	p := filepath.ToSlash(filepath.Clean(path))
+	if has_segment(p, ".git") || has_segment(p, "node_modules") {
+		return true
+	}
+	if p == filepath.ToSlash(filepath.Clean(cache_path)) {
+		return true
+	}
+	return false
+}
+
+func has_segment(path, seg string) bool {
+	return path == seg ||
+		strings.HasPrefix(path, seg+"/") ||
+		strings.Contains(path, "/"+seg+"/") ||
+		strings.HasSuffix(path, "/"+seg)
 }

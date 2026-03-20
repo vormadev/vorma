@@ -5,9 +5,9 @@ import (
 	"path"
 	"site/backend"
 
-	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/theme"
+	"github.com/vormadev/vorma/vorma2"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -19,10 +19,10 @@ const (
 	SiteDescription = "The Golang metaframework, powered by Vite."
 )
 
-var App = vorma.NewVormaApp(vorma.VormaAppConfig{
-	Wave: backend.Wave,
+var App = vorma2.NewVormaApp(vorma2.VormaAppConfig{
+	Wave: func() *wave.Wave { return wave.New(backend.WaveOpts) },
 
-	HeadDedupeKeysFunc: func(h *vorma.HeadEls) {
+	HeadDedupeKeysFunc: func(h *vorma2.HeadEls) {
 		h.Meta(h.Property("og:title"))
 		h.Meta(h.Property("og:description"))
 		h.Meta(h.Property("og:type"))
@@ -33,13 +33,13 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 		h.Link(h.Rel("icon"))
 	},
 
-	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
+	DefaultHeadElsFunc: func(r *http.Request, app *vorma2.Vorma, h *vorma2.HeadEls) error {
 		currentURL := "https://" + path.Join(Domain, r.URL.Path)
 
-		ogImgURL := app.PublicURL("vorma-banner.webp")
-		favURL := app.PublicURL("favicon.svg")
+		ogImgURL := app.MustPublicURL("vorma-banner.webp")
+		favURL := app.MustPublicURL("favicon.svg")
 
-		if !wave.GetIsDev() {
+		if !wave.IsDev() {
 			ogImgURL = "https://" + path.Join(Domain, ogImgURL)
 		}
 
@@ -61,7 +61,7 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 			"fonts/jetbrains_mono.woff2",
 			"fonts/jetbrains_mono_italic.woff2",
 		} {
-			fontURL := app.PublicURL(fontFile)
+			fontURL := app.MustPublicURL(fontFile)
 			h.Link(
 				h.Rel("preload"),
 				h.As("font"),
