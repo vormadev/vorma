@@ -83,6 +83,15 @@ func main() {
 		{"kit_validate_go", []string{"kit/validate/**/*"}},
 		{"kit_viteutil_go", []string{"lab/viteutil/**/*"}},
 		{"prodcache_go", []string{"internal/pkg/prodcache/**/*"}},
+
+		{
+			"INTERNAL_SITE",
+			[]string{
+				"internal/site/**/*",
+				"!.waveout",
+				"!**/*.{svg,woff2,md}",
+			},
+		},
 	}
 
 	for _, pkg := range packages {

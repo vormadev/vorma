@@ -103,18 +103,14 @@ type super_state struct {
 
 func (s *super_state) new_private_phantom_filemap() *staticproc.Filemap {
 	sp := &staticproc.StaticProcessor{
-		OutDir: s.cfg_path.Dir().Join(
-			constants.DIST_DIRNAME,
-			constants.STATIC_ASSETS_PRIVATE_DIR,
-		),
+		OutDir: s.cfg.waveout_dir.Join(constants.STATIC_ASSETS_PRIVATE_DIR),
 	}
 	return sp.PhantomFilemap()
 }
 
 func (s *super_state) new_public_phantom_filemap() *staticproc.Filemap {
 	sp := &staticproc.StaticProcessor{
-		OutDir: s.cfg_path.Dir().Join(
-			constants.DIST_DIRNAME,
+		OutDir: s.cfg.waveout_dir.Join(
 			constants.STATIC_ASSETS_PUBLIC_DIR,
 		),
 		OutFilePrefix: constants.PUBLIC_STATIC_FILE_PREFIX,
@@ -155,8 +151,7 @@ func (s *super_state) write_runtime_cfg() error {
 	if err != nil {
 		return fmt.Errorf("failed to serialize runtime config: %w", err)
 	}
-	runtime_cfg_path := s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME,
+	runtime_cfg_path := s.cfg.waveout_dir.Join(
 		constants.STATIC_INTERNAL_DIR,
 		constants.RUNTIME_CFG_JSON_FILENAME,
 	)
@@ -315,16 +310,14 @@ func (s *super_state) log_build_err(err error) {
 /////////////////////////////////////////////////////////////////////
 
 func (s *super_state) app_pid_file_path() string {
-	return s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME,
+	return s.cfg.waveout_dir.Join(
 		constants.DEV_DIRNAME,
 		constants.APP_PID_FILENAME,
 	).Str()
 }
 
 func (s *super_state) vite_pid_file_path() string {
-	return s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME,
+	return s.cfg.waveout_dir.Join(
 		constants.DEV_DIRNAME,
 		constants.VITE_PID_FILENAME,
 	).Str()
@@ -355,9 +348,7 @@ func (s *super_state) hook_env() []string {
 // runtime vars the app needs (port, mode, vite port, refresh port).
 func (s *super_state) app_env() []string {
 	static_dir, _ := filepath.Abs(
-		s.cfg_path.Dir().
-			Join(constants.DIST_DIRNAME, constants.STATIC_DIRNAME).
-			Str(),
+		s.cfg.waveout_dir.Join(constants.STATIC_DIRNAME).Str(),
 	)
 	env := []string{
 		fmt.Sprintf("%s=%d", constants.ENV_KEY_RUNTIME_PORT, s.dev_port),
@@ -576,10 +567,7 @@ func (s *super_state) get_private_filemap(
 	var err error
 	sp := &staticproc.StaticProcessor{
 		SrcDir: s.cfg.core.StaticAssetDirs.Private,
-		OutDir: s.cfg_path.Dir().Join(
-			constants.DIST_DIRNAME,
-			constants.STATIC_ASSETS_PRIVATE_DIR,
-		),
+		OutDir: s.cfg.waveout_dir.Join(constants.STATIC_ASSETS_PRIVATE_DIR),
 	}
 	s.private_fm, err = sp.PhysicalFilemap(s.private_fm, evt_paths)
 	if err != nil {
@@ -599,8 +587,7 @@ func (s *super_state) get_public_filemap(
 	sp := &staticproc.StaticProcessor{
 		SrcDir:              s.cfg.core.StaticAssetDirs.Public,
 		PassthroughDirnames: []string{constants.PUBLIC_STATIC_EXCLUDE_DIR},
-		OutDir: s.cfg_path.Dir().Join(
-			constants.DIST_DIRNAME,
+		OutDir: s.cfg.waveout_dir.Join(
 			constants.STATIC_ASSETS_PUBLIC_DIR,
 		),
 		OutFilePrefix: constants.PUBLIC_STATIC_FILE_PREFIX,
@@ -630,8 +617,8 @@ func (s *super_state) build_critical_css() error {
 	// cache for browser settle so we don't re-read from disk
 	s.critical_css_bytes = []byte(css_bundle_out.CSS)
 
-	critical_css_out := s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME, constants.STATIC_INTERNAL_DIR, constants.CRITICAL_CSS_FILENAME,
+	critical_css_out := s.cfg.waveout_dir.Join(
+		constants.STATIC_INTERNAL_DIR, constants.CRITICAL_CSS_FILENAME,
 	)
 	if err := os.WriteFile(critical_css_out.Str(), s.critical_css_bytes, 0644); err != nil {
 		return fmt.Errorf("failed to write critical css: %w", err)
@@ -682,9 +669,7 @@ type build_params struct {
 }
 
 func (s *super_state) wipe_internal_dir() error {
-	internal_dir := s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME, constants.STATIC_INTERNAL_DIR,
-	)
+	internal_dir := s.cfg.waveout_dir.Join(constants.STATIC_INTERNAL_DIR)
 	if err := os.RemoveAll(internal_dir.Str()); err != nil {
 		return fmt.Errorf("failed to clear internal dir: %w", err)
 	}
@@ -949,7 +934,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 			// assets, CSS, and plugin contributions)
 			if err := s.apply_diff(
 				s.public_fm,
-				s.cfg_path.Dir().Join(constants.DIST_DIRNAME, constants.STATIC_INTERNAL_DIR, constants.PUBLIC_FILEMAP_JSON_FILENAME),
+				s.cfg.waveout_dir.Join(constants.STATIC_INTERNAL_DIR, constants.PUBLIC_FILEMAP_JSON_FILENAME),
 			); err != nil {
 				return false, err
 			}
@@ -977,7 +962,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 			s.private_fm != nil {
 			if err := s.apply_diff(
 				s.private_fm,
-				s.cfg_path.Dir().Join(constants.DIST_DIRNAME, constants.STATIC_INTERNAL_DIR, constants.PRIVATE_FILEMAP_JSON_FILENAME),
+				s.cfg.waveout_dir.Join(constants.STATIC_INTERNAL_DIR, constants.PRIVATE_FILEMAP_JSON_FILENAME),
 			); err != nil {
 				return false, err
 			}
@@ -1434,8 +1419,16 @@ func Build(opts BuildOpts) {
 		}
 	}
 
-	// ensure output directories
-	waveout := cfg_path.Dir().Join(constants.DIST_DIRNAME)
+	// parse and validate user config, then plugin config parse,
+	// then validate plugin runtime hooks
+	if err := s.reload_config(); err != nil {
+		s.logger.Error(err.Error())
+		os.Exit(1)
+	}
+
+	// ensure output directories (must be after config parse so we
+	// know where waveout_dir is)
+	waveout := s.cfg.waveout_dir
 	if err := fsutil.EnsureDirs(
 		waveout.Join(constants.STATIC_ASSETS_PRIVATE_DIR).Str(),
 		waveout.Join(constants.STATIC_ASSETS_PUBLIC_DIR).Str(),
@@ -1478,13 +1471,6 @@ func Build(opts BuildOpts) {
 		0644,
 	); err != nil {
 		s.logger.Error("Failed to write config schema: " + err.Error())
-		os.Exit(1)
-	}
-
-	// parse and validate user config, then plugin config parse,
-	// then validate plugin runtime hooks
-	if err := s.reload_config(); err != nil {
-		s.logger.Error(err.Error())
 		os.Exit(1)
 	}
 

@@ -1,24 +1,38 @@
 package wavebuild
 
-import "github.com/vormadev/vorma/internal/pkg/jsonschema"
+import (
+	"fmt"
+
+	"github.com/vormadev/vorma/internal/pkg/jsonschema"
+	"github.com/vormadev/vorma/wave/internal/constants"
+)
 
 var (
 	reserved_json_cfg_keys = []string{
 		"RootDir",
+		"DistDir",
 		"Core",
 		"Vite",
 		"LifecycleHooks",
 	}
 	json_cfg_key_root_dir        = reserved_json_cfg_keys[0] // "RootDir"
-	json_cfg_key_core            = reserved_json_cfg_keys[1] // "Core"
-	json_cfg_key_vite            = reserved_json_cfg_keys[2] // "Vite"
-	json_cfg_key_lifecycle_hooks = reserved_json_cfg_keys[3] // "LifecycleHooks"
+	json_cfg_key_dist_dir        = reserved_json_cfg_keys[1] // "DistDir"
+	json_cfg_key_core            = reserved_json_cfg_keys[2] // "Core"
+	json_cfg_key_vite            = reserved_json_cfg_keys[3] // "Vite"
+	json_cfg_key_lifecycle_hooks = reserved_json_cfg_keys[4] // "LifecycleHooks"
 )
 
 func build_schema(plugin_cfgs []*validated_plugin_config) jsonschema.Entry {
 	props := map[string]jsonschema.Entry{
 		json_cfg_key_root_dir: jsonschema.RequiredString(jsonschema.Def{
 			Description: "Root directory for resolving all other paths. Relative to the config file directory.",
+		}),
+		json_cfg_key_dist_dir: jsonschema.RequiredString(jsonschema.Def{
+			Description: fmt.Sprintf(
+				"Directory where %s is placed. Relative to RootDir.",
+				constants.DIST_DIRNAME,
+			),
+			Examples: []string{".", "build"},
 		}),
 		json_cfg_key_core:            build_core_schema(),
 		json_cfg_key_vite:            build_vite_schema(),
@@ -39,7 +53,7 @@ func build_schema(plugin_cfgs []*validated_plugin_config) jsonschema.Entry {
 		Schema:     "https://json-schema.org/draft/2020-12/schema",
 		Type:       jsonschema.TypeObject,
 		Properties: props,
-		Required:   []string{"RootDir", "Core"},
+		Required:   []string{"RootDir", "DistDir", "Core"},
 	}
 }
 

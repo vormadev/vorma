@@ -2,26 +2,26 @@ package constants
 
 const (
 	/////// BUILD OUTPUTS
-	DIST_DIRNAME                  = ".waveout"                           // .waveout/
-	STATIC_DIRNAME                = "static"                             // .waveout/static/
-	KEEP_FILENAME                 = ".keep"                              // .waveout/static/.keep
-	SCHEMA_JSON_FILENAME          = "schema.json"                        // .waveout/schema.json
-	RUNTIME_CFG_JSON_FILENAME     = "runtime_config.json"                // .waveout/static/internal/runtime_config.json
-	PUBLIC_FILEMAP_JSON_FILENAME  = "public_filemap.json"                // .waveout/static/internal/public_filemap.json
-	PRIVATE_FILEMAP_JSON_FILENAME = "private_filemap.json"               // .waveout/static/internal/private_filemap.json
-	CRITICAL_CSS_FILENAME         = "critical.css"                       // .waveout/static/internal/critical.css
-	STATIC_ASSETS_PRIVATE_DIR     = "static/assets/private"              // .waveout/static/assets/private/
-	STATIC_ASSETS_PUBLIC_DIR      = "static/assets/public"               // .waveout/static/assets/public/
-	PUBLIC_STATIC_FILE_PREFIX     = "wave_out_"                          // .waveout/static/assets/public/wave_out_<hash>.<ext>
-	NON_CRITICAL_CSS_FILENAME     = "wave_internal_non_critical_css.css" // .waveout/static/assets/public/wave_out_wave_internal_non_critical_css_<hash>.css
-	PUBLIC_FILEMAP_FILENAME       = "wave_internal_public_filemap.json"  // .waveout/static/assets/public/wave_out_wave_internal_public_filemap_<hash>.json
-	STATIC_INTERNAL_DIR           = "static/internal"                    // .waveout/static/internal/
+	DIST_DIRNAME                  = ".wavedist"                          // .wavedist/
+	STATIC_DIRNAME                = "static"                             // .wavedist/static/
+	KEEP_FILENAME                 = ".keep"                              // .wavedist/static/.keep
+	SCHEMA_JSON_FILENAME          = "schema.json"                        // .wavedist/schema.json
+	RUNTIME_CFG_JSON_FILENAME     = "runtime_config.json"                // .wavedist/static/internal/runtime_config.json
+	PUBLIC_FILEMAP_JSON_FILENAME  = "public_filemap.json"                // .wavedist/static/internal/public_filemap.json
+	PRIVATE_FILEMAP_JSON_FILENAME = "private_filemap.json"               // .wavedist/static/internal/private_filemap.json
+	CRITICAL_CSS_FILENAME         = "critical.css"                       // .wavedist/static/internal/critical.css
+	STATIC_ASSETS_PRIVATE_DIR     = "static/assets/private"              // .wavedist/static/assets/private/
+	STATIC_ASSETS_PUBLIC_DIR      = "static/assets/public"               // .wavedist/static/assets/public/
+	PUBLIC_STATIC_FILE_PREFIX     = "wave_out_"                          // .wavedist/static/assets/public/wave_out_<hash>.<ext>
+	NON_CRITICAL_CSS_FILENAME     = "wave_internal_non_critical_css.css" // .wavedist/static/assets/public/wave_out_wave_internal_non_critical_css_<hash>.css
+	PUBLIC_FILEMAP_FILENAME       = "wave_internal_public_filemap.json"  // .wavedist/static/assets/public/wave_out_wave_internal_public_filemap_<hash>.json
+	STATIC_INTERNAL_DIR           = "static/internal"                    // .wavedist/static/internal/
 
 	/////// DEV-ONLY STATE
-	DEV_DIRNAME        = "dev"       // .waveout/dev/
-	WAVE_LOCK_FILENAME = "wave.lock" // .waveout/dev/wave.lock
-	APP_PID_FILENAME   = "app.pid"   // .waveout/dev/app.pid
-	VITE_PID_FILENAME  = "vite.pid"  // .waveout/dev/vite.pid
+	DEV_DIRNAME        = "dev"       // .wavedist/dev/
+	WAVE_LOCK_FILENAME = "wave.lock" // .wavedist/dev/wave.lock
+	APP_PID_FILENAME   = "app.pid"   // .wavedist/dev/app.pid
+	VITE_PID_FILENAME  = "vite.pid"  // .wavedist/dev/vite.pid
 
 	/////// CLIENT-SIDE RUNTIME
 	CRITICAL_CSS_EL_ID             = "wave-critical-css"       // <style id="wave-critical-css">

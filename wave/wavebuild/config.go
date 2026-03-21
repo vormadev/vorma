@@ -29,6 +29,7 @@ type unsafe_config struct {
 	// relative to the current working directory of
 	// the underlying OS process.
 	RootDir        strict.CWDRelPath
+	DistDir        strict.CWDRelPath
 	Core           unsafe_core
 	Vite           unsafe_vite
 	LifecycleHooks []LifecycleHook
@@ -39,6 +40,7 @@ type validated_config struct {
 	raw_file_json   []byte
 	root_dir        strict.CWDRelPath
 	root_dir_abs    strict.MachAbsPath
+	waveout_dir     strict.CWDRelPath
 	core            validated_core
 	vite            validated_vite
 	lifecycle_hooks []validated_lifecycle_hook
@@ -95,7 +97,7 @@ type unsafe_core struct {
 	GlobalWatchExcludePatterns []strict.CWDRelPath
 
 	// Name of the compiled binary (e.g. "myapp"). Wave uses this
-	// to derive the output path (.waveout/<n>) and exposes it
+	// to derive the output path (.wavedist/<n>) and exposes it
 	// to hooks via the constants.ENV_KEY_BIN_OUTPUT_PATH environment variable.
 	BinaryName string
 
@@ -237,24 +239,6 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 
 	var err error
 	var reserved reserved_paths
-	waveout_dir := __raw.ConfigPath.MustNormalize().Dir().Join(
-		constants.DIST_DIRNAME,
-	)
-
-	check_no_waveout_conflict := func(
-		p strict.CWDRelPath,
-		label string,
-	) error {
-		if check_overlap(p, waveout_dir) || has_waveout_conflict(p) {
-			return fmt.Errorf(
-				"%s %q overlaps with %q, which is reserved by Wave for build output. Please choose a different path.",
-				label,
-				p,
-				waveout_dir,
-			)
-		}
-		return nil
-	}
 
 	var check_file_and_reserve = func(p strict.CWDRelPath, label string) error {
 		if err := check_file(p, label); err != nil {
@@ -267,20 +251,6 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 			return err
 		}
 		return reserved.add(p, label)
-	}
-	var join_check_and_reserve_file = func(_p strict.CWDRelPath, label string) (strict.CWDRelPath, error) {
-		p := vc.root_dir.Join(_p.MustNormalize().Str())
-		if err := check_no_waveout_conflict(p, label); err != nil {
-			return p, err
-		}
-		return p, check_file_and_reserve(p, label)
-	}
-	var join_check_and_reserve_dir = func(_p strict.CWDRelPath, label string) (strict.CWDRelPath, error) {
-		p := vc.root_dir.Join(_p.MustNormalize().Str())
-		if err := check_no_waveout_conflict(p, label); err != nil {
-			return p, err
-		}
-		return p, check_dir_and_reserve(p, label)
 	}
 
 	/////// Top level
@@ -302,6 +272,53 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 	}
 	// pre-compute this because we pass it to env
 	vc.root_dir_abs = vc.root_dir.MustAbs()
+
+	/////// DistDir (required)
+
+	raw_dist_dir := __raw.DistDir.MustNormalize()
+	if raw_dist_dir == "" {
+		return nil, fmt.Errorf("DistDir is required")
+	}
+	resolved_dist_dir := vc.root_dir.Join(raw_dist_dir.Str())
+	if has_waveout_conflict(resolved_dist_dir) {
+		return nil, fmt.Errorf(
+			"DistDir %q must not contain %q as a path segment",
+			__raw.DistDir,
+			constants.DIST_DIRNAME,
+		)
+	}
+	vc.waveout_dir = resolved_dist_dir.Join(constants.DIST_DIRNAME)
+	waveout_dir := vc.waveout_dir
+
+	check_no_waveout_conflict := func(
+		p strict.CWDRelPath,
+		label string,
+	) error {
+		if check_overlap(p, waveout_dir) || has_waveout_conflict(p) {
+			return fmt.Errorf(
+				"%s %q overlaps with %q, which is reserved by Wave for build output. Please choose a different path.",
+				label,
+				p,
+				waveout_dir,
+			)
+		}
+		return nil
+	}
+
+	var join_check_and_reserve_file = func(_p strict.CWDRelPath, label string) (strict.CWDRelPath, error) {
+		p := vc.root_dir.Join(_p.MustNormalize().Str())
+		if err := check_no_waveout_conflict(p, label); err != nil {
+			return p, err
+		}
+		return p, check_file_and_reserve(p, label)
+	}
+	var join_check_and_reserve_dir = func(_p strict.CWDRelPath, label string) (strict.CWDRelPath, error) {
+		p := vc.root_dir.Join(_p.MustNormalize().Str())
+		if err := check_no_waveout_conflict(p, label); err != nil {
+			return p, err
+		}
+		return p, check_dir_and_reserve(p, label)
+	}
 
 	/////// Core
 
@@ -348,10 +365,7 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 	if filepath.Ext(vc.core.BinaryName) != ".exe" && runtime.GOOS == "windows" {
 		vc.core.BinaryName += ".exe"
 	}
-	bin_out_cwd := vc.config_path.Dir().Join(
-		constants.DIST_DIRNAME,
-		vc.core.BinaryName,
-	)
+	bin_out_cwd := vc.waveout_dir.Join(vc.core.BinaryName)
 	vc.core.binary_output_path_abs = bin_out_cwd.MustAbs()
 
 	vc.core.PublicPathPrefix = strings.TrimSpace(
@@ -524,15 +538,15 @@ func (r *UserConfig) UserRootDir() strict.CWDRelPath {
 }
 
 func (r *UserConfig) WaveOutDir() strict.CWDRelPath {
-	return r.config_path.Dir().Join(constants.DIST_DIRNAME)
+	return r.waveout_dir
 }
 
 func (r *UserConfig) WaveOutRuntimeStaticDir() strict.CWDRelPath {
-	return r.WaveOutDir().Join(constants.STATIC_DIRNAME)
+	return r.waveout_dir.Join(constants.STATIC_DIRNAME)
 }
 
 // BinaryOutputPathAbs returns the path where the compiled binary should
-// be written (e.g. ".waveout/myapp").
+// be written (e.g. ".wavedist/myapp").
 func (r *UserConfig) BinaryOutputPathAbs() strict.MachAbsPath {
 	return r.core.binary_output_path_abs
 }

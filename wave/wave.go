@@ -58,7 +58,7 @@ func (w *Wave) StaticRootFS() fs.FS {
 }
 
 type Options struct {
-	// Must be rooted at .waveout/static.
+	// Must be rooted at .wavedist/static.
 	// Ignored in dev, required in prod.
 	//
 	// If you are using embed.FS from an ancestor directory,

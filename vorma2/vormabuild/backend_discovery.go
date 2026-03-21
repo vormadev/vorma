@@ -33,7 +33,7 @@ var registration_imports = map[string]map[string]struct{}{
 var skip_dirs = map[string]struct{}{
 	".git":         {},
 	"node_modules": {},
-	".waveout":     {},
+	".wavedist":    {},
 	"vendor":       {},
 	"testdata":     {},
 }
