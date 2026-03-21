@@ -1,6 +1,7 @@
 package staticproc
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,13 +11,23 @@ import (
 	"time"
 )
 
+// Interface assertions.
+var (
+	_ fs.StatFS     = (*synthetic_fs)(nil)
+	_ fs.ReadFileFS = (*synthetic_fs)(nil)
+	_ fs.ReadDirFS  = (*synthetic_fs)(nil)
+	_ fs.SubFS      = (*synthetic_fs)(nil)
+)
+
 // ToSyntheticFS builds an fs.FS that presents the original logical
 // source paths, while resolving all reads to the flat, hashed files
 // in flat_fs. Directory structure is synthesized from the filemap
 // keys. Both file and directory opens are O(1) map lookups.
 //
 // Returns an error if the filemap contains a path that is both a
-// file and a directory prefix (e.g. "a" and "a/b").
+// file and a directory prefix (e.g. "a" and "a/b"), if any logical
+// or resolved path is invalid per fs.ValidPath, or if a resolved
+// path points at a directory.
 func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) (fs.FS, error) {
 	files := make(map[string]string, len(filemap))
 	dir_children := map[string][]string{".": nil}
@@ -26,6 +37,15 @@ func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) (fs.FS, error) {
 		resolved = strings.TrimPrefix(resolved, "/")
 		if logical == "" {
 			continue
+		}
+		if !fs.ValidPath(logical) {
+			return nil, fmt.Errorf("invalid logical path %q", logical)
+		}
+		if !fs.ValidPath(resolved) {
+			return nil, fmt.Errorf(
+				"invalid resolved path %q for logical %q",
+				resolved, logical,
+			)
 		}
 		files[logical] = resolved
 
@@ -68,9 +88,9 @@ func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) (fs.FS, error) {
 			}
 			_, is_dir := dir_children[child_path]
 			if is_dir {
-				entries = append(entries, &synth_dir_entry{
-					info: &synth_dir_info{name_str: name},
-				})
+				entries = append(entries, fs.FileInfoToDirEntry(
+					&synth_dir_info{name_str: name},
+				))
 			} else {
 				resolved := files[child_path]
 				real_info, err := fs.Stat(flat_fs, resolved)
@@ -80,12 +100,15 @@ func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) (fs.FS, error) {
 						child_path, resolved, err,
 					)
 				}
-				entries = append(entries, &synth_dir_entry{
-					info: &synth_file_info{
-						FileInfo: real_info,
-						name_str: name,
-					},
-				})
+				if real_info.IsDir() {
+					return nil, fmt.Errorf(
+						"resolved path %q for logical %q is a directory",
+						resolved, child_path,
+					)
+				}
+				entries = append(entries, fs.FileInfoToDirEntry(
+					&synth_file_info{FileInfo: real_info, name_str: name},
+				))
 			}
 		}
 		dirs[dir_path] = entries
@@ -106,6 +129,9 @@ func (m *synthetic_fs) ReadDir(name string) ([]fs.DirEntry, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrInvalid}
 	}
+	if _, ok := m.files[name]; ok {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrInvalid}
+	}
 	entries, ok := m.dirs[name]
 	if !ok {
 		return nil, &fs.PathError{
@@ -114,10 +140,7 @@ func (m *synthetic_fs) ReadDir(name string) ([]fs.DirEntry, error) {
 			Err:  fs.ErrNotExist,
 		}
 	}
-	// Return a copy to prevent callers from mutating our slice.
-	result := make([]fs.DirEntry, len(entries))
-	copy(result, entries)
-	return result, nil
+	return clone_dir_entries(entries), nil
 }
 
 // Sub implements fs.SubFS by returning a new synthetic_fs scoped
@@ -155,8 +178,8 @@ func (m *synthetic_fs) Sub(dir string) (fs.FS, error) {
 	}, nil
 }
 
-// Stat implements fs.StatFS, avoiding the fallback Open/Stat/Close
-// round-trip. This is the hot path for http.FileServer.
+// Stat implements fs.StatFS, letting callers stat a logical path
+// without a full Open/Stat/Close round-trip.
 func (m *synthetic_fs) Stat(name string) (fs.FileInfo, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrInvalid}
@@ -164,11 +187,7 @@ func (m *synthetic_fs) Stat(name string) (fs.FileInfo, error) {
 	if resolved, ok := m.files[name]; ok {
 		info, err := fs.Stat(m.underlying, resolved)
 		if err != nil {
-			return nil, &fs.PathError{
-				Op:   "stat",
-				Path: name,
-				Err:  fs.ErrNotExist,
-			}
+			return nil, remap_path_err("stat", name, err)
 		}
 		return &synth_file_info{FileInfo: info, name_str: path.Base(name)}, nil
 	}
@@ -188,13 +207,16 @@ func (m *synthetic_fs) ReadFile(name string) ([]byte, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
 	}
+	if _, ok := m.dirs[name]; ok {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+	}
 	resolved, ok := m.files[name]
 	if !ok {
 		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
 	}
 	data, err := fs.ReadFile(m.underlying, resolved)
 	if err != nil {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+		return nil, remap_path_err("read", name, err)
 	}
 	return data, nil
 }
@@ -207,11 +229,7 @@ func (m *synthetic_fs) Open(name string) (fs.File, error) {
 	if resolved, ok := m.files[name]; ok {
 		f, err := m.underlying.Open(resolved)
 		if err != nil {
-			return nil, &fs.PathError{
-				Op:   "open",
-				Path: name,
-				Err:  fs.ErrNotExist,
-			}
+			return nil, remap_path_err("open", name, err)
 		}
 		return &synth_file{File: f, logical_name: path.Base(name)}, nil
 	}
@@ -221,7 +239,10 @@ func (m *synthetic_fs) Open(name string) (fs.File, error) {
 		if name != "." {
 			dir_name = path.Base(name)
 		}
-		return &synth_open_dir{name_str: dir_name, entries: entries}, nil
+		return &synth_open_dir{
+			name_str: dir_name,
+			entries:  entries,
+		}, nil
 	}
 
 	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
@@ -288,7 +309,7 @@ func (d *synth_open_dir) Close() error { return nil }
 
 func (d *synth_open_dir) ReadDir(n int) ([]fs.DirEntry, error) {
 	if n <= 0 {
-		rest := d.entries[d.offset:]
+		rest := clone_dir_entries(d.entries[d.offset:])
 		d.offset = len(d.entries)
 		return rest, nil
 	}
@@ -296,7 +317,7 @@ func (d *synth_open_dir) ReadDir(n int) ([]fs.DirEntry, error) {
 		return nil, io.EOF
 	}
 	end := min(d.offset+n, len(d.entries))
-	result := d.entries[d.offset:end]
+	result := clone_dir_entries(d.entries[d.offset:end])
 	d.offset = end
 	if d.offset >= len(d.entries) {
 		return result, io.EOF
@@ -324,12 +345,23 @@ func (d *synth_dir_info) ModTime() time.Time { return time.Time{} }
 func (d *synth_dir_info) IsDir() bool        { return true }
 func (d *synth_dir_info) Sys() any           { return nil }
 
-type synth_dir_entry struct {
-	info fs.FileInfo
+/////////////////////////////////////////////////////////////////////
+/////// helpers
+/////////////////////////////////////////////////////////////////////
+
+func clone_dir_entries(src []fs.DirEntry) []fs.DirEntry {
+	dst := make([]fs.DirEntry, len(src))
+	copy(dst, src)
+	return dst
 }
 
-func (e *synth_dir_entry) Name() string { return e.info.Name() }
-func (e *synth_dir_entry) IsDir() bool  { return e.info.IsDir() }
-
-func (e *synth_dir_entry) Type() fs.FileMode          { return e.info.Mode().Type() }
-func (e *synth_dir_entry) Info() (fs.FileInfo, error) { return e.info, nil }
+// remap_path_err replaces the path inside an fs.PathError with the
+// logical name while preserving the underlying error cause. This
+// prevents hashed filenames from leaking to callers.
+func remap_path_err(op string, logical string, err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return &fs.PathError{Op: op, Path: logical, Err: pe.Err}
+	}
+	return &fs.PathError{Op: op, Path: logical, Err: err}
+}

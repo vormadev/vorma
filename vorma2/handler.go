@@ -17,9 +17,9 @@ import (
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/set"
-	"github.com/vormadev/vorma/lab/viteutil"
 	"github.com/vormadev/vorma/vorma2/internal/constants"
 	"github.com/vormadev/vorma/vorma2/internal/types"
+	"github.com/vormadev/vorma/vorma2/internal/viteutil"
 	"github.com/vormadev/vorma/wave"
 )
 

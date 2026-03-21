@@ -2,7 +2,6 @@ package viteutil
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/lab/stringsutil"
 )
 
@@ -28,9 +28,9 @@ type ManifestChunk struct {
 
 type Manifest map[string]ManifestChunk
 
-func ReadManifest(manifestPath string) (Manifest, error) {
+func ReadManifest(manifest_path string) (Manifest, error) {
 	manifest := make(Manifest)
-	contents, err := os.ReadFile(manifestPath)
+	contents, err := os.ReadFile(manifest_path)
 	if err != nil {
 		return manifest, err
 	}
@@ -41,16 +41,16 @@ func ReadManifest(manifestPath string) (Manifest, error) {
 // FindAllDependencies recursively finds all of a module's dependencies
 // according to the provided Vite manifest. The importPath arg
 // should be a key in the manifest map.
-func FindAllDependencies(manifest Manifest, importPath string) []string {
-	seen := make(map[string]bool)
+func FindAllDependencies(manifest Manifest, import_path string) []string {
+	seen := &set.Set[string]{}
 	var result []string
 
 	var recurse func(ip string)
 	recurse = func(ip string) {
-		if seen[ip] {
+		if seen.Has(ip) {
 			return
 		}
-		seen[ip] = true
+		seen.Add(ip)
 		result = append(result, ip)
 
 		if chunk, exists := manifest[ip]; exists {
@@ -60,56 +60,22 @@ func FindAllDependencies(manifest Manifest, importPath string) []string {
 		}
 	}
 
-	recurse(importPath)
+	recurse(import_path)
 
-	cleanResults := make([]string, 0, len(result)+1)
+	clean_results := make([]string, 0, len(result)+1)
 	for _, res := range result {
 		if chunk, exists := manifest[res]; exists {
-			cleanResults = append(cleanResults, path.Base(chunk.File))
+			clean_results = append(clean_results, path.Base(chunk.File))
 		}
 	}
 
-	if chunk, exists := manifest[importPath]; exists {
-		if !slices.Contains(cleanResults, path.Base(chunk.File)) {
-			cleanResults = append(cleanResults, path.Base(chunk.File))
+	if chunk, exists := manifest[import_path]; exists {
+		if !slices.Contains(clean_results, path.Base(chunk.File)) {
+			clean_results = append(clean_results, path.Base(chunk.File))
 		}
 	}
 
-	return cleanResults
-}
-
-// FindRelativeEntrypointPath finds the manifest key for a given entry point file
-func FindRelativeEntrypointPath(
-	manifest Manifest,
-	entrypointToFind string,
-) (string, error) {
-	normalizedEntrypointToFind := normalizeViteManifestPath(entrypointToFind)
-
-	for key, chunk := range manifest {
-		if !chunk.IsEntry {
-			continue
-		}
-
-		if normalizeViteManifestPath(chunk.Src) == normalizedEntrypointToFind {
-			return key, nil
-		}
-
-		if normalizeViteManifestPath(key) == normalizedEntrypointToFind {
-			return key, nil
-		}
-	}
-
-	return "", errors.New("entrypoint not found")
-}
-
-func normalizeViteManifestPath(pathValue string) string {
-	trimmedPathValue := strings.TrimSpace(pathValue)
-	trimmedPathValue = strings.TrimPrefix(trimmedPathValue, "/")
-	trimmedPathValue = strings.TrimPrefix(trimmedPathValue, "./")
-	if trimmedPathValue == "" {
-		return ""
-	}
-	return path.Clean(trimmedPathValue)
+	return clean_results
 }
 
 type Variant string
@@ -126,7 +92,7 @@ type ToDevScriptsOptions struct {
 }
 
 func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
-	var htmlBuilder strings.Builder
+	var html_builder strings.Builder
 	var err error
 
 	if options.ClientEntry == "" {
@@ -152,7 +118,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 			Tag:                 "script",
 			AttributesKnownSafe: map[string]string{"type": "module"},
 			DangerousInnerHTML:  b.String(),
-		}, &htmlBuilder)
+		}, &html_builder)
 		if err != nil {
 			return "", fmt.Errorf("could not render vite script: %w", err)
 		}
@@ -163,7 +129,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 			"http://localhost:%d/@vite/client",
 			options.Port,
 		),
-		&htmlBuilder,
+		&html_builder,
 	)
 	if err != nil {
 		return "", fmt.Errorf("could not render vite script: %w", err)
@@ -173,18 +139,18 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 		fmt.Sprintf(
 			"http://localhost:%d/%s",
 			options.Port,
-			stripPrecedingSlash(options.ClientEntry),
+			strip_preceding_slash(options.ClientEntry),
 		),
-		&htmlBuilder,
+		&html_builder,
 	)
 	if err != nil {
 		return "", fmt.Errorf("could not render vite script: %w", err)
 	}
 
-	return template.HTML(htmlBuilder.String()), nil
+	return template.HTML(html_builder.String()), nil
 }
 
-func stripPrecedingSlash(s string) string {
+func strip_preceding_slash(s string) string {
 	if strings.HasPrefix(s, "/") {
 		return s[1:]
 	}

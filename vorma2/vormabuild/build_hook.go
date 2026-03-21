@@ -13,9 +13,9 @@ import (
 	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/kit/jsonutil"
-	"github.com/vormadev/vorma/lab/viteutil"
 	"github.com/vormadev/vorma/vorma2/internal/constants"
 	"github.com/vormadev/vorma/vorma2/internal/types"
+	"github.com/vormadev/vorma/vorma2/internal/viteutil"
 	"github.com/vormadev/vorma/wave/wavebuild"
 	"golang.org/x/sync/errgroup"
 )

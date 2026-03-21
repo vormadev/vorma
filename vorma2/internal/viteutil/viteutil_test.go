@@ -5,30 +5,6 @@ import (
 	"testing"
 )
 
-func TestFindRelativeEntrypointPath_ResolvesFromManifestSourceEntryPath(
-	t *testing.T,
-) {
-	manifest := Manifest{
-		"src/main.ts": {
-			Src:     "src/main.ts",
-			File:    "assets/main-abcdef.js",
-			IsEntry: true,
-		},
-	}
-
-	got, err := FindRelativeEntrypointPath(manifest, "src/main.ts")
-	if err != nil {
-		t.Fatalf("FindRelativeEntrypointPath() error = %v", err)
-	}
-	if got != "src/main.ts" {
-		t.Fatalf(
-			"FindRelativeEntrypointPath() = %q, want %q",
-			got,
-			"src/main.ts",
-		)
-	}
-}
-
 func TestFindAllDependencies_RecursesThroughManifestImports(t *testing.T) {
 	manifest := Manifest{
 		"src/main.ts": {
