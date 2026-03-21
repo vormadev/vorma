@@ -83,7 +83,11 @@ var bufPool = sync.Pool{
 	},
 }
 
-func newETagWriter(w http.ResponseWriter, hash hash.Hash, maxSize int64) *etagWriter {
+func newETagWriter(
+	w http.ResponseWriter,
+	hash hash.Hash,
+	maxSize int64,
+) *etagWriter {
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	return &etagWriter{
@@ -167,7 +171,9 @@ func (ew *etagWriter) Flush() {
 func (ew *etagWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hijacker, ok := ew.w.(http.Hijacker)
 	if !ok {
-		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+		return nil, nil, fmt.Errorf(
+			"response writer does not support hijacking",
+		)
 	}
 	ew.tooBig = true
 	return hijacker.Hijack()
@@ -236,7 +242,7 @@ func hasNoStoreDirective(cacheControl string) bool {
 }
 
 func generateETag(h hash.Hash, strong bool, headers http.Header) string {
-	if buildID := headers.Get("X-Wave-Framework-Build-Id"); buildID != "" {
+	if buildID := headers.Get("X-Vorma-Client-Build-Id"); buildID != "" {
 		h.Write([]byte(buildID))
 	}
 

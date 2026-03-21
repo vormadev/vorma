@@ -10,31 +10,6 @@ import { apply_scroll_state, normalize_hash } from "./scroll.ts";
 import type { ScrollState, VormaLinkPropsBase } from "./types.ts";
 import { classify_target, getHrefDetails, get_target_data_key } from "./url.ts";
 
-// single set of keys to strip, covering both nav-specific
-// props and event handlers that we compose internally.
-const INTERNAL_PROP_KEYS = new Set<string>([
-	// nav-specific
-	"prefetch",
-	"prefetchDelayMs",
-	"replace",
-	"scrollToTop",
-	"beforeBegin",
-	"beforeRender",
-	"afterRender",
-	"pattern",
-	"params",
-	"splatValues",
-	"search",
-	"hash",
-	// event handlers we compose
-	"onPointerEnter",
-	"onFocus",
-	"onPointerLeave",
-	"onBlur",
-	"onTouchCancel",
-	"onClick",
-]);
-
 // For external links we only strip nav-specific props, not event handlers
 // (since we don't provide overriding handlers except onClick).
 const NAV_ONLY_KEYS = new Set<string>([
@@ -42,7 +17,7 @@ const NAV_ONLY_KEYS = new Set<string>([
 	"prefetchDelayMs",
 	"replace",
 	"scrollToTop",
-	"beforeBegin",
+	"beforeNavigate",
 	"beforeRender",
 	"afterRender",
 	"pattern",
@@ -50,6 +25,20 @@ const NAV_ONLY_KEYS = new Set<string>([
 	"splatValues",
 	"search",
 	"hash",
+	"state",
+]);
+
+// single set of keys to strip, covering both nav-specific
+// props and event handlers that we compose internally.
+const INTERNAL_PROP_KEYS = new Set<string>([
+	...NAV_ONLY_KEYS.values(),
+	// event handlers we compose
+	"onPointerEnter",
+	"onFocus",
+	"onPointerLeave",
+	"onBlur",
+	"onTouchCancel",
+	"onClick",
 ]);
 
 function strip_props(
@@ -189,7 +178,7 @@ export function make_link_props<LinkEvent>(
 			onClick: async (e) => {
 				try {
 					await consumer_click?.(e);
-					await link_props.beforeBegin?.(e);
+					await link_props.beforeNavigate?.(e);
 				} catch {
 					/* swallow in DOM event handler */
 				}
@@ -223,7 +212,7 @@ export function make_link_props<LinkEvent>(
 			? create_prefetch_handlers({
 					href,
 					delay_ms: link_props.prefetchDelayMs,
-					before_begin: link_props.beforeBegin as any,
+					before_begin: link_props.beforeNavigate as any,
 				})
 			: null;
 	const should_stop = () => !ensure_global().is_touch_active;
@@ -271,7 +260,7 @@ export function make_link_props<LinkEvent>(
 		onClick: async (e) => {
 			try {
 				const ev = e as any;
-				await consumer_click?.(e);
+				consumer_click?.(e);
 				if (ev.defaultPrevented) {
 					return;
 				}
@@ -322,7 +311,7 @@ export function make_link_props<LinkEvent>(
 				}
 
 				if (should_run_begin) {
-					await link_props.beforeBegin?.(e);
+					await link_props.beforeNavigate?.(e);
 				}
 				await link_props.beforeRender?.(e);
 				const result = await vormaNavigate(href, {

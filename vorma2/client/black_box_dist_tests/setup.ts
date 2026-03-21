@@ -142,7 +142,7 @@ export function create_route_data_response(
 
 	const headers = new Headers({
 		"Content-Type": "application/json",
-		"X-Wave-Framework-Build-Id": "1",
+		"X-Vorma-Client-Build-Id": "1",
 	});
 	if (init.headers) {
 		new Headers(init.headers).forEach((value, key) => {
@@ -309,6 +309,67 @@ export function collect_status_snapshots(client: {
 		statuses.push(event.detail);
 	});
 	return { statuses, cleanup };
+}
+
+// ─── Location Stub ───────────────────────────────────────────────
+
+export function stub_window_location_href(
+	initial_href = window.location.href,
+): {
+	get_href: () => string;
+	restore: () => void;
+} {
+	const original_location = window.location;
+	let href = initial_href;
+
+	function resolve_url(): URL {
+		return new URL(href, original_location.href);
+	}
+
+	const stub = {
+		get href() {
+			return href;
+		},
+		set href(value: string) {
+			href = new URL(String(value), href).href;
+		},
+		get origin() {
+			return resolve_url().origin;
+		},
+		get pathname() {
+			return resolve_url().pathname;
+		},
+		get search() {
+			return resolve_url().search;
+		},
+		get hash() {
+			return resolve_url().hash;
+		},
+		assign(value: string | URL): void {
+			href = new URL(String(value), href).href;
+		},
+		replace(value: string | URL): void {
+			href = new URL(String(value), href).href;
+		},
+		toString(): string {
+			return href;
+		},
+	} as Location;
+
+	Object.defineProperty(window, "location", {
+		value: stub,
+		configurable: true,
+	});
+
+	return {
+		get_href: () => href,
+		restore: () => {
+			Object.defineProperty(window, "location", {
+				value: original_location,
+				configurable: true,
+			});
+		},
+	};
 }
 
 // ─── Seeded Random ───────────────────────────────────────────────

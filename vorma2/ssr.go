@@ -32,7 +32,6 @@ x.snapshot = {
 	params: {{.Params}},
 	splat_values: {{.SplatValues}},
 	client_build_id: {{.ClientBuildID}},
-	root_element_id: "{{.RootElementID}}",
 };
 </script>`
 
@@ -47,7 +46,6 @@ type ssr_input struct {
 	DeploymentID            string
 	RouteManifestURL        string
 	ClientBuildID           string
-	RootElementID           string
 	OutermostServerError    string
 	OutermostServerErrorIdx *int
 	ErrorExportKeys         []string

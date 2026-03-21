@@ -38,13 +38,10 @@ gobench:
 tstest: tstest-source tstest-dist
 
 tstest-source: npmbuild
-	@pnpm vitest run --exclude "typescript/vorma/black_box_tests/dist/**"
+	@pnpm vitest run --exclude "vorma2/client/black_box_dist_tests/**"
 
 tstest-dist: npmbuild
-	@pnpm vitest --run --config typescript/vorma/black_box_tests/dist/vitest.config.ts
-
-tstestwatch:
-	@pnpm vitest --exclude "typescript/vorma/black_box_tests/dist/**"
+	@pnpm vitest --run --config vorma2/client/black_box_dist_tests/vitest.config.ts
 
 tsbench:
 	@npx vitest bench
@@ -69,7 +66,7 @@ tscheck-fw-client:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/client
 
 tscheck-fw-client-dist:
-	@pnpm tsgo --noEmit --project ./vorma2/client/black_box_tests/dist/tsconfig.json
+	@pnpm tsgo --noEmit --project ./vorma2/client/black_box_dist_tests/tsconfig.json
 
 tscheck-fw-react:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/react
@@ -147,4 +144,4 @@ print-client-types-from-dist:
 	done
 
 print-client-types-typecheck-file:
-	@cat vorma2/client/black_box_tests/dist/public_api_types.typecheck.ts
+	@cat vorma2/client/black_box_dist_tests/public_api_types.typecheck.ts

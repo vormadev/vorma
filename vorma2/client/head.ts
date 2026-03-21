@@ -42,28 +42,67 @@ function fingerprint(
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([k, v]) => `${k}=${v}`)
 		.join("|");
-	return `${tag.toLowerCase()}::${sorted}::${inner}`;
+	return `fp::${tag.toLowerCase()}::${sorted}::${inner}`;
 }
 
-function el_fp(el: Element): string {
-	const a: Record<string, string> = {};
-	for (const attr of Array.from(el.attributes)) {
-		a[attr.name] = attr.value;
+function semantic_key(
+	tag: string,
+	attrs: Record<string, string>,
+): string | null {
+	const t = tag.toLowerCase();
+	if (t === "meta") {
+		if (attrs["name"]) {
+			return `meta::name=${attrs["name"]}`;
+		}
+		if (attrs["property"]) {
+			return `meta::property=${attrs["property"]}`;
+		}
+		if (attrs["http-equiv"]) {
+			return `meta::http-equiv=${attrs["http-equiv"]}`;
+		}
+		if ("charset" in attrs) {
+			return "meta::charset";
+		}
 	}
-	return fingerprint(el.tagName, a, el.innerHTML);
+	if (t === "link") {
+		if (attrs["rel"]) {
+			return `link::rel=${attrs["rel"]}`;
+		}
+	}
+	if (t === "script") {
+		if (attrs["src"]) {
+			return `script::src=${attrs["src"]}`;
+		}
+	}
+	return null;
 }
 
-function block_fp(b: HeadEl): string {
-	return fingerprint(b.tag, build_attr_map(b), b.dangerousInnerHTML ?? "");
+function match_key_for_el(el: Element): string {
+	const attrs: Record<string, string> = {};
+	for (const attr of Array.from(el.attributes)) {
+		attrs[attr.name] = attr.value;
+	}
+	const tag = el.tagName.toLowerCase();
+	return semantic_key(tag, attrs) ?? fingerprint(tag, attrs, el.innerHTML);
+}
+
+function match_key_for_block(block: HeadEl): string {
+	const attrs = build_attr_map(block);
+	const tag = block.tag.toLowerCase();
+	return (
+		semantic_key(tag, attrs) ??
+		fingerprint(tag, attrs, block.dangerousInnerHTML ?? "")
+	);
 }
 
 export function reconcile_head(type: HeadSection, blocks: HeadEl[]): void {
 	const { start, end } = find_boundary_comments(type);
 	if (!start || !end) {
-		return;
+		throw new Error(`Missing managed head markers for section "${type}".`);
 	}
 	const parent = end.parentNode!;
 
+	// Collect existing elements between markers
 	const existing: Element[] = [];
 	let node: Node | null = start.nextSibling;
 	while (node && node !== end) {
@@ -73,19 +112,35 @@ export function reconcile_head(type: HeadSection, blocks: HeadEl[]): void {
 		node = node.nextSibling;
 	}
 
+	// Build a map of existing elements by match key
+	const existing_by_key = new Map<string, Element[]>();
+	for (const el of existing) {
+		const key = match_key_for_el(el);
+		const list = existing_by_key.get(key);
+		if (list) {
+			list.push(el);
+		} else {
+			existing_by_key.set(key, [el]);
+		}
+	}
+
 	const used = new Set<Element>();
 	const final_els: Element[] = [];
 
 	for (const block of blocks) {
-		const fp = block_fp(block);
-		const matched = existing.find(
-			(el) => !used.has(el) && el_fp(el) === fp,
-		);
-		const el = matched ?? document.createElement(block.tag);
+		const key = match_key_for_block(block);
+		const candidates = existing_by_key.get(key);
+		const matched = candidates?.find((el) => !used.has(el));
+
+		let el: Element;
 		if (matched) {
 			used.add(matched);
+			el = matched;
+		} else {
+			el = document.createElement(block.tag);
 		}
 
+		// Patch attributes to match desired state
 		const desired = build_attr_map(block);
 		for (const name of Array.from(el.attributes).map((a) => a.name)) {
 			if (!(name in desired)) {
@@ -101,13 +156,17 @@ export function reconcile_head(type: HeadSection, blocks: HeadEl[]): void {
 		if (el.innerHTML !== inner) {
 			el.innerHTML = inner;
 		}
+
 		final_els.push(el);
 	}
 
+	// Place all final elements in order before the end comment
 	for (const el of final_els) {
 		parent.insertBefore(el, end);
 	}
 
+	// Remove everything between start and end that isn't in the final set
+	// (including stale elements and text nodes)
 	node = start.nextSibling;
 	const final_set = new Set(final_els);
 	while (node && node !== end) {
@@ -124,7 +183,13 @@ export function reconcile_head(type: HeadSection, blocks: HeadEl[]): void {
 
 export function apply_head_and_title(artifacts: NavigationArtifacts): void {
 	if (artifacts.title !== undefined) {
-		document.title = artifacts.title;
+		// Only assign when there is a non-empty title to set, or when a
+		// <title> element already exists and needs to be cleared.
+		// Assigning "" when no <title> exists would create one as a side
+		// effect, adding an unexpected node to document.head.
+		if (artifacts.title !== "" || document.head.querySelector("title")) {
+			document.title = artifacts.title;
+		}
 	}
 	reconcile_head("meta", artifacts.meta_head_els);
 	reconcile_head("rest", artifacts.rest_head_els);

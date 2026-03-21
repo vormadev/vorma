@@ -213,7 +213,7 @@ export type VormaLinkPropsBase<LinkEvent = unknown> = {
 	prefetchDelayMs?: number;
 	replace?: boolean;
 	scrollToTop?: boolean;
-	beforeBegin?: (event: LinkEvent) => void | Promise<void>;
+	beforeNavigate?: (event: LinkEvent) => void | Promise<void>;
 	beforeRender?: (event: LinkEvent) => void | Promise<void>;
 	afterRender?: (event: LinkEvent) => void | Promise<void>;
 };
@@ -341,7 +341,6 @@ export type InitClientInput = {
 	renderFn?: () => void | Promise<void>;
 	defaultErrorBoundary?: (props: { error: unknown }) => any;
 	useViewTransitions?: boolean;
-	rootElementID?: string;
 };
 
 // ─── Loading Indicator Config ───────────────────────────────────
@@ -421,7 +420,6 @@ export type RuntimeRouteSnapshot = {
 	params: Record<string, string>;
 	splat_values: string[];
 	client_build_id: string;
-	root_element_id?: string;
 	active_components: unknown[];
 	active_error_boundary: unknown;
 	client_loaders_data: unknown[];

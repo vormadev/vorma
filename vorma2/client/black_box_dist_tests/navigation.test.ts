@@ -822,7 +822,7 @@ describe("navigation", () => {
 						},
 						{
 							headers: {
-								"X-Wave-Framework-Build-Id": "winner-build",
+								"X-Vorma-Client-Build-Id": "winner-build",
 							},
 						},
 					),
@@ -843,7 +843,7 @@ describe("navigation", () => {
 					},
 					{
 						headers: {
-							"X-Wave-Framework-Build-Id": "stale-build",
+							"X-Vorma-Client-Build-Id": "stale-build",
 						},
 					},
 				),
@@ -854,6 +854,7 @@ describe("navigation", () => {
 
 			expect(window.location.pathname).toBe("/winner-effects");
 			expect(document.title).toBe("Winner");
+			expect(client.getClientBuildID()).toBe("winner-build");
 			expect(
 				build_id_events.some(
 					(e) => e.newClientBuildID === "stale-build",

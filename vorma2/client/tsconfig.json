@@ -2,10 +2,10 @@
 	"extends": "../../tsconfig.base.json",
 	"exclude": [
 		"./ui-adapters/**",
-		"./black_box_tests/**",
+		"./black_box_dist_tests/**",
 		"**/node_modules",
 		"../../../npm_dist",
 		"./**/*.test.ts",
-		"./**/*.test.tsx"
-	]
+		"./**/*.test.tsx",
+	],
 }

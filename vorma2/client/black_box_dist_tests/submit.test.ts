@@ -884,9 +884,8 @@ describe("submit", () => {
 						{},
 						{
 							headers: {
-								"X-Wave-Framework-Reload": "/dedupe-stale-hard",
-								"X-Wave-Framework-Build-Id":
-									"stale-dedupe-build",
+								"X-Vorma-Reload": "/dedupe-stale-hard",
+								"X-Vorma-Client-Build-Id": "stale-dedupe-build",
 							},
 						},
 					),

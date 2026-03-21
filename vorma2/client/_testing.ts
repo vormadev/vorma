@@ -55,7 +55,6 @@ export type SeedSnapshotInput = {
 	splat_values?: string[];
 	outermost_server_error?: unknown;
 	outermost_server_error_idx?: number | null;
-	root_element_id?: string;
 };
 
 export function seed_runtime_route_snapshot_for_testing(
@@ -85,7 +84,6 @@ export function seed_runtime_route_snapshot_for_testing(
 		splat_values: input.splat_values ?? [],
 		outermost_server_error: input.outermost_server_error,
 		outermost_server_error_idx: input.outermost_server_error_idx,
-		root_element_id: input.root_element_id ?? s.root_element_id,
 	};
 }
 
@@ -282,4 +280,48 @@ export async function simulate_vite_after_update_for_testing(
 	ensure_global();
 	const { apply_vite_update } = await import("./_hmr_dev.ts");
 	apply_vite_update(updates);
+}
+
+import { get_history_key, history_push, history_replace } from "./history.ts";
+
+// ─── History ─────────────────────────────────────────────────────
+
+export function push_history_for_testing(href: string): void {
+	ensure_global();
+	history_push(href);
+}
+
+export function replace_history_for_testing(href: string): void {
+	ensure_global();
+	history_replace(href);
+}
+
+export function pop_back_for_testing(): void {
+	ensure_global();
+	window.history.back();
+}
+
+export function pop_forward_for_testing(): void {
+	ensure_global();
+	window.history.forward();
+}
+
+export function read_current_history_key_for_testing(): string {
+	ensure_global();
+	return get_history_key();
+}
+
+export function read_history_location_for_testing(): {
+	pathname: string;
+	search: string;
+	hash: string;
+	key: string;
+} {
+	ensure_global();
+	return {
+		pathname: window.location.pathname,
+		search: window.location.search,
+		hash: window.location.hash,
+		key: get_history_key(),
+	};
 }

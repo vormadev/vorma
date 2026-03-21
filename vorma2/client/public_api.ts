@@ -56,10 +56,15 @@ export function getClientBuildID(): string {
 	return get_snapshot().client_build_id;
 }
 
+const ROOT_ELEMENT_ID = "vorma-root";
+
 export function getRootEl(): HTMLElement {
-	const id = get_snapshot().root_element_id ?? "vorma-root";
-	const el = document.getElementById(id);
-	if (!el) throw new Error(`Expected element with id "${id}" to exist`);
+	const el = document.getElementById(ROOT_ELEMENT_ID);
+	if (!el) {
+		throw new Error(
+			`Expected element with id "${ROOT_ELEMENT_ID}" to exist`,
+		);
+	}
 	return el;
 }
 

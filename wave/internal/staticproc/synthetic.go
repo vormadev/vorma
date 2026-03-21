@@ -1,6 +1,7 @@
 package staticproc
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"path"
@@ -13,9 +14,12 @@ import (
 // source paths, while resolving all reads to the flat, hashed files
 // in flat_fs. Directory structure is synthesized from the filemap
 // keys. Both file and directory opens are O(1) map lookups.
-func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) fs.FS {
+//
+// Returns an error if the filemap contains a path that is both a
+// file and a directory prefix (e.g. "a" and "a/b").
+func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) (fs.FS, error) {
 	files := make(map[string]string, len(filemap))
-	dir_children := map[string][]string{}
+	dir_children := map[string][]string{".": nil}
 
 	for logical, resolved := range filemap {
 		logical = strings.TrimPrefix(logical, "/")
@@ -37,6 +41,17 @@ func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) fs.FS {
 		}
 	}
 
+	// Reject file/dir collisions: a logical path cannot be both a
+	// file and a directory prefix.
+	for logical := range files {
+		if _, is_dir := dir_children[logical]; is_dir {
+			return nil, fmt.Errorf(
+				"file/dir collision: %q exists as both a file and a directory prefix",
+				logical,
+			)
+		}
+	}
+
 	dirs := make(map[string][]fs.DirEntry, len(dir_children))
 	for dir_path, children := range dir_children {
 		sort.Strings(children)
@@ -52,21 +67,136 @@ func ToSyntheticFS(flat_fs fs.FS, filemap map[string]string) fs.FS {
 				child_path = dir_path + "/" + name
 			}
 			_, is_dir := dir_children[child_path]
-			entries = append(entries, &synth_dir_entry{
-				name_str: name,
-				is_dir:   is_dir,
-			})
+			if is_dir {
+				entries = append(entries, &synth_dir_entry{
+					info: &synth_dir_info{name_str: name},
+				})
+			} else {
+				resolved := files[child_path]
+				real_info, err := fs.Stat(flat_fs, resolved)
+				if err != nil {
+					return nil, fmt.Errorf(
+						"stat %q (resolved %q): %w",
+						child_path, resolved, err,
+					)
+				}
+				entries = append(entries, &synth_dir_entry{
+					info: &synth_file_info{
+						FileInfo: real_info,
+						name_str: name,
+					},
+				})
+			}
 		}
 		dirs[dir_path] = entries
 	}
 
-	return &synthetic_fs{underlying: flat_fs, files: files, dirs: dirs}
+	return &synthetic_fs{underlying: flat_fs, files: files, dirs: dirs}, nil
 }
 
 type synthetic_fs struct {
 	underlying fs.FS
 	files      map[string]string
 	dirs       map[string][]fs.DirEntry
+}
+
+// ReadDir implements fs.ReadDirFS. Entries are pre-sorted by
+// construction so no additional sort is needed.
+func (m *synthetic_fs) ReadDir(name string) ([]fs.DirEntry, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrInvalid}
+	}
+	entries, ok := m.dirs[name]
+	if !ok {
+		return nil, &fs.PathError{
+			Op:   "readdir",
+			Path: name,
+			Err:  fs.ErrNotExist,
+		}
+	}
+	// Return a copy to prevent callers from mutating our slice.
+	result := make([]fs.DirEntry, len(entries))
+	copy(result, entries)
+	return result, nil
+}
+
+// Sub implements fs.SubFS by returning a new synthetic_fs scoped
+// to the given directory.
+func (m *synthetic_fs) Sub(dir string) (fs.FS, error) {
+	if !fs.ValidPath(dir) {
+		return nil, &fs.PathError{Op: "sub", Path: dir, Err: fs.ErrInvalid}
+	}
+	if dir == "." {
+		return m, nil
+	}
+	if _, ok := m.dirs[dir]; !ok {
+		return nil, &fs.PathError{Op: "sub", Path: dir, Err: fs.ErrNotExist}
+	}
+
+	prefix := dir + "/"
+	new_files := make(map[string]string)
+	for k, v := range m.files {
+		if strings.HasPrefix(k, prefix) {
+			new_files[strings.TrimPrefix(k, prefix)] = v
+		}
+	}
+	new_dirs := make(map[string][]fs.DirEntry)
+	new_dirs["."] = m.dirs[dir]
+	for k, v := range m.dirs {
+		if strings.HasPrefix(k, prefix) {
+			new_dirs[strings.TrimPrefix(k, prefix)] = v
+		}
+	}
+
+	return &synthetic_fs{
+		underlying: m.underlying,
+		files:      new_files,
+		dirs:       new_dirs,
+	}, nil
+}
+
+// Stat implements fs.StatFS, avoiding the fallback Open/Stat/Close
+// round-trip. This is the hot path for http.FileServer.
+func (m *synthetic_fs) Stat(name string) (fs.FileInfo, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrInvalid}
+	}
+	if resolved, ok := m.files[name]; ok {
+		info, err := fs.Stat(m.underlying, resolved)
+		if err != nil {
+			return nil, &fs.PathError{
+				Op:   "stat",
+				Path: name,
+				Err:  fs.ErrNotExist,
+			}
+		}
+		return &synth_file_info{FileInfo: info, name_str: path.Base(name)}, nil
+	}
+	if _, ok := m.dirs[name]; ok {
+		dir_name := "."
+		if name != "." {
+			dir_name = path.Base(name)
+		}
+		return &synth_dir_info{name_str: dir_name}, nil
+	}
+	return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
+}
+
+// ReadFile implements fs.ReadFileFS, avoiding the synth_file wrapper
+// overhead for bulk reads (e.g. loading templates from private FS).
+func (m *synthetic_fs) ReadFile(name string) ([]byte, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrInvalid}
+	}
+	resolved, ok := m.files[name]
+	if !ok {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+	}
+	data, err := fs.ReadFile(m.underlying, resolved)
+	if err != nil {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+	}
+	return data, nil
 }
 
 func (m *synthetic_fs) Open(name string) (fs.File, error) {
@@ -77,7 +207,11 @@ func (m *synthetic_fs) Open(name string) (fs.File, error) {
 	if resolved, ok := m.files[name]; ok {
 		f, err := m.underlying.Open(resolved)
 		if err != nil {
-			return nil, &fs.PathError{Op: "open", Path: name, Err: err}
+			return nil, &fs.PathError{
+				Op:   "open",
+				Path: name,
+				Err:  fs.ErrNotExist,
+			}
 		}
 		return &synth_file{File: f, logical_name: path.Base(name)}, nil
 	}
@@ -191,24 +325,11 @@ func (d *synth_dir_info) IsDir() bool        { return true }
 func (d *synth_dir_info) Sys() any           { return nil }
 
 type synth_dir_entry struct {
-	name_str string
-	is_dir   bool
+	info fs.FileInfo
 }
 
-func (e *synth_dir_entry) Name() string { return e.name_str }
-func (e *synth_dir_entry) IsDir() bool  { return e.is_dir }
-func (e *synth_dir_entry) Type() fs.FileMode {
-	if e.is_dir {
-		return fs.ModeDir
-	}
-	return 0
-}
-func (e *synth_dir_entry) Info() (fs.FileInfo, error) {
-	if e.is_dir {
-		return &synth_dir_info{name_str: e.name_str}, nil
-	}
-	return &synth_file_info{
-		FileInfo: &synth_dir_info{name_str: e.name_str},
-		name_str: e.name_str,
-	}, nil
-}
+func (e *synth_dir_entry) Name() string { return e.info.Name() }
+func (e *synth_dir_entry) IsDir() bool  { return e.info.IsDir() }
+
+func (e *synth_dir_entry) Type() fs.FileMode          { return e.info.Mode().Type() }
+func (e *synth_dir_entry) Info() (fs.FileInfo, error) { return e.info, nil }

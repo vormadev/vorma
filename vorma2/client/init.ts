@@ -56,12 +56,6 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	if (options.routeManifestURL !== undefined) {
 		g.route_manifest_url = options.routeManifestURL;
 	}
-	if (options.rootElementID !== undefined) {
-		set_snapshot({
-			...get_snapshot(),
-			root_element_id: options.rootElementID,
-		});
-	}
 
 	const registry = createPatternRegistry({
 		dynamicParamPrefixRune: g.app_config.loadersDynamicRune,

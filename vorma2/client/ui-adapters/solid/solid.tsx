@@ -284,12 +284,11 @@ export function VormaRootOutlet(
 	);
 	const matched_pattern = createMemo(() => store().matched_patterns[idx]);
 
-	const Outlet = createMemo(() => {
-		void next_key();
-		return (local?: Record<string, unknown>): JSX.Element => (
+	const Outlet = (local?: Record<string, unknown>): JSX.Element => (
+		<Show when={next_key()} keyed>
 			<VormaRootOutlet {...props} {...local} idx={idx + 1} />
-		);
-	});
+		</Show>
+	);
 
 	const should_fallback_outlet = createMemo(() => {
 		if (is_error() || comp()) {
@@ -321,17 +320,13 @@ export function VormaRootOutlet(
 					<Dynamic
 						component={comp() as ValidComponent}
 						idx={idx}
-						Outlet={Outlet()}
+						Outlet={Outlet}
 						{...{ [ROUTE_PATTERN_KEY]: matched_pattern() }}
 					/>
 				</Show>
 			</Show>
 
-			<Show when={should_fallback_outlet()}>
-				<Show when={next_key()} keyed>
-					{Outlet()()}
-				</Show>
-			</Show>
+			<Show when={should_fallback_outlet()}>{Outlet()}</Show>
 
 			<Show when={is_error()}>
 				<Show

@@ -661,7 +661,6 @@ func (v *Vorma) serve_loaders_html(
 		PublicPathPrefix:        v.Wave.MustPublicPathPrefix(),
 		RouteManifestURL:        route_manifest_url,
 		ClientBuildID:           snapshot.ClientBuildID,
-		RootElementID:           root_element_id,
 		OutermostServerError:    rd.outermost_error,
 		OutermostServerErrorIdx: rd.outermost_error_idx,
 		ErrorExportKeys:         rd.error_export_keys,

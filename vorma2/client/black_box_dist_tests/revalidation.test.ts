@@ -164,7 +164,7 @@ describe("revalidation", () => {
 						status: 302,
 						headers: {
 							"X-Client-Redirect": "/revalidate-target",
-							"X-Wave-Framework-Build-Id": "2",
+							"X-Vorma-Client-Build-Id": "2",
 						},
 					}),
 				)
@@ -173,7 +173,7 @@ describe("revalidation", () => {
 						{},
 						{
 							headers: {
-								"X-Wave-Framework-Build-Id": "2",
+								"X-Vorma-Client-Build-Id": "2",
 							},
 						},
 					),
@@ -545,7 +545,7 @@ describe("revalidation", () => {
 					{},
 					{
 						headers: {
-							"X-Wave-Framework-Build-Id": "stale-build-id",
+							"X-Vorma-Client-Build-Id": "stale-build-id",
 						},
 					},
 				),
@@ -577,9 +577,8 @@ describe("revalidation", () => {
 						{},
 						{
 							headers: {
-								"X-Wave-Framework-Reload":
-									"/revalidate-stale-hard",
-								"X-Wave-Framework-Build-Id": "stale-hard-build",
+								"X-Vorma-Reload": "/revalidate-stale-hard",
+								"X-Vorma-Client-Build-Id": "stale-hard-build",
 							},
 						},
 					),
@@ -628,7 +627,7 @@ describe("revalidation", () => {
 							},
 							{
 								headers: {
-									"X-Wave-Framework-Build-Id":
+									"X-Vorma-Client-Build-Id":
 										"winner-build-id",
 								},
 							},
@@ -647,9 +646,9 @@ describe("revalidation", () => {
 						{},
 						{
 							headers: {
-								"X-Wave-Framework-Reload":
+								"X-Vorma-Reload":
 									"/revalidate-stale-hard-reload",
-								"X-Wave-Framework-Build-Id": "stale-build-id",
+								"X-Vorma-Client-Build-Id": "stale-build-id",
 							},
 						},
 					),

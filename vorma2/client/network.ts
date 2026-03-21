@@ -11,7 +11,10 @@ import type {
 
 // ─── Wire Format Decode ──────────────────────────────────────────
 
-function decode_html_to_text(html: string): string {
+function decode_html_to_text(html: string | undefined): string {
+	if (!html) {
+		return "";
+	}
 	const el = document.createElement("textarea");
 	el.innerHTML = html;
 	return el.value;
@@ -26,10 +29,9 @@ type DecodedRouteData = {
 function decode_payload(payload: RouteDataPayload): DecodedRouteData {
 	const prev = get_snapshot();
 
-	let decoded_title: string | undefined;
-	if (payload.title) {
-		decoded_title = decode_html_to_text(payload.title.dangerousInnerHTML);
-	}
+	const decoded_title = decode_html_to_text(
+		payload.title?.dangerousInnerHTML,
+	);
 
 	return {
 		snapshot: {
@@ -48,7 +50,6 @@ function decode_payload(payload: RouteDataPayload): DecodedRouteData {
 			params: payload.params ?? {},
 			splat_values: payload.splatValues ?? [],
 			client_build_id: prev.client_build_id,
-			root_element_id: prev.root_element_id,
 			active_components: [],
 			active_error_boundary: undefined,
 			client_loaders_data: [],

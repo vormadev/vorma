@@ -262,7 +262,6 @@ function try_skip_server_fetch(
 			params: match_result.params,
 			splat_values: match_result.splatValues,
 			client_build_id: current.client_build_id,
-			root_element_id: current.root_element_id,
 			active_components: [],
 			active_error_boundary: undefined,
 			client_loaders_data: [],
@@ -272,6 +271,15 @@ function try_skip_server_fetch(
 
 // ─── Redirect Following ─────────────────────────────────────────
 
+function assert_http_scheme(href: string): void {
+	const scheme = new URL(href, window.location.href).protocol;
+	if (scheme !== "http:" && scheme !== "https:") {
+		throw new Error(
+			`Redirect target must use an HTTP(S) scheme. Received: "${href}".`,
+		);
+	}
+}
+
 async function follow_redirect(props: {
 	href: string;
 	client_build_id: string;
@@ -280,6 +288,7 @@ async function follow_redirect(props: {
 	hop_count?: number;
 	skip_loading?: boolean;
 }): Promise<{ didNavigate: boolean }> {
+	assert_http_scheme(props.href);
 	if (props.is_hard_reload) {
 		perform_hard_redirect(
 			make_hard_reload_href(props.href, props.client_build_id),

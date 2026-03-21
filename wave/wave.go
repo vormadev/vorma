@@ -215,7 +215,7 @@ func (w *Wave) __UNCACHED__private_fs() (fs.FS, error) {
 	if err != nil {
 		return nil, err
 	}
-	return staticproc.ToSyntheticFS(initial_fs, filemap), nil
+	return staticproc.ToSyntheticFS(initial_fs, filemap)
 }
 
 func (w *Wave) PrivateFS() (fs.FS, error) {

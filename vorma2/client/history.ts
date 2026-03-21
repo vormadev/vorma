@@ -151,7 +151,15 @@ async function handle_popstate(): Promise<void> {
 		});
 	} catch (err) {
 		console.error("Vorma:", "POP navigation failed; hard reloading.", err);
-		perform_hard_redirect(next_href);
+		try {
+			perform_hard_redirect(next_href);
+		} catch (redirect_err) {
+			console.error(
+				"Vorma:",
+				"Hard redirect fallback failed.",
+				redirect_err,
+			);
+		}
 	}
 }
 

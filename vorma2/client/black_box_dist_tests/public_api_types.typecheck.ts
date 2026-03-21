@@ -62,7 +62,7 @@ import type {
 	APIRequestInitDecorator,
 	ExtractApp,
 	ParamsForPattern,
-} from "../../types.ts";
+} from "../types.ts";
 
 type Assert<Condition extends true> = Condition;
 type IsExact<Actual, Expected> =
@@ -905,7 +905,6 @@ function assertPublicRuntimeAndAdapterComponentContracts(): void {
 
 	const initClientPromise = initClient({
 		vormaAppConfig: PUBLIC_TYPE_TEST_APP_CONFIG,
-		rootElementID: "vorma-root",
 		isDev: true,
 		publicPathPrefix: "/",
 		routeManifestURL: "/route-manifest.json",
@@ -957,7 +956,7 @@ function assertPublicRuntimeAndAdapterComponentContracts(): void {
 		prefetchDelayMs: 0,
 		replace: true,
 		scrollToTop: false,
-		beforeBegin: async () => {},
+		beforeNavigate: async () => {},
 		beforeRender: () => {},
 		afterRender: () => {},
 	});

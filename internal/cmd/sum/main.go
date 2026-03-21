@@ -13,7 +13,7 @@ func main() {
 	}
 
 	exclude := []string{
-		"!typescript/vorma/black_box_tests/**/*",
+		"!typescript/vorma/black_box_dist_tests/**/*",
 		"!typescript/vorma/client/vitest.dist.config.ts",
 		"!kit/matcher/internal/matchercore/testutil/testutil.go",
 		"!**/*.md",
