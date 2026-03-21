@@ -17,10 +17,11 @@ const (
 	PUBLIC_FILEMAP_FILENAME       = "wave_internal_public_filemap.json"  // .waveout/static/assets/public/wave_out_wave_internal_public_filemap_<hash>.json
 	STATIC_INTERNAL_DIR           = "static/internal"                    // .waveout/static/internal/
 
-	/////// LOCKS AND PIDS
-	WAVE_LOCK_FILENAME = "wave.lock" // .waveout/wave.lock
-	APP_PID_FILENAME   = "app.pid"   // .waveout/app.pid
-	VITE_PID_FILENAME  = "vite.pid"  // .waveout/vite.pid
+	/////// DEV-ONLY STATE
+	DEV_DIRNAME        = "dev"       // .waveout/dev/
+	WAVE_LOCK_FILENAME = "wave.lock" // .waveout/dev/wave.lock
+	APP_PID_FILENAME   = "app.pid"   // .waveout/dev/app.pid
+	VITE_PID_FILENAME  = "vite.pid"  // .waveout/dev/vite.pid
 
 	/////// CLIENT-SIDE RUNTIME
 	CRITICAL_CSS_EL_ID             = "wave-critical-css"       // <style id="wave-critical-css">

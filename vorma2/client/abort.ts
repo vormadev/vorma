@@ -19,20 +19,16 @@ export function encode_abort_reason(code: AbortReasonCode): string {
 }
 
 export function is_abort_error(error: unknown): boolean {
-	// Check our structured reasons first
 	if (typeof error === "string" && error.startsWith(PREFIX)) {
 		const code = error.slice(PREFIX.length);
-		if (VALID_CODES.has(code)) return true;
+		if (VALID_CODES.has(code)) {
+			return true;
+		}
 	}
-	// Standard AbortError
-	if (!error || typeof error !== "object") return false;
-	const e = error as Record<string, any>;
-	return (
-		e.name === "AbortError" ||
-		String(e.message ?? "")
-			.toLowerCase()
-			.includes("abort")
-	);
+	if (!error || typeof error !== "object") {
+		return false;
+	}
+	return (error as Record<string, any>).name === "AbortError";
 }
 
 export function panic(msg: string): never {

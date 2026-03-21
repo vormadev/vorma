@@ -3,7 +3,6 @@ package vormabuild
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/vormadev/vorma/vorma2/internal/constants"
 	"github.com/vormadev/vorma/wave/wavebuild"
@@ -12,8 +11,7 @@ import (
 func (s *plugin_state) route_fast_path_hook(
 	ctx *wavebuild.PluginCtx,
 ) (*wavebuild.PluginResult, error) {
-	// skip on initial build — main build hook handles everything
-	if ctx.IsInitialBuild() {
+	if s.build_hook_active.Load() {
 		return nil, nil
 	}
 
@@ -23,14 +21,6 @@ func (s *plugin_state) route_fast_path_hook(
 		),
 	)
 
-	// skip if Go files also changed in this batch — main hook
-	// handles the full rebuild and contributes the manifest
-	for _, p := range ctx.EvtPaths() {
-		if strings.HasSuffix(p.Str(), ".go") {
-			return nil, nil
-		}
-	}
-
 	cfg := s.cfg
 	if cfg == nil {
 		return nil, fmt.Errorf("vorma2 config not parsed")
@@ -38,13 +28,12 @@ func (s *plugin_state) route_fast_path_hook(
 
 	build := s.app.ForBuild()
 
-	// frontend route discovery
-	routes, err := discover_routes(cfg.client_route_definition_patterns)
+	routes, err := discover_client_routes(cfg.client_route_definition_patterns)
 	if err != nil {
 		return nil, fmt.Errorf("route discovery: %w", err)
 	}
 
-	// route manifest
+	// Build route manifest from frontend routes
 	manifest := make(map[string]int, len(routes))
 	for _, r := range routes {
 		flag := 0
@@ -53,6 +42,19 @@ func (s *plugin_state) route_fast_path_hook(
 		}
 		manifest[r.pattern] = flag
 	}
+
+	// include server-only loader patterns in the manifest
+	all_loader_routes := build.LoadersRouter().AllRoutes()
+	for pattern := range all_loader_routes {
+		if _, exists := manifest[pattern]; !exists {
+			flag := 0
+			if build.LoadersRouter().HasTaskHandler(pattern) {
+				flag = 1
+			}
+			manifest[pattern] = flag
+		}
+	}
+
 	manifest_json, err := json.Marshal(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling route manifest: %w", err)
@@ -65,19 +67,20 @@ func (s *plugin_state) route_fast_path_hook(
 
 	release()
 
-	// index.ts
 	if err := write_index_ts(cfg, routes, s.app, ctx); err != nil {
-		return nil, fmt.Errorf("writing index.ts: %w", err)
+		return nil, fmt.Errorf(
+			"writing %s: %w",
+			constants.GENERATED_TS_INDEX_FILENAME,
+			err,
+		)
 	}
 
-	// wait for public filemap finalization (manifest gets hashed)
 	if err := ctx.WaitFor(
 		wavebuild.CheckpointOrder(wavebuild.Checkpoint_3_FullPublicFilemapFinalized),
 	); err != nil {
 		return nil, err
 	}
 
-	// rewrite runtime snapshot (dev only)
 	snapshot, err := build_dev_snapshot(cfg, routes, ctx.VitePort())
 	if err != nil {
 		return nil, fmt.Errorf("building dev snapshot: %w", err)
@@ -97,7 +100,6 @@ func (s *plugin_state) filemap_refresh_hook(
 		return nil, fmt.Errorf("vorma2 config not parsed")
 	}
 
-	// wait for public filemap finalization
 	if err := ctx.WaitFor(
 		wavebuild.CheckpointOrder(wavebuild.Checkpoint_3_FullPublicFilemapFinalized),
 	); err != nil {

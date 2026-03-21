@@ -56,8 +56,10 @@ type super_state struct {
 	is_dev   bool
 
 	// build state
-	private_fm                *staticproc.Filemap
-	public_fm                 *staticproc.Filemap
+	private_fm *staticproc.Filemap
+	public_fm  *staticproc.Filemap
+	// durable plugin public file store, survives across cycles
+	plugin_public_files       map[string][]byte
 	critical_css_patterns     *set.Set[strict.CWDRelPath]
 	non_critical_css_patterns *set.Set[strict.CWDRelPath]
 	// cached by most recent build to avoid fs read, used by browser settle
@@ -121,10 +123,10 @@ func (s *super_state) new_public_phantom_filemap() *staticproc.Filemap {
 }
 
 func (s *super_state) parse_cfg() (*validated_config, *vite_build_config, error) {
-	s.logger.Info("Parsing config")
+	s.logger.Info("parsing wave config")
 	cfg, err := config_path_to_validated_config(s.cfg_path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("config parse failed: %w", err)
+		return nil, nil, fmt.Errorf("wave config parse failed: %w", err)
 	}
 
 	// update vite build config from the (possibly changed) config
@@ -221,7 +223,7 @@ func (s *super_state) reload_config() error {
 
 // run_plugin_config_parse extracts each plugin's config section from
 // the raw config JSON and calls its Parse function with a
-// ConfigReader that provides access to the validated user config.
+// ConfigReader that provides read access to the validated user config.
 func (s *super_state) run_plugin_config_parse(cfg *validated_config) error {
 	if len(s.plugin_cfgs) == 0 {
 		return nil
@@ -314,13 +316,17 @@ func (s *super_state) log_build_err(err error) {
 
 func (s *super_state) app_pid_file_path() string {
 	return s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME, constants.APP_PID_FILENAME,
+		constants.DIST_DIRNAME,
+		constants.DEV_DIRNAME,
+		constants.APP_PID_FILENAME,
 	).Str()
 }
 
 func (s *super_state) vite_pid_file_path() string {
 	return s.cfg_path.Dir().Join(
-		constants.DIST_DIRNAME, constants.VITE_PID_FILENAME,
+		constants.DIST_DIRNAME,
+		constants.DEV_DIRNAME,
+		constants.VITE_PID_FILENAME,
 	).Str()
 }
 
@@ -387,14 +393,21 @@ func (s *super_state) app_env() []string {
 /////// Hook helpers (unified)
 /////////////////////////////////////////////////////////////////////
 
-// Returns every validated hook index that applies to the current dev/prod mode.
-func (s *super_state) all_applicable_hook_indices() *set.Set[int] {
+// Returns every validated hook index that applies to the current
+// dev/prod mode and build context. When is_initial is true, hooks
+// marked incremental_only are excluded.
+func (s *super_state) all_applicable_hook_indices(
+	is_initial bool,
+) *set.Set[int] {
 	indices := &set.Set[int]{}
 	for i, h := range s.all_hooks {
 		if h.dev_only && !s.is_dev {
 			continue
 		}
 		if h.prod_only && s.is_dev {
+			continue
+		}
+		if h.incremental_only && is_initial {
 			continue
 		}
 		indices.Add(i)
@@ -717,7 +730,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 		}
 		triggers_log = strings.Join(names, ", ")
 	}
-	s.logger.Info("Starting build process",
+	s.logger.Info("starting build process",
 		"type", type_log,
 		"triggers", triggers_log,
 	)
@@ -888,30 +901,22 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 		phase_start := time.Now()
 
 		// Close the contribution window — any plugin calling
-		// ContributePublicFiles after this point will receive
-		// an error.
+		// SetPublicFiles/DeletePublicFiles after this point will
+		// receive an error.
 		s.cycle_shared.mu.Lock()
 		s.cycle_shared.contributions_open = false
-		contributions := s.cycle_shared.public_contributions
+		plugin_files_modified := s.cycle_shared.plugin_files_modified
 		s.cycle_shared.mu.Unlock()
 
-		plugin_contributed_to_filemap := len(contributions) > 0
+		// Re-merge durable plugin files into the public filemap
+		// when the physical filemap was rebuilt (which replaces
+		// s.public_fm entirely) or when a plugin modified the
+		// durable store this cycle.
+		filemap_rebuilt := fx.Has(effect_build_public_filemap)
+		has_plugin_files := len(s.plugin_public_files) > 0
+		if has_plugin_files && (filemap_rebuilt || plugin_files_modified) {
+			s.public_fm.Set(s.plugin_public_files)
 
-		if plugin_contributed_to_filemap {
-			public_fm_map := s.public_fm.Map()
-			for logical_path := range contributions {
-				if _, exists := public_fm_map[logical_path]; exists {
-					return false, fmt.Errorf(
-						"plugin public file contribution overlaps with existing public file %q",
-						logical_path,
-					)
-				}
-			}
-
-			// merge plugin contributions into the public filemap
-			s.public_fm.Set(contributions)
-
-			// mark plugin-committed
 			s.cycle_shared.mu.Lock()
 			s.cycle_shared.public_fm_status = PublicFileMapPluginCommitted
 			s.cycle_shared.mu.Unlock()
@@ -919,7 +924,7 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 
 		// generate client-side filemap JSON for browser consumption
 		needs_public_write := force_public_diff ||
-			plugin_contributed_to_filemap || fx.HasAny(
+			plugin_files_modified || fx.HasAny(
 			effect_build_public_filemap,
 			effect_build_critical_css,
 			effect_build_non_critical_css,
@@ -981,9 +986,9 @@ func (s *super_state) run_build(p build_params) (bool, error) {
 		wave_processing_duration += time.Since(phase_start)
 
 		s.logger.Info(
-			"Static processing complete",
+			"completed wave static processing",
 			"duration",
-			wave_processing_duration,
+			wave_processing_duration.Round(time.Millisecond),
 		)
 
 		return false, nil
@@ -1154,7 +1159,7 @@ func (s *super_state) drain_and_build() {
 				return
 			}
 			evt_paths = nil
-			hook_indices = s.all_applicable_hook_indices()
+			hook_indices = s.all_applicable_hook_indices(false)
 		}
 
 		// ensure non-nil triggers for derive
@@ -1435,6 +1440,7 @@ func Build(opts BuildOpts) {
 		waveout.Join(constants.STATIC_ASSETS_PRIVATE_DIR).Str(),
 		waveout.Join(constants.STATIC_ASSETS_PUBLIC_DIR).Str(),
 		waveout.Join(constants.STATIC_INTERNAL_DIR).Str(),
+		waveout.Join(constants.DEV_DIRNAME).Str(),
 	); err != nil {
 		s.logger.Error("Failed to ensure output directories: " + err.Error())
 		os.Exit(1)
@@ -1488,7 +1494,10 @@ func Build(opts BuildOpts) {
 	// the new instance takes over automatically.
 	if s.is_dev {
 		s.lock = lockfile.NewPIDLock(
-			waveout.Join(constants.WAVE_LOCK_FILENAME).Str(),
+			waveout.Join(
+				constants.DEV_DIRNAME,
+				constants.WAVE_LOCK_FILENAME,
+			).Str(),
 		)
 		if err := s.lock.Acquire(); err != nil {
 			s.logger.Error(
@@ -1615,7 +1624,7 @@ func Build(opts BuildOpts) {
 		signal.Notify(sig_ch, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
 			sig := <-sig_ch
-			s.logger.Info("Received signal. Shutting down.",
+			s.logger.Info("received signal. shutting down.",
 				"signal", sig,
 			)
 
@@ -1624,7 +1633,7 @@ func Build(opts BuildOpts) {
 			// second signal exits immediately
 			go func() {
 				<-sig_ch
-				s.logger.Info("Received second signal. Forcing exit.")
+				s.logger.Info("received second signal. forcing exit.")
 				os.Exit(1)
 			}()
 		}()
@@ -1635,11 +1644,11 @@ func Build(opts BuildOpts) {
 	initial_triggers.Add(config_changed)
 	if _, err := s.run_build(build_params{
 		triggers:     initial_triggers,
-		hook_indices: s.all_applicable_hook_indices(),
+		hook_indices: s.all_applicable_hook_indices(true),
 		should_abort: func() bool { return build_ctx.Err() != nil },
 		is_initial:   true,
 	}); err != nil {
-		s.logger.Error("Initial build failed: " + err.Error())
+		s.logger.Error("initial build failed: " + err.Error())
 		build_exit_code = 1
 		return
 	}
@@ -1649,7 +1658,7 @@ func Build(opts BuildOpts) {
 		s.watcher = fswatcher.NewWatcher(fswatcher.WatcherOptions{
 			WatchRoot: s.cfg.root_dir,
 			OnRemovePath: func(p strict.CWDRelPath) {
-				s.logger.Info("Removing watch on", "path", p)
+				s.logger.Info("removing watch on", "path", p)
 			},
 		})
 

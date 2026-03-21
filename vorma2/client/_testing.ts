@@ -15,101 +15,105 @@ function clear_listeners(): void {
 	const g = (globalThis as any)[VORMA_SYMBOL] as
 		| VormaClientGlobal
 		| undefined;
-	if (!g) return;
+	if (!g) {
+		return;
+	}
 	g.window_listeners?.forEach((set, name) => {
 		set.forEach((fn) => window.removeEventListener(name, fn));
 	});
 	g.window_listeners?.clear();
 }
 
-export function resetClientRuntimeForTesting(
-	opts: { clearPersistedScrollState?: boolean } = {},
+export function reset_client_runtime_for_testing(
+	opts: { clear_persisted_scroll_state?: boolean } = {},
 ): void {
 	clear_listeners();
 	delete (globalThis as any)[VORMA_SYMBOL];
-	if (opts.clearPersistedScrollState !== false) {
+	if (opts.clear_persisted_scroll_state !== false) {
 		sessionStorage.removeItem(SCROLL_KEY);
 		sessionStorage.removeItem(PAGE_REFRESH_KEY);
 	}
 }
 
-export function createIsolatedClientTestRuntime(
-	opts: { clearPersistedScrollState?: boolean } = {},
+export function create_isolated_client_test_runtime(
+	opts: { clear_persisted_scroll_state?: boolean } = {},
 ): { reset: () => void } {
-	resetClientRuntimeForTesting(opts);
-	return { reset: () => resetClientRuntimeForTesting(opts) };
+	reset_client_runtime_for_testing(opts);
+	return { reset: () => reset_client_runtime_for_testing(opts) };
 }
 
 // ─── Seed Snapshot ───────────────────────────────────────────────
 
 export type SeedSnapshotInput = {
-	matchedPatterns?: string[];
-	loadersData?: unknown[];
-	importURLs?: string[];
-	exportKeys?: string[];
-	errorExportKeys?: string[];
-	hasRootData?: boolean;
+	matched_patterns?: string[];
+	loaders_data?: unknown[];
+	import_urls?: string[];
+	export_keys?: string[];
+	error_export_keys?: string[];
+	has_root_data?: boolean;
 	params?: Record<string, string>;
-	splatValues?: string[];
-	outermostServerError?: unknown;
-	outermostServerErrorIdx?: number | null;
-	rootElementID?: string;
+	splat_values?: string[];
+	outermost_server_error?: unknown;
+	outermost_server_error_idx?: number | null;
+	root_element_id?: string;
 };
 
-export function seedRuntimeRouteSnapshotForTesting(
+export function seed_runtime_route_snapshot_for_testing(
 	input: SeedSnapshotInput,
 ): void {
 	const g = ensure_global();
-	if (!g.nav_state_manager) g.nav_state_manager = create_nav_manager();
+	if (!g.nav_state_manager) {
+		g.nav_state_manager = create_nav_manager();
+	}
 
 	const s = g.snapshot;
-	const count = input.matchedPatterns?.length ?? s.matched_patterns.length;
+	const count = input.matched_patterns?.length ?? s.matched_patterns.length;
 
 	g.snapshot = {
 		...s,
-		matched_patterns: input.matchedPatterns ?? s.matched_patterns,
+		matched_patterns: input.matched_patterns ?? s.matched_patterns,
 		loaders_data:
-			input.loadersData ?? Array.from({ length: count }, () => null),
+			input.loaders_data ?? Array.from({ length: count }, () => null),
 		import_urls:
-			input.importURLs ?? Array.from({ length: count }, () => ""),
+			input.import_urls ?? Array.from({ length: count }, () => ""),
 		export_keys:
-			input.exportKeys ?? Array.from({ length: count }, () => ""),
+			input.export_keys ?? Array.from({ length: count }, () => ""),
 		error_export_keys:
-			input.errorExportKeys ?? Array.from({ length: count }, () => ""),
-		has_root_data: input.hasRootData ?? false,
+			input.error_export_keys ?? Array.from({ length: count }, () => ""),
+		has_root_data: input.has_root_data ?? false,
 		params: input.params ?? {},
-		splat_values: input.splatValues ?? [],
-		outermost_server_error: input.outermostServerError,
-		outermost_server_error_idx: input.outermostServerErrorIdx,
-		root_element_id: input.rootElementID ?? s.root_element_id,
+		splat_values: input.splat_values ?? [],
+		outermost_server_error: input.outermost_server_error,
+		outermost_server_error_idx: input.outermost_server_error_idx,
+		root_element_id: input.root_element_id ?? s.root_element_id,
 	};
 }
 
 // ─── Simple Setters / Readers ────────────────────────────────────
 
-export function setDeploymentIDForTesting(id: string): void {
+export function set_deployment_id_for_testing(id: string): void {
 	ensure_global().deployment_id = id;
 }
 
-export function setHardRedirectHandlerForTesting(
+export function set_hard_redirect_handler_for_testing(
 	handler: ((href: string) => void) | undefined,
 ): void {
 	ensure_global().hard_redirect_for_testing = handler;
 }
 
-export function setRouteManifestForTesting(
+export function set_route_manifest_for_testing(
 	manifest: Record<string, unknown> | undefined,
 ): void {
 	ensure_global().route_manifest = manifest;
 }
 
-export function readRouteManifestForTesting():
+export function read_route_manifest_for_testing():
 	| Record<string, unknown>
 	| undefined {
 	return ensure_global().route_manifest;
 }
 
-export function replacePatternRegistryForTesting(): void {
+export function replace_pattern_registry_for_testing(): void {
 	const g = ensure_global();
 	const c = g.app_config;
 	g.pattern_registry = createPatternRegistry({
@@ -119,53 +123,60 @@ export function replacePatternRegistryForTesting(): void {
 	});
 }
 
-export function readIsTouchInputModalityActiveForTesting(): boolean {
+export function read_is_touch_input_modality_active_for_testing(): boolean {
 	return ensure_global().is_touch_active;
 }
 
-export function registerClientLoaderForTesting(props: {
+export function register_client_loader_for_testing(props: {
 	pattern: string;
-	clientLoader: (input: unknown) => Promise<unknown>;
-	reRunOnModuleChange?: ImportMeta;
+	client_loader: (input: unknown) => Promise<unknown>;
+	re_run_on_module_change?: ImportMeta;
 }): void {
 	ensure_global();
-	register_client_loader(props as any);
+	register_client_loader({
+		pattern: props.pattern,
+		clientLoader: props.client_loader,
+		reRunOnModuleChange: props.re_run_on_module_change,
+	} as any);
 }
 
-export function clearAllNavigationStateForTesting(): void {
+export function clear_all_navigation_state_for_testing(): void {
 	const g = ensure_global();
-	if (!g.nav_state_manager) g.nav_state_manager = create_nav_manager();
+	if (!g.nav_state_manager) {
+		g.nav_state_manager = create_nav_manager();
+	}
 	g.nav_state_manager.clearAll();
 }
 
 // ─── Router Data ─────────────────────────────────────────────────
 
 export type TestingRouterData = {
-	buildID: string;
-	matchedPatterns: string[];
-	splatValues: string[];
+	client_build_id: string;
+	matched_patterns: string[];
+	splat_values: string[];
 	params: Record<string, string>;
-	rootData: unknown;
+	root_data: unknown;
 };
 
-export function readRouterDataForTesting(): TestingRouterData {
+export function read_router_data_for_testing(): TestingRouterData {
 	const s = ensure_global().snapshot;
 	return {
-		buildID: s.build_id,
-		matchedPatterns: s.matched_patterns,
-		splatValues: s.splat_values,
+		client_build_id: s.client_build_id,
+		matched_patterns: s.matched_patterns,
+		splat_values: s.splat_values,
 		params: s.params,
-		rootData: s.has_root_data ? s.loaders_data[0] : null,
+		root_data: s.has_root_data ? s.loaders_data[0] : null,
 	};
 }
 
 // ─── Scroll State ────────────────────────────────────────────────
 
 export type TestingScrollEntry = {
-	historyKey: string;
+	history_key: string;
 	x: number;
 	y: number;
 };
+
 export type TestingPageRefreshState = {
 	x: number;
 	y: number;
@@ -173,14 +184,18 @@ export type TestingPageRefreshState = {
 	href: string;
 };
 
-export function seedScrollStateForTesting(entries: TestingScrollEntry[]): void {
+export function seed_scroll_state_for_testing(
+	entries: TestingScrollEntry[],
+): void {
 	sessionStorage.setItem(
 		SCROLL_KEY,
-		JSON.stringify(entries.map((e) => [e.historyKey, { x: e.x, y: e.y }])),
+		JSON.stringify(entries.map((e) => [e.history_key, { x: e.x, y: e.y }])),
 	);
 }
 
-export function writeRawScrollStateStorageForTesting(raw: string | null): void {
+export function write_raw_scroll_state_storage_for_testing(
+	raw: string | null,
+): void {
 	if (raw === null) {
 		sessionStorage.removeItem(SCROLL_KEY);
 		return;
@@ -188,12 +203,16 @@ export function writeRawScrollStateStorageForTesting(raw: string | null): void {
 	sessionStorage.setItem(SCROLL_KEY, raw);
 }
 
-export function readScrollStateForTesting(): TestingScrollEntry[] {
+export function read_scroll_state_for_testing(): TestingScrollEntry[] {
 	const raw = sessionStorage.getItem(SCROLL_KEY);
-	if (!raw) return [];
+	if (!raw) {
+		return [];
+	}
 	try {
 		const parsed = JSON.parse(raw);
-		if (!Array.isArray(parsed)) return [];
+		if (!Array.isArray(parsed)) {
+			return [];
+		}
 		return parsed
 			.filter(
 				(e: any) =>
@@ -205,7 +224,7 @@ export function readScrollStateForTesting(): TestingScrollEntry[] {
 					typeof e[1].y === "number",
 			)
 			.map((e: any) => ({
-				historyKey: e[0],
+				history_key: e[0],
 				x: e[1].x,
 				y: e[1].y,
 			}));
@@ -214,7 +233,7 @@ export function readScrollStateForTesting(): TestingScrollEntry[] {
 	}
 }
 
-export function seedPageRefreshScrollStateForTesting(
+export function seed_page_refresh_scroll_state_for_testing(
 	state: TestingPageRefreshState | null,
 ): void {
 	if (!state) {
@@ -224,9 +243,11 @@ export function seedPageRefreshScrollStateForTesting(
 	sessionStorage.setItem(PAGE_REFRESH_KEY, JSON.stringify(state));
 }
 
-export function readPageRefreshScrollStateForTesting(): TestingPageRefreshState | null {
+export function read_page_refresh_scroll_state_for_testing(): TestingPageRefreshState | null {
 	const raw = sessionStorage.getItem(PAGE_REFRESH_KEY);
-	if (!raw) return null;
+	if (!raw) {
+		return null;
+	}
 	try {
 		const p = JSON.parse(raw);
 		if (
@@ -234,19 +255,20 @@ export function readPageRefreshScrollStateForTesting(): TestingPageRefreshState 
 			typeof p?.y !== "number" ||
 			typeof p?.unix !== "number" ||
 			typeof p?.href !== "string"
-		)
+		) {
 			return null;
+		}
 		return { x: p.x, y: p.y, unix: p.unix, href: p.href };
 	} catch {
 		return null;
 	}
 }
 
-export function isScrollStateStorageKeyForTesting(key: string): boolean {
+export function is_scroll_state_storage_key_for_testing(key: string): boolean {
 	return key === SCROLL_KEY;
 }
 
-export function isPageRefreshScrollStateStorageKeyForTesting(
+export function is_page_refresh_scroll_state_storage_key_for_testing(
 	key: string,
 ): boolean {
 	return key === PAGE_REFRESH_KEY;
@@ -254,7 +276,7 @@ export function isPageRefreshScrollStateStorageKeyForTesting(
 
 // ─── HMR ─────────────────────────────────────────────────────────
 
-export async function simulateViteAfterUpdateForTesting(
+export async function simulate_vite_after_update_for_testing(
 	updates: Array<{ type: string; path: string }>,
 ): Promise<void> {
 	ensure_global();

@@ -46,13 +46,17 @@ let store_state: AdapterStoreState | undefined;
 const listeners = new Set<Listener>();
 
 function get_state(): AdapterStoreState {
-	if (store_state) return store_state;
+	if (store_state) {
+		return store_state;
+	}
 	store_state = build_initial_store();
 	return store_state;
 }
 
 function set_state(next: AdapterStoreState): void {
-	if (next === store_state) return;
+	if (next === store_state) {
+		return;
+	}
 	store_state = next;
 	listeners.forEach((fn) => fn());
 }
@@ -72,7 +76,9 @@ function use_selector<T>(select: (s: AdapterStoreState) => T): T {
 
 let subscribed = false;
 function ensure_subscribed(): void {
-	if (subscribed) return;
+	if (subscribed) {
+		return;
+	}
 	subscribed = true;
 	subscribe_to_store({ get_state, set_state });
 }
@@ -149,7 +155,9 @@ export function makeTypedAddClientLoader<C extends VormaAppConfig>(c: C) {
 		): R | undefined {
 			const cl = use_selector((s) => s.client_loaders_data);
 			const matched = use_selector((s) => s.matched_patterns);
-			if (routeProps) return cl[routeProps.idx] as R;
+			if (routeProps) {
+				return cl[routeProps.idx] as R;
+			}
 			const idx = find_pattern_index(matched, p);
 			return idx < 0 ? undefined : (cl[idx] as R);
 		} as {
@@ -234,7 +242,9 @@ export function VormaRootOutlet(
 	ref.current = props;
 
 	useLayoutEffect(() => {
-		if (idx !== 0) return;
+		if (idx !== 0) {
+			return;
+		}
 		ensure_subscribed();
 	}, [idx]);
 
@@ -248,12 +258,11 @@ export function VormaRootOutlet(
 
 	const route_count = matched_patterns.length;
 
-	// Scroll restoration: apply pending scroll after DOM commit so
-	// that hash targets created by newly mounted route components
-	// exist before we scroll.
 	const scroll_id_ref = useRef(0);
 	useLayoutEffect(() => {
-		if (idx !== 0) return;
+		if (idx !== 0) {
+			return;
+		}
 		const pending = consume_pending_scroll();
 		if (pending.id > scroll_id_ref.current) {
 			scroll_id_ref.current = pending.id;
@@ -261,7 +270,6 @@ export function VormaRootOutlet(
 		}
 	});
 
-	// Build a stable store-like object for get_route_key.
 	const store_view = useMemo(
 		() => ({ matched_patterns, import_urls, export_keys }) as any,
 		[matched_patterns, import_urls, export_keys],
@@ -278,19 +286,31 @@ export function VormaRootOutlet(
 		[idx, next_key],
 	);
 
-	if (idx > route_count) return <></>;
-	if (idx === route_count) return <Outlet key={next_key} />;
+	if (idx > route_count) {
+		return <></>;
+	}
+	if (idx === route_count) {
+		return <Outlet key={next_key} />;
+	}
 
 	if (outermost_error_idx != null && idx >= outermost_error_idx) {
 		const Comp = active_error_boundary as
 			| ComponentType<{ error: unknown }>
 			| undefined;
-		if (Comp) return <Comp error={outermost_error} />;
+		if (Comp) {
+			return <Comp error={outermost_error} />;
+		}
 		return <>{format_error_for_rendering(outermost_error)}</>;
 	}
 
 	const Comp = active_components[idx] as ComponentType<any> | undefined;
-	if (!Comp) return <></>;
+
+	if (!Comp) {
+		if (idx + 1 < route_count) {
+			return <Outlet key={next_key} />;
+		}
+		return <></>;
+	}
 
 	const mount_key = `${get_route_key(store_view, idx)}::${matched_patterns[idx]}`;
 	return (

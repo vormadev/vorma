@@ -8,4 +8,7 @@
 	"rules": {
 		"curly": "error",
 	},
+	"options": {
+		"typeAware": true,
+	},
 }

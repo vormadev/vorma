@@ -96,8 +96,7 @@ func (vs *vite_supervisor) start() error {
 		args = append(args, "--config", vs.cfg.config_file)
 	}
 
-	vs.logger.Info("Starting Vite dev server",
-		"command", strings.Join(args, " "),
+	vs.logger.Info("starting Vite dev server",
 		"port", vs.port,
 	)
 
@@ -131,18 +130,20 @@ func (vs *vite_supervisor) start() error {
 
 	vs.mu.Unlock()
 
+	vite_url_base := fmt.Sprintf("http://localhost:%d", vs.port)
+
 	if err := poll_http_ready_endpoint(
 		done,
 		&vs.exit_err,
-		fmt.Sprintf("http://localhost:%d/@vite/client", vs.port),
-		"Vite dev server",
+		vite_url_base+"/@vite/client",
+		"vite dev server",
 		vite_ready_timeout,
 	); err != nil {
 		vs.stop()
 		return err
 	}
 
-	vs.logger.Info("⟶ Vite dev server ready", "port", vs.port)
+	vs.logger.Info("vite dev server ready", "url", vite_url_base)
 
 	// watch for unexpected vite exit
 	go vs.watch_for_crash()
@@ -169,7 +170,7 @@ func (vs *vite_supervisor) watch_for_crash() {
 
 	if !was_intentional {
 		vs.logger.Warn(
-			"Vite dev server exited unexpectedly — " +
+			"vite dev server exited unexpectedly — " +
 				"restart Wave to recover Vite",
 		)
 	}
@@ -188,16 +189,16 @@ func (vs *vite_supervisor) stop() {
 	done := vs.done
 	vs.mu.Unlock()
 
-	vs.logger.Info("Stopping Vite dev server")
+	vs.logger.Info("stopping vite dev server")
 
 	procutil.RequestStop(pid)
 
 	select {
 	case <-done:
-		vs.logger.Info("Vite dev server stopped")
+		vs.logger.Info("vite dev server stopped")
 	case <-time.After(vite_grace_period):
 		vs.logger.Info(
-			"Vite did not stop within grace period. Killing instead.",
+			"vite did not stop within grace period. Killing instead.",
 		)
 		procutil.ForceKill(pid)
 		<-done

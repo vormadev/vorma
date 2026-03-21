@@ -32,24 +32,6 @@ const (
 	effect_build_non_critical_css Effect = "build_non_critical_css"
 )
 
-func is_valid_effect(s Effect) bool {
-	switch s {
-	case EffectRestartApp,
-		EffectHardReloadBrowser,
-		EffectRevalidateClientData,
-		EffectProcessPrivateStatic,
-		EffectShowFrontendRebuildingOverlay,
-		EffectNoFrontendSettling,
-		effect_build_private_filemap,
-		effect_build_public_filemap,
-		effect_build_critical_css,
-		effect_build_non_critical_css:
-		return true
-	default:
-		return false
-	}
-}
-
 func is_valid_hook_effect(s Effect) bool {
 	switch s {
 	case EffectRestartApp,

@@ -38,7 +38,6 @@ var (
 	request_store = contextutil.NewStore[*rd_transport](
 		"__vorma_kit_mux_request_data",
 	)
-	empty_params   = make(Params, 0)
 	empty_splat    = []string{}
 	empty_http_mws = []http_mw_with_opts{}
 	empty_task_mws = []task_mw_with_opts{}
@@ -825,16 +824,16 @@ func (r *NestedTasksResult) RanTask() bool   { return r.ran_task }
 type NestedTasksResults struct {
 	Params          Params
 	SplatValues     []string
-	Slice           []*NestedTasksResult
+	Results         []*NestedTasksResult
 	ResponseProxies []*response.Proxy
 }
 
 // HasTaskHandlerAt reports whether the result at index i ran a task handler.
 func (r *NestedTasksResults) HasTaskHandlerAt(i int) bool {
-	if i < 0 || i >= len(r.Slice) {
+	if i < 0 || i >= len(r.Results) {
 		return false
 	}
-	return r.Slice[i].ran_task
+	return r.Results[i].ran_task
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -886,7 +885,7 @@ func RunNestedTasks(
 	results := &NestedTasksResults{
 		Params:          find_results.Params,
 		SplatValues:     find_results.SplatValues,
-		Slice:           make([]*NestedTasksResult, n),
+		Results:         make([]*NestedTasksResult, n),
 		ResponseProxies: make([]*response.Proxy, n),
 	}
 	results_buf := make([]NestedTasksResult, n)
@@ -911,7 +910,7 @@ func RunNestedTasks(
 		pat := match.OriginalPattern()
 		res := &results_buf[i]
 		res.pattern = pat
-		results.Slice[i] = res
+		results.Results[i] = res
 
 		idx, ok := snap.index_map[pat]
 		if !ok || idx >= len(snap.routes) {

@@ -17,11 +17,15 @@ import (
 	"github.com/vormadev/vorma/vorma2/internal/constants"
 	"github.com/vormadev/vorma/vorma2/internal/types"
 	"github.com/vormadev/vorma/wave/wavebuild"
+	"golang.org/x/sync/errgroup"
 )
 
 func (s *plugin_state) build_hook(
 	ctx *wavebuild.PluginCtx,
 ) (*wavebuild.PluginResult, error) {
+	s.build_hook_active.Store(true)
+	defer s.build_hook_active.Store(false)
+
 	cfg := s.cfg
 	if cfg == nil {
 		return nil, fmt.Errorf("vorma2 config not parsed")
@@ -38,20 +42,37 @@ func (s *plugin_state) build_hook(
 	/////// Phase 1: checkpoint 1–2 window
 	/////// Route discovery, manifest contribution, index.ts, imports.gen.go
 
-	frontend_routes, err := discover_routes(
-		cfg.client_route_definition_patterns,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("frontend route discovery: %w", err)
+	// run frontend route discovery and backend package discovery
+	// in parallel — they are independent of each other.
+	var frontend_routes []discovered_route
+	var backend_pkgs []string
+
+	var discovery_group errgroup.Group
+	discovery_group.Go(func() error {
+		var err error
+		frontend_routes, err = discover_client_routes(
+			cfg.client_route_definition_patterns,
+		)
+		if err != nil {
+			return fmt.Errorf("frontend route discovery: %w", err)
+		}
+		return nil
+	})
+	discovery_group.Go(func() error {
+		var err error
+		backend_pkgs, err = discover_backend_packages(
+			cfg.user_root_dir,
+			cfg.gen_out_dir,
+		)
+		if err != nil {
+			return fmt.Errorf("backend package discovery: %w", err)
+		}
+		return nil
+	})
+	if err := discovery_group.Wait(); err != nil {
+		return nil, err
 	}
 
-	backend_pkgs, err := discover_backend_packages(
-		cfg.user_root_dir,
-		cfg.gen_out_dir,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("backend package discovery: %w", err)
-	}
 	if err := fsutil.EnsureDir(cfg.gen_out_dir.Str()); err != nil {
 		return nil, fmt.Errorf("creating gen output dir: %w", err)
 	}
@@ -61,6 +82,7 @@ func (s *plugin_state) build_hook(
 
 	build := s.app.ForBuild()
 
+	// Build route manifest from frontend routes
 	manifest := make(map[string]int, len(frontend_routes))
 	for _, r := range frontend_routes {
 		flag := 0
@@ -69,6 +91,20 @@ func (s *plugin_state) build_hook(
 		}
 		manifest[r.pattern] = flag
 	}
+
+	// Include server-only loader patterns in the manifest.
+	// These have a server handler but no client component file.
+	allLoaderRoutes := build.LoadersRouter().AllRoutes()
+	for pattern := range allLoaderRoutes {
+		if _, exists := manifest[pattern]; !exists {
+			flag := 0
+			if build.LoadersRouter().HasTaskHandler(pattern) {
+				flag = 1
+			}
+			manifest[pattern] = flag
+		}
+	}
+
 	manifest_json, err := json.Marshal(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling route manifest: %w", err)
@@ -130,7 +166,7 @@ func build_dev_snapshot(
 	routes []discovered_route,
 	vite_port int,
 ) (*types.RuntimeSnapshot, error) {
-	build_id, err := id.New(12)
+	random_id, err := id.New(12)
 	if err != nil {
 		return nil, fmt.Errorf("generating build ID: %w", err)
 	}
@@ -138,7 +174,8 @@ func build_dev_snapshot(
 	vite_base := fmt.Sprintf("http://localhost:%d", vite_port)
 
 	snapshot := &types.RuntimeSnapshot{
-		BuildID:          build_id,
+		ServerBuildID:    random_id,
+		ClientBuildID:    "dev_" + random_id,
 		RootTemplatePath: cfg.root_template_path,
 		UIVariant:        cfg.ui_variant,
 		ClientEntryPath: types.SitePublicPath(
@@ -234,23 +271,31 @@ func build_prod_snapshot(
 		}
 	}
 
-	// content-addressed build ID: changes exactly when client-visible
-	// outputs change, stays stable otherwise
-	build_id, err := compute_prod_build_id(snapshot)
+	// deterministic client build ID: changes exactly when
+	// client-visible outputs change, stays stable otherwise.
+	// Computed before setting ServerBuildID so the hash excludes it.
+	client_build_id, err := compute_client_build_id(snapshot)
 	if err != nil {
-		return nil, fmt.Errorf("computing prod build ID: %w", err)
+		return nil, fmt.Errorf("computing client build ID: %w", err)
 	}
-	snapshot.BuildID = build_id
+	snapshot.ClientBuildID = client_build_id
+
+	server_build_id, err := id.New(12)
+	if err != nil {
+		return nil, fmt.Errorf("generating server build ID: %w", err)
+	}
+	snapshot.ServerBuildID = server_build_id
 
 	return snapshot, nil
 }
 
-// compute_prod_build_id hashes the fully-populated snapshot (with
-// empty BuildID) to produce a deterministic build identifier. The
-// snapshot contains all client-visible state — route paths, chunk
-// hashes, CSS bundles, deps — so the ID changes exactly when any
-// of those change. json.Marshal sorts map keys, so output is stable.
-func compute_prod_build_id(
+// compute_client_build_id hashes the fully-populated snapshot
+// (with empty ServerBuildID and ClientBuildID) to produce a
+// deterministic identifier of all client-visible state. The
+// snapshot contains route paths, chunk hashes, CSS bundles, and
+// deps — so the ID changes exactly when any of those change.
+// json.Marshal sorts map keys, so output is stable.
+func compute_client_build_id(
 	snapshot *types.RuntimeSnapshot,
 ) (string, error) {
 	data, err := json.Marshal(snapshot)
@@ -315,11 +360,14 @@ func write_gen_filemaps(
 		return fmt.Errorf("writing generated filemap: %w", err)
 	}
 
-	data, err := json.Marshal(filemap)
+	data, err := jsonutil.SerializePretty(filemap)
 	if err != nil {
 		return fmt.Errorf("marshalling filemap JSON: %w", err)
 	}
-	out_path = filepath.Join(cfg.gen_out_dir.Str(), "filemap.json")
+	out_path = filepath.Join(
+		cfg.gen_out_dir.Str(),
+		constants.GENERATED_JSON_FILEMAP_FILENAME,
+	)
 	return os.WriteFile(out_path, data, 0644)
 }
 

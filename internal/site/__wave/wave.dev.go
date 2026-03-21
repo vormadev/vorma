@@ -1,6 +1,6 @@
 //go:build !prod
 
-package backend
+package waveapp
 
 import "github.com/vormadev/vorma/wave"
 

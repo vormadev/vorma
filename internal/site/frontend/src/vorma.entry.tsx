@@ -1,7 +1,7 @@
 import { render } from "solid-js/web";
 import { getRootEl, initClient } from "vorma/client";
+import { vormaAppConfig } from "../../__wave/vorma.gen/index.ts";
 import { App } from "./components/app.tsx";
-import { vormaAppConfig } from "./vorma.gen/index.ts";
 
 await initClient({
 	vormaAppConfig,

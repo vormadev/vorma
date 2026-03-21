@@ -43,7 +43,9 @@ import type {
 const store_signal = signal<AdapterStoreState | undefined>(undefined);
 
 function get_state(): AdapterStoreState {
-	if (store_signal.value) return store_signal.value;
+	if (store_signal.value) {
+		return store_signal.value;
+	}
 	const initial = build_initial_store();
 	store_signal.value = initial;
 	return initial;
@@ -51,12 +53,16 @@ function get_state(): AdapterStoreState {
 
 let subscribed = false;
 function ensure_subscribed(): void {
-	if (subscribed) return;
+	if (subscribed) {
+		return;
+	}
 	subscribed = true;
 	subscribe_to_store({
 		get_state,
 		set_state: (next) => {
-			if (next !== store_signal.value) store_signal.value = next;
+			if (next !== store_signal.value) {
+				store_signal.value = next;
+			}
 		},
 	});
 }
@@ -128,7 +134,9 @@ export function makeTypedAddClientLoader<C extends VormaAppConfig>(c: C) {
 			routeProps?: VormaRouteProps<App, P>,
 		): R | undefined {
 			const cl = client_loaders_data.value;
-			if (routeProps) return cl[routeProps.idx] as R;
+			if (routeProps) {
+				return cl[routeProps.idx] as R;
+			}
 			const idx = find_pattern_index(matched_patterns.value, p);
 			return idx < 0 ? undefined : (cl[idx] as R);
 		} as {
@@ -213,19 +221,20 @@ export function VormaRootOutlet(
 	ref.current = props;
 
 	useLayoutEffect(() => {
-		if (idx !== 0) return;
+		if (idx !== 0) {
+			return;
+		}
 		ensure_subscribed();
 	}, [idx]);
 
 	const store = get_state();
 	const route_count = store.matched_patterns.length;
 
-	// Scroll restoration: apply pending scroll after DOM commit so
-	// that hash targets created by newly mounted route components
-	// exist before we scroll.
 	const scroll_id_ref = useRef(0);
 	useLayoutEffect(() => {
-		if (idx !== 0) return;
+		if (idx !== 0) {
+			return;
+		}
 		const pending = consume_pending_scroll();
 		if (pending.id > scroll_id_ref.current) {
 			scroll_id_ref.current = pending.id;
@@ -247,8 +256,12 @@ export function VormaRootOutlet(
 		[idx, next_key],
 	);
 
-	if (idx > route_count) return null;
-	if (idx === route_count) return h(Outlet, { key: next_key });
+	if (idx > route_count) {
+		return null;
+	}
+	if (idx === route_count) {
+		return h(Outlet, { key: next_key });
+	}
 
 	const err_idx = store.outermost_error_idx;
 	if (err_idx != null && idx >= err_idx) {
@@ -257,12 +270,20 @@ export function VormaRootOutlet(
 					error: unknown;
 				}>)
 			: undefined;
-		if (Comp) return h(Comp, { error: store.outermost_error });
+		if (Comp) {
+			return h(Comp, { error: store.outermost_error });
+		}
 		return h("span", {}, format_error_for_rendering(store.outermost_error));
 	}
 
 	const Comp = store.active_components[idx] as ComponentType<any> | undefined;
-	if (!Comp) return null;
+
+	if (!Comp) {
+		if (idx + 1 < route_count) {
+			return h(Outlet, { key: next_key });
+		}
+		return null;
+	}
 
 	const mount_key = `${get_route_key(store, idx)}::${store.matched_patterns[idx]}`;
 	return h(Comp, {

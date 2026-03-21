@@ -49,7 +49,9 @@ const [store_signal, set_store_signal] = createSignal<
 
 function get_state(): AdapterStoreState {
 	const current = store_signal();
-	if (current) return current;
+	if (current) {
+		return current;
+	}
 	const initial = build_initial_store();
 	set_store_signal(initial);
 	return initial;
@@ -57,12 +59,16 @@ function get_state(): AdapterStoreState {
 
 let subscribed = false;
 function ensure_subscribed(): () => void {
-	if (subscribed) return () => {};
+	if (subscribed) {
+		return () => {};
+	}
 	subscribed = true;
 	return subscribe_to_store({
 		get_state,
 		set_state: (next) => {
-			if (next !== store_signal()) set_store_signal(next);
+			if (next !== store_signal()) {
+				set_store_signal(next);
+			}
 		},
 	});
 }
@@ -156,7 +162,9 @@ export function makeTypedAddClientLoader<C extends VormaAppConfig>(c: C) {
 		): Accessor<R | undefined> {
 			return createMemo(() => {
 				const cl = read_client_loaders_data();
-				if (routeProps) return cl[routeProps.idx] as R;
+				if (routeProps) {
+					return cl[routeProps.idx] as R;
+				}
 				const idx = find_pattern_index(read_matched_patterns(), p);
 				return idx < 0 ? undefined : (cl[idx] as R);
 			});
@@ -251,7 +259,9 @@ export function VormaRootOutlet(
 	get_state();
 
 	onMount(() => {
-		if (idx !== 0) return;
+		if (idx !== 0) {
+			return;
+		}
 		const unsub = ensure_subscribed();
 		onCleanup(unsub);
 	});
@@ -281,13 +291,22 @@ export function VormaRootOutlet(
 		);
 	});
 
+	const should_fallback_outlet = createMemo(() => {
+		if (is_error() || comp()) {
+			return false;
+		}
+		return idx + 1 < route_count();
+	});
+
 	// Scroll restoration: apply pending scroll after the render
 	// phase so that hash targets created by newly mounted route
 	// components exist before we scroll.
 	let last_scroll_id = 0;
 	createRenderEffect(() => {
-		store(); // reactive dependency — re-runs when store changes
-		if (idx !== 0) return;
+		store();
+		if (idx !== 0) {
+			return;
+		}
 		const pending = consume_pending_scroll();
 		if (pending.id > last_scroll_id) {
 			last_scroll_id = pending.id;
@@ -308,7 +327,7 @@ export function VormaRootOutlet(
 				</Show>
 			</Show>
 
-			<Show when={!comp() && !is_error() && idx < route_count()}>
+			<Show when={should_fallback_outlet()}>
 				<Show when={next_key()} keyed>
 					{Outlet()()}
 				</Show>

@@ -221,7 +221,7 @@ export type VormaLinkPropsBase<LinkEvent = unknown> = {
 // ─── Router Data ────────────────────────────────────────────────
 
 export type BaseRouterData<RootData, Params extends string> = {
-	buildID: string;
+	clientBuildID: string;
 	matchedPatterns: string[];
 	splatValues: string[];
 	params: Record<Params, string>;
@@ -319,7 +319,7 @@ export type ClientLoaderAwaitedServerData<RootData, LoaderData> = {
 	matchedPatterns: string[];
 	rootData: RootData;
 	loaderData: LoaderData;
-	buildID: string;
+	clientBuildID: string;
 };
 
 // ─── Navigate Options (public facing — camelCase) ───────────────
@@ -339,7 +339,7 @@ export type InitClientInput = {
 	vormaAppConfig?: VormaAppConfig;
 	routeManifestURL?: string;
 	renderFn?: () => void | Promise<void>;
-	defaultErrorBoundary?: (props: { error: unknown }) => string;
+	defaultErrorBoundary?: (props: { error: unknown }) => any;
 	useViewTransitions?: boolean;
 	rootElementID?: string;
 };
@@ -374,7 +374,7 @@ export type HeadEl = {
 // on the snapshot.
 
 export type NavigationArtifacts = {
-	title: string;
+	title: string | undefined;
 	meta_head_els: HeadEl[];
 	rest_head_els: HeadEl[];
 	css_bundles: string[];
@@ -420,7 +420,7 @@ export type RuntimeRouteSnapshot = {
 	has_root_data: boolean;
 	params: Record<string, string>;
 	splat_values: string[];
-	build_id: string;
+	client_build_id: string;
 	root_element_id?: string;
 	active_components: unknown[];
 	active_error_boundary: unknown;
@@ -436,7 +436,7 @@ export type ClientLoaderWaitFn = (props: {
 		matchedPatterns: string[];
 		rootData: unknown;
 		loaderData: unknown;
-		buildID: string;
+		clientBuildID: string;
 	}>;
 	signal: AbortSignal;
 }) => Promise<unknown>;
@@ -479,7 +479,7 @@ export type NavigationOperation = {
 export type PrefetchCacheEntry = {
 	target_data_key: string;
 	target_url: string;
-	build_id: string;
+	client_build_id: string;
 	route_data: RuntimeRouteSnapshot;
 	artifacts?: NavigationArtifacts;
 	modules_map?: ComponentModulesMap;
@@ -524,12 +524,12 @@ export type RouteDataFetchResult =
 			status: "success";
 			route_snapshot: RuntimeRouteSnapshot;
 			artifacts: NavigationArtifacts;
-			build_id: string;
+			client_build_id: string;
 	  }
 	| {
 			status: "redirect";
 			href: string;
-			build_id: string;
+			client_build_id: string;
 			is_hard_reload: boolean;
 	  };
 
@@ -543,7 +543,7 @@ export type VormaClientGlobal = {
 	next_manifest_load_id: number;
 	route_manifest: Record<string, unknown> | undefined;
 	pattern_to_wait_fn: Record<string, ClientLoaderWaitFn>;
-	default_error_boundary: (props: { error: unknown }) => string;
+	default_error_boundary: (props: { error: unknown }) => any;
 	use_view_transitions: boolean;
 	deployment_id: string;
 	app_config: VormaAppConfig;

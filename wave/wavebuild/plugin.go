@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 
+	"github.com/vormadev/vorma/internal/pkg/jsonschema"
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/kit/strict"
-	"github.com/vormadev/vorma/lab/jsonschema"
 )
 
 type Plugin struct {
@@ -91,9 +92,6 @@ func validate_plugin_hooks(
 	hooks := make([]validated_lifecycle_hook, len(_hooks))
 	for i := range _hooks {
 		label := fmt.Sprintf("plugin %q idx %d hook", plugin_name, i)
-		if _hooks[i].IsGoCompile {
-			label = plugin_name + " Go compile hook"
-		}
 		vh, err := _hooks[i].to_validated_hook(label, root_dir)
 		if err != nil {
 			return nil, err
@@ -191,11 +189,12 @@ func (p *PluginCtx) ReadPublicFileMap() PublicFileMapResult {
 	}
 }
 
-// ContributePublicFiles adds files to the public filemap. Must be called by
-// the end of checkpoint 2, otherwise the contributions will be rejected and
-// an error will be returned. If the underlying hook spans multiple checkpoints
-// and may not finish its contributions in time, use `BlockAt(2)` to hold the
-// window open until ready.
+// ContributePublicFiles sets or replaces entries in the durable plugin
+// public file store. These entries are merged into the public
+// filemap every build cycle. Must be called by the end of
+// checkpoint 2. If the underlying hook spans multiple checkpoints
+// and may not finish its contributions in time, use `BlockAt(2)`
+// to hold the window open until ready.
 func (p *PluginCtx) ContributePublicFiles(files map[string][]byte) error {
 	p.ss.cycle_shared.mu.Lock()
 	defer p.ss.cycle_shared.mu.Unlock()
@@ -207,19 +206,31 @@ func (p *PluginCtx) ContributePublicFiles(files map[string][]byte) error {
 		)
 	}
 
-	if p.ss.cycle_shared.public_contributions == nil {
-		p.ss.cycle_shared.public_contributions = make(map[string][]byte)
+	if p.ss.plugin_public_files == nil {
+		p.ss.plugin_public_files = make(map[string][]byte)
 	}
-	for logical_path, bytes := range files {
-		if _, exists := p.ss.cycle_shared.public_contributions[logical_path]; exists {
-			return fmt.Errorf(
-				"plugin %q contributed overlapping public file %q",
-				p.hook.plugin_name,
-				logical_path,
-			)
-		}
-		p.ss.cycle_shared.public_contributions[logical_path] = bytes
+	maps.Copy(p.ss.plugin_public_files, files)
+	p.ss.cycle_shared.plugin_files_modified = true
+	return nil
+}
+
+// DeletePublicFiles removes entries from the durable plugin public
+// file store. Must be called by the end of checkpoint 2.
+func (p *PluginCtx) DeletePublicFiles(keys []string) error {
+	p.ss.cycle_shared.mu.Lock()
+	defer p.ss.cycle_shared.mu.Unlock()
+
+	if !p.ss.cycle_shared.contributions_open {
+		return fmt.Errorf(
+			"plugin %q: DeletePublicFiles called too late -- ensure you call by the end of checkpoint 2",
+			p.hook.plugin_name,
+		)
 	}
+
+	for _, k := range keys {
+		delete(p.ss.plugin_public_files, k)
+	}
+	p.ss.cycle_shared.plugin_files_modified = true
 	return nil
 }
 
@@ -394,8 +405,8 @@ func (ch *checkpoint_holds) close_and_wait(checkpoint CheckpointOrd) {
 // plugin_shared_state holds mutable state shared across all plugin
 // hook instances within a single build cycle.
 type plugin_shared_state struct {
-	mu                   sync.Mutex
-	public_contributions map[string][]byte
-	contributions_open   bool                // set to false after checkpoint 2 await
-	public_fm_status     PublicFileMapStatus // progresses through the build cycle
+	mu                    sync.Mutex
+	contributions_open    bool                // set to false after checkpoint 2 await
+	plugin_files_modified bool                // true if any plugin called SetPublicFiles/DeletePublicFiles this cycle
+	public_fm_status      PublicFileMapStatus // progresses through the build cycle
 }

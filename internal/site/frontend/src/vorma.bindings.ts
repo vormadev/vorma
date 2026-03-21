@@ -8,7 +8,10 @@ import {
 	makeTypedUsePatternLoaderData,
 	makeTypedUseRouterData,
 } from "vorma/solid";
-import { vormaAppConfig, type RouteProps } from "./vorma.gen/index.ts";
+import {
+	vormaAppConfig,
+	type RouteProps,
+} from "../../__wave/vorma.gen/index.ts";
 
 export type { RouteProps };
 

@@ -36,7 +36,7 @@ export function verify_route_data_access(
 
 function build_router_data(s: RuntimeRouteSnapshot): AdapterRouterData {
 	return {
-		buildID: s.build_id,
+		clientBuildID: s.client_build_id,
 		matchedPatterns: s.matched_patterns,
 		splatValues: s.splat_values,
 		params: s.params,

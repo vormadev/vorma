@@ -17,7 +17,8 @@ type RoutePath struct {
 }
 
 type RuntimeSnapshot struct {
-	BuildID           string
+	ServerBuildID     string
+	ClientBuildID     string
 	RootTemplatePath  PrivateFSRelPath
 	UIVariant         string
 	ClientEntryPath   SitePublicPath

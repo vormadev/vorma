@@ -11,9 +11,10 @@ const (
 	PUBLIC_ROUTE_MANIFEST_FILENAME = "vorma_internal_route_manifest.json" // .waveout/static/assets/public/wave_out_vorma_internal_route_manifest_<hash>.json
 
 	/////// GENERATED TYPESCRIPT
-	GENERATED_TS_INDEX_FILENAME   = "index.ts"   // <ts_gen_out_dir>/index.ts
-	GENERATED_TS_FILEMAP_FILENAME = "filemap.ts" // <ts_gen_out_dir>/filemap.ts
+	GENERATED_TS_INDEX_FILENAME     = "index.ts"     // <gen_out_dir>/index.ts
+	GENERATED_TS_FILEMAP_FILENAME   = "filemap.ts"   // <gen_out_dir>/filemap.ts
+	GENERATED_JSON_FILEMAP_FILENAME = "filemap.json" // <gen_out_dir>/filemap.json
 
 	/////// GENERATED GO
-	GENERATED_GO_IMPORTS_FILENAME = "imports.gen.go" // <ts_gen_out_dir>/imports.gen.go
+	GENERATED_GO_IMPORTS_FILENAME = "autoreg.go" // <gen_out_dir>/autoreg.go
 )

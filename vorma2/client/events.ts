@@ -5,7 +5,7 @@ import type { RouteChangeEventDetail, StatusEventDetail } from "./types.ts";
 
 const STATUS_EVENT = "vorma:status";
 const ROUTE_CHANGE_EVENT = "vorma:route-change";
-const BUILD_ID_EVENT = "vorma:build-id";
+const CLIENT_BUILD_ID_EVENT = "vorma:client-build-id";
 
 function add_listener<E extends Event>(
 	name: string,
@@ -51,16 +51,18 @@ export function addRouteChangeListener(
 	return add_listener(ROUTE_CHANGE_EVENT, listener);
 }
 
-export function dispatch_build_id(detail: {
-	oldID: string;
-	newID: string;
+export function dispatch_client_build_id(detail: {
+	oldClientBuildID: string;
+	newClientBuildID: string;
 }): void {
-	dispatch(BUILD_ID_EVENT, detail);
+	dispatch(CLIENT_BUILD_ID_EVENT, detail);
 }
-export function addBuildIDListener(
-	listener: (e: CustomEvent<{ oldID: string; newID: string }>) => void,
+export function addClientBuildIDListener(
+	listener: (
+		e: CustomEvent<{ oldClientBuildID: string; newClientBuildID: string }>,
+	) => void,
 ): () => void {
-	return add_listener(BUILD_ID_EVENT, listener);
+	return add_listener(CLIENT_BUILD_ID_EVENT, listener);
 }
 
 export function add_window_listener(

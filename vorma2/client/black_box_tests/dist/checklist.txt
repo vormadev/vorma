@@ -1,0 +1,81 @@
+Here is the concrete mapping.
+
+**Assertions excluded (e2e only):** 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43. Assertions 9 and 10 do not exist in the document (numbering jumps from 8 to 11).
+
+**Proposed files and assertion coverage:**
+
+**1. `navigation.test.ts`** — Assertions 1, 2, 3, 14, 17, 18
+Core navigation lifecycle: concurrent authority, abort of superseded requests, speculative client-loader suppression, same-document classification (no-op / hash-only / full), replace semantics, clearAll, failure recovery, router-data stability after failure.
+
+**2. `revalidation.test.ts`** — Assertions 5, 6, 7, 8, 19, 20, 21
+Revalidation status lifecycle, coalescing, trailing pass, ownership boundaries (hash preserves, search-param invalidates, external invalidates), redirect following only while owned, stale suppression of title/CSS/build-ID/hard-reload, focus-triggered revalidation with staleTime gating.
+
+**3. `submit.test.ts`** — Contributes to assertions 17, 46, 48
+Submit success/failure decoding, dedupe-key abort and handoff, auto-revalidate after non-GET, body resolution passthrough, terminal outcome shapes, continuous submitting status across overlapping submissions, hidden submissions.
+
+**4. `redirects.test.ts`** — Assertions 47, 48, 49
+Navigation and submit redirect/reload response handling: internal soft redirect, external hard redirect, hard-reload with build-ID, relative target resolution, non-http scheme rejection, native GET/POST redirect following, redirect chain continuity, ten-hop cap, stale redirect suppression.
+
+**5. `status-and-loading.test.ts`** — Assertions 4, 22, 23
+Dual-lane simultaneous status, global loading indicator filters/delays/opt-outs/cleanup, hidden-submission exclusion, start-timer cancellation on fast completion, stop-timer cancellation on new work, CSS preload and client-loader settlement keeping navigation active, no idle gap across overlapping work.
+
+**6. `title-and-head.test.ts`** — Assertions 11, 12
+Title commit with entity decoding, title clear on omission, managed head marker validation, deterministic reconciliation (add/update/remove/reorder), duplicate collapse, attribute-order-independent fingerprinting, section isolation, text-node cleanup, idempotency.
+
+**7. `history-and-scroll.test.ts`** — Assertions 13, 15, 16
+Listener fire-after-commit with coherent detail, cleanup stops delivery, POP same-document hash scroll (single decode, unicode, fallback, encoding-equivalent no-re-scroll), POP cross-document fetch from payload URL, POP redirect follow, POP hard-reload fallback with logging, scroll-state save/restore/eviction/malformed-tolerance, page-refresh scroll restoration.
+
+**8. `client-loaders.test.ts`** — Assertion 24
+Parallel start, running-promise reuse, matched server-data passing, route-change blocked until settlement, HMR rerun for opted-in matched JS updates only, CSS-only HMR skip.
+
+**9. `api-surface.test.ts`** — Assertions 25, 26, 44, 45, 46
+Safe defaults before init, coherent accessors (getRouterData, getBuildID, getLocation, getRootEl), no internal/buildtime leaks, typed navigate/query/mutate resolution, typed link factory defaults and overrides, URL builder encoding, request markers (vorma_json, build-ID, redirect-accept, deployment propagation), body resolution contract.
+
+**10. `adapters.test.ts`** — Assertions 27, 28, 29
+Root outlet fallback/empty/error/child-error branches, server-error-index/export-key selection, error boundary preservation across hash navigation, idx default to 0, listener init once for idx-0 only, location signal updates only on location events, route/data selectors update only on route changes, selector ownership coherence across route-index changes, data-only update stability, component identity preservation until module/pattern change, freshest module usage on later commits, parent state preservation on child-only changes.
+
+**11. `links-and-prefetch.test.ts`** — Assertions 30, 31, 32
+Click interception for eligible internal primary clicks, modifier/non-primary/blank-target/external/consumer-canceled fallthrough, same-document hash/no-op without fetch, beforeBegin/beforeRender/afterRender callbacks, intent prefetch warming without commit or loading status, current-page and external skip, prefetch=none, same-data dedup, timer cancellation on blur, touch-modality pointerleave behavior, click-during-prefetch upgrade, stale/failed/redirecting prefetch drop without unhandled rejections.
+
+**Current coverage status per assertion (SRC = source tests, DIST = dist tests):**
+
+| Assertion | SRC | DIST | Gap |
+|-----------|-----|------|-----|
+| 1 | ✓ | partial (mixed-seq) | needs dedicated DIST test |
+| 2 | ✓ | implicit only | needs dedicated DIST test |
+| 3 | ✓ | ✓ | port SRC version too |
+| 4 | ✓ | ✗ | port from SRC |
+| 5 | ✓ | ✗ | port from SRC |
+| 6 | ✓ | ✗ | port from SRC |
+| 7 | ✓ | ✗ | port from SRC |
+| 8 | ✓ | ✗ | port from SRC |
+| 11 | ✓ | ✗ | port from SRC |
+| 12 | ✓ | ✗ | port from SRC |
+| 13 | ✓ | partial | port remaining from SRC |
+| 14 | ✓ | ✗ | port from SRC |
+| 15 | ✓ | ✗ | port from SRC |
+| 16 | ✓ | ✗ | port from SRC |
+| 17 | ✓ | ✓ (different facets) | merge both |
+| 18 | ✓ | ✗ | port from SRC |
+| 19 | ✓ | ✗ | port from SRC |
+| 20 | ✓ | ✗ | port from SRC |
+| 21 | ✓ | ✗ | port from SRC |
+| 22 | ✓ | ✗ | port from SRC |
+| 23 | ✓ | partial | port remaining from SRC |
+| 24 | ✓ | ✓ (different facets) | merge both |
+| 25 | ✓ | ✗ | port from SRC |
+| 26 | ✓ | ✓ (different facets) | merge both |
+| 27 | ✗ | ✓ | already DIST |
+| 28 | ✗ | ✓ | already DIST |
+| 29 | ✗ | ✓ | already DIST |
+| 30 | ✗ | ✓ | already DIST |
+| 31 | ✗ | ✓ | already DIST |
+| 32 | ✗ | ✓ | already DIST |
+| 44 | ✓ | ✗ | port from SRC |
+| 45 | ✓ | ✗ | port from SRC |
+| 46 | ✓ | ✗ | port from SRC |
+| 47 | ✓ | partial | port remaining from SRC |
+| 48 | ✓ | ✗ | port from SRC |
+| 49 | ✓ | ✗ | port from SRC |
+
+The bulk of the work is porting assertions 1–26 and 44–49 from SRC to DIST. Assertions 27–32 are already DIST-only and just need to be split into the proposed file structure. Ready to start writing whenever you say which file to begin with.

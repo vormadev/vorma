@@ -9,11 +9,21 @@ import { useSplatClientLoaderData } from "./md.tsx";
 export const useRootClientLoaderData = addClientLoader({
 	pattern: "/",
 	clientLoader: async (props) => {
-		// This is pointless -- just an example of how to use a client loader
-		// await new Promise((r) => setTimeout(r, 1_000));
 		console.log(`Client loader '/' started at ${Date.now()}`);
+		await new Promise((resolve, reject) => {
+			const timer = setTimeout(resolve, 1_000);
+			props.signal.addEventListener(
+				"abort",
+				() => {
+					clearTimeout(timer);
+					reject(props.signal.reason);
+				},
+				{ once: true },
+			);
+		});
+		console.log("fake API call finished at ", Date.now());
 		const { loaderData } = await props.serverDataPromise;
-		console.log("Server data promise resolved at ", Date.now(), loaderData);
+		console.log("Server data promise resolved at ", Date.now());
 		return loaderData.LatestVersion;
 	},
 	reRunOnModuleChange: import.meta,

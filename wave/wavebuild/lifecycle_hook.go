@@ -31,12 +31,10 @@ func (h LifecycleHook) to_validated_hook(
 		watch_exclude_patterns: h.WatchExcludePatterns,
 		cmd:                    strings.TrimSpace(h.Cmd),
 		fn:                     h.Fn,
-		is_go_compile:          h.IsGoCompile,
-		start_at:               CheckpointOrder(h.StartAt),
-		finish_by:              CheckpointOrder(h.FinishBy),
 		effects:                h.Effects,
 		dev_only:               h.DevOnly,
 		prod_only:              h.ProdOnly,
+		incremental_only:       h.IncrementalOnly,
 	}
 
 	if v.cmd != "" && v.fn != nil {
@@ -45,47 +43,44 @@ func (h LifecycleHook) to_validated_hook(
 		)
 	}
 
-	if v.is_go_compile {
-		if h.StartAt != "" || h.FinishBy != "" || len(h.Effects) > 0 {
-			return nil, fmt.Errorf(
-				"%s: IsGoCompile cannot be combined with StartAt, FinishBy, or Effects",
-				label,
-			)
-		}
-		v.start_at = CheckpointOrder(Checkpoint_4_GoCompile)
-		v.finish_by = CheckpointOrder(Checkpoint_4_GoCompile)
-		v.effects = []Effect{EffectRestartApp}
-	}
-
-	if !v.is_go_compile {
-		if h.StartAt == "" {
-			v.start_at = CheckpointOrder(Checkpoint_1_CycleStart)
-		}
-		if h.FinishBy == "" {
-			v.finish_by = CheckpointOrder(Checkpoint_7_CycleEnd)
-		}
+	switch len(h.Timing) {
+	case 0:
+		v.start_at = 1
+		v.finish_by = 7
+	case 1:
+		v.start_at = CheckpointOrd(h.Timing[0])
+		v.finish_by = CheckpointOrd(h.Timing[0])
+	case 2:
+		v.start_at = CheckpointOrd(h.Timing[0])
+		v.finish_by = CheckpointOrd(h.Timing[1])
+	default:
+		return nil, fmt.Errorf(
+			"%s has invalid Timing: expected 0, 1, or 2 elements, got %d",
+			label,
+			len(h.Timing),
+		)
 	}
 
 	if !is_valid_checkpoint_ord(v.start_at) {
 		return nil, fmt.Errorf(
-			"%s has invalid StartAt checkpoint: %s",
+			"%s has invalid Timing start checkpoint: %d (must be 1–7)",
 			label,
-			h.StartAt,
+			v.start_at,
 		)
 	}
 	if !is_valid_checkpoint_ord(v.finish_by) {
 		return nil, fmt.Errorf(
-			"%s has invalid FinishBy checkpoint: %s",
+			"%s has invalid Timing finish checkpoint: %d (must be 1–7)",
 			label,
-			h.FinishBy,
+			v.finish_by,
 		)
 	}
 	if v.start_at > v.finish_by {
 		return nil, fmt.Errorf(
-			"%s has StartAt checkpoint that is after FinishBy checkpoint: StartAt=%s, FinishBy=%s",
+			"%s has Timing start (%d) after finish (%d)",
 			label,
-			h.StartAt,
-			h.FinishBy,
+			v.start_at,
+			v.finish_by,
 		)
 	}
 	for _, effect := range v.effects {
@@ -125,10 +120,10 @@ type validated_lifecycle_hook struct {
 	cmd string
 	fn  func(ctx *PluginCtx) (*PluginResult, error)
 
-	is_go_compile bool
-	start_at      CheckpointOrd
-	finish_by     CheckpointOrd
-	effects       []Effect
-	dev_only      bool
-	prod_only     bool
+	start_at         CheckpointOrd
+	finish_by        CheckpointOrd
+	effects          []Effect
+	dev_only         bool
+	prod_only        bool
+	incremental_only bool
 }

@@ -3,7 +3,7 @@ package wavebuild
 import (
 	"testing"
 
-	"github.com/vormadev/vorma/lab/jsonschema"
+	"github.com/vormadev/vorma/internal/pkg/jsonschema"
 )
 
 func TestValidatePluginConfig_AllowsJSONKeyWithoutParseFunc(t *testing.T) {

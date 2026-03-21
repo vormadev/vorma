@@ -26,7 +26,7 @@ func find_nested_result(
 	results *NestedTasksResults,
 	pattern string,
 ) *NestedTasksResult {
-	for _, r := range results.Slice {
+	for _, r := range results.Results {
 		if r.Pattern() == pattern {
 			return r
 		}
@@ -336,10 +336,10 @@ func TestRunNestedTasks(t *testing.T) {
 		if !found {
 			t.Error("Should find matches")
 		}
-		if len(results.Slice) != 3 {
-			t.Errorf("Expected 3 results, got %d", len(results.Slice))
+		if len(results.Results) != 3 {
+			t.Errorf("Expected 3 results, got %d", len(results.Results))
 		}
-		for i, r := range results.Slice {
+		for i, r := range results.Results {
 			if !r.OK() {
 				t.Errorf("Task %d failed: %v", i, r.Err())
 			}
@@ -732,7 +732,7 @@ func TestRunNestedTasks(t *testing.T) {
 		matches, _ := FindNestedMatches(nr, req)
 		results := RunNestedTasks(nr, req, matches)
 
-		for i, r := range results.Slice {
+		for i, r := range results.Results {
 			has := results.HasTaskHandlerAt(i)
 			if r.RanTask() && !has {
 				t.Errorf(
@@ -806,15 +806,15 @@ func TestNestedResponseProxies(t *testing.T) {
 	req := create_request_with_tasks_ctx(http.MethodGet, "/page/details")
 	results, _ := FindNestedMatchesAndRunTasks(nr, req)
 
-	if len(results.ResponseProxies) != len(results.Slice) {
+	if len(results.ResponseProxies) != len(results.Results) {
 		t.Errorf(
 			"Expected %d proxies, got %d",
-			len(results.Slice),
+			len(results.Results),
 			len(results.ResponseProxies),
 		)
 	}
 	for i, proxy := range results.ResponseProxies {
-		if results.Slice[i].RanTask() {
+		if results.Results[i].RanTask() {
 			if proxy == nil {
 				t.Errorf("proxy at %d should exist for task handler", i)
 			}

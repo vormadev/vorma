@@ -25,6 +25,12 @@ type DecodedRouteData = {
 
 function decode_payload(payload: RouteDataPayload): DecodedRouteData {
 	const prev = get_snapshot();
+
+	let decoded_title: string | undefined;
+	if (payload.title) {
+		decoded_title = decode_html_to_text(payload.title.dangerousInnerHTML);
+	}
+
 	return {
 		snapshot: {
 			outermost_server_error: payload.outermostServerError,
@@ -41,17 +47,14 @@ function decode_payload(payload: RouteDataPayload): DecodedRouteData {
 			has_root_data: payload.hasRootData ?? false,
 			params: payload.params ?? {},
 			splat_values: payload.splatValues ?? [],
-			build_id: prev.build_id,
+			client_build_id: prev.client_build_id,
 			root_element_id: prev.root_element_id,
 			active_components: [],
 			active_error_boundary: undefined,
 			client_loaders_data: [],
 		},
 		artifacts: {
-			title:
-				payload.title != null
-					? decode_html_to_text(payload.title.dangerousInnerHTML)
-					: "",
+			title: decoded_title,
 			meta_head_els: payload.metaHeadEls ?? [],
 			rest_head_els: payload.restHeadEls ?? [],
 			css_bundles: payload.cssBundles ?? [],
@@ -63,14 +66,17 @@ function decode_payload(payload: RouteDataPayload): DecodedRouteData {
 // ─── Asset Preloading ────────────────────────────────────────────
 
 function preload_modules(deps: string[]): void {
-	if (import.meta.env.DEV) return;
+	if (import.meta.env.DEV) {
+		return;
+	}
 	for (const dep of new Set(deps)) {
 		if (
 			document.head.querySelector(
 				`link[rel="modulepreload"][href="${dep}"]`,
 			)
-		)
+		) {
 			continue;
+		}
 		const link = document.createElement("link");
 		link.rel = "modulepreload";
 		link.href = dep;
@@ -84,8 +90,9 @@ function preload_css(css_bundles: string[]): void {
 			document.head.querySelector(
 				`link[data-vorma-css-preload-bundle="${path}"]`,
 			)
-		)
+		) {
 			continue;
+		}
 		const link = document.createElement("link");
 		link.rel = "preload";
 		link.setAttribute("as", "style");
@@ -105,7 +112,9 @@ export async function wait_for_css(
 	artifacts: NavigationArtifacts | undefined,
 	signal: AbortSignal,
 ): Promise<void> {
-	if (!artifacts) return;
+	if (!artifacts) {
+		return;
+	}
 	const promises: Promise<void>[] = [];
 	for (const path of new Set(artifacts.css_bundles)) {
 		const node = document.head.querySelector<HTMLLinkElement>(
@@ -114,8 +123,9 @@ export async function wait_for_css(
 		if (
 			!node ||
 			node.getAttribute("data-vorma-css-preload-settled") === "1"
-		)
+		) {
 			continue;
+		}
 		promises.push(
 			new Promise<void>((resolve) => {
 				if (signal.aborted) {
@@ -142,18 +152,23 @@ export async function wait_for_css(
 			}),
 		);
 	}
-	if (promises.length > 0) await Promise.all(promises);
+	if (promises.length > 0) {
+		await Promise.all(promises);
+	}
 }
 
 export function apply_css_bundles(
 	artifacts: NavigationArtifacts | undefined,
 ): void {
-	if (!artifacts) return;
+	if (!artifacts) {
+		return;
+	}
 	for (const path of new Set(artifacts.css_bundles)) {
 		if (
 			document.head.querySelector(`link[data-vorma-css-bundle="${path}"]`)
-		)
+		) {
 			continue;
+		}
 		const link = document.createElement("link");
 		link.rel = "stylesheet";
 		link.setAttribute("data-vorma-css-bundle", path);
@@ -170,45 +185,51 @@ export async function fetch_route_data(props: {
 }): Promise<RouteDataFetchResult> {
 	const g = get_global();
 	const request_url = new URL(props.target_url);
-	request_url.searchParams.set("vorma_json", get_snapshot().build_id);
+	request_url.searchParams.set("vorma_json", get_snapshot().client_build_id);
 	const headers = new Headers();
 	headers.set("X-Accepts-Client-Redirect", "1");
-	if (g.deployment_id) request_url.searchParams.set("dpl", g.deployment_id);
+	if (g.deployment_id) {
+		request_url.searchParams.set("dpl", g.deployment_id);
+	}
 
 	const response = await window.fetch(request_url, {
 		method: "GET",
 		headers,
 		signal: props.signal,
 	});
-	const build_id = response.headers.get("X-Vorma-Build-Id") ?? "";
+	const client_build_id =
+		response.headers.get("X-Vorma-Client-Build-Id") ?? "";
 
 	const hard_reload = response.headers.get("X-Vorma-Reload");
-	if (hard_reload)
+	if (hard_reload) {
 		return {
 			status: "redirect",
 			href: new URL(hard_reload, request_url.href).href,
-			build_id,
+			client_build_id,
 			is_hard_reload: true,
 		};
+	}
 
 	const client_redirect = response.headers.get("X-Client-Redirect");
-	if (client_redirect)
+	if (client_redirect) {
 		return {
 			status: "redirect",
 			href: new URL(client_redirect, request_url.href).href,
-			build_id,
+			client_build_id,
 			is_hard_reload: false,
 		};
+	}
 
 	if (response.redirected && response.url) {
 		const r = new URL(response.url, request_url.href).href;
-		if (r !== request_url.href)
+		if (r !== request_url.href) {
 			return {
 				status: "redirect",
 				href: r,
-				build_id,
+				client_build_id,
 				is_hard_reload: false,
 			};
+		}
 	}
 
 	if (!response.ok) {
@@ -216,32 +237,32 @@ export async function fetch_route_data(props: {
 		panic(`Navigation request failed (${response.status}): ${body}.`);
 	}
 	const json: unknown = await response.json();
-	if (json === null || typeof json !== "object" || Array.isArray(json))
+	if (json === null || typeof json !== "object" || Array.isArray(json)) {
 		panic(
 			"Route data JSON contract violated: response must be a JSON object.",
 		);
+	}
 
 	const { snapshot, artifacts, deps } = decode_payload(
 		json as RouteDataPayload,
 	);
 
-	// Deps are consumed here and never leave this function.
 	preload_modules(deps);
 	preload_css(artifacts.css_bundles);
 
 	return {
 		status: "success",
-		route_snapshot: { ...snapshot, build_id },
+		route_snapshot: { ...snapshot, client_build_id },
 		artifacts,
-		build_id,
+		client_build_id,
 	};
 }
 
 export function make_hard_reload_href(
 	target: string,
-	build_id: string,
+	client_build_id: string,
 ): string {
 	const url = new URL(target, window.location.href);
-	url.searchParams.set("vorma_reload", build_id);
+	url.searchParams.set("vorma_reload", client_build_id);
 	return url.href;
 }

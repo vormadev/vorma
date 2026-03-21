@@ -15,7 +15,9 @@ import type {
 
 const guarded = new WeakSet<Promise<unknown>>();
 function suppress_unhandled(p: Promise<unknown>): void {
-	if (guarded.has(p)) return;
+	if (guarded.has(p)) {
+		return;
+	}
 	guarded.add(p);
 	void p.catch(() => undefined);
 }
@@ -36,14 +38,18 @@ export function create_prestarts(props: {
 	const g = get_global();
 	const pathname = new URL(props.target_url, window.location.href).pathname;
 	const match_result = findNestedMatches(g.pattern_registry, pathname);
-	if (!match_result) return [];
+	if (!match_result) {
+		return [];
+	}
 
 	const results: ClientLoaderPrestart[] = [];
 
 	for (const match of match_result.matches) {
 		const pattern = match.registeredPattern.originalPattern;
 		const wait_fn = g.pattern_to_wait_fn[pattern];
-		if (!wait_fn) continue;
+		if (!wait_fn) {
+			continue;
+		}
 
 		let settled = false;
 		let resolve_server: (v: any) => void;
@@ -65,7 +71,9 @@ export function create_prestarts(props: {
 		suppress_unhandled(result_promise);
 
 		const abort_if_pending = () => {
-			if (settled) return;
+			if (settled) {
+				return;
+			}
 			settled = true;
 			reject_server!(
 				Object.assign(
@@ -82,14 +90,16 @@ export function create_prestarts(props: {
 			matched_pattern: pattern,
 			result_promise,
 			resolve_from_snapshot: (s) => {
-				if (settled) return;
+				if (settled) {
+					return;
+				}
 				settled = true;
 				const idx = s.matched_patterns.indexOf(pattern);
 				resolve_server!({
 					matchedPatterns: s.matched_patterns,
 					rootData: s.has_root_data ? s.loaders_data[0] : null,
 					loaderData: s.loaders_data[idx],
-					buildID: s.build_id,
+					clientBuildID: s.client_build_id,
 				});
 			},
 			abort_if_pending,
@@ -123,6 +133,18 @@ export async function complete_client_loaders(props: {
 	for (let i = 0; i < n; i++) {
 		const pattern = s.matched_patterns[i] as string;
 
+		// skip client loaders at or beyond the server error
+		// boundary — the server already errored at this index, so
+		// running the client loader is both incorrect and wasteful.
+		if (
+			s.outermost_server_error_idx != null &&
+			i >= s.outermost_server_error_idx
+		) {
+			promises.push(Promise.resolve(undefined));
+			controllers.push(null);
+			continue;
+		}
+
 		if (prestarted[pattern] !== undefined) {
 			// Already running from prefetch or parallel start
 			promises.push(prestarted[pattern]!);
@@ -153,7 +175,7 @@ export async function complete_client_loaders(props: {
 			matchedPatterns: s.matched_patterns,
 			rootData: s.has_root_data ? s.loaders_data[0] : null,
 			loaderData: s.loaders_data[i],
-			buildID: s.build_id,
+			clientBuildID: s.client_build_id,
 		});
 
 		promises.push(
@@ -199,12 +221,16 @@ export async function complete_client_loaders(props: {
 			}
 			data.push(undefined);
 			// Stop at the first real error
-			if (outermost_idx != null) break;
+			if (outermost_idx != null) {
+				break;
+			}
 		}
 	}
 
 	// Fill remaining slots if we broke out early
-	while (data.length < n) data.push(undefined);
+	while (data.length < n) {
+		data.push(undefined);
+	}
 
 	return {
 		client_loaders_data: data,

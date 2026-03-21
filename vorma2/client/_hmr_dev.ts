@@ -86,7 +86,7 @@ async function refresh(patterns: string[]): Promise<boolean> {
 					? snapshot.loaders_data[0]
 					: null,
 				loaderData: snapshot.loaders_data[i],
-				buildID: snapshot.build_id,
+				clientBuildID: snapshot.client_build_id,
 			});
 			try {
 				data[i] = await fn({

@@ -35,7 +35,7 @@ function create_default_snapshot(): RuntimeRouteSnapshot {
 		has_root_data: false,
 		params: {},
 		splat_values: [],
-		build_id: "1",
+		client_build_id: "1",
 		root_element_id: undefined,
 		active_components: [],
 		active_error_boundary: undefined,

@@ -140,7 +140,7 @@ func ToDevScripts(options ToDevScriptsOptions) (template.HTML, error) {
 		var b stringsutil.Builder
 
 		b.Linef(
-			`import RefreshRuntime from "http://127.0.0.1:%s/@react-refresh";`,
+			`import RefreshRuntime from "http://127.0.0.1:%d/@react-refresh";`,
 			options.Port,
 		)
 		b.Line("RefreshRuntime.injectIntoGlobalHook(window);")

@@ -31,7 +31,7 @@ x.snapshot = {
 	has_root_data: {{.HasRootData}},
 	params: {{.Params}},
 	splat_values: {{.SplatValues}},
-	build_id: {{.BuildID}},
+	client_build_id: {{.ClientBuildID}},
 	root_element_id: "{{.RootElementID}}",
 };
 </script>`
@@ -46,7 +46,7 @@ type ssr_input struct {
 	PublicPathPrefix        string
 	DeploymentID            string
 	RouteManifestURL        string
-	BuildID                 string
+	ClientBuildID           string
 	RootElementID           string
 	OutermostServerError    string
 	OutermostServerErrorIdx *int

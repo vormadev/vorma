@@ -1,6 +1,6 @@
 export { makeTypedAPIClient } from "./api_client.ts";
 export {
-	addBuildIDListener,
+	addClientBuildIDListener,
 	addRouteChangeListener,
 	addStatusListener,
 } from "./events.ts";
@@ -10,7 +10,7 @@ export {
 	setupGlobalLoadingIndicator,
 } from "./loading_indicator.ts";
 export {
-	getBuildID,
+	getClientBuildID,
 	getRootEl,
 	getRouterData,
 	getStatus,

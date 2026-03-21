@@ -34,6 +34,7 @@ type Def struct {
 	Examples            []string
 	Default             any
 	MinItems            int
+	MaxItems            int
 	RequiredChildren    []string
 	Properties          any
 	AllOf               []any
@@ -54,6 +55,7 @@ type Entry struct {
 	Enum        []string `json:"enum,omitempty"`
 	Examples    []string `json:"examples,omitempty"`
 	MinItems    int      `json:"minItems,omitempty"`
+	MaxItems    int      `json:"maxItems,omitempty"`
 }
 
 // IfThen models a JSON schema conditional branch.
@@ -74,6 +76,7 @@ func ToJSONSchema(sd Def) Entry {
 		Properties:  sd.Properties,
 		Enum:        sd.Enum,
 		MinItems:    sd.MinItems,
+		MaxItems:    sd.MaxItems,
 	}
 	if sd.Items.Type != "" {
 		x.Items = sd.Items
@@ -92,7 +95,8 @@ func (e Entry) IsZero() bool {
 		e.Items == nil &&
 		len(e.Enum) == 0 &&
 		len(e.Examples) == 0 &&
-		e.MinItems == 0
+		e.MinItems == 0 &&
+		e.MaxItems == 0
 }
 
 func (d Def) descStr() string {

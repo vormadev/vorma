@@ -22,27 +22,23 @@ function resolve_pattern_path(props: {
 	splat_values?: string[];
 	dynamic_rune: string;
 	splat_rune: string;
-	index_segment: string;
 }): string {
 	const params = props.params ?? {};
-	const normalized =
-		props.pattern === `/${props.index_segment}` ? "/" : props.pattern;
-	const segments = normalized
-		.split("/")
-		.filter((s) => s.length > 0)
-		.filter((s) => s !== props.index_segment);
+	const segments = props.pattern.split("/").filter((s) => s.length > 0);
 	const splat_encoded = (props.splat_values ?? [])
 		.map((v) => encodeURIComponent(v))
 		.join("/");
 	const path_segments = segments.flatMap((seg) => {
-		if (seg === props.splat_rune)
+		if (seg === props.splat_rune) {
 			return splat_encoded.split("/").filter((p) => p.length > 0);
-		if (seg.startsWith(props.dynamic_rune))
+		}
+		if (seg.startsWith(props.dynamic_rune)) {
 			return [
 				encodeURIComponent(
 					params[seg.slice(props.dynamic_rune.length)] as string,
 				),
 			];
+		}
 		return [seg];
 	});
 	const result = "/" + path_segments.join("/");
@@ -59,7 +55,7 @@ export type ResolvePathInput = {
 
 export function resolve_path(input: ResolvePathInput): string {
 	const is_loader = input.type === "loader";
-	return resolve_pattern_path({
+	let path = resolve_pattern_path({
 		pattern: input.pattern,
 		params: input.params,
 		splat_values: input.splat_values,
@@ -69,8 +65,18 @@ export function resolve_path(input: ResolvePathInput): string {
 		splat_rune: is_loader
 			? input.app_config.loadersSplatRune
 			: input.app_config.actionsSplatRune,
-		index_segment: input.app_config.loadersExplicitIndexSegmentIdentifier,
 	});
+
+	// only strip the explicit index segment for loader paths, and
+	// only strip a trailing occurrence, not all occurrences.
+	if (is_loader && input.app_config.loadersExplicitIndexSegmentIdentifier) {
+		const suffix = `/${input.app_config.loadersExplicitIndexSegmentIdentifier}`;
+		if (path.endsWith(suffix)) {
+			path = path.slice(0, -suffix.length) || "/";
+		}
+	}
+
+	return path;
 }
 
 // ─── Typed Link Href Builder (shared by all UI adapters) ─────────
@@ -91,8 +97,12 @@ export function build_typed_link_href(props: {
 		splat_values: props.splat_values,
 	});
 	const url = new URL(base, window.location.origin);
-	if (props.search !== undefined) url.search = props.search;
-	if (props.hash !== undefined) url.hash = props.hash;
+	if (props.search !== undefined) {
+		url.search = props.search;
+	}
+	if (props.hash !== undefined) {
+		url.hash = props.hash;
+	}
 	return url.href;
 }
 
@@ -109,8 +119,12 @@ function build_url(
 					input.app_config.actionsRouterMountRoot,
 				) + (pathname === "/" ? "" : pathname);
 	const url = new URL(full, window.location.origin);
-	if (input.search !== undefined) url.search = input.search;
-	if (input.hash !== undefined) url.hash = input.hash;
+	if (input.search !== undefined) {
+		url.search = input.search;
+	}
+	if (input.hash !== undefined) {
+		url.hash = input.hash;
+	}
 	return url;
 }
 
@@ -132,8 +146,9 @@ export function build_query_url(
 		params: props.params,
 		splat_values: props.splat_values,
 	});
-	if (props.input && typeof props.input === "object")
+	if (props.input && typeof props.input === "object") {
 		url.search = serializeToSearchParams(props.input).toString();
+	}
 	return url;
 }
 
@@ -169,9 +184,12 @@ export function resolve_body(props: {
 		i instanceof URLSearchParams ||
 		i instanceof Blob ||
 		i instanceof ArrayBuffer
-	)
+	) {
 		return i;
-	if (ArrayBuffer.isView(i)) return i as ArrayBufferView<ArrayBuffer>;
+	}
+	if (ArrayBuffer.isView(i)) {
+		return i as ArrayBufferView<ArrayBuffer>;
+	}
 	return JSON.stringify(i);
 }
 
@@ -194,8 +212,9 @@ export function classify_target(
 ): NavigationClassification {
 	const t = new URL(target_href, current_href);
 	const c = new URL(current_href);
-	if (href_without_hash(t.href) !== href_without_hash(c.href))
+	if (href_without_hash(t.href) !== href_without_hash(c.href)) {
 		return "requires-fetch";
+	}
 	return normalize_hash(t.hash) === normalize_hash(c.hash)
 		? "same-document-noop"
 		: "same-document-hash-change";
@@ -208,10 +227,11 @@ export function is_same_origin(href: string): boolean {
 }
 
 export function assert_same_origin(href: string, api: string): void {
-	if (!is_same_origin(href))
+	if (!is_same_origin(href)) {
 		throw new Error(
 			`${api} only supports same-origin targets. Received: "${href}".`,
 		);
+	}
 }
 
 export function make_absolute(href: string | URL): string {

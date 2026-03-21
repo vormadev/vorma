@@ -1,6 +1,6 @@
 package wavebuild
 
-import "github.com/vormadev/vorma/lab/jsonschema"
+import "github.com/vormadev/vorma/internal/pkg/jsonschema"
 
 var (
 	reserved_json_cfg_keys = []string{
@@ -159,32 +159,10 @@ func build_lifecycle_hook_entry_schema() jsonschema.Entry {
 			"Cmd": jsonschema.OptionalString(jsonschema.Def{
 				Description: "Shell command to execute when the hook fires.",
 			}),
-			"IsGoCompile": jsonschema.OptionalBoolean(jsonschema.Def{
-				Description: "Convenience bool that, when true, sets StartAt and FinishBy to 'go_compile' and implies 'restart_app'. Cannot be combined with StartAt, FinishBy, or Effects.",
-			}),
-			"StartAt": jsonschema.OptionalString(jsonschema.Def{
-				Description: "Earliest checkpoint at which the hook may begin execution.",
-				Enum: []string{
-					Checkpoint_1_CycleStart.Str(),
-					Checkpoint_2_UserlandPublicFilemapReady.Str(),
-					Checkpoint_3_FullPublicFilemapFinalized.Str(),
-					Checkpoint_4_GoCompile.Str(),
-					Checkpoint_5_GoCompileComplete.Str(),
-					Checkpoint_6_ServiceRestarted.Str(),
-					Checkpoint_7_CycleEnd.Str(),
-				},
-			}),
-			"FinishBy": jsonschema.OptionalString(jsonschema.Def{
-				Description: "Latest checkpoint by which the hook must have completed.",
-				Enum: []string{
-					Checkpoint_1_CycleStart.Str(),
-					Checkpoint_2_UserlandPublicFilemapReady.Str(),
-					Checkpoint_3_FullPublicFilemapFinalized.Str(),
-					Checkpoint_4_GoCompile.Str(),
-					Checkpoint_5_GoCompileComplete.Str(),
-					Checkpoint_6_ServiceRestarted.Str(),
-					Checkpoint_7_CycleEnd.Str(),
-				},
+			"Timing": jsonschema.OptionalArray(jsonschema.Def{
+				Description: "When this hook runs in the build cycle. Omit or use an empty array to span the entire cycle (checkpoints 1 through 7). A single-element array [N] runs at checkpoint N only. A two-element array [N, M] starts at checkpoint N and must finish by checkpoint M. Checkpoint reference: 1=cycle_start, 2=userland_public_filemap_ready, 3=full_public_filemap_finalized, 4=go_compile, 5=go_compile_complete, 6=service_restarted, 7=cycle_end.",
+				Items:       jsonschema.Entry{Type: jsonschema.TypeNumber},
+				MaxItems:    2,
 			}),
 			"Effects": jsonschema.OptionalArray(jsonschema.Def{
 				Description: "What effects this hook causes in the current build cycle.",
@@ -205,6 +183,9 @@ func build_lifecycle_hook_entry_schema() jsonschema.Entry {
 			}),
 			"ProdOnly": jsonschema.OptionalBoolean(jsonschema.Def{
 				Description: "When true, this hook only runs in prod mode.",
+			}),
+			"IncrementalOnly": jsonschema.OptionalBoolean(jsonschema.Def{
+				Description: "When true, this hook is skipped on the initial build and only runs on subsequent incremental builds triggered by file changes.",
 			}),
 		},
 	})

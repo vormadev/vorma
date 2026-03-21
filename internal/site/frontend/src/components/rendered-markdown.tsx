@@ -2,8 +2,8 @@ import { createEffect, onCleanup } from "solid-js";
 import { render } from "solid-js/web";
 import { getHrefDetails } from "vorma/kit/url";
 import { VormaLink } from "vorma/solid";
+import { waveRuntimeURL } from "../../../__wave/vorma.gen/index.ts";
 import { highlight } from "../highlight.ts";
-import { waveRuntimeURL } from "../vorma.gen/index.ts";
 
 export function RenderedMarkdown(props: {
 	markdown: string;

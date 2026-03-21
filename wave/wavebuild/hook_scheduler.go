@@ -109,7 +109,7 @@ func (hs *hook_scheduler) start_hooks_at(checkpoint CheckpointOrd) {
 			continue
 		}
 
-		hs.logger.Info(fmt.Sprintf("Running %s", h.name))
+		hs.logger.Debug(fmt.Sprintf("Running %s", h.name))
 
 		if h.fn != nil {
 			started := make(chan struct{})
@@ -228,8 +228,8 @@ func (hs *hook_scheduler) apply_hook_result(
 ) {
 	if !h.is_noop() {
 		hs.logger.Info(
-			fmt.Sprintf("Completed %s", h.name),
-			"duration", r.duration,
+			fmt.Sprintf("completed %s", h.name),
+			"duration", r.duration.Round(time.Millisecond),
 		)
 	}
 	for _, effect := range h.effects {

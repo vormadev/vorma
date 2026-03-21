@@ -12,21 +12,22 @@ import { RenderedMarkdown } from "./rendered-markdown.tsx";
 export const useSplatClientLoaderData = addClientLoader({
 	pattern: "/*",
 	clientLoader: async (props) => {
-		// This is pointless -- just an example of how to use a client loader
-		// await new Promise((r) => setTimeout(r, 1_000));
 		console.log(`Client loader '/*' started at ${Date.now()}`);
+		await new Promise((resolve, reject) => {
+			const timer = setTimeout(resolve, 2_000);
+			props.signal.addEventListener(
+				"abort",
+				() => {
+					clearTimeout(timer);
+					reject(props.signal.reason);
+				},
+				{ once: true },
+			);
+		});
+		console.log("fake API call finished at ", Date.now());
 		const { loaderData } = await props.serverDataPromise;
-		console.log("Server data promise resolved at ", Date.now(), loaderData);
-
-		// This is how you pass an abort signal to your API calls,
-		// so that if the navigation aborts, the downstream requests
-		// also abort:
-		// const res = await api.mutate({
-		// 	pattern: "/example",
-		// 	requestInit: { signal: props.signal },
-		// });
-
-		return loaderData.Title as string;
+		console.log("Server data promise resolved at ", Date.now());
+		return loaderData.Title || "";
 	},
 	reRunOnModuleChange: import.meta,
 });

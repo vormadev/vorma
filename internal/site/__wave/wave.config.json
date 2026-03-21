@@ -15,26 +15,18 @@
 		}
 	},
 	"Vorma": {
-		"GoCompileCmdDev": "go build -tags $WAVE_BUILD_TAGS -o $WAVE_BIN_OUTPUT_PATH ./backend/cmd/serve",
-		"GoCompileCmdProd": "go build -tags $WAVE_BUILD_TAGS -o $WAVE_BIN_OUTPUT_PATH ./backend/cmd/serve",
-		"MainBuildEntry": "backend/cmd/build",
 		"UIVariant": "solid",
+		"ServerEntry": "backend/cmd/serve",
 		"HTMLTemplateLocation": "entry.go.html",
 		"ClientEntry": "frontend/src/vorma.entry.tsx",
 		"ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
-		"ServerRouteDefinitionPatterns": ["backend/src/**/*.go"],
-		"TSGenOutDir": "frontend/src/vorma.gen",
+		"GenOutDir": "__wave/vorma.gen",
 		"BuildtimePublicURLFuncName": "hashedURL"
 	},
 	"Vite": {
 		"JSPackageManagerBaseCmd": "pnpm"
 	},
 	"LifecycleHooks": [
-		{
-			"WatchIncludePatterns": ["**/*.go"],
-			"IsGoCompile": true,
-			"Cmd": "go build -tags $WAVE_BUILD_TAGS -o $WAVE_BIN_OUTPUT_PATH ./backend/cmd/serve"
-		},
 		{
 			"WatchIncludePatterns": ["backend/assets/markdown/**/*.md"],
 			"Effects": ["revalidate_client_data"],

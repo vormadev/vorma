@@ -3,7 +3,7 @@ package app
 import (
 	"net/http"
 	"path"
-	"site/backend"
+	waveapp "site/__wave"
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/theme"
@@ -20,7 +20,7 @@ const (
 )
 
 var App = vorma2.NewVormaApp(vorma2.VormaAppConfig{
-	Wave: func() *wave.Wave { return wave.New(backend.WaveOpts) },
+	Wave: func() *wave.Wave { return wave.New(waveapp.WaveOpts) },
 
 	HeadDedupeKeysFunc: func(h *vorma2.HeadEls) {
 		h.Meta(h.Property("og:title"))

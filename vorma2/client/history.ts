@@ -1,10 +1,5 @@
 /// <reference types="vite/client" />
 
-////////////////////////////////////////////////////////////////////////////////
-// Native History API wrapper — replaces npm `history` dependency.
-// Stores a unique key per entry via history.state for scroll restoration.
-////////////////////////////////////////////////////////////////////////////////
-
 import { dispatch_route_change } from "./events.ts";
 import { ensure_global } from "./global_state.ts";
 import {
@@ -72,9 +67,30 @@ export function commit_history(props: {
 
 export function init_popstate_listener(): void {
 	const g = ensure_global();
-	if (g.popstate_registered) return;
+	if (g.popstate_registered) {
+		return;
+	}
 	g.popstate_registered = true;
-	g.last_known_history_key = get_history_key();
+
+	// seed the initial history entry with a _vk key so that
+	// save_current_scroll() and get_scroll_for_current_key_or_top()
+	// work correctly when the user navigates back to the first page.
+	if (!window.history.state || !(KEY_FIELD in window.history.state)) {
+		const initial_key = make_key();
+		const existing_state =
+			window.history.state && typeof window.history.state === "object"
+				? window.history.state
+				: {};
+		window.history.replaceState(
+			{ ...existing_state, [KEY_FIELD]: initial_key },
+			"",
+			window.location.href,
+		);
+		g.last_known_history_key = initial_key;
+	} else {
+		g.last_known_history_key = get_history_key();
+	}
+
 	g.last_known_history_href = window.location.href;
 	window.addEventListener("popstate", () => void handle_popstate());
 }
@@ -87,7 +103,9 @@ async function handle_popstate(): Promise<void> {
 	const next_href = window.location.href;
 
 	// Dedup: if the key hasn't changed, nothing to do.
-	if (next_key === prev_key) return;
+	if (next_key === prev_key) {
+		return;
+	}
 
 	// Save scroll for the page we're leaving.
 	if (prev_key) {
@@ -119,7 +137,9 @@ async function handle_popstate(): Promise<void> {
 	}
 
 	const nav = g.nav_state_manager;
-	if (!nav) return;
+	if (!nav) {
+		return;
+	}
 
 	try {
 		await nav.navigate({
@@ -161,7 +181,9 @@ export function set_manual_scroll_restoration(): void {
 
 export function register_beforeunload_once(): void {
 	const g = ensure_global();
-	if (g.has_registered_beforeunload) return;
+	if (g.has_registered_beforeunload) {
+		return;
+	}
 	window.addEventListener("beforeunload", () => save_page_refresh_scroll());
 	g.has_registered_beforeunload = true;
 }

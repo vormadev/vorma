@@ -12,10 +12,10 @@ import type {
 	VormaQueryProps,
 } from "vorma/client";
 import {
-	addBuildIDListener,
+	addClientBuildIDListener,
 	addRouteChangeListener,
 	addStatusListener,
-	getBuildID,
+	getClientBuildID,
 	getRootEl,
 	getRouterData,
 	getStatus,
@@ -29,34 +29,34 @@ import {
 	vormaNavigate,
 } from "vorma/client";
 import {
-	VormaLink as PreactVormaLink,
-	VormaRootOutlet as PreactVormaRootOutlet,
-	makeTypedAddClientLoader as makeTypedPreactAddClientLoader,
-	makeTypedLink as makeTypedPreactLink,
-	makeTypedUseLoaderData as makeTypedPreactUseLoaderData,
-	makeTypedUsePatternLoaderData as makeTypedPreactUsePatternLoaderData,
-	makeTypedUseRouterData as makeTypedPreactUseRouterData,
-	type VormaRouteProps as PreactVormaRouteProps,
+	VormaLink as Preact__VormaLink,
+	VormaRootOutlet as Preact__VormaRootOutlet,
+	makeTypedAddClientLoader as preact__makeTypedAddClientLoader,
+	makeTypedLink as preact__makeTypedLink,
+	makeTypedUseLoaderData as preact__makeTypedUseLoaderData,
+	makeTypedUsePatternLoaderData as preact__makeTypedUsePatternLoaderData,
+	makeTypedUseRouterData as preact__makeTypedUseRouterData,
+	type VormaRouteProps as Preact__VormaRouteProps,
 } from "vorma/preact";
 import {
-	VormaLink as ReactVormaLink,
-	VormaRootOutlet as ReactVormaRootOutlet,
-	makeTypedAddClientLoader as makeTypedReactAddClientLoader,
-	makeTypedLink as makeTypedReactLink,
-	makeTypedUseLoaderData as makeTypedReactUseLoaderData,
-	makeTypedUsePatternLoaderData as makeTypedReactUsePatternLoaderData,
-	makeTypedUseRouterData as makeTypedReactUseRouterData,
-	type VormaRouteProps as ReactVormaRouteProps,
+	VormaLink as React__VormaLink,
+	VormaRootOutlet as React__VormaRootOutlet,
+	makeTypedAddClientLoader as react__makeTypedAddClientLoader,
+	makeTypedLink as react__makeTypedLink,
+	makeTypedUseLoaderData as react__makeTypedUseLoaderData,
+	makeTypedUsePatternLoaderData as react__makeTypedUsePatternLoaderData,
+	makeTypedUseRouterData as react__makeTypedUseRouterData,
+	type VormaRouteProps as React__VormaRouteProps,
 } from "vorma/react";
 import {
-	VormaLink as SolidVormaLink,
-	VormaRootOutlet as SolidVormaRootOutlet,
-	makeTypedAddClientLoader as makeTypedSolidAddClientLoader,
-	makeTypedLink as makeTypedSolidLink,
-	makeTypedUseLoaderData as makeTypedSolidUseLoaderData,
-	makeTypedUsePatternLoaderData as makeTypedSolidUsePatternLoaderData,
-	makeTypedUseRouterData as makeTypedSolidUseRouterData,
-	type VormaRouteProps as SolidVormaRouteProps,
+	VormaLink as Solid__VormaLink,
+	VormaRootOutlet as Solid__VormaRootOutlet,
+	makeTypedAddClientLoader as solid__makeTypedAddClientLoader,
+	makeTypedLink as solid__makeTypedLink,
+	makeTypedUseLoaderData as solid__makeTypedUseLoaderData,
+	makeTypedUsePatternLoaderData as solid__makeTypedUsePatternLoaderData,
+	makeTypedUseRouterData as solid__makeTypedUseRouterData,
+	type VormaRouteProps as Solid__VormaRouteProps,
 } from "vorma/solid";
 import type {
 	APIRequestInitDecorator,
@@ -529,20 +529,20 @@ function assertTypedQueryAndMutationPropsContracts(): void {
 void assertTypedQueryAndMutationPropsContracts;
 
 function assertTypedReactAdapterContracts(): void {
-	const useLoaderData = makeTypedReactUseLoaderData(
+	const useLoaderData = react__makeTypedUseLoaderData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const usePatternLoaderData = makeTypedReactUsePatternLoaderData(
+	const usePatternLoaderData = react__makeTypedUsePatternLoaderData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const useRouterData = makeTypedReactUseRouterData(
+	const useRouterData = react__makeTypedUseRouterData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const addClientLoader = makeTypedReactAddClientLoader(
+	const addClientLoader = react__makeTypedAddClientLoader(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const TypedLink = makeTypedReactLink(PUBLIC_TYPE_TEST_APP_CONFIG);
-	const routeProps = null as unknown as ReactVormaRouteProps<
+	const TypedLink = react__makeTypedLink(PUBLIC_TYPE_TEST_APP_CONFIG);
+	const routeProps = null as unknown as React__VormaRouteProps<
 		PublicApp,
 		"/users/:userID"
 	>;
@@ -634,20 +634,20 @@ function assertTypedReactAdapterContracts(): void {
 void assertTypedReactAdapterContracts;
 
 function assertTypedPreactAdapterContracts(): void {
-	const useLoaderData = makeTypedPreactUseLoaderData(
+	const useLoaderData = preact__makeTypedUseLoaderData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const usePatternLoaderData = makeTypedPreactUsePatternLoaderData(
+	const usePatternLoaderData = preact__makeTypedUsePatternLoaderData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const useRouterData = makeTypedPreactUseRouterData(
+	const useRouterData = preact__makeTypedUseRouterData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const addClientLoader = makeTypedPreactAddClientLoader(
+	const addClientLoader = preact__makeTypedAddClientLoader(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const TypedLink = makeTypedPreactLink(PUBLIC_TYPE_TEST_APP_CONFIG);
-	const routeProps = null as unknown as PreactVormaRouteProps<
+	const TypedLink = preact__makeTypedLink(PUBLIC_TYPE_TEST_APP_CONFIG);
+	const routeProps = null as unknown as Preact__VormaRouteProps<
 		PublicApp,
 		"/users/:userID"
 	>;
@@ -739,20 +739,20 @@ function assertTypedPreactAdapterContracts(): void {
 void assertTypedPreactAdapterContracts;
 
 function assertTypedSolidAdapterContracts(): void {
-	const useLoaderData = makeTypedSolidUseLoaderData(
+	const useLoaderData = solid__makeTypedUseLoaderData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const usePatternLoaderData = makeTypedSolidUsePatternLoaderData(
+	const usePatternLoaderData = solid__makeTypedUsePatternLoaderData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const useRouterData = makeTypedSolidUseRouterData(
+	const useRouterData = solid__makeTypedUseRouterData(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const addClientLoader = makeTypedSolidAddClientLoader(
+	const addClientLoader = solid__makeTypedAddClientLoader(
 		PUBLIC_TYPE_TEST_APP_CONFIG,
 	);
-	const TypedLink = makeTypedSolidLink(PUBLIC_TYPE_TEST_APP_CONFIG);
-	const routeProps = null as unknown as SolidVormaRouteProps<
+	const TypedLink = solid__makeTypedLink(PUBLIC_TYPE_TEST_APP_CONFIG);
+	const routeProps = null as unknown as Solid__VormaRouteProps<
 		PublicApp,
 		"/users/:userID"
 	>;
@@ -880,13 +880,13 @@ function assertPublicRuntimeAndAdapterComponentContracts(): void {
 	});
 	expectType<() => void>(removeRouteChangeListener);
 
-	const removeBuildIDListener = addBuildIDListener((event) => {
-		expectType<string>(event.detail.oldID);
-		expectType<string>(event.detail.newID);
+	const removeClientBuildIDListener = addClientBuildIDListener((event) => {
+		expectType<string>(event.detail.oldClientBuildID);
+		expectType<string>(event.detail.newClientBuildID);
 	});
-	expectType<() => void>(removeBuildIDListener);
+	expectType<() => void>(removeClientBuildIDListener);
 
-	expectType<string>(getBuildID());
+	expectType<string>(getClientBuildID());
 	expectType<HTMLElement>(getRootEl());
 	expectType<boolean>(getStatus().isNavigating);
 
@@ -894,7 +894,7 @@ function assertPublicRuntimeAndAdapterComponentContracts(): void {
 	expectType<Record<string, string>>(unscopedRouterData.params);
 	expectType<{ sessionUserID: string | null }>(unscopedRouterData.rootData);
 
-	const scopedRouteProps = null as unknown as ReactVormaRouteProps<
+	const scopedRouteProps = null as unknown as React__VormaRouteProps<
 		PublicApp,
 		"/users/:userID"
 	>;
@@ -948,10 +948,10 @@ function assertPublicRuntimeAndAdapterComponentContracts(): void {
 	});
 	expectType<() => void>(stopGlobalLoadingIndicator);
 
-	void ReactVormaRootOutlet({
+	void React__VormaRootOutlet({
 		idx: 0,
 	});
-	void ReactVormaLink({
+	void React__VormaLink({
 		href: "/users/u-1",
 		prefetch: "intent",
 		prefetchDelayMs: 0,
@@ -962,20 +962,20 @@ function assertPublicRuntimeAndAdapterComponentContracts(): void {
 		afterRender: () => {},
 	});
 	// @ts-expect-error prefetch only accepts intent or none.
-	void ReactVormaLink({ prefetch: "hover" });
+	void React__VormaLink({ prefetch: "hover" });
 
-	void PreactVormaRootOutlet({
+	void Preact__VormaRootOutlet({
 		idx: 0,
 	});
-	void PreactVormaLink({
+	void Preact__VormaLink({
 		href: "/users/u-1",
 		prefetch: "intent",
 	});
 
-	void SolidVormaRootOutlet({
+	void Solid__VormaRootOutlet({
 		idx: 0,
 	});
-	void SolidVormaLink({
+	void Solid__VormaLink({
 		href: "/users/u-1",
 		prefetch: "intent",
 	});

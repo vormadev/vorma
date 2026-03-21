@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/vormadev/vorma/internal/coalescepath"
+	"github.com/vormadev/vorma/internal/pkg/parseutil"
 	"github.com/vormadev/vorma/kit/envutil"
 	t "github.com/vormadev/vorma/lab/cliutil"
 	"github.com/vormadev/vorma/lab/coalescecmd"
-	"github.com/vormadev/vorma/lab/parseutil"
 	"golang.org/x/term"
 )
 

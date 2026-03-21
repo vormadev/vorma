@@ -44,10 +44,14 @@ export function setupGlobalLoadingIndicator(
 				clearTimeout(stop_timer);
 				stop_timer = null;
 			}
-			if (config.isRunning() || start_timer !== null) return;
+			if (config.isRunning() || start_timer !== null) {
+				return;
+			}
 			start_timer = window.setTimeout(() => {
 				start_timer = null;
-				if (!should_run() || config.isRunning()) return;
+				if (!should_run() || config.isRunning()) {
+					return;
+				}
 				config.start();
 			}, start_delay);
 		} else {
@@ -55,10 +59,14 @@ export function setupGlobalLoadingIndicator(
 				clearTimeout(start_timer);
 				start_timer = null;
 			}
-			if (!config.isRunning() || stop_timer !== null) return;
+			if (!config.isRunning() || stop_timer !== null) {
+				return;
+			}
 			stop_timer = window.setTimeout(() => {
 				stop_timer = null;
-				if (should_run() || !config.isRunning()) return;
+				if (should_run() || !config.isRunning()) {
+					return;
+				}
 				config.stop();
 			}, stop_delay);
 		}
@@ -68,9 +76,15 @@ export function setupGlobalLoadingIndicator(
 	sync();
 	return () => {
 		remove();
-		if (start_timer !== null) clearTimeout(start_timer);
-		if (stop_timer !== null) clearTimeout(stop_timer);
-		if (config.isRunning()) config.stop();
+		if (start_timer !== null) {
+			clearTimeout(start_timer);
+		}
+		if (stop_timer !== null) {
+			clearTimeout(stop_timer);
+		}
+		if (config.isRunning()) {
+			config.stop();
+		}
 	};
 }
 
@@ -80,7 +94,23 @@ export function revalidateOnWindowFocus(options?: {
 	const stale_ms = options?.staleTimeMS ?? 5_000;
 	return addOnWindowFocusListener(() => {
 		const store = get_manager().get_store();
-		if (Date.now() - store.last_nav_or_revalidate_ts >= stale_ms)
-			void revalidate();
+
+		// suppress revalidation while a navigation, submission,
+		// or revalidation is already in progress.
+		const status = get_loading_status(store);
+		if (
+			status.isNavigating ||
+			status.isSubmitting ||
+			status.isRevalidating
+		) {
+			return;
+		}
+
+		if (Date.now() - store.last_nav_or_revalidate_ts >= stale_ms) {
+			// catch unhandled rejections — execute_navigation
+			// can throw non-abort errors, and `void` discards the
+			// rejection without a .catch().
+			void revalidate().catch(() => undefined);
+		}
 	});
 }

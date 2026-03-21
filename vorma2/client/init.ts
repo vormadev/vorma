@@ -7,6 +7,7 @@ import {
 import { complete_client_loaders } from "./client_loaders.ts";
 import {
 	build_active_components,
+	compute_effective_error_idx,
 	load_modules,
 	resolve_error_boundary,
 } from "./components.ts";
@@ -27,7 +28,6 @@ import { classify_target } from "./url.ts";
 export async function initClient(options: InitClientInput): Promise<void> {
 	const g = ensure_global();
 
-	// Clean vorma_reload param from URL
 	const current = new URL(window.location.href);
 	if (current.searchParams.has("vorma_reload")) {
 		current.searchParams.delete("vorma_reload");
@@ -38,17 +38,24 @@ export async function initClient(options: InitClientInput): Promise<void> {
 		);
 	}
 
-	// Apply options
-	if (options.isDev !== undefined) g.is_dev = options.isDev;
-	if (options.publicPathPrefix !== undefined)
+	if (options.isDev !== undefined) {
+		g.is_dev = options.isDev;
+	}
+	if (options.publicPathPrefix !== undefined) {
 		g.public_path_prefix = options.publicPathPrefix;
-	if (options.defaultErrorBoundary)
+	}
+	if (options.defaultErrorBoundary) {
 		g.default_error_boundary = options.defaultErrorBoundary;
-	if (options.useViewTransitions !== undefined)
+	}
+	if (options.useViewTransitions !== undefined) {
 		g.use_view_transitions = options.useViewTransitions;
-	if (options.vormaAppConfig) g.app_config = options.vormaAppConfig;
-	if (options.routeManifestURL !== undefined)
+	}
+	if (options.vormaAppConfig) {
+		g.app_config = options.vormaAppConfig;
+	}
+	if (options.routeManifestURL !== undefined) {
 		g.route_manifest_url = options.routeManifestURL;
+	}
 	if (options.rootElementID !== undefined) {
 		set_snapshot({
 			...get_snapshot(),
@@ -56,18 +63,17 @@ export async function initClient(options: InitClientInput): Promise<void> {
 		});
 	}
 
-	// Pattern registry from app config
 	const registry = createPatternRegistry({
 		dynamicParamPrefixRune: g.app_config.loadersDynamicRune,
 		splatSegmentRune: g.app_config.loadersSplatRune,
 		explicitIndexSegment:
 			g.app_config.loadersExplicitIndexSegmentIdentifier,
 	});
-	for (const p of Object.keys(g.pattern_to_wait_fn))
+	for (const p of Object.keys(g.pattern_to_wait_fn)) {
 		registerPattern(registry, p);
+	}
 	g.pattern_registry = registry;
 
-	// Populate client module map from initial snapshot
 	const initial_snapshot = g.snapshot;
 	for (let i = 0; i < initial_snapshot.matched_patterns.length; i++) {
 		const pattern = initial_snapshot.matched_patterns[i];
@@ -85,10 +91,8 @@ export async function initClient(options: InitClientInput): Promise<void> {
 	// only needed from first client-side navigation onward)
 	void load_route_manifest(g);
 
-	// Input modality detection
 	register_input_modality_listeners();
 
-	// HMR dev
 	if (import.meta.env.DEV) {
 		void import("./_hmr_dev.ts")
 			.then(({ register_vite_listener }) =>
@@ -97,23 +101,42 @@ export async function initClient(options: InitClientInput): Promise<void> {
 			.catch(() => undefined);
 	}
 
-	// Navigation state manager
-	if (!g.nav_state_manager) g.nav_state_manager = create_nav_manager();
+	if (!g.nav_state_manager) {
+		g.nav_state_manager = create_nav_manager();
+	}
 
-	// History
 	init_popstate_listener();
 	set_manual_scroll_restoration();
 	register_beforeunload_once();
 
-	// Bootstrap
+	// run module loading and client loader execution in parallel.
 	const snapshot = g.snapshot;
-	const modules = await load_modules(snapshot.import_urls);
+	const [modules, cl] = await Promise.all([
+		load_modules(snapshot.import_urls),
+		complete_client_loaders({
+			snapshot,
+			signal: new AbortController().signal,
+		}),
+	]);
+
 	const active_components = build_active_components(snapshot, modules);
-	const active_error_boundary = resolve_error_boundary(snapshot, modules);
-	const cl = await complete_client_loaders({
-		snapshot,
-		signal: new AbortController().signal,
-	});
+
+	// use shared compute_effective_error_idx.
+	// only call resolve_error_boundary when there is an error.
+	const effective_error_idx = compute_effective_error_idx(
+		snapshot.outermost_server_error_idx,
+		cl.outermost_client_error_idx,
+	);
+	const active_error_boundary =
+		effective_error_idx != null
+			? resolve_error_boundary(snapshot, modules, effective_error_idx)
+			: undefined;
+
+	const effective_error =
+		effective_error_idx === cl.outermost_client_error_idx
+			? cl.outermost_client_error
+			: snapshot.outermost_server_error;
+
 	set_snapshot({
 		...snapshot,
 		active_components,
@@ -121,28 +144,24 @@ export async function initClient(options: InitClientInput): Promise<void> {
 		client_loaders_data: cl.client_loaders_data,
 		outermost_client_error: cl.outermost_client_error,
 		outermost_client_error_idx: cl.outermost_client_error_idx,
-		outermost_error:
-			cl.outermost_client_error ?? snapshot.outermost_server_error,
+		outermost_error: effective_error ?? snapshot.outermost_server_error,
 		outermost_error_idx:
-			cl.outermost_client_error_idx ??
-			snapshot.outermost_server_error_idx,
+			effective_error_idx ?? snapshot.outermost_server_error_idx,
 	});
 
-	// Render
-	if (options.renderFn) await options.renderFn();
+	if (options.renderFn) {
+		await options.renderFn();
+	}
 
-	// Dev helper
 	if (import.meta.env.DEV) {
 		(window as any).__waveRevalidate = (
 			await import("./public_api.ts")
 		).revalidate;
 	}
 
-	// Dispatch initial events
 	dispatch_route_change({});
 	dispatch_status(getStatus());
 
-	// Restore scroll from page refresh
 	restore_page_refresh_scroll(
 		(href) =>
 			classify_target(href, window.location.href) ===
@@ -154,12 +173,15 @@ async function load_route_manifest(
 	g: ReturnType<typeof ensure_global>,
 ): Promise<void> {
 	if (g.route_manifest) {
-		for (const p of Object.keys(g.route_manifest))
+		for (const p of Object.keys(g.route_manifest)) {
 			registerPattern(g.pattern_registry, p);
+		}
 		return;
 	}
 	const url = g.route_manifest_url;
-	if (!url) return;
+	if (!url) {
+		return;
+	}
 	const load_id = ++g.next_manifest_load_id;
 	const initial_registry = g.pattern_registry;
 	try {
@@ -172,10 +194,12 @@ async function load_route_manifest(
 		if (
 			g.next_manifest_load_id !== load_id ||
 			g.pattern_registry !== initial_registry
-		)
+		) {
 			return;
-		for (const p of Object.keys(manifest))
+		}
+		for (const p of Object.keys(manifest)) {
 			registerPattern(g.pattern_registry, p);
+		}
 		g.route_manifest = manifest;
 	} catch (err) {
 		console.warn("Failed to load route manifest:", err);

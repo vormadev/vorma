@@ -122,12 +122,12 @@ func (bs *browser_sync) start() {
 	}
 
 	go func() {
-		bs.logger.Info("Starting browser sync server",
+		bs.logger.Info("starting browser sync server",
 			"port", bs.port,
 		)
 		if err := bs.server.ListenAndServe(); err != nil &&
 			err != http.ErrServerClosed {
-			bs.logger.Error("Browser sync server failed", "err", err)
+			bs.logger.Error("browser sync server failed", "err", err)
 		}
 	}()
 }
@@ -139,7 +139,7 @@ func (bs *browser_sync) stop() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	_ = bs.server.Shutdown(ctx)
-	bs.logger.Info("Browser sync server stopped")
+	bs.logger.Info("browser sync server stopped")
 }
 
 // send_rebuilding tells all connected browsers to show the
@@ -175,7 +175,7 @@ func (bs *browser_sync) settle(
 	non_critical_css_url string,
 ) {
 	if fx.Has(EffectHardReloadBrowser) {
-		bs.logger.Info("Hard reloading browser")
+		bs.logger.Info("hard reloading browser")
 		bs.clients.broadcast(refresh_payload{
 			ChangeType: change_type_hard_reload,
 		})
@@ -183,7 +183,7 @@ func (bs *browser_sync) settle(
 	}
 
 	if fx.Has(EffectRevalidateClientData) {
-		bs.logger.Info("Triggering client data revalidation")
+		bs.logger.Info("triggering client data revalidation")
 		bs.clients.broadcast(refresh_payload{
 			ChangeType: change_type_data_revalidate,
 		})
@@ -192,7 +192,7 @@ func (bs *browser_sync) settle(
 	}
 
 	if fx.HasAny(effect_build_critical_css, effect_build_non_critical_css) {
-		bs.logger.Info("Hot reloading CSS")
+		bs.logger.Info("hot reloading CSS")
 		if fx.Has(effect_build_critical_css) {
 			bs.clients.broadcast(refresh_payload{
 				ChangeType:  change_type_critical_css,

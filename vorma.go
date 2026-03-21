@@ -8,7 +8,7 @@ import (
 	"github.com/vormadev/vorma/vorma2"
 )
 
-const BuildIDHeaderKey = vorma2.BuildIDHeaderKey
+const ClientBuildIDHeaderKey = vorma2.ClientBuildIDHeaderKey
 
 type (
 	HeadEls                           = vorma2.HeadEls

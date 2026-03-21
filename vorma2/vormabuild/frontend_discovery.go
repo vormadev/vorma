@@ -60,7 +60,7 @@ type route_discovery_output struct {
 	ErrorExportKey string
 }
 
-func discover_routes(
+func discover_client_routes(
 	patterns []strict.CWDRelPath,
 ) ([]discovered_route, error) {
 	// expand glob patterns to concrete files

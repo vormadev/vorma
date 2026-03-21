@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -69,8 +70,27 @@ func (sv *supervisor) start() error {
 		sv.logger.Warn("Failed to write app pid file", "err", err)
 	}
 
-	sv.logger.Info("Starting app server",
-		"binary", sv.bin_out_path_abs,
+	cwd, err := os.Getwd()
+	if err != nil {
+		sv.logger.Warn(
+			"Failed to get current working directory for logging",
+			"err",
+			err,
+		)
+		cwd = "unknown"
+	}
+	bin_out_rel, err := filepath.Rel(cwd, sv.bin_out_path_abs.Str())
+	if err != nil {
+		sv.logger.Warn(
+			"failed to get relative path of binary for logging",
+			"err",
+			err,
+		)
+		bin_out_rel = sv.bin_out_path_abs.Str()
+	}
+
+	sv.logger.Info("starting app server",
+		"bit_out_rel", bin_out_rel,
 		"pid", cmd.Process.Pid,
 	)
 
@@ -101,7 +121,7 @@ func (sv *supervisor) start() error {
 	}
 
 	sv.logger.Info(
-		"⟶ App server ready",
+		"app server ready",
 		"url",
 		fmt.Sprintf("http://localhost:%d", sv.port),
 	)
@@ -119,17 +139,17 @@ func (sv *supervisor) stop() {
 	done := sv.done
 	sv.mu.Unlock()
 
-	sv.logger.Info("Stopping app server")
+	sv.logger.Info("stopping app server")
 
 	// graceful shutdown of the process group (child + any subprocesses)
 	procutil.RequestStop(pid)
 
 	select {
 	case <-done:
-		sv.logger.Info("App server stopped")
+		sv.logger.Info("app server stopped")
 	case <-time.After(supervisor_grace_period):
 		sv.logger.Info(
-			"App server did not stop within grace period. Killing instead.",
+			"app server did not stop within grace period. Killing instead.",
 		)
 		procutil.ForceKill(pid)
 		<-done

@@ -128,12 +128,12 @@ func static_head_cache_key(deps, css []string) string {
 }
 
 func route_data_cache_key(
-	build_id string,
+	client_build_id string,
 	matches []*matcher.NestedMatch,
 ) string {
 	var sb strings.Builder
-	sb.Grow(len(build_id) + len(matches)*16 + 2)
-	sb.WriteString(build_id)
+	sb.Grow(len(client_build_id) + len(matches)*16 + 2)
+	sb.WriteString(client_build_id)
 	sb.WriteByte('|')
 	for _, m := range matches {
 		sb.WriteString(m.NormalizedPattern())
@@ -146,10 +146,10 @@ func (v *Vorma) get_or_build_route_metadata_cache(
 	snapshot *types.RuntimeSnapshot,
 	matches []*matcher.NestedMatch,
 ) *route_metadata_cache {
-	// In dev, prune stale entries when the build ID changes
+	// In dev, prune stale entries when the client build ID changes
 	if wave.IsDev() {
-		last_bid, _ := v.route_data_cache_bid.Load().(string)
-		if last_bid != snapshot.BuildID {
+		last_cbid, _ := v.route_data_cache_client_bid.Load().(string)
+		if last_cbid != snapshot.ClientBuildID {
 			v.route_data_cache.Range(func(key, _ any) bool {
 				v.route_data_cache.Delete(key)
 				return true
@@ -158,11 +158,11 @@ func (v *Vorma) get_or_build_route_metadata_cache(
 				v.static_prod_head_cache.Delete(key)
 				return true
 			})
-			v.route_data_cache_bid.Store(snapshot.BuildID)
+			v.route_data_cache_client_bid.Store(snapshot.ClientBuildID)
 		}
 	}
 
-	key := route_data_cache_key(snapshot.BuildID, matches)
+	key := route_data_cache_key(snapshot.ClientBuildID, matches)
 	if val, ok := v.route_data_cache.Load(key); ok {
 		return val.(*route_metadata_cache)
 	}
@@ -275,13 +275,13 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 
 	v.maybe_reregister_patterns(snapshot)
 
-	requested_build_id := r.URL.Query().Get(json_query_key)
-	is_json := requested_build_id != ""
+	requested_client_bid := r.URL.Query().Get(json_query_key)
+	is_json := requested_client_bid != ""
 
-	w.Header().Set(BuildIDHeaderKey, snapshot.BuildID)
+	w.Header().Set(ClientBuildIDHeaderKey, snapshot.ClientBuildID)
 
 	// stale build check — tell the client to reload without the JSON param
-	if is_json && requested_build_id != snapshot.BuildID {
+	if is_json && requested_client_bid != snapshot.ClientBuildID {
 		reload_url := *r.URL
 		q := reload_url.Query()
 		q.Del(json_query_key)
@@ -293,13 +293,14 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// start default head elements in parallel with loader execution
+	// start default head elements in parallel for both HTML and
+	// JSON responses
 	var default_head_els []*htmlutil.Element
 	var default_head_err error
 	var head_wg sync.WaitGroup
 	var cancel_head context.CancelFunc
 
-	if v.get_default_head_els != nil && !is_json {
+	if v.get_default_head_els != nil {
 		head_ctx, cancel := context.WithCancel(r.Context())
 		cancel_head = cancel
 		head_req := r.Clone(head_ctx)
@@ -359,13 +360,29 @@ func (v *Vorma) serve_loaders(w http.ResponseWriter, r *http.Request) {
 			Set("Cache-Control", "private, max-age=0, must-revalidate, no-cache")
 	}
 
+	// wait for head elements
+	head_wg.Wait()
+
 	if is_json {
-		v.serve_loaders_json(res, rd)
+		if default_head_err != nil {
+			v.logger.Error(
+				"default head elements error",
+				"error",
+				default_head_err,
+			)
+			res.InternalServerError()
+			return
+		}
+
+		// Merge default + loader head elements for JSON
+		var all_head_els []*htmlutil.Element
+		all_head_els = append(all_head_els, default_head_els...)
+		all_head_els = append(all_head_els, rd.loader_head_els...)
+
+		v.serve_loaders_json(res, rd, all_head_els)
 		return
 	}
 
-	// wait for head elements
-	head_wg.Wait()
 	if default_head_err != nil {
 		v.logger.Error("default head elements error", "error", default_head_err)
 		res.InternalServerError()
@@ -423,7 +440,7 @@ func (v *Vorma) build_route_data(
 	}
 
 	for i := range matches {
-		result := tasks_results.Slice[i]
+		result := tasks_results.Results[i]
 		rd.loaders_data[i] = result.Data()
 
 		if result.Err() != nil && rd.outermost_error_idx == nil {
@@ -477,8 +494,9 @@ func (v *Vorma) build_route_data(
 func (v *Vorma) serve_loaders_json(
 	res response.Response,
 	rd *route_data,
+	head_els []*htmlutil.Element,
 ) {
-	sorted := v.head_els_inst.ToSortedAndPreEscapedHeadEls(rd.loader_head_els)
+	sorted := v.head_els_inst.ToSortedAndPreEscapedHeadEls(head_els)
 
 	params := rd.params
 	if params == nil {
@@ -642,7 +660,7 @@ func (v *Vorma) serve_loaders_html(
 		IsDev:                   is_dev,
 		PublicPathPrefix:        v.Wave.MustPublicPathPrefix(),
 		RouteManifestURL:        route_manifest_url,
-		BuildID:                 snapshot.BuildID,
+		ClientBuildID:           snapshot.ClientBuildID,
 		RootElementID:           root_element_id,
 		OutermostServerError:    rd.outermost_error,
 		OutermostServerErrorIdx: rd.outermost_error_idx,
@@ -730,6 +748,12 @@ func (v *Vorma) ActionsHandler() mux.TasksCtxRequirerFunc {
 }
 
 func (v *Vorma) serve_actions(w http.ResponseWriter, r *http.Request) {
+	if !v.supported_methods[r.Method] {
+		w.Header().Set("Allow", v.supported_methods_allow)
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	snapshot, err := v.runtime_snapshot.Get()
 	if err != nil {
 		v.logger.Error("failed to load runtime snapshot", "error", err)
@@ -737,6 +761,6 @@ func (v *Vorma) serve_actions(w http.ResponseWriter, r *http.Request) {
 		res.InternalServerError()
 		return
 	}
-	w.Header().Set(BuildIDHeaderKey, snapshot.BuildID)
+	w.Header().Set(ClientBuildIDHeaderKey, snapshot.ClientBuildID)
 	v.actions_router.ServeHTTP(w, r)
 }

@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	_ "site/__wave/vorma.gen"
 	"site/backend/src/server"
-	_ "site/frontend/src/vorma.gen"
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"

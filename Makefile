@@ -69,7 +69,7 @@ tscheck-fw-client:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/client
 
 tscheck-fw-client-dist:
-	@pnpm tsgo --noEmit --project ./typescript/vorma/black_box_tests/dist/tsconfig.json
+	@pnpm tsgo --noEmit --project ./vorma2/client/black_box_tests/dist/tsconfig.json
 
 tscheck-fw-react:
 	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/react
@@ -133,3 +133,18 @@ run-create: tsreset npmbuild nuke-node-modules
 
 sum:
 	@go run ./internal/scripts/sum.local
+
+print-client-types-from-dist:
+	@for f in \
+		npm_dist/vorma2/client/_index.d.ts \
+		npm_dist/vorma2/client/_testing.d.ts \
+		npm_dist/vorma2/client/_buildtime.d.ts \
+		npm_dist/vorma2/client/_internal.d.ts \
+		npm_dist/vorma2/client/ui-adapters/react/_index.d.ts \
+		npm_dist/vorma2/client/ui-adapters/preact/_index.d.ts \
+		npm_dist/vorma2/client/ui-adapters/solid/_index.d.ts; do \
+		echo "=== $$f ==="; cat "$$f"; echo; echo; \
+	done
+
+print-client-types-typecheck-file:
+	@cat vorma2/client/black_box_tests/dist/public_api_types.typecheck.ts

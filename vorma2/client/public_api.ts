@@ -52,8 +52,8 @@ export function getStatus(): StatusEventDetail {
 	return get_manager().getStatus();
 }
 
-export function getBuildID(): string {
-	return get_snapshot().build_id;
+export function getClientBuildID(): string {
+	return get_snapshot().client_build_id;
 }
 
 export function getRootEl(): HTMLElement {
@@ -71,7 +71,7 @@ export function getRouterData<
 ): BaseRouterData<App["rootData"], ParamsForPattern<App, P>> {
 	const s = get_snapshot();
 	return {
-		buildID: s.build_id,
+		clientBuildID: s.client_build_id,
 		matchedPatterns: s.matched_patterns,
 		splatValues: s.splat_values,
 		params: s.params as Record<ParamsForPattern<App, P>, string>,

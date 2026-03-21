@@ -138,16 +138,28 @@ type LifecycleHook struct {
 	Cmd string
 	Fn  func(ctx *PluginCtx) (*PluginResult, error) `json:"-"`
 
-	IsGoCompile bool
-
-	StartAt  Checkpoint
-	FinishBy Checkpoint
+	// Timing controls when this hook runs in the build cycle.
+	// Valid forms:
+	//   omit or [] — spans the entire cycle (checkpoints 1–7)
+	//   [N]        — starts and finishes at checkpoint N
+	//   [N, M]     — starts at checkpoint N, finishes by checkpoint M
+	//
+	// Checkpoint reference:
+	//   1 = cycle_start
+	//   2 = userland_public_filemap_ready
+	//   3 = full_public_filemap_finalized
+	//   4 = go_compile
+	//   5 = go_compile_complete
+	//   6 = service_restarted
+	//   7 = cycle_end
+	Timing []int
 
 	// Effects are the effects this hook causes in the current build cycle.
 	Effects []Effect
 
-	DevOnly  bool
-	ProdOnly bool
+	DevOnly         bool
+	ProdOnly        bool
+	IncrementalOnly bool
 }
 
 // config_path_to_validated_config parses and validates a config file.
@@ -320,12 +332,10 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 			__raw.Core.BinaryName,
 		)
 	}
-	reserved_names := []string{ // anything we ouput directly into .waveout/
+	reserved_names := []string{
 		constants.STATIC_DIRNAME,
 		constants.SCHEMA_JSON_FILENAME,
-		constants.WAVE_LOCK_FILENAME,
-		constants.APP_PID_FILENAME,
-		constants.VITE_PID_FILENAME,
+		constants.DEV_DIRNAME,
 	}
 	for _, reserved := range reserved_names {
 		if vc.core.BinaryName == reserved {
@@ -466,9 +476,6 @@ func validate_config(__raw *unsafe_config) (*validated_config, error) {
 
 	for i := range __raw.LifecycleHooks {
 		label := fmt.Sprintf("user idx %d hook", i)
-		if __raw.LifecycleHooks[i].IsGoCompile {
-			label = "user Go compile hook"
-		}
 		hook, err := __raw.LifecycleHooks[i].to_validated_hook(
 			label,
 			vc.root_dir,

@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,7 +42,7 @@ type (
 	ActionFunc[Ctx any, I any, O any] = func(*Ctx) (O, error)
 )
 
-const BuildIDHeaderKey = "X-Vorma-Build-Id"
+const ClientBuildIDHeaderKey = "X-Vorma-Client-Build-Id"
 
 type FormData struct{}
 
@@ -88,25 +89,26 @@ type ActionsRouterOptions struct {
 
 // Do not instantiate directly. Use `vorma2.NewVormaApp()` instead.
 type Vorma struct {
-	*wave.Wave             // set via Init() at runtime, not needed at buildtime
-	get_wave               func() *wave.Wave
-	logger                 *slog.Logger
-	loaders_router         *mux.NestedRouter
-	actions_router         *mux.Router
-	supported_methods      map[string]bool
-	get_default_head_els   DefaultHeadElsFunc
-	get_head_dedupe_keys   HeadDedupeKeysFunc
-	get_root_tmpl_data     RootTemplateDataFunc
-	ad_hoc_types           []*AdHocType
-	extra_ts_code          string
-	head_els_inst          *headels.Instance
-	runtime_snapshot       *prodcache.Cache[*types.RuntimeSnapshot]
-	root_template          *prodcache.Cache[*template.Template]
-	route_data_cache       sync.Map
-	route_data_cache_bid   atomic.Value // last build ID seen by the cache
-	static_prod_head_cache sync.Map     // static_head_cache_key → template.HTML
-	patterns_bid           atomic.Value // build ID for which patterns are registered
-	server_addr            string
+	*wave.Wave                  // set via Init() at runtime, not needed at buildtime
+	get_wave                    func() *wave.Wave
+	logger                      *slog.Logger
+	loaders_router              *mux.NestedRouter
+	actions_router              *mux.Router
+	supported_methods           map[string]bool
+	supported_methods_allow     string
+	get_default_head_els        DefaultHeadElsFunc
+	get_head_dedupe_keys        HeadDedupeKeysFunc
+	get_root_tmpl_data          RootTemplateDataFunc
+	ad_hoc_types                []*AdHocType
+	extra_ts_code               string
+	head_els_inst               *headels.Instance
+	runtime_snapshot            *prodcache.Cache[*types.RuntimeSnapshot]
+	root_template               *prodcache.Cache[*template.Template]
+	route_data_cache            sync.Map
+	route_data_cache_client_bid atomic.Value // last client build ID seen by the cache
+	static_prod_head_cache      sync.Map     // static_head_cache_key → template.HTML
+	patterns_bid                atomic.Value // server build ID for which patterns are registered
+	server_addr                 string
 
 	loaders_handler_once sync.Once
 	loaders_handler      mux.TasksCtxRequirerFunc
@@ -171,13 +173,14 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	v.supported_methods = build_supported_methods(
 		o.ActionsRouterOptions.SupportedMethods,
 	)
+	v.supported_methods_allow = build_supported_methods_allow(
+		v.supported_methods,
+	)
 	v.actions_router = mux.NewRouter(&mux.Options{
 		DynamicParamPrefix:     o.ActionsRouterOptions.DynamicParamPrefix,
 		SplatSegmentIdentifier: o.ActionsRouterOptions.SplatSegmentIdentifier,
 		MountRoot:              mount_root,
-		ParseInput: func(r *http.Request, input_ptr any) error {
-			return parse_action_input(r, input_ptr, v.supported_methods)
-		},
+		ParseInput:             parse_action_input,
 	})
 
 	v.runtime_snapshot = prodcache.New(
@@ -209,9 +212,13 @@ func (v *Vorma) MustInit() {
 	for pattern := range snapshot.Paths {
 		v.loaders_router.AddPatternWithoutHandlerIfMissing(pattern.Str())
 	}
-	v.patterns_bid.Store(snapshot.BuildID)
+	v.patterns_bid.Store(snapshot.ServerBuildID)
 	v.server_addr = fmt.Sprintf(":%d", wave.Port())
-	v.logger.Info("vorma2 initialized", "build_id", snapshot.BuildID)
+	v.logger.Info(
+		"vorma2 initialized",
+		"server_build_id",
+		snapshot.ServerBuildID,
+	)
 }
 
 func (v *Vorma) MustInitWithDefaultRouter() *mux.Router {
@@ -232,8 +239,8 @@ func (v *Vorma) MustStaticMiddleware() func(http.Handler) http.Handler {
 func (v *Vorma) ServerAddr() string { return v.server_addr }
 
 // maybe_reregister_patterns adds any new route patterns to the
-// nested router when the build ID changes during dev. This handles
-// routes added after the initial MustInit registration.
+// nested router when the server build ID changes during dev. This
+// handles routes added after the initial MustInit registration.
 func (v *Vorma) maybe_reregister_patterns(
 	snapshot *types.RuntimeSnapshot,
 ) {
@@ -241,13 +248,13 @@ func (v *Vorma) maybe_reregister_patterns(
 		return
 	}
 	last_bid, _ := v.patterns_bid.Load().(string)
-	if last_bid == snapshot.BuildID {
+	if last_bid == snapshot.ServerBuildID {
 		return
 	}
 	for pattern := range snapshot.Paths {
 		v.loaders_router.AddPatternWithoutHandlerIfMissing(pattern.Str())
 	}
-	v.patterns_bid.Store(snapshot.BuildID)
+	v.patterns_bid.Store(snapshot.ServerBuildID)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -404,16 +411,21 @@ func build_supported_methods(configured []string) map[string]bool {
 	return out
 }
 
+func build_supported_methods_allow(methods map[string]bool) string {
+	sorted := make([]string, 0, len(methods))
+	for m := range methods {
+		sorted = append(sorted, m)
+	}
+	sort.Strings(sorted)
+	return strings.Join(sorted, ", ")
+}
+
 func parse_action_input(
 	r *http.Request,
 	input_ptr any,
-	supported_methods map[string]bool,
 ) error {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return validate.URLSearchParamsInto(r, input_ptr)
-	}
-	if !supported_methods[r.Method] {
-		return &validate.ValidationError{Err: fmt.Errorf("unsupported method")}
 	}
 	content_type, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if content_type == "application/x-www-form-urlencoded" ||
