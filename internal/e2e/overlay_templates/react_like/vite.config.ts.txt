@@ -1,7 +1,0 @@
-import vorma from "vorma/vite";
-import { defineConfig } from "vite";
-import { vormaViteConfig } from "./frontend/src/vorma.gen/index.ts";
-
-export default defineConfig({
-	plugins: [vorma(vormaViteConfig)],
-});

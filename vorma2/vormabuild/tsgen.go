@@ -10,9 +10,9 @@ import (
 
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/mux"
-	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/vorma2"
 	"github.com/vormadev/vorma/vorma2/internal/constants"
+	"github.com/vormadev/vorma/vorma2/internal/tsgen"
 	"github.com/vormadev/vorma/wave/wavebuild"
 )
 

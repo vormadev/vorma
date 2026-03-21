@@ -2,17 +2,14 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/vormadev/vorma/internal/coalescepath"
-	"github.com/vormadev/vorma/internal/pkg/parseutil"
 	"github.com/vormadev/vorma/kit/envutil"
 	t "github.com/vormadev/vorma/lab/cliutil"
-	"github.com/vormadev/vorma/lab/coalescecmd"
+	"github.com/vormadev/vorma/lab/stringsutil"
 	"golang.org/x/term"
 )
 
@@ -49,26 +46,9 @@ func main() {
 		t.Exit("release command does not take arguments", nil)
 	}
 
-	coalesceError := coalescecmd.Run(coalescecmd.Options{
-		Key:                    coalescepath.ReleaseCommandKey,
-		FailIfRunning:          []string{coalescepath.ReleaseCommandKey},
-		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-		Func: func() error {
-			releaseErr := runUnifiedReleaseProcess()
-			if releaseErr == nil {
-				return nil
-			}
-			if releaseErr.err != nil {
-				return fmt.Errorf("%s: %w", releaseErr.message, releaseErr.err)
-			}
-			return errors.New(releaseErr.message)
-		},
-	})
-	if coalesceError != nil {
-		if errors.Is(coalesceError, coalescecmd.ErrAlreadyRunning) {
-			t.Exit("another release process is already running", nil)
-		}
-		t.Exit("release failed", coalesceError)
+	releaseErr := runUnifiedReleaseProcess()
+	if releaseErr != nil {
+		t.Exit(releaseErr.message, releaseErr.err)
 	}
 }
 
@@ -584,7 +564,7 @@ func writeCanonicalVersionFile(
 }
 
 func loadPackageJSONVersionFile(path string) packageJSONVersionFile {
-	lines, versionLine, currentVersion := parseutil.MustPackageJSONFromFile(
+	lines, versionLine, currentVersion := must_pkg_json_from_file(
 		path,
 	)
 	return packageJSONVersionFile{
@@ -802,4 +782,43 @@ func requireYesOrFail(failMsg string) *releaseProcessError {
 		}
 	}
 	return nil
+}
+
+// Returns: linesSlice, versionLineIdx, currentVersionStr
+func must_pkg_json_from_str(content string) ([]string, int, string) {
+	lines, err := stringsutil.CollectLines(content)
+	if err != nil {
+		panic(err)
+	}
+	versionLine := -1
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), `"version":`) {
+			versionLine = i
+			break
+		}
+	}
+	if versionLine == -1 {
+		panic("version line not found")
+	}
+	versionMap := make(map[string]any)
+	if err = json.Unmarshal([]byte(content), &versionMap); err != nil {
+		panic(err)
+	}
+	currentVersion, ok := versionMap["version"].(string)
+	if !ok {
+		panic("version must be a string")
+	}
+	if currentVersion == "" {
+		panic("version not found")
+	}
+	return lines, versionLine, currentVersion
+}
+
+// Returns: linesSlice, versionLineIdx, currentVersionStr
+func must_pkg_json_from_file(targetFile string) ([]string, int, string) {
+	file, err := os.ReadFile(targetFile)
+	if err != nil {
+		panic(err)
+	}
+	return must_pkg_json_from_str(string(file))
 }

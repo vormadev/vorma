@@ -753,14 +753,14 @@ func (fw *field_wrapper) is_truthy() bool {
 }
 
 func safe_deref(rv reflect.Value) reflect.Value {
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		return rv.Elem()
 	}
 	return rv
 }
 
 func safe_is_nil(v reflect.Value) bool {
-	if v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+	if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		return v.IsNil()
 	}
 	return false
@@ -770,11 +770,11 @@ func is_effectively_zero(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
 	}
-	if v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+	if v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
 		if v.IsNil() {
 			return true
 		}
-		if v.Kind() == reflect.Ptr {
+		if v.Kind() == reflect.Pointer {
 			v = v.Elem()
 		}
 	}
@@ -848,7 +848,7 @@ func validate_recursive(label string, current reflect.Value) []error {
 		}
 	}
 
-	if !validated_directly && current.Kind() != reflect.Ptr &&
+	if !validated_directly && current.Kind() != reflect.Pointer &&
 		current.CanAddr() {
 		ptr := current.Addr()
 		if reflectutil.DoesTypeImplementInterface(ptr.Type(), validator_type) &&
@@ -866,7 +866,7 @@ func validate_recursive(label string, current reflect.Value) []error {
 	}
 
 	base := current
-	if base.Kind() == reflect.Ptr {
+	if base.Kind() == reflect.Pointer {
 		if base.IsNil() {
 			return errs
 		}
@@ -944,7 +944,7 @@ func attempt_validation(label string, x any) error {
 	can_call := implements &&
 		(v.Type().Implements(validator_type) || v.CanAddr())
 
-	if !can_call && v.Kind() != reflect.Ptr && implements {
+	if !can_call && v.Kind() != reflect.Pointer && implements {
 		cp := reflect.New(v.Type())
 		cp.Elem().Set(v)
 		effective = cp
@@ -962,7 +962,7 @@ func attempt_validation(label string, x any) error {
 
 func parse_url_values(values map[string][]string, dest any) error {
 	dv := reflect.ValueOf(dest)
-	if dv.Kind() != reflect.Ptr || dv.IsNil() {
+	if dv.Kind() != reflect.Pointer || dv.IsNil() {
 		return fmt.Errorf(
 			"validate.parseURLValues: destination must be non-nil",
 		)
@@ -985,7 +985,7 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 		field := t.Field(i)
 		fv := v.Field(i)
 
-		if fv.Kind() == reflect.Ptr {
+		if fv.Kind() == reflect.Pointer {
 			kind := fv.Type().Elem().Kind()
 			if kind == reflect.Struct || kind == reflect.Map ||
 				kind == reflect.Slice {
@@ -1098,7 +1098,7 @@ func set_field(field reflect.Value, values []string) error {
 		return nil
 	}
 	switch field.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if values[0] == "" {
 			field.Set(reflect.Zero(field.Type()))
 			return nil
@@ -1135,7 +1135,7 @@ func set_slice_field(field reflect.Value, values []string) error {
 	slice := reflect.MakeSlice(field.Type(), len(values), len(values))
 	for i, val := range values {
 		elem := slice.Index(i)
-		if elem.Kind() == reflect.Ptr {
+		if elem.Kind() == reflect.Pointer {
 			elem.Set(reflect.New(elem.Type().Elem()))
 			elem = elem.Elem()
 		}

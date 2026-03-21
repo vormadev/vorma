@@ -16,9 +16,7 @@ import (
 	"strings"
 
 	esbuild "github.com/evanw/esbuild/pkg/api"
-	"github.com/vormadev/vorma/internal/coalescepath"
 	"github.com/vormadev/vorma/kit/executil"
-	"github.com/vormadev/vorma/lab/coalescecmd"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -44,13 +42,7 @@ var output_paths = []string{
 }
 
 func main() {
-	err := coalescecmd.Run(coalescecmd.Options{
-		Key:                    coalescepath.BuildTSCommandKey,
-		FailIfRunning:          coalescepath.BuildTSFailIfRunningKeys,
-		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-		Func:                   run,
-	})
-	if err != nil {
+	if err := run(); err != nil {
 		log.Fatalf("%v", err)
 	}
 }

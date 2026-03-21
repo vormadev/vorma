@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"runtime"
@@ -12,9 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/vormadev/vorma/internal/coalescepath"
-	"github.com/vormadev/vorma/lab/coalescecmd"
 )
 
 type releaseGateStage struct {
@@ -70,13 +68,6 @@ var releaseGateStages = []releaseGateStage{
 		},
 		dependencyTargetNames: []string{"npmbuild"},
 	},
-	{
-		stageName: "e2e",
-		targetNames: []string{
-			"e2e-test",
-		},
-		dependencyTargetNames: []string{"npmbuild"},
-	},
 }
 
 func main() {
@@ -89,20 +80,7 @@ func runMain() int {
 		return 2
 	}
 
-	commandExitCode := 0
-	coalesceError := coalescecmd.Run(coalescecmd.Options{
-		Key:                    coalescepath.FullGateCommandKey,
-		StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-		Func: func() error {
-			commandExitCode = runReleaseGateProcess()
-			return nil
-		},
-	})
-	if coalesceError != nil {
-		fmt.Fprintf(os.Stderr, "full gate coalesce failed: %v\n", coalesceError)
-		return 1
-	}
-	return commandExitCode
+	return runReleaseGateProcess()
 }
 
 func runReleaseGateProcess() int {
@@ -117,17 +95,13 @@ func runReleaseGateProcess() int {
 		if dependencyFailureReason != "" {
 			skippedResults := runSkippedStage(stage, dependencyFailureReason)
 			printStageResults(stage, skippedResults)
-			for targetName, targetResult := range skippedResults {
-				resultsByTargetName[targetName] = targetResult
-			}
+			maps.Copy(resultsByTargetName, skippedResults)
 			continue
 		}
 
 		stageResults := runStageInParallel(stage, maxParallelTargets)
 		printStageResults(stage, stageResults)
-		for targetName, targetResult := range stageResults {
-			resultsByTargetName[targetName] = targetResult
-		}
+		maps.Copy(resultsByTargetName, stageResults)
 	}
 
 	failedTargetResults := collectFailedTargetResultsInOrder(

@@ -8,9 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/vormadev/vorma/internal/coalescepath"
-	"github.com/vormadev/vorma/lab/coalescecmd"
 )
 
 var errInvalidArguments = errors.New("invalid arguments")
@@ -55,35 +52,14 @@ func run(rawArguments []string) error {
 
 	switch invocation.subcommand {
 	case "nuke-node-modules":
-		return coalescecmd.Run(coalescecmd.Options{
-			Key:                    coalescepath.TSStateNukeNodeModulesCommandKey,
-			FailIfRunning:          coalescepath.TSStateNukeNodeModulesFailIfRunningKeys,
-			StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-			Func: func() error {
-				return nukeNodeModulesDirectories(repositoryRootPath)
-			},
-		})
+		return nukeNodeModulesDirectories(repositoryRootPath)
 	case "install":
-		return coalescecmd.Run(coalescecmd.Options{
-			Key:                    coalescepath.TSStateInstallCommandKey,
-			FailIfRunning:          coalescepath.TSStateInstallFailIfRunningKeys,
-			StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-			Func: func() error {
-				return runInstallSequence(repositoryRootPath)
-			},
-		})
+		return runInstallSequence(repositoryRootPath)
 	case "reset":
-		return coalescecmd.Run(coalescecmd.Options{
-			Key:                    coalescepath.TSStateResetCommandKey,
-			FailIfRunning:          coalescepath.TSStateResetFailIfRunningKeys,
-			StateRootDirectoryPath: coalescepath.StateRootDirectoryPath,
-			Func: func() error {
-				if nukeError := nukeNodeModulesDirectories(repositoryRootPath); nukeError != nil {
-					return nukeError
-				}
-				return runInstallSequence(repositoryRootPath)
-			},
-		})
+		if nukeError := nukeNodeModulesDirectories(repositoryRootPath); nukeError != nil {
+			return nukeError
+		}
+		return runInstallSequence(repositoryRootPath)
 	default:
 		return fmt.Errorf(
 			"%w: unsupported subcommand %q",
@@ -110,7 +86,10 @@ func parseCommandInvocation(rawArguments []string) (commandInvocation, error) {
 
 	subcommand := strings.TrimSpace(rawArguments[0])
 	if subcommand == "" {
-		return commandInvocation{}, fmt.Errorf("%w: subcommand is empty", errInvalidArguments)
+		return commandInvocation{}, fmt.Errorf(
+			"%w: subcommand is empty",
+			errInvalidArguments,
+		)
 	}
 
 	return commandInvocation{subcommand: subcommand}, nil
@@ -143,7 +122,10 @@ func nukeNodeModulesDirectories(repositoryRootPath string) error {
 		},
 	)
 	if walkError != nil {
-		return fmt.Errorf("walk repository for node_modules removal: %w", walkError)
+		return fmt.Errorf(
+			"walk repository for node_modules removal: %w",
+			walkError,
+		)
 	}
 
 	fmt.Fprintf(
@@ -164,22 +146,16 @@ func runInstallSequence(repositoryRootPath string) error {
 		return rootInstallError
 	}
 
-	createDirectoryPath := filepath.Join(repositoryRootPath, "typescript/vorma/create")
+	createDirectoryPath := filepath.Join(
+		repositoryRootPath,
+		"typescript/vorma/create",
+	)
 	if createInstallError := runCommand(runCommandInput{
 		workingDirectoryPath: createDirectoryPath,
 		commandPath:          "pnpm",
 		commandArguments:     []string{"i"},
 	}); createInstallError != nil {
 		return createInstallError
-	}
-
-	e2eDirectoryPath := filepath.Join(repositoryRootPath, "internal/e2e")
-	if e2eInstallError := runCommand(runCommandInput{
-		workingDirectoryPath: e2eDirectoryPath,
-		commandPath:          "pnpm",
-		commandArguments:     []string{"i"},
-	}); e2eInstallError != nil {
-		return e2eInstallError
 	}
 
 	return nil
@@ -214,7 +190,11 @@ func runCommand(input runCommandInput) error {
 	return nil
 }
 
-func pluralSuffix(count int, singularSuffix string, pluralSuffix string) string {
+func pluralSuffix(
+	count int,
+	singularSuffix string,
+	pluralSuffix string,
+) string {
 	if count == 1 {
 		return singularSuffix
 	}

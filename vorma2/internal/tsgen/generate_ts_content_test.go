@@ -1095,7 +1095,7 @@ func TestCustomTSTypes(t *testing.T) {
 	for _, adHocType := range typesToCheck {
 		reflectType := reflect.TypeOf(adHocType.TypeInstance)
 		name := reflectType.Name()
-		if reflectType.Kind() == reflect.Ptr {
+		if reflectType.Kind() == reflect.Pointer {
 			name = "*" + reflectType.Elem().Name()
 		}
 

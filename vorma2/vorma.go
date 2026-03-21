@@ -19,8 +19,8 @@ import (
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/validate"
-	"github.com/vormadev/vorma/lab/tsgen"
 	"github.com/vormadev/vorma/vorma2/internal/constants"
+	"github.com/vormadev/vorma/vorma2/internal/tsgen"
 	"github.com/vormadev/vorma/vorma2/internal/types"
 	"github.com/vormadev/vorma/wave"
 )

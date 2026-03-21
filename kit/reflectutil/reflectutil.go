@@ -26,7 +26,7 @@ func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool {
 	if t.Implements(iface) {
 		return true
 	}
-	if t.Kind() != reflect.Ptr {
+	if t.Kind() != reflect.Pointer {
 		if reflect.PointerTo(t).Implements(iface) {
 			return true
 		}
@@ -50,7 +50,7 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	reflectVal := reflect.ValueOf(v)
 
 	switch reflectVal.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		if reflectVal.IsNil() {
 			return true
 		}

@@ -93,27 +93,6 @@ npmbuild:
 	@go run ./internal/cmd/buildts
 
 #####################################################################
-####### E2E
-#####################################################################
-
-e2e-install:
-	@go run ./internal/cmd/e2e install
-
-e2e-install-browsers:
-	@go run ./internal/cmd/e2e install-browsers
-
-e2e-setup: e2e-install e2e-install-browsers
-
-e2e-test: npmbuild e2e-setup
-	@go run ./internal/cmd/e2e test $(PLAYWRIGHT_ARGS)
-
-e2e-test-dev: npmbuild e2e-setup
-	@go run ./internal/cmd/e2e test-dev $(PLAYWRIGHT_ARGS)
-
-e2e-test-prod: npmbuild e2e-setup
-	@go run ./internal/cmd/e2e test-prod $(PLAYWRIGHT_ARGS)
-
-#####################################################################
 ####### OTHER
 #####################################################################
 

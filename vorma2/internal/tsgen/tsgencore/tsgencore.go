@@ -36,13 +36,13 @@ type TSTyper interface {
 }
 
 // ProcessTypes is the main entry point. It takes a slice of ad-hoc types and returns the complete, resolved Results.
-func ProcessTypes(adHocTypes []*AdHocType) Results {
-	allResults := make([]_results, 0, len(adHocTypes))
-	for _, adHocType := range adHocTypes {
+func ProcessTypes(ad_hoc_types []*AdHocType) Results {
+	all_results := make([]_results, 0, len(ad_hoc_types))
+	for _, adHocType := range ad_hoc_types {
 		result, _ := traverseType(adHocType)
-		allResults = append(allResults, result)
+		all_results = append(all_results, result)
 	}
-	return mergeTypeResults(allResults...)
+	return mergeTypeResults(all_results...)
 }
 
 // TypeInfo allows retrieving the information for a specific type from the final results.
@@ -156,8 +156,10 @@ func mergeTypeResults(results ..._results) Results {
 		for id, typeInfo := range result {
 			if existing, ok := flattened[id]; ok {
 				existing.IsRoot = existing.IsRoot || typeInfo.IsRoot
-				existing.IsReferenced = existing.IsReferenced || typeInfo.IsReferenced
-				existing.UsedAsEmbedded = existing.UsedAsEmbedded || typeInfo.UsedAsEmbedded
+				existing.IsReferenced = existing.IsReferenced ||
+					typeInfo.IsReferenced
+				existing.UsedAsEmbedded = existing.UsedAsEmbedded ||
+					typeInfo.UsedAsEmbedded
 			} else {
 				flattened[id] = typeInfo
 			}
@@ -199,17 +201,20 @@ func mergeTypeResults(results ..._results) Results {
 		finalTypes = append(finalTypes, typeInfo)
 	}
 	for _, typeInfo := range finalTypes {
-		typeInfo.TSStr = idRegex.ReplaceAllStringFunc(typeInfo.TSStr, func(id string) string {
-			if idx, ok := id_to_idx[id]; ok {
-				return finalTypes[idx].ResolvedName
-			}
-			fmt.Printf(
-				"tsgencore warning: A reference to an unresolved type ID '%s' was found in the definition for '%s'. This may be due to using TSTyper to reference a type that was filtered out. Falling back to 'unknown'.\n",
-				id,
-				typeInfo.ResolvedName,
-			)
-			return "unknown"
-		})
+		typeInfo.TSStr = idRegex.ReplaceAllStringFunc(
+			typeInfo.TSStr,
+			func(id string) string {
+				if idx, ok := id_to_idx[id]; ok {
+					return finalTypes[idx].ResolvedName
+				}
+				fmt.Printf(
+					"tsgencore warning: A reference to an unresolved type ID '%s' was found in the definition for '%s'. This may be due to using TSTyper to reference a type that was filtered out. Falling back to 'unknown'.\n",
+					id,
+					typeInfo.ResolvedName,
+				)
+				return "unknown"
+			},
+		)
 	}
 	return Results{
 		Types:     finalTypes,
@@ -221,9 +226,13 @@ func mergeTypeResults(results ..._results) Results {
 /////// TYPE COLLECTOR METHODS
 /////////////////////////////////////////////////////////////////////
 
-func (c *typeCollector) getOrCreateEntry(t reflect.Type, userDefinedAlias ...string) *typeEntry {
+func (c *typeCollector) getOrCreateEntry(
+	t reflect.Type,
+	userDefinedAlias ...string,
+) *typeEntry {
 	if entry, exists := c.types[t]; exists {
-		if t == c.rootType && c.rootRequestedName != "" && entry.requestedName == "" {
+		if t == c.rootType && c.rootRequestedName != "" &&
+			entry.requestedName == "" {
 			entry.requestedName = c.rootRequestedName
 		}
 		return entry
@@ -244,7 +253,10 @@ func (c *typeCollector) getOrCreateEntry(t reflect.Type, userDefinedAlias ...str
 	return entry
 }
 
-func (c *typeCollector) collectType(t reflect.Type, userDefinedAlias ...string) {
+func (c *typeCollector) collectType(
+	t reflect.Type,
+	userDefinedAlias ...string,
+) {
 	if t == nil {
 		return
 	}
@@ -265,7 +277,7 @@ func (c *typeCollector) collectType(t reflect.Type, userDefinedAlias ...string) 
 	switch t.Kind() {
 	case reflect.Struct:
 		c.collectStructFields(t)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if t.Name() != "" {
 			c.getOrCreateEntry(t, userDefinedAlias...)
 		}
@@ -287,19 +299,20 @@ func (c *typeCollector) collectType(t reflect.Type, userDefinedAlias ...string) 
 func (c *typeCollector) collectStructFields(t reflect.Type) {
 	for i := range t.NumField() {
 		field := t.Field(i)
-		if isUnexported(field) || shouldOmitField(field) {
+		if is_unexported(field) || shouldOmitField(field) {
 			continue
 		}
 		if field.Anonymous {
 			fieldType := field.Type
-			isPtr := fieldType.Kind() == reflect.Ptr
+			isPtr := fieldType.Kind() == reflect.Pointer
 			if isPtr {
 				fieldType = fieldType.Elem()
 			}
 			if fieldType.Kind() == reflect.Struct {
 				embeddedEntry := c.getOrCreateEntry(fieldType)
 				embeddedEntry.usedAsEmbedded = true
-				if jsonTag := field.Tag.Get("json"); jsonTag != "" && jsonTag != "-" {
+				if jsonTag := field.Tag.Get("json"); jsonTag != "" &&
+					jsonTag != "-" {
 					embeddedEntry.isReferenced = true
 				}
 				c.collectType(fieldType)
@@ -315,7 +328,7 @@ func (c *typeCollector) collectFieldType(t reflect.Type) {
 	case reflect.Struct:
 		c.getOrCreateEntry(t).isReferenced = true
 		c.collectType(t)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if t.Name() != "" {
 			c.getOrCreateEntry(t).isReferenced = true
 		}
@@ -331,7 +344,7 @@ func (c *typeCollector) collectFieldType(t reflect.Type) {
 		elemType := t.Elem()
 		if elemType.Kind() == reflect.Struct {
 			c.getOrCreateEntry(elemType).isReferenced = true
-		} else if elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Struct {
+		} else if elemType.Kind() == reflect.Pointer && elemType.Elem().Kind() == reflect.Struct {
 			c.getOrCreateEntry(elemType.Elem()).isReferenced = true
 		}
 		c.collectType(elemType)
@@ -367,14 +380,14 @@ func (c *typeCollector) generateStructTypeFields(t reflect.Type) []string {
 
 		for i := range currentType.NumField() {
 			field := currentType.Field(i)
-			if isUnexported(field) || shouldOmitField(field) {
+			if is_unexported(field) || shouldOmitField(field) {
 				continue
 			}
 
 			// First, handle untagged anonymous fields recursively to match `encoding/json` order.
 			if field.Anonymous && field.Tag.Get("json") == "" {
 				embeddedType := field.Type
-				isPtr := embeddedType.Kind() == reflect.Ptr
+				isPtr := embeddedType.Kind() == reflect.Pointer
 				if isPtr {
 					embeddedType = embeddedType.Elem()
 				}
@@ -399,8 +412,11 @@ func (c *typeCollector) generateStructTypeFields(t reflect.Type) []string {
 				fieldType = c.getTypeScriptType(field.Type)
 			}
 
-			if isEmbeddedPtr || isOptionalField(field) {
-				fields = append(fields, fmt.Sprintf("%s?: %s", jsonFieldName, fieldType))
+			if isEmbeddedPtr || is_optional_field(field) {
+				fields = append(
+					fields,
+					fmt.Sprintf("%s?: %s", jsonFieldName, fieldType),
+				)
 			} else {
 				fields = append(fields, fmt.Sprintf("%s: %s", jsonFieldName, fieldType))
 			}
@@ -417,7 +433,9 @@ func (c *typeCollector) generateStructTypeFields(t reflect.Type) []string {
 				additiveKeys = append(additiveKeys, key)
 			}
 		}
-		slices.Sort(additiveKeys) // Sort purely additive fields for determinism.
+		slices.Sort(
+			additiveKeys,
+		) // Sort purely additive fields for determinism.
 
 		for _, key := range additiveKeys {
 			// Assume additive fields are required.
@@ -443,7 +461,7 @@ func (c *typeCollector) getTypeScriptType(t reflect.Type) string {
 		return "number"
 	case reflect.String:
 		return "string"
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return c.getTypeScriptType(t.Elem())
 	case reflect.Slice, reflect.Array:
 		// Byte slices are serialized as base64 by encoding/json
@@ -452,7 +470,11 @@ func (c *typeCollector) getTypeScriptType(t reflect.Type) string {
 		}
 		return fmt.Sprintf("Array<%s>", c.getTypeScriptType(t.Elem()))
 	case reflect.Map:
-		return fmt.Sprintf("Record<%s, %s>", c.getTypeScriptType(t.Key()), c.getTypeScriptType(t.Elem()))
+		return fmt.Sprintf(
+			"Record<%s, %s>",
+			c.getTypeScriptType(t.Key()),
+			c.getTypeScriptType(t.Elem()),
+		)
 	case reflect.Struct:
 		switch {
 		case t == reflect.TypeOf(time.Time{}):
@@ -523,7 +545,8 @@ func getID(adHocType *AdHocType) IDStr {
 func getIDFromReflectType(t reflect.Type, requestedName string) IDStr {
 	natural_name := getNaturalName(t)
 	effective_requested_name := getEffectiveRequestedName(t, requestedName)
-	if effective_requested_name != "" && effective_requested_name != natural_name {
+	if effective_requested_name != "" &&
+		effective_requested_name != natural_name {
 		return fmt.Sprintf("$tsgen$%v+%s$tsgen$", t, requestedName)
 	}
 	return fmt.Sprintf("$tsgen$%v$tsgen$", t)
@@ -531,7 +554,7 @@ func getIDFromReflectType(t reflect.Type, requestedName string) IDStr {
 
 func getEffectiveReflectType(instance any) reflect.Type {
 	t := reflect.TypeOf(instance)
-	if t != nil && t.Kind() == reflect.Ptr {
+	if t != nil && t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t
@@ -576,7 +599,8 @@ func isBasicType(t reflect.Type) bool {
 	if t == nil {
 		return false
 	}
-	if t == reflect.TypeOf(time.Time{}) || t == reflect.TypeOf(time.Duration(0)) {
+	if t == reflect.TypeOf(time.Time{}) ||
+		t == reflect.TypeOf(time.Duration(0)) {
 		return true
 	}
 	switch t.Kind() {
@@ -590,12 +614,12 @@ func isBasicType(t reflect.Type) bool {
 	}
 }
 
-func isUnexported(field reflect.StructField) bool {
+func is_unexported(field reflect.StructField) bool {
 	return field.PkgPath != ""
 }
 
-func isOptionalField(field reflect.StructField) bool {
-	if field.Type.Kind() == reflect.Ptr {
+func is_optional_field(field reflect.StructField) bool {
+	if field.Type.Kind() == reflect.Pointer {
 		return true
 	}
 	tag := field.Tag.Get("json")
@@ -644,7 +668,7 @@ func getTSTypeMap(t reflect.Type) map[string]string {
 }
 
 func initializeEmbeddedPointers(v reflect.Value) {
-	if v.Kind() != reflect.Ptr || v.IsNil() {
+	if v.Kind() != reflect.Pointer || v.IsNil() {
 		return
 	}
 	elem := v.Elem()
@@ -655,7 +679,8 @@ func initializeEmbeddedPointers(v reflect.Value) {
 	for i := 0; i < elem.NumField(); i++ {
 		field := elem.Field(i)
 		fieldType := typ.Field(i)
-		if fieldType.Anonymous && field.Kind() == reflect.Ptr && field.IsNil() {
+		if fieldType.Anonymous && field.Kind() == reflect.Pointer &&
+			field.IsNil() {
 			newValue := reflect.New(field.Type().Elem())
 			field.Set(newValue)
 			initializeEmbeddedPointers(newValue)
