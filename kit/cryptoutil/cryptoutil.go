@@ -29,10 +29,25 @@ var (
 	ErrSecretKeyIsNil     = errors.New("secret key is nil")
 	ErrCipherTextTooShort = errors.New("ciphertext too short")
 	ErrHMACInvalid        = errors.New("HMAC is invalid")
+
+	errNegativeByteLength = errors.New("byte length cannot be negative")
+	errSecretKeyRequired  = errors.New("secret key is required")
+	errInvalidSignature   = errors.New("invalid signature")
+	errPublicKeyRequired  = errors.New("public key is required")
+	errMessageTooShort    = errors.New("message shorter than signature size")
+	errInvalidPublicKey   = errors.New("invalid public key size")
+	errKeyIsNil           = errors.New("key is nil")
+	errKeyIsEmpty         = errors.New("key is empty")
+	errAttemptedKeyIsNil  = errors.New("attemptedKey is nil")
+	errKnownGoodMACSize   = errors.New("knownGoodMAC must be 32 bytes")
+	errByteSliceNot32     = errors.New("byte slice must be exactly 32 bytes")
 )
 
 // Random returns a slice of cryptographically random bytes of length byteLen.
 func RandomBytes(byteLen int) ([]byte, error) {
+	if byteLen < 0 {
+		return nil, errNegativeByteLength
+	}
 	r := make([]byte, byteLen)
 	if _, err := rand.Read(r); err != nil {
 		return nil, err
@@ -48,7 +63,7 @@ func RandomBytes(byteLen int) ([]byte, error) {
 // wrapper around the nacl/auth package, which uses HMAC-SHA-512-256.
 func SignSymmetric(msg []byte, secretKey Key32) ([]byte, error) {
 	if secretKey == nil {
-		return nil, errors.New("secret key is required")
+		return nil, errSecretKeyRequired
 	}
 	digest := auth.Sum(msg, secretKey)
 	signedMsg := make([]byte, auth.Size+len(msg))
@@ -62,16 +77,16 @@ func SignSymmetric(msg []byte, secretKey Key32) ([]byte, error) {
 // nacl/auth package, which uses HMAC-SHA-512-256.
 func VerifyAndReadSymmetric(signedMsg []byte, secretKey Key32) ([]byte, error) {
 	if secretKey == nil {
-		return nil, errors.New("secret key is required")
+		return nil, errSecretKeyRequired
 	}
 	if len(signedMsg) < auth.Size {
-		return nil, errors.New("invalid signature")
+		return nil, errInvalidSignature
 	}
 	digest := make([]byte, auth.Size)
 	copy(digest, signedMsg[:auth.Size])
 	msg := signedMsg[auth.Size:]
 	if !auth.Verify(digest, msg, secretKey) {
-		return nil, errors.New("invalid signature")
+		return nil, errInvalidSignature
 	}
 	return msg, nil
 }
@@ -84,15 +99,15 @@ func VerifyAndReadSymmetric(signedMsg []byte, secretKey Key32) ([]byte, error) {
 // returns the original message.
 func VerifyAndReadAsymmetric(signedMsg []byte, publicKey Key32) ([]byte, error) {
 	if publicKey == nil {
-		return nil, errors.New("public key is required")
+		return nil, errPublicKeyRequired
 	}
 	if len(signedMsg) < ed25519.SignatureSize {
-		return nil, errors.New("message shorter than signature size")
+		return nil, errMessageTooShort
 	}
 
 	ok := ed25519.Verify(publicKey[:], signedMsg[ed25519.SignatureSize:], signedMsg[:ed25519.SignatureSize])
 	if !ok {
-		return nil, errors.New("invalid signature")
+		return nil, errInvalidSignature
 	}
 
 	return signedMsg[ed25519.SignatureSize:], nil
@@ -111,7 +126,7 @@ func VerifyAndReadAsymmetricBase64(signedMsg, publicKey Base64) ([]byte, error) 
 		return nil, err
 	}
 	if len(publicKeyBytes) != ed25519.PublicKeySize {
-		return nil, errors.New("invalid public key size")
+		return nil, errInvalidPublicKey
 	}
 
 	return VerifyAndReadAsymmetric(signedMsgBytes, Key32(publicKeyBytes))
@@ -136,10 +151,10 @@ func Sha256Hash(msg []byte) []byte {
 // If this isn't what you want, use the standard library directly.
 func HmacSha256(msg []byte, key []byte) ([]byte, error) {
 	if key == nil {
-		return nil, errors.New("key is nil")
+		return nil, errKeyIsNil
 	}
 	if len(key) == 0 {
-		return nil, errors.New("key is empty")
+		return nil, errKeyIsEmpty
 	}
 	mac := hmac.New(sha256.New, key[:])
 	if _, err := mac.Write(msg); err != nil {
@@ -155,10 +170,10 @@ func HmacSha256(msg []byte, key []byte) ([]byte, error) {
 // value to determine validity.
 func ValidateHmacSha256(attemptedMsg, attemptedKey, knownGoodMAC []byte) (bool, error) {
 	if attemptedKey == nil {
-		return false, errors.New("attemptedKey is nil")
+		return false, errAttemptedKeyIsNil
 	}
 	if len(knownGoodMAC) != sha256.Size {
-		return false, errors.New("knownGoodMAC must be 32 bytes")
+		return false, errKnownGoodMACSize
 	}
 	attemptedMAC, err := HmacSha256(attemptedMsg, attemptedKey)
 	if err != nil {
@@ -212,13 +227,13 @@ func DecryptSymmetricAESGCM(encryptedMsg []byte, secretKey Key32) ([]byte, error
 	return DecryptSymmetricGeneric(ToAEADFuncAESGCM, encryptedMsg, secretKey)
 }
 
-// ToAEADFuncXChaCha20Poly1305 returns an AEAD function for XChaCha20-Poly1305.
-var ToAEADFuncXChaCha20Poly1305 ToAEADFunc = func(secretKey Key32) (cipher.AEAD, error) {
+// ToAEADFuncXChaCha20Poly1305 returns an AEAD for XChaCha20-Poly1305.
+func ToAEADFuncXChaCha20Poly1305(secretKey Key32) (cipher.AEAD, error) {
 	return chacha20poly1305.NewX(secretKey[:])
 }
 
-// ToAEADFuncAESGCM returns an AEAD function for AES-256-GCM.
-var ToAEADFuncAESGCM ToAEADFunc = func(secretKey Key32) (cipher.AEAD, error) {
+// ToAEADFuncAESGCM returns an AEAD for AES-256-GCM.
+func ToAEADFuncAESGCM(secretKey Key32) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(secretKey[:])
 	if err != nil {
 		return nil, err
@@ -284,7 +299,7 @@ func DecryptSymmetricGeneric(
 
 func ToKey32(b []byte) (Key32, error) {
 	if len(b) != KeySize {
-		return nil, errors.New("byte slice must be exactly 32 bytes")
+		return nil, errByteSliceNot32
 	}
 	var key [KeySize]byte
 	copy(key[:], b)
@@ -293,7 +308,7 @@ func ToKey32(b []byte) (Key32, error) {
 
 func FromKey32(key Key32) ([]byte, error) {
 	if key == nil {
-		return nil, errors.New("key is nil")
+		return nil, errKeyIsNil
 	}
 	return key[:], nil
 }

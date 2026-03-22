@@ -12,3 +12,7 @@ node_modules
 .vscode/settings.json
 
 npm_dist/
+internal/locks/
+
+coverage/
+*.test

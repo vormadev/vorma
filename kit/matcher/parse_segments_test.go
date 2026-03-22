@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseSegments(t *testing.T) {
-	tests := []struct {
+	cases := []struct {
 		name     string
 		path     string
 		expected []string
@@ -17,20 +17,53 @@ func TestParseSegments(t *testing.T) {
 		{"simple path", "/users", []string{"users"}},
 		{"multi-segment path", "/api/v1/users", []string{"api", "v1", "users"}},
 		{"trailing slash", "/users/", []string{"users", ""}},
-		{"path with parameters", "/users/:id/posts", []string{"users", ":id", "posts"}},
-		{"path with parameters, implicit index segment", "/users/:id/posts/", []string{"users", ":id", "posts", ""}},
-		{"path with parameters, explicit index segment", "/users/:id/posts/_index", []string{"users", ":id", "posts", "_index"}},
+		{
+			"path with parameters",
+			"/users/:id/posts",
+			[]string{"users", ":id", "posts"},
+		},
+		{
+			"path with parameters, implicit index segment",
+			"/users/:id/posts/",
+			[]string{"users", ":id", "posts", ""},
+		},
+		{
+			"path with parameters, explicit index segment",
+			"/users/:id/posts/_index",
+			[]string{"users", ":id", "posts", "_index"},
+		},
 		{"path with splat", "/files/*", []string{"files", "*"}},
 		{"multiple slashes", "//api///users", []string{"api", "users"}},
-		{"complex path", "/api/v1/users/:user_id/posts/:post_id/comments", []string{"api", "v1", "users", ":user_id", "posts", ":post_id", "comments"}},
-		{"unicode path", "/café/über/resumé", []string{"café", "über", "resumé"}},
+		{
+			"complex path",
+			"/api/v1/users/:user_id/posts/:post_id/comments",
+			[]string{
+				"api",
+				"v1",
+				"users",
+				":user_id",
+				"posts",
+				":post_id",
+				"comments",
+			},
+		},
+		{
+			"unicode path",
+			"/café/über/resumé",
+			[]string{"café", "über", "resumé"},
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := ParseSegments(tt.path)
-			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("ParseSegments(%q) = %v, want %v", tt.path, result, tt.expected)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := ParseSegments(tc.path)
+			if !reflect.DeepEqual(result, tc.expected) {
+				t.Errorf(
+					"ParseSegments(%q) = %v, want %v",
+					tc.path,
+					result,
+					tc.expected,
+				)
 			}
 		})
 	}
@@ -47,8 +80,7 @@ func BenchmarkParseSegments(b *testing.B) {
 	b.Run("ParseSegments", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			path := paths[i%len(paths)]
-			segments := ParseSegments(path)
+			segments := ParseSegments(paths[i%len(paths)])
 			runtime.KeepAlive(segments)
 		}
 	})

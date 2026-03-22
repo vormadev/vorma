@@ -3,17 +3,27 @@ import {
 	Link,
 	type RouteProps,
 	usePatternLoaderData,
-} from "../vorma.utils.tsx";
-// import { useSplatClientLoaderData } from "./md.tsx";
+} from "../vorma.bindings.ts";
+import { useSplatClientLoaderData } from "./md.tsx";
 
 export const useRootClientLoaderData = addClientLoader({
 	pattern: "/",
 	clientLoader: async (props) => {
-		// This is pointless -- just an example of how to use a client loader
-		// await new Promise((r) => setTimeout(r, 1_000));
-		// console.log(`Client loader '/' started at ${Date.now()}`);
+		console.log(`Client loader '/' started at ${Date.now()}`);
+		await new Promise((resolve, reject) => {
+			const timer = setTimeout(resolve, 1_000);
+			props.signal.addEventListener(
+				"abort",
+				() => {
+					clearTimeout(timer);
+					reject(props.signal.reason);
+				},
+				{ once: true },
+			);
+		});
+		console.log("fake API call finished at ", Date.now());
 		const { loaderData } = await props.serverDataPromise;
-		// console.log("Server data promise resolved at ", Date.now(), loaderData);
+		console.log("Server data promise resolved at ", Date.now());
 		return loaderData.LatestVersion;
 	},
 	reRunOnModuleChange: import.meta,
@@ -26,22 +36,22 @@ export function RootLayout(props: RouteProps<"/">) {
 export function Home(_props: RouteProps<"/_index">) {
 	const _x = usePatternLoaderData("/");
 	const _y = useRootClientLoaderData();
-	// const _z = useSplatClientLoaderData();
-	// console.log("_x", _x());
-	// console.log("_y", _y());
-	// console.log("_z", _z()); // should be undefined on this page
+	const _z = useSplatClientLoaderData();
+	console.log("_x", _x());
+	console.log("_y", _y());
+	console.log("_z", _z()); // should be undefined on this page
 
 	return (
 		<>
-			<div class="flex flex-col gap-2 sm:gap-1 mt-4">
+			<div class="mt-4 flex flex-col gap-2 sm:gap-1">
 				<h2 class="big-heading">
-					The Next.js of Golang, powered by Vite.
+					The Golang metaframework, powered by Vite.
 				</h2>
 			</div>
 
-			<div class="flex gap-3 flex-wrap mb-6">
+			<div class="mb-6 flex flex-wrap gap-3">
 				<a
-					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
 					href="https://github.com/vormadev/vorma"
 					target="_blank"
 					rel="noreferrer"
@@ -50,7 +60,7 @@ export function Home(_props: RouteProps<"/_index">) {
 				</a>
 
 				<a
-					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
 					href="https://pkg.go.dev/github.com/vormadev/vorma"
 					target="_blank"
 					rel="noreferrer"
@@ -59,16 +69,16 @@ export function Home(_props: RouteProps<"/_index">) {
 				</a>
 
 				<a
-					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
-					href="https://www.npmjs.com/package/vorma"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
+					href="https://npmx.dev/package/vorma"
 					target="_blank"
 					rel="noreferrer"
 				>
-					📦 npmjs.com
+					📦 npmx.dev
 				</a>
 
 				<a
-					class="font-medium bg-[var(--fg)] py-[2px] px-[6px] text-[var(--bg)] text-sm rounded-sm cursor-pointer hover:bg-nice-blue hover:text-white"
+					class="hover:bg-nice-blue cursor-pointer rounded-sm bg-(--fg) px-1.5 py-0.5 text-sm font-medium text-(--bg) hover:text-white"
 					href="https://x.com/vormadev"
 					target="_blank"
 					rel="noreferrer"

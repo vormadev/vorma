@@ -1,9 +1,11 @@
 package netutil
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"syscall"
 )
 
 // GetFreePort returns a free port number. If the default port
@@ -13,7 +15,7 @@ import (
 // the default port. If the default port is set to 0, 8080 will
 // be used instead.
 func GetFreePort(defaultPort int) (int, error) {
-	if defaultPort == 0 {
+	if defaultPort <= 0 || defaultPort > 65535 {
 		defaultPort = 8080
 	}
 
@@ -21,14 +23,13 @@ func GetFreePort(defaultPort int) (int, error) {
 		return defaultPort, nil
 	}
 
-	for i := range 1024 {
+	for i := 1; i <= 1024; i++ {
 		port := defaultPort + i
-		if port >= 0 && port <= 65535 {
-			if CheckAvailability(port) {
-				return port, nil
-			}
-		} else {
+		if port > 65535 {
 			break
+		}
+		if CheckAvailability(port) {
+			return port, nil
 		}
 	}
 
@@ -41,36 +42,54 @@ func GetFreePort(defaultPort int) (int, error) {
 }
 
 func CheckAvailability(port int) bool {
+	if port <= 0 || port > 65535 {
+		return false
+	}
+
 	addr := fmt.Sprintf(":%d", port)
 
 	addrsToCheck := []string{addr, "localhost" + addr}
 	networksToCheck := []string{"tcp", "tcp4", "tcp6"}
 
+	var successfulProbe bool
 	for _, network := range networksToCheck {
 		for _, addr := range addrsToCheck {
 			ln, err := net.Listen(network, addr)
 			if err != nil {
+				if canIgnoreListenError(err) {
+					continue
+				}
 				return false
 			}
 			ln.Close()
+			successfulProbe = true
 		}
 	}
 
-	return true
+	return successfulProbe
 }
 
 func GetRandomFreePort() (port int, err error) {
-	// Asks the kernel for a free open port that is ready to use.
-	// Credit: https://gist.github.com/sevkin/96bdae9274465b2d09191384f86ef39d
-	var a *net.TCPAddr
-	if a, err = net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
-		var l *net.TCPListener
-		if l, err = net.ListenTCP("tcp", a); err == nil {
-			defer l.Close()
-			return l.Addr().(*net.TCPAddr).Port, nil
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		ln, err = net.Listen("tcp", "localhost:0")
+		if err != nil {
+			return 0, err
 		}
 	}
-	return
+	defer ln.Close()
+
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("expected TCP listener address, got %T", ln.Addr())
+	}
+	return tcpAddr.Port, nil
+}
+
+func canIgnoreListenError(err error) bool {
+	return errors.Is(err, syscall.EAFNOSUPPORT) ||
+		errors.Is(err, syscall.EPROTONOSUPPORT) ||
+		errors.Is(err, syscall.EADDRNOTAVAIL)
 }
 
 func IsLocalhost(host string) bool {

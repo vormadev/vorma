@@ -43,7 +43,7 @@ func ToBase32Raw(b []byte) string {
 // ToGob encodes an arbitrary value into a gob-encoded byte slice.
 func ToGob(src any) ([]byte, error) {
 	rv := reflect.ValueOf(src)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return nil, fmt.Errorf("bytesutil.ToGob: cannot encode nil pointer value")
 	}
 	var a bytes.Buffer

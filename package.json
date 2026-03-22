@@ -1,7 +1,7 @@
 {
 	"name": "vorma",
-	"version": "0.84.0",
-	"description": "The Next.js of Golang, powered by Vite.",
+	"version": "0.85.0-pre.4",
+	"description": "The Golang metaframework, powered by Vite.",
 	"type": "module",
 	"sideEffects": false,
 	"license": "BSD-3-Clause",
@@ -28,72 +28,92 @@
 	],
 	"exports": {
 		"./client": {
-			"import": "./npm_dist/internal/framework/_typescript/client/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/client/index.d.ts"
+			"import": "./npm_dist/vorma2/client/_index.js",
+			"types": "./npm_dist/vorma2/client/_index.d.ts"
+		},
+		"./client/__internal": {
+			"import": "./npm_dist/vorma2/client/_internal.js",
+			"types": "./npm_dist/vorma2/client/_internal.d.ts"
+		},
+		"./client/__internal/hmr_dev": {
+			"import": "./npm_dist/vorma2/client/_hmr_dev.js",
+			"types": "./npm_dist/vorma2/client/_hmr_dev.d.ts"
+		},
+		"./buildtime": {
+			"import": "./npm_dist/vorma2/client/_buildtime.js",
+			"types": "./npm_dist/vorma2/client/_buildtime.d.ts"
+		},
+		"./testing": {
+			"import": "./npm_dist/vorma2/client/_testing.js",
+			"types": "./npm_dist/vorma2/client/_testing.d.ts"
 		},
 		"./react": {
-			"import": "./npm_dist/internal/framework/_typescript/react/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/react/index.d.ts"
+			"import": "./npm_dist/vorma2/client/ui-adapters/react/_index.js",
+			"types": "./npm_dist/vorma2/client/ui-adapters/react/_index.d.ts"
 		},
 		"./solid": {
-			"import": "./npm_dist/internal/framework/_typescript/solid/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/solid/index.d.ts"
+			"import": "./npm_dist/vorma2/client/ui-adapters/solid/_index.js",
+			"types": "./npm_dist/vorma2/client/ui-adapters/solid/_index.d.ts"
 		},
 		"./preact": {
-			"import": "./npm_dist/internal/framework/_typescript/preact/index.js",
-			"types": "./npm_dist/internal/framework/_typescript/preact/index.d.ts"
+			"import": "./npm_dist/vorma2/client/ui-adapters/preact/_index.js",
+			"types": "./npm_dist/vorma2/client/ui-adapters/preact/_index.d.ts"
 		},
 		"./vite": {
-			"import": "./npm_dist/internal/framework/_typescript/vite/vite.js",
-			"types": "./npm_dist/internal/framework/_typescript/vite/vite.d.ts"
+			"import": "./npm_dist/typescript/vorma/vite/vite.js",
+			"types": "./npm_dist/typescript/vorma/vite/vite.d.ts"
 		},
 		"./kit/converters": {
-			"import": "./npm_dist/kit/_typescript/converters/converters.js",
-			"types": "./npm_dist/kit/_typescript/converters/converters.d.ts"
+			"import": "./npm_dist/typescript/kit/converters/converters.js",
+			"types": "./npm_dist/typescript/kit/converters/converters.d.ts"
 		},
 		"./kit/cookies": {
-			"import": "./npm_dist/kit/_typescript/cookies/cookies.js",
-			"types": "./npm_dist/kit/_typescript/cookies/cookies.d.ts"
+			"import": "./npm_dist/typescript/kit/cookies/cookies.js",
+			"types": "./npm_dist/typescript/kit/cookies/cookies.d.ts"
 		},
 		"./kit/csrf": {
-			"import": "./npm_dist/kit/_typescript/csrf/csrf.js",
-			"types": "./npm_dist/kit/_typescript/csrf/csrf.d.ts"
+			"import": "./npm_dist/typescript/kit/csrf/csrf.js",
+			"types": "./npm_dist/typescript/kit/csrf/csrf.d.ts"
 		},
 		"./kit/debounce": {
-			"import": "./npm_dist/kit/_typescript/debounce/debounce.js",
-			"types": "./npm_dist/kit/_typescript/debounce/debounce.d.ts"
+			"import": "./npm_dist/typescript/kit/debounce/debounce.js",
+			"types": "./npm_dist/typescript/kit/debounce/debounce.d.ts"
 		},
 		"./kit/fmt": {
-			"import": "./npm_dist/kit/_typescript/fmt/fmt.js",
-			"types": "./npm_dist/kit/_typescript/fmt/fmt.d.ts"
+			"import": "./npm_dist/typescript/kit/fmt/fmt.js",
+			"types": "./npm_dist/typescript/kit/fmt/fmt.d.ts"
 		},
 		"./kit/json": {
-			"import": "./npm_dist/kit/_typescript/json/json.js",
-			"types": "./npm_dist/kit/_typescript/json/json.d.ts"
+			"import": "./npm_dist/typescript/kit/json/json.js",
+			"types": "./npm_dist/typescript/kit/json/json.d.ts"
 		},
 		"./kit/listeners": {
-			"import": "./npm_dist/kit/_typescript/listeners/listeners.js",
-			"types": "./npm_dist/kit/_typescript/listeners/listeners.d.ts"
+			"import": "./npm_dist/typescript/kit/listeners/listeners.js",
+			"types": "./npm_dist/typescript/kit/listeners/listeners.d.ts"
 		},
 		"./kit/matcher/register": {
-			"import": "./npm_dist/kit/_typescript/matcher/register.js",
-			"types": "./npm_dist/kit/_typescript/matcher/register.d.ts"
+			"import": "./npm_dist/typescript/kit/matcher/register.js",
+			"types": "./npm_dist/typescript/kit/matcher/register.d.ts"
 		},
 		"./kit/matcher/find-best": {
-			"import": "./npm_dist/kit/_typescript/matcher/find_best_match.js",
-			"types": "./npm_dist/kit/_typescript/matcher/find_best_match.d.ts"
+			"import": "./npm_dist/typescript/kit/matcher/find_best_match.js",
+			"types": "./npm_dist/typescript/kit/matcher/find_best_match.d.ts"
 		},
 		"./kit/matcher/find-nested": {
-			"import": "./npm_dist/kit/_typescript/matcher/find_nested_matches.js",
-			"types": "./npm_dist/kit/_typescript/matcher/find_nested_matches.d.ts"
+			"import": "./npm_dist/typescript/kit/matcher/find_nested_matches.js",
+			"types": "./npm_dist/typescript/kit/matcher/find_nested_matches.d.ts"
+		},
+		"./kit/matcher/utils": {
+			"import": "./npm_dist/typescript/kit/matcher/utils.js",
+			"types": "./npm_dist/typescript/kit/matcher/utils.d.ts"
 		},
 		"./kit/theme": {
-			"import": "./npm_dist/kit/_typescript/theme/theme.js",
-			"types": "./npm_dist/kit/_typescript/theme/theme.d.ts"
+			"import": "./npm_dist/typescript/kit/theme/theme.js",
+			"types": "./npm_dist/typescript/kit/theme/theme.d.ts"
 		},
 		"./kit/url": {
-			"import": "./npm_dist/kit/_typescript/url/url.js",
-			"types": "./npm_dist/kit/_typescript/url/url.d.ts"
+			"import": "./npm_dist/typescript/kit/url/url.js",
+			"types": "./npm_dist/typescript/kit/url/url.d.ts"
 		}
 	},
 	"files": [
@@ -101,38 +121,36 @@
 		"LICENSE",
 		"README.md",
 		"tsconfig.base.json",
-		"internal/framework/_typescript/",
-		"kit/_typescript/",
+		"vorma2/",
+		"typescript/",
 		"internal/site/frontend/assets/vorma-banner.webp",
-		"!node_modules",
+		"!**/node_modules/",
+		"!**/tmp/",
+		"!**/tests/",
+		"!**/pnpm-lock.yaml",
 		"!**/*.test.*",
-		"!**/*.bench.*",
-		"!**/bench.txt"
+		"!**/*.bench.*"
 	],
 	"devDependencies": {
-		"@preact/signals": "^2.3.1",
+		"@preact/signals": "^2.8.1",
 		"@types/jsdom": "^21.1.7",
-		"@types/node": "^22.18.1",
-		"@types/react": "^19.1.12",
-		"@types/react-dom": "^19.1.9",
-		"@typescript/native-preview": "7.0.0-dev.20250716.1",
-		"esbuild": "^0.25.9",
+		"@types/node": "^22.19.11",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@typescript/native-preview": "7.0.0-dev.20260303.1",
+		"@vitest/coverage-v8": "^4.0.18",
+		"esbuild": "^0.25.12",
 		"esbuild-plugin-solid": "^0.6.0",
-		"history": "5.3.0",
 		"jsdom": "^26.1.0",
-		"oxlint": "^1.14.0",
-		"preact": "^10.27.1",
-		"prettier": "^3.6.2",
-		"react": "^19.1.1",
-		"react-dom": "^19.1.1",
-		"solid-js": "^1.9.9",
-		"typescript": "^5.9.2",
+		"oxfmt": "^0.41.0",
+		"oxlint": "^1.56.0",
+		"oxlint-tsgolint": "^0.15.0",
+		"preact": "^10.28.4",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"solid-js": "^1.9.11",
+		"typescript": "^5.9.3",
 		"vite": "npm:rolldown-vite@latest",
-		"vitest": "^3.2.4"
-	},
-	"prettier": {
-		"useTabs": true,
-		"tabWidth": 4,
-		"proseWrap": "always"
+		"vitest": "^4.0.18"
 	}
 }

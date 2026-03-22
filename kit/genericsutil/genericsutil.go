@@ -1,8 +1,6 @@
 // Package genericsutil provides helpers for implementing type erasure patterns
 package genericsutil
 
-import "errors"
-
 /////////////////////////////////////////////////////////////////////
 /////// ZERO HELPERS
 /////////////////////////////////////////////////////////////////////
@@ -20,46 +18,6 @@ func (ZeroHelper[I, O]) I() any    { return Zero[I]() }
 func (ZeroHelper[I, O]) O() any    { return Zero[O]() }
 func (ZeroHelper[I, O]) IPtr() any { return new(I) }
 func (ZeroHelper[I, O]) OPtr() any { return new(O) }
-
-/////////////////////////////////////////////////////////////////////
-/////// INPUT-OUTPUT FUNCTIONS
-/////////////////////////////////////////////////////////////////////
-
-type AnyIOFunc interface {
-	AnyZeroHelper
-
-	// If type assertion fails, implementation should still call the
-	// underlying function with the zero value of the input type.
-	ExecuteLoose(any) (any, error)
-
-	// If type assertion fails, implementation should return an error
-	// and the zero value of the input type, without calling the
-	// underlying function.
-	ExecuteStrict(any) (any, error)
-}
-
-type IOFunc[I any, O any] func(I) (O, error)
-
-func (IOFunc[I, O]) I() any    { return Zero[I]() }
-func (IOFunc[I, O]) O() any    { return Zero[O]() }
-func (IOFunc[I, O]) IPtr() any { return new(I) }
-func (IOFunc[I, O]) OPtr() any { return new(O) }
-
-// If type assertion fails, ExecuteLoose will still call the underlying
-// function with the zero value of the input type.
-func (ioFunc IOFunc[I, O]) ExecuteLoose(input any) (any, error) {
-	return ioFunc(AssertOrZero[I](input))
-}
-
-// If type assertion fails, ExecuteStrict will return an error and the
-// zero value of the input type, without calling the underlying function.
-func (ioFunc IOFunc[I, O]) ExecuteStrict(input any) (any, error) {
-	var typedI, ok = input.(I)
-	if !ok {
-		return Zero[I](), errors.New("input type assertion failed")
-	}
-	return ioFunc(typedI)
-}
 
 /////////////////////////////////////////////////////////////////////
 /////// UTILITIES
@@ -90,4 +48,13 @@ func AssertOrZero[T any](v any) T {
 		return typedV
 	}
 	return Zero[T]()
+}
+
+// Returns field if it is not the zero value for its type, otherwise returns defaultVal
+func OrDefault[F comparable](field F, defaultVal F) F {
+	var zero F
+	if field == zero {
+		return defaultVal
+	}
+	return field
 }

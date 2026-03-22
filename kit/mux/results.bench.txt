@@ -1,0 +1,12 @@
+cpu: Apple M3 Max
+BenchmarkNestedRouter/Simple_Nested_Match-14             2378751               500.7 ns/op           576 B/op          9 allocs/op
+BenchmarkNestedRouter/Nested_Tasks_Execution-14           712720              1552 ns/op            1241 B/op         22 allocs/op
+BenchmarkNestedRouter/Deep_Nesting-14                    1000000              1094 ns/op            1600 B/op         17 allocs/op
+BenchmarkRouter/SimpleStaticRoute-14                    18007303                67.75 ns/op           72 B/op          2 allocs/op
+BenchmarkRouter/DynamicRoute-14                          4269877               285.9 ns/op           872 B/op          8 allocs/op
+BenchmarkRouter/WithMiddleware-14                       16854050                66.45 ns/op           72 B/op          2 allocs/op
+BenchmarkRouter/RESTfulAPI-14                            3896250               304.8 ns/op           696 B/op          6 allocs/op
+BenchmarkRouter/LargeRouterMatch-14                      4740824               254.7 ns/op           224 B/op          6 allocs/op
+BenchmarkRouter/WorstCaseMatch-14                        5406872               217.2 ns/op           185 B/op          6 allocs/op
+BenchmarkRouter/NestedDynamicRoute-14                    3026667               385.0 ns/op           968 B/op          8 allocs/op
+BenchmarkRouter/TaskHandler-14                           1000000              1059 ns/op            2442 B/op         24 allocs/op

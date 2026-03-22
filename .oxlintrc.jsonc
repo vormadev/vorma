@@ -1,0 +1,14 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"ignorePatterns": [
+		"npm_dist",
+		"internal/site/frontend/src/vorma.gen",
+		"vormaclient/create/dist",
+	],
+	"rules": {
+		"curly": "error",
+	},
+	"options": {
+		"typeAware": true,
+	},
+}

@@ -1,0 +1,36 @@
+{
+	"$schema": ".waveout/schema.json",
+	"RootDir": "../",
+	"Core": {
+		"BinaryName": "main",
+		"HealthcheckEndpoint": "/healthz",
+		"PublicPathPrefix": "/",
+		"StaticAssetDirs": {
+			"Private": "backend/assets",
+			"Public": "frontend/assets"
+		},
+		"CSSEntryFiles": {
+			"Critical": "frontend/src/styles/main.critical.css",
+			"NonCritical": "frontend/src/styles/main.css"
+		}
+	},
+	"Vorma": {
+		"UIVariant": "solid",
+		"ServerEntry": "backend/cmd/serve",
+		"HTMLTemplateLocation": "entry.go.html",
+		"ClientEntry": "frontend/src/vorma.entry.tsx",
+		"ClientRouteDefs": ["frontend/src/**/*vorma.routes.ts"],
+		"GenOutDir": "__wave/vorma.gen",
+		"BuildtimePublicURLFuncName": "hashedURL"
+	},
+	"Vite": {
+		"JSPackageManagerBaseCmd": "pnpm"
+	},
+	"LifecycleHooks": [
+		{
+			"WatchIncludePatterns": ["backend/assets/markdown/**/*.md"],
+			"Effects": ["revalidate_client_data"],
+			"DevOnly": true
+		}
+	]
+}

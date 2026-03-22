@@ -1,0 +1,37 @@
+{
+	"$schema": "dist/.wavedist/schema.json",
+	"RootDir": ".",
+	"DistDir": "dist",
+	"Core": {
+		"BinaryName": "main",
+		"HealthcheckEndpoint": "/healthz",
+		"PublicPathPrefix": "/public/",
+		"StaticAssetDirs": {
+			"Private": "assets",
+			"Public": "frontend/public"
+		},
+		"CSSEntryFiles": {
+			"Critical": "frontend/styles/main.critical.css",
+			"NonCritical": "frontend/styles/main.css"
+		}
+	},
+	"Vorma": {
+		"UIVariant": "preact",
+		"ServerEntry": "cmd/serve",
+		"HTMLTemplateLocation": "entry.go.html",
+		"ClientEntry": "frontend/app.entry.tsx",
+		"ClientRouteDefs": ["frontend/app.routes.ts"],
+		"GenOutDir": "gen/vorma",
+		"BuildtimePublicURLFuncName": "public_url"
+	},
+	"Vite": {
+		"JSPackageManagerBaseCmd": "pnpm"
+	},
+	"LifecycleHooks": [
+		{
+			"WatchIncludePatterns": ["assets/markdown/**/*.md"],
+			"Effects": ["revalidate_client_data"],
+			"DevOnly": true
+		}
+	]
+}

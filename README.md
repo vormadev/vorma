@@ -4,14 +4,13 @@
 
 ---
 
-The Next.js of Golang, powered by Vite.
+The Golang metaframework, powered by Vite.
 
 ## Links
 
 [vorma.dev](https://vorma.dev) | [github.com](https://github.com/vormadev/vorma)
 | [pkg.go.dev](https://pkg.go.dev/github.com/vormadev/vorma) |
-[npmjs.com](https://www.npmjs.com/package/vorma) |
-[x.com](https://x.com/vormadev)
+[npmx.dev](https://npmx.dev/package/vorma) | [x.com](https://x.com/vormadev)
 
 ## Quick Start
 

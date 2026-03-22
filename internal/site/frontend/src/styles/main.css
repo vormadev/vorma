@@ -5,6 +5,10 @@
 @import url("./hljs.css");
 @import url("./nprogress.css");
 
+.spot-check-is-hashed {
+	background: url(/vorma-banner.webp);
+}
+
 /* ============================================
    CSS VARIABLES
    ============================================ */
@@ -158,17 +162,17 @@ h6 {
 }
 
 /* Anchor heading styles */
-.anchor-heading {
+.anchor-heading:not(h1) {
 	display: flex;
 	gap: 0.75rem;
 }
 
-.anchor-heading a.anchor {
+.anchor-heading:not(h1) a.anchor {
 	color: #777;
 	font-style: normal;
 }
 
-.anchor-heading a:hover {
+.anchor-heading:not(h1) a:hover {
 	color: unset;
 	text-decoration: underline;
 }

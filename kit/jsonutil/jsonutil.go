@@ -5,10 +5,20 @@ import (
 	"fmt"
 )
 
+// JSONString is a semantic marker type for JSON payload strings.
 type JSONString string
 
 func Serialize(v any) ([]byte, error) {
 	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("error encoding JSON: %w", err)
+	}
+	return data, nil
+}
+
+// Serializes with json.MarshalIndent using tabs.
+func SerializePretty(v any) ([]byte, error) {
+	data, err := json.MarshalIndent(v, "", "\t")
 	if err != nil {
 		return nil, fmt.Errorf("error encoding JSON: %w", err)
 	}

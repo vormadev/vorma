@@ -14,7 +14,7 @@ import (
 var siteRouter = router.Core()
 
 func init() {
-	backend.Vorma.Init(wave.GetIsDev())
+	backend.Vorma.Init(wave.IsDev())
 }
 
 func Handler(w http.ResponseWriter, r *http.Request) {

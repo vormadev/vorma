@@ -7,15 +7,17 @@ import (
 	"github.com/vormadev/vorma/kit/response"
 )
 
-var (
-	// Allow is a middleware that responds with a barebones robots.txt file that
-	// allows all user agents to access any path.
-	Allow = Content("User-agent: *\nAllow: /")
+// Allow is a middleware that responds with a barebones robots.txt file that
+// allows all user agents to access any path.
+func Allow(next http.Handler) http.Handler {
+	return Content("User-agent: *\nAllow: /")(next)
+}
 
-	// Disallow is a middleware that responds with a barebones robots.txt file that
-	// disallows all user agents from accessing any path.
-	Disallow = Content("User-agent: *\nDisallow: /")
-)
+// Disallow is a middleware that responds with a barebones robots.txt file that
+// disallows all user agents from accessing any path.
+func Disallow(next http.Handler) http.Handler {
+	return Content("User-agent: *\nDisallow: /")(next)
+}
 
 // Content returns a middleware that responds with a robots.txt file containing the
 // given content.

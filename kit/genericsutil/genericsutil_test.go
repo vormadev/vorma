@@ -1,7 +1,6 @@
 package genericsutil
 
 import (
-	"strconv"
 	"testing"
 )
 
@@ -35,99 +34,28 @@ type SomeGenericType[I any, O any] struct {
 
 func TestZeroHelper(t *testing.T) {
 	x := SomeGenericType[int, string]{}
-
 	i, o, iPtr, oPtr := x.I(), x.O(), x.IPtr(), x.OPtr()
-
 	if i != 0 {
 		t.Errorf("expected 0, got %v", i)
 	}
-
 	if o != "" {
 		t.Errorf("expected empty string, got %v", o)
 	}
-
 	if iPtr == nil {
 		t.Error("expected non-nil pointer, got nil")
 	}
 	if val, ok := iPtr.(*int); !ok || *val != 0 {
 		t.Errorf("expected *int, got %T", iPtr)
 	}
-
 	if oPtr == nil {
 		t.Error("expected non-nil pointer, got nil")
 	}
 	if val, ok := oPtr.(*string); !ok || *val != "" {
 		t.Errorf("expected *string, got %T", oPtr)
 	}
-
 	var y any = x
-
 	if _, ok := y.(AnyZeroHelper); !ok {
 		t.Error("expected SomeGenericType to implement AnyZeroHelper")
-	}
-}
-
-func TestIOFunc(t *testing.T) {
-	var f IOFunc[int, string] = func(i int) (string, error) {
-		return "hello", nil
-	}
-
-	loose, err := f.ExecuteLoose(0)
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-	if val, ok := loose.(string); !ok || val != "hello" {
-		t.Errorf("expected 'hello', got %v", loose)
-	}
-
-	strict, err := f.ExecuteStrict(0)
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-	if val, ok := strict.(string); !ok || val != "hello" {
-		t.Errorf("expected 'hello', got %v", strict)
-	}
-
-	_, err = f.ExecuteStrict("0")
-	if err == nil {
-		t.Error("expected error, got nil")
-	}
-}
-
-func TestAnyIOFunc(t *testing.T) {
-	var f IOFunc[int, string] = func(i int) (string, error) {
-		return strconv.Itoa(i), nil
-	}
-
-	var anyF AnyIOFunc = f
-
-	loose, err := anyF.ExecuteLoose(0)
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-	if val, ok := loose.(string); !ok || val != "0" {
-		t.Errorf("expected '0', got %v", loose)
-	}
-
-	strict, err := anyF.ExecuteStrict(0)
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-	if val, ok := strict.(string); !ok || val != "0" {
-		t.Errorf("expected '0', got %v", strict)
-	}
-
-	_, err = anyF.ExecuteStrict("0")
-	if err == nil {
-		t.Error("expected error, got nil")
-	}
-
-	val, err := anyF.ExecuteLoose("0")
-	if err != nil {
-		t.Errorf("expected nil error, got %v", err)
-	}
-	if val != "0" {
-		t.Errorf("expected 0, got %v", val)
 	}
 }
 
@@ -145,7 +73,6 @@ func TestZero(t *testing.T) {
 
 func TestAnyZeroHelper(t *testing.T) {
 	var x AnyZeroHelper = SomeGenericType[int, string]{}
-
 	if x.I() != 0 {
 		t.Error("expected 0, got non-zero value")
 	}

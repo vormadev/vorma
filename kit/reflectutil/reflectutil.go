@@ -7,7 +7,13 @@ import (
 	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
-func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {
+// DoesTypeImplementInterface reports whether t implements iface, accounting
+// for both value and pointer receiver method sets.
+//
+// It returns false when t or iface is nil. It panics when iface is not an
+// interface type; this panic enforces the developer invariant that callers
+// must pass an actual interface type for iface.
+func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool {
 	if t == nil {
 		return false
 	}
@@ -20,16 +26,12 @@ func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {
 	if t.Implements(iface) {
 		return true
 	}
-	if t.Kind() != reflect.Ptr {
+	if t.Kind() != reflect.Pointer {
 		if reflect.PointerTo(t).Implements(iface) {
 			return true
 		}
 	}
 	return false
-}
-
-func ToInterfaceReflectType[T any]() reflect.Type {
-	return reflect.TypeOf((*T)(nil)).Elem()
 }
 
 func ExcludingNoneGetIsNilOrUltimatelyPointsToNil(v any) bool {
@@ -48,7 +50,7 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	reflectVal := reflect.ValueOf(v)
 
 	switch reflectVal.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		if reflectVal.IsNil() {
 			return true
 		}
@@ -62,7 +64,7 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	}
 }
 
-func GetJSONFieldName(field reflect.StructField) string {
+func JSONFieldName(field reflect.StructField) string {
 	tag := field.Tag.Get("json")
 	if tag == "" {
 		return field.Name

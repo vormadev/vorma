@@ -178,6 +178,12 @@ func TestAttempt(t *testing.T) {
 		wantErr   bool
 	}{
 		{
+			name:    "nil keyset",
+			keyset:  nil,
+			fn:      func(k cryptoutil.Key32) (string, error) { return "ok", nil },
+			wantErr: true,
+		},
+		{
 			name:    "empty keyset",
 			keyset:  &Keyset{uks: UnwrappedKeyset{}},
 			fn:      func(k cryptoutil.Key32) (string, error) { return "ok", nil },
@@ -244,6 +250,13 @@ func TestKeyset_HKDF(t *testing.T) {
 		info    string
 		wantErr bool
 	}{
+		{
+			name:    "nil keyset",
+			keyset:  nil,
+			salt:    []byte("salt"),
+			info:    "info",
+			wantErr: true,
+		},
 		{
 			name:    "empty keyset",
 			keyset:  &Keyset{uks: UnwrappedKeyset{}},

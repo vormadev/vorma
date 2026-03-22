@@ -5,7 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"site/backend/src/router"
+	_ "site/__wave/vorma.gen"
+	"site/backend/src/server"
 	"time"
 
 	"github.com/vormadev/vorma/kit/colorlog"
@@ -15,26 +16,35 @@ import (
 var Log = colorlog.New("site")
 
 func main() {
-	addr, handler := router.Init()
+	addr, handler := server.Init()
 	url := "http://localhost" + addr
 
 	server := &http.Server{
-		Addr:                         addr,
-		Handler:                      http.TimeoutHandler(handler, 60*time.Second, "Request timed out"),
+		Addr: addr,
+		Handler: http.TimeoutHandler(
+			handler,
+			60*time.Second,
+			"Request timed out",
+		),
 		ReadTimeout:                  15 * time.Second,
 		WriteTimeout:                 30 * time.Second,
 		IdleTimeout:                  60 * time.Second,
 		ReadHeaderTimeout:            10 * time.Second,
 		MaxHeaderBytes:               1 << 20, // 1 MB
 		DisableGeneralOptionsHandler: true,
-		ErrorLog:                     log.New(os.Stderr, "HTTP: ", log.Ldate|log.Ltime|log.Lshortfile),
+		ErrorLog: log.New(
+			os.Stderr,
+			"HTTP: ",
+			log.Ldate|log.Ltime|log.Lshortfile,
+		),
 	}
 
 	grace.Orchestrate(grace.OrchestrateOptions{
 		StartupCallback: func() error {
 			Log.Info("Starting server", "url", url)
 
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := server.ListenAndServe(); err != nil &&
+				err != http.ErrServerClosed {
 				log.Fatalf("Server listen and serve error: %v\n", err)
 			}
 

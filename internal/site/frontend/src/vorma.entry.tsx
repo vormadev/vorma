@@ -1,7 +1,7 @@
 import { render } from "solid-js/web";
 import { getRootEl, initClient } from "vorma/client";
+import { vormaAppConfig } from "../../__wave/vorma.gen/index.ts";
 import { App } from "./components/app.tsx";
-import { vormaAppConfig } from "./vorma.gen.ts";
 
 await initClient({
 	vormaAppConfig,
@@ -10,6 +10,6 @@ await initClient({
 	},
 });
 
-import("./highlight.ts"); // warm up highlighter
-import("./html_to_md.ts"); // warm up markdown converter
-import("./components/md.tsx"); // warm up  markdown route component
+void import("./highlight.ts"); // warm up highlighter
+void import("./html_to_md.ts"); // warm up markdown converter
+void import("./components/md.tsx"); // warm up markdown route component

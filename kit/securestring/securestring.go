@@ -14,7 +14,7 @@ import (
 	"github.com/vormadev/vorma/kit/securebytes"
 )
 
-const MaxBase64Size = securebytes.MaxSize + securebytes.MaxSize/3
+const MaxBase64Size = ((securebytes.MaxSize + 2) / 3) * 4
 
 type SecureString string // Base64-encoded, encrypted value
 
@@ -40,6 +40,3 @@ func Parse[T any](ks *keyset.Keyset, ss SecureString) (T, error) {
 	}
 	return securebytes.Parse[T](ks, securebytes.SecureBytes(ciphertext))
 }
-
-// Deprecated: Use only if you need to support legacy encrypted values.
-const LegacyHKDFInfoStr = "vorma_kit_securestring_v1_encryption_key"

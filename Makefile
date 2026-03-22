@@ -1,4 +1,17 @@
 #####################################################################
+####### RELEASES
+#####################################################################
+
+release: full-gate
+	@go run ./internal/cmd/release
+
+release-unsafe:
+	@UNSAFE=1 go run ./internal/cmd/release
+
+full-gate:
+	@go run ./internal/cmd/full_gate
+
+#####################################################################
 ####### GO
 #####################################################################
 
@@ -8,71 +21,80 @@ gotest:
 gotestloud:
 	@go test -race -v ./...
 
-gobump: gotest
-	@go run ./internal/scripts/bumper
+staticcheck:
+	@staticcheck ./...
+
+runtime-deps-check:
+	@go run ./internal/cmd/runtime_deps_guard
 
 # call with `make gobench pkg=./kit/mux` (or whatever)
 gobench:
 	@go test -bench=. $(pkg)
 
 #####################################################################
-####### TS
+####### TYPESCRIPT
 #####################################################################
 
-tstest:
-	@pnpm vitest run
+tstest: tstest-source tstest-dist
 
-tstestwatch:
-	@pnpm vitest
+tstest-source: npmbuild
+	@pnpm vitest run --exclude "vorma2/client/black_box_dist_tests/**"
+
+tstest-dist: npmbuild
+	@pnpm vitest --run --config vorma2/client/black_box_dist_tests/vitest.config.ts
 
 tsbench:
 	@npx vitest bench
 
 nuke-node-modules:
-	@rm -rf node_modules 2>/dev/null || true
-	@find . -path "*/node_modules" -type d -exec rm -rf {} \; 2>/dev/null || true
+	@go run ./internal/cmd/tsstate nuke-node-modules
 
 tsinstall:
-	@pnpm i
-	@cd internal/framework/_typescript/create && pnpm i
+	@go run ./internal/cmd/tsstate install
 
 tsreset: nuke-node-modules tsinstall
 
 tslint:
-	@pnpm oxlint
+	@pnpm oxlint --type-aware
 
-tscheck: tscheck-kit tscheck-fw-client tscheck-fw-react tscheck-fw-solid
+tscheck: tscheck-kit tscheck-fw-client tscheck-fw-client-dist tscheck-fw-react tscheck-fw-solid tscheck-fw-preact tscheck-fw-vite tscheck-fw-create
 
 tscheck-kit:
-	@pnpm tsgo --noEmit --project ./kit/_typescript
+	@pnpm tsgo --noEmit --project ./typescript/kit
 
 tscheck-fw-client:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/client
+	@pnpm tsgo --noEmit --project ./typescript/vorma/client
+
+tscheck-fw-client-dist:
+	@pnpm tsgo --noEmit --project ./vorma2/client/black_box_dist_tests/tsconfig.json
 
 tscheck-fw-react:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/react
+	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/react
 
 tscheck-fw-solid:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/solid
+	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/solid
 
 tscheck-fw-preact:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/preact
+	@pnpm tsgo --noEmit --project ./typescript/vorma/ui-adapters/preact
 
-tsprepforpub: tsreset tstest tslint tscheck
+tscheck-fw-vite:
+	@pnpm tsgo --noEmit --project ./typescript/vorma/vite
 
-tspublishpre: tsprepforpub
-	@npm publish --access public --tag pre
-	@cd internal/framework/_typescript/create && npm publish --access public --tag pre
+tscheck-fw-create:
+	@pnpm tsgo --noEmit --project ./typescript/vorma/create
 
-tspublishnonpre: tsprepforpub
-	@npm publish --access public
-	@cd internal/framework/_typescript/create && npm publish --access public
+tsfmt:
+	@pnpm oxfmt
+
+tsfmtcheck:
+	@pnpm oxfmt --check
 
 npmbuild:
-	@go run ./internal/scripts/buildts
+	@go run ./internal/cmd/buildts
 
-npmbump:
-	@go run ./internal/scripts/npm_bumper
+#####################################################################
+####### OTHER
+#####################################################################
 
 docker-site:
 	@docker build -t vorma-site -f Dockerfile.site .
@@ -80,10 +102,25 @@ docker-site:
 docker-run-site:
 	@docker run -d -p $(PORT):$(PORT) -e PORT=$(PORT) vorma-site
 
-sum:
-	@go run ./internal/scripts/sum
-
 run-create: tsreset npmbuild nuke-node-modules
 	@mkdir -p test_create.local && \
 		cd test_create.local && \
-		node ../internal/framework/_typescript/create/dist/main.js --local-test
+		node ../typescript/vorma/create/dist/main.js --local-test
+
+sum:
+	@go run ./internal/scripts/sum.local
+
+print-client-types-from-dist:
+	@for f in \
+		npm_dist/vorma2/client/_index.d.ts \
+		npm_dist/vorma2/client/_testing.d.ts \
+		npm_dist/vorma2/client/_buildtime.d.ts \
+		npm_dist/vorma2/client/_internal.d.ts \
+		npm_dist/vorma2/client/ui-adapters/react/_index.d.ts \
+		npm_dist/vorma2/client/ui-adapters/preact/_index.d.ts \
+		npm_dist/vorma2/client/ui-adapters/solid/_index.d.ts; do \
+		echo "=== $$f ==="; cat "$$f"; echo; echo; \
+	done
+
+print-client-types-typecheck-file:
+	@cat vorma2/client/black_box_dist_tests/public_api_types.typecheck.ts

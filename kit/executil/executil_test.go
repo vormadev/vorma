@@ -1,8 +1,13 @@
 package executil
 
 import (
+	"context"
+	"errors"
 	"os"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestMakeCmdRunner(t *testing.T) {
@@ -46,5 +51,73 @@ func TestEdgeCases(t *testing.T) {
 	runner := MakeCmdRunner("non_existent_command")
 	if err := runner(); err == nil {
 		t.Fatalf("expected error for non-existent command, got nil")
+	}
+}
+
+func TestRunShellWithContext_CancelStopsCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sleep command assertion is Unix-oriented")
+	}
+
+	commandExecutionContext, cancelCommandExecutionContext := context.WithTimeout(
+		context.Background(),
+		100*time.Millisecond,
+	)
+	defer cancelCommandExecutionContext()
+
+	commandStartTime := time.Now()
+	err := RunShellWithContext(commandExecutionContext, "sleep 2")
+	commandElapsedTime := time.Since(commandStartTime)
+
+	if err == nil {
+		t.Fatal("expected canceled shell command to return error")
+	}
+	if !errors.Is(err, ErrCommandExecutionTimedOut) {
+		t.Fatalf("expected timed-out command classification, got %v", err)
+	}
+	if commandElapsedTime > 1*time.Second {
+		t.Fatalf(
+			"expected canceled shell command to stop quickly, elapsed=%s",
+			commandElapsedTime,
+		)
+	}
+}
+
+func TestRunShellWithContext_CancelClassifiesCanceledCommand(t *testing.T) {
+	commandExecutionContext, cancelCommandExecutionContext := context.WithCancel(
+		context.Background(),
+	)
+	cancelCommandExecutionContext()
+
+	err := RunShellWithContext(commandExecutionContext, "echo should-not-run")
+	if err == nil {
+		t.Fatal("expected canceled shell command to return error")
+	}
+	if !errors.Is(err, ErrCommandExecutionCanceled) {
+		t.Fatalf("expected canceled command classification, got %v", err)
+	}
+}
+
+func TestRunCmdCapture_ReturnsErrorWhenNoCommandProvided(t *testing.T) {
+	_, err := RunCmdCapture()
+	if err == nil {
+		t.Fatal("expected error for empty command list")
+	}
+}
+
+func TestRunCmd_ReturnsErrorWhenNoCommandProvided(t *testing.T) {
+	err := RunCmd()
+	if err == nil {
+		t.Fatal("expected error for empty command list")
+	}
+}
+
+func TestRunCmdCapture_CapturesOutputFromSuccessfulCommand(t *testing.T) {
+	output, err := RunCmdCapture("echo", "hello")
+	if err != nil {
+		t.Fatalf("RunCmdCapture() unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "hello") {
+		t.Fatalf("expected output to contain %q, got %q", "hello", output)
 	}
 }

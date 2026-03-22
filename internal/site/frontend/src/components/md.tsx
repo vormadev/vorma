@@ -5,28 +5,29 @@ import {
 	addClientLoader,
 	useLoaderData,
 	type RouteProps,
-} from "../vorma.utils.tsx";
+} from "../vorma.bindings.ts";
 import { useRootClientLoaderData } from "./home.tsx";
 import { RenderedMarkdown } from "./rendered-markdown.tsx";
 
 export const useSplatClientLoaderData = addClientLoader({
 	pattern: "/*",
 	clientLoader: async (props) => {
-		// This is pointless -- just an example of how to use a client loader
-		// await new Promise((r) => setTimeout(r, 1_000));
-		// console.log(`Client loader '/*' started at ${Date.now()}`);
+		console.log(`Client loader '/*' started at ${Date.now()}`);
+		await new Promise((resolve, reject) => {
+			const timer = setTimeout(resolve, 2_000);
+			props.signal.addEventListener(
+				"abort",
+				() => {
+					clearTimeout(timer);
+					reject(props.signal.reason);
+				},
+				{ once: true },
+			);
+		});
+		console.log("fake API call finished at ", Date.now());
 		const { loaderData } = await props.serverDataPromise;
-		// console.log("Server data promise resolved at ", Date.now(), loaderData);
-
-		// This is how you pass an abort signal to your API calls,
-		// so that if the navigation aborts, the downstream requests
-		// also abort:
-		// const res = await api.mutate({
-		// 	pattern: "/example",
-		// 	requestInit: { signal: props.signal },
-		// });
-
-		return loaderData.Title as string;
+		console.log("Server data promise resolved at ", Date.now());
+		return loaderData.Title || "";
 	},
 	reRunOnModuleChange: import.meta,
 });
@@ -36,17 +37,17 @@ export function MD(props: RouteProps<"/*">) {
 
 	const splatClientLoaderData = useSplatClientLoaderData(props);
 	const _y = useRootClientLoaderData();
-	// console.log("_y", _y());
+	console.log("_y", _y());
 
 	return (
 		<div class="flex flex-col gap-6" id="md-route">
-			<div class="flex flex-wrap gap-6 items-center">
+			<div class="flex flex-wrap items-center gap-6">
 				<Show when={loaderData()?.BackItem}>
 					{(backUrl) => (
 						<VormaLink
 							prefetch="intent"
 							href={backUrl()}
-							class="back-link self-start my-2"
+							class="back-link my-2 self-start"
 						>
 							↑ Go to parent folder
 						</VormaLink>
@@ -55,11 +56,11 @@ export function MD(props: RouteProps<"/*">) {
 
 				<Show when={loaderData().Content && !loaderData().IsFolder}>
 					<button
-						class="sm:ml-auto px-2 py-1 text-xs bg-dark rounded-sm text-light border border-[#7777] font-normal tracking-wide hover:outline-3 hover:outline-nice-blue hover:outline-offset-1 hover:cursor-pointer uppercase"
+						class="bg-dark text-light hover:outline-nice-blue rounded-sm border border-[#7777] px-2 py-1 text-xs font-normal tracking-wide uppercase hover:cursor-pointer hover:outline-3 hover:outline-offset-1 sm:ml-auto"
 						onClick={async () => {
 							const ld = loaderData();
 							const markdown = `# ${ld.Title}\n\n${htmlToMarkdown(ld.Content ?? "")}\n`;
-							navigator.clipboard.writeText(markdown);
+							void navigator.clipboard.writeText(markdown);
 						}}
 					>
 						✨ Copy as Markdown
@@ -69,7 +70,12 @@ export function MD(props: RouteProps<"/*">) {
 			<Show when={splatClientLoaderData()}>{(n) => <h1>{n()}</h1>}</Show>
 			<Show when={loaderData()?.Date}>{(n) => <i>{n()}</i>}</Show>
 			<Show when={loaderData()?.Content}>
-				{(n) => <RenderedMarkdown markdown={n()} />}
+				{(n) => (
+					<RenderedMarkdown
+						markdown={n()}
+						stripLeadingH1={Boolean(loaderData()?.Title)}
+					/>
+				)}
 			</Show>
 			<Show when={loaderData()?.IndexSitemap}>
 				{(n) => (

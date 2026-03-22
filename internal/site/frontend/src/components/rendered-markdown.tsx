@@ -2,10 +2,13 @@ import { createEffect, onCleanup } from "solid-js";
 import { render } from "solid-js/web";
 import { getHrefDetails } from "vorma/kit/url";
 import { VormaLink } from "vorma/solid";
+import { waveRuntimeURL } from "../../../__wave/vorma.gen/index.ts";
 import { highlight } from "../highlight.ts";
-import { waveRuntimeURL } from "../vorma.gen.ts";
 
-export function RenderedMarkdown(props: { markdown: string }) {
+export function RenderedMarkdown(props: {
+	markdown: string;
+	stripLeadingH1?: boolean;
+}) {
 	let containerRef: HTMLDivElement | null = null;
 	const disposers: Array<() => void> = [];
 
@@ -16,19 +19,41 @@ export function RenderedMarkdown(props: { markdown: string }) {
 	};
 
 	// Process the markdown content
-	const processContent = () => {
+	const processContent = (content: {
+		markdown: string;
+		stripLeadingH1: boolean;
+	}) => {
 		if (!containerRef) {
 			return;
 		}
 
 		cleanupPreviousRender();
 
-		containerRef.innerHTML = props.markdown; // Set the HTML content
+		containerRef.innerHTML = content.markdown; // Set the HTML content
+
+		if (content.stripLeadingH1) {
+			for (const node of Array.from(containerRef.childNodes)) {
+				if (
+					node.nodeType === Node.TEXT_NODE &&
+					(node.textContent ?? "").trim() === ""
+				) {
+					continue;
+				}
+				if (node.nodeType === Node.COMMENT_NODE) {
+					continue;
+				}
+				if (node.nodeType === Node.ELEMENT_NODE) {
+					const el = node as Element;
+					if (el.tagName.toLowerCase() === "h1") {
+						el.remove();
+					}
+				}
+				break;
+			}
+		}
 
 		// Process headings to add anchor links
-		const headings = containerRef.querySelectorAll(
-			"h1, h2, h3, h4, h5, h6",
-		);
+		const headings = containerRef.querySelectorAll("h2, h3, h4, h5, h6");
 		for (const heading of headings) {
 			const id = heading.id;
 			if (id) {
@@ -107,15 +132,22 @@ export function RenderedMarkdown(props: { markdown: string }) {
 	const ref = (el: HTMLDivElement | null) => {
 		containerRef = el;
 		if (el) {
-			processContent();
+			processContent({
+				markdown: props.markdown,
+				stripLeadingH1: props.stripLeadingH1 === true,
+			});
 		}
 	};
 
 	// Create effect to run processContent when markdown changes
 	createEffect(() => {
-		props.markdown; // Access props.markdown to track changes
+		const markdown = props.markdown;
+		const stripLeadingH1 = props.stripLeadingH1 === true;
 		if (containerRef) {
-			processContent();
+			processContent({
+				markdown,
+				stripLeadingH1,
+			});
 		}
 	});
 

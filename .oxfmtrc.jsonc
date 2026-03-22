@@ -1,0 +1,11 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"tabWidth": 4,
+	"proseWrap": "always",
+	"printWidth": 80,
+	"sortImports": { "newlinesBetween": false },
+	"sortTailwindcss": {},
+	"sortPackageJson": false,
+	"ignorePatterns": ["**/vorma.gen/"],
+}

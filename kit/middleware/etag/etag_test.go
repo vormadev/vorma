@@ -1,6 +1,7 @@
 package etag
 
 import (
+	"bufio"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1319,3 +1321,112 @@ func TestSkipFunc(t *testing.T) {
 
 // __TODO
 func TestXVormaBuildIdHeaderChangesEtag(t *testing.T) {}
+
+func TestHasNoStoreDirectiveCaseInsensitive(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{value: "public, max-age=60", want: false},
+		{value: "no-store", want: true},
+		{value: "No-Store", want: true},
+		{value: "private, NO-STORE", want: true},
+	}
+
+	for _, tt := range tests {
+		if got := hasNoStoreDirective(tt.value); got != tt.want {
+			t.Fatalf("hasNoStoreDirective(%q)=%v, want %v", tt.value, got, tt.want)
+		}
+	}
+}
+
+func TestETagMiddlewareFlushBeforeWritePreservesHeaders(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected response writer to implement http.Flusher")
+		}
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: hello\n\n"))
+	})
+
+	server := httptest.NewServer(Auto()(handler))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatalf("failed request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("expected Content-Type to be preserved, got %q", got)
+	}
+	if got := resp.Header.Get("ETag"); got != "" {
+		t.Fatalf("expected no ETag for flushed streaming response, got %q", got)
+	}
+}
+
+func TestETagMiddlewareMaxSizeOverflowPreservesHeadersAndStatus(t *testing.T) {
+	const payload = "0123456789"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test", "present")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(payload))
+	})
+
+	server := httptest.NewServer(Auto(&Config{MaxBodySize: 5})(handler))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatalf("failed request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Test"); got != "present" {
+		t.Fatalf("expected X-Test header to be preserved, got %q", got)
+	}
+	if got := resp.Header.Get("ETag"); got != "" {
+		t.Fatalf("expected no ETag when body exceeds max size, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed reading body: %v", err)
+	}
+	if string(body) != payload {
+		t.Fatalf("expected body %q, got %q", payload, string(body))
+	}
+}
+
+type hijackableRecorder struct {
+	*httptest.ResponseRecorder
+}
+
+func (h *hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, nil
+}
+
+func (h *hijackableRecorder) Flush() {}
+
+func (h *hijackableRecorder) Push(string, *http.PushOptions) error { return nil }
+
+func TestETagWriterOptionalInterfaces(t *testing.T) {
+	w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
+	ew := newETagWriter(w, sha1.New(), 1024)
+	defer ew.Close()
+
+	if _, _, err := ew.Hijack(); err != nil {
+		t.Fatalf("expected hijack passthrough to succeed, got %v", err)
+	}
+
+	if err := ew.Push("/x", nil); err != nil {
+		t.Fatalf("expected push passthrough to succeed, got %v", err)
+	}
+
+	ew.Flush()
+}

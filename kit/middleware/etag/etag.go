@@ -1,12 +1,13 @@
 package etag
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
 	"hash"
-	"io"
-	"maps"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,7 +55,7 @@ func Auto(config ...*Config) func(http.Handler) http.Handler {
 				ew.WriteOriginalResponse()
 				return
 			}
-			etag := generateETag(ew.hash, configToUse.Strong, ew.headers)
+			etag := generateETag(ew.hash, configToUse.Strong, ew.w.Header())
 			ifNoneMatch := r.Header.Get("If-None-Match")
 			if ifNoneMatch != "" && etagMatches(ifNoneMatch, etag) {
 				respondNotModified(w, etag)
@@ -71,8 +72,6 @@ type etagWriter struct {
 	headersSent bool
 	buf         *bytes.Buffer
 	hash        hash.Hash
-	tee         io.Writer
-	headers     http.Header
 	maxSize     int64
 	size        int64
 	tooBig      bool
@@ -84,25 +83,24 @@ var bufPool = sync.Pool{
 	},
 }
 
-func newETagWriter(w http.ResponseWriter, hash hash.Hash, maxSize int64) *etagWriter {
+func newETagWriter(
+	w http.ResponseWriter,
+	hash hash.Hash,
+	maxSize int64,
+) *etagWriter {
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
-	headers := make(http.Header)
-	maps.Copy(headers, w.Header())
-	ew := &etagWriter{
+	return &etagWriter{
 		w:       w,
 		status:  http.StatusOK,
 		buf:     buf,
 		hash:    hash,
-		headers: headers,
 		maxSize: maxSize,
 	}
-	ew.tee = io.MultiWriter(buf, hash)
-	return ew
 }
 
 func (ew *etagWriter) Header() http.Header {
-	return ew.headers
+	return ew.w.Header()
 }
 
 func (ew *etagWriter) WriteHeader(code int) {
@@ -121,19 +119,17 @@ func (ew *etagWriter) Write(b []byte) (int, error) {
 		return ew.w.Write(b)
 	}
 	if ew.maxSize > 0 && ew.size+int64(len(b)) > ew.maxSize {
-		ew.tooBig = true
-		if ew.buf.Len() > 0 {
-			maps.Copy(ew.w.Header(), ew.headers)
-			ew.w.WriteHeader(ew.status)
-			ew.w.Write(ew.buf.Bytes())
-			ew.buf.Reset()
-		}
+		ew.beginPassthrough()
 		ew.size += int64(len(b))
 		return ew.w.Write(b)
 	}
 
 	ew.size += int64(len(b))
-	return ew.tee.Write(b)
+	_, err := ew.hash.Write(b)
+	if err != nil {
+		return 0, err
+	}
+	return ew.buf.Write(b)
 }
 
 func (ew *etagWriter) Close() {
@@ -143,9 +139,56 @@ func (ew *etagWriter) Close() {
 	}
 }
 
+func (ew *etagWriter) beginPassthrough() {
+	if ew.tooBig {
+		return
+	}
+	ew.tooBig = true
+	ew.w.WriteHeader(ew.status)
+	if ew.buf != nil && ew.buf.Len() > 0 {
+		_, _ = ew.w.Write(ew.buf.Bytes())
+		ew.buf.Reset()
+	}
+}
+
+func (ew *etagWriter) Flush() {
+	flusher, ok := ew.w.(http.Flusher)
+	if !ok {
+		return
+	}
+	if ew.buf == nil {
+		flusher.Flush()
+		return
+	}
+
+	if !ew.tooBig {
+		ew.beginPassthrough()
+	}
+
+	flusher.Flush()
+}
+
+func (ew *etagWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := ew.w.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf(
+			"response writer does not support hijacking",
+		)
+	}
+	ew.tooBig = true
+	return hijacker.Hijack()
+}
+
+func (ew *etagWriter) Push(target string, opts *http.PushOptions) error {
+	pusher, ok := ew.w.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return pusher.Push(target, opts)
+}
+
 func (ew *etagWriter) WriteResponseWithETag(etag string) {
 	h := ew.w.Header()
-	maps.Copy(h, ew.headers)
 	h.Set("ETag", etag)
 	if !ew.tooBig && ew.buf != nil {
 		h.Set("Content-Length", strconv.Itoa(ew.buf.Len()))
@@ -160,7 +203,6 @@ func (ew *etagWriter) WriteOriginalResponse() {
 	if ew.tooBig {
 		return
 	}
-	maps.Copy(ew.w.Header(), ew.headers)
 	ew.w.WriteHeader(ew.status)
 	if ew.buf != nil && ew.buf.Len() > 0 {
 		ew.w.Write(ew.buf.Bytes())
@@ -177,17 +219,30 @@ func canUseETag(ew *etagWriter) bool {
 	if ew.buf == nil || ew.buf.Len() == 0 {
 		return false
 	}
-	if strings.Contains(ew.headers.Get("Cache-Control"), "no-store") {
+	headers := ew.w.Header()
+	if hasNoStoreDirective(headers.Get("Cache-Control")) {
 		return false
 	}
-	if ew.headers.Get("Set-Cookie") != "" {
+	if headers.Get("Set-Cookie") != "" {
 		return false
 	}
 	return true
 }
 
+func hasNoStoreDirective(cacheControl string) bool {
+	if cacheControl == "" {
+		return false
+	}
+	for directive := range strings.SplitSeq(cacheControl, ",") {
+		if strings.EqualFold(strings.TrimSpace(directive), "no-store") {
+			return true
+		}
+	}
+	return false
+}
+
 func generateETag(h hash.Hash, strong bool, headers http.Header) string {
-	if buildID := headers.Get("X-Vorma-Build-Id"); buildID != "" {
+	if buildID := headers.Get("X-Vorma-Client-Build-Id"); buildID != "" {
 		h.Write([]byte(buildID))
 	}
 
