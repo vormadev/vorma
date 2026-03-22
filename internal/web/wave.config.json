@@ -19,8 +19,8 @@
 		"UIVariant": "preact",
 		"ServerEntry": "cmd/serve",
 		"HTMLTemplateLocation": "entry.go.html",
-		"ClientEntry": "frontend/vorma.entry.tsx",
-		"ClientRouteDefinitionPatterns": ["frontend/**/*vorma.routes.ts"],
+		"ClientEntry": "frontend/app.entry.tsx",
+		"ClientRouteDefs": ["frontend/app.routes.ts"],
 		"GenOutDir": "gen/vorma",
 		"BuildtimePublicURLFuncName": "public_url"
 	},

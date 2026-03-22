@@ -13,7 +13,7 @@ export const staticPublicAssetMap = {
 	"vorma-banner.webp": "wave_out_vorma-banner_kskpp65h3ya2.webp",
 	"vorma_internal_route_manifest.json": "wave_out_vorma_internal_route_manifest_xz4zt47sxzbf.json",
 	"wave_internal_non_critical_css.css": "wave_out_wave_internal_non_critical_css_2gagxv5tqlsb.css",
-	"wave_internal_public_filemap.json": "wave_out_wave_internal_public_filemap_bsalieqqczuk.json",
+	"wave_internal_public_filemap.json": "wave_out_wave_internal_public_filemap_aime2w65fpqi.json",
 } as const;
 
 export type StaticPublicAsset = keyof typeof staticPublicAssetMap;

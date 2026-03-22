@@ -44,11 +44,18 @@ type Wave struct {
 	static_fs fs.FS
 	logger    *slog.Logger
 	caches
+	_instantiated bool
 }
 
 func (w *Wave) ensure_proper_instantiation() {
 	if w.static_fs == nil {
 		panic("[waveruntime]: Wave must be instantiated via New()")
+	}
+	if !w._instantiated {
+		if !IsBuildtime() && !IsDev() && w.static_fs == nil {
+			panic("[waveruntime]: DistStaticFS must be provided in production")
+		}
+		w._instantiated = true
 	}
 }
 
@@ -77,17 +84,14 @@ func New(opts Options) *Wave {
 		static_fs: opts.DistStaticFS,
 		logger:    opts.Logger,
 	}
-	if !IsBuildtime() && !IsDev() && w.static_fs == nil {
-		panic("[waveruntime]: DistStaticFS must be provided in production")
-	}
 	if IsDev() {
 		static_dir := envutil.GetStr(
-			constants.ENV_KEY_DEV_RUNTIME_STATIC_DIR,
+			constants.ENV_KEY_RUNTIME_DEV_STATIC_DIR,
 			"",
 		)
 		if static_dir == "" {
 			panic(
-				"[waveruntime]: env var " + constants.ENV_KEY_DEV_RUNTIME_STATIC_DIR + " must be set in dev",
+				"[waveruntime]: env var " + constants.ENV_KEY_RUNTIME_DEV_STATIC_DIR + " must be set in dev",
 			)
 		}
 		w.static_fs = os.DirFS(static_dir)
@@ -99,30 +103,31 @@ func New(opts Options) *Wave {
 	return w
 }
 
-func IsBuildtime() bool {
-	return envutil.GetBool(constants.ENV_KEY_BUILDTIME_BUILD_TAGS, false)
-}
-
 func (w *Wave) Port() int {
 	w.ensure_proper_instantiation()
 	return Port()
 }
 
 func (w *Wave) DevVitePort() int {
+	w.ensure_proper_instantiation()
 	if !IsDev() {
 		panic("[waveruntime]: DevVitePort is only available in dev")
 	}
-	vite_port := envutil.GetInt(constants.ENV_KEY_DEV_RUNTIME_VITE_PORT, 0)
+	vite_port := envutil.GetInt(constants.ENV_KEY_RUNTIME_DEV_VITE_PORT, 0)
 	if vite_port == 0 {
 		panic(
-			"[waveruntime]: env var " + constants.ENV_KEY_DEV_RUNTIME_VITE_PORT + " must be set in dev",
+			"[waveruntime]: env var " + constants.ENV_KEY_RUNTIME_DEV_VITE_PORT + " must be set in dev",
 		)
 	}
 	return vite_port
 }
 
 func IsDev() bool {
-	return envutil.GetBool(constants.ENV_KEY_DEV_RUNTIME_IS_DEV, false)
+	return envutil.GetBool(constants.ENV_KEY_IS_DEV, false)
+}
+
+func IsBuildtime() bool {
+	return envutil.GetBool(constants.ENV_KEY_IS_BUILDTIME, false)
 }
 
 // Returns the PORT env var. Panics if not set or not an int.
@@ -384,7 +389,6 @@ func (w *Wave) MustPrivateStaticFilemap() map[string]string {
 /////// PUBLIC URL
 
 func (w *Wave) PublicURL(src_path string) (string, error) {
-	w.ensure_proper_instantiation()
 	runtime_cfg, err := w.RuntimeConfig()
 	if err != nil {
 		return "", err
@@ -801,10 +805,12 @@ func (w *Wave) FaviconRedirect() func(http.Handler) http.Handler {
 /////// DEV REFRESH
 
 func (w *Wave) DevRefreshScriptEl() template.HTML {
+	w.ensure_proper_instantiation()
 	return GetDevRefreshScriptEl()
 }
 
 func (w *Wave) DevRefreshScriptElCSPHash() string {
+	w.ensure_proper_instantiation()
 	return GetDevRefreshScriptElCSPHash()
 }
 
@@ -838,18 +844,18 @@ func refresh_script_inner_html() string {
 	if !IsDev() {
 		return ""
 	}
-	p := envutil.GetStr(constants.ENV_KEY_DEV_RUNTIME_REFRESH_PORT, "")
+	p := envutil.GetStr(constants.ENV_KEY_RUNTIME_DEV_REFRESH_PORT, "")
 	if p == "" {
 		panic(fmt.Sprintf(
 			"dev refresh script: environment variable %s is not set",
-			constants.ENV_KEY_DEV_RUNTIME_REFRESH_PORT,
+			constants.ENV_KEY_RUNTIME_DEV_REFRESH_PORT,
 		))
 	}
-	t := envutil.GetStr(constants.ENV_KEY_DEV_RUNTIME_REFRESH_TOKEN, "")
+	t := envutil.GetStr(constants.ENV_KEY_RUNTIME_DEV_REFRESH_TOKEN, "")
 	if t == "" {
 		panic(fmt.Sprintf(
 			"dev refresh script: environment variable %s is not set",
-			constants.ENV_KEY_DEV_RUNTIME_REFRESH_TOKEN,
+			constants.ENV_KEY_RUNTIME_DEV_REFRESH_TOKEN,
 		))
 	}
 	s := strings.ReplaceAll(

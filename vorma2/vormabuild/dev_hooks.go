@@ -27,45 +27,56 @@ func (s *plugin_state) route_fast_path_hook(
 	}
 
 	build := s.app.ForBuild()
+	var routes []discovered_route
 
-	routes, err := discover_client_routes(cfg.client_route_definition_patterns)
-	if err != nil {
-		return nil, fmt.Errorf("route discovery: %w", err)
-	}
+	err := func() error {
+		defer release()
 
-	// Build route manifest from frontend routes
-	manifest := make(map[string]int, len(routes))
-	for _, r := range routes {
-		flag := 0
-		if build.LoadersRouter().HasTaskHandler(r.pattern) {
-			flag = 1
+		discovered_routes, err := discover_client_routes(
+			cfg.client_route_definition_patterns,
+		)
+		if err != nil {
+			return fmt.Errorf("route discovery: %w", err)
 		}
-		manifest[r.pattern] = flag
-	}
+		routes = discovered_routes
 
-	// include server-only loader patterns in the manifest
-	all_loader_routes := build.LoadersRouter().AllRoutes()
-	for pattern := range all_loader_routes {
-		if _, exists := manifest[pattern]; !exists {
+		// Build route manifest from frontend routes
+		manifest := make(map[string]int, len(routes))
+		for _, r := range routes {
 			flag := 0
-			if build.LoadersRouter().HasTaskHandler(pattern) {
+			if build.LoadersRouter().HasTaskHandler(r.pattern) {
 				flag = 1
 			}
-			manifest[pattern] = flag
+			manifest[r.pattern] = flag
 		}
-	}
 
-	manifest_json, err := json.Marshal(manifest)
+		// include server-only loader patterns in the manifest
+		all_loader_routes := build.LoadersRouter().AllRoutes()
+		for pattern := range all_loader_routes {
+			if _, exists := manifest[pattern]; !exists {
+				flag := 0
+				if build.LoadersRouter().HasTaskHandler(pattern) {
+					flag = 1
+				}
+				manifest[pattern] = flag
+			}
+		}
+
+		manifest_json, err := json.Marshal(manifest)
+		if err != nil {
+			return fmt.Errorf("marshalling route manifest: %w", err)
+		}
+		if err := ctx.ContributePublicFiles(map[string][]byte{
+			constants.PUBLIC_ROUTE_MANIFEST_FILENAME: manifest_json,
+		}); err != nil {
+			return fmt.Errorf("contributing route manifest: %w", err)
+		}
+
+		return nil
+	}()
 	if err != nil {
-		return nil, fmt.Errorf("marshalling route manifest: %w", err)
+		return nil, err
 	}
-	if err := ctx.ContributePublicFiles(map[string][]byte{
-		constants.PUBLIC_ROUTE_MANIFEST_FILENAME: manifest_json,
-	}); err != nil {
-		return nil, fmt.Errorf("contributing route manifest: %w", err)
-	}
-
-	release()
 
 	if err := write_index_ts(cfg, routes, s.app, ctx); err != nil {
 		return nil, fmt.Errorf(

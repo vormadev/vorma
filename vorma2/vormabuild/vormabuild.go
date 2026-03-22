@@ -21,16 +21,16 @@ import (
 const json_cfg_key = "Vorma"
 
 type unsafe_vorma_config struct {
-	UIVariant                     string
-	HTMLTemplateLocation          string
-	ServerEntry                   string
-	ClientEntry                   string
-	ClientRouteDefinitionPatterns []string
-	GenOutDir                     string
-	BuildtimePublicURLFuncName    string
-	GoCompileCmd                  string
-	GoCompileCmdDev               string
-	GoCompileCmdProd              string
+	UIVariant                  string
+	HTMLTemplateLocation       string
+	ServerEntry                string
+	ClientEntry                string
+	ClientRouteDefs            []string
+	GenOutDir                  string
+	BuildtimePublicURLFuncName string
+	GoCompileCmd               string
+	GoCompileCmdDev            string
+	GoCompileCmdProd           string
 }
 
 type parsed_vorma_config struct {
@@ -137,39 +137,39 @@ func (s *plugin_state) parse_config(
 	)
 
 	// client_route_definition_patterns
-	if len(raw.ClientRouteDefinitionPatterns) == 0 {
-		return fmt.Errorf("Vorma.ClientRouteDefinitionPatterns is required")
+	if len(raw.ClientRouteDefs) == 0 {
+		return fmt.Errorf("Vorma.ClientRouteDefs is required")
 	}
-	client_route_definition_patterns := make(
+	client_route_defs := make(
 		[]strict.CWDRelPath,
-		len(raw.ClientRouteDefinitionPatterns),
+		len(raw.ClientRouteDefs),
 	)
 	seen := &set.Set[string]{}
-	for i, raw_pattern := range raw.ClientRouteDefinitionPatterns {
+	for i, raw_pattern := range raw.ClientRouteDefs {
 		trimmed := strings.TrimSpace(raw_pattern)
 		if trimmed == "" {
 			return fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d] cannot be empty",
+				"Vorma.ClientRouteDefs[%d] cannot be empty",
 				i,
 			)
 		}
 		normalized := strict.MustNormalizeCWDRelPath(trimmed)
 		if normalized == "" || normalized == "." {
 			return fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d] is invalid",
+				"Vorma.ClientRouteDefs[%d] is invalid",
 				i,
 			)
 		}
 		joined := ctx.UserRootDir().Join(normalized.Str())
 		if seen.Has(joined.Str()) {
 			return fmt.Errorf(
-				"Vorma.ClientRouteDefinitionPatterns[%d]=%q duplicates an earlier pattern",
+				"Vorma.ClientRouteDefs[%d]=%q duplicates an earlier pattern",
 				i,
 				raw_pattern,
 			)
 		}
 		seen.Add(joined.Str())
-		client_route_definition_patterns[i] = joined
+		client_route_defs[i] = joined
 	}
 
 	// gen_out_dir
@@ -229,7 +229,7 @@ func (s *plugin_state) parse_config(
 		root_template_path:               root_template_path,
 		server_entry:                     server_entry,
 		client_entry_path:                client_entry_path,
-		client_route_definition_patterns: client_route_definition_patterns,
+		client_route_definition_patterns: client_route_defs,
 		gen_out_dir:                      gen_out_dir,
 		buildtime_public_url_func_name:   buildtime_func,
 		go_compile_cmd_dev:               resolved_dev,
@@ -425,7 +425,7 @@ var vorma_schema = jsonschema.RequiredObject(jsonschema.Def{
 		"HTMLTemplateLocation",
 		"ServerEntry",
 		"ClientEntry",
-		"ClientRouteDefinitionPatterns",
+		"ClientRouteDefs",
 		"GenOutDir",
 	},
 	Properties: map[string]jsonschema.Entry{
@@ -445,7 +445,7 @@ var vorma_schema = jsonschema.RequiredObject(jsonschema.Def{
 			Description: "Client-side entry point file, relative to RootDir.",
 			Examples:    []string{"frontend/src/entry.tsx"},
 		}),
-		"ClientRouteDefinitionPatterns": jsonschema.RequiredArray(
+		"ClientRouteDefs": jsonschema.RequiredArray(
 			jsonschema.Def{
 				Description: "Glob patterns matching route definition files, relative to RootDir. Must have at least one pattern.",
 				Items:       jsonschema.Entry{Type: jsonschema.TypeString},

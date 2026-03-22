@@ -1,0 +1,29 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+edition = "2024"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[[bin]]
+name = "proxy"
+path = "api/proxy.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+vercel_runtime = "2"
+hyper = "1"
+hyper-util = { version = "0.1", features = [
+	"client",
+	"client-legacy",
+	"http1",
+	"tokio",
+] }
+http-body-util = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

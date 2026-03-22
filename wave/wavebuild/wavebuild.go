@@ -330,14 +330,13 @@ func (s *super_state) vite_pid_file_path() string {
 func (s *super_state) hook_env() []string {
 	env := []string{
 		constants.ENV_KEY_BUILDTIME_BIN_OUTPUT_PATH + "=" + s.cfg.core.binary_output_path_abs.Str(),
-		constants.ENV_KEY_BUILDTIME_ROOT_DIR + "=" + s.cfg.root_dir_abs.
-			Str(),
+		constants.ENV_KEY_BUILDTIME_ROOT_DIR + "=" + s.cfg.root_dir_abs.Str(),
+		constants.ENV_KEY_IS_BUILDTIME + "=1",
 	}
 	if s.is_dev {
-		env = append(env, constants.ENV_KEY_DEV_BUILDTIME_IS_DEV+"=1")
+		env = append(env, constants.ENV_KEY_IS_DEV+"=1")
 		env = append(env, constants.ENV_KEY_BUILDTIME_BUILD_TAGS+"=dev")
 	} else {
-		env = append(env, constants.ENV_KEY_DEV_BUILDTIME_IS_DEV+"=0")
 		env = append(env, constants.ENV_KEY_BUILDTIME_BUILD_TAGS+"=prod")
 	}
 	return env
@@ -352,9 +351,9 @@ func (s *super_state) app_env() []string {
 	)
 	env := []string{
 		fmt.Sprintf("%s=%d", constants.ENV_KEY_RUNTIME_PORT, s.dev_port),
-		constants.ENV_KEY_DEV_RUNTIME_IS_DEV + "=1",
-		constants.ENV_KEY_DEV_RUNTIME_STATIC_DIR + "=" + static_dir,
-		constants.ENV_KEY_DEV_RUNTIME_VITE_PORT + "=" + fmt.Sprintf(
+		constants.ENV_KEY_IS_DEV + "=1",
+		constants.ENV_KEY_RUNTIME_DEV_STATIC_DIR + "=" + static_dir,
+		constants.ENV_KEY_RUNTIME_DEV_VITE_PORT + "=" + fmt.Sprintf(
 			"%d",
 			s.vite_port,
 		),
@@ -364,7 +363,7 @@ func (s *super_state) app_env() []string {
 			env,
 			fmt.Sprintf(
 				"%s=%d",
-				constants.ENV_KEY_DEV_RUNTIME_REFRESH_PORT,
+				constants.ENV_KEY_RUNTIME_DEV_REFRESH_PORT,
 				s.refresh_port,
 			),
 		)
@@ -372,7 +371,7 @@ func (s *super_state) app_env() []string {
 			env,
 			fmt.Sprintf(
 				"%s=%s",
-				constants.ENV_KEY_DEV_RUNTIME_REFRESH_TOKEN,
+				constants.ENV_KEY_RUNTIME_DEV_REFRESH_TOKEN,
 				s.refresh_token,
 			),
 		)

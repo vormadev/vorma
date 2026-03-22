@@ -1,0 +1,5 @@
+*
+!.gitignore
+!static/
+static/*
+!static/.keep

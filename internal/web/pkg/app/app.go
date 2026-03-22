@@ -3,11 +3,15 @@ package app
 import (
 	"net/http"
 	"path"
-	waveapp "site/__wave"
+	"web/dist"
 
+	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/kit/colorlog"
-	"github.com/vormadev/vorma/kit/theme"
-	"github.com/vormadev/vorma/vorma2"
+	"github.com/vormadev/vorma/kit/middleware/etag"
+	"github.com/vormadev/vorma/kit/middleware/healthcheck"
+	"github.com/vormadev/vorma/kit/middleware/robotstxt"
+	"github.com/vormadev/vorma/kit/middleware/secureheaders"
 	"github.com/vormadev/vorma/wave"
 )
 
@@ -19,10 +23,29 @@ const (
 	SiteDescription = "The Golang metaframework, powered by Vite."
 )
 
-var App = vorma2.NewVormaApp(vorma2.VormaAppConfig{
-	Wave: wave.New(waveapp.WaveOpts),
+func InitServer() (addr string, handler http.Handler) {
+	r := App.MustInitWithDefaultRouter()
 
-	HeadDedupeKeysFunc: func(h *vorma2.HeadEls) {
+	r.AddGlobalHTTPMiddleware(chimw.Logger)
+	r.AddGlobalHTTPMiddleware(chimw.Recoverer)
+	r.AddGlobalHTTPMiddleware(etag.Auto())
+	r.AddGlobalHTTPMiddleware(chimw.Compress(5))
+	r.AddGlobalHTTPMiddleware(App.MustStaticMiddleware())
+	r.AddGlobalHTTPMiddleware(secureheaders.Middleware)
+	r.AddGlobalHTTPMiddleware(healthcheck.Healthz)
+	r.AddGlobalHTTPMiddleware(robotstxt.Allow)
+	// r.AddGlobalHTTPMiddleware(markdown.Markdown().PlainTextMiddleware(
+	// 	"/docs", "/docs/*",
+	// 	"/blog", "/blog/*",
+	// ))
+
+	return App.ServerAddr(), r
+}
+
+var App = vorma.NewVormaApp(vorma.VormaAppConfig{
+	Wave: wave.New(wave.Options{DistStaticFS: dist.DistStaticFS}),
+
+	HeadDedupeKeysFunc: func(h *vorma.HeadEls) {
 		h.Meta(h.Property("og:title"))
 		h.Meta(h.Property("og:description"))
 		h.Meta(h.Property("og:type"))
@@ -33,7 +56,7 @@ var App = vorma2.NewVormaApp(vorma2.VormaAppConfig{
 		h.Link(h.Rel("icon"))
 	},
 
-	DefaultHeadElsFunc: func(r *http.Request, app *vorma2.Vorma, h *vorma2.HeadEls) error {
+	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
 		currentURL := "https://" + path.Join(Domain, r.URL.Path)
 
 		ogImgURL := app.MustPublicURL("vorma-banner.webp")
@@ -76,9 +99,9 @@ var App = vorma2.NewVormaApp(vorma2.VormaAppConfig{
 
 	RootTemplateDataFunc: func(r *http.Request) (map[string]any, error) {
 		return map[string]any{
-			"HTMLClass":                   theme.GetThemeData(r).HTMLClass,
-			"SystemThemeScript":           theme.GetSystemThemeScript(),
-			"SystemThemeScriptSha256Hash": theme.GetSystemThemeScriptSha256Hash(),
+			// "HTMLClass":                   theme.GetThemeData(r).HTMLClass,
+			// "SystemThemeScript":           theme.GetSystemThemeScript(),
+			// "SystemThemeScriptSha256Hash": theme.GetSystemThemeScriptSha256Hash(),
 		}, nil
 	},
 })

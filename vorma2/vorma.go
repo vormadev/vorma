@@ -90,7 +90,6 @@ type ActionsRouterOptions struct {
 // Do not instantiate directly. Use `vorma2.NewVormaApp()` instead.
 type Vorma struct {
 	*wave.Wave                  // set via Init() at runtime, not needed at buildtime
-	get_wave                    func() *wave.Wave
 	logger                      *slog.Logger
 	loaders_router              *mux.NestedRouter
 	actions_router              *mux.Router
@@ -117,7 +116,7 @@ type Vorma struct {
 }
 
 type VormaAppConfig struct {
-	Wave                 func() *wave.Wave
+	Wave                 *wave.Wave
 	DefaultHeadElsFunc   DefaultHeadElsFunc
 	HeadDedupeKeysFunc   HeadDedupeKeysFunc
 	RootTemplateDataFunc RootTemplateDataFunc
@@ -134,7 +133,7 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 	}
 
 	v := &Vorma{
-		get_wave:             o.Wave,
+		Wave:                 o.Wave,
 		logger:               o.Logger,
 		get_default_head_els: o.DefaultHeadElsFunc,
 		get_head_dedupe_keys: o.HeadDedupeKeysFunc,
@@ -201,7 +200,6 @@ func NewVormaApp(o VormaAppConfig) *Vorma {
 // server address. Panics on any failure so broken deploys crash at
 // startup instead of serving 500s on first request.
 func (v *Vorma) MustInit() {
-	v.Wave = v.get_wave()
 	snapshot, err := v.runtime_snapshot.Get()
 	if err != nil {
 		panic(fmt.Sprintf("[vorma2]: failed to load runtime snapshot: %v", err))

@@ -9,69 +9,15 @@
 const routes = [
 	{
 		_type: "loader",
-		isRootData: true,
 		pattern: "/",
-		phantomOutputType: null as unknown as RootData,
-	},
-	{
-		_type: "loader",
-		isSplat: true,
-		pattern: "/*",
-		phantomOutputType: null as unknown as DetailedPage,
-	},
-	{
-		_type: "loader",
-		params: ["dyn"],
-		pattern: "/__/:dyn",
-	},
-	{
-		_type: "loader",
-		pattern: "/_index",
-		phantomOutputType: null as unknown as string,
 	},
 ] as const;
-
-/////////////////////////////////////////////////////////////////////
-/////// Ad Hoc Types:
-/////////////////////////////////////////////////////////////////////
-
-export type DetailedPage = {
-	Title?: string;
-	Description?: string;
-	Date?: string;
-	Order?: number;
-	Content?: string;
-	RawContent?: string;
-	URL?: string;
-	IsFolder?: boolean;
-	Sitemap: Array<SitemapItem>;
-	IndexSitemap: Array<SitemapItem>;
-	BackItem: string;
-};
-
-export type RootData = {
-	LatestVersion: string;
-};
-
-export type Sitemap = Array<SitemapItem>;
-
-export type SitemapItem = {
-	title: string;
-	url: string;
-	description?: string;
-	date?: string;
-	isFolder?: boolean;
-	isActive?: boolean;
-};
 
 /////////////////////////////////////////////////////////////////////
 /////// Extra TS Code:
 /////////////////////////////////////////////////////////////////////
 
-type VormaRootData = Extract<
-	(typeof routes)[number],
-	{ isRootData: true }
->["phantomOutputType"];
+type VormaRootData = null;
 
 export type VormaApp = {
 	routes: typeof routes;
@@ -100,7 +46,7 @@ import type {
 	VormaQueryPattern,
 	VormaQueryProps,
 } from "vorma/client";
-import type { VormaRouteProps } from "vorma/solid";
+import type { VormaRouteProps } from "vorma/preact";
 
 export type QueryPattern = VormaQueryPattern<VormaApp>;
 export type QueryProps<P extends QueryPattern> = VormaQueryProps<VormaApp, P>;
@@ -122,10 +68,10 @@ export { staticPublicAssetMap };
 export type StaticPublicAsset = keyof typeof staticPublicAssetMap;
 
 declare global {
-	function hashedURL(staticPublicAsset: StaticPublicAsset): string;
+	function public_url(staticPublicAsset: StaticPublicAsset): string;
 }
 
-export const publicPathPrefix = "/";
+export const publicPathPrefix = "/public/";
 
 export function waveRuntimeURL(originalPublicURL: StaticPublicAsset) {
 	const hashedPublicURL = staticPublicAssetMap[originalPublicURL];
@@ -137,22 +83,23 @@ export function waveRuntimeURL(originalPublicURL: StaticPublicAsset) {
 
 export const vormaViteConfig = {
 	rollupInput: [
-		"frontend/src/vorma.entry.tsx",
-		"frontend/src/components/md.tsx",
-		"frontend/src/components/home.tsx",
-		"frontend/src/components/home.tsx",
-		"frontend/src/components/dyn.tsx",
+		"frontend/app.entry.tsx",
+		"frontend/components/home.tsx",
 	],
 	publicPathPrefix,
-	buildtimePublicURLFuncName: "hashedURL",
+	buildtimePublicURLFuncName: "public_url",
 	importMetaURL: import.meta.url,
 	ignoredPatterns: [
 		"**/*.go",
-		"**/.wavedist/**/*",
-		"**/__wave/vorma.gen/**/*",
+		"**/dist/.wavedist/**/*",
+		"**/gen/vorma/**/*",
 	],
 	dedupeList: [
-		"solid-js",
-		"solid-js/web",
+		"preact",
+		"preact/hooks",
+		"@preact/signals",
+		"preact/jsx-runtime",
+		"preact/compat",
+		"preact/test-utils",
 	],
 } as const;

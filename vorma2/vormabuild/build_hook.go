@@ -47,75 +47,82 @@ func (s *plugin_state) build_hook(
 	var frontend_routes []discovered_route
 	var backend_pkgs []string
 
-	var discovery_group errgroup.Group
-	discovery_group.Go(func() error {
-		var err error
-		frontend_routes, err = discover_client_routes(
-			cfg.client_route_definition_patterns,
-		)
-		if err != nil {
-			return fmt.Errorf("frontend route discovery: %w", err)
+	err := func() error {
+		defer release()
+
+		var discovery_group errgroup.Group
+		discovery_group.Go(func() error {
+			var err error
+			frontend_routes, err = discover_client_routes(
+				cfg.client_route_definition_patterns,
+			)
+			if err != nil {
+				return fmt.Errorf("frontend route discovery: %w", err)
+			}
+			return nil
+		})
+		discovery_group.Go(func() error {
+			var err error
+			backend_pkgs, err = discover_backend_packages(
+				cfg.user_root_dir,
+				cfg.gen_out_dir,
+			)
+			if err != nil {
+				return fmt.Errorf("backend package discovery: %w", err)
+			}
+			return nil
+		})
+		if err := discovery_group.Wait(); err != nil {
+			return err
 		}
-		return nil
-	})
-	discovery_group.Go(func() error {
-		var err error
-		backend_pkgs, err = discover_backend_packages(
-			cfg.user_root_dir,
-			cfg.gen_out_dir,
-		)
-		if err != nil {
-			return fmt.Errorf("backend package discovery: %w", err)
+
+		if err := fsutil.EnsureDir(cfg.gen_out_dir.Str()); err != nil {
+			return fmt.Errorf("creating gen output dir: %w", err)
 		}
-		return nil
-	})
-	if err := discovery_group.Wait(); err != nil {
-		return nil, err
-	}
-
-	if err := fsutil.EnsureDir(cfg.gen_out_dir.Str()); err != nil {
-		return nil, fmt.Errorf("creating gen output dir: %w", err)
-	}
-	if err := write_imports_gen(cfg.gen_out_dir, backend_pkgs); err != nil {
-		return nil, fmt.Errorf("writing imports.gen.go: %w", err)
-	}
-
-	build := s.app.ForBuild()
-
-	// Build route manifest from frontend routes
-	manifest := make(map[string]int, len(frontend_routes))
-	for _, r := range frontend_routes {
-		flag := 0
-		if build.LoadersRouter().HasTaskHandler(r.pattern) {
-			flag = 1
+		if err := write_imports_gen(cfg.gen_out_dir, backend_pkgs); err != nil {
+			return fmt.Errorf("writing imports.gen.go: %w", err)
 		}
-		manifest[r.pattern] = flag
-	}
 
-	// Include server-only loader patterns in the manifest.
-	// These have a server handler but no client component file.
-	allLoaderRoutes := build.LoadersRouter().AllRoutes()
-	for pattern := range allLoaderRoutes {
-		if _, exists := manifest[pattern]; !exists {
+		build := s.app.ForBuild()
+
+		// Build route manifest from frontend routes
+		manifest := make(map[string]int, len(frontend_routes))
+		for _, r := range frontend_routes {
 			flag := 0
-			if build.LoadersRouter().HasTaskHandler(pattern) {
+			if build.LoadersRouter().HasTaskHandler(r.pattern) {
 				flag = 1
 			}
-			manifest[pattern] = flag
+			manifest[r.pattern] = flag
 		}
-	}
 
-	manifest_json, err := json.Marshal(manifest)
+		// Include server-only loader patterns in the manifest.
+		// These have a server handler but no client component file.
+		allLoaderRoutes := build.LoadersRouter().AllRoutes()
+		for pattern := range allLoaderRoutes {
+			if _, exists := manifest[pattern]; !exists {
+				flag := 0
+				if build.LoadersRouter().HasTaskHandler(pattern) {
+					flag = 1
+				}
+				manifest[pattern] = flag
+			}
+		}
+
+		manifest_json, err := json.Marshal(manifest)
+		if err != nil {
+			return fmt.Errorf("marshalling route manifest: %w", err)
+		}
+		if err := ctx.ContributePublicFiles(map[string][]byte{
+			constants.PUBLIC_ROUTE_MANIFEST_FILENAME: manifest_json,
+		}); err != nil {
+			return fmt.Errorf("contributing route manifest: %w", err)
+		}
+
+		return nil
+	}()
 	if err != nil {
-		return nil, fmt.Errorf("marshalling route manifest: %w", err)
+		return nil, err
 	}
-	if err := ctx.ContributePublicFiles(map[string][]byte{
-		constants.PUBLIC_ROUTE_MANIFEST_FILENAME: manifest_json,
-	}); err != nil {
-		return nil, fmt.Errorf("contributing route manifest: %w", err)
-	}
-
-	release()
 
 	if err := write_index_ts(cfg, frontend_routes, s.app, ctx); err != nil {
 		return nil, fmt.Errorf("writing index.ts: %w", err)

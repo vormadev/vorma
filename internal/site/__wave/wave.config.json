@@ -19,7 +19,7 @@
 		"ServerEntry": "backend/cmd/serve",
 		"HTMLTemplateLocation": "entry.go.html",
 		"ClientEntry": "frontend/src/vorma.entry.tsx",
-		"ClientRouteDefinitionPatterns": ["frontend/src/**/*vorma.routes.ts"],
+		"ClientRouteDefs": ["frontend/src/**/*vorma.routes.ts"],
 		"GenOutDir": "__wave/vorma.gen",
 		"BuildtimePublicURLFuncName": "hashedURL"
 	},

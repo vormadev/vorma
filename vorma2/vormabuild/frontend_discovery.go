@@ -2,7 +2,7 @@ package vormabuild
 
 // Route definition file contract:
 //
-// Route definition files are matched by Vorma.ClientRouteDefinitionPatterns.
+// Route definition files are matched by Vorma.ClientRouteDefs.
 // They are regular TypeScript/JavaScript files that import `route` from
 // "vorma/buildtime" and call it to declare routes.
 //
