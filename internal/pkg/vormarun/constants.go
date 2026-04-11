@@ -9,7 +9,7 @@ package vormarun
 
 /////// Query Params
 
-const Query_Key_Vorma_JSON = "vorma_json"
+const Query_Key_Vorma_JSON = "vorma-json"
 
 /////// Headers
 
@@ -18,10 +18,10 @@ const X_Vorma_Reload = "X-Vorma-Reload"
 
 /////// Filenames
 
-const Main_CSS_Filename = "__vorma_main_css__.css"
+const Main_CSS_Filename = "vorma_internal_main_css.css"
 const Public_Static_Out_Name_Prefix = "vorma_out_"
 const Prehashed_Dirname = "__prehashed"
-const Prod_Tmp_Vite_Manifest_Filename = "__vorma_tmp_vite_manifest__.json"
+const Prod_Tmp_Vite_Manifest_Filename = "vorma_internal_tmp_vite_manifest.json"
 
 /////// Elements
 

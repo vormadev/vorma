@@ -1,9 +1,10 @@
 import { createServer } from "node:http";
 import { resolve } from "node:path";
-import type {
-	Plugin as Vite_Plugin,
-	ResolvedConfig as Vite_ResolvedConfig,
-	UserConfig as Vite_UserConfig,
+import {
+	normalizePath,
+	type Plugin as Vite_Plugin,
+	type ResolvedConfig as Vite_ResolvedConfig,
+	type UserConfig as Vite_UserConfig,
 } from "vite";
 
 /// Plugin contract
@@ -28,6 +29,7 @@ const vite_endpoints = {
 	// POST -- called by the Go dev server when the Vorma config changes
 	cfg_changed: "/cfg-changed",
 };
+const node_modules_refresh_exclude = /\/node_modules\//;
 type Config = {
 	PublicStaticBasePath: string;
 	EntryModule: string;
@@ -76,10 +78,9 @@ export default function vorma(): Vite_Plugin {
 	return {
 		name: plugin_name,
 
-		// Run before framework plugins (React, Preact, Solid) so
-		// the self-accept is already present when they inspect the
-		// module. This prevents React Fast Refresh from adding its
-		// own accept/invalidate that would conflict with ours.
+		// Run before framework plugins so Vorma's route-module
+		// transform is applied early. React Fast Refresh is disabled
+		// for route modules through `oxc.jsxRefreshExclude` below.
 		enforce: "pre",
 
 		// Call Go dev server to fetch config
@@ -89,6 +90,9 @@ export default function vorma(): Vite_Plugin {
 			await check_ok(url, res);
 			const cfg: Config = await res.json();
 			route_modules = cfg.RouteModules;
+			const route_refresh_excludes = route_modules.map((p) => {
+				return module_id_filter_regex(p);
+			});
 			const out_prefix = "vorma_out_vite_[name]_[hash]";
 			const is_prod = command === "build";
 			return {
@@ -114,13 +118,19 @@ export default function vorma(): Vite_Plugin {
 				resolve: {
 					dedupe: cfg.DedupeList,
 				},
+				oxc: {
+					jsxRefreshExclude: [
+						node_modules_refresh_exclude,
+						...route_refresh_excludes,
+					],
+				},
 			};
 		},
 
 		configResolved(resolved: Vite_ResolvedConfig) {
 			route_module_ids = new Set(
 				route_modules.map((p) => {
-					return resolve(resolved.root, p);
+					return normalize_module_id(resolve(resolved.root, p));
 				}),
 			);
 		},
@@ -160,7 +170,7 @@ export default function vorma(): Vite_Plugin {
 			}
 
 			// HMR self-accept injection for route modules (dev only)
-			if (route_module_ids?.has(id)) {
+			if (route_module_ids?.has(normalize_module_id(id))) {
 				result += "\n" + hmr_preamble;
 			}
 
@@ -226,4 +236,18 @@ async function check_ok(url: string, res: Response): Promise<void> {
 			`[${plugin_name}] ${url} returned ${res.status}: ${await res.text()}`,
 		);
 	}
+}
+
+function normalize_module_id(id: string): string {
+	const [path] = id.split("?", 1);
+	return normalizePath(path ?? id);
+}
+
+function module_id_filter_regex(id: string): RegExp {
+	const escaped_id = escape_regex_literal(normalize_module_id(id));
+	return new RegExp(`^${escaped_id}(?:\\?.*)?$`);
+}
+
+function escape_regex_literal(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
