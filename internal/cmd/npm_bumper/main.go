@@ -98,7 +98,7 @@ func main() {
 	}
 
 	// Run prep
-	cmd := t.Cmd("make", "tsprepforpub")
+	cmd := t.Cmd("make", "prepforpub")
 	t.MustRun(cmd, "prep failed")
 
 	// Ask whether to initiate a new build?

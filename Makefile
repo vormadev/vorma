@@ -14,7 +14,7 @@ gotestloud:
 	@go test -race -v ./...
 
 gobump: gotest
-	@go run ./internal/scripts/bumper
+	@go run ./internal/cmd/bumper
 
 # call with `make gobench pkg=./kit/mux` (or whatever)
 gobench:
@@ -65,7 +65,7 @@ npmbuild:
 	@cd ./internal/pkg/npm/ && pnpm tsdown
 
 npmbump:
-	@go run ./internal/scripts/npm_bumper
+	@go run ./internal/cmd/npm_bumper
 
 #####################################################################
 ####### OTHER

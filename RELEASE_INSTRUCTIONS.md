@@ -1,22 +1,16 @@
-1. prep
-
-```sh
-make prepforpub
-```
-
-2. npm login
+1. npm login
 
 ```sh
 npm login
 ```
 
-3. bump package.json / run prep / run build
+2. bump package.json / run prep / run build
 
 ```sh
 make npmbump
 ```
 
-4. publish to npm
+3. publish to npm
 
 if PRE release:
 
@@ -38,7 +32,7 @@ npm publish --access public
 cd ../../../../../
 ```
 
-5. push to github
+4. push to github
 
 ```sh
 git add .
@@ -46,10 +40,10 @@ git commit -m 'v0.0.0-pre.0'
 git push
 ```
 
-6. publish to go proxy / push version tag
+5. publish to go proxy / push version tag
 
 ```sh
 make gobump
 ```
 
-7. profit
+6. profit
