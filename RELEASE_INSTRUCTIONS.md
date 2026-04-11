@@ -36,7 +36,7 @@ cd ../../../../../
 
 ```sh
 git add .
-git commit -m 'v0.0.0-pre.0'
+git commit -m 'v0.0.0-pre.0' --no-verify
 git push
 ```
 
