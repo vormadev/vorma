@@ -43,14 +43,19 @@ func ToBase32Raw(b []byte) string {
 // ToGob encodes an arbitrary value into a gob-encoded byte slice.
 func ToGob(src any) ([]byte, error) {
 	rv := reflect.ValueOf(src)
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
-		return nil, fmt.Errorf("bytesutil.ToGob: cannot encode nil pointer value")
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return nil, fmt.Errorf(
+			"bytesutil.ToGob: cannot encode nil pointer value",
+		)
 	}
 	var a bytes.Buffer
 	enc := gob.NewEncoder(&a)
 	err := enc.Encode(src)
 	if err != nil {
-		return nil, fmt.Errorf("bytesutil.ToGob: failed to encode src to bytes: %w", err)
+		return nil, fmt.Errorf(
+			"bytesutil.ToGob: failed to encode src to bytes: %w",
+			err,
+		)
 	}
 	return a.Bytes(), nil
 }
@@ -62,12 +67,17 @@ func FromGobInto(gobBytes []byte, destPtr any) error {
 		return fmt.Errorf("bytesutil.FromGobInto: cannot decode nil bytes")
 	}
 	if destPtr == nil {
-		return fmt.Errorf("bytesutil.FromGobInto: cannot decode into nil destination")
+		return fmt.Errorf(
+			"bytesutil.FromGobInto: cannot decode into nil destination",
+		)
 	}
 	dec := gob.NewDecoder(bytes.NewReader(gobBytes))
 	err := dec.Decode(destPtr)
 	if err != nil {
-		return fmt.Errorf("bytesutil.FromGobInto: failed to decode bytes into dest: %w", err)
+		return fmt.Errorf(
+			"bytesutil.FromGobInto: failed to decode bytes into dest: %w",
+			err,
+		)
 	}
 	return nil
 }
@@ -82,7 +92,10 @@ func FromGob[T any](gobBytes []byte) (T, error) {
 	destPtr := new(T)
 	err := dec.Decode(destPtr)
 	if err != nil {
-		return zeroT, fmt.Errorf("bytesutil.FromGob: failed to decode gob bytes: %w", err)
+		return zeroT, fmt.Errorf(
+			"bytesutil.FromGob: failed to decode gob bytes: %w",
+			err,
+		)
 	}
 	return *destPtr, nil
 }

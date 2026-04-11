@@ -1,0 +1,39 @@
+/// <reference types="vite/client" />
+
+import { render as preact_render } from "preact";
+import { createRoot } from "react-dom/client";
+import { render as solid_render } from "solid-js/web";
+import "./tailwind.css";
+import { app } from "./vorma.app.ts";
+
+/////////////////////////////////////////////////////////////////////
+/////// PREACT
+/////////////////////////////////////////////////////////////////////
+
+// await app.init({
+// 	renderFn: () => {
+// 		preact_render(<app.RootOutlet />, app.getRootEl());
+// 	},
+// });
+
+/////////////////////////////////////////////////////////////////////
+/////// REACT
+/////////////////////////////////////////////////////////////////////
+
+// await app.init({
+// 	renderFn: () => {
+// 		createRoot(app.getRootEl()).render(<app.RootOutlet />);
+// 	},
+// });
+
+/////////////////////////////////////////////////////////////////////
+/////// SOLID
+/////////////////////////////////////////////////////////////////////
+
+await app.init({
+	renderFn: () => {
+		solid_render(() => <app.RootOutlet />, app.getRootEl());
+	},
+});
+
+void import("./setup.ts");

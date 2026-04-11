@@ -1,0 +1,31 @@
+package router
+
+import (
+	"sync/atomic"
+
+	"github.com/vormadev/vorma"
+)
+
+type RootData struct {
+	Message string
+}
+
+const externalDocsLink = "https://vorma.dev/docs"
+
+var requestCount atomic.Int64
+
+var _ = DefineLoader("/", func(c *LoaderCtx) (*RootData, error) {
+	return &RootData{Message: "Welcome to your Vorma app!"}, nil
+})
+
+var _ = DefineLoader("/_index", func(c *LoaderCtx) (int, error) {
+	return int(requestCount.Load()), nil
+})
+
+var _ = DefineLoader("/links", func(c *LoaderCtx) (string, error) {
+	return externalDocsLink, nil
+})
+
+var _ = DefineAction("POST", "/increment-count", func(c *ActionCtx[vorma.None]) (int, error) {
+	return int(requestCount.Add(1)), nil
+})

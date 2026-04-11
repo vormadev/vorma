@@ -1,0 +1,27 @@
+package examples
+
+import "github.com/vormadev/vorma/kit/lazyget"
+
+/////////////////////////////////////////////////////////////////////
+/////// Memoized Struct Fields Example
+/////////////////////////////////////////////////////////////////////
+
+type Universe struct {
+	answer lazyget.Cache[int]
+}
+
+func (u *Universe) Answer(currentYear int) int {
+	return u.answer.Get(func() int {
+		// Simulate expensive computation
+		return 42
+	})
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Simple Getter Example
+/////////////////////////////////////////////////////////////////////
+
+var GetAnswer = lazyget.Getter(func() int {
+	// Simulate expensive computation
+	return 42
+})

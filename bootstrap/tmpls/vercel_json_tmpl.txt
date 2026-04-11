@@ -2,10 +2,10 @@
 	"$schema": "https://openapi.vercel.sh/vercel.json",
 	"installCommand": "{{.ResolveJSPackageManagerRunScriptPrefix}} vercel-install",
 	"buildCommand": "{{.ResolveJSPackageManagerRunScriptPrefix}} vercel-build",
-	"outputDirectory": "backend/dist/static/assets/public",
+	"outputDirectory": "backend/.waveout/static/assets/public",
 	"functions": {
 		"api/proxy.ts": {
-			"includeFiles": "backend/{dist/main,wave.config.json}"
+			"includeFiles": "backend/{.waveout/main,wave.config.json}"
 		}
 	},
 	"rewrites": [
@@ -16,7 +16,7 @@
 	],
 	"headers": [
 		{
-			"source": "/vorma_out_(.*).(.*)",
+			"source": "/wave_out_(.*).(.*)",
 			"headers": [
 				{
 					"key": "Cache-Control",

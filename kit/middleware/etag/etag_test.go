@@ -1,6 +1,7 @@
 package etag
 
 import (
+	"bufio"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -456,11 +458,19 @@ func TestWriteOriginalResponse(t *testing.T) {
 		}
 
 		if w.Header().Get("X-Test") != "value" {
-			t.Errorf("Header not copied correctly, expected %q, got %q", "value", w.Header().Get("X-Test"))
+			t.Errorf(
+				"Header not copied correctly, expected %q, got %q",
+				"value",
+				w.Header().Get("X-Test"),
+			)
 		}
 
 		if w.Body.String() != "test content" {
-			t.Errorf("Body not written correctly, expected %q, got %q", "test content", w.Body.String())
+			t.Errorf(
+				"Body not written correctly, expected %q, got %q",
+				"test content",
+				w.Body.String(),
+			)
 		}
 	})
 
@@ -471,7 +481,11 @@ func TestWriteOriginalResponse(t *testing.T) {
 
 		// The content should already be written to the original writer
 		if w.Body.String() != "content too big" {
-			t.Errorf("Body not written directly, expected %q, got %q", "content too big", w.Body.String())
+			t.Errorf(
+				"Body not written directly, expected %q, got %q",
+				"content too big",
+				w.Body.String(),
+			)
 		}
 
 		// This should be a no-op
@@ -489,19 +503,35 @@ func TestWriteResponseWithETag(t *testing.T) {
 		ew.WriteResponseWithETag(`"etag123"`)
 
 		if w.Header().Get("ETag") != `"etag123"` {
-			t.Errorf("ETag header not set correctly, expected %q, got %q", `"etag123"`, w.Header().Get("ETag"))
+			t.Errorf(
+				"ETag header not set correctly, expected %q, got %q",
+				`"etag123"`,
+				w.Header().Get("ETag"),
+			)
 		}
 
 		if w.Header().Get("X-Test") != "value" {
-			t.Errorf("Header not copied correctly, expected %q, got %q", "value", w.Header().Get("X-Test"))
+			t.Errorf(
+				"Header not copied correctly, expected %q, got %q",
+				"value",
+				w.Header().Get("X-Test"),
+			)
 		}
 
 		if w.Header().Get("Content-Length") != "12" {
-			t.Errorf("Content-Length not set correctly, expected %q, got %q", "12", w.Header().Get("Content-Length"))
+			t.Errorf(
+				"Content-Length not set correctly, expected %q, got %q",
+				"12",
+				w.Header().Get("Content-Length"),
+			)
 		}
 
 		if w.Body.String() != "test content" {
-			t.Errorf("Body not written correctly, expected %q, got %q", "test content", w.Body.String())
+			t.Errorf(
+				"Body not written correctly, expected %q, got %q",
+				"test content",
+				w.Body.String(),
+			)
 		}
 	})
 
@@ -513,12 +543,19 @@ func TestWriteResponseWithETag(t *testing.T) {
 		ew.WriteResponseWithETag(`"etag123"`)
 
 		if w.Header().Get("ETag") != `"etag123"` {
-			t.Errorf("ETag header not set correctly, expected %q, got %q", `"etag123"`, w.Header().Get("ETag"))
+			t.Errorf(
+				"ETag header not set correctly, expected %q, got %q",
+				`"etag123"`,
+				w.Header().Get("ETag"),
+			)
 		}
 
 		// Content-Length should not be set for too big responses
 		if w.Header().Get("Content-Length") != "" {
-			t.Errorf("Content-Length should not be set, but got %q", w.Header().Get("Content-Length"))
+			t.Errorf(
+				"Content-Length should not be set, but got %q",
+				w.Header().Get("Content-Length"),
+			)
 		}
 	})
 }
@@ -556,7 +593,11 @@ func TestETagWriterMultipleWrites(t *testing.T) {
 	}
 
 	if ew.buf.String() != "first second third" {
-		t.Errorf("Buffer content incorrect, expected %q, got %q", "first second third", ew.buf.String())
+		t.Errorf(
+			"Buffer content incorrect, expected %q, got %q",
+			"first second third",
+			ew.buf.String(),
+		)
 	}
 }
 
@@ -683,9 +724,11 @@ func TestBufferPooling(t *testing.T) {
 func TestMultipleCalls(t *testing.T) {
 	// Test whether the middleware works correctly with multiple responses
 	middleware := Auto()
-	server := httptest.NewServer(middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Hello, World!"))
-	})))
+	server := httptest.NewServer(
+		middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("Hello, World!"))
+		})),
+	)
 	defer server.Close()
 
 	// Make first request
@@ -699,7 +742,11 @@ func TestMultipleCalls(t *testing.T) {
 	etag1 := resp1.Header.Get("ETag")
 
 	if string(body1) != "Hello, World!" {
-		t.Errorf("First response body incorrect, expected %q, got %q", "Hello, World!", string(body1))
+		t.Errorf(
+			"First response body incorrect, expected %q, got %q",
+			"Hello, World!",
+			string(body1),
+		)
 	}
 
 	if etag1 == "" {
@@ -735,7 +782,11 @@ func TestMultipleCalls(t *testing.T) {
 	}
 
 	if string(body3) != "Hello, World!" {
-		t.Errorf("Third response body incorrect, expected %q, got %q", "Hello, World!", string(body3))
+		t.Errorf(
+			"Third response body incorrect, expected %q, got %q",
+			"Hello, World!",
+			string(body3),
+		)
 	}
 }
 
@@ -746,7 +797,11 @@ func TestWriteHeaderCalledTwice(t *testing.T) {
 	// First call should set the status
 	ew.WriteHeader(http.StatusCreated)
 	if ew.status != http.StatusCreated {
-		t.Errorf("First WriteHeader call should set status to %d, got %d", http.StatusCreated, ew.status)
+		t.Errorf(
+			"First WriteHeader call should set status to %d, got %d",
+			http.StatusCreated,
+			ew.status,
+		)
 	}
 
 	// Second call should be ignored
@@ -1319,3 +1374,112 @@ func TestSkipFunc(t *testing.T) {
 
 // __TODO
 func TestXVormaBuildIdHeaderChangesEtag(t *testing.T) {}
+
+func TestHasNoStoreDirectiveCaseInsensitive(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{value: "public, max-age=60", want: false},
+		{value: "no-store", want: true},
+		{value: "No-Store", want: true},
+		{value: "private, NO-STORE", want: true},
+	}
+
+	for _, tt := range tests {
+		if got := hasNoStoreDirective(tt.value); got != tt.want {
+			t.Fatalf("hasNoStoreDirective(%q)=%v, want %v", tt.value, got, tt.want)
+		}
+	}
+}
+
+func TestETagMiddlewareFlushBeforeWritePreservesHeaders(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("expected response writer to implement http.Flusher")
+		}
+		flusher.Flush()
+		_, _ = w.Write([]byte("data: hello\n\n"))
+	})
+
+	server := httptest.NewServer(Auto()(handler))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatalf("failed request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("expected Content-Type to be preserved, got %q", got)
+	}
+	if got := resp.Header.Get("ETag"); got != "" {
+		t.Fatalf("expected no ETag for flushed streaming response, got %q", got)
+	}
+}
+
+func TestETagMiddlewareMaxSizeOverflowPreservesHeadersAndStatus(t *testing.T) {
+	const payload = "0123456789"
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Test", "present")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(payload))
+	})
+
+	server := httptest.NewServer(Auto(&Config{MaxBodySize: 5})(handler))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatalf("failed request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+	if got := resp.Header.Get("X-Test"); got != "present" {
+		t.Fatalf("expected X-Test header to be preserved, got %q", got)
+	}
+	if got := resp.Header.Get("ETag"); got != "" {
+		t.Fatalf("expected no ETag when body exceeds max size, got %q", got)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("failed reading body: %v", err)
+	}
+	if string(body) != payload {
+		t.Fatalf("expected body %q, got %q", payload, string(body))
+	}
+}
+
+type hijackableRecorder struct {
+	*httptest.ResponseRecorder
+}
+
+func (h *hijackableRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, nil
+}
+
+func (h *hijackableRecorder) Flush() {}
+
+func (h *hijackableRecorder) Push(string, *http.PushOptions) error { return nil }
+
+func TestETagWriterOptionalInterfaces(t *testing.T) {
+	w := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
+	ew := newETagWriter(w, sha1.New(), 1024)
+	defer ew.Close()
+
+	if _, _, err := ew.Hijack(); err != nil {
+		t.Fatalf("expected hijack passthrough to succeed, got %v", err)
+	}
+
+	if err := ew.Push("/x", nil); err != nil {
+		t.Fatalf("expected push passthrough to succeed, got %v", err)
+	}
+
+	ew.Flush()
+}

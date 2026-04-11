@@ -1,0 +1,28 @@
+{
+	"$schema": "https://openapi.vercel.sh/vercel.json",
+	"installCommand": "pnpm vercel-install",
+	"buildCommand": "pnpm vercel-build",
+	"outputDirectory": "dist/.vorma/static/public",
+	"functions": {
+		"api/proxy.rs": {
+			"includeFiles": "dist/.vorma/main"
+		}
+	},
+	"rewrites": [
+		{
+			"source": "/(.*)",
+			"destination": "/api/proxy"
+		}
+	],
+	"headers": [
+		{
+			"source": "/vorma_out_(.*).(.*)",
+			"headers": [
+				{
+					"key": "Cache-Control",
+					"value": "public, max-age=31536000, immutable"
+				}
+			]
+		}
+	]
+}

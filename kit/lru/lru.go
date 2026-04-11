@@ -34,6 +34,7 @@ type Cache[K comparable, V any] struct {
 	maxItems    int
 	defaultTTL  time.Duration
 	cleanupDone chan struct{} // Used to signal when the cleanup goroutine is done
+	closeOnce   sync.Once
 }
 
 // NewCache creates a new LRU cache with the specified maximum number of items.
@@ -44,7 +45,10 @@ func NewCache[K comparable, V any](maxItems int) *Cache[K, V] {
 // NewCacheWithTTL creates a new LRU cache with the specified maximum number of items
 // and default TTL duration. When you are done with the cache, you should call Close
 // to stop the background cleanup goroutine.
-func NewCacheWithTTL[K comparable, V any](maxItems int, defaultTTL time.Duration) *Cache[K, V] {
+func NewCacheWithTTL[K comparable, V any](
+	maxItems int,
+	defaultTTL time.Duration,
+) *Cache[K, V] {
 	if maxItems < 0 {
 		maxItems = 0
 	}
@@ -69,25 +73,24 @@ func NewCacheWithTTL[K comparable, V any](maxItems int, defaultTTL time.Duration
 // It returns the value and a boolean indicating whether the key was found.
 // If the item has expired, it will be removed and not returned.
 func (c *Cache[K, V]) Get(key K) (v V, found bool) {
-	c.mu.RLock()
-	itm, found := c.items[key]
-	c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	itm, found := c.items[key]
 	if !found {
 		return
 	}
 
 	// Check if the item has expired
 	if !itm.expiresAt.IsZero() && time.Now().After(itm.expiresAt) {
-		c.Delete(key)
+		delete(c.items, key)
+		c.order.Remove(itm.element)
 		var zero V
 		return zero, false
 	}
 
 	if !itm.isSpam {
-		c.mu.Lock()
 		c.order.MoveToFront(itm.element)
-		c.mu.Unlock()
 	}
 
 	return itm.value, true
@@ -97,13 +100,22 @@ func (c *Cache[K, V]) Get(key K) (v V, found bool) {
 // The isSpam parameter determines whether the item should be treated as spam.
 // If the item is spam, it will not be moved to the front of the cache.
 // Uses the default TTL if one was specified when creating the cache.
-func (c *Cache[K, V]) Set(key K, value V, isSpam bool) {
-	c.SetWithTTL(key, value, isSpam, c.defaultTTL)
+func (c *Cache[K, V]) Set(key K, value V, isSpam ...bool) {
+	spam := false
+	if len(isSpam) > 0 {
+		spam = isSpam[0]
+	}
+	c.SetWithTTL(key, value, spam, c.defaultTTL)
 }
 
 // SetWithTTL adds or updates an item in the cache with a specific TTL value.
 // A ttl of 0 means the item will not expire based on time.
-func (c *Cache[K, V]) SetWithTTL(key K, value V, isSpam bool, ttl time.Duration) {
+func (c *Cache[K, V]) SetWithTTL(
+	key K,
+	value V,
+	isSpam bool,
+	ttl time.Duration,
+) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -213,6 +225,6 @@ func (c *Cache[K, V]) startCleanupLoop() {
 // It should be called when the cache is no longer needed to prevent resource leaks.
 func (c *Cache[K, V]) Close() {
 	if c.defaultTTL > 0 {
-		close(c.cleanupDone)
+		c.closeOnce.Do(func() { close(c.cleanupDone) })
 	}
 }

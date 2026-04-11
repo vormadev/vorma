@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"strings"
 	"testing"
 )
@@ -143,6 +144,20 @@ func TestReadLimitedWithLargeData(t *testing.T) {
 		if b != 'a' {
 			t.Errorf("data[%d] = %c, want 'a'", i, b)
 		}
+	}
+}
+
+func TestReadLimitedLimitTooLarge(t *testing.T) {
+	_, err := ReadLimited(strings.NewReader("x"), uint64(math.MaxInt64))
+	if !errors.Is(err, errReadLimitTooLarge) {
+		t.Fatalf("expected limit-too-large error, got %v", err)
+	}
+}
+
+func TestReadLimitedNilReader(t *testing.T) {
+	_, err := ReadLimited(nil, 64)
+	if !errors.Is(err, errReaderIsNil) {
+		t.Fatalf("expected nil-reader error, got %v", err)
 	}
 }
 

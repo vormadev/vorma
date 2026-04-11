@@ -1,3 +1,12 @@
+// Package cookies provides secure cookie helpers and policy-driven defaults.
+//
+// The package centers around `Manager`, which encapsulates signing/encryption
+// key access and environment-aware defaults (SameSite, partitioning, HttpOnly).
+// Callers choose explicit cookie config types for host-only vs non-host-only
+// behavior and client-readable vs secure cookies.
+//
+// This package is intended to make secure defaults easy while keeping each
+// cookie's behavior explicit at call sites.
 package cookies
 
 import (
@@ -11,27 +20,38 @@ import (
 )
 
 type (
-	SameSite        int
+	// SameSite configures the cookie SameSite attribute.
+	SameSite int
+	// PartitionOption controls whether a cookie uses CHIPS partitioning.
 	PartitionOption int
-	HttpOnlyOption  int
+	// HttpOnlyOption controls whether secure cookies are HttpOnly.
+	HttpOnlyOption int
 )
 
 const (
-	sameSiteDefault    SameSite        = 0 // Use manager default
-	SameSiteLaxMode    SameSite        = SameSite(http.SameSiteLaxMode)
+	sameSiteDefault SameSite = 0 // Use manager default
+	// SameSiteLaxMode sets SameSite=Lax.
+	SameSiteLaxMode SameSite = SameSite(http.SameSiteLaxMode)
+	// SameSiteStrictMode sets SameSite=Strict.
 	SameSiteStrictMode SameSite        = SameSite(http.SameSiteStrictMode)
 	partitionDefault   PartitionOption = 0 // Use manager default
-	PartitionTrue      PartitionOption = 1 // Explicitly enable partitioning
-	PartitionFalse     PartitionOption = 2 // Explicitly disable partitioning
-	httpOnlyDefault    HttpOnlyOption  = 0 // Use manager default
-	HttpOnlyTrue       HttpOnlyOption  = 1 // Explicitly enable HttpOnly
-	HttpOnlyFalse      HttpOnlyOption  = 2 // Explicitly disable HttpOnly
+	// PartitionTrue explicitly enables partitioned cookies.
+	PartitionTrue PartitionOption = 1 // Explicitly enable partitioning
+	// PartitionFalse explicitly disables partitioned cookies.
+	PartitionFalse  PartitionOption = 2 // Explicitly disable partitioning
+	httpOnlyDefault HttpOnlyOption  = 0 // Use manager default
+	// HttpOnlyTrue explicitly enables HttpOnly.
+	HttpOnlyTrue HttpOnlyOption = 1 // Explicitly enable HttpOnly
+	// HttpOnlyFalse explicitly disables HttpOnly.
+	HttpOnlyFalse HttpOnlyOption = 2 // Explicitly disable HttpOnly
 )
 
+// Manager centralizes cookie defaults and runtime environment policy.
 type Manager struct {
 	cfg *ManagerConfig
 }
 
+// ManagerConfig configures defaults for cookies created by a Manager.
 type ManagerConfig struct {
 	GetKeyset func() *keyset.Keyset
 	GetIsDev  func() bool // Optional. Resolves to false if nil.
@@ -43,6 +63,7 @@ type ManagerConfig struct {
 	DefaultHttpOnly HttpOnlyOption
 }
 
+// NewManager validates cfg and returns a configured cookie manager.
 func NewManager(cfg ManagerConfig) *Manager {
 	if cfg.GetKeyset == nil {
 		panic("GetKeyset function cannot be nil")
@@ -59,10 +80,12 @@ func NewManager(cfg ManagerConfig) *Manager {
 	return &Manager{cfg: &cfg}
 }
 
-func (mgr *Manager) GetIsDev() bool {
+// IsDev reports whether the manager is running in development mode.
+func (mgr *Manager) IsDev() bool {
 	return mgr.cfg.GetIsDev != nil && mgr.cfg.GetIsDev()
 }
 
+// SecureCookieConfig defines a host-prefixed encrypted cookie.
 type SecureCookieConfig struct {
 	Manager *Manager // Required.
 	// Required. Do not prefix the name with "__Host-". Prefixing is handled internally.
@@ -74,6 +97,7 @@ type SecureCookieConfig struct {
 	HttpOnly  HttpOnlyOption
 }
 
+// SecureCookieNonHostOnlyConfig defines an encrypted cookie without host prefix constraints.
 type SecureCookieNonHostOnlyConfig struct {
 	Manager   *Manager // Required.
 	Name      string
@@ -85,6 +109,7 @@ type SecureCookieNonHostOnlyConfig struct {
 	HttpOnly  HttpOnlyOption
 }
 
+// ClientReadableCookieConfig defines a host-prefixed plaintext cookie.
 type ClientReadableCookieConfig struct {
 	Manager *Manager // Required.
 	// Required. Do not prefix the name with "__Host-". Prefixing is handled internally.
@@ -95,6 +120,7 @@ type ClientReadableCookieConfig struct {
 	Partition PartitionOption
 }
 
+// ClientReadableCookieNonHostOnlyConfig defines a plaintext cookie without host prefix constraints.
 type ClientReadableCookieNonHostOnlyConfig struct {
 	Manager   *Manager // Required.
 	Name      string
@@ -145,12 +171,12 @@ func (mgr *Manager) buildCookie(spec cookieSpec) *http.Cookie {
 	name := spec.name
 	path := spec.path
 	domain := spec.domain
-	secure := !mgr.GetIsDev()
-	partitioned := spec.partitioned && !mgr.GetIsDev()
+	secure := !mgr.IsDev()
+	partitioned := spec.partitioned && !mgr.IsDev()
 
 	if spec.useHostPrefix {
 		name = mgr.hostPrefixName(spec.name)
-		if !mgr.GetIsDev() {
+		if !mgr.IsDev() {
 			secure = true
 			domain = ""
 			path = "/"
@@ -171,7 +197,7 @@ func (mgr *Manager) buildCookie(spec cookieSpec) *http.Cookie {
 }
 
 func (mgr *Manager) hostPrefixName(name string) string {
-	if mgr.GetIsDev() {
+	if mgr.IsDev() {
 		return "__Dev-" + name
 	}
 	return "__Host-" + name
@@ -212,7 +238,10 @@ func (c *secureCookie[T]) Get(r *http.Request) (T, error) {
 	if cookie.Value == "" {
 		return *new(T), fmt.Errorf("cookie value is empty")
 	}
-	return securestring.Parse[T](c.mgr.cfg.GetKeyset(), securestring.SecureString(cookie.Value))
+	return securestring.Parse[T](
+		c.mgr.cfg.GetKeyset(),
+		securestring.SecureString(cookie.Value),
+	)
 }
 
 func (c *secureCookie[T]) NewDeletion() *http.Cookie {
@@ -291,7 +320,11 @@ func (c *clientReadableCookie[T]) SetWithProxy(rp *response.Proxy, value T) {
 	cookie := c.New(value)
 	rp.SetCookie(cookie)
 }
-func (c *clientReadableCookie[T]) SetWithWriter(w http.ResponseWriter, value T) {
+
+func (c *clientReadableCookie[T]) SetWithWriter(
+	w http.ResponseWriter,
+	value T,
+) {
 	cookie := c.New(value)
 	http.SetCookie(w, cookie)
 }
@@ -311,11 +344,13 @@ func (c *clientReadableCookie[T]) Name() string {
 	return c.spec.name
 }
 
+// SecureCookie stores encrypted structured data in a host-prefixed cookie.
 type SecureCookie[T any] struct {
 	secureCookie[T]
 }
 
-// Panics if you fail to provide a Manager or Name via config struct.
+// NewSecureCookie creates a host-prefixed secure cookie helper.
+// It panics when Manager or Name is missing.
 func NewSecureCookie[T any](cfg SecureCookieConfig) *SecureCookie[T] {
 	if cfg.Manager == nil {
 		panic("NewSecureCookie: Manager is required.")
@@ -336,17 +371,21 @@ func NewSecureCookie[T any](cfg SecureCookieConfig) *SecureCookie[T] {
 	return &SecureCookie[T]{secureCookie[T]{mgr: cfg.Manager, spec: spec}}
 }
 
+// SecureCookieNonHostOnly stores encrypted structured data without host-prefix constraints.
 type SecureCookieNonHostOnly[T any] struct {
 	secureCookie[T]
 }
 
-// Panics if you fail to provide a Manager or Name via config struct.
-func NewSecureCookieNonHostOnly[T any](cfg SecureCookieNonHostOnlyConfig) *SecureCookieNonHostOnly[T] {
+// NewSecureCookieNonHostOnly creates a non-host-only secure cookie helper.
+// It panics when Manager or Name is missing.
+func NewSecureCookieNonHostOnly[T any](
+	cfg SecureCookieNonHostOnlyConfig,
+) *SecureCookieNonHostOnly[T] {
 	if cfg.Manager == nil {
 		panic("NewSecureCookieNonHostOnly: Manager is required.")
 	}
 	if cfg.Name == "" {
-		panic("NewSecureCookie: Name is required.")
+		panic("NewSecureCookieNonHostOnly: Name is required.")
 	}
 	spec := cookieSpec{
 		name:          cfg.Name,
@@ -358,20 +397,26 @@ func NewSecureCookieNonHostOnly[T any](cfg SecureCookieNonHostOnlyConfig) *Secur
 		useHostPrefix: false,
 		partitioned:   cfg.Manager.resolvePartition(cfg.Partition),
 	}
-	return &SecureCookieNonHostOnly[T]{secureCookie[T]{mgr: cfg.Manager, spec: spec}}
+	return &SecureCookieNonHostOnly[T]{
+		secureCookie[T]{mgr: cfg.Manager, spec: spec},
+	}
 }
 
+// ClientReadableCookie stores plaintext string data in a host-prefixed cookie.
 type ClientReadableCookie[T ~string] struct {
 	clientReadableCookie[T]
 }
 
-// Panics if you fail to provide a Manager or Name via config struct.
-func NewClientReadableCookie[T ~string](cfg ClientReadableCookieConfig) *ClientReadableCookie[T] {
+// NewClientReadableCookie creates a host-prefixed client-readable cookie helper.
+// It panics when Manager or Name is missing.
+func NewClientReadableCookie[T ~string](
+	cfg ClientReadableCookieConfig,
+) *ClientReadableCookie[T] {
 	if cfg.Manager == nil {
 		panic("NewClientReadableCookie: Manager is required.")
 	}
 	if cfg.Name == "" {
-		panic("NewSecureCookie: Name is required.")
+		panic("NewClientReadableCookie: Name is required.")
 	}
 	spec := cookieSpec{
 		name:          cfg.Name,
@@ -383,20 +428,26 @@ func NewClientReadableCookie[T ~string](cfg ClientReadableCookieConfig) *ClientR
 		useHostPrefix: true,
 		partitioned:   cfg.Manager.resolvePartition(cfg.Partition),
 	}
-	return &ClientReadableCookie[T]{clientReadableCookie[T]{mgr: cfg.Manager, spec: spec}}
+	return &ClientReadableCookie[T]{
+		clientReadableCookie[T]{mgr: cfg.Manager, spec: spec},
+	}
 }
 
+// ClientReadableCookieNonHostOnly stores plaintext string data without host-prefix constraints.
 type ClientReadableCookieNonHostOnly[T ~string] struct {
 	clientReadableCookie[T]
 }
 
-// Panics if you fail to provide a Manager or Name via config struct.
-func NewClientReadableCookieNonHostOnly[T ~string](cfg ClientReadableCookieNonHostOnlyConfig) *ClientReadableCookieNonHostOnly[T] {
+// NewClientReadableCookieNonHostOnly creates a non-host-only client-readable cookie helper.
+// It panics when Manager or Name is missing.
+func NewClientReadableCookieNonHostOnly[T ~string](
+	cfg ClientReadableCookieNonHostOnlyConfig,
+) *ClientReadableCookieNonHostOnly[T] {
 	if cfg.Manager == nil {
 		panic("NewClientReadableCookieNonHostOnly: Manager is required.")
 	}
 	if cfg.Name == "" {
-		panic("NewSecureCookie: Name is required.")
+		panic("NewClientReadableCookieNonHostOnly: Name is required.")
 	}
 	spec := cookieSpec{
 		name:          cfg.Name,
@@ -408,5 +459,7 @@ func NewClientReadableCookieNonHostOnly[T ~string](cfg ClientReadableCookieNonHo
 		useHostPrefix: false,
 		partitioned:   cfg.Manager.resolvePartition(cfg.Partition),
 	}
-	return &ClientReadableCookieNonHostOnly[T]{clientReadableCookie[T]{mgr: cfg.Manager, spec: spec}}
+	return &ClientReadableCookieNonHostOnly[T]{
+		clientReadableCookie[T]{mgr: cfg.Manager, spec: spec},
+	}
 }

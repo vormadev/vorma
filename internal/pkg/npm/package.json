@@ -1,0 +1,143 @@
+{
+	"name": "vorma",
+	"version": "0.85.0-pre.4",
+	"description": "Vorma seeks to be the world's most straightforward web framework.",
+	"type": "module",
+	"sideEffects": false,
+	"license": "BSD-3-Clause",
+	"repository": {
+		"url": "https://github.com/vormadev/vorma",
+		"type": "git"
+	},
+	"bugs": {
+		"url": "https://github.com/vormadev/vorma/issues"
+	},
+	"homepage": "https://vorma.dev",
+	"author": "Samuel J. Cook",
+	"keywords": [
+		"go",
+		"golang",
+		"typescript",
+		"vite",
+		"react",
+		"preact",
+		"solid",
+		"framework",
+		"metaframework",
+		"meta-framework"
+	],
+	"exports": {
+		"./__internal": {
+			"import": "./.dist/vorma/core/_index.js",
+			"types": "./.dist/vorma/core/_index.d.ts"
+		},
+		"./react": {
+			"import": "./.dist/vorma/tsx/react/react.js",
+			"types": "./.dist/vorma/tsx/react/react.d.ts"
+		},
+		"./preact": {
+			"import": "./.dist/vorma/tsx/preact/preact.js",
+			"types": "./.dist/vorma/tsx/preact/preact.d.ts"
+		},
+		"./solid": {
+			"import": "./.dist/vorma/tsx/solid/solid.js",
+			"types": "./.dist/vorma/tsx/solid/solid.d.ts"
+		},
+		"./vite": {
+			"import": "./.dist/vorma/vite/vite.mjs",
+			"types": "./.dist/vorma/vite/vite.d.ts"
+		},
+		"./kit/converters": {
+			"import": "./.dist/kit/converters/converters.js",
+			"types": "./.dist/kit/converters/converters.d.ts"
+		},
+		"./kit/cookies": {
+			"import": "./.dist/kit/cookies/cookies.js",
+			"types": "./.dist/kit/cookies/cookies.d.ts"
+		},
+		"./kit/csrf": {
+			"import": "./.dist/kit/csrf/csrf.js",
+			"types": "./.dist/kit/csrf/csrf.d.ts"
+		},
+		"./kit/debounce": {
+			"import": "./.dist/kit/debounce/debounce.js",
+			"types": "./.dist/kit/debounce/debounce.d.ts"
+		},
+		"./kit/fmt": {
+			"import": "./.dist/kit/fmt/fmt.js",
+			"types": "./.dist/kit/fmt/fmt.d.ts"
+		},
+		"./kit/json": {
+			"import": "./.dist/kit/json/json.js",
+			"types": "./.dist/kit/json/json.d.ts"
+		},
+		"./kit/listeners": {
+			"import": "./.dist/kit/listeners/listeners.js",
+			"types": "./.dist/kit/listeners/listeners.d.ts"
+		},
+		"./kit/matcher/register": {
+			"import": "./.dist/kit/matcher/register.js",
+			"types": "./.dist/kit/matcher/register.d.ts"
+		},
+		"./kit/matcher/find-best": {
+			"import": "./.dist/kit/matcher/find_best_match.js",
+			"types": "./.dist/kit/matcher/find_best_match.d.ts"
+		},
+		"./kit/matcher/find-nested": {
+			"import": "./.dist/kit/matcher/find_nested_matches.js",
+			"types": "./.dist/kit/matcher/find_nested_matches.d.ts"
+		},
+		"./kit/matcher/utils": {
+			"import": "./.dist/kit/matcher/utils.js",
+			"types": "./.dist/kit/matcher/utils.d.ts"
+		},
+		"./kit/result": {
+			"import": "./.dist/kit/result/result.js",
+			"types": "./.dist/kit/result/result.d.ts"
+		},
+		"./kit/theme": {
+			"import": "./.dist/kit/theme/theme.js",
+			"types": "./.dist/kit/theme/theme.d.ts"
+		},
+		"./kit/url": {
+			"import": "./.dist/kit/url/url.js",
+			"types": "./.dist/kit/url/url.d.ts"
+		}
+	},
+	"devDependencies": {
+		"@preact/signals": "^2.9.0",
+		"@types/jsdom": "^28.0.1",
+		"@types/node": "^25.5.0",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@typescript/native-preview": "7.0.0-dev.20260326.1",
+		"jsdom": "^29.0.1",
+		"oxfmt": "^0.44.0",
+		"oxlint": "^1.59.0",
+		"oxlint-tsgolint": "^0.20.0",
+		"preact": "^10.29.1",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"solid-js": "^1.9.12",
+		"tsdown": "^0.21.5",
+		"typescript": "^6.0.2",
+		"unplugin-solid": "^1.0.0",
+		"vite": "^8.0.3",
+		"vite-plugin-solid": "^2.11.11",
+		"vitest": "^4.1.2"
+	},
+	"files": [
+		".dist/",
+		"README.md",
+		"tsconfig.base.json",
+		"kit/",
+		"vorma/",
+		"banner.webp",
+		"!node_modules/",
+		"!pnpm-lock.yaml",
+		"!**/*.test.*",
+		"!**/*.bench.*",
+		"!vorma/tests/",
+		"!vorma/core/___ccc_test_helpers.ts"
+	]
+}

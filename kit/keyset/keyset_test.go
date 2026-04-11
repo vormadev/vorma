@@ -178,6 +178,12 @@ func TestAttempt(t *testing.T) {
 		wantErr   bool
 	}{
 		{
+			name:    "nil keyset",
+			keyset:  nil,
+			fn:      func(k cryptoutil.Key32) (string, error) { return "ok", nil },
+			wantErr: true,
+		},
+		{
 			name:    "empty keyset",
 			keyset:  &Keyset{uks: UnwrappedKeyset{}},
 			fn:      func(k cryptoutil.Key32) (string, error) { return "ok", nil },
@@ -244,6 +250,13 @@ func TestKeyset_HKDF(t *testing.T) {
 		info    string
 		wantErr bool
 	}{
+		{
+			name:    "nil keyset",
+			keyset:  nil,
+			salt:    []byte("salt"),
+			info:    "info",
+			wantErr: true,
+		},
 		{
 			name:    "empty keyset",
 			keyset:  &Keyset{uks: UnwrappedKeyset{}},
@@ -592,26 +605,29 @@ func TestMustAppKeyset_DeferredValidation(t *testing.T) {
 		_ = appKeyset.Root()
 	})
 
-	t.Run("deferred validation panics on Root access with empty application name", func(t *testing.T) {
-		appKeyset := MustAppKeyset(AppKeysetConfig{
-			LatestFirstEnvVarNames: []string{"TEST_DEFERRED_SECRET"},
-			ApplicationName:        "",
-			DeferPanic:             true,
-		})
+	t.Run(
+		"deferred validation panics on Root access with empty application name",
+		func(t *testing.T) {
+			appKeyset := MustAppKeyset(AppKeysetConfig{
+				LatestFirstEnvVarNames: []string{"TEST_DEFERRED_SECRET"},
+				ApplicationName:        "",
+				DeferPanic:             true,
+			})
 
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic when accessing Root with invalid config")
-			} else {
-				panicStr := fmt.Sprintf("%v", r)
-				if !strings.Contains(panicStr, "ApplicationName cannot be empty") {
-					t.Errorf("unexpected panic message: %s", panicStr)
+			defer func() {
+				if r := recover(); r == nil {
+					t.Error("expected panic when accessing Root with invalid config")
+				} else {
+					panicStr := fmt.Sprintf("%v", r)
+					if !strings.Contains(panicStr, "ApplicationName cannot be empty") {
+						t.Errorf("unexpected panic message: %s", panicStr)
+					}
 				}
-			}
-		}()
+			}()
 
-		_ = appKeyset.Root()
-	})
+			_ = appKeyset.Root()
+		},
+	)
 
 	t.Run("deferred validation panics on HKDF access with empty env vars", func(t *testing.T) {
 		appKeyset := MustAppKeyset(AppKeysetConfig{
@@ -636,28 +652,31 @@ func TestMustAppKeyset_DeferredValidation(t *testing.T) {
 		_ = hkdfFn()
 	})
 
-	t.Run("deferred validation panics on HKDF access with empty application name", func(t *testing.T) {
-		appKeyset := MustAppKeyset(AppKeysetConfig{
-			LatestFirstEnvVarNames: []string{"TEST_DEFERRED_SECRET"},
-			ApplicationName:        "",
-			DeferPanic:             true,
-		})
+	t.Run(
+		"deferred validation panics on HKDF access with empty application name",
+		func(t *testing.T) {
+			appKeyset := MustAppKeyset(AppKeysetConfig{
+				LatestFirstEnvVarNames: []string{"TEST_DEFERRED_SECRET"},
+				ApplicationName:        "",
+				DeferPanic:             true,
+			})
 
-		hkdfFn := appKeyset.HKDF("test-purpose")
+			hkdfFn := appKeyset.HKDF("test-purpose")
 
-		defer func() {
-			if r := recover(); r == nil {
-				t.Error("expected panic when accessing HKDF with invalid config")
-			} else {
-				panicStr := fmt.Sprintf("%v", r)
-				if !strings.Contains(panicStr, "ApplicationName cannot be empty") {
-					t.Errorf("unexpected panic message: %s", panicStr)
+			defer func() {
+				if r := recover(); r == nil {
+					t.Error("expected panic when accessing HKDF with invalid config")
+				} else {
+					panicStr := fmt.Sprintf("%v", r)
+					if !strings.Contains(panicStr, "ApplicationName cannot be empty") {
+						t.Errorf("unexpected panic message: %s", panicStr)
+					}
 				}
-			}
-		}()
+			}()
 
-		_ = hkdfFn()
-	})
+			_ = hkdfFn()
+		},
+	)
 
 	t.Run("deferred validation with valid config works correctly", func(t *testing.T) {
 		appKeyset := MustAppKeyset(AppKeysetConfig{

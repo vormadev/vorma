@@ -13,9 +13,10 @@ const defaultCharset = "0123456789" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghij
 // The idLen parameter must be between 0 and 255 inclusive.
 // If provided, the custom charset length must be between 1 and 255 inclusive.
 func New(idLen uint8, optionalCharset ...string) (string, error) {
-	if idLen == 0 {
-		return "", nil
+	if len(optionalCharset) > 1 {
+		return "", fmt.Errorf("at most one optional charset may be provided")
 	}
+
 	charset := defaultCharset
 	if len(optionalCharset) > 0 {
 		charset = optionalCharset[0]
@@ -26,7 +27,16 @@ func New(idLen uint8, optionalCharset ...string) (string, error) {
 			"charset length must be between 1 and 255 inclusive, got %d", charsetLen,
 		)
 	}
+	for _, r := range charset {
+		if r > 127 {
+			return "", fmt.Errorf("charset must contain only single-byte ASCII characters")
+		}
+	}
+	if idLen == 0 {
+		return "", nil
+	}
 	effectiveTotalValues := (256 / charsetLen) * charsetLen
+	charsetBytes := []byte(charset)
 	idOutputBytes := make([]byte, idLen)
 	randomByteHolder := make([]byte, 1)
 	for i := range idLen {
@@ -37,7 +47,7 @@ func New(idLen uint8, optionalCharset ...string) (string, error) {
 			}
 			randomVal := randomByteHolder[0]
 			if int(randomVal) < effectiveTotalValues {
-				idOutputBytes[i] = charset[randomVal%byte(charsetLen)]
+				idOutputBytes[i] = charsetBytes[randomVal%byte(charsetLen)]
 				break
 			}
 		}

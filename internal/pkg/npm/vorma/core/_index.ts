@@ -1,0 +1,66 @@
+export { create_typed_api_client } from "./api_client.ts";
+export { BUILD_ID_HEADER, DATA_SCRIPT_ID } from "./constants.ts";
+export {
+	apply_scroll,
+	create_client_core,
+	make_route_id,
+	type CommitFn,
+	type GlobalLoadingIndicatorConfig,
+	type InitOptions,
+	type RouteDefinition,
+	type RouteEntry,
+	type RouteState,
+	type ScrollIntent,
+	type ScrollState,
+	type StatusInfo,
+} from "./create_client_core.ts";
+export {
+	make_link_props,
+	type LinkNavFns,
+	type LinkPropsResult,
+} from "./make_link_props.ts";
+export {
+	get_entry_key,
+	resolve_outlet_slot,
+	type OutletSlot,
+} from "./resolve_outlet_slot.ts";
+export type {
+	AppConfig,
+	LinkPropsBase,
+	MakeTypedAPIClient,
+	MakeTypedAPIDecorator,
+	MakeTypedAPIDecoratorContext,
+	MakeTypedClientLoaderProps,
+	MakeTypedDefineRouteInput,
+	MakeTypedLinkProps,
+	MakeTypedLoaderO,
+	MakeTypedLoaderPattern,
+	MakeTypedMutationI,
+	MakeTypedMutationO,
+	MakeTypedMutationPattern,
+	MakeTypedMutationProps,
+	MakeTypedNavigateProps,
+	MakeTypedQueryI,
+	MakeTypedQueryO,
+	MakeTypedQueryPattern,
+	MakeTypedQueryProps,
+	MakeTypedRouteProps,
+	MakeTypedRouterData,
+	RevalidationResult,
+	SubmitOptions,
+	SubmitResult,
+} from "./types.ts";
+export {
+	create_adapter_base,
+	type DecomposedCommitFn,
+	type DecomposedState,
+	type VormaClient,
+} from "./ui_adapter_core.ts";
+export {
+	build_mutation_url,
+	build_query_url,
+	build_typed_link_href,
+	create_typed_navigate,
+	resolve_body,
+	resolve_path,
+} from "./url.ts";

@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 // TestEnsureDir tests the EnsureDir function.
@@ -37,22 +39,6 @@ func TestEnsureDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-}
-
-// TestGetCallerDir tests the GetCallerDir function.
-func TestGetCallerDir(t *testing.T) {
-	expectedDir := filepath.Dir(getCurrentFilePath())
-	callerDir := GetCallerDir()
-
-	if callerDir != expectedDir {
-		t.Fatalf("expected %s, got %s", expectedDir, callerDir)
-	}
-}
-
-// Helper function to get the current file path
-func getCurrentFilePath() string {
-	_, file, _, _ := runtime.Caller(0)
-	return file
 }
 
 // TestCopyFile tests the CopyFile function.
@@ -88,6 +74,75 @@ func TestCopyFile(t *testing.T) {
 	}
 	if !bytes.Equal(content, copiedContent) {
 		t.Fatalf("expected content %s, got %s", content, copiedContent)
+	}
+
+	// Ensure file mode is preserved.
+	srcInfo, err := os.Stat(srcFile)
+	if err != nil {
+		t.Fatalf("expected no error statting source file, got %v", err)
+	}
+	dstInfo, err := os.Stat(dstFile)
+	if err != nil {
+		t.Fatalf("expected no error statting destination file, got %v", err)
+	}
+	if srcInfo.Mode().Perm() != dstInfo.Mode().Perm() {
+		t.Fatalf(
+			"expected destination mode %v, got %v",
+			srcInfo.Mode().Perm(),
+			dstInfo.Mode().Perm(),
+		)
+	}
+}
+
+func TestCopyFileCreatesDestinationDirectories(t *testing.T) {
+	srcDir := t.TempDir()
+	dstDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "source.txt")
+	dstFile := filepath.Join(dstDir, "nested", "path", "target.txt")
+
+	if err := os.WriteFile(srcFile, []byte("hello"), 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	if err := CopyFile(srcFile, dstFile); err != nil {
+		t.Fatalf("CopyFile failed: %v", err)
+	}
+
+	got, err := os.ReadFile(dstFile)
+	if err != nil {
+		t.Fatalf("failed to read destination file: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Fatalf("unexpected copied content: %q", string(got))
+	}
+}
+
+func TestCopyFile_ReturnsErrorWhenSourceAndDestinationAreSameFile(
+	t *testing.T,
+) {
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "same-file.txt")
+	originalContent := []byte("keep me")
+
+	if err := os.WriteFile(filePath, originalContent, 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	err := CopyFile(filePath, filePath)
+	if err == nil {
+		t.Fatal("expected CopyFile to fail for same source/destination file")
+	}
+
+	currentContent, readErr := os.ReadFile(filePath)
+	if readErr != nil {
+		t.Fatalf("failed to read source file after CopyFile: %v", readErr)
+	}
+	if !bytes.Equal(currentContent, originalContent) {
+		t.Fatalf(
+			"CopyFile modified source file for same source/destination; got %q, want %q",
+			string(currentContent),
+			string(originalContent),
+		)
 	}
 }
 
@@ -133,6 +188,36 @@ func TestCopyDir(t *testing.T) {
 	checkFileContent(t, filepath.Join(dstDir, "file1.txt"), "File 1")
 	checkFileContent(t, filepath.Join(dstDir, "file2.txt"), "File 2")
 	checkFileContent(t, filepath.Join(dstDir, "subdir", "file3.txt"), "File 3")
+}
+
+func TestCopyDirRejectsSymlinkEntries(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is environment-dependent on Windows")
+	}
+
+	srcDir := t.TempDir()
+	dstDir := filepath.Join(t.TempDir(), "dst")
+
+	targetPath := filepath.Join(srcDir, "target.txt")
+	if err := os.WriteFile(targetPath, []byte("target"), 0o644); err != nil {
+		t.Fatalf("expected no error writing target file, got %v", err)
+	}
+
+	linkPath := filepath.Join(srcDir, "target-link.txt")
+	if err := os.Symlink(targetPath, linkPath); err != nil {
+		t.Skipf("symlink is unavailable in this environment: %v", err)
+	}
+
+	copyError := CopyDir(srcDir, dstDir)
+	if copyError == nil {
+		t.Fatal("expected CopyDir to fail when source contains symlink entries")
+	}
+	if !strings.Contains(
+		copyError.Error(),
+		"symlink entries are not supported",
+	) {
+		t.Fatalf("copy error=%v, expected symlink rejection message", copyError)
+	}
 }
 
 // Helper function to check file content
@@ -236,4 +321,60 @@ func TestFromGob(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for nil file, got nil")
 	}
+}
+
+func TestMustSub_ReturnsSubFS(t *testing.T) {
+	fileSystem := fstest.MapFS{
+		"parent/child.txt": {
+			Data: []byte("hello"),
+		},
+	}
+
+	subFileSystem := MustSub(fileSystem, "parent")
+	readBytes, err := fs.ReadFile(subFileSystem, "child.txt")
+	if err != nil {
+		t.Fatalf("failed to read file from MustSub result: %v", err)
+	}
+	if string(readBytes) != "hello" {
+		t.Fatalf(
+			"MustSub file content = %q, want %q",
+			string(readBytes),
+			"hello",
+		)
+	}
+}
+
+func TestMustSub_PanicsForInvalidSubdirectoryPath(t *testing.T) {
+	defer func() {
+		recoveredValue := recover()
+		if recoveredValue == nil {
+			t.Fatal("expected MustSub to panic for invalid subdirectory path")
+		}
+	}()
+
+	_ = MustSub(fstest.MapFS{}, "..")
+}
+
+func TestMustReadFile_ReturnsFileContents(t *testing.T) {
+	fileSystem := fstest.MapFS{
+		"content.txt": {
+			Data: []byte("value"),
+		},
+	}
+
+	readBytes := MustReadFile(fileSystem, "content.txt")
+	if string(readBytes) != "value" {
+		t.Fatalf("MustReadFile() = %q, want %q", string(readBytes), "value")
+	}
+}
+
+func TestMustReadFile_PanicsForMissingFile(t *testing.T) {
+	defer func() {
+		recoveredValue := recover()
+		if recoveredValue == nil {
+			t.Fatal("expected MustReadFile to panic for missing file")
+		}
+	}()
+
+	_ = MustReadFile(fstest.MapFS{}, "missing.txt")
 }

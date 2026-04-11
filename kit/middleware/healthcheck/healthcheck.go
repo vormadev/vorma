@@ -9,7 +9,9 @@ import (
 
 // Healthz is a middleware that responds with an HTTP 200 OK status code and the
 // string "OK" in the response body for GET and HEAD requests to the "/healthz" endpoint.
-var Healthz = OK("/healthz")
+func Healthz(next http.Handler) http.Handler {
+	return OK("/healthz")(next)
+}
 
 // OK returns a middleware that responds with an HTTP 200 OK status code and the
 // string "OK" in the response body for GET and HEAD requests to the given endpoint.

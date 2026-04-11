@@ -1,0 +1,26 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/vormadev/vorma/kit/k9
+BenchmarkNew-14            	11107806	        98.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNew-14            	12329932	        99.16 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNew-14            	12319900	        99.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNewMulti16-14     	 3657178	       326.4 ns/op	     416 B/op	       2 allocs/op
+BenchmarkNewMulti16-14     	 3735744	       327.1 ns/op	     416 B/op	       2 allocs/op
+BenchmarkNewMulti16-14     	 3541798	       324.6 ns/op	     416 B/op	       2 allocs/op
+BenchmarkSerialize-14      	34648616	        33.97 ns/op	      32 B/op	       1 allocs/op
+BenchmarkSerialize-14      	37053094	        33.27 ns/op	      32 B/op	       1 allocs/op
+BenchmarkSerialize-14      	34924880	        32.64 ns/op	      32 B/op	       1 allocs/op
+BenchmarkParseLower-14     	20536531	        59.35 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseLower-14     	19032450	        59.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseLower-14     	20176586	        58.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseUpper-14     	20339614	        60.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseUpper-14     	20263951	        59.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkParseUpper-14     	20684557	        58.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFromBytes-14      	745359360	         1.639 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFromBytes-14      	760236267	         1.618 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFromBytes-14      	752403576	         1.605 ns/op	       0 B/op	       0 allocs/op
+BenchmarkToUnixMicro-14    	1000000000	         0.6672 ns/op	       0 B/op	       0 allocs/op
+BenchmarkToUnixMicro-14    	1000000000	         0.6637 ns/op	       0 B/op	       0 allocs/op
+BenchmarkToUnixMicro-14    	1000000000	         0.6521 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/vormadev/vorma/kit/k9	26.139s

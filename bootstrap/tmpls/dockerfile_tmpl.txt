@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .{{.DockerWorkdirCommand}}
 RUN {{.DockerInstallCommand}}
 RUN go run ./backend/cmd/build --no-binary
-RUN CGO_ENABLED=0 GOOS=linux go build -mod=readonly -o ./backend/dist/main ./backend/cmd/serve
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=readonly -o ./backend/.waveout/main ./backend/cmd/serve
 
 FROM alpine
 WORKDIR /app

@@ -22,7 +22,9 @@ func createTestKeyset(t *testing.T) *keyset.Keyset {
 	}
 	b64Secret := base64.StdEncoding.EncodeToString(secret)
 
-	ks, err := keyset.RootSecretsToRootKeyset(keyset.RootSecrets{keyset.RootSecret(b64Secret)})
+	ks, err := keyset.RootSecretsToRootKeyset(
+		keyset.RootSecrets{keyset.RootSecret(b64Secret)},
+	)
 	if err != nil {
 		t.Fatalf("Failed to create test keyset: %v", err)
 	}
@@ -46,7 +48,10 @@ func createTestProtector(t *testing.T, origins []string) *Protector {
 	return NewProtector(cfg)
 }
 
-func extractCSRFCookie(rr *httptest.ResponseRecorder, cookieName string) *http.Cookie {
+func extractCSRFCookie(
+	rr *httptest.ResponseRecorder,
+	cookieName string,
+) *http.Cookie {
 	for _, cookie := range rr.Result().Cookies() {
 		if cookie.Name == cookieName {
 			return cookie
@@ -76,41 +81,63 @@ func TestNewProtector(t *testing.T) {
 			},
 			check: func(t *testing.T, p *Protector) {
 				if p.cfg.TokenTTL != 4*time.Hour {
-					t.Errorf("Expected default TTL of 4h, got %v", p.cfg.TokenTTL)
+					t.Errorf(
+						"Expected default TTL of 4h, got %v",
+						p.cfg.TokenTTL,
+					)
 				}
 				if p.cfg.CookieName != "csrf_token" {
-					t.Errorf("Expected default cookie suffix 'csrf_token', got %s", p.cfg.CookieName)
+					t.Errorf(
+						"Expected default cookie suffix 'csrf_token', got %s",
+						p.cfg.CookieName,
+					)
 				}
 				if p.cfg.HeaderName != "X-CSRF-Token" {
-					t.Errorf("Expected default header name 'X-CSRF-Token', got %s", p.cfg.HeaderName)
+					t.Errorf(
+						"Expected default header name 'X-CSRF-Token', got %s",
+						p.cfg.HeaderName,
+					)
 				}
 				if p.cookie.Name() != "__Host-csrf_token" {
-					t.Errorf("Expected cookie name '__Host-csrf_token', got %s", p.cookie.Name())
+					t.Errorf(
+						"Expected cookie name '__Host-csrf_token', got %s",
+						p.cookie.Name(),
+					)
 				}
 			},
 		},
 		{
 			name: "custom values",
 			cfg: ProtectorConfig{
-				CookieManager:  cookieManager,
-				GetSessionID:   func(r *http.Request) string { return "" },
-				AllowedOrigins: []string{"https://example.com", "HTTPS://EXAMPLE.ORG"},
-				TokenTTL:       2 * time.Hour,
-				CookieName:     "custom",
-				HeaderName:     "X-Custom-CSRF",
+				CookieManager: cookieManager,
+				GetSessionID:  func(r *http.Request) string { return "" },
+				AllowedOrigins: []string{
+					"https://example.com",
+					"HTTPS://EXAMPLE.ORG",
+				},
+				TokenTTL:   2 * time.Hour,
+				CookieName: "custom",
+				HeaderName: "X-Custom-CSRF",
 			},
 			check: func(t *testing.T, p *Protector) {
 				if p.cfg.TokenTTL != 2*time.Hour {
 					t.Errorf("Expected TTL of 2h, got %v", p.cfg.TokenTTL)
 				}
 				if p.cookie.Name() != "__Host-custom" {
-					t.Errorf("Expected cookie name '__Host-custom', got %s", p.cookie.Name())
+					t.Errorf(
+						"Expected cookie name '__Host-custom', got %s",
+						p.cookie.Name(),
+					)
 				}
 				if !p.allowedOrigins["https://example.com"] {
-					t.Error("Expected normalized origin 'https://example.com' to be allowed")
+					t.Error(
+						"Expected normalized origin 'https://example.com' to be allowed",
+					)
 				}
 				if !p.allowedOrigins["https://example.org"] {
-					t.Error("Expected normalized origin 'https://example.org' to be allowed")
+					t.Error(
+						"Expected normalized origin 'https://example.org' to be allowed",
+					)
 				}
 				if p.hasOriginRestrictions != true {
 					t.Error("Expected hasOriginRestrictions to be true")
@@ -197,13 +224,18 @@ func TestMiddleware_GETRequest(t *testing.T) {
 					t.Errorf("Expected SameSite=Lax, got %v", cookie.SameSite)
 				}
 				if cookie.HttpOnly {
-					t.Error("Expected HttpOnly to be false (must be readable by JS)")
+					t.Error(
+						"Expected HttpOnly to be false (must be readable by JS)",
+					)
 				}
 				if cookie.Path != "/" {
 					t.Errorf("Expected Path=/, got %s", cookie.Path)
 				}
 				if cookie.Domain != "" {
-					t.Errorf("Expected empty Domain for __Host- prefix, got %s", cookie.Domain)
+					t.Errorf(
+						"Expected empty Domain for __Host- prefix, got %s",
+						cookie.Domain,
+					)
 				}
 			}
 		})
@@ -419,7 +451,11 @@ func TestCycleTokenWithProxy(t *testing.T) {
 			}
 
 			if payload.SessionID != tt.sessionID {
-				t.Errorf("Expected session ID %q, got %q", tt.sessionID, payload.SessionID)
+				t.Errorf(
+					"Expected session ID %q, got %q",
+					tt.sessionID,
+					payload.SessionID,
+				)
 			}
 		})
 	}
@@ -464,7 +500,11 @@ func TestCycleTokenWithWriter(t *testing.T) {
 			}
 
 			if payload.SessionID != tt.sessionID {
-				t.Errorf("Expected session ID %q, got %q", tt.sessionID, payload.SessionID)
+				t.Errorf(
+					"Expected session ID %q, got %q",
+					tt.sessionID,
+					payload.SessionID,
+				)
 			}
 		})
 	}
@@ -578,7 +618,11 @@ func TestOriginValidationWithMalformedReferer(t *testing.T) {
 	p.Middleware(handler).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("Expected %d for malformed referer, got %d", http.StatusForbidden, rr.Code)
+		t.Errorf(
+			"Expected %d for malformed referer, got %d",
+			http.StatusForbidden,
+			rr.Code,
+		)
 	}
 }
 
@@ -681,9 +725,11 @@ func TestDevMode(t *testing.T) {
 				GetSessionID:  func(r *http.Request) string { return "" },
 			})
 
-			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			})
+			handler := http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+				},
+			)
 
 			req := httptest.NewRequest("GET", "/", nil)
 			req.Host = tt.host
@@ -692,7 +738,10 @@ func TestDevMode(t *testing.T) {
 			if tt.shouldPanic {
 				defer func() {
 					if r := recover(); r == nil {
-						t.Errorf("Expected panic for host %s, but didn't panic", tt.host)
+						t.Errorf(
+							"Expected panic for host %s, but didn't panic",
+							tt.host,
+						)
 					}
 				}()
 			}
@@ -708,7 +757,10 @@ func TestDevMode(t *testing.T) {
 
 				// In dev mode, should have __Dev- prefix
 				if cookie.Name != "__Dev-csrf_token" {
-					t.Errorf("Expected cookie name '__Dev-csrf_token' in dev mode, got %s", cookie.Name)
+					t.Errorf(
+						"Expected cookie name '__Dev-csrf_token' in dev mode, got %s",
+						cookie.Name,
+					)
 				}
 
 				// Should NOT be Secure in dev mode
@@ -757,7 +809,10 @@ func TestDevModeVsProductionMode(t *testing.T) {
 
 		cookie := extractCSRFCookie(rr, prodProtector.cookie.Name())
 		if cookie.Name != "__Host-csrf_token" {
-			t.Errorf("Expected __Host- prefix in production, got %s", cookie.Name)
+			t.Errorf(
+				"Expected __Host- prefix in production, got %s",
+				cookie.Name,
+			)
 		}
 		if !cookie.Secure {
 			t.Error("Expected Secure flag in production")
@@ -789,7 +844,10 @@ func TestDevModeVsProductionMode(t *testing.T) {
 
 // TestOriginValidationEdgeCases tests edge cases in origin validation
 func TestOriginValidationEdgeCases(t *testing.T) {
-	p := createTestProtector(t, []string{"https://example.com", "http://localhost:3000"})
+	p := createTestProtector(
+		t,
+		[]string{"https://example.com", "http://localhost:3000"},
+	)
 
 	// Get a valid token
 	getReq := httptest.NewRequest("GET", "/", nil)
@@ -894,7 +952,11 @@ func TestCustomHeaderName(t *testing.T) {
 	p.Middleware(handler).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("Expected %d with custom header, got %d", http.StatusOK, rr.Code)
+		t.Errorf(
+			"Expected %d with custom header, got %d",
+			http.StatusOK,
+			rr.Code,
+		)
 	}
 
 	// POST with default header name should fail
@@ -906,7 +968,11 @@ func TestCustomHeaderName(t *testing.T) {
 	p.Middleware(handler).ServeHTTP(rr2, req2)
 
 	if rr2.Code != http.StatusForbidden {
-		t.Errorf("Expected %d with wrong header name, got %d", http.StatusForbidden, rr2.Code)
+		t.Errorf(
+			"Expected %d with wrong header name, got %d",
+			http.StatusForbidden,
+			rr2.Code,
+		)
 	}
 }
 
@@ -939,8 +1005,10 @@ func TestInvalidTokenPayload(t *testing.T) {
 			wantStatus: http.StatusForbidden,
 		},
 		{
-			name:       "random data",
-			tokenValue: base64.StdEncoding.EncodeToString([]byte("random data that's not encrypted")),
+			name: "random data",
+			tokenValue: base64.StdEncoding.EncodeToString(
+				[]byte("random data that's not encrypted"),
+			),
 			wantStatus: http.StatusForbidden,
 		},
 	}
@@ -958,7 +1026,12 @@ func TestInvalidTokenPayload(t *testing.T) {
 			p.Middleware(handler).ServeHTTP(rr, req)
 
 			if rr.Code != tt.wantStatus {
-				t.Errorf("Expected status %d for %s, got %d", tt.wantStatus, tt.name, rr.Code)
+				t.Errorf(
+					"Expected status %d for %s, got %d",
+					tt.wantStatus,
+					tt.name,
+					rr.Code,
+				)
 			}
 		})
 	}
@@ -1125,7 +1198,11 @@ func TestSessionBinding(t *testing.T) {
 		t.Fatalf("Failed to decode token: %v", err)
 	}
 	if payload.SessionID != sessionID {
-		t.Errorf("Expected session ID %q in token, got %q", sessionID, payload.SessionID)
+		t.Errorf(
+			"Expected session ID %q in token, got %q",
+			sessionID,
+			payload.SessionID,
+		)
 	}
 
 	tests := []struct {
@@ -1210,7 +1287,10 @@ func TestSessionBindingEmptyTokenWithSession(t *testing.T) {
 
 	// Should fail due to session mismatch (empty != "user-123")
 	if rr.Code != http.StatusForbidden {
-		t.Errorf("Expected 403 for session mismatch (empty token vs session), got %d", rr.Code)
+		t.Errorf(
+			"Expected 403 for session mismatch (empty token vs session), got %d",
+			rr.Code,
+		)
 	}
 }
 
@@ -1283,8 +1363,11 @@ func TestSelfHealing(t *testing.T) {
 			description:    "Missing cookie should self-heal",
 		},
 		{
-			name:           "corrupted cookie value",
-			cookie:         &http.Cookie{Name: p.cookie.Name(), Value: "corrupted!@#$"},
+			name: "corrupted cookie value",
+			cookie: &http.Cookie{
+				Name:  p.cookie.Name(),
+				Value: "corrupted!@#$",
+			},
 			headerToken:    "corrupted!@#$", // Same corrupted value
 			origin:         "https://example.com",
 			protector:      p,
@@ -1400,25 +1483,42 @@ func TestSelfHealing(t *testing.T) {
 			// Special case: valid request should return 200
 			if tt.name == "valid everything" {
 				if rr.Code != http.StatusOK {
-					t.Errorf("%s: expected status 200 for valid request, got %d", tt.description, rr.Code)
+					t.Errorf(
+						"%s: expected status 200 for valid request, got %d",
+						tt.description,
+						rr.Code,
+					)
 				}
 				if newCookie != nil {
-					t.Errorf("%s: should not issue new cookie for valid request", tt.description)
+					t.Errorf(
+						"%s: should not issue new cookie for valid request",
+						tt.description,
+					)
 				}
 				return
 			}
 
 			// All other cases should return 403
 			if rr.Code != http.StatusForbidden {
-				t.Errorf("%s: expected status 403, got %d", tt.description, rr.Code)
+				t.Errorf(
+					"%s: expected status 403, got %d",
+					tt.description,
+					rr.Code,
+				)
 			}
 
 			// Check self-healing behavior
 			if tt.shouldSelfHeal && newCookie == nil {
-				t.Errorf("%s: expected new cookie from self-healing but got none", tt.description)
+				t.Errorf(
+					"%s: expected new cookie from self-healing but got none",
+					tt.description,
+				)
 			}
 			if !tt.shouldSelfHeal && newCookie != nil {
-				t.Errorf("%s: unexpected new cookie, self-healing should not occur", tt.description)
+				t.Errorf(
+					"%s: unexpected new cookie, self-healing should not occur",
+					tt.description,
+				)
 			}
 		})
 	}
@@ -1451,10 +1551,16 @@ func TestGetSessionIDCallback(t *testing.T) {
 	p.Middleware(handler).ServeHTTP(getRR, getReq)
 
 	if callCount != 1 {
-		t.Errorf("Expected GetSessionID to be called once for GET, called %d times", callCount)
+		t.Errorf(
+			"Expected GetSessionID to be called once for GET, called %d times",
+			callCount,
+		)
 	}
 	if capturedRequests[0].Method != "GET" {
-		t.Errorf("Expected captured request method to be GET, got %s", capturedRequests[0].Method)
+		t.Errorf(
+			"Expected captured request method to be GET, got %s",
+			capturedRequests[0].Method,
+		)
 	}
 
 	cookie := extractCSRFCookie(getRR, p.cookie.Name())
@@ -1483,7 +1589,10 @@ func TestGetSessionIDCallback(t *testing.T) {
 		t.Errorf("Expected GetSessionID to be called at least once for POST")
 	}
 	if capturedRequests[0].Method != "POST" {
-		t.Errorf("Expected captured request method to be POST, got %s", capturedRequests[0].Method)
+		t.Errorf(
+			"Expected captured request method to be POST, got %s",
+			capturedRequests[0].Method,
+		)
 	}
 
 	// Should fail because session doesn't match (session-GET != session-POST)
@@ -1503,7 +1612,9 @@ func TestLoginFlow(t *testing.T) {
 	})
 
 	// 1. User performs a GET, gets an anonymous token.
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	handler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
+	)
 	req := httptest.NewRequest("GET", "/", nil)
 	rr := httptest.NewRecorder()
 	protector.Middleware(handler).ServeHTTP(rr, req)
@@ -1520,18 +1631,20 @@ func TestLoginFlow(t *testing.T) {
 	loginRR := httptest.NewRecorder()
 
 	// The login handler that calls CycleTokenWithProxy
-	loginHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// On successful login, update session and cycle token
-		newSessionID := "user-123"
-		sessionID = newSessionID // Simulate session creation
+	loginHandler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			// On successful login, update session and cycle token
+			newSessionID := "user-123"
+			sessionID = newSessionID // Simulate session creation
 
-		rp := response.NewProxy()
-		if err := protector.CycleTokenWithProxy(rp, newSessionID); err != nil {
-			t.Fatalf("CycleTokenWithProxy failed: %v", err)
-		}
-		rp.ApplyToResponseWriter(w, r)
-		w.WriteHeader(http.StatusOK)
-	})
+			rp := response.NewProxy()
+			if err := protector.CycleTokenWithProxy(rp, newSessionID); err != nil {
+				t.Fatalf("CycleTokenWithProxy failed: %v", err)
+			}
+			rp.ApplyToResponseWriter(w, r)
+			w.WriteHeader(http.StatusOK)
+		},
+	)
 
 	protector.Middleware(loginHandler).ServeHTTP(loginRR, loginReq)
 
@@ -1557,7 +1670,10 @@ func TestLoginFlow(t *testing.T) {
 	protector.Middleware(handler).ServeHTTP(postAuthRR, postAuthReq)
 
 	if postAuthRR.Code != http.StatusForbidden {
-		t.Errorf("Expected 403 Forbidden when using old token after login, got %d", postAuthRR.Code)
+		t.Errorf(
+			"Expected 403 Forbidden when using old token after login, got %d",
+			postAuthRR.Code,
+		)
 	}
 
 	// 5. Make an authenticated POST with the NEW session cookie. It must succeed.
@@ -1568,7 +1684,10 @@ func TestLoginFlow(t *testing.T) {
 	protector.Middleware(handler).ServeHTTP(postAuthRR2, postAuthReq2)
 
 	if postAuthRR2.Code != http.StatusOK {
-		t.Errorf("Expected 200 OK when using new token after login, got %d", postAuthRR2.Code)
+		t.Errorf(
+			"Expected 200 OK when using new token after login, got %d",
+			postAuthRR2.Code,
+		)
 	}
 }
 
@@ -1581,7 +1700,9 @@ func TestLogoutFlow(t *testing.T) {
 			return sessionID // Session ID is controlled by the test
 		},
 	})
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	handler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) },
+	)
 
 	// 1. Get a valid session-bound token.
 	req := httptest.NewRequest("GET", "/", nil)
@@ -1595,13 +1716,15 @@ func TestLogoutFlow(t *testing.T) {
 	logoutReq.Header.Set(protector.cfg.HeaderName, sessionCookie.Value)
 	logoutRR := httptest.NewRecorder()
 
-	logoutHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		sessionID = "" // Simulate logout
-		rp := response.NewProxy()
-		protector.CycleTokenWithProxy(rp, "") // Cycle to an anonymous token
-		rp.ApplyToResponseWriter(w, r)
-		w.WriteHeader(http.StatusOK)
-	})
+	logoutHandler := http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			sessionID = "" // Simulate logout
+			rp := response.NewProxy()
+			protector.CycleTokenWithProxy(rp, "") // Cycle to an anonymous token
+			rp.ApplyToResponseWriter(w, r)
+			w.WriteHeader(http.StatusOK)
+		},
+	)
 
 	protector.Middleware(logoutHandler).ServeHTTP(logoutRR, logoutReq)
 
@@ -1626,6 +1749,9 @@ func TestLogoutFlow(t *testing.T) {
 		t.Fatal("Could not decode new token")
 	}
 	if payload.SessionID != "" {
-		t.Errorf("Expected empty session ID in token after logout, got %q", payload.SessionID)
+		t.Errorf(
+			"Expected empty session ID in token after logout, got %q",
+			payload.SessionID,
+		)
 	}
 }

@@ -81,7 +81,7 @@ func TestGetBool(t *testing.T) {
 }
 
 func TestEdgeCases(t *testing.T) {
-	// Test GetInt with extreme values
+	// Test Int with extreme values
 	key := "TEST_INT_EXTREME"
 	os.Setenv(key, "2147483647") // Max int32
 	if value := GetInt(key, 0); value != 2147483647 {
@@ -93,7 +93,7 @@ func TestEdgeCases(t *testing.T) {
 		t.Fatalf("expected -2147483648, got %d", value)
 	}
 
-	// Test GetBool with various valid representations
+	// Test Bool with various valid representations
 	key = "TEST_BOOL_REPRESENTATION"
 	os.Setenv(key, "1")
 	if value := GetBool(key, false); value != true {

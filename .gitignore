@@ -1,5 +1,4 @@
 node_modules
-
 .DS_Store
 
 *.local
@@ -10,5 +9,6 @@ node_modules
 !.env.example
 
 .vscode/settings.json
+.zed/settings.json
 
-npm_dist/
+internal/pkg/npm/.dist

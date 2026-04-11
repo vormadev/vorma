@@ -164,6 +164,48 @@ func TestOrchestrate_CleanupTimeout(t *testing.T) {
 	}
 }
 
+func TestOrchestrate_CleanupTimeout_NonCooperativeCallback(t *testing.T) {
+	logger, logBuf := testLogger()
+	cleanupStarted := make(chan struct{})
+	blockForever := make(chan struct{})
+
+	options := OrchestrateOptions{
+		Logger:          logger,
+		ShutdownTimeout: 100 * time.Millisecond,
+		StartupCallback: func() error {
+			p, _ := os.FindProcess(os.Getpid())
+			p.Signal(syscall.SIGTERM)
+			return nil
+		},
+		ShutdownCallback: func(ctx context.Context) error {
+			close(cleanupStarted)
+			<-blockForever
+			return nil
+		},
+	}
+
+	finished := make(chan struct{})
+	go func() {
+		Orchestrate(options)
+		close(finished)
+	}()
+
+	select {
+	case <-cleanupStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Cleanup was not triggered")
+	}
+
+	select {
+	case <-finished:
+		if !logContains(logBuf, "timed out") {
+			t.Error("Expected timeout warning in logs")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Orchestrate did not return after timeout for non-cooperative callback")
+	}
+}
+
 func TestTerminateProcess(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Skipping on Windows")
@@ -217,6 +259,16 @@ func TestTerminateProcess_InvalidProcess(t *testing.T) {
 	err := TerminateProcess(process, time.Second, logger)
 	if err == nil {
 		t.Error("Expected error when terminating non-existent process")
+	}
+}
+
+func TestTerminateProcess_NilProcessReturnsError(
+	t *testing.T,
+) {
+	logger, _ := testLogger()
+	err := TerminateProcess(nil, time.Second, logger)
+	if !errors.Is(err, errProcessIsNil) {
+		t.Fatalf("expected errProcessIsNil, got %v", err)
 	}
 }
 

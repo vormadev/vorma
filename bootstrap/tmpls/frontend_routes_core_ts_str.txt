@@ -1,0 +1,4 @@
+import { route } from "vorma/buildtime";
+
+route("/", import("../components/root.tsx"), "Root");
+route("/_index", import("../components/home.tsx"), "Home");

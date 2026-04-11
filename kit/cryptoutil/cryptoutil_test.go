@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -51,6 +52,14 @@ func TestRandom(t *testing.T) {
 	}
 	if len(zeroLengthBytes) != 0 {
 		t.Fatalf("expected empty byte slice, got %d bytes", len(zeroLengthBytes))
+	}
+
+	_, err = RandomBytes(-1)
+	if err == nil {
+		t.Fatalf("expected error for negative byte length")
+	}
+	if !errors.Is(err, errNegativeByteLength) {
+		t.Fatalf("expected negative-length error, got %v", err)
 	}
 }
 

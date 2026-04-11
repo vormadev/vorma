@@ -1,35 +1,21 @@
-// buyer beware
 package fsmarkdown
 
 import (
 	"bytes"
-	"html/template"
+	"errors"
 	"io"
 	"io/fs"
-	"log"
 	"net/http"
-	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/vormadev/vorma/kit/lru"
 	"github.com/vormadev/vorma/kit/matcher"
-	"github.com/vormadev/vorma/kit/typed"
-	"golang.org/x/sync/errgroup"
 )
 
 type FrontmatterParser = func(io.Reader, any) ([]byte, error)
 type MarkdownParser = func([]byte, io.Writer) error
-
-// Do not initialize manually. Always create with New().
-type Instance struct {
-	Options
-	pageDetailsCache *lru.Cache[string, *DetailedPage]
-	sitemapCache     typed.SyncMap[generateSitemapInput, *generateSitemapInnerData]
-	basePageCache    *lru.Cache[string, *Page]
-}
 
 type Options struct {
 	FS                fs.FS
@@ -38,369 +24,146 @@ type Options struct {
 	MarkdownParser    MarkdownParser
 }
 
-func New(opts Options) *Instance {
-	if opts.FS == nil {
-		log.Fatal("FS is required")
-	}
-	if opts.FrontmatterParser == nil {
-		log.Fatal("FrontmatterParser is required")
-	}
-	if opts.MarkdownParser == nil {
-		log.Fatal("MarkdownParser is required")
-	}
-	return &Instance{
-		Options:          opts,
-		pageDetailsCache: lru.NewCache[string, *DetailedPage](1_000),
-		sitemapCache:     typed.SyncMap[generateSitemapInput, *generateSitemapInnerData]{},
-		basePageCache:    lru.NewCache[string, *Page](1_000),
-	}
-}
-
 type Page struct {
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`
 	Date        string `yaml:"date"`
 	Order       int    `yaml:"order"`
-	Content     template.HTML
-	RawContent  string
+	HTML        string
+	Raw         string
 	URL         string
 	IsFolder    bool
 }
 
-type DetailedPage struct {
-	*Page
-	Sitemap      Sitemap
-	IndexSitemap Sitemap
-	BackItem     string
+type NavItem struct {
+	Title       string
+	URL         string
+	Description string
+	Date        string
+	IsFolder    bool
+	IsActive    bool
 }
 
-type SitemapItem struct {
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Description string `json:"description,omitempty"`
-	Date        string `json:"date,omitempty"`
-	IsFolder    bool   `json:"isFolder,omitempty"`
-	IsActive    bool   `json:"isActive,omitempty"`
+type Result struct {
+	Page      *Page
+	Siblings  []NavItem
+	Children  []NavItem
+	ParentURL string
 }
 
-type Sitemap []SitemapItem
+type Instance struct {
+	Options
+	page_cache   *lru.Cache[string, *Page]
+	result_cache *lru.Cache[string, *Result]
+	dir_cache    *lru.Cache[string, *dir_listing]
+}
 
-func (inst *Instance) GetPageDetails(r *http.Request) (detailedPage *DetailedPage, err error) {
-	cleanPath := filepath.Clean(r.URL.Path)
+// New creates an Instance. Panics if FS, FrontmatterParser,
+// or MarkdownParser are nil.
+func New(opts Options) *Instance {
+	if opts.FS == nil {
+		panic("fsmarkdown: FS is required")
+	}
+	if opts.FrontmatterParser == nil {
+		panic("fsmarkdown: FrontmatterParser is required")
+	}
+	if opts.MarkdownParser == nil {
+		panic("fsmarkdown: MarkdownParser is required")
+	}
+	return &Instance{
+		Options:      opts,
+		page_cache:   lru.NewCache[string, *Page](1000),
+		result_cache: lru.NewCache[string, *Result](1000),
+		dir_cache:    lru.NewCache[string, *dir_listing](1000),
+	}
+}
 
-	if p, ok := inst.pageDetailsCache.Get(cleanPath); ok && !inst.IsDev {
-		return p, nil
+// Lookup resolves a clean URL path (e.g. "/docs/intro") to a Result.
+// Returns (result, false, nil) if the path does not exist.
+func (inst *Instance) Lookup(_path string) (*Result, bool, error) {
+	clean := clean_url_path(_path)
+
+	if r, ok := inst.result_cache.Get(clean); ok && !inst.IsDev {
+		return r, r.Page != nil, nil
 	}
 
-	pageBase, found, err := inst.getPageBase(cleanPath)
+	page, found, err := inst.load_page(clean)
 	if err != nil {
-		log.Println("Error getting pageBase in getPageDetails: ", err)
-		return nil, err
+		return nil, false, err
+	}
+	if !found {
+		r := &Result{}
+		inst.result_cache.Set(clean, r, true)
+		return r, false, nil
 	}
 
-	var eg errgroup.Group
-	var indexSitemap, sitemap Sitemap
-	var backItem string
+	parent_dir := path.Dir(clean)
 
-	if pageBase.IsFolder && cleanPath != "/" {
-		eg.Go(func() error {
-			sm, err := inst.generateSitemap(generateSitemapInput{CleanPath: cleanPath, IsIndex: true})
-			if err != nil {
-				log.Println("Error generating sitemap in getPageDetails: ", err)
-				return err
-			}
-			indexSitemap = sm.Sitemap
-			return nil
-		})
-	}
-
-	eg.Go(func() error {
-		sm, err := inst.generateSitemap(generateSitemapInput{CleanPath: cleanPath, IsIndex: false})
-		if err != nil {
-			log.Println("Error generating sitemap in getPageDetails: ", err)
-			return err
-		}
-		sitemap = sm.Sitemap
-		if sm.BackItem != "/" {
-			backItem = sm.BackItem
-		}
-		return nil
-	})
-
-	if err := eg.Wait(); err != nil {
-		log.Println("Error waiting for errgroup in getPageDetails: ", err)
-		return nil, err
-	}
-
-	p := &DetailedPage{
-		Page:         pageBase,
-		Sitemap:      sitemap,
-		IndexSitemap: indexSitemap,
-		BackItem:     backItem,
-	}
-
-	inst.pageDetailsCache.Set(cleanPath, p, !found)
-
-	return p, nil
-}
-
-func (inst *Instance) GetPlainMarkdown(r *http.Request) (string, error) {
-	p, err := inst.GetPageDetails(r)
+	sibling_listing, err := inst.load_dir(parent_dir)
 	if err != nil {
-		return "", err
+		return nil, false, err
 	}
 
-	var result strings.Builder
-	if p.Title != "" {
-		result.WriteString("# ")
-		result.WriteString(p.Title)
-		result.WriteString("\n")
-	}
-	result.WriteString(p.RawContent)
-
-	return result.String(), nil
-}
-
-type generateSitemapInput struct {
-	CleanPath string
-	IsIndex   bool
-}
-
-type generateSitemapOutput struct {
-	Sitemap  Sitemap
-	BackItem string
-}
-
-type generateSitemapInnerData struct {
-	Pages    []*Page
-	BackItem string
-	DirToUse string
-}
-
-func (inst *Instance) generateSitemap(input generateSitemapInput) (*generateSitemapOutput, error) {
-	var innerData *generateSitemapInnerData
-
-	if x, ok := inst.sitemapCache.Load(input); ok && !inst.IsDev {
-		innerData = x
-	} else {
-		dirToUse := filepath.Dir(input.CleanPath)
-		if input.IsIndex {
-			dirToUse = "/" + input.CleanPath
-		}
-
-		directChildren, err := fs.ReadDir(inst.FS, filepath.Join("markdown", dirToUse))
-		if err != nil {
-			log.Println("Error reading dir in generateSitemap: ", err)
-			return nil, err
-		}
-
-		pages, hasIndex, err := inst.processDirectChildren(directChildren, dirToUse)
-		if err != nil {
-			log.Println("Error processing direct children in generateSitemap: ", err)
-			return nil, err
-		}
-
-		// Sort pages by date
-		sort.Slice(pages, func(i, j int) bool {
-			// If both have order, use that
-			if pages[i].Order != 0 && pages[j].Order != 0 {
-				return pages[i].Order < pages[j].Order
-			}
-			// If only one has order, it comes first
-			if pages[i].Order != 0 {
-				return true
-			}
-			if pages[j].Order != 0 {
-				return false
-			}
-			// Otherwise, fall back to date (newest first)
-			return pages[i].Date > pages[j].Date
-		})
-
-		var backItem string
-		if !input.IsIndex && hasIndex && input.CleanPath != "/" {
-			backItem = filepath.Dir(input.CleanPath)
-		}
-
-		innerData = &generateSitemapInnerData{
-			Pages:    pages,
-			BackItem: backItem,
-			DirToUse: dirToUse,
-		}
-
-		inst.sitemapCache.Store(input, innerData)
+	siblings := make_nav(sibling_listing.pages, clean)
+	if parent_dir == "/" || parent_dir == "." {
+		home := NavItem{Title: "Home", URL: "/", IsActive: clean == "/"}
+		siblings = append([]NavItem{home}, siblings...)
 	}
 
-	sitemap := Sitemap{}
-	if innerData.DirToUse == "/" {
-		item := SitemapItem{Title: "Home", URL: "/", IsActive: input.CleanPath == "/"}
-		sitemap = append(sitemap, item)
-	}
-	for _, p := range innerData.Pages {
-		item := SitemapItem{
-			Title:       p.Title,
-			URL:         p.URL,
-			Description: p.Description,
-			Date:        p.Date,
-			IsFolder:    p.IsFolder,
-			IsActive:    p.URL == input.CleanPath,
-		}
-		sitemap = append(sitemap, item)
-	}
-
-	output := &generateSitemapOutput{
-		Sitemap:  sitemap,
-		BackItem: innerData.BackItem,
-	}
-
-	return output, nil
-}
-
-func (inst *Instance) processDirectChildren(directChildren []fs.DirEntry, dirToUse string) ([]*Page, bool, error) {
-	type result struct {
-		index int
-		page  *Page
-	}
-
-	hasIndex := false
-	results := make([]result, 0, len(directChildren))
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(directChildren))
-
-	for i, file := range directChildren {
-		wg.Add(1)
-		go func(i int, file fs.DirEntry) {
-			defer wg.Done()
-
-			name := strings.TrimSuffix(file.Name(), ".md")
-			if file.Type().IsRegular() && !strings.HasSuffix(file.Name(), ".md") {
-				return
-			}
-			if name == "_index" {
-				mu.Lock()
-				hasIndex = true
-				mu.Unlock()
-				return
-			}
-
-			pageBase, found, err := inst.getPageBase(filepath.Join(dirToUse, name))
-			if err != nil {
-				errChan <- err
-				return
-			}
-			if !found {
-				return
-			}
-			if pageBase.Title == "" {
-				pageBase.Title = name
-			}
-
-			mu.Lock()
-			results = append(results, result{index: i, page: pageBase})
-			mu.Unlock()
-		}(i, file)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	// Check for errors
-	for err := range errChan {
+	var children []NavItem
+	if page.IsFolder && clean != "/" {
+		child_listing, err := inst.load_dir(clean)
 		if err != nil {
 			return nil, false, err
 		}
+		children = make_nav(child_listing.pages, clean)
 	}
 
-	// Sort results to preserve original order
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].index < results[j].index
-	})
-
-	// Extract pages in order
-	pages := make([]*Page, 0, len(results))
-	for _, r := range results {
-		pages = append(pages, r.page)
+	var parent_url string
+	if sibling_listing.has_index && clean != "/" && parent_dir != "/" {
+		parent_url = parent_dir
 	}
 
-	return pages, hasIndex, nil
+	r := &Result{
+		Page:      page,
+		Siblings:  siblings,
+		Children:  children,
+		ParentURL: parent_url,
+	}
+	inst.result_cache.Set(clean, r, false)
+	return r, true, nil
 }
 
-var notFoundPage = &Page{
-	Title:   "Error",
-	Content: "# 404\n\nNothing found.",
-}
-
-func (inst *Instance) getPageBase(cleanPath string) (p *Page, found bool, err error) {
-	var ok bool
-	if p, ok = inst.basePageCache.Get(cleanPath); ok && !inst.IsDev {
-		return p, true, nil
-	}
-
-	isFolder, fileBytes, err := inst.readPageFile(cleanPath)
+// PlainMarkdown returns the raw markdown with a title heading prepended.
+func (inst *Instance) PlainMarkdown(path string) (string, error) {
+	r, found, err := inst.Lookup(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			log.Println("Page not found: ", cleanPath, err)
-			return notFoundPage, false, nil
-		}
-		return nil, false, err
+		return "", err
+	}
+	if !found {
+		return "", nil
 	}
 
-	p, err = inst.parseMarkdown(fileBytes, cleanPath, isFolder)
-	if err != nil {
-		return nil, false, err
-	}
-
-	found = p != notFoundPage
-	inst.basePageCache.Set(cleanPath, p, !found)
-	return p, found, nil
+	return inst.build_plain_markdown(r.Page), nil
 }
 
-func (inst *Instance) readPageFile(cleanPath string) (bool, []byte, error) {
-	fileBytes, err := fs.ReadFile(inst.FS, "markdown"+cleanPath+".md")
-	if err == nil {
-		return false, fileBytes, nil
+func (inst *Instance) build_plain_markdown(page *Page) string {
+	var b strings.Builder
+	if page.Title != "" {
+		b.WriteString("# ")
+		b.WriteString(page.Title)
+		b.WriteString("\n")
 	}
-
-	if !os.IsNotExist(err) {
-		return false, nil, err
-	}
-
-	fileBytes, err = fs.ReadFile(inst.FS, "markdown"+filepath.Join(cleanPath, "_index.md"))
-	if err != nil {
-		return false, nil, err
-	}
-
-	return true, fileBytes, nil
+	b.WriteString(page.Raw)
+	return b.String()
 }
 
-func (inst *Instance) parseMarkdown(fileBytes []byte, cleanPath string, isFolder bool) (*Page, error) {
-	var p Page
-	rest, err := inst.FrontmatterParser(bytes.NewReader(fileBytes), &p)
-	if err != nil {
-		return nil, err
-	}
-
-	p.RawContent = string(rest)
-
-	var buf bytes.Buffer
-	if err := inst.MarkdownParser(rest, &buf); err != nil {
-		return nil, err
-	}
-	p.Content = template.HTML(buf.String())
-
-	p.URL = cleanPath
-	p.IsFolder = isFolder
-
-	return &p, nil
-}
-
-// PlainTextMiddleware serves the plain markdown content of pages when the
-// request's Accept header includes "text/plain" or "text/markdown".
-// Patterns use the default semantics of the kit/matcher package (e.g.,
-// "/docs/*" for nested paths, "/docs/:slug" for dynamic segments, or
-// "/docs" for an exact match). To include everything, pass "/*".
-func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) http.Handler {
+// PlainTextMiddleware serves plain markdown when the Accept header
+// includes "text/plain" or "text/markdown" and the path matches
+// one of the given patterns (kit/matcher semantics).
+func (inst *Instance) PlainTextMiddleware(
+	patterns ...string,
+) func(http.Handler) http.Handler {
 	m := matcher.New(nil)
 	for _, p := range patterns {
 		m.RegisterPattern(p)
@@ -413,21 +176,193 @@ func (md *Instance) PlainTextMiddleware(patterns ...string) func(http.Handler) h
 				return
 			}
 
-			accept := r.Header.Get("Accept")
-			if !strings.Contains(accept, "text/plain") && !strings.Contains(accept, "text/markdown") {
+			accept := strings.ToLower(r.Header.Get("Accept"))
+			if !strings.Contains(accept, "text/plain") &&
+				!strings.Contains(accept, "text/markdown") {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			markdown, err := md.GetPlainMarkdown(r)
+			result, found, err := inst.Lookup(r.URL.Path)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if !found {
+				http.NotFound(w, r)
 				return
 			}
 
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(markdown))
+			w.Write([]byte(inst.build_plain_markdown(result.Page)))
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Internal
+// ---------------------------------------------------------------------------
+
+type dir_listing struct {
+	pages     []*Page
+	has_index bool
+}
+
+func (inst *Instance) load_page(clean_path string) (*Page, bool, error) {
+	if p, ok := inst.page_cache.Get(clean_path); ok && !inst.IsDev {
+		return p, p != nil, nil
+	}
+
+	is_folder, raw, err := inst.read_file(clean_path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			inst.page_cache.Set(clean_path, nil, true)
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+
+	page, err := inst.parse(raw, clean_path, is_folder)
+	if err != nil {
+		return nil, false, err
+	}
+
+	inst.page_cache.Set(clean_path, page, false)
+	return page, true, nil
+}
+
+func (inst *Instance) read_file(_clean_path string) (bool, []byte, error) {
+	clean_path := normalize_path(_clean_path)
+
+	data, err := fs.ReadFile(inst.FS, clean_path+".md")
+	if err == nil {
+		return false, data, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return false, nil, err
+	}
+
+	data, err = fs.ReadFile(
+		inst.FS, path.Join(clean_path, "_index.md"),
+	)
+	if err != nil {
+		return false, nil, err
+	}
+	return true, data, nil
+}
+
+func (inst *Instance) parse(
+	data []byte, clean_path string, is_folder bool,
+) (*Page, error) {
+	var p Page
+	rest, err := inst.FrontmatterParser(bytes.NewReader(data), &p)
+	if err != nil {
+		return nil, err
+	}
+
+	p.Raw = string(rest)
+
+	var buf bytes.Buffer
+	if err := inst.MarkdownParser(rest, &buf); err != nil {
+		return nil, err
+	}
+	p.HTML = buf.String()
+	p.URL = clean_url_path(clean_path)
+	p.IsFolder = is_folder
+
+	return &p, nil
+}
+
+func clean_url_path(p string) string {
+	p = path.Clean(p)
+	if p == "." {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		return "/" + p
+	}
+	return p
+}
+
+func normalize_path(p string) string {
+	if p == "/" {
+		p = "."
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(p, "/"), "/")
+}
+
+func (inst *Instance) load_dir(dir_path string) (*dir_listing, error) {
+	dir_path = normalize_path(dir_path)
+
+	if l, ok := inst.dir_cache.Get(dir_path); ok && !inst.IsDev {
+		return l, nil
+	}
+
+	entries, err := fs.ReadDir(inst.FS, dir_path)
+	if err != nil {
+		return nil, err
+	}
+
+	has_index := false
+	var pages []*Page
+
+	for _, entry := range entries {
+		name := strings.TrimSuffix(entry.Name(), ".md")
+
+		if entry.Type().IsRegular() &&
+			!strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		if name == "_index" {
+			has_index = true
+			continue
+		}
+
+		page, found, err := inst.load_page(path.Join("/", dir_path, name))
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			continue
+		}
+
+		pages = append(pages, page)
+	}
+
+	sort.Slice(pages, func(i, j int) bool {
+		if pages[i].Order != 0 && pages[j].Order != 0 {
+			return pages[i].Order < pages[j].Order
+		}
+		if pages[i].Order != 0 {
+			return true
+		}
+		if pages[j].Order != 0 {
+			return false
+		}
+		return pages[i].Date > pages[j].Date
+	})
+
+	listing := &dir_listing{pages: pages, has_index: has_index}
+	inst.dir_cache.Set(dir_path, listing, false)
+	return listing, nil
+}
+
+func make_nav(pages []*Page, active_path string) []NavItem {
+	items := make([]NavItem, 0, len(pages))
+	for _, p := range pages {
+		title := p.Title
+		if title == "" {
+			title = path.Base(p.URL)
+		}
+		items = append(items, NavItem{
+			Title:       title,
+			URL:         p.URL,
+			Description: p.Description,
+			Date:        p.Date,
+			IsFolder:    p.IsFolder,
+			IsActive:    p.URL == active_path,
+		})
+	}
+	return items
 }

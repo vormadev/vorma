@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -214,7 +215,12 @@ func TestResponse_SetHeader(t *testing.T) {
 			}
 
 			if header := rr.Header().Get(test.initialKey); header != test.expectedValue {
-				t.Errorf("expected header '%s' to be '%s', got '%s'", test.initialKey, test.expectedValue, header)
+				t.Errorf(
+					"expected header '%s' to be '%s', got '%s'",
+					test.initialKey,
+					test.expectedValue,
+					header,
+				)
 			}
 		})
 	}
@@ -231,5 +237,74 @@ func compareJSON(t *testing.T, expected, actual string) {
 	}
 	if !reflect.DeepEqual(expectedObj, actualObj) {
 		t.Errorf("expected JSON %v, got %v", expectedObj, actualObj)
+	}
+}
+
+func TestResponse_ContentType(t *testing.T) {
+	t.Run("OK sets JSON content type", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		r := New(rr)
+		r.OK()
+		if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Expected Content-Type 'application/json', got %q", ct)
+		}
+	})
+
+	t.Run("OKText sets text content type", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		r := New(rr)
+		r.OKText()
+		if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+			t.Errorf("Expected Content-Type 'text/plain', got %q", ct)
+		}
+	})
+}
+
+func TestResponse_ClientRedirect(t *testing.T) {
+	t.Run("ClientRedirect sets header", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		r := New(rr)
+		err := r.ClientRedirect("/somewhere")
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if h := rr.Header().Get(ClientRedirectHeader); h != "/somewhere" {
+			t.Errorf("Expected ClientRedirectHeader '/somewhere', got %q", h)
+		}
+	})
+}
+
+func TestResponseRedirectNilRequestDoesNotPanic(t *testing.T) {
+	rr := httptest.NewRecorder()
+	r := New(rr)
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("expected no panic, got %v", recovered)
+		}
+	}()
+
+	usedClientRedirect, err := r.Redirect(nil, "/target", http.StatusFound)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if usedClientRedirect {
+		t.Fatal("expected server redirect path for nil request")
+	}
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected status %d, got %d", http.StatusFound, rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "/target" {
+		t.Fatalf("expected Location '/target', got %q", loc)
+	}
+}
+
+func TestResponseClientRedirectRejectsEmptyURL(t *testing.T) {
+	rr := httptest.NewRecorder()
+	r := New(rr)
+
+	err := r.ClientRedirect("")
+	if err == nil {
+		t.Fatal("expected error for empty redirect URL")
 	}
 }

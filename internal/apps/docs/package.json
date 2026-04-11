@@ -1,0 +1,35 @@
+{
+	"public": false,
+	"type": "module",
+	"scripts": {
+		"pre-dev": "rm -rf node_modules && go mod tidy && pnpm i",
+		"pre-prod": "go mod tidy && pnpm i --frozen-lockfile",
+		"dev": "pnpm pre-dev && go run ./build --dev",
+		"build": "pnpm pre-prod && go run ./build && go build -o ./dist/.vorma/main -tags=prod ./serve",
+		"serve": "PORT=8080 ./main",
+		"dl-go": "curl -L https://go.dev/dl/go1.26.0.linux-amd64.tar.gz | tar -C /tmp -xz",
+		"vercel-install": "pnpm pre-prod && pnpm dl-go",
+		"vercel-build": "export PATH=/tmp/go/bin:$PATH && pnpm build"
+	},
+	"devDependencies": {
+		"@preact/preset-vite": "^2.10.5",
+		"@preact/signals": "^2.9.0",
+		"@tailwindcss/vite": "^4.2.2",
+		"@types/nprogress": "^0.2.3",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.1",
+		"highlight.js": "^11.11.1",
+		"mdream": "^1.0.3",
+		"nprogress": "^0.2.0",
+		"preact": "^10.29.1",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"solid-js": "^1.9.12",
+		"tailwindcss": "^4.2.2",
+		"typescript": "^6.0.2",
+		"vite": "^8.0.3",
+		"vite-plugin-solid": "^2.11.12",
+		"vorma": "link:../../pkg/npm"
+	}
+}

@@ -68,7 +68,7 @@ func NewProtector(cfg ProtectorConfig) *Protector {
 		panic("csrf: CookieManager is required")
 	}
 	if cfg.GetSessionID == nil {
-		panic("csrf: GetSessionID is required")
+		panic("csrf: SessionIDFunc is required")
 	}
 	if cfg.TokenTTL < 0 {
 		panic("csrf: TokenTTL must be positive")
@@ -82,7 +82,7 @@ func NewProtector(cfg ProtectorConfig) *Protector {
 	if cfg.HeaderName == "" {
 		cfg.HeaderName = "X-CSRF-Token"
 	}
-	isDev := cfg.CookieManager.GetIsDev()
+	isDev := cfg.CookieManager.IsDev()
 
 	cookie := cookies.NewSecureCookie[payload](cookies.SecureCookieConfig{
 		Manager:  cfg.CookieManager,
@@ -99,9 +99,18 @@ func NewProtector(cfg ProtectorConfig) *Protector {
 			panic(fmt.Sprintf("csrf: invalid origin %q: %v", origin, err))
 		}
 		if u.Scheme == "" || u.Host == "" {
-			panic(fmt.Sprintf("csrf: origin must have scheme and host: %q", origin))
+			panic(
+				fmt.Sprintf(
+					"csrf: origin must have scheme and host: %q",
+					origin,
+				),
+			)
 		}
-		normalizedOrigin := strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host)
+		normalizedOrigin := strings.ToLower(
+			u.Scheme,
+		) + "://" + strings.ToLower(
+			u.Host,
+		)
 		normalized[normalizedOrigin] = true
 	}
 
@@ -114,18 +123,18 @@ func NewProtector(cfg ProtectorConfig) *Protector {
 	}
 }
 
+// Middleware applies CSRF protection.
+// In dev mode it panics if a request host is not localhost.
 func (p *Protector) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if p.isDev && !netutil.IsLocalhost(r.Host) {
-			panic(fmt.Sprintf(
-				"DANGER: CSRF middleware is configured for development mode but the request host is not localhost: %s",
-				r.Host,
-			))
-		}
+		p.panicIfDevHostIsNonLocalhost(r.Host)
 		if p.isGETLike(r.Method) {
 			rp := response.NewProxy()
 			if err := p.issueCSRFTokenIfNeeded(rp, r); err != nil {
-				log.Printf("csrf.Protector.Middleware: issueCSRFTokenIfNeeded failed: %v\n", err)
+				log.Printf(
+					"csrf.Protector.Middleware: issueCSRFTokenIfNeeded failed: %v\n",
+					err,
+				)
 			}
 			rp.ApplyToResponseWriter(w, r)
 			next.ServeHTTP(w, r)
@@ -136,10 +145,16 @@ func (p *Protector) Middleware(next http.Handler) http.Handler {
 			rp := response.NewProxy()
 			if shouldSelfHeal {
 				if err := p.CycleTokenWithProxy(rp, p.cfg.GetSessionID(r)); err != nil {
-					log.Printf("csrf.Protector.Middleware: self-heal failed: %v\n", err)
+					log.Printf(
+						"csrf.Protector.Middleware: self-heal failed: %v\n",
+						err,
+					)
 				}
 			}
-			rp.SetStatus(http.StatusForbidden, "Forbidden: CSRF validation failed")
+			rp.SetStatus(
+				http.StatusForbidden,
+				"Forbidden: CSRF validation failed",
+			)
 			rp.ApplyToResponseWriter(w, r)
 			return
 		}
@@ -147,9 +162,22 @@ func (p *Protector) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// panicIfDevHostIsNonLocalhost panics in dev mode when a non-localhost host is observed.
+func (p *Protector) panicIfDevHostIsNonLocalhost(host string) {
+	if p.isDev && !netutil.IsLocalhost(host) {
+		panic(fmt.Sprintf(
+			"DANGER: CSRF middleware is configured for development mode but the request host is not localhost: %s",
+			host,
+		))
+	}
+}
+
 // CycleTokenWithProxy generates a new CSRF token and sets it as a cookie.
 // Must be called on login (with sessionID) and logout (with empty sessionID).
-func (p *Protector) CycleTokenWithProxy(rp *response.Proxy, sessionID string) error {
+func (p *Protector) CycleTokenWithProxy(
+	rp *response.Proxy,
+	sessionID string,
+) error {
 	cookie, err := p.newCSRFCookie(sessionID)
 	if err != nil {
 		return fmt.Errorf("csrf: failed to generate token: %w", err)
@@ -160,7 +188,11 @@ func (p *Protector) CycleTokenWithProxy(rp *response.Proxy, sessionID string) er
 
 // CycleTokenWithWriter generates a new CSRF token and sets it as a cookie.
 // Must be called on login (with sessionID) and logout (with empty sessionID).
-func (p *Protector) CycleTokenWithWriter(w http.ResponseWriter, r *http.Request, sessionID string) error {
+func (p *Protector) CycleTokenWithWriter(
+	w http.ResponseWriter,
+	r *http.Request,
+	sessionID string,
+) error {
 	rp := response.NewProxy()
 	if err := p.CycleTokenWithProxy(rp, sessionID); err != nil {
 		return err
@@ -169,18 +201,26 @@ func (p *Protector) CycleTokenWithWriter(w http.ResponseWriter, r *http.Request,
 	return nil
 }
 
-func (p *Protector) issueCSRFTokenIfNeeded(rp *response.Proxy, r *http.Request) error {
+func (p *Protector) issueCSRFTokenIfNeeded(
+	rp *response.Proxy,
+	r *http.Request,
+) error {
 	payload, err := p.cookie.Get(r)
 	if err == nil && payload.isValid() {
 		currentSessionID := p.cfg.GetSessionID(r)
-		if subtle.ConstantTimeCompare([]byte(payload.SessionID), []byte(currentSessionID)) == 1 {
+		if subtle.ConstantTimeCompare(
+			[]byte(payload.SessionID),
+			[]byte(currentSessionID),
+		) == 1 {
 			return nil
 		}
 	}
 	return p.CycleTokenWithProxy(rp, p.cfg.GetSessionID(r))
 }
 
-func (p *Protector) applyCSRFProtection(r *http.Request) (err error, shouldSelfheal bool) {
+func (p *Protector) applyCSRFProtection(
+	r *http.Request,
+) (err error, shouldSelfheal bool) {
 	if err := p.validateOrigin(r); err != nil {
 		return fmt.Errorf("origin validation failed: %w", err), false
 	}
@@ -202,11 +242,17 @@ func (p *Protector) applyCSRFProtection(r *http.Request) (err error, shouldSelfh
 	if submittedValue == "" {
 		return errors.New("csrf token missing from request"), false
 	}
-	if subtle.ConstantTimeCompare([]byte(submittedValue), []byte(cookie.Value)) != 1 {
+	if subtle.ConstantTimeCompare(
+		[]byte(submittedValue),
+		[]byte(cookie.Value),
+	) != 1 {
 		return errors.New("csrf token mismatch"), false
 	}
 	currentSessionID := p.cfg.GetSessionID(r)
-	if subtle.ConstantTimeCompare([]byte(payload.SessionID), []byte(currentSessionID)) != 1 {
+	if subtle.ConstantTimeCompare(
+		[]byte(payload.SessionID),
+		[]byte(currentSessionID),
+	) != 1 {
 		return errors.New("csrf token session mismatch"), true
 	}
 	return nil, false
@@ -240,7 +286,10 @@ func (p *Protector) validateOriginHeader(hdr, label string) error {
 func (p *Protector) newCSRFCookie(sessionID string) (*http.Cookie, error) {
 	nonce, err := cryptoutil.RandomBytes(nonceSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate secure random bytes: %w", err)
+		return nil, fmt.Errorf(
+			"failed to generate secure random bytes: %w",
+			err,
+		)
 	}
 	payload := payload{
 		Nonce:         nonce,

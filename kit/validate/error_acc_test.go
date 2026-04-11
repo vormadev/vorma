@@ -171,15 +171,20 @@ func TestMultiLevelErrorAccumulation(t *testing.T) {
 
 		for _, expected := range requiredChecks {
 			if !strings.Contains(errorString, expected) {
-				t.Errorf("Missing required error: expected to find '%s' in:\n%s",
-					expected, errorString)
+				t.Errorf(
+					"Missing required error: expected to find '%s' in:\n%s",
+					expected,
+					errorString,
+				)
 			}
 		}
 
 		// Verify that validation doesn't happen on the optional field
 		if strings.Contains(errorString, "Records") {
-			t.Errorf("Found validation error for optional field that shouldn't be validated: %s",
-				errorString)
+			t.Errorf(
+				"Found validation error for optional field that shouldn't be validated: %s",
+				errorString,
+			)
 		}
 	})
 
@@ -195,8 +200,10 @@ func TestMultiLevelErrorAccumulation(t *testing.T) {
 
 		// Approach 1: Object with selective validation
 		obj := Object(&m)
-		obj.Optional("Name")       // This won't fail as it's optional
-		obj.Required("Properties") // This will validate the field exists but not contents
+		obj.Optional("Name") // This won't fail as it's optional
+		obj.Required(
+			"Properties",
+		) // This will validate the field exists but not contents
 
 		// Approach 2: Use Any to specifically validate property contents
 		propCheck := Any("Properties contents", propertyField)

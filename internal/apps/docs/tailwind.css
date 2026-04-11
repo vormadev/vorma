@@ -1,0 +1,16 @@
+@import "tailwindcss" source(none);
+
+@source "**/*.{ts,tsx}";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+	--css2-loaded: 1;
+}
+
+@theme {
+	--color-dark: var(--dark);
+	--color-light: var(--light);
+	--color-bg: var(--bg);
+	--color-fg: var(--fg);
+}

@@ -1,0 +1,21 @@
+:root {
+	color-scheme: light dark;
+	--dark: #232323;
+	--light: #e5e5e5;
+}
+@media (prefers-color-scheme: light) {
+	html {
+		--bg: var(--light);
+		--fg: var(--dark);
+	}
+}
+@media (prefers-color-scheme: dark) {
+	html {
+		--bg: var(--dark);
+		--fg: var(--light);
+	}
+}
+body {
+	background-color: var(--bg);
+	opacity: calc(var(--css1-loaded, 0) * var(--css2-loaded, 0));
+}

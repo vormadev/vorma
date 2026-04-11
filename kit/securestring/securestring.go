@@ -14,7 +14,7 @@ import (
 	"github.com/vormadev/vorma/kit/securebytes"
 )
 
-const MaxBase64Size = securebytes.MaxSize + securebytes.MaxSize/3
+const MaxBase64Size = ((securebytes.MaxSize + 2) / 3) * 4
 
 type SecureString string // Base64-encoded, encrypted value
 

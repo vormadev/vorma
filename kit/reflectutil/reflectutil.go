@@ -7,7 +7,7 @@ import (
 	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
-func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {
+func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool {
 	if t == nil {
 		return false
 	}
@@ -20,16 +20,12 @@ func ImplementsInterface(t reflect.Type, iface reflect.Type) bool {
 	if t.Implements(iface) {
 		return true
 	}
-	if t.Kind() != reflect.Ptr {
+	if t.Kind() != reflect.Pointer {
 		if reflect.PointerTo(t).Implements(iface) {
 			return true
 		}
 	}
 	return false
-}
-
-func ToInterfaceReflectType[T any]() reflect.Type {
-	return reflect.TypeOf((*T)(nil)).Elem()
 }
 
 func ExcludingNoneGetIsNilOrUltimatelyPointsToNil(v any) bool {
@@ -48,11 +44,14 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	reflectVal := reflect.ValueOf(v)
 
 	switch reflectVal.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		if reflectVal.IsNil() {
 			return true
 		}
-		return excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(reflectVal.Elem().Interface(), true)
+		return excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(
+			reflectVal.Elem().Interface(),
+			true,
+		)
 
 	case reflect.Map, reflect.Slice:
 		return reflectVal.IsNil()
@@ -62,7 +61,7 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	}
 }
 
-func GetJSONFieldName(field reflect.StructField) string {
+func JSONFieldName(field reflect.StructField) string {
 	tag := field.Tag.Get("json")
 	if tag == "" {
 		return field.Name

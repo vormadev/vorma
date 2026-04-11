@@ -345,7 +345,11 @@ func TestCleanupExpired(t *testing.T) {
 	// Check cache size
 	expectedSize := 2
 	if cache.order.Len() != expectedSize {
-		t.Errorf("Expected cache size to be %d after cleanup, got %d", expectedSize, cache.order.Len())
+		t.Errorf(
+			"Expected cache size to be %d after cleanup, got %d",
+			expectedSize,
+			cache.order.Len(),
+		)
 	}
 }
 
@@ -425,7 +429,11 @@ func TestTTLUpdateOnSet(t *testing.T) {
 
 	// Item should still be present because TTL was reset
 	if v, found := cache.Get("a"); !found || v != 2 {
-		t.Errorf("Expected to find 'a' with value 2 after TTL reset, got found=%v, value=%v", found, v)
+		t.Errorf(
+			"Expected to find 'a' with value 2 after TTL reset, got found=%v, value=%v",
+			found,
+			v,
+		)
 	}
 
 	// Wait for the new TTL to expire
@@ -556,4 +564,23 @@ func TestBackwardsCompatibility(t *testing.T) {
 	if _, found := cache.Get("a"); !found {
 		t.Errorf("Expected 'a' to still be present with backwards-compatible constructor")
 	}
+}
+
+func TestCloseOnce(t *testing.T) {
+	cache := NewCacheWithTTL[string, int](5, 100*time.Millisecond)
+
+	// Calling Close multiple times should not panic
+	cache.Close()
+	cache.Close()
+	cache.Close()
+
+	// Concurrent Close calls should also be safe
+	cache2 := NewCacheWithTTL[string, int](5, 100*time.Millisecond)
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Go(func() {
+			cache2.Close()
+		})
+	}
+	wg.Wait()
 }

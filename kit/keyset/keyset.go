@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/vormadev/vorma/kit/bytesutil"
 	"github.com/vormadev/vorma/kit/cryptoutil"
-	"github.com/vormadev/vorma/kit/lazyget"
 )
 
 // Base64-encoded 32-byte root secret.
@@ -84,6 +84,9 @@ func (wk *Keyset) First() (cryptoutil.Key32, error) {
 // key fails due to a recent rotation.
 func Attempt[R any](ks *Keyset, f func(cryptoutil.Key32) (R, error)) (R, error) {
 	var zeroR R
+	if ks == nil {
+		return zeroR, fmt.Errorf("keyset is nil")
+	}
 	uks := ks.Unwrap()
 	if len(uks) == 0 {
 		return zeroR, fmt.Errorf("keyset is empty")
@@ -110,6 +113,9 @@ func Attempt[R any](ks *Keyset, f func(cryptoutil.Key32) (R, error)) (R, error) 
 // provided salt and info string, returning a new Keyset consisting
 // of the derived keys.
 func (ks *Keyset) HKDF(salt []byte, info string) (*Keyset, error) {
+	if ks == nil {
+		return nil, fmt.Errorf("root keyset is nil")
+	}
 	uks := ks.Unwrap()
 	if len(uks) == 0 {
 		return nil, fmt.Errorf("root keyset is empty")
@@ -227,7 +233,7 @@ func MustAppKeyset(cfg AppKeysetConfig) *AppKeyset {
 	if !cfg.DeferPanic {
 		validateOrPanic()
 	}
-	rootFn := lazyget.New(func() *Keyset {
+	rootFn := sync.OnceValue(func() *Keyset {
 		if cfg.DeferPanic {
 			validateOrPanic()
 		}
@@ -240,7 +246,7 @@ func MustAppKeyset(cfg AppKeysetConfig) *AppKeyset {
 	return &AppKeyset{
 		rootFn: rootFn,
 		hkdfFnMaker: func(purpose string) func() *Keyset {
-			return lazyget.New(func() *Keyset {
+			return sync.OnceValue(func() *Keyset {
 				if cfg.DeferPanic {
 					validateOrPanic()
 				}

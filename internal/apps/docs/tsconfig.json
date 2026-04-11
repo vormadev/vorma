@@ -1,0 +1,30 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"forceConsistentCasingInFileNames": true,
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"esModuleInterop": true,
+		"noUncheckedIndexedAccess": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
+		"jsx": "preserve",
+		"jsxImportSource": "solid-js"
+	},
+	"exclude": ["node_modules"],
+	"----------------------------------------": "",
+	"__react": {
+		"jsx": "react-jsx"
+	},
+	"__preact": {
+		"jsx": "react-jsx",
+		"jsxImportSource": "preact"
+	},
+	"__solid": {
+		"jsx": "preserve",
+		"jsxImportSource": "solid-js"
+	}
+}

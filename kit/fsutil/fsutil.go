@@ -3,34 +3,39 @@ package fsutil
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
-
-	"github.com/vormadev/vorma/kit/errutil"
+	"strings"
 )
 
 // EnsureDir creates a directory if it does not exist.
 func EnsureDir(path string) error {
-	return errutil.Maybe("fsutil.EnsureDir: ", os.MkdirAll(path, os.ModePerm))
+	err := os.MkdirAll(path, 0o755)
+	if err != nil {
+		return fmt.Errorf(
+			"fsutil.EnsureDir: failed to create directory %s: %w",
+			path,
+			err,
+		)
+	}
+	return nil
 }
 
 func EnsureDirs(paths ...string) error {
 	for _, path := range paths {
 		if err := EnsureDir(path); err != nil {
-			return fmt.Errorf("fsutil.EnsureDirs: failed to ensure directory %s: %w", path, err)
+			return fmt.Errorf(
+				"fsutil.EnsureDirs: failed to ensure directory %s: %w",
+				path,
+				err,
+			)
 		}
 	}
 	return nil
-}
-
-// GetCallerDir returns the directory of the calling function.
-func GetCallerDir() string {
-	_, file, _, _ := runtime.Caller(1)
-	return filepath.Dir(file)
 }
 
 // CopyDir recursively copies a directory from src to dst.
@@ -56,9 +61,18 @@ func CopyDir(src, dst string) error {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
 
-		fileInfo, err := entry.Info()
+		// Use os.Lstat so symlinks are detected rather than followed.
+		// entry.Info() calls os.Stat under the hood, which resolves
+		// symlinks and makes the ModeSymlink check a no-op.
+		fileInfo, err := os.Lstat(srcPath)
 		if err != nil {
 			return err
+		}
+		if fileInfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf(
+				"fsutil.CopyDir: symlink entries are not supported: %s",
+				srcPath,
+			)
 		}
 
 		// If the entry is a directory, recurse
@@ -76,19 +90,48 @@ func CopyDir(src, dst string) error {
 	return nil
 }
 
-// CopyFile copies a single file from src to dest
-func CopyFile(src, dest string) error {
+// CopyFile copies a single file from src to dest.
+func CopyFile(src, dest string) (err error) {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.Create(dest)
+	sourceInfo, err := sourceFile.Stat()
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	destInfo, err := os.Stat(dest)
+	if err == nil {
+		if os.SameFile(sourceInfo, destInfo) {
+			return fmt.Errorf(
+				"fsutil.CopyFile: source and destination refer to the same file: %s",
+				src,
+			)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+
+	destFile, err := os.OpenFile(
+		dest,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		sourceInfo.Mode().Perm(),
+	)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			destFile.Close()
+			os.Remove(dest)
+		}
+	}()
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return err
@@ -109,16 +152,9 @@ func CopyFiles(srcDestTuples ...[2]string) error {
 // FromGobInto decodes a gob-encoded file into a destination.
 // The destination must be a pointer to the destination type.
 func FromGobInto(file fs.File, destPtr any) error {
-	if file == nil {
-		return fmt.Errorf("fsutil.FromGobInto: cannot decode nil file")
-	}
-	if destPtr == nil {
-		return fmt.Errorf("fsutil.FromGobInto: cannot decode into nil destination")
-	}
-	dec := gob.NewDecoder(file)
-	err := dec.Decode(destPtr)
+	err := decodeGobFileIntoDestination(file, destPtr)
 	if err != nil {
-		return fmt.Errorf("fsutil.FromGobInto: failed to decode file into dest: %w", err)
+		return fmt.Errorf("fsutil.FromGobInto: %w", err)
 	}
 	return nil
 }
@@ -126,23 +162,39 @@ func FromGobInto(file fs.File, destPtr any) error {
 // FromGob decodes a gob-encoded file into a value of type T.
 func FromGob[T any](file fs.File) (T, error) {
 	var zeroT T
-	if file == nil {
-		return zeroT, fmt.Errorf("fsutil.FromGobInto: cannot decode nil file")
-	}
-	dec := gob.NewDecoder(file)
 	destPtr := new(T)
-	err := dec.Decode(destPtr)
+	err := decodeGobFileIntoDestination(file, destPtr)
 	if err != nil {
-		return zeroT, fmt.Errorf("fsutil.FromGobInto: failed to decode file into dest: %w", err)
+		return zeroT, fmt.Errorf("fsutil.FromGob: %w", err)
 	}
 	return *destPtr, nil
+}
+
+func decodeGobFileIntoDestination(file fs.File, destPtr any) error {
+	if file == nil {
+		return fmt.Errorf("cannot decode nil file")
+	}
+	if destPtr == nil {
+		return fmt.Errorf("cannot decode into nil destination")
+	}
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(destPtr); err != nil {
+		return fmt.Errorf("failed to decode file into dest: %w", err)
+	}
+	return nil
 }
 
 func MustSub(f fs.FS, dirElems ...string) fs.FS {
 	dir := filepath.Join(dirElems...)
 	sub, err := fs.Sub(f, dir)
 	if err != nil {
-		panic(fmt.Sprintf("fsutil.MustSub: failed to get sub FS for dir %s: %v", dir, err))
+		panic(
+			fmt.Sprintf(
+				"fsutil.MustSub: failed to get sub FS for dir %s: %v",
+				dir,
+				err,
+			),
+		)
 	}
 	return sub
 }
@@ -150,7 +202,24 @@ func MustSub(f fs.FS, dirElems ...string) fs.FS {
 func MustReadFile(f fs.FS, name string) []byte {
 	data, err := fs.ReadFile(f, name)
 	if err != nil {
-		panic(fmt.Sprintf("fsutil.MustReadFile: failed to read file %s: %v", name, err))
+		panic(
+			fmt.Sprintf(
+				"fsutil.MustReadFile: failed to read file %s: %v",
+				name,
+				err,
+			),
+		)
 	}
 	return data
+}
+
+func ToCatchDirPattern(path string) string {
+	if strings.HasSuffix(path, "**/*") {
+		return SysNorm(path)
+	}
+	return SysNorm(filepath.Join(path, "**/*"))
+}
+
+func SysNorm(path string) string {
+	return filepath.FromSlash(filepath.Clean(strings.TrimSpace(path)))
 }

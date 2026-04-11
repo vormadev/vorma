@@ -22,8 +22,12 @@ type testSessionData struct {
 // Helper to create a test keyset with actual keys
 func createTestKeyset() *keyset.Keyset {
 	// Generate base64-encoded 32-byte secrets
-	secret1 := base64.StdEncoding.EncodeToString([]byte("12345678901234567890123456789012"))
-	secret2 := base64.StdEncoding.EncodeToString([]byte("abcdefghijklmnopqrstuvwxyz123456"))
+	secret1 := base64.StdEncoding.EncodeToString(
+		[]byte("12345678901234567890123456789012"),
+	)
+	secret2 := base64.StdEncoding.EncodeToString(
+		[]byte("abcdefghijklmnopqrstuvwxyz123456"),
+	)
 
 	rootSecrets := keyset.RootSecrets{secret1, secret2}
 	ks, err := keyset.RootSecretsToRootKeyset(rootSecrets)
@@ -41,7 +45,12 @@ func newTestManager(isDev bool) *Manager {
 	})
 }
 
-func newTestManagerWithDefaults(isDev bool, site SameSite, part PartitionOption, httpOnly HttpOnlyOption) *Manager {
+func newTestManagerWithDefaults(
+	isDev bool,
+	site SameSite,
+	part PartitionOption,
+	httpOnly HttpOnlyOption,
+) *Manager {
 	return NewManager(ManagerConfig{
 		GetKeyset:        createTestKeyset,
 		GetIsDev:         func() bool { return isDev },
@@ -64,32 +73,58 @@ func TestNewManager(t *testing.T) {
 		})
 	})
 
-	t.Run("applies correct system defaults for zero-value config", func(t *testing.T) {
-		mgr := NewManager(ManagerConfig{
-			GetKeyset: createTestKeyset,
-		})
-		if mgr.cfg.DefaultSameSite != SameSiteLaxMode {
-			t.Errorf("expected default SameSite to be Lax, got %v", mgr.cfg.DefaultSameSite)
-		}
-		if mgr.cfg.DefaultPartition != PartitionTrue {
-			t.Errorf("expected default Partition to be True, got %v", mgr.cfg.DefaultPartition)
-		}
-		if mgr.cfg.DefaultHttpOnly != HttpOnlyTrue {
-			t.Errorf("expected default HttpOnly to be True, got %v", mgr.cfg.DefaultHttpOnly)
-		}
-	})
+	t.Run(
+		"applies correct system defaults for zero-value config",
+		func(t *testing.T) {
+			mgr := NewManager(ManagerConfig{
+				GetKeyset: createTestKeyset,
+			})
+			if mgr.cfg.DefaultSameSite != SameSiteLaxMode {
+				t.Errorf(
+					"expected default SameSite to be Lax, got %v",
+					mgr.cfg.DefaultSameSite,
+				)
+			}
+			if mgr.cfg.DefaultPartition != PartitionTrue {
+				t.Errorf(
+					"expected default Partition to be True, got %v",
+					mgr.cfg.DefaultPartition,
+				)
+			}
+			if mgr.cfg.DefaultHttpOnly != HttpOnlyTrue {
+				t.Errorf(
+					"expected default HttpOnly to be True, got %v",
+					mgr.cfg.DefaultHttpOnly,
+				)
+			}
+		},
+	)
 
 	t.Run("preserves custom manager defaults", func(t *testing.T) {
-		mgr := newTestManagerWithDefaults(false, SameSiteStrictMode, PartitionFalse, HttpOnlyFalse)
+		mgr := newTestManagerWithDefaults(
+			false,
+			SameSiteStrictMode,
+			PartitionFalse,
+			HttpOnlyFalse,
+		)
 
 		if mgr.cfg.DefaultSameSite != SameSiteStrictMode {
-			t.Errorf("expected SameSite to be Strict, got %v", mgr.cfg.DefaultSameSite)
+			t.Errorf(
+				"expected SameSite to be Strict, got %v",
+				mgr.cfg.DefaultSameSite,
+			)
 		}
 		if mgr.cfg.DefaultPartition != PartitionFalse {
-			t.Errorf("expected Partition to be False, got %v", mgr.cfg.DefaultPartition)
+			t.Errorf(
+				"expected Partition to be False, got %v",
+				mgr.cfg.DefaultPartition,
+			)
 		}
 		if mgr.cfg.DefaultHttpOnly != HttpOnlyFalse {
-			t.Errorf("expected HttpOnly to be False, got %v", mgr.cfg.DefaultHttpOnly)
+			t.Errorf(
+				"expected HttpOnly to be False, got %v",
+				mgr.cfg.DefaultHttpOnly,
+			)
 		}
 	})
 }
@@ -100,19 +135,19 @@ func TestGetIsDev(t *testing.T) {
 		mgr := NewManager(ManagerConfig{
 			GetKeyset: createTestKeyset,
 		})
-		if mgr.GetIsDev() {
+		if mgr.IsDev() {
 			t.Errorf("expected GetIsDev to return false when GetIsDev is nil")
 		}
 	})
 
 	t.Run("returns GetIsDev result", func(t *testing.T) {
 		mgr := newTestManager(true)
-		if !mgr.GetIsDev() {
+		if !mgr.IsDev() {
 			t.Errorf("expected GetIsDev to return true")
 		}
 
 		mgr = newTestManager(false)
-		if mgr.GetIsDev() {
+		if mgr.IsDev() {
 			t.Errorf("expected GetIsDev to return false")
 		}
 	})
@@ -145,7 +180,12 @@ func TestHostPrefixName(t *testing.T) {
 
 func TestResolvers(t *testing.T) {
 	// Manager with non-system defaults: Strict, Not Partitioned, Not HttpOnly
-	mgr := newTestManagerWithDefaults(false, SameSiteStrictMode, PartitionFalse, HttpOnlyFalse)
+	mgr := newTestManagerWithDefaults(
+		false,
+		SameSiteStrictMode,
+		PartitionFalse,
+		HttpOnlyFalse,
+	)
 	// Manager with system defaults
 	defaultMgr := newTestManager(false)
 
@@ -310,7 +350,10 @@ func TestBuildCookie(t *testing.T) {
 			t.Errorf("expected path to be /api, got %s", cookie.Path)
 		}
 		if cookie.Domain != ".example.com" {
-			t.Errorf("expected domain to be .example.com, got %s", cookie.Domain)
+			t.Errorf(
+				"expected domain to be .example.com, got %s",
+				cookie.Domain,
+			)
 		}
 		if !cookie.Secure {
 			t.Errorf("expected Secure to be true in production")
@@ -319,7 +362,9 @@ func TestBuildCookie(t *testing.T) {
 			t.Errorf("expected HttpOnly to be false")
 		}
 		if cookie.Partitioned {
-			t.Errorf("expected Partitioned to be false when partitioned is false")
+			t.Errorf(
+				"expected Partitioned to be false when partitioned is false",
+			)
 		}
 	})
 }
@@ -328,44 +373,47 @@ func TestBuildCookie(t *testing.T) {
 func TestSecureCookie(t *testing.T) {
 	mgr := newTestManager(false)
 
-	t.Run("creates and retrieves encrypted string value with system defaults", func(t *testing.T) {
-		cookie := NewSecureCookie[string](SecureCookieConfig{
-			Manager: mgr,
-			Name:    "secure",
-			TTL:     time.Hour,
-		})
+	t.Run(
+		"creates and retrieves encrypted string value with system defaults",
+		func(t *testing.T) {
+			cookie := NewSecureCookie[string](SecureCookieConfig{
+				Manager: mgr,
+				Name:    "secure",
+				TTL:     time.Hour,
+			})
 
-		// Create encrypted cookie
-		httpCookie, err := cookie.New("secret-data")
-		if err != nil {
-			t.Fatalf("unexpected error creating cookie: %v", err)
-		}
+			// Create encrypted cookie
+			httpCookie, err := cookie.New("secret-data")
+			if err != nil {
+				t.Fatalf("unexpected error creating cookie: %v", err)
+			}
 
-		if httpCookie.Name != "__Host-secure" {
-			t.Errorf("expected name __Host-secure, got %s", httpCookie.Name)
-		}
-		if httpCookie.Value == "secret-data" {
-			t.Errorf("expected encrypted value, got plaintext")
-		}
-		if !httpCookie.HttpOnly {
-			t.Errorf("expected HttpOnly to be true by default")
-		}
-		if !httpCookie.Partitioned {
-			t.Errorf("expected Partitioned to be true by default")
-		}
+			if httpCookie.Name != "__Host-secure" {
+				t.Errorf("expected name __Host-secure, got %s", httpCookie.Name)
+			}
+			if httpCookie.Value == "secret-data" {
+				t.Errorf("expected encrypted value, got plaintext")
+			}
+			if !httpCookie.HttpOnly {
+				t.Errorf("expected HttpOnly to be true by default")
+			}
+			if !httpCookie.Partitioned {
+				t.Errorf("expected Partitioned to be true by default")
+			}
 
-		// Test retrieval
-		req := httptest.NewRequest("GET", "/", nil)
-		req.AddCookie(httpCookie)
+			// Test retrieval
+			req := httptest.NewRequest("GET", "/", nil)
+			req.AddCookie(httpCookie)
 
-		retrieved, err := cookie.Get(req)
-		if err != nil {
-			t.Fatalf("unexpected error retrieving cookie: %v", err)
-		}
-		if retrieved != "secret-data" {
-			t.Errorf("expected 'secret-data', got %s", retrieved)
-		}
-	})
+			retrieved, err := cookie.Get(req)
+			if err != nil {
+				t.Fatalf("unexpected error retrieving cookie: %v", err)
+			}
+			if retrieved != "secret-data" {
+				t.Errorf("expected 'secret-data', got %s", retrieved)
+			}
+		},
+	)
 
 	t.Run("creates and retrieves encrypted struct value", func(t *testing.T) {
 		cookie := NewSecureCookie[testSessionData](SecureCookieConfig{
@@ -395,10 +443,18 @@ func TestSecureCookie(t *testing.T) {
 			t.Fatalf("unexpected error retrieving cookie: %v", err)
 		}
 		if retrieved.UserID != sessionData.UserID {
-			t.Errorf("expected UserID %s, got %s", sessionData.UserID, retrieved.UserID)
+			t.Errorf(
+				"expected UserID %s, got %s",
+				sessionData.UserID,
+				retrieved.UserID,
+			)
 		}
 		if retrieved.Username != sessionData.Username {
-			t.Errorf("expected Username %s, got %s", sessionData.Username, retrieved.Username)
+			t.Errorf(
+				"expected Username %s, got %s",
+				sessionData.Username,
+				retrieved.Username,
+			)
 		}
 	})
 
@@ -503,52 +559,62 @@ func TestSecureCookie(t *testing.T) {
 func TestSecureCookieNonHostOnly(t *testing.T) {
 	mgr := newTestManager(false)
 
-	t.Run("creates and retrieves with custom path and domain", func(t *testing.T) {
-		cookie := NewSecureCookieNonHostOnly[string](SecureCookieNonHostOnlyConfig{
-			Manager: mgr,
-			Name:    "api-token",
-			Path:    "/api",
-			Domain:  ".example.com",
-			TTL:     24 * time.Hour,
-		})
+	t.Run(
+		"creates and retrieves with custom path and domain",
+		func(t *testing.T) {
+			cookie := NewSecureCookieNonHostOnly[string](
+				SecureCookieNonHostOnlyConfig{
+					Manager: mgr,
+					Name:    "api-token",
+					Path:    "/api",
+					Domain:  ".example.com",
+					TTL:     24 * time.Hour,
+				},
+			)
 
-		httpCookie, err := cookie.New("api-secret-token")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+			httpCookie, err := cookie.New("api-secret-token")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-		if httpCookie.Name != "api-token" {
-			t.Errorf("expected name api-token, got %s", httpCookie.Name)
-		}
-		if httpCookie.Path != "/api" {
-			t.Errorf("expected path /api, got %s", httpCookie.Path)
-		}
-		if httpCookie.Domain != ".example.com" {
-			t.Errorf("expected domain .example.com, got %s", httpCookie.Domain)
-		}
-		if !httpCookie.HttpOnly {
-			t.Errorf("expected HttpOnly to be true by default")
-		}
+			if httpCookie.Name != "api-token" {
+				t.Errorf("expected name api-token, got %s", httpCookie.Name)
+			}
+			if httpCookie.Path != "/api" {
+				t.Errorf("expected path /api, got %s", httpCookie.Path)
+			}
+			if httpCookie.Domain != ".example.com" {
+				t.Errorf(
+					"expected domain .example.com, got %s",
+					httpCookie.Domain,
+				)
+			}
+			if !httpCookie.HttpOnly {
+				t.Errorf("expected HttpOnly to be true by default")
+			}
 
-		req := httptest.NewRequest("GET", "/api", nil)
-		req.AddCookie(httpCookie)
+			req := httptest.NewRequest("GET", "/api", nil)
+			req.AddCookie(httpCookie)
 
-		retrieved, err := cookie.Get(req)
-		if err != nil {
-			t.Fatalf("unexpected error retrieving cookie: %v", err)
-		}
-		if retrieved != "api-secret-token" {
-			t.Errorf("expected 'api-secret-token', got %s", retrieved)
-		}
-	})
+			retrieved, err := cookie.Get(req)
+			if err != nil {
+				t.Fatalf("unexpected error retrieving cookie: %v", err)
+			}
+			if retrieved != "api-secret-token" {
+				t.Errorf("expected 'api-secret-token', got %s", retrieved)
+			}
+		},
+	)
 
 	t.Run("defaults path to / when empty", func(t *testing.T) {
-		cookie := NewSecureCookieNonHostOnly[string](SecureCookieNonHostOnlyConfig{
-			Manager: mgr,
-			Name:    "session",
-			Path:    "",
-			TTL:     time.Hour,
-		})
+		cookie := NewSecureCookieNonHostOnly[string](
+			SecureCookieNonHostOnlyConfig{
+				Manager: mgr,
+				Name:    "session",
+				Path:    "",
+				TTL:     time.Hour,
+			},
+		)
 
 		if cookie.spec.path != "/" {
 			t.Errorf("expected path /, got %s", cookie.spec.path)
@@ -556,13 +622,15 @@ func TestSecureCookieNonHostOnly(t *testing.T) {
 	})
 
 	t.Run("creates deletion cookie", func(t *testing.T) {
-		cookie := NewSecureCookieNonHostOnly[string](SecureCookieNonHostOnlyConfig{
-			Manager: mgr,
-			Name:    "session",
-			Path:    "/app",
-			Domain:  ".example.com",
-			TTL:     time.Hour,
-		})
+		cookie := NewSecureCookieNonHostOnly[string](
+			SecureCookieNonHostOnlyConfig{
+				Manager: mgr,
+				Name:    "session",
+				Path:    "/app",
+				Domain:  ".example.com",
+				TTL:     time.Hour,
+			},
+		)
 
 		deletion := cookie.NewDeletion()
 		if deletion.Name != "session" {
@@ -677,15 +745,17 @@ func TestClientReadableCookieNonHostOnly(t *testing.T) {
 	mgr := newTestManager(false)
 
 	t.Run("creates cookie with custom settings", func(t *testing.T) {
-		cookie := NewClientReadableCookieNonHostOnly[string](ClientReadableCookieNonHostOnlyConfig{
-			Manager:   mgr,
-			Name:      "locale",
-			Path:      "/app",
-			Domain:    ".example.com",
-			TTL:       365 * 24 * time.Hour,
-			SameSite:  SameSiteStrictMode,
-			Partition: PartitionTrue, // explicit check
-		})
+		cookie := NewClientReadableCookieNonHostOnly[string](
+			ClientReadableCookieNonHostOnlyConfig{
+				Manager:   mgr,
+				Name:      "locale",
+				Path:      "/app",
+				Domain:    ".example.com",
+				TTL:       365 * 24 * time.Hour,
+				SameSite:  SameSiteStrictMode,
+				Partition: PartitionTrue, // explicit check
+			},
+		)
 
 		httpCookie := cookie.New("en-US")
 
@@ -714,11 +784,13 @@ func TestClientReadableCookieNonHostOnly(t *testing.T) {
 
 	t.Run("retrieves value with custom type", func(t *testing.T) {
 		type Locale string
-		cookie := NewClientReadableCookieNonHostOnly[Locale](ClientReadableCookieNonHostOnlyConfig{
-			Manager: mgr,
-			Name:    "locale",
-			TTL:     365 * 24 * time.Hour,
-		})
+		cookie := NewClientReadableCookieNonHostOnly[Locale](
+			ClientReadableCookieNonHostOnlyConfig{
+				Manager: mgr,
+				Name:    "locale",
+				TTL:     365 * 24 * time.Hour,
+			},
+		)
 
 		httpCookie := cookie.New(Locale("fr-FR"))
 
@@ -765,56 +837,72 @@ func TestDevelopmentMode(t *testing.T) {
 		}
 	})
 
-	t.Run("allows custom path/domain for host cookies in dev", func(t *testing.T) {
-		mgr := newTestManager(true)
-		cookie := NewSecureCookie[string](SecureCookieConfig{
-			Manager: mgr,
-			Name:    "test",
-			TTL:     time.Hour,
-		})
+	t.Run(
+		"allows custom path/domain for host cookies in dev",
+		func(t *testing.T) {
+			mgr := newTestManager(true)
+			cookie := NewSecureCookie[string](SecureCookieConfig{
+				Manager: mgr,
+				Name:    "test",
+				TTL:     time.Hour,
+			})
 
-		spec := cookie.spec
-		spec.path = "/custom"
-		spec.domain = "localhost"
-		httpCookie := mgr.buildCookie(spec)
+			spec := cookie.spec
+			spec.path = "/custom"
+			spec.domain = "localhost"
+			httpCookie := mgr.buildCookie(spec)
 
-		if httpCookie.Path != "/custom" {
-			t.Errorf("expected path /custom in dev mode, got %s", httpCookie.Path)
-		}
-		if httpCookie.Domain != "localhost" {
-			t.Errorf("expected domain localhost in dev mode, got %s", httpCookie.Domain)
-		}
-	})
+			if httpCookie.Path != "/custom" {
+				t.Errorf(
+					"expected path /custom in dev mode, got %s",
+					httpCookie.Path,
+				)
+			}
+			if httpCookie.Domain != "localhost" {
+				t.Errorf(
+					"expected domain localhost in dev mode, got %s",
+					httpCookie.Domain,
+				)
+			}
+		},
+	)
 }
 
 // Test edge cases and security properties
 func TestSecurityProperties(t *testing.T) {
-	t.Run("host-only cookies enforce constraints in production", func(t *testing.T) {
-		mgr := newTestManager(false)
-		cookie := NewSecureCookie[string](SecureCookieConfig{
-			Manager: mgr,
-			Name:    "test",
-			TTL:     time.Hour,
-		})
-		httpCookie, _ := cookie.New("value")
-		if httpCookie.Path != "/" || httpCookie.Domain != "" || !httpCookie.Secure {
-			t.Error("__Host- constraints not enforced")
-		}
-	})
+	t.Run(
+		"host-only cookies enforce constraints in production",
+		func(t *testing.T) {
+			mgr := newTestManager(false)
+			cookie := NewSecureCookie[string](SecureCookieConfig{
+				Manager: mgr,
+				Name:    "test",
+				TTL:     time.Hour,
+			})
+			httpCookie, _ := cookie.New("value")
+			if httpCookie.Path != "/" || httpCookie.Domain != "" ||
+				!httpCookie.Secure {
+				t.Error("__Host- constraints not enforced")
+			}
+		},
+	)
 
-	t.Run("partitioned is disabled in dev mode regardless of config", func(t *testing.T) {
-		mgr := newTestManager(true)
-		cookie := NewSecureCookie[string](SecureCookieConfig{
-			Manager:   mgr,
-			Name:      "test",
-			TTL:       time.Hour,
-			Partition: PartitionTrue,
-		})
-		httpCookie, _ := cookie.New("value")
-		if httpCookie.Partitioned {
-			t.Error("Partitioned should be false in dev mode")
-		}
-	})
+	t.Run(
+		"partitioned is disabled in dev mode regardless of config",
+		func(t *testing.T) {
+			mgr := newTestManager(true)
+			cookie := NewSecureCookie[string](SecureCookieConfig{
+				Manager:   mgr,
+				Name:      "test",
+				TTL:       time.Hour,
+				Partition: PartitionTrue,
+			})
+			httpCookie, _ := cookie.New("value")
+			if httpCookie.Partitioned {
+				t.Error("Partitioned should be false in dev mode")
+			}
+		},
+	)
 
 	t.Run("empty TTL results in session cookie", func(t *testing.T) {
 		mgr := newTestManager(false)
@@ -825,7 +913,10 @@ func TestSecurityProperties(t *testing.T) {
 		})
 		httpCookie := cookie.New("value")
 		if httpCookie.MaxAge != 0 {
-			t.Errorf("expected MaxAge 0 for session cookie, got %d", httpCookie.MaxAge)
+			t.Errorf(
+				"expected MaxAge 0 for session cookie, got %d",
+				httpCookie.MaxAge,
+			)
 		}
 	})
 
@@ -838,7 +929,10 @@ func TestSecurityProperties(t *testing.T) {
 		})
 		httpCookie := cookie.New("value")
 		if httpCookie.MaxAge >= 0 {
-			t.Errorf("expected negative MaxAge for expired cookie, got %d", httpCookie.MaxAge)
+			t.Errorf(
+				"expected negative MaxAge for expired cookie, got %d",
+				httpCookie.MaxAge,
+			)
 		}
 	})
 }
@@ -846,7 +940,12 @@ func TestSecurityProperties(t *testing.T) {
 // Test that all cookie types properly inherit manager defaults
 func TestManagerDefaults(t *testing.T) {
 	// Manager with non-system defaults: Strict, Not Partitioned, Not HttpOnly
-	mgr := newTestManagerWithDefaults(false, SameSiteStrictMode, PartitionFalse, HttpOnlyFalse)
+	mgr := newTestManagerWithDefaults(
+		false,
+		SameSiteStrictMode,
+		PartitionFalse,
+		HttpOnlyFalse,
+	)
 
 	t.Run("secure cookies inherit manager defaults", func(t *testing.T) {
 		// Create a secure cookie with no overrides set (it will use ...Default).
@@ -867,23 +966,30 @@ func TestManagerDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("client-readable cookies inherit manager defaults", func(t *testing.T) {
-		cookie := NewClientReadableCookie[string](ClientReadableCookieConfig{
-			Manager: mgr,
-			Name:    "test",
-		})
-		spec := cookie.spec
+	t.Run(
+		"client-readable cookies inherit manager defaults",
+		func(t *testing.T) {
+			cookie := NewClientReadableCookie[string](
+				ClientReadableCookieConfig{
+					Manager: mgr,
+					Name:    "test",
+				},
+			)
+			spec := cookie.spec
 
-		if spec.sameSite != http.SameSiteStrictMode {
-			t.Error("Client cookie did not inherit SameSite default")
-		}
-		if spec.partitioned {
-			t.Error("Client cookie did not inherit Partition default")
-		}
-		if spec.httpOnly {
-			t.Error("Client cookie HttpOnly should always be false, regardless of manager default")
-		}
-	})
+			if spec.sameSite != http.SameSiteStrictMode {
+				t.Error("Client cookie did not inherit SameSite default")
+			}
+			if spec.partitioned {
+				t.Error("Client cookie did not inherit Partition default")
+			}
+			if spec.httpOnly {
+				t.Error(
+					"Client cookie HttpOnly should always be false, regardless of manager default",
+				)
+			}
+		},
+	)
 }
 
 // Test cross-cookie compatibility
@@ -894,14 +1000,18 @@ func TestCrossCookieCompatibility(t *testing.T) {
 			Manager: mgr,
 			Name:    "secure-data",
 		})
-		clientCookie := NewClientReadableCookie[string](ClientReadableCookieConfig{
-			Manager: mgr,
-			Name:    "client-data",
-		})
+		clientCookie := NewClientReadableCookie[string](
+			ClientReadableCookieConfig{
+				Manager: mgr,
+				Name:    "client-data",
+			},
+		)
 		secureHttp, _ := secureCookie.New("secure-value")
 		clientHttp := clientCookie.New("client-value")
 		if secureHttp.Name == clientHttp.Name {
-			t.Errorf("cookies with different base names should have different final names")
+			t.Errorf(
+				"cookies with different base names should have different final names",
+			)
 		}
 		req := httptest.NewRequest("GET", "/", nil)
 		req.AddCookie(secureHttp)
@@ -944,21 +1054,29 @@ func TestTypeSafety(t *testing.T) {
 			t.Fatalf("error retrieving cookie: %v", err)
 		}
 		if retrieved.UserID != sessionData.UserID {
-			t.Errorf("expected UserID %s, got %s", sessionData.UserID, retrieved.UserID)
+			t.Errorf(
+				"expected UserID %s, got %s",
+				sessionData.UserID,
+				retrieved.UserID,
+			)
 		}
 	})
 
 	t.Run("client cookies constrained to string types", func(t *testing.T) {
 		type Theme string
 		type Locale string
-		themeCookie := NewClientReadableCookie[Theme](ClientReadableCookieConfig{
-			Manager: mgr,
-			Name:    "theme",
-		})
-		localeCookie := NewClientReadableCookie[Locale](ClientReadableCookieConfig{
-			Manager: mgr,
-			Name:    "locale",
-		})
+		themeCookie := NewClientReadableCookie[Theme](
+			ClientReadableCookieConfig{
+				Manager: mgr,
+				Name:    "theme",
+			},
+		)
+		localeCookie := NewClientReadableCookie[Locale](
+			ClientReadableCookieConfig{
+				Manager: mgr,
+				Name:    "locale",
+			},
+		)
 		themeHttp := themeCookie.New(Theme("dark"))
 		if themeHttp.Value != "dark" {
 			t.Errorf("expected dark, got %s", themeHttp.Value)
@@ -993,7 +1111,10 @@ func TestCookieAttributeCombinations(t *testing.T) {
 				partitioned:   true,
 			},
 			validate: func(t *testing.T, c *http.Cookie) {
-				if c.Name != "__Host-secure" || c.Path != "/" || c.Domain != "" || !c.Secure || !c.Partitioned {
+				if c.Name != "__Host-secure" || c.Path != "/" ||
+					c.Domain != "" ||
+					!c.Secure ||
+					!c.Partitioned {
 					t.Error("validation failed for secure host-only production")
 				}
 			},
@@ -1013,8 +1134,11 @@ func TestCookieAttributeCombinations(t *testing.T) {
 				partitioned:   true,
 			},
 			validate: func(t *testing.T, c *http.Cookie) {
-				if c.Name != "theme" || c.Secure || c.Partitioned || c.HttpOnly {
-					t.Error("validation failed for client-readable non-host dev")
+				if c.Name != "theme" || c.Secure || c.Partitioned ||
+					c.HttpOnly {
+					t.Error(
+						"validation failed for client-readable non-host dev",
+					)
 				}
 			},
 		},
@@ -1072,7 +1196,11 @@ func TestCompleteWorkflow(t *testing.T) {
 			t.Fatalf("failed to retrieve session: %v", err)
 		}
 		if retrieved.UserID != session.UserID {
-			t.Errorf("expected UserID %s, got %s", session.UserID, retrieved.UserID)
+			t.Errorf(
+				"expected UserID %s, got %s",
+				session.UserID,
+				retrieved.UserID,
+			)
 		}
 		deletionCookie := sessionCookie.NewDeletion()
 		if deletionCookie.MaxAge != -1 {
@@ -1082,18 +1210,21 @@ func TestCompleteWorkflow(t *testing.T) {
 
 	t.Run("complete preference workflow", func(t *testing.T) {
 		type UserPrefs string
-		prefCookie := NewClientReadableCookieNonHostOnly[UserPrefs](ClientReadableCookieNonHostOnlyConfig{
-			Manager:   mgr,
-			Name:      "prefs",
-			Path:      "/app",
-			Domain:    ".example.com",
-			TTL:       365 * 24 * time.Hour,
-			SameSite:  SameSiteLaxMode,
-			Partition: PartitionFalse,
-		})
+		prefCookie := NewClientReadableCookieNonHostOnly[UserPrefs](
+			ClientReadableCookieNonHostOnlyConfig{
+				Manager:   mgr,
+				Name:      "prefs",
+				Path:      "/app",
+				Domain:    ".example.com",
+				TTL:       365 * 24 * time.Hour,
+				SameSite:  SameSiteLaxMode,
+				Partition: PartitionFalse,
+			},
+		)
 		prefs := UserPrefs("theme=dark;lang=en")
 		httpCookie := prefCookie.New(prefs)
-		if httpCookie.Path != "/app" || httpCookie.Domain != ".example.com" || httpCookie.HttpOnly {
+		if httpCookie.Path != "/app" || httpCookie.Domain != ".example.com" ||
+			httpCookie.HttpOnly {
 			t.Error("preference cookie attributes not set correctly")
 		}
 		req := httptest.NewRequest("GET", "/app", nil)
@@ -1170,10 +1301,12 @@ func TestNameMethod(t *testing.T) {
 			if tt.useHostPrefix {
 				t.Skip("Skipping host prefix test for non-host-only cookie")
 			}
-			cookie := NewSecureCookieNonHostOnly[string](SecureCookieNonHostOnlyConfig{
-				Manager: mgr,
-				Name:    tt.cookieName,
-			})
+			cookie := NewSecureCookieNonHostOnly[string](
+				SecureCookieNonHostOnlyConfig{
+					Manager: mgr,
+					Name:    tt.cookieName,
+				},
+			)
 			if name := cookie.Name(); name != tt.expectedName {
 				t.Errorf("Expected name %q, got %q", tt.expectedName, name)
 			}
@@ -1184,28 +1317,35 @@ func TestNameMethod(t *testing.T) {
 			if !tt.useHostPrefix {
 				t.Skip("Skipping non-host prefix test for host-only cookie")
 			}
-			cookie := NewClientReadableCookie[string](ClientReadableCookieConfig{
-				Manager: mgr,
-				Name:    tt.cookieName,
-			})
+			cookie := NewClientReadableCookie[string](
+				ClientReadableCookieConfig{
+					Manager: mgr,
+					Name:    tt.cookieName,
+				},
+			)
 			if name := cookie.Name(); name != tt.expectedName {
 				t.Errorf("Expected name %q, got %q", tt.expectedName, name)
 			}
 		})
 
 		// Test ClientReadableCookieNonHostOnly
-		t.Run(tt.testName+": ClientReadableCookieNonHostOnly", func(t *testing.T) {
-			if tt.useHostPrefix {
-				t.Skip("Skipping host prefix test for non-host-only cookie")
-			}
-			cookie := NewClientReadableCookieNonHostOnly[string](ClientReadableCookieNonHostOnlyConfig{
-				Manager: mgr,
-				Name:    tt.cookieName,
-			})
-			if name := cookie.Name(); name != tt.expectedName {
-				t.Errorf("Expected name %q, got %q", tt.expectedName, name)
-			}
-		})
+		t.Run(
+			tt.testName+": ClientReadableCookieNonHostOnly",
+			func(t *testing.T) {
+				if tt.useHostPrefix {
+					t.Skip("Skipping host prefix test for non-host-only cookie")
+				}
+				cookie := NewClientReadableCookieNonHostOnly[string](
+					ClientReadableCookieNonHostOnlyConfig{
+						Manager: mgr,
+						Name:    tt.cookieName,
+					},
+				)
+				if name := cookie.Name(); name != tt.expectedName {
+					t.Errorf("Expected name %q, got %q", tt.expectedName, name)
+				}
+			},
+		)
 	}
 }
 
@@ -1233,14 +1373,17 @@ func TestSetAndDeleteMethods(t *testing.T) {
 			t.Fatalf("unexpected error in SetWithProxy: %v", err)
 		}
 
-		cookies := proxy.GetCookies()
+		cookies := proxy.Cookies()
 		if len(cookies) != 1 {
 			t.Fatalf("expected 1 cookie, got %d", len(cookies))
 		}
 
 		setCookie := cookies[0]
 		if setCookie.Name != "__Host-session" {
-			t.Errorf("expected cookie name __Host-session, got %s", setCookie.Name)
+			t.Errorf(
+				"expected cookie name __Host-session, got %s",
+				setCookie.Name,
+			)
 		}
 		if setCookie.MaxAge != 3600 {
 			t.Errorf("expected MaxAge 3600, got %d", setCookie.MaxAge)
@@ -1248,265 +1391,377 @@ func TestSetAndDeleteMethods(t *testing.T) {
 
 		// Verify the cookie value is encrypted
 		if setCookie.Value == "" || setCookie.Value == "user123" {
-			t.Errorf("cookie value should be encrypted, got %s", setCookie.Value)
+			t.Errorf(
+				"cookie value should be encrypted, got %s",
+				setCookie.Value,
+			)
 		}
 
 		// Test DeleteWithProxy
 		proxy2 := response.NewProxy()
 		cookie.DeleteWithProxy(proxy2)
 
-		deleteCookies := proxy2.GetCookies()
+		deleteCookies := proxy2.Cookies()
 		if len(deleteCookies) != 1 {
-			t.Fatalf("expected 1 cookie for deletion, got %d", len(deleteCookies))
+			t.Fatalf(
+				"expected 1 cookie for deletion, got %d",
+				len(deleteCookies),
+			)
 		}
 
 		deleteCookie := deleteCookies[0]
 		if deleteCookie.Name != "__Host-session" {
-			t.Errorf("expected cookie name __Host-session, got %s", deleteCookie.Name)
+			t.Errorf(
+				"expected cookie name __Host-session, got %s",
+				deleteCookie.Name,
+			)
 		}
 		if deleteCookie.MaxAge != -1 {
-			t.Errorf("expected MaxAge -1 for deletion, got %d", deleteCookie.MaxAge)
+			t.Errorf(
+				"expected MaxAge -1 for deletion, got %d",
+				deleteCookie.MaxAge,
+			)
 		}
 		if deleteCookie.Value != "" {
-			t.Errorf("expected empty value for deletion, got %s", deleteCookie.Value)
+			t.Errorf(
+				"expected empty value for deletion, got %s",
+				deleteCookie.Value,
+			)
 		}
 	})
 
-	t.Run("SecureCookie SetWithWriter and DeleteWithWriter", func(t *testing.T) {
-		cookie := NewSecureCookie[string](SecureCookieConfig{
-			Manager: mgr,
-			Name:    "token",
-			TTL:     2 * time.Hour,
-		})
+	t.Run(
+		"SecureCookie SetWithWriter and DeleteWithWriter",
+		func(t *testing.T) {
+			cookie := NewSecureCookie[string](SecureCookieConfig{
+				Manager: mgr,
+				Name:    "token",
+				TTL:     2 * time.Hour,
+			})
 
-		// Test SetWithWriter
-		w := httptest.NewRecorder()
-		err := cookie.SetWithWriter(w, "secret-token-value")
-		if err != nil {
-			t.Fatalf("unexpected error in SetWithWriter: %v", err)
-		}
+			// Test SetWithWriter
+			w := httptest.NewRecorder()
+			err := cookie.SetWithWriter(w, "secret-token-value")
+			if err != nil {
+				t.Fatalf("unexpected error in SetWithWriter: %v", err)
+			}
 
-		cookies := w.Result().Cookies()
-		if len(cookies) != 1 {
-			t.Fatalf("expected 1 cookie, got %d", len(cookies))
-		}
+			cookies := w.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("expected 1 cookie, got %d", len(cookies))
+			}
 
-		setCookie := cookies[0]
-		if setCookie.Name != "__Host-token" {
-			t.Errorf("expected cookie name __Host-token, got %s", setCookie.Name)
-		}
-		if setCookie.MaxAge != 7200 {
-			t.Errorf("expected MaxAge 7200, got %d", setCookie.MaxAge)
-		}
+			setCookie := cookies[0]
+			if setCookie.Name != "__Host-token" {
+				t.Errorf(
+					"expected cookie name __Host-token, got %s",
+					setCookie.Name,
+				)
+			}
+			if setCookie.MaxAge != 7200 {
+				t.Errorf("expected MaxAge 7200, got %d", setCookie.MaxAge)
+			}
 
-		// Test DeleteWithWriter
-		w2 := httptest.NewRecorder()
-		cookie.DeleteWithWriter(w2)
+			// Test DeleteWithWriter
+			w2 := httptest.NewRecorder()
+			cookie.DeleteWithWriter(w2)
 
-		deleteCookies := w2.Result().Cookies()
-		if len(deleteCookies) != 1 {
-			t.Fatalf("expected 1 cookie for deletion, got %d", len(deleteCookies))
-		}
+			deleteCookies := w2.Result().Cookies()
+			if len(deleteCookies) != 1 {
+				t.Fatalf(
+					"expected 1 cookie for deletion, got %d",
+					len(deleteCookies),
+				)
+			}
 
-		deleteCookie := deleteCookies[0]
-		if deleteCookie.Name != "__Host-token" {
-			t.Errorf("expected cookie name __Host-token, got %s", deleteCookie.Name)
-		}
-		if deleteCookie.MaxAge != -1 {
-			t.Errorf("expected MaxAge -1 for deletion, got %d", deleteCookie.MaxAge)
-		}
-	})
+			deleteCookie := deleteCookies[0]
+			if deleteCookie.Name != "__Host-token" {
+				t.Errorf(
+					"expected cookie name __Host-token, got %s",
+					deleteCookie.Name,
+				)
+			}
+			if deleteCookie.MaxAge != -1 {
+				t.Errorf(
+					"expected MaxAge -1 for deletion, got %d",
+					deleteCookie.MaxAge,
+				)
+			}
+		},
+	)
 
-	t.Run("SecureCookieNonHostOnly SetWithProxy and DeleteWithProxy", func(t *testing.T) {
-		cookie := NewSecureCookieNonHostOnly[string](SecureCookieNonHostOnlyConfig{
-			Manager: mgr,
-			Name:    "api-token",
-			Path:    "/api",
-			Domain:  ".example.com",
-			TTL:     24 * time.Hour,
-		})
+	t.Run(
+		"SecureCookieNonHostOnly SetWithProxy and DeleteWithProxy",
+		func(t *testing.T) {
+			cookie := NewSecureCookieNonHostOnly[string](
+				SecureCookieNonHostOnlyConfig{
+					Manager: mgr,
+					Name:    "api-token",
+					Path:    "/api",
+					Domain:  ".example.com",
+					TTL:     24 * time.Hour,
+				},
+			)
 
-		// Test SetWithProxy
-		proxy := response.NewProxy()
-		err := cookie.SetWithProxy(proxy, "api-secret-value")
-		if err != nil {
-			t.Fatalf("unexpected error in SetWithProxy: %v", err)
-		}
+			// Test SetWithProxy
+			proxy := response.NewProxy()
+			err := cookie.SetWithProxy(proxy, "api-secret-value")
+			if err != nil {
+				t.Fatalf("unexpected error in SetWithProxy: %v", err)
+			}
 
-		cookies := proxy.GetCookies()
-		if len(cookies) != 1 {
-			t.Fatalf("expected 1 cookie, got %d", len(cookies))
-		}
+			cookies := proxy.Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("expected 1 cookie, got %d", len(cookies))
+			}
 
-		setCookie := cookies[0]
-		if setCookie.Name != "api-token" {
-			t.Errorf("expected cookie name api-token, got %s", setCookie.Name)
-		}
-		if setCookie.Path != "/api" {
-			t.Errorf("expected path /api, got %s", setCookie.Path)
-		}
-		if setCookie.Domain != ".example.com" {
-			t.Errorf("expected domain .example.com, got %s", setCookie.Domain)
-		}
+			setCookie := cookies[0]
+			if setCookie.Name != "api-token" {
+				t.Errorf(
+					"expected cookie name api-token, got %s",
+					setCookie.Name,
+				)
+			}
+			if setCookie.Path != "/api" {
+				t.Errorf("expected path /api, got %s", setCookie.Path)
+			}
+			if setCookie.Domain != ".example.com" {
+				t.Errorf(
+					"expected domain .example.com, got %s",
+					setCookie.Domain,
+				)
+			}
 
-		// Test DeleteWithProxy
-		proxy2 := response.NewProxy()
-		cookie.DeleteWithProxy(proxy2)
+			// Test DeleteWithProxy
+			proxy2 := response.NewProxy()
+			cookie.DeleteWithProxy(proxy2)
 
-		deleteCookies := proxy2.GetCookies()
-		if len(deleteCookies) != 1 {
-			t.Fatalf("expected 1 cookie for deletion, got %d", len(deleteCookies))
-		}
+			deleteCookies := proxy2.Cookies()
+			if len(deleteCookies) != 1 {
+				t.Fatalf(
+					"expected 1 cookie for deletion, got %d",
+					len(deleteCookies),
+				)
+			}
 
-		deleteCookie := deleteCookies[0]
-		if deleteCookie.Path != "/api" {
-			t.Errorf("expected path /api for deletion, got %s", deleteCookie.Path)
-		}
-		if deleteCookie.Domain != ".example.com" {
-			t.Errorf("expected domain .example.com for deletion, got %s", deleteCookie.Domain)
-		}
-		if deleteCookie.MaxAge != -1 {
-			t.Errorf("expected MaxAge -1 for deletion, got %d", deleteCookie.MaxAge)
-		}
-	})
+			deleteCookie := deleteCookies[0]
+			if deleteCookie.Path != "/api" {
+				t.Errorf(
+					"expected path /api for deletion, got %s",
+					deleteCookie.Path,
+				)
+			}
+			if deleteCookie.Domain != ".example.com" {
+				t.Errorf(
+					"expected domain .example.com for deletion, got %s",
+					deleteCookie.Domain,
+				)
+			}
+			if deleteCookie.MaxAge != -1 {
+				t.Errorf(
+					"expected MaxAge -1 for deletion, got %d",
+					deleteCookie.MaxAge,
+				)
+			}
+		},
+	)
 
-	t.Run("ClientReadableCookie SetWithProxy and DeleteWithProxy", func(t *testing.T) {
-		cookie := NewClientReadableCookie[string](ClientReadableCookieConfig{
-			Manager: mgr,
-			Name:    "theme",
-			TTL:     30 * 24 * time.Hour,
-		})
+	t.Run(
+		"ClientReadableCookie SetWithProxy and DeleteWithProxy",
+		func(t *testing.T) {
+			cookie := NewClientReadableCookie[string](
+				ClientReadableCookieConfig{
+					Manager: mgr,
+					Name:    "theme",
+					TTL:     30 * 24 * time.Hour,
+				},
+			)
 
-		// Test SetWithProxy
-		proxy := response.NewProxy()
-		cookie.SetWithProxy(proxy, "dark-mode")
+			// Test SetWithProxy
+			proxy := response.NewProxy()
+			cookie.SetWithProxy(proxy, "dark-mode")
 
-		cookies := proxy.GetCookies()
-		if len(cookies) != 1 {
-			t.Fatalf("expected 1 cookie, got %d", len(cookies))
-		}
+			cookies := proxy.Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("expected 1 cookie, got %d", len(cookies))
+			}
 
-		setCookie := cookies[0]
-		if setCookie.Name != "__Host-theme" {
-			t.Errorf("expected cookie name __Host-theme, got %s", setCookie.Name)
-		}
-		if setCookie.Value != "dark-mode" {
-			t.Errorf("expected value dark-mode, got %s", setCookie.Value)
-		}
-		if setCookie.HttpOnly {
-			t.Errorf("expected HttpOnly to be false for client-readable cookie")
-		}
+			setCookie := cookies[0]
+			if setCookie.Name != "__Host-theme" {
+				t.Errorf(
+					"expected cookie name __Host-theme, got %s",
+					setCookie.Name,
+				)
+			}
+			if setCookie.Value != "dark-mode" {
+				t.Errorf("expected value dark-mode, got %s", setCookie.Value)
+			}
+			if setCookie.HttpOnly {
+				t.Errorf(
+					"expected HttpOnly to be false for client-readable cookie",
+				)
+			}
 
-		// Test DeleteWithProxy
-		proxy2 := response.NewProxy()
-		cookie.DeleteWithProxy(proxy2)
+			// Test DeleteWithProxy
+			proxy2 := response.NewProxy()
+			cookie.DeleteWithProxy(proxy2)
 
-		deleteCookies := proxy2.GetCookies()
-		if len(deleteCookies) != 1 {
-			t.Fatalf("expected 1 cookie for deletion, got %d", len(deleteCookies))
-		}
+			deleteCookies := proxy2.Cookies()
+			if len(deleteCookies) != 1 {
+				t.Fatalf(
+					"expected 1 cookie for deletion, got %d",
+					len(deleteCookies),
+				)
+			}
 
-		deleteCookie := deleteCookies[0]
-		if deleteCookie.Name != "__Host-theme" {
-			t.Errorf("expected cookie name __Host-theme, got %s", deleteCookie.Name)
-		}
-		if deleteCookie.MaxAge != -1 {
-			t.Errorf("expected MaxAge -1 for deletion, got %d", deleteCookie.MaxAge)
-		}
-		if deleteCookie.Value != "" {
-			t.Errorf("expected empty value for deletion, got %s", deleteCookie.Value)
-		}
-	})
+			deleteCookie := deleteCookies[0]
+			if deleteCookie.Name != "__Host-theme" {
+				t.Errorf(
+					"expected cookie name __Host-theme, got %s",
+					deleteCookie.Name,
+				)
+			}
+			if deleteCookie.MaxAge != -1 {
+				t.Errorf(
+					"expected MaxAge -1 for deletion, got %d",
+					deleteCookie.MaxAge,
+				)
+			}
+			if deleteCookie.Value != "" {
+				t.Errorf(
+					"expected empty value for deletion, got %s",
+					deleteCookie.Value,
+				)
+			}
+		},
+	)
 
-	t.Run("ClientReadableCookie SetWithWriter and DeleteWithWriter", func(t *testing.T) {
-		type Locale string
-		cookie := NewClientReadableCookie[Locale](ClientReadableCookieConfig{
-			Manager: mgr,
-			Name:    "locale",
-			TTL:     365 * 24 * time.Hour,
-		})
+	t.Run(
+		"ClientReadableCookie SetWithWriter and DeleteWithWriter",
+		func(t *testing.T) {
+			type Locale string
+			cookie := NewClientReadableCookie[Locale](
+				ClientReadableCookieConfig{
+					Manager: mgr,
+					Name:    "locale",
+					TTL:     365 * 24 * time.Hour,
+				},
+			)
 
-		// Test SetWithWriter
-		w := httptest.NewRecorder()
-		cookie.SetWithWriter(w, Locale("en-US"))
+			// Test SetWithWriter
+			w := httptest.NewRecorder()
+			cookie.SetWithWriter(w, Locale("en-US"))
 
-		cookies := w.Result().Cookies()
-		if len(cookies) != 1 {
-			t.Fatalf("expected 1 cookie, got %d", len(cookies))
-		}
+			cookies := w.Result().Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("expected 1 cookie, got %d", len(cookies))
+			}
 
-		setCookie := cookies[0]
-		if setCookie.Name != "__Host-locale" {
-			t.Errorf("expected cookie name __Host-locale, got %s", setCookie.Name)
-		}
-		if setCookie.Value != "en-US" {
-			t.Errorf("expected value en-US, got %s", setCookie.Value)
-		}
+			setCookie := cookies[0]
+			if setCookie.Name != "__Host-locale" {
+				t.Errorf(
+					"expected cookie name __Host-locale, got %s",
+					setCookie.Name,
+				)
+			}
+			if setCookie.Value != "en-US" {
+				t.Errorf("expected value en-US, got %s", setCookie.Value)
+			}
 
-		// Test DeleteWithWriter
-		w2 := httptest.NewRecorder()
-		cookie.DeleteWithWriter(w2)
+			// Test DeleteWithWriter
+			w2 := httptest.NewRecorder()
+			cookie.DeleteWithWriter(w2)
 
-		deleteCookies := w2.Result().Cookies()
-		if len(deleteCookies) != 1 {
-			t.Fatalf("expected 1 cookie for deletion, got %d", len(deleteCookies))
-		}
+			deleteCookies := w2.Result().Cookies()
+			if len(deleteCookies) != 1 {
+				t.Fatalf(
+					"expected 1 cookie for deletion, got %d",
+					len(deleteCookies),
+				)
+			}
 
-		deleteCookie := deleteCookies[0]
-		if deleteCookie.MaxAge != -1 {
-			t.Errorf("expected MaxAge -1 for deletion, got %d", deleteCookie.MaxAge)
-		}
-	})
+			deleteCookie := deleteCookies[0]
+			if deleteCookie.MaxAge != -1 {
+				t.Errorf(
+					"expected MaxAge -1 for deletion, got %d",
+					deleteCookie.MaxAge,
+				)
+			}
+		},
+	)
 
-	t.Run("ClientReadableCookieNonHostOnly SetWithProxy and DeleteWithProxy", func(t *testing.T) {
-		cookie := NewClientReadableCookieNonHostOnly[string](ClientReadableCookieNonHostOnlyConfig{
-			Manager: mgr,
-			Name:    "preferences",
-			Path:    "/app",
-			Domain:  ".example.com",
-			TTL:     90 * 24 * time.Hour,
-		})
+	t.Run(
+		"ClientReadableCookieNonHostOnly SetWithProxy and DeleteWithProxy",
+		func(t *testing.T) {
+			cookie := NewClientReadableCookieNonHostOnly[string](
+				ClientReadableCookieNonHostOnlyConfig{
+					Manager: mgr,
+					Name:    "preferences",
+					Path:    "/app",
+					Domain:  ".example.com",
+					TTL:     90 * 24 * time.Hour,
+				},
+			)
 
-		// Test SetWithProxy
-		proxy := response.NewProxy()
-		cookie.SetWithProxy(proxy, "lang=en;tz=UTC")
+			// Test SetWithProxy
+			proxy := response.NewProxy()
+			cookie.SetWithProxy(proxy, "lang=en;tz=UTC")
 
-		cookies := proxy.GetCookies()
-		if len(cookies) != 1 {
-			t.Fatalf("expected 1 cookie, got %d", len(cookies))
-		}
+			cookies := proxy.Cookies()
+			if len(cookies) != 1 {
+				t.Fatalf("expected 1 cookie, got %d", len(cookies))
+			}
 
-		setCookie := cookies[0]
-		if setCookie.Name != "preferences" {
-			t.Errorf("expected cookie name preferences, got %s", setCookie.Name)
-		}
-		if setCookie.Value != "lang=en;tz=UTC" {
-			t.Errorf("expected value lang=en;tz=UTC, got %s", setCookie.Value)
-		}
-		if setCookie.Path != "/app" {
-			t.Errorf("expected path /app, got %s", setCookie.Path)
-		}
-		if setCookie.Domain != ".example.com" {
-			t.Errorf("expected domain .example.com, got %s", setCookie.Domain)
-		}
+			setCookie := cookies[0]
+			if setCookie.Name != "preferences" {
+				t.Errorf(
+					"expected cookie name preferences, got %s",
+					setCookie.Name,
+				)
+			}
+			if setCookie.Value != "lang=en;tz=UTC" {
+				t.Errorf(
+					"expected value lang=en;tz=UTC, got %s",
+					setCookie.Value,
+				)
+			}
+			if setCookie.Path != "/app" {
+				t.Errorf("expected path /app, got %s", setCookie.Path)
+			}
+			if setCookie.Domain != ".example.com" {
+				t.Errorf(
+					"expected domain .example.com, got %s",
+					setCookie.Domain,
+				)
+			}
 
-		// Test DeleteWithProxy
-		proxy2 := response.NewProxy()
-		cookie.DeleteWithProxy(proxy2)
+			// Test DeleteWithProxy
+			proxy2 := response.NewProxy()
+			cookie.DeleteWithProxy(proxy2)
 
-		deleteCookies := proxy2.GetCookies()
-		if len(deleteCookies) != 1 {
-			t.Fatalf("expected 1 cookie for deletion, got %d", len(deleteCookies))
-		}
+			deleteCookies := proxy2.Cookies()
+			if len(deleteCookies) != 1 {
+				t.Fatalf(
+					"expected 1 cookie for deletion, got %d",
+					len(deleteCookies),
+				)
+			}
 
-		deleteCookie := deleteCookies[0]
-		if deleteCookie.MaxAge != -1 {
-			t.Errorf("expected MaxAge -1 for deletion, got %d", deleteCookie.MaxAge)
-		}
-		if deleteCookie.Path != "/app" {
-			t.Errorf("expected path /app for deletion, got %s", deleteCookie.Path)
-		}
-	})
+			deleteCookie := deleteCookies[0]
+			if deleteCookie.MaxAge != -1 {
+				t.Errorf(
+					"expected MaxAge -1 for deletion, got %d",
+					deleteCookie.MaxAge,
+				)
+			}
+			if deleteCookie.Path != "/app" {
+				t.Errorf(
+					"expected path /app for deletion, got %s",
+					deleteCookie.Path,
+				)
+			}
+		},
+	)
 
 	t.Run("Error handling in SetWithProxy", func(t *testing.T) {
 		// Create a cookie that will have serialization issues
@@ -1527,12 +1782,18 @@ func TestSetAndDeleteMethods(t *testing.T) {
 			t.Errorf("expected error when serializing channel, got nil")
 		}
 		if !strings.Contains(err.Error(), "failed to create secure cookie") {
-			t.Errorf("expected error message to contain 'failed to create secure cookie', got: %v", err)
+			t.Errorf(
+				"expected error message to contain 'failed to create secure cookie', got: %v",
+				err,
+			)
 		}
 
 		// Verify no cookie was added to proxy
-		if len(proxy.GetCookies()) != 0 {
-			t.Errorf("expected no cookies on error, got %d", len(proxy.GetCookies()))
+		if len(proxy.Cookies()) != 0 {
+			t.Errorf(
+				"expected no cookies on error, got %d",
+				len(proxy.Cookies()),
+			)
 		}
 	})
 
@@ -1553,12 +1814,18 @@ func TestSetAndDeleteMethods(t *testing.T) {
 			t.Errorf("expected error when serializing channel, got nil")
 		}
 		if !strings.Contains(err.Error(), "failed to create secure cookie") {
-			t.Errorf("expected error message to contain 'failed to create secure cookie', got: %v", err)
+			t.Errorf(
+				"expected error message to contain 'failed to create secure cookie', got: %v",
+				err,
+			)
 		}
 
 		// Verify no cookie was set
 		if len(w.Result().Cookies()) != 0 {
-			t.Errorf("expected no cookies on error, got %d", len(w.Result().Cookies()))
+			t.Errorf(
+				"expected no cookies on error, got %d",
+				len(w.Result().Cookies()),
+			)
 		}
 	})
 }

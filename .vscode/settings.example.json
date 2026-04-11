@@ -1,20 +1,12 @@
 {
-	"search.exclude": {
-		"**/node_modules": true,
-		"**/vorma.gen.ts": true
-	},
-
-	"javascript.preferences.importModuleSpecifierEnding": "js",
-	"typescript.preferences.importModuleSpecifierEnding": "js",
-
-	"[go]": {
-		"editor.defaultFormatter": "golang.go"
-	},
-
+	"ts.experimental.useTsgo": true,
+	"js.preferences.importModuleSpecifierEnding": "js",
+	"ts.preferences.importModuleSpecifierEnding": "js",
+	"search.exclude": { "**/node_modules": true },
+	"[go]": { "editor.defaultFormatter": "golang.go" },
+	"oxc.fmt.configPath": ".oxfmtrc.jsonc",
 	"[html][css][json][jsonc][javascript][typescript][javascriptreact][typescriptreact][markdown]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode",
-		"prettier.proseWrap": "always"
-	},
-
-	"typescript.experimental.useTsgo": true
+		"editor.defaultFormatter": "oxc.oxc-vscode",
+		"editor.formatOnSave": true
+	}
 }
