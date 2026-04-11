@@ -87,7 +87,8 @@ func (v *Vorma) PublicURL(src_path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error getting public filemap: %w", err)
 	}
-	url, ok := pub_fm[src_path]
+	clean := strings.TrimPrefix(strings.TrimSpace(src_path), "/")
+	url, ok := pub_fm[clean]
 	if !ok {
 		return "", fmt.Errorf("file %s not found in manifest public filemap", src_path)
 	}

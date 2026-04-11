@@ -326,6 +326,7 @@ func render_ts_public_url_setup_section(pub_fm map[string]string) string {
 	sb := strings.Builder{}
 
 	sb.WriteString(`declare global {
+	/** Argument must be a static string literal. */
 	function vormaPublicURL(k: VormaPublicURLKey): string;
 }`)
 
@@ -352,7 +353,9 @@ func render_ts_public_url_setup_section(pub_fm map[string]string) string {
 		fmt.Fprintf(&sb, "\t%q,\n", k)
 	}
 	sb.WriteString("] as const;\n\n")
-	sb.WriteString("export type VormaPublicURLKey = (typeof vormaPublicURLKeys)[number];\n")
+	sb.WriteString(
+		"type VormaPublicURLKey = `${\"\" | \"/\"}${(typeof vormaPublicURLKeys)[number]}`;\n",
+	)
 
 	return sb.String()
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/vormadev/vorma/kit/response"
 )
@@ -74,7 +75,8 @@ func (rs *run_state) vite_hash_handler() http.HandlerFunc {
 		rs.mu.Lock()
 		defer rs.mu.Unlock()
 
-		v, ok := rs.pub_fm[src_path]
+		clean := strings.TrimPrefix(strings.TrimSpace(src_path), "/")
+		v, ok := rs.pub_fm[clean]
 		if !ok {
 			res.Error(404)
 			return

@@ -22,11 +22,34 @@ type HeadEls = headels.HeadEls
 type GoTypeSrc = tsgen.GoTypeSrc
 
 type DevWatchConfig struct {
-	Root          string
-	GlobalExclude []string
-	// If empty, defaults to watching all .go files in the WatchRoot
-	OnChangeRefreshGo      []string
-	OnChangeCallRevalidate []string
+	// Optional.
+	//
+	// The outermost directory to watch for changes in dev mode.
+	//
+	// Defaults to the current working directory.
+	Root string
+
+	// Optional.
+	//
+	// Glob patterns you want the dev watcher to completely ignore.
+	//
+	// Always ignored: "**/.git" and "**/node_modules".
+	GlobalIgnore []string
+
+	// Optional.
+	//
+	// Glob patterns pointing to Go files (or files implicating Go files, such
+	// as embedded templates) that should trigger a Go refresh when changed.
+	//
+	// If empty, defaults to watching all .go files in DevWatchConfig.Root.
+	OnChangeRecompileGo []string
+
+	// Optional.
+	//
+	// Glob patterns pointing to files that, when changed, should trigger a
+	// client-side data revalidation. Useful when editing loader-served
+	// content in dev mode, such as markdown files.
+	OnChangeClientRevalidate []string
 }
 
 type FrontendConfig struct {

@@ -59,10 +59,10 @@ var App = &vorma.Vorma{
 	},
 
 	DevWatchConfig: vorma.DevWatchConfig{
-		Root:                   ".",
-		GlobalExclude:          []string{},
-		OnChangeRefreshGo:      []string{},
-		OnChangeCallRevalidate: []string{"app/md/content/**/*.md"},
+		Root:                     ".",
+		GlobalIgnore:             []string{},
+		OnChangeRecompileGo:      []string{},
+		OnChangeClientRevalidate: []string{"app/md/content/**/*.md"},
 	},
 }
 

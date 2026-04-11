@@ -82,8 +82,8 @@ func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.V.Dist
 func (cfg vorma_cfg) ts_gen_out_file() string { return fsutil.SysNorm(cfg.V.TSGenConfig.OutFile) }
 
 func (cfg vorma_cfg) global_watch_exclude_patterns() []string {
-	patterns := make([]string, len(cfg.V.DevWatchConfig.GlobalExclude))
-	for i, p := range cfg.V.DevWatchConfig.GlobalExclude {
+	patterns := make([]string, len(cfg.V.DevWatchConfig.GlobalIgnore))
+	for i, p := range cfg.V.DevWatchConfig.GlobalIgnore {
 		patterns[i] = fsutil.SysNorm(p)
 	}
 	return patterns
@@ -99,8 +99,8 @@ func (cfg vorma_cfg) server_watch_patterns() []string {
 	return x
 }
 func (cfg vorma_cfg) __validate_server_watch_patterns() ([]string, error) {
-	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeRefreshGo))
-	for i, p := range cfg.V.DevWatchConfig.OnChangeRefreshGo {
+	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeRecompileGo))
+	for i, p := range cfg.V.DevWatchConfig.OnChangeRecompileGo {
 		is_valid := doublestar.ValidatePathPattern(p)
 		if !is_valid {
 			return nil, fmt.Errorf("invalid server watch pattern: %s", p)
@@ -115,8 +115,8 @@ func (cfg vorma_cfg) client_revalidate_on_change_patterns() []string {
 	return x
 }
 func (cfg vorma_cfg) __validate_client_revalidate_on_change_patterns() ([]string, error) {
-	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeCallRevalidate))
-	for i, p := range cfg.V.DevWatchConfig.OnChangeCallRevalidate {
+	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeClientRevalidate))
+	for i, p := range cfg.V.DevWatchConfig.OnChangeClientRevalidate {
 		is_valid := doublestar.ValidatePathPattern(p)
 		if !is_valid {
 			return nil, fmt.Errorf("invalid server watch pattern: %s", p)
