@@ -120,6 +120,13 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 		deps := set.New[string]()
 		css_bundles := set.New[string]()
 
+		for _, dep := range manifest.ClientEntry.DepURLs {
+			deps.Add(dep)
+		}
+		for _, css := range manifest.ClientEntry.CSSBundleURLs {
+			css_bundles.Add(css)
+		}
+
 		outermost_server_err := ""
 		outermost_server_err_idx := -1
 

@@ -1,6 +1,6 @@
 {
 	"name": "vorma",
-	"version": "0.85.0-pre.6",
+	"version": "0.85.0-pre.7",
 	"description": "Vorma seeks to be the world's most straightforward web framework.",
 	"type": "module",
 	"sideEffects": false,
