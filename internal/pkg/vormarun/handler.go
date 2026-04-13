@@ -24,6 +24,10 @@ import (
 /////// Loaders handler
 /////////////////////////////////////////////////////////////////////
 
+func IsJSONRequest(r *http.Request) bool {
+	return r.URL.Query().Get(Query_Key_Vorma_JSON) != ""
+}
+
 func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)

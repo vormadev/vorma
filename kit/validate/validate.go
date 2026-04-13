@@ -417,7 +417,52 @@ func (c *AnyChecker) In(permitted any) *AnyChecker {
 	if c.done {
 		return c
 	}
-	if c.validate_against_slice(permitted) {
+	values, ok := c.values_from_slice(permitted)
+	if !ok {
+		return c
+	}
+	if c.matches_any_value(values) {
+		return c
+	}
+	c.fail_f("%s has an invalid value (%v)", c.label, c.true_value)
+	return c
+}
+
+// InEnum validates the value is one of the exported values in an enum struct.
+func (c *AnyChecker) InEnum(enum any) *AnyChecker {
+	if c.done {
+		return c
+	}
+	if enum == nil {
+		c.fail_f("%s enum is nil", c.label)
+		return c
+	}
+	rv := reflect.ValueOf(enum)
+	if !rv.IsValid() || safe_is_nil(rv) {
+		c.fail_f("%s enum is nil", c.label)
+		return c
+	}
+	base := safe_deref(rv)
+	if !base.IsValid() || base.Kind() != reflect.Struct {
+		c.fail_f("%s enum must be a struct or pointer to struct", c.label)
+		return c
+	}
+	values := make([]reflect.Value, 0, base.NumField())
+	base_type := base.Type()
+	for i := range base.NumField() {
+		if !base_type.Field(i).IsExported() {
+			continue
+		}
+		value := base.Field(i)
+		if value.CanInterface() {
+			values = append(values, safe_deref(value))
+		}
+	}
+	if len(values) == 0 {
+		c.fail_f("%s enum is empty", c.label)
+		return c
+	}
+	if c.matches_any_value(values) {
 		return c
 	}
 	c.fail_f("%s has an invalid value (%v)", c.label, c.true_value)
@@ -429,46 +474,55 @@ func (c *AnyChecker) NotIn(prohibited any) *AnyChecker {
 	if c.done {
 		return c
 	}
-	if c.validate_against_slice(prohibited) {
+	values, ok := c.values_from_slice(prohibited)
+	if !ok {
+		return c
+	}
+	if c.matches_any_value(values) {
 		c.fail_f("%s has a prohibited value (%v)", c.label, c.true_value)
 		return c
 	}
 	return c
 }
 
-func (c *AnyChecker) validate_against_slice(values_slice any) bool {
+func (c *AnyChecker) values_from_slice(values_slice any) ([]reflect.Value, bool) {
 	if c.done {
-		return false
+		return nil, false
 	}
 	if values_slice == nil {
 		c.fail_f("%s is nil", c.label)
-		c.done = true
-		return false
+		return nil, false
 	}
 	rv := reflect.ValueOf(values_slice)
-	if !rv.IsValid() {
+	if !rv.IsValid() || safe_is_nil(rv) {
 		c.fail_f("%s is nil", c.label)
-		c.done = true
-		return false
+		return nil, false
 	}
 	base := safe_deref(rv)
-	if base.Kind() != reflect.Slice && base.Kind() != reflect.Array {
+	if !base.IsValid() ||
+		(base.Kind() != reflect.Slice && base.Kind() != reflect.Array) {
 		c.fail_f("%s is not a slice or array", c.label)
-		c.done = true
-		return false
+		return nil, false
 	}
 	if base.Len() == 0 {
 		c.fail_f("%s is empty", c.label)
-		c.done = true
-		return false
+		return nil, false
 	}
+	values := make([]reflect.Value, 0, base.Len())
+	for i := range base.Len() {
+		values = append(values, safe_deref(base.Index(i)))
+	}
+	return values, true
+}
+
+func (c *AnyChecker) matches_any_value(values []reflect.Value) bool {
 	tv := reflect.ValueOf(c.true_value)
 	if !tv.IsValid() {
 		return false
 	}
 	true_base := safe_deref(tv)
-	for i := range base.Len() {
-		if compare_values(true_base, safe_deref(base.Index(i))) {
+	for _, value := range values {
+		if compare_values(true_base, value) {
 			return true
 		}
 	}

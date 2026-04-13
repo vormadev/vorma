@@ -138,6 +138,108 @@ func TestNotInValidation(t *testing.T) {
 	})
 }
 
+func TestInEnumValidation(t *testing.T) {
+	type test_status string
+
+	const (
+		test_status_draft    test_status = "draft"
+		test_status_live     test_status = "live"
+		test_status_archived test_status = "archived"
+		test_status_hidden   test_status = "hidden"
+	)
+
+	live := test_status_live
+	enum := struct {
+		Draft  test_status
+		Live   *test_status
+		hidden test_status
+	}{
+		Draft:  test_status_draft,
+		Live:   &live,
+		hidden: test_status_hidden,
+	}
+
+	t.Run("Valid value in enum struct", func(t *testing.T) {
+		err := Any("status", test_status_draft).InEnum(enum).Error()
+
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("Valid value in pointer to enum struct", func(t *testing.T) {
+		err := Any("status", test_status_live).InEnum(&enum).Error()
+
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("Valid pointer value in enum struct", func(t *testing.T) {
+		status := test_status_live
+		err := Any("status", &status).InEnum(enum).Error()
+
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("Invalid value not in enum", func(t *testing.T) {
+		err := Any("status", test_status_archived).InEnum(enum).Error()
+
+		if err == nil {
+			t.Error("expected error for value not in enum")
+		}
+	})
+
+	t.Run("Unexported enum field ignored", func(t *testing.T) {
+		err := Any("status", test_status_hidden).InEnum(enum).Error()
+
+		if err == nil {
+			t.Error("expected error for unexported enum field")
+		}
+	})
+
+	t.Run("Nil enum", func(t *testing.T) {
+		err := Any("status", test_status_draft).InEnum(nil).Error()
+
+		if err == nil {
+			t.Error("expected error for nil enum")
+		}
+	})
+
+	t.Run("Nil enum pointer", func(t *testing.T) {
+		var nil_enum *struct {
+			Draft test_status
+		}
+		err := Any("status", test_status_draft).InEnum(nil_enum).Error()
+
+		if err == nil {
+			t.Error("expected error for nil enum pointer")
+		}
+	})
+
+	t.Run("Non-struct enum", func(t *testing.T) {
+		err := Any("status", test_status_draft).
+			InEnum([]test_status{test_status_draft}).
+			Error()
+
+		if err == nil {
+			t.Error("expected error for non-struct enum")
+		}
+	})
+
+	t.Run("Empty enum", func(t *testing.T) {
+		err := Any("status", test_status_hidden).
+			InEnum(struct{ hidden test_status }{hidden: test_status_hidden}).
+			Error()
+
+		if err == nil {
+			t.Error("expected error for empty enum")
+		}
+	})
+}
+
 func TestInValidationWithPointers(t *testing.T) {
 	t.Run("Valid pointer value in slice of values", func(t *testing.T) {
 		allowed := []string{"apple", "banana", "cherry"}

@@ -1,4 +1,4 @@
-package lazyget
+package lazyonce
 
 import (
 	"reflect"

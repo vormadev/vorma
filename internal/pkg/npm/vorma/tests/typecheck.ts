@@ -10,15 +10,15 @@ import type {
 	MakeTypedClientLoaderProps,
 	MakeTypedDefineRouteInput,
 	MakeTypedLinkProps,
-	MakeTypedLoaderO,
+	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
-	MakeTypedMutationI,
-	MakeTypedMutationO,
+	MakeTypedMutationInput,
+	MakeTypedMutationOutput,
 	MakeTypedMutationPattern,
 	MakeTypedMutationProps,
 	MakeTypedNavigateProps,
-	MakeTypedQueryI,
-	MakeTypedQueryO,
+	MakeTypedQueryInput,
+	MakeTypedQueryOutput,
 	MakeTypedQueryPattern,
 	MakeTypedQueryProps,
 	MakeTypedRouteProps,
@@ -157,59 +157,68 @@ function assert_exported_type_contracts(): void {
 
 	// Loader output types
 	type _loader_o_root = Assert<
-		IsExact<MakeTypedLoaderO<App, "/">, { sessionUserID: string | null }>
+		IsExact<
+			MakeTypedLoaderOutput<App, "/">,
+			{ sessionUserID: string | null }
+		>
 	>;
 	type _loader_o_users = Assert<
-		IsExact<MakeTypedLoaderO<App, "/users/:userID">, { userName: string }>
+		IsExact<
+			MakeTypedLoaderOutput<App, "/users/:userID">,
+			{ userName: string }
+		>
 	>;
 	type _loader_o_docs = Assert<
-		IsExact<MakeTypedLoaderO<App, "/docs/*">, { slugParts: string[] }>
+		IsExact<MakeTypedLoaderOutput<App, "/docs/*">, { slugParts: string[] }>
 	>;
 	type _loader_o_blog = Assert<
-		IsExact<MakeTypedLoaderO<App, "/blog/_index">, { posts: string[] }>
+		IsExact<MakeTypedLoaderOutput<App, "/blog/_index">, { posts: string[] }>
 	>;
 
 	// Query I/O types
 	type _query_i_users = Assert<
 		IsExact<
-			MakeTypedQueryI<App, "/users/:userID">,
+			MakeTypedQueryInput<App, "/users/:userID">,
 			{ includePosts: boolean }
 		>
 	>;
 	type _query_o_users = Assert<
 		IsExact<
-			MakeTypedQueryO<App, "/users/:userID">,
+			MakeTypedQueryOutput<App, "/users/:userID">,
 			{ id: string; posts: number }
 		>
 	>;
 	type _query_i_health = Assert<
-		IsExact<MakeTypedQueryI<App, "/health">, null>
+		IsExact<MakeTypedQueryInput<App, "/health">, null>
 	>;
 	type _query_o_health = Assert<
-		IsExact<MakeTypedQueryO<App, "/health">, { ok: true }>
+		IsExact<MakeTypedQueryOutput<App, "/health">, { ok: true }>
 	>;
 
 	// Mutation I/O types
 	type _mutation_i_users = Assert<
-		IsExact<MakeTypedMutationI<App, "/users/:userID">, { nickname: string }>
+		IsExact<
+			MakeTypedMutationInput<App, "/users/:userID">,
+			{ nickname: string }
+		>
 	>;
 	type _mutation_o_users = Assert<
-		IsExact<MakeTypedMutationO<App, "/users/:userID">, { saved: true }>
+		IsExact<MakeTypedMutationOutput<App, "/users/:userID">, { saved: true }>
 	>;
 	type _mutation_i_sessions = Assert<
 		IsExact<
-			MakeTypedMutationI<App, "/sessions">,
+			MakeTypedMutationInput<App, "/sessions">,
 			{ email: string; password: string }
 		>
 	>;
 	type _mutation_o_sessions = Assert<
-		IsExact<MakeTypedMutationO<App, "/sessions">, { token: string }>
+		IsExact<MakeTypedMutationOutput<App, "/sessions">, { token: string }>
 	>;
 	type _mutation_i_logout = Assert<
-		IsExact<MakeTypedMutationI<App, "/logout">, undefined>
+		IsExact<MakeTypedMutationInput<App, "/logout">, undefined>
 	>;
 	type _mutation_o_logout = Assert<
-		IsExact<MakeTypedMutationO<App, "/logout">, { done: true }>
+		IsExact<MakeTypedMutationOutput<App, "/logout">, { done: true }>
 	>;
 
 	// Router data
@@ -425,8 +434,8 @@ function assert_exported_type_contracts(): void {
 		IsExact<
 			Awaited<ReturnType<MakeTypedAPIClient<App>["query"]>>,
 			SubmitResult<
-				| MakeTypedQueryO<App, "/users/:userID">
-				| MakeTypedQueryO<App, "/health">
+				| MakeTypedQueryOutput<App, "/users/:userID">
+				| MakeTypedQueryOutput<App, "/health">
 			>
 		>
 	>;
@@ -597,9 +606,9 @@ function assert_api_client_contracts(): void {
 		params: { userID: "u-1" },
 		input: { includePosts: true },
 	});
-	expect_type<Promise<SubmitResult<MakeTypedQueryO<App, "/users/:userID">>>>(
-		user_query_result,
-	);
+	expect_type<
+		Promise<SubmitResult<MakeTypedQueryOutput<App, "/users/:userID">>>
+	>(user_query_result);
 
 	// Valid query with nullable input (omitted)
 	void react.apiClient.query({
@@ -656,7 +665,7 @@ function assert_api_client_contracts(): void {
 		requestInit: { method: "PATCH" },
 	});
 	expect_type<
-		Promise<SubmitResult<MakeTypedMutationO<App, "/users/:userID">>>
+		Promise<SubmitResult<MakeTypedMutationOutput<App, "/users/:userID">>>
 	>(patch_result);
 
 	// Valid POST mutation
@@ -665,9 +674,9 @@ function assert_api_client_contracts(): void {
 		input: { email: "a@b.com", password: "pw" },
 		requestInit: { method: "POST" },
 	});
-	expect_type<Promise<SubmitResult<MakeTypedMutationO<App, "/sessions">>>>(
-		post_result,
-	);
+	expect_type<
+		Promise<SubmitResult<MakeTypedMutationOutput<App, "/sessions">>>
+	>(post_result);
 
 	// Valid mutation with optional input (omitted)
 	void react.apiClient.mutate({
@@ -849,19 +858,19 @@ function assert_react_adapter_contracts(): void {
 
 	// useLoaderData
 	const loader_data = react.useLoaderData(route_props);
-	expect_type<MakeTypedLoaderO<App, "/users/:userID">>(loader_data);
+	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(loader_data);
 
 	// usePatternLoaderData
 	const maybe_pattern_data = react.usePatternLoaderData("/docs/*");
-	expect_type<MakeTypedLoaderO<App, "/docs/*"> | undefined>(
+	expect_type<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>(
 		maybe_pattern_data,
 	);
 
 	const maybe_root_data = react.usePatternLoaderData("/");
-	expect_type<MakeTypedLoaderO<App, "/"> | undefined>(maybe_root_data);
+	expect_type<MakeTypedLoaderOutput<App, "/"> | undefined>(maybe_root_data);
 
 	const maybe_blog_data = react.usePatternLoaderData("/blog/_index");
-	expect_type<MakeTypedLoaderO<App, "/blog/_index"> | undefined>(
+	expect_type<MakeTypedLoaderOutput<App, "/blog/_index"> | undefined>(
 		maybe_blog_data,
 	);
 
@@ -911,7 +920,7 @@ function assert_react_adapter_contracts(): void {
 		pattern: "/docs/*",
 		component: (props) => {
 			const data = react.useLoaderData(props);
-			expect_type<MakeTypedLoaderO<App, "/docs/*">>(data);
+			expect_type<MakeTypedLoaderOutput<App, "/docs/*">>(data);
 			return null!;
 		},
 		errorBoundary: (props) => {
@@ -925,7 +934,7 @@ function assert_react_adapter_contracts(): void {
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = react.useLoaderData(props);
-			expect_type<MakeTypedLoaderO<App, "/users/:userID">>(data);
+			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(data);
 
 			const client_data = react.useClientLoaderData(props);
 			expect_type<number>(client_data);
@@ -945,7 +954,7 @@ function assert_react_adapter_contracts(): void {
 			expect_type<string[]>(splatValues);
 			expect_type<AbortSignal>(signal);
 			const server_data = await serverDataPromise;
-			expect_type<MakeTypedLoaderO<App, "/users/:userID">>(
+			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(
 				server_data.loaderData,
 			);
 			expect_type<{ sessionUserID: string | null }>(server_data.rootData);
@@ -1211,11 +1220,11 @@ function assert_preact_adapter_contracts(): void {
 
 	// useLoaderData returns T (same as React)
 	const loader_data = preact.useLoaderData(route_props);
-	expect_type<MakeTypedLoaderO<App, "/users/:userID">>(loader_data);
+	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(loader_data);
 
 	// usePatternLoaderData
 	const maybe_pattern_data = preact.usePatternLoaderData("/docs/*");
-	expect_type<MakeTypedLoaderO<App, "/docs/*"> | undefined>(
+	expect_type<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>(
 		maybe_pattern_data,
 	);
 
@@ -1250,7 +1259,7 @@ function assert_preact_adapter_contracts(): void {
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = preact.useLoaderData(props);
-			expect_type<MakeTypedLoaderO<App, "/users/:userID">>(data);
+			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(data);
 			return null!;
 		},
 	});
@@ -1286,13 +1295,15 @@ function assert_solid_adapter_contracts(): void {
 
 	// useLoaderData returns Accessor<T>
 	const loader_data = solid.useLoaderData(route_props);
-	expect_type<Accessor<MakeTypedLoaderO<App, "/users/:userID">>>(loader_data);
+	expect_type<Accessor<MakeTypedLoaderOutput<App, "/users/:userID">>>(
+		loader_data,
+	);
 	// Calling the accessor returns the value
-	expect_type<MakeTypedLoaderO<App, "/users/:userID">>(loader_data());
+	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(loader_data());
 
 	// usePatternLoaderData returns Accessor<T | undefined>
 	const maybe_pattern_data = solid.usePatternLoaderData("/docs/*");
-	expect_type<Accessor<MakeTypedLoaderO<App, "/docs/*"> | undefined>>(
+	expect_type<Accessor<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>>(
 		maybe_pattern_data,
 	);
 
@@ -1332,7 +1343,7 @@ function assert_solid_adapter_contracts(): void {
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = solid.useLoaderData(props);
-			expect_type<Accessor<MakeTypedLoaderO<App, "/users/:userID">>>(
+			expect_type<Accessor<MakeTypedLoaderOutput<App, "/users/:userID">>>(
 				data,
 			);
 			return null!;

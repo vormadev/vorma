@@ -18,7 +18,7 @@ import {
 	type MakeTypedAPIDecorator,
 	type MakeTypedDefineRouteInput,
 	type MakeTypedLinkProps,
-	type MakeTypedLoaderO,
+	type MakeTypedLoaderOutput,
 	type MakeTypedLoaderPattern,
 	type MakeTypedRouteProps,
 	type MakeTypedRouterData,
@@ -28,7 +28,30 @@ import {
 	type VormaClient,
 } from "vorma/__internal";
 
-export type { AppConfig as VormaAppConfig };
+export type {
+	MakeTypedAPIClient,
+	MakeTypedAPIDecorator,
+	MakeTypedAPIDecoratorContext,
+	MakeTypedClientLoaderProps,
+	MakeTypedLinkProps,
+	MakeTypedLoaderOutput,
+	MakeTypedLoaderPattern,
+	MakeTypedMutationInput,
+	MakeTypedMutationOutput,
+	MakeTypedMutationPattern,
+	MakeTypedMutationProps,
+	MakeTypedNavigateProps,
+	MakeTypedQueryInput,
+	MakeTypedQueryOutput,
+	MakeTypedQueryPattern,
+	MakeTypedQueryProps,
+	MakeTypedRouteProps,
+	MakeTypedRouterData,
+	RevalidationResult,
+	SubmitOptions,
+	SubmitResult,
+	AppConfig as VormaAppConfig,
+} from "vorma/__internal";
 
 type CreateVormaClientOptions<A extends AppConfig> = {
 	linkDefaultProps?: Partial<
@@ -90,19 +113,22 @@ export function createVormaClient<A extends AppConfig>(
 
 	function useLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
-	): MakeTypedLoaderO<A, P> {
-		return loaders_data_signal.value[props.idx] as MakeTypedLoaderO<A, P>;
+	): MakeTypedLoaderOutput<A, P> {
+		return loaders_data_signal.value[props.idx] as MakeTypedLoaderOutput<
+			A,
+			P
+		>;
 	}
 
 	function usePatternLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
-	): MakeTypedLoaderO<A, P> | undefined {
+	): MakeTypedLoaderOutput<A, P> | undefined {
 		const patterns = matched_patterns_signal.value;
 		const idx = patterns.indexOf(pattern);
 		if (idx < 0) {
 			return undefined;
 		}
-		return loaders_data_signal.value[idx] as MakeTypedLoaderO<A, P>;
+		return loaders_data_signal.value[idx] as MakeTypedLoaderOutput<A, P>;
 	}
 
 	function useRouterData(): MakeTypedRouterData<A>;

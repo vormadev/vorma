@@ -25,7 +25,7 @@ import {
 	type MakeTypedAPIDecorator,
 	type MakeTypedDefineRouteInput,
 	type MakeTypedLinkProps,
-	type MakeTypedLoaderO,
+	type MakeTypedLoaderOutput,
 	type MakeTypedLoaderPattern,
 	type MakeTypedRouteProps,
 	type MakeTypedRouterData,
@@ -35,7 +35,30 @@ import {
 	type VormaClient,
 } from "vorma/__internal";
 
-export type { AppConfig as VormaAppConfig };
+export type {
+	MakeTypedAPIClient,
+	MakeTypedAPIDecorator,
+	MakeTypedAPIDecoratorContext,
+	MakeTypedClientLoaderProps,
+	MakeTypedLinkProps,
+	MakeTypedLoaderOutput,
+	MakeTypedLoaderPattern,
+	MakeTypedMutationInput,
+	MakeTypedMutationOutput,
+	MakeTypedMutationPattern,
+	MakeTypedMutationProps,
+	MakeTypedNavigateProps,
+	MakeTypedQueryInput,
+	MakeTypedQueryOutput,
+	MakeTypedQueryPattern,
+	MakeTypedQueryProps,
+	MakeTypedRouteProps,
+	MakeTypedRouterData,
+	RevalidationResult,
+	SubmitOptions,
+	SubmitResult,
+	AppConfig as VormaAppConfig,
+} from "vorma/__internal";
 
 type CreateVormaClientOptions<A extends AppConfig> = {
 	linkDefaultProps?: Partial<
@@ -112,22 +135,22 @@ export function createVormaClient<A extends AppConfig>(
 
 	function useLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
-	): Accessor<MakeTypedLoaderO<A, P>> {
+	): Accessor<MakeTypedLoaderOutput<A, P>> {
 		return createMemo(() => {
-			return loaders_data()[props.idx] as MakeTypedLoaderO<A, P>;
+			return loaders_data()[props.idx] as MakeTypedLoaderOutput<A, P>;
 		});
 	}
 
 	function usePatternLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
-	): Accessor<MakeTypedLoaderO<A, P> | undefined> {
+	): Accessor<MakeTypedLoaderOutput<A, P> | undefined> {
 		return createMemo(() => {
 			const patterns = matched_patterns();
 			const idx = patterns.indexOf(pattern);
 			if (idx < 0) {
 				return undefined;
 			}
-			return loaders_data()[idx] as MakeTypedLoaderO<A, P>;
+			return loaders_data()[idx] as MakeTypedLoaderOutput<A, P>;
 		});
 	}
 

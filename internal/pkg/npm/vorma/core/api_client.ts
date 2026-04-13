@@ -3,10 +3,10 @@ import type {
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
-	MakeTypedMutationO,
+	MakeTypedMutationOutput,
 	MakeTypedMutationPattern,
 	MakeTypedMutationProps,
-	MakeTypedQueryO,
+	MakeTypedQueryOutput,
 	MakeTypedQueryPattern,
 	MakeTypedQueryProps,
 	SubmitOptions,
@@ -28,7 +28,7 @@ export function create_typed_api_client<A extends AppConfig>(
 	return {
 		query: async <P extends MakeTypedQueryPattern<A>>(
 			props: MakeTypedQueryProps<A, P>,
-		): Promise<SubmitResult<MakeTypedQueryO<A, P>>> => {
+		): Promise<SubmitResult<MakeTypedQueryOutput<A, P>>> => {
 			const a = props as any;
 			const url = build_query_url(
 				actions_mount_root,
@@ -47,11 +47,11 @@ export function create_typed_api_client<A extends AppConfig>(
 				},
 				{ method: "GET" },
 			);
-			return submit_fn<MakeTypedQueryO<A, P>>(url, init, a.options);
+			return submit_fn<MakeTypedQueryOutput<A, P>>(url, init, a.options);
 		},
 		mutate: async <P extends MakeTypedMutationPattern<A>>(
 			props: MakeTypedMutationProps<A, P>,
-		): Promise<SubmitResult<MakeTypedMutationO<A, P>>> => {
+		): Promise<SubmitResult<MakeTypedMutationOutput<A, P>>> => {
 			const a = props as any;
 			const url = build_mutation_url(
 				actions_mount_root,
@@ -72,7 +72,11 @@ export function create_typed_api_client<A extends AppConfig>(
 					body: resolve_body(a.input),
 				},
 			);
-			return submit_fn<MakeTypedMutationO<A, P>>(url, init, a.options);
+			return submit_fn<MakeTypedMutationOutput<A, P>>(
+				url,
+				init,
+				a.options,
+			);
 		},
 	};
 }

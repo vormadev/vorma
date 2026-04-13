@@ -2,6 +2,7 @@ package vorma
 
 import (
 	"io/fs"
+	"net/http"
 	"path/filepath"
 
 	"github.com/vormadev/vorma/internal/pkg/vormarun"
@@ -68,6 +69,10 @@ func InitRouter(
 	staticFS fs.FS,
 ) (*mux.Router, error) {
 	return vormarun.InitRouter(v, loaders, actions, staticFS)
+}
+
+func IsJSONRequest(r *http.Request) bool {
+	return vormarun.IsJSONRequest(r)
 }
 
 /////// WRAPPER TYPES / HELPERS

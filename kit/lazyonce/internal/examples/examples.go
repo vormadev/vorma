@@ -1,13 +1,13 @@
 package examples
 
-import "github.com/vormadev/vorma/kit/lazyget"
+import "github.com/vormadev/vorma/kit/lazyonce"
 
 /////////////////////////////////////////////////////////////////////
 /////// Memoized Struct Fields Example
 /////////////////////////////////////////////////////////////////////
 
 type Universe struct {
-	answer lazyget.Cache[int]
+	answer lazyonce.Cache[int]
 }
 
 func (u *Universe) Answer(currentYear int) int {
@@ -21,7 +21,7 @@ func (u *Universe) Answer(currentYear int) int {
 /////// Simple Getter Example
 /////////////////////////////////////////////////////////////////////
 
-var GetAnswer = lazyget.Getter(func() int {
+var GetAnswer = lazyonce.Getter(func() int {
 	// Simulate expensive computation
 	return 42
 })

@@ -20,7 +20,7 @@ import type {
 	MakeTypedAPIClient,
 	MakeTypedDefineRouteInput,
 	MakeTypedLinkProps,
-	MakeTypedLoaderO,
+	MakeTypedLoaderOutput,
 	MakeTypedNavigateProps,
 } from "./types";
 
@@ -228,11 +228,11 @@ export type VormaClient<
 
 	useLoaderData: <P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
-	) => HookReturn<MakeTypedLoaderO<A, P>, AccessorWrapped>;
+	) => HookReturn<MakeTypedLoaderOutput<A, P>, AccessorWrapped>;
 
 	usePatternLoaderData: <P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
-	) => HookReturn<MakeTypedLoaderO<A, P> | undefined, AccessorWrapped>;
+	) => HookReturn<MakeTypedLoaderOutput<A, P> | undefined, AccessorWrapped>;
 
 	useRouterData: {
 		(): HookReturn<MakeTypedRouterData<A>, AccessorWrapped>;

@@ -112,7 +112,7 @@ func (d *TSDrafter) String() string {
 	for i, entry := range d.entries {
 		sb.WriteString(entry)
 		if i != len(d.entries)-1 {
-			sb.WriteString("\n")
+			sb.WriteString("\n\n")
 		}
 	}
 	return sb.String()

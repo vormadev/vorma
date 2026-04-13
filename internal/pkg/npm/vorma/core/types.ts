@@ -159,27 +159,27 @@ export type MakeTypedMutationPattern<A extends AppConfig> =
 
 /////// PUBLIC I/O TYPES (scoped to their own route category)
 
-export type MakeTypedLoaderO<
+export type MakeTypedLoaderOutput<
 	A extends AppConfig,
 	P extends MakeTypedLoaderPattern<A>,
 > = __LoaderByPattern<A, P> extends { __O: infer O } ? O : never;
 
-export type MakeTypedQueryI<
+export type MakeTypedQueryInput<
 	A extends AppConfig,
 	P extends MakeTypedQueryPattern<A>,
 > = __QueryByPattern<A, P> extends { __I: infer I } ? I : never;
 
-export type MakeTypedQueryO<
+export type MakeTypedQueryOutput<
 	A extends AppConfig,
 	P extends MakeTypedQueryPattern<A>,
 > = __QueryByPattern<A, P> extends { __O: infer O } ? O : never;
 
-export type MakeTypedMutationI<
+export type MakeTypedMutationInput<
 	A extends AppConfig,
 	P extends MakeTypedMutationPattern<A>,
 > = __MutationByPattern<A, P> extends { __I: infer I } ? I : never;
 
-export type MakeTypedMutationO<
+export type MakeTypedMutationOutput<
 	A extends AppConfig,
 	P extends MakeTypedMutationPattern<A>,
 > = __MutationByPattern<A, P> extends { __O: infer O } ? O : never;
@@ -220,9 +220,9 @@ export type MakeTypedQueryProps<
 	requestInit?: Omit<RequestInit, "method"> & { method?: "GET" };
 } & __ConditionalQueryParams<A, P> &
 	__ConditionalSplat<P> &
-	(__IsEmptyInput<MakeTypedQueryI<A, P>> extends true
-		? { input?: MakeTypedQueryI<A, P> }
-		: { input: MakeTypedQueryI<A, P> });
+	(__IsEmptyInput<MakeTypedQueryInput<A, P>> extends true
+		? { input?: MakeTypedQueryInput<A, P> }
+		: { input: MakeTypedQueryInput<A, P> });
 
 /////// MUTATION PROPS
 
@@ -235,9 +235,9 @@ export type MakeTypedMutationProps<
 	requestInit: RequestInit & { method: __MutationMethod<A, P> };
 } & __ConditionalMutationParams<A, P> &
 	__ConditionalSplat<P> &
-	(__IsEmptyInput<MakeTypedMutationI<A, P>> extends true
-		? { input?: MakeTypedMutationI<A, P> }
-		: { input: MakeTypedMutationI<A, P> });
+	(__IsEmptyInput<MakeTypedMutationInput<A, P>> extends true
+		? { input?: MakeTypedMutationInput<A, P> }
+		: { input: MakeTypedMutationInput<A, P> });
 
 /////// ROUTE COMPONENT PROPS
 
@@ -263,7 +263,7 @@ export type MakeTypedClientLoaderProps<
 	serverDataPromise: Promise<{
 		matchedPatterns: string[];
 		rootData: __ExtractRootData<A>;
-		loaderData: MakeTypedLoaderO<A, P>;
+		loaderData: MakeTypedLoaderOutput<A, P>;
 		clientBuildID: string;
 	}>;
 	signal: AbortSignal;
@@ -323,8 +323,8 @@ export type MakeTypedAPIDecorator<A extends AppConfig> = (
 export type MakeTypedAPIClient<A extends AppConfig> = {
 	query: <P extends MakeTypedQueryPattern<A>>(
 		props: MakeTypedQueryProps<A, P>,
-	) => Promise<SubmitResult<MakeTypedQueryO<A, P>>>;
+	) => Promise<SubmitResult<MakeTypedQueryOutput<A, P>>>;
 	mutate: <P extends MakeTypedMutationPattern<A>>(
 		props: MakeTypedMutationProps<A, P>,
-	) => Promise<SubmitResult<MakeTypedMutationO<A, P>>>;
+	) => Promise<SubmitResult<MakeTypedMutationOutput<A, P>>>;
 };

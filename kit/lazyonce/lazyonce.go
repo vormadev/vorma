@@ -1,4 +1,4 @@
-package lazyget
+package lazyonce
 
 import "sync"
 
@@ -12,7 +12,14 @@ func (v *Cache[T]) Get(initFunc func() T) T {
 	return v.get()
 }
 
-// Extremely light and arguably pointless wrapper over sync.OnceValue
+func Func(fn func()) func() {
+	return sync.OnceFunc(fn)
+}
+
 func Getter[T any](fn func() T) func() T {
 	return sync.OnceValue(fn)
+}
+
+func GetterWithErr[T any](fn func() (T, error)) func() (T, error) {
+	return sync.OnceValues(fn)
 }
