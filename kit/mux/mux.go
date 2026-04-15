@@ -32,6 +32,8 @@ import (
 	"github.com/vormadev/vorma/kit/validate"
 )
 
+// __TODO add tests for MatchedPattern getters
+
 var (
 	mux_log       = colorlog.New("mux")
 	nested_log    = colorlog.New("nestedmux")
@@ -66,12 +68,13 @@ type (
 
 // RequestCtx is request-scoped context passed to task handlers and middleware.
 type RequestCtx[I any] struct {
-	params         Params
-	splat_vals     []string
-	tasks_ctx      *tasks.Ctx
-	input          I
-	req            *http.Request
-	response_proxy *response.Proxy
+	matched_pattern string
+	params          Params
+	splat_vals      []string
+	tasks_ctx       *tasks.Ctx
+	input           I
+	req             *http.Request
+	response_proxy  *response.Proxy
 }
 
 // MiddlewareOptions configures conditional middleware execution.
@@ -181,11 +184,10 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if route.get_handler_type() == "http" &&
 		!rt.has_any_task_mw(mm, route) &&
 		!route.get_needs_tasks_ctx() {
-		if len(match.Params) > 0 || len(match.SplatValues) > 0 {
-			r = request_store.RequestWithContextValue(r, &req_ctx_transport{
-				params: match.Params, splat_vals: match.SplatValues, req: r,
-			})
-		}
+		r = request_store.RequestWithContextValue(r, &req_ctx_transport{
+			matched_pattern: match.OriginalPattern(),
+			params:          match.Params, splat_vals: match.SplatValues, req: r,
+		})
 		h := route.http_chain(rt, mm)
 		if best.head_fallback {
 			treat_get_as_head(h, w, r)
@@ -198,7 +200,8 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Slow path: create tasks context and full request context.
 	tctx := tasks.NewCtx(r.Context())
 	r = request_store.RequestWithContextValue(r, &req_ctx_transport{
-		params: match.Params, splat_vals: match.SplatValues,
+		matched_pattern: match.OriginalPattern(),
+		params:          match.Params, splat_vals: match.SplatValues,
 		tasks_ctx: tctx, req: r, response_proxy: response.NewProxy(),
 	})
 
@@ -466,6 +469,7 @@ func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(
 
 func (rc *RequestCtx[I]) Params() Params          { return rc.params }
 func (rc *RequestCtx[I]) Param(key string) string { return rc.params[key] }
+func (rc *RequestCtx[I]) MatchedPattern() string  { return rc.matched_pattern }
 func (rc *RequestCtx[I]) SplatValues() []string   { return rc.splat_vals }
 func (rc *RequestCtx[I]) TasksCtx() *tasks.Ctx    { return rc.tasks_ctx }
 func (rc *RequestCtx[I]) Request() *http.Request  { return rc.req }
@@ -479,12 +483,14 @@ func (rc *RequestCtx[I]) get_underlying_req_ctx() any { return rc }
 
 // ResetForReuse reinitializes fields for pooled reuse.
 func (rc *RequestCtx[I]) ResetForReuse(
+	matched_pattern string,
 	params Params,
 	splat []string,
 	input I,
 	r *http.Request,
 	proxy *response.Proxy,
 ) {
+	rc.matched_pattern = matched_pattern
 	rc.params = params
 	rc.splat_vals = splat
 	rc.input = input
@@ -496,6 +502,7 @@ func (rc *RequestCtx[I]) ResetForReuse(
 // ClearForPool zeroes fields before returning to a pool.
 func (rc *RequestCtx[I]) ClearForPool() {
 	var zero I
+	rc.matched_pattern = ""
 	rc.params = nil
 	rc.splat_vals = nil
 	rc.tasks_ctx = nil
@@ -566,6 +573,14 @@ func GetTasksCtx(r *http.Request) *tasks.Ctx {
 		return rc.tasks_ctx
 	}
 	return nil
+}
+
+// GetMatchedPattern extracts the matched route pattern from a request.
+func GetMatchedPattern(r *http.Request) string {
+	if rc := request_store.Value(r.Context()); rc != nil {
+		return rc.matched_pattern
+	}
+	return ""
 }
 
 // RequestWithTasksCtx returns a request carrying only a tasks context.
@@ -925,6 +940,7 @@ func RunNestedTasks(
 
 		rc := req_ctx_pool.Get().(*RequestCtx[None])
 		rc.ResetForReuse(
+			pat,
 			results.Params,
 			results.SplatValues,
 			none_instance,
@@ -1006,11 +1022,12 @@ func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 /////////////////////////////////////////////////////////////////////
 
 type req_ctx_transport struct {
-	params         Params
-	splat_vals     []string
-	tasks_ctx      *tasks.Ctx
-	req            *http.Request
-	response_proxy *response.Proxy
+	matched_pattern string
+	params          Params
+	splat_vals      []string
+	tasks_ctx       *tasks.Ctx
+	req             *http.Request
+	response_proxy  *response.Proxy
 }
 
 type mw_versions struct {
@@ -1059,6 +1076,7 @@ type req_ctx_marker interface {
 	get_input() any
 	get_underlying_req_ctx() any
 	Params() Params
+	MatchedPattern() string
 	SplatValues() []string
 	TasksCtx() *tasks.Ctx
 	Request() *http.Request
@@ -1163,6 +1181,7 @@ func create_req_ctx_getter[I, O any](route *Route[I, O]) req_ctx_getter {
 	return req_ctx_getter_impl[I](
 		func(r *http.Request, ctx *tasks.Ctx, match *matcher.BestMatch) (*RequestCtx[I], error) {
 			rc := new(RequestCtx[I])
+			rc.matched_pattern = match.OriginalPattern()
 			rc.params = match.Params
 			rc.splat_vals = match.SplatValues
 			rc.tasks_ctx = ctx
@@ -1376,7 +1395,8 @@ func (rt *Router) apply_mw_pipeline(
 			}
 			p := response.NewProxy()
 			rc := &RequestCtx[None]{
-				params: rc.Params(), splat_vals: rc.SplatValues(),
+				matched_pattern: rc.MatchedPattern(),
+				params:          rc.Params(), splat_vals: rc.SplatValues(),
 				tasks_ctx: tctx, input: None{}, req: r, response_proxy: p,
 			}
 			proxies = append(proxies, p)

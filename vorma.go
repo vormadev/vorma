@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/vormadev/vorma/internal/pkg/vormarun"
-	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/tsgen"
 )
 
@@ -56,6 +55,8 @@ type (
 
 	LoaderError = vormarun.LoaderError
 	FormData    = vormarun.FormData
+
+	Router = vormarun.Router
 )
 
 /////// CORE FUNCTIONS
@@ -67,7 +68,7 @@ func InitRouter(
 	loaders []AnyLoader,
 	actions []AnyAction,
 	staticFS fs.FS,
-) (*mux.Router, error) {
+) (*Router, error) {
 	return vormarun.InitRouter(v, loaders, actions, staticFS)
 }
 

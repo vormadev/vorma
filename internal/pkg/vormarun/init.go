@@ -17,12 +17,22 @@ import (
 	"github.com/vormadev/vorma/kit/set"
 )
 
+type Router struct {
+	*mux.Router
+	loaders_mux *mux.NestedRouter
+	actions_mux *mux.Router
+}
+
+func (ar *Router) RootMux() *mux.Router          { return ar.Router }
+func (ar *Router) LoadersMux() *mux.NestedRouter { return ar.loaders_mux }
+func (ar *Router) ActionsMux() *mux.Router       { return ar.actions_mux }
+
 func InitRouter(
 	v *Vorma,
 	loaders Loaders,
 	actions Actions,
 	prod_static_fs fs.FS,
-) (*mux.Router, error) {
+) (*Router, error) {
 	v.init_once.Do(func() {
 		v.log = colorlog.New("vorma")
 
@@ -124,7 +134,11 @@ func InitRouter(
 		v._final_public_filepaths = fpf
 	})
 
-	return v.root_mux, v.init_err
+	return &Router{
+		Router:      v.root_mux,
+		loaders_mux: v.loaders_mux,
+		actions_mux: v.actions_mux,
+	}, v.init_err
 }
 
 const default_root_html_template = `<!doctype html>

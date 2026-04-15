@@ -188,6 +188,7 @@ type NavEntry = {
 	ac: AbortController;
 	data_promise: Promise<FetchResult>;
 	cl_prefetches: ClientLoaderPrefetch[];
+	prefetch_prepare_promise?: Promise<void>;
 	start_ts: number;
 	is_revalidation: boolean;
 };
@@ -314,6 +315,7 @@ export function create_client_core(
 
 	let nav_singleton: NavEntry | null = null;
 	let prefetch_singleton: NavEntry | null = null;
+	let deferred_submit_redirect: URL | null = null;
 
 	const active_submissions = new Map<
 		string,
@@ -665,7 +667,14 @@ export function create_client_core(
 		if (!el) {
 			return R.err(`Missing element: #${DATA_SCRIPT_ID}`);
 		}
-		const raw = JSON.parse(el.textContent ?? "{}");
+		let raw: Record<string, any>;
+		try {
+			raw = JSON.parse(el.textContent ?? "{}");
+		} catch (err) {
+			return R.err(
+				`Failed to parse #${DATA_SCRIPT_ID}: ${to_error_string(err)}`,
+			);
+		}
 		if (raw.ClientBuildID) {
 			client_build_id = raw.ClientBuildID;
 		}
@@ -733,24 +742,42 @@ export function create_client_core(
 				continue;
 			}
 
-			let resolve_server_data!: (v: unknown) => void;
-			const server_data_promise = new Promise<any>((res) => {
-				resolve_server_data = res;
-			});
-			server_data_promise.catch(() => {});
-
-			const result_promise = loader({
-				params: match_result.params,
-				splatValues: match_result.splatValues,
-				serverDataPromise: server_data_promise,
-				signal,
-			});
-			result_promise.catch(() => {});
-
-			prefetches.push({ pattern, resolve_server_data, result_promise });
+			prefetches.push(
+				create_client_loader_prefetch(
+					pattern,
+					loader,
+					match_result.params,
+					match_result.splatValues,
+					signal,
+				),
+			);
 		}
 
 		return prefetches;
+	}
+
+	function create_client_loader_prefetch(
+		pattern: string,
+		loader: ClientLoaderFn,
+		params: Record<string, string>,
+		splat_values: string[],
+		signal: AbortSignal,
+	): ClientLoaderPrefetch {
+		let resolve_server_data!: (v: unknown) => void;
+		const server_data_promise = new Promise<any>((res) => {
+			resolve_server_data = res;
+		});
+		server_data_promise.catch(() => {});
+
+		const result_promise = loader({
+			params,
+			splatValues: splat_values,
+			serverDataPromise: server_data_promise,
+			signal,
+		});
+		result_promise.catch(() => {});
+
+		return { pattern, resolve_server_data, result_promise };
 	}
 
 	function build_server_data(routes: DecodedRoute[], route_idx: number) {
@@ -766,6 +793,57 @@ export function create_client_core(
 			loaderData: routes[route_idx]?.server_data,
 			clientBuildID: client_build_id,
 		};
+	}
+
+	function prepare_client_loader_prefetches(
+		routes: DecodedRoute[],
+		payload: DecodedPayload,
+		existing_prefetches: ClientLoaderPrefetch[],
+		signal: AbortSignal,
+	): ClientLoaderPrefetch[] {
+		const existing_by_pattern = new Map<string, ClientLoaderPrefetch>();
+		for (const prefetch of existing_prefetches) {
+			existing_by_pattern.set(prefetch.pattern, prefetch);
+		}
+
+		const server_err_idx = routes.findIndex((r) => {
+			return r.server_error !== undefined;
+		});
+
+		const next_prefetches: ClientLoaderPrefetch[] = [];
+
+		for (let i = 0; i < routes.length; i++) {
+			if (server_err_idx !== -1 && i >= server_err_idx) {
+				continue;
+			}
+
+			const route = routes[i]!;
+			const existing_prefetch = existing_by_pattern.get(route.pattern);
+			if (existing_prefetch) {
+				existing_prefetch.resolve_server_data(
+					build_server_data(routes, i),
+				);
+				next_prefetches.push(existing_prefetch);
+				continue;
+			}
+
+			const loader = module_map[route.pattern];
+			if (!loader) {
+				continue;
+			}
+
+			const prefetch = create_client_loader_prefetch(
+				route.pattern,
+				loader,
+				payload.params,
+				payload.splat_values,
+				signal,
+			);
+			prefetch.resolve_server_data(build_server_data(routes, i));
+			next_prefetches.push(prefetch);
+		}
+
+		return next_prefetches;
 	}
 
 	async function run_client_loaders(
@@ -876,49 +954,11 @@ export function create_client_core(
 		return out;
 	}
 
-	async function prepare_route_state(
+	function build_route_state(
 		payload: DecodedPayload,
-		cl_prefetches: ClientLoaderPrefetch[],
-		signal: AbortSignal,
-	): Promise<{
-		state: Omit<RouteState, "history_state">;
-		apply_dom_side_effects: () => void;
-	} | null> {
-		preload_css(payload.css_bundles);
-
-		const modules = await load_modules(
-			payload.routes.map((r) => {
-				return r.module_url;
-			}),
-		);
-
-		for (const route of payload.routes) {
-			const mod = modules.get(route.module_url);
-			if (!mod) {
-				continue;
-			}
-			const def = mod.default as RouteDefinition | undefined;
-			if (def?.client_loader) {
-				module_map[route.pattern] = def.client_loader;
-				registerPattern(pattern_registry, route.pattern);
-			}
-		}
-
-		const cl_results = await run_client_loaders(
-			payload.routes,
-			payload,
-			cl_prefetches,
-			signal,
-		);
-		if (signal.aborted) {
-			return null;
-		}
-
-		await wait_for_css(payload.css_bundles, signal);
-		if (signal.aborted) {
-			return null;
-		}
-
+		modules: Map<string, Record<string, unknown>>,
+		cl_results: Array<{ data: unknown } | { error: unknown } | undefined>,
+	): Omit<RouteState, "history_state"> {
 		const entries: RouteEntry[] = payload.routes.map((route, i) => {
 			const mod = modules.get(route.module_url) ?? {};
 			const cl = cl_results[i];
@@ -940,12 +980,65 @@ export function create_client_core(
 			};
 		});
 
-		const state: Omit<RouteState, "history_state"> = {
+		return {
 			entries,
 			params: payload.params,
 			splat_values: payload.splat_values,
 			client_build_id,
 		};
+	}
+
+	function register_route_client_loaders(
+		payload: DecodedPayload,
+		modules: Map<string, Record<string, unknown>>,
+	): void {
+		for (const route of payload.routes) {
+			const mod = modules.get(route.module_url);
+			if (!mod) {
+				continue;
+			}
+			const def = mod.default as RouteDefinition | undefined;
+			if (def?.client_loader) {
+				module_map[route.pattern] = def.client_loader;
+				registerPattern(pattern_registry, route.pattern);
+			}
+		}
+	}
+
+	async function prepare_route_modules(
+		payload: DecodedPayload,
+		signal: AbortSignal,
+	): Promise<Map<string, Record<string, unknown>> | null> {
+		preload_css(payload.css_bundles);
+
+		const modules = await load_modules(
+			payload.routes.map((r) => {
+				return r.module_url;
+			}),
+		);
+		if (signal.aborted) {
+			return null;
+		}
+
+		register_route_client_loaders(payload, modules);
+
+		return modules;
+	}
+
+	async function prepare_route_shell(
+		payload: DecodedPayload,
+		signal: AbortSignal,
+	): Promise<{
+		state: Omit<RouteState, "history_state">;
+		modules: Map<string, Record<string, unknown>>;
+		apply_dom_side_effects: () => void;
+	} | null> {
+		const modules = await prepare_route_modules(payload, signal);
+		if (!modules) {
+			return null;
+		}
+
+		const state = build_route_state(payload, modules, []);
 
 		const apply_dom_side_effects = () => {
 			apply_head_and_title(
@@ -957,7 +1050,41 @@ export function create_client_core(
 			preload_modules(payload.deps);
 		};
 
-		return { state, apply_dom_side_effects };
+		return { state, modules, apply_dom_side_effects };
+	}
+
+	async function prepare_route_state(
+		payload: DecodedPayload,
+		cl_prefetches: ClientLoaderPrefetch[],
+		signal: AbortSignal,
+	): Promise<{
+		state: Omit<RouteState, "history_state">;
+		apply_dom_side_effects: () => void;
+	} | null> {
+		const shell = await prepare_route_shell(payload, signal);
+		if (!shell) {
+			return null;
+		}
+
+		const cl_results = await run_client_loaders(
+			payload.routes,
+			payload,
+			cl_prefetches,
+			signal,
+		);
+		if (signal.aborted) {
+			return null;
+		}
+
+		await wait_for_css(payload.css_bundles, signal);
+		if (signal.aborted) {
+			return null;
+		}
+
+		return {
+			state: build_route_state(payload, shell.modules, cl_results),
+			apply_dom_side_effects: shell.apply_dom_side_effects,
+		};
 	}
 
 	function detect_redirect(
@@ -1106,6 +1233,36 @@ export function create_client_core(
 		return result;
 	}
 
+	function make_scroll_intent(
+		state: Omit<RouteState, "history_state">,
+		scroll: ScrollState | undefined,
+	): ScrollIntent | undefined {
+		if (!scroll) {
+			return undefined;
+		}
+		return {
+			scroll,
+			target_route_id: make_route_id(
+				state.entries.length - 1,
+				state.entries[state.entries.length - 1]?.pattern ?? "",
+			),
+		};
+	}
+
+	function compute_initial_scroll_intent(
+		state: Omit<RouteState, "history_state">,
+	): ScrollIntent | undefined {
+		const refresh_scroll = consume_page_reload_scroll_state();
+		if (refresh_scroll) {
+			return make_scroll_intent(state, refresh_scroll);
+		}
+		const hash = normalize_hash(get_current_url().hash);
+		if (hash.length > 0) {
+			return make_scroll_intent(state, { hash: get_current_url().hash });
+		}
+		return undefined;
+	}
+
 	function handle_same_page_nav(
 		url: URL,
 		options: NavOptions,
@@ -1167,10 +1324,8 @@ export function create_client_core(
 			prefetch_singleton &&
 			matches_without_hash(prefetch_singleton.url, url)
 		) {
-			this_nav = {
-				...prefetch_singleton,
-				is_revalidation: false,
-			};
+			this_nav = prefetch_singleton;
+			this_nav.is_revalidation = false;
 			prefetch_singleton = null;
 		} else {
 			cancel_prefetch();
@@ -1228,6 +1383,11 @@ export function create_client_core(
 			const payload = decode_payload(result.data);
 			preload_modules(payload.deps);
 
+			await this_nav.prefetch_prepare_promise;
+			if (this_nav.ac.signal.aborted || nav_singleton !== this_nav) {
+				return { didNavigate: false };
+			}
+
 			const nav_result = await prepare_route_state(
 				payload,
 				this_nav.cl_prefetches,
@@ -1246,19 +1406,10 @@ export function create_client_core(
 				save_current_scroll();
 			}
 
-			const scroll = compute_scroll_intent(url, options);
-
-			const scroll_intent: ScrollIntent | undefined = scroll
-				? {
-						scroll,
-						target_route_id: make_route_id(
-							nav_result.state.entries.length - 1,
-							nav_result.state.entries[
-								nav_result.state.entries.length - 1
-							]?.pattern ?? "",
-						),
-					}
-				: undefined;
+			const scroll_intent = make_scroll_intent(
+				nav_result.state,
+				compute_scroll_intent(url, options),
+			);
 
 			const do_commit = () => {
 				if (!options.is_popstate) {
@@ -1442,6 +1593,9 @@ export function create_client_core(
 	}
 
 	function maybe_revalidate(): void {
+		if (!initialized) {
+			return;
+		}
 		if (mutation_response_ts === 0) {
 			return;
 		}
@@ -1527,18 +1681,7 @@ export function create_client_core(
 
 		const ac = new AbortController();
 		const data_promise = nav_fetch(url, ac.signal, "prefetch");
-
-		void data_promise
-			.then((result) => {
-				if (result.kind === "data") {
-					const payload = decode_payload(result.data);
-					preload_modules(payload.deps);
-					preload_css(payload.css_bundles);
-				}
-			})
-			.catch(() => {});
-
-		prefetch_singleton = {
+		const entry: NavEntry = {
 			url,
 			ac,
 			data_promise,
@@ -1546,6 +1689,30 @@ export function create_client_core(
 			start_ts: Date.now(),
 			is_revalidation: false,
 		};
+
+		entry.prefetch_prepare_promise = data_promise
+			.then(async (result) => {
+				if (result.kind === "data") {
+					const payload = decode_payload(result.data);
+					preload_modules(payload.deps);
+					const modules = await prepare_route_modules(
+						payload,
+						ac.signal,
+					);
+					if (!modules || ac.signal.aborted) {
+						return;
+					}
+					entry.cl_prefetches = prepare_client_loader_prefetches(
+						payload.routes,
+						payload,
+						entry.cl_prefetches,
+						ac.signal,
+					);
+				}
+			})
+			.catch(() => {});
+
+		prefetch_singleton = entry;
 	}
 
 	function stop_prefetch(href: string): void {
@@ -1588,7 +1755,7 @@ export function create_client_core(
 				revalidationPromise: Promise<RevalidationResult>;
 		  }
 	> {
-		if (!initialized) {
+		if (!current_state) {
 			throw new Error("Vorma not initialized");
 		}
 		const resolved = new URL(String(url), window.location.href);
@@ -1671,11 +1838,13 @@ export function create_client_core(
 
 			if (should_revalidate && !ac.signal.aborted) {
 				mark_mutation_response();
-				maybe_revalidate();
+				if (initialized) {
+					maybe_revalidate();
 
-				const freshness = make_freshness_promise();
-				revalidation_promise = freshness.promise;
-				freshness_waiters.push(freshness.waiter);
+					const freshness = make_freshness_promise();
+					revalidation_promise = freshness.promise;
+					freshness_waiters.push(freshness.waiter);
+				}
 			}
 
 			update_build_id(res);
@@ -1692,6 +1861,15 @@ export function create_client_core(
 				}
 				if (redirect.hard || !is_same_origin_href(redirect.href)) {
 					hard_redirect(redirect.href);
+					return {
+						success: true,
+						data: undefined as T,
+						response: res,
+						revalidationPromise: revalidation_promise,
+					};
+				}
+				if (!initialized) {
+					deferred_submit_redirect = new URL(redirect.href);
 					return {
 						success: true,
 						data: undefined as T,
@@ -1902,6 +2080,12 @@ export function create_client_core(
 	}
 
 	async function init(options: InitOptions): Promise<Result<void>> {
+		const payload_res = parse_initial_payload();
+		if (!payload_res.ok) {
+			return R.err(payload_res.err);
+		}
+		const payload = payload_res.val;
+
 		if (options.onStatusChange) {
 			status_listeners.add(options.onStatusChange);
 		}
@@ -1910,16 +2094,50 @@ export function create_client_core(
 		default_error_boundary = options.defaultErrorBoundary;
 		use_view_transitions = options.useViewTransitions ?? false;
 
-		const payload_res = parse_initial_payload();
-		if (!payload_res.ok) {
-			return R.err(payload_res.err);
-		}
-		const payload = payload_res.val;
-
 		seed_history_key();
 		try {
 			window.history.scrollRestoration = "manual";
 		} catch {}
+
+		const initial_ac = new AbortController();
+		const shell = await prepare_route_shell(payload, initial_ac.signal);
+		if (!shell) {
+			return R.err("Initial navigation produced no state");
+		}
+
+		current_state = {
+			...shell.state,
+			history_state: window.history.state?.[HISTORY_USER_STATE_FIELD],
+		};
+
+		const cl_results = await run_client_loaders(
+			payload.routes,
+			payload,
+			[],
+			initial_ac.signal,
+		);
+		if (initial_ac.signal.aborted) {
+			return R.err("Initial navigation produced no state");
+		}
+
+		await wait_for_css(payload.css_bundles, initial_ac.signal);
+		if (initial_ac.signal.aborted) {
+			return R.err("Initial navigation produced no state");
+		}
+
+		const state = build_route_state(payload, shell.modules, cl_results);
+		const scroll_intent = compute_initial_scroll_intent(state);
+
+		shell.apply_dom_side_effects();
+		current_state = {
+			...state,
+			history_state: window.history.state?.[HISTORY_USER_STATE_FIELD],
+		};
+		commit(current_state!, scroll_intent);
+
+		if (options.renderFn) {
+			await options.renderFn();
+		}
 
 		const on_popstate = () => {
 			void handle_popstate();
@@ -1930,35 +2148,13 @@ export function create_client_core(
 
 		register_hmr_listener();
 
-		const initial_ac = new AbortController();
-		const init_result = await prepare_route_state(
-			payload,
-			[],
-			initial_ac.signal,
-		);
-		if (!init_result) {
-			return R.err("Initial navigation produced no state");
-		}
-
-		init_result.apply_dom_side_effects();
-		current_state = {
-			...init_result.state,
-			history_state: window.history.state?.[HISTORY_USER_STATE_FIELD],
-		};
-		commit(current_state!);
-
-		if (options.renderFn) {
-			await options.renderFn();
-		}
-
-		const refresh_scroll = consume_page_reload_scroll_state();
-		if (refresh_scroll) {
-			window.requestAnimationFrame(() => {
-				apply_scroll(refresh_scroll, __t__options);
-			});
-		}
-
 		initialized = true;
+		if (deferred_submit_redirect) {
+			const redirect = deferred_submit_redirect;
+			deferred_submit_redirect = null;
+			void navigate_inner(redirect, { replace: true }, 0);
+		}
+		maybe_revalidate();
 		return R.ok(undefined);
 	}
 

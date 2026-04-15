@@ -2,9 +2,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	mock_fetch,
 	register_ccc_lifecycle,
 	route_response,
 	seed_payload,
+	setup,
 	tick,
 } from "./___ccc_test_helpers.ts";
 import { apply_scroll, create_client_core } from "./create_client_core.ts";
@@ -18,6 +20,22 @@ const t_opts = () => {
 		scroll_to: vi.fn(),
 	};
 };
+
+async function wait_until(
+	check: () => boolean,
+	message: string,
+): Promise<void> {
+	for (let i = 0; i < 50; i++) {
+		if (check()) {
+			return;
+		}
+		await tick();
+		await new Promise((resolve) => {
+			return setTimeout(resolve, 0);
+		});
+	}
+	throw new Error(message);
+}
 
 /////////////////////////////////////////////////////////////////////
 /////// apply_scroll
@@ -165,7 +183,7 @@ describe("init lifecycle", () => {
 		expect(renderFn).toHaveBeenCalledTimes(1);
 	});
 
-	it("restores refresh scroll via requestAnimationFrame after init", async () => {
+	it("passes refresh scroll as initial commit scroll intent", async () => {
 		sessionStorage.setItem(
 			"vorma-scroll-state-reload",
 			JSON.stringify({
@@ -188,17 +206,199 @@ describe("init lifecycle", () => {
 			);
 		}
 		const core = core_res.val;
-		const raf_spy = vi
-			.spyOn(window, "requestAnimationFrame")
-			.mockImplementation((cb) => {
-				cb(0);
-				return 0;
-			});
 
 		await core.init({});
 
-		expect(raf_spy).toHaveBeenCalled();
+		const scroll_intent = commit.mock.calls[0]![1];
+		expect(scroll_intent?.scroll).toEqual({ x: 55, y: 77 });
 		sessionStorage.removeItem("vorma-scroll-state-reload");
+	});
+
+	it("passes current hash as initial commit scroll intent", async () => {
+		window.history.replaceState({}, "", "/page#section");
+		seed_payload({ MatchedPatterns: ["/page"] });
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		await core.init({});
+
+		const scroll_intent = commit.mock.calls[0]![1];
+		expect(scroll_intent?.scroll).toEqual({ hash: "#section" });
+	});
+
+	it("allows initial client loaders to submit API queries", async () => {
+		let core: any;
+
+		vi.doMock("/mod-init-query.js", () => {
+			return {
+				default: {
+					pattern: "/init-query",
+					component: () => {
+						return null;
+					},
+					client_loader: async () => {
+						return core.submit(
+							"/api/some-api",
+							{ method: "GET" },
+							{ revalidate: false },
+						);
+					},
+				},
+			};
+		});
+
+		seed_payload({
+			MatchedPatterns: ["/init-query"],
+			ImportURLs: ["/mod-init-query.js"],
+		});
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		core = core_res.val;
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+
+		await core.init({});
+
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].client_data.success).toBe(true);
+		expect(state.entries[0].client_data.data).toEqual({ ok: true });
+	});
+
+	it("does not deadlock initial client loaders awaiting submit revalidation", async () => {
+		let core: any;
+
+		vi.doMock("/mod-init-mutate.js", () => {
+			return {
+				default: {
+					pattern: "/init-mutate",
+					component: () => {
+						return null;
+					},
+					client_loader: async () => {
+						const result = await core.submit("/api/save", {
+							method: "POST",
+						});
+						return result.revalidationPromise;
+					},
+				},
+			};
+		});
+
+		seed_payload({
+			MatchedPatterns: ["/init-mutate"],
+			ImportURLs: ["/mod-init-mutate.js"],
+		});
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		core = core_res.val;
+
+		vi.spyOn(globalThis, "fetch")
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ saved: true }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+			)
+			.mockResolvedValueOnce(route_response());
+
+		await core.init({});
+		await tick();
+
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].client_data).toEqual({ ok: true });
+		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("allows initial client loaders to read router data", async () => {
+		let core: any;
+
+		vi.doMock("/mod-root.js", () => {
+			return {
+				default: {
+					pattern: "/",
+					component: () => {
+						return null;
+					},
+				},
+			};
+		});
+
+		vi.doMock("/mod-init-router-data.js", () => {
+			return {
+				default: {
+					pattern: "/init-router-data",
+					component: () => {
+						return null;
+					},
+					client_loader: async () => {
+						return core.getRouterData();
+					},
+				},
+			};
+		});
+
+		seed_payload({
+			MatchedPatterns: ["/", "/init-router-data"],
+			LoadersData: [{ root: true }, { route: true }],
+			ImportURLs: ["/mod-root.js", "/mod-init-router-data.js"],
+		});
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		core = core_res.val;
+
+		await core.init({});
+
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[1].client_data).toEqual({
+			clientBuildID: "build-1",
+			matchedPatterns: ["/", "/init-router-data"],
+			splatValues: [],
+			params: {},
+			historyState: undefined,
+			rootData: { root: true },
+		});
 	});
 
 	it("extracts initial build ID from data script", async () => {
@@ -2161,6 +2361,176 @@ describe("prefetch integration", () => {
 		core.stop_prefetch("/prefetch-target");
 
 		expect(signal!.aborted).toBe(true);
+	});
+
+	it("resolves prestarted client loader server data during prefetch", async () => {
+		let loader_call_count = 0;
+		let seen_server_data: unknown;
+
+		vi.doMock("/known-prefetch-module.js", () => {
+			return {
+				default: {
+					pattern: "/known-prefetch",
+					component: () => {
+						return null;
+					},
+					client_loader: async ({ serverDataPromise }: any) => {
+						loader_call_count++;
+						seen_server_data = await serverDataPromise;
+						return { client: true };
+					},
+				},
+			};
+		});
+
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const first_nav = core.navigate("/known-prefetch");
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/known-prefetch"],
+				LoadersData: [{ initial: true }],
+				ImportURLs: ["/known-prefetch-module.js"],
+			}),
+		);
+		await first_nav;
+
+		const away_nav = core.navigate("/other");
+		await wait_for(2);
+		call(1).resolve(route_response());
+		await away_nav;
+
+		loader_call_count = 0;
+		seen_server_data = undefined;
+
+		core.start_prefetch("/known-prefetch");
+		await wait_for(3);
+
+		expect(loader_call_count).toBe(1);
+		expect(seen_server_data).toBeUndefined();
+
+		call(2).resolve(
+			route_response({
+				MatchedPatterns: ["/known-prefetch"],
+				LoadersData: [{ prefetched: true }],
+				ImportURLs: ["/known-prefetch-module.js"],
+			}),
+		);
+
+		await wait_until(() => {
+			return seen_server_data !== undefined;
+		}, "expected prefetch server data to resolve");
+
+		expect(calls).toHaveLength(3);
+		expect(seen_server_data).toEqual({
+			matchedPatterns: ["/known-prefetch"],
+			rootData: undefined,
+			loaderData: { prefetched: true },
+			clientBuildID: "build-1",
+		});
+	});
+
+	it("runs first-time route client loader during prefetch and reuses it on navigation", async () => {
+		let loader_call_count = 0;
+		let seen_server_data: unknown;
+
+		vi.doMock("/first-prefetch-module.js", () => {
+			return {
+				default: {
+					pattern: "/first-prefetch",
+					component: () => {
+						return null;
+					},
+					client_loader: async ({ serverDataPromise }: any) => {
+						loader_call_count++;
+						seen_server_data = await serverDataPromise;
+						return { from_client: true };
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		core.start_prefetch("/first-prefetch");
+		await wait_for(1);
+
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/first-prefetch"],
+				LoadersData: [{ from_server: true }],
+				ImportURLs: ["/first-prefetch-module.js"],
+			}),
+		);
+
+		await wait_until(() => {
+			return seen_server_data !== undefined;
+		}, "expected first-time prefetch client loader to run");
+
+		expect(commit).not.toHaveBeenCalled();
+		expect(loader_call_count).toBe(1);
+		expect(seen_server_data).toEqual({
+			matchedPatterns: ["/first-prefetch"],
+			rootData: undefined,
+			loaderData: { from_server: true },
+			clientBuildID: "build-1",
+		});
+
+		const result = await core.navigate("/first-prefetch");
+
+		expect(result.didNavigate).toBe(true);
+		expect(calls).toHaveLength(1);
+		expect(loader_call_count).toBe(1);
+		expect(commit).toHaveBeenCalledTimes(1);
+
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].client_data).toEqual({ from_client: true });
+	});
+
+	it("aborts first-time route client loader when prefetch is stopped", async () => {
+		let captured_signal: AbortSignal | null = null;
+
+		vi.doMock("/abort-prefetch-module.js", () => {
+			return {
+				default: {
+					pattern: "/abort-prefetch",
+					component: () => {
+						return null;
+					},
+					client_loader: async ({ signal }: any) => {
+						captured_signal = signal;
+						return new Promise(() => {});
+					},
+				},
+			};
+		});
+
+		const { core } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		core.start_prefetch("/abort-prefetch");
+		await wait_for(1);
+
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/abort-prefetch"],
+				LoadersData: [{ value: 1 }],
+				ImportURLs: ["/abort-prefetch-module.js"],
+			}),
+		);
+
+		await wait_until(() => {
+			return captured_signal !== null;
+		}, "expected first-time prefetch client loader signal");
+
+		expect(captured_signal!.aborted).toBe(false);
+
+		core.stop_prefetch("/abort-prefetch");
+
+		expect(captured_signal!.aborted).toBe(true);
 	});
 });
 
