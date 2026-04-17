@@ -107,7 +107,7 @@ describe("build_typed_link_href", () => {
 			"/users/:id",
 			{ id: "42" },
 			undefined,
-			"?q=abc",
+			{ q: "abc" },
 		);
 		const url = new URL(href);
 		expect(url.pathname).toBe("/users/42");
@@ -141,7 +141,7 @@ describe("build_typed_link_href", () => {
 			"/users/:id",
 			{ id: "42" },
 			undefined,
-			"?tab=posts",
+			{ tab: "posts" },
 			"#latest",
 		);
 		const url = new URL(href);

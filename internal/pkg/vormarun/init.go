@@ -81,6 +81,7 @@ func InitRouter(
 			DynamicParamPrefix:             Dynamic_Param_Prefix,
 			SplatSegmentIdentifier:         Splat_Segment_Identifier,
 			ExplicitIndexSegmentIdentifier: Explicit_Index_Segment_Identifier,
+			ParseInput:                     parse_loader_input,
 		})
 
 		for _, l := range loaders {

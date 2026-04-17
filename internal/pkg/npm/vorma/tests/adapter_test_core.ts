@@ -28,17 +28,25 @@ type TestClientLoaderProps = {
 };
 
 type TestVormaClient = {
-	init: (options: Partial<InitOptions>) => Promise<void>;
+	init: (
+		options: Omit<Partial<InitOptions>, "render"> & {
+			render?: (args: {
+				App: (props?: Record<string, unknown>) => unknown;
+				el: HTMLElement;
+			}) => void | Promise<void>;
+		},
+	) => Promise<void>;
 
 	navigate: (
-		props: { pattern: string } & Record<string, unknown>,
+		target: string | ({ pattern: string } & Record<string, unknown>),
+		options?: Record<string, unknown>,
 	) => Promise<{ didNavigate: boolean }>;
 
 	revalidate: () => Promise<RevalidationResult>;
 
 	RootOutlet: (props?: { idx?: number } & Record<string, unknown>) => unknown;
 
-	Link: (props: { pattern: string } & Record<string, unknown>) => unknown;
+	Link: (props: { href: unknown } & Record<string, unknown>) => unknown;
 
 	useLoaderData: (
 		props: { idx: number } & Record<string, unknown>,
@@ -180,6 +188,30 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 		document.body.innerHTML = "";
 		window.history.replaceState({}, "", "/");
 		vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+	});
+
+	///////////////////////////////////////////////////////////////////
+	/////// Init render
+	///////////////////////////////////////////////////////////////////
+
+	describe("init render", () => {
+		it("passes App and root element to render callback", async () => {
+			seed_payload();
+			const client = harness.create_client(TEST_CONFIG);
+
+			let received_app: unknown;
+			let received_el: HTMLElement | undefined;
+
+			await client.init({
+				render: ({ App, el }) => {
+					received_app = App;
+					received_el = el;
+				},
+			});
+
+			expect(typeof received_app).toBe("function");
+			expect(received_el).toBeInstanceOf(HTMLElement);
+		});
 	});
 
 	///////////////////////////////////////////////////////////////////
@@ -964,8 +996,10 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/users/:id",
-						params: { id: "42" },
+						href: {
+							pattern: "/users/:id",
+							params: { id: "42" },
+						},
 						children: "User Link",
 					}),
 				);
@@ -988,10 +1022,12 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/products/:id",
-						params: { id: "7" },
-						search: "?tab=reviews",
-						hash: "#top",
+						href: {
+							pattern: "/products/:id",
+							params: { id: "7" },
+							search: { tab: "reviews" },
+							hash: "#top",
+						},
 						children: "Product",
 					}),
 				);
@@ -1017,7 +1053,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/a",
+						href: { pattern: "/a" },
 						children: "A",
 					}),
 				);
@@ -1027,7 +1063,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/b",
+						href: { pattern: "/b" },
 						className: "custom-class",
 						children: "B",
 					}),
@@ -1054,7 +1090,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/clicked",
+						href: { pattern: "/clicked" },
 						children: "Click Me",
 					}),
 				);
@@ -1087,7 +1123,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/no-nav",
+						href: { pattern: "/no-nav" },
 						children: "Modified",
 					}),
 				);
@@ -1129,7 +1165,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						pattern: "/stripped",
+						href: { pattern: "/stripped" },
 						prefetch: "intent",
 						prefetchDelayMs: 100,
 						replace: true,

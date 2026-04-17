@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	deferred,
 	get_history_key,
 	get_stored_scroll,
 	mock_fetch,
@@ -82,6 +83,60 @@ describe("navigate", () => {
 		expect(state.entries[0].data).toEqual({ page: "second" });
 	});
 
+	it("settles superseded navigation without waiting for ignored abort", async () => {
+		const { core, commit } = await setup();
+		const first_fetch = deferred<Response>();
+		const second_fetch = deferred<Response>();
+		const calls: Array<{ url: string; signal: AbortSignal }> = [];
+
+		vi.spyOn(globalThis, "fetch").mockImplementation(
+			(input: string | URL | Request, init?: RequestInit) => {
+				const url =
+					input instanceof URL
+						? input.href
+						: typeof input === "string"
+							? input
+							: input.url;
+				if (!init?.signal) {
+					throw new Error("Expected route fetch to receive a signal");
+				}
+				calls.push({ url, signal: init.signal });
+				if (url.includes("/first")) {
+					return first_fetch.promise;
+				}
+				return second_fetch.promise;
+			},
+		);
+
+		const first = core.navigate("/first");
+		expect(calls).toHaveLength(1);
+
+		const second = core.navigate("/second");
+		expect(calls).toHaveLength(2);
+		expect(calls[0]!.signal.aborted).toBe(true);
+		await expect(first).resolves.toEqual({ didNavigate: false });
+
+		second_fetch.resolve(
+			route_response({
+				MatchedPatterns: ["/second"],
+				LoadersData: [{ page: "second" }],
+			}),
+		);
+		await expect(second).resolves.toEqual({ didNavigate: true });
+
+		first_fetch.resolve(
+			route_response({
+				MatchedPatterns: ["/first"],
+				LoadersData: [{ page: "first" }],
+			}),
+		);
+		await tick();
+
+		expect(commit).toHaveBeenCalledTimes(1);
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].data).toEqual({ page: "second" });
+	});
+
 	it("aborts in-flight fetch when new navigation starts", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
@@ -99,34 +154,58 @@ describe("navigate", () => {
 		await tick();
 	});
 
-	it("does not start new fetch when already navigating to same URL", async () => {
+	it("shares result when already navigating to same URL", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		void core.navigate("/same");
+		const n1 = core.navigate("/same");
 		await wait_for(1);
-		const r2 = await core.navigate("/same");
+		const n2 = core.navigate("/same");
 
 		expect(calls).toHaveLength(1);
-		expect(r2.didNavigate).toBe(false);
 
 		call(0).resolve(route_response());
-		await tick();
+		const [r1, r2] = await Promise.all([n1, n2]);
+
+		expect(r1.didNavigate).toBe(true);
+		expect(r2.didNavigate).toBe(true);
 	});
 
 	it("reuses in-flight fetch when only hash differs", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		void core.navigate("/page#one");
+		const n1 = core.navigate("/page#one");
 		await wait_for(1);
-		const r2 = await core.navigate("/page#two");
+		const n2 = core.navigate("/page#two");
 
 		expect(calls).toHaveLength(1);
-		expect(r2.didNavigate).toBe(false);
 
 		call(0).resolve(route_response());
-		await tick();
+		const [r1, r2] = await Promise.all([n1, n2]);
+
+		expect(r1.didNavigate).toBe(false);
+		expect(r2.didNavigate).toBe(true);
+	});
+
+	it("commits the latest hash intent when reusing in-flight route data", async () => {
+		const { core, commit } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const first = core.navigate("/page#one");
+		await wait_for(1);
+		const second = core.navigate("/page#two");
+
+		expect(calls).toHaveLength(1);
+
+		call(0).resolve(route_response());
+		const [r1, r2] = await Promise.all([first, second]);
+
+		expect(r1.didNavigate).toBe(false);
+		expect(r2.didNavigate).toBe(true);
+		const scroll_intent = commit.mock.calls[0]![1];
+		expect(scroll_intent?.scroll).toEqual({ hash: "#two" });
+		expect(window.location.hash).toBe("#two");
 	});
 
 	it("starts new fetch when search params differ", async () => {
@@ -326,6 +405,23 @@ describe("prefetch", () => {
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries[0].data).toEqual({ prefetched: true });
+	});
+
+	it("does not promote a completed failed prefetch", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		core.start_prefetch("/page");
+		await wait_for(1);
+		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
+		await tick();
+
+		const result = core.navigate("/page");
+		await wait_for(2);
+		call(1).resolve(route_response());
+
+		await expect(result).resolves.toEqual({ didNavigate: true });
+		expect(calls).toHaveLength(2);
 	});
 
 	it("promotes when only hash differs", async () => {
@@ -1139,6 +1235,34 @@ describe("popstate", () => {
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
 		expect(state.entries[0].data).toEqual({ home: true });
+	});
+
+	it("reuses in-flight popstate data for a later navigation intent", async () => {
+		const { core, commit, reload } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		simulate_popstate("pop-intent-one", "/target#one");
+		await wait_for(1);
+
+		const nav = core.navigate("/target#two");
+
+		expect(calls).toHaveLength(1);
+
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/target"],
+				LoadersData: [{ target: true }],
+			}),
+		);
+
+		const result = await nav;
+		await tick();
+
+		expect(result.didNavigate).toBe(true);
+		expect(reload).not.toHaveBeenCalled();
+		expect(window.location.hash).toBe("#two");
+		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(state.entries[0].data).toEqual({ target: true });
 	});
 
 	it("does not push history on popstate navigation", async () => {

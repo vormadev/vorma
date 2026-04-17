@@ -658,6 +658,7 @@ type NestedOptions struct {
 	DynamicParamPrefix             rune
 	SplatSegmentIdentifier         rune
 	ExplicitIndexSegmentIdentifier string
+	ParseInput                     func(r *http.Request, inputPtr any) error
 }
 
 // NestedRouter stores nested route patterns and optional task handlers.
@@ -665,6 +666,7 @@ type NestedRouter struct {
 	mu              sync.RWMutex
 	matcher_inst    *matcher.Matcher
 	routes          map[string]AnyNestedRoute
+	parse_input     func(r *http.Request, inputPtr any) error
 	compiled_routes atomic.Value // compiled_routes_snapshot
 }
 
@@ -689,6 +691,7 @@ func NewNestedRouter(options ...NestedOptions) *NestedRouter {
 	nr := &NestedRouter{
 		matcher_inst: matcher.New(mopts),
 		routes:       make(map[string]AnyNestedRoute),
+		parse_input:  opts.ParseInput,
 	}
 	nr.compiled_routes.Store(compiled_routes_snapshot{
 		routes:    make([]compiled_route, 0),
@@ -754,11 +757,12 @@ func (nr *NestedRouter) Matcher() *matcher.Matcher {
 /////////////////////////////////////////////////////////////////////
 
 // NestedRoute stores metadata and an optional task handler for one nested pattern.
-type NestedRoute[O any] struct {
-	genericsutil.ZeroHelper[None, O]
+type NestedRoute[I any, O any] struct {
+	genericsutil.ZeroHelper[I, O]
 	router           *NestedRouter
 	original_pattern string
 	task_handler     tasks.AnyTask
+	req_ctx_getter   nested_req_ctx_getter
 }
 
 // AnyNestedRoute is the type-erased nested route interface.
@@ -766,30 +770,38 @@ type AnyNestedRoute interface {
 	OriginalPattern() string
 	genericsutil.AnyZeroHelper
 	get_nested_task_handler() tasks.AnyTask
+	get_nested_req_ctx_getter() nested_req_ctx_getter
 }
 
-func (r *NestedRoute[O]) OriginalPattern() string { return r.original_pattern }
+func (r *NestedRoute[I, O]) OriginalPattern() string { return r.original_pattern }
 
-func (r *NestedRoute[O]) get_nested_task_handler() tasks.AnyTask { return r.task_handler }
+func (r *NestedRoute[I, O]) get_nested_task_handler() tasks.AnyTask {
+	return r.task_handler
+}
+
+func (r *NestedRoute[I, O]) get_nested_req_ctx_getter() nested_req_ctx_getter {
+	return r.req_ctx_getter
+}
 
 /////////////////////////////////////////////////////////////////////
 /////// NESTED REGISTRATION
 /////////////////////////////////////////////////////////////////////
 
 // AddNestedTaskHandler registers a nested pattern with a task handler.
-func AddNestedTaskHandler[O any](
-	router *NestedRouter, pattern string, handler *TaskHandler[None, O],
-) *NestedRoute[O] {
-	route := &NestedRoute[O]{
+func AddNestedTaskHandler[I, O any](
+	router *NestedRouter, pattern string, handler *TaskHandler[I, O],
+) *NestedRoute[I, O] {
+	route := &NestedRoute[I, O]{
 		router: router, original_pattern: pattern, task_handler: handler,
 	}
+	route.req_ctx_getter = route.new_nested_req_ctx_getter()
 	must_register_nested(route)
 	return route
 }
 
 // AddNestedPatternWithoutHandler registers a nested pattern with no handler.
 func AddNestedPatternWithoutHandler(router *NestedRouter, pattern string) {
-	route := &NestedRoute[None]{
+	route := &NestedRoute[None, None]{
 		router: router, original_pattern: pattern, task_handler: nil,
 	}
 	must_register_nested(route)
@@ -806,7 +818,7 @@ func (nr *NestedRouter) AddPatternWithoutHandlerIfMissing(pattern string) bool {
 	if _, ok := nr.routes[pattern]; ok {
 		return false
 	}
-	route := &NestedRoute[None]{
+	route := &NestedRoute[None, None]{
 		router: nr, original_pattern: pattern, task_handler: nil,
 	}
 	nr.matcher_inst.RegisterPattern(pattern)
@@ -911,12 +923,6 @@ func RunNestedTasks(
 		if root_cancel != nil {
 			root_cancel()
 		}
-		for i := range bound {
-			if bt := &bound[i]; bt.req_ctx != nil {
-				bt.req_ctx.ClearForPool()
-				req_ctx_pool.Put(bt.req_ctx)
-			}
-		}
 	}()
 
 	for i, match := range matches {
@@ -938,15 +944,18 @@ func RunNestedTasks(
 		proxy := response.NewProxy()
 		results.ResponseProxies[i] = proxy
 
-		rc := req_ctx_pool.Get().(*RequestCtx[None])
-		rc.ResetForReuse(
+		rc, err := cr.req_ctx_getter.get_nested_req_ctx(
+			r,
+			tasks_ctx,
 			pat,
 			results.Params,
 			results.SplatValues,
-			none_instance,
-			r,
 			proxy,
 		)
+		if err != nil {
+			res.err = err
+			break
+		}
 
 		bound = append(bound, nested_bound_task{
 			task_handler: cr.task_handler, req_ctx: rc, result: res,
@@ -1009,7 +1018,7 @@ func (nr *NestedRouter) RebuildPreservingHandlers(patterns []string) {
 	}
 	for _, pat := range patterns {
 		if _, ok := new_routes[pat]; !ok {
-			new_routes[pat] = &NestedRoute[None]{
+			new_routes[pat] = &NestedRoute[None, None]{
 				router: nr, original_pattern: pat, task_handler: nil,
 			}
 		}
@@ -1055,9 +1064,10 @@ type method_matcher struct {
 }
 
 type compiled_route struct {
-	pattern      string
-	task_handler tasks.AnyTask
-	has_handler  bool
+	pattern        string
+	task_handler   tasks.AnyTask
+	req_ctx_getter nested_req_ctx_getter
+	has_handler    bool
 }
 
 type compiled_routes_snapshot struct {
@@ -1079,6 +1089,7 @@ type req_ctx_marker interface {
 	MatchedPattern() string
 	SplatValues() []string
 	TasksCtx() *tasks.Ctx
+	SetTasksCtx(*tasks.Ctx)
 	Request() *http.Request
 	ResponseProxy() *response.Proxy
 }
@@ -1099,9 +1110,40 @@ func (f req_ctx_getter_impl[I]) get_req_ctx(
 	return f(r, ctx, m)
 }
 
+type nested_req_ctx_getter interface {
+	get_nested_req_ctx(
+		*http.Request,
+		*tasks.Ctx,
+		string,
+		Params,
+		[]string,
+		*response.Proxy,
+	) (req_ctx_marker, error)
+}
+
+type nested_req_ctx_getter_impl[I any] func(
+	*http.Request,
+	*tasks.Ctx,
+	string,
+	Params,
+	[]string,
+	*response.Proxy,
+) (*RequestCtx[I], error)
+
+func (f nested_req_ctx_getter_impl[I]) get_nested_req_ctx(
+	r *http.Request,
+	ctx *tasks.Ctx,
+	pattern string,
+	params Params,
+	splat_values []string,
+	proxy *response.Proxy,
+) (req_ctx_marker, error) {
+	return f(r, ctx, pattern, params, splat_values, proxy)
+}
+
 type nested_bound_task struct {
 	task_handler       tasks.AnyTask
-	req_ctx            *RequestCtx[None]
+	req_ctx            req_ctx_marker
 	result             *NestedTasksResult
 	cancel_descendants context.CancelFunc
 }
@@ -1191,6 +1233,35 @@ func create_req_ctx_getter[I, O any](route *Route[I, O]) req_ctx_getter {
 			if route.handler_type == "task" &&
 				route.router.parse_input != nil &&
 				!genericsutil.IsNone(route.I()) {
+				if err := route.router.parse_input(rc.Request(), ptr); err != nil {
+					return nil, err
+				}
+			}
+			rc.input = *(ptr.(*I))
+			return rc, nil
+		},
+	)
+}
+
+func (route *NestedRoute[I, O]) new_nested_req_ctx_getter() nested_req_ctx_getter {
+	return nested_req_ctx_getter_impl[I](
+		func(
+			r *http.Request,
+			ctx *tasks.Ctx,
+			pattern string,
+			params Params,
+			splat_values []string,
+			proxy *response.Proxy,
+		) (*RequestCtx[I], error) {
+			rc := new(RequestCtx[I])
+			rc.matched_pattern = pattern
+			rc.params = params
+			rc.splat_vals = splat_values
+			rc.tasks_ctx = ctx
+			rc.req = r
+			rc.response_proxy = proxy
+			ptr := route.IPtr()
+			if route.router.parse_input != nil && !genericsutil.IsNone(route.I()) {
 				if err := route.router.parse_input(rc.Request(), ptr); err != nil {
 					return nil, err
 				}
@@ -1519,7 +1590,7 @@ func (nr *NestedRouter) add_compiled(cr compiled_route) {
 	)
 }
 
-func must_register_nested[O any](route *NestedRoute[O]) {
+func must_register_nested[I, O any](route *NestedRoute[I, O]) {
 	route.router.mu.Lock()
 	defer route.router.mu.Unlock()
 	if _, ok := route.router.routes[route.original_pattern]; ok {
@@ -1531,9 +1602,10 @@ func must_register_nested[O any](route *NestedRoute[O]) {
 	route.router.matcher_inst.RegisterPattern(route.original_pattern)
 	route.router.routes[route.original_pattern] = route
 	route.router.add_compiled(compiled_route{
-		pattern:      route.original_pattern,
-		task_handler: route.task_handler,
-		has_handler:  route.task_handler != nil,
+		pattern:        route.original_pattern,
+		task_handler:   route.task_handler,
+		req_ctx_getter: route.req_ctx_getter,
+		has_handler:    route.task_handler != nil,
 	})
 }
 
@@ -1554,7 +1626,10 @@ func (nr *NestedRouter) replace_routes_locked(
 		th := route.get_nested_task_handler()
 		idx[pat] = len(compiled)
 		compiled = append(compiled, compiled_route{
-			pattern: pat, task_handler: th, has_handler: th != nil,
+			pattern:        pat,
+			task_handler:   th,
+			req_ctx_getter: route.get_nested_req_ctx_getter(),
+			has_handler:    th != nil,
 		})
 	}
 

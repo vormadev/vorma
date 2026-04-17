@@ -2,7 +2,9 @@ import { serializeToSearchParams } from "vorma/kit/json";
 import type {
 	AppConfig,
 	MakeTypedLoaderPattern,
-	MakeTypedNavigateProps,
+	MakeTypedNavigateOptions,
+	MakeTypedRouteDestination,
+	MakeTypedRouteTarget,
 } from "./types.ts";
 
 const DYNAMIC_RUNE = ":";
@@ -67,22 +69,32 @@ export function resolve_path(
 	return path;
 }
 
-export function build_typed_link_href(
+export function build_typed_href(
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
-	search?: string,
+	search?: unknown,
 	hash?: string,
 ): string {
 	const base = resolve_path("loader", pattern, params, splat_values);
 	const url = new URL(base, window.location.origin);
 	if (search !== undefined) {
-		url.search = search;
+		url.search = serializeToSearchParams(search).toString();
 	}
 	if (hash !== undefined) {
 		url.hash = hash;
 	}
 	return url.href;
+}
+
+export function build_typed_link_href(
+	pattern: string,
+	params?: Record<string, string>,
+	splat_values?: string[],
+	search?: unknown,
+	hash?: string,
+): string {
+	return build_typed_href(pattern, params, splat_values, search, hash);
 }
 
 export function build_query_url(
@@ -101,6 +113,21 @@ export function build_query_url(
 		url.search = serializeToSearchParams(input).toString();
 	}
 	return url;
+}
+
+export function create_typed_to_href<A extends AppConfig>() {
+	return <P extends MakeTypedLoaderPattern<A>>(
+		destination: MakeTypedRouteDestination<A, P>,
+	): string => {
+		const d = destination as any;
+		return build_typed_href(
+			d.pattern,
+			d.params,
+			d.splatValues,
+			d.search,
+			d.hash,
+		);
+	};
 }
 
 export function build_mutation_url(
@@ -138,29 +165,26 @@ export function resolve_body(input: unknown): BodyInit | null | undefined {
 export function create_typed_navigate<A extends AppConfig>(
 	navigate_fn: (
 		href: string | URL,
-		options?: { replace?: boolean; scrollToTop?: boolean; state?: unknown },
-	) => Promise<{ didNavigate: boolean }>,
-) {
-	return async <P extends MakeTypedLoaderPattern<A>>(
-		props: MakeTypedNavigateProps<A, P> & {
+		options?: {
 			replace?: boolean;
 			scrollToTop?: boolean;
-			search?: string;
-			hash?: string;
+			state?: unknown;
+			skipProgressIndicator?: boolean;
 		},
+	) => Promise<{ didNavigate: boolean }>,
+) {
+	const to_href = create_typed_to_href<A>();
+	return async <P extends MakeTypedLoaderPattern<A>>(
+		target: MakeTypedRouteTarget<A, P>,
+		options?: MakeTypedNavigateOptions,
 	): Promise<{ didNavigate: boolean }> => {
-		const a = props as any;
-		const href = build_typed_link_href(
-			a.pattern,
-			a.params,
-			a.splatValues,
-			props.search,
-			props.hash,
-		);
+		const href =
+			typeof target === "string" ? target : to_href(target as any);
 		return navigate_fn(href, {
-			replace: props.replace,
-			scrollToTop: props.scrollToTop,
-			state: (props as any).state,
+			replace: options?.replace,
+			scrollToTop: options?.scrollToTop,
+			state: options?.state,
+			skipProgressIndicator: options?.skipProgressIndicator,
 		});
 	};
 }

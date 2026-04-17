@@ -31,6 +31,7 @@ const VORMA_KEYS = new Set([
 	"prefetchDelayMs",
 	"replace",
 	"scrollToTop",
+	"state",
 	"visitOnPointerDown",
 ]);
 

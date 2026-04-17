@@ -19,9 +19,15 @@ anything that doesn't fit on one line.
 
 ## Universal rules (applicable to both Go and TypeScript)
 
+Single-use helpers are strictly prohibited unless they dramatically and
+objectively simplify the code.
+
+---
+
 All internal symbols shall be `snake_case`, and all public-facing symbols shall
 be either: (1) `SCREAMING_CASE`, (2) `camelCase`, or (3) `PascalCase`, as is
-appropriate or idiomatic contextually.
+appropriate or idiomatic contextually. TypeScript types, however, should still
+always be `PascalCase`, regardless of public exposure.
 
 ---
 

@@ -9,7 +9,13 @@ import {
 	setup,
 	tick,
 } from "./___ccc_test_helpers.ts";
-import { apply_scroll, create_client_core } from "./create_client_core.ts";
+import {
+	REVALIDATION_DEBOUNCE_MS,
+	apply_scroll,
+	create_client_core,
+	type ClientCore,
+	type ProgressIndicatorConfig,
+} from "./create_client_core.ts";
 
 register_ccc_lifecycle(beforeEach, afterEach);
 
@@ -162,7 +168,7 @@ describe("init lifecycle", () => {
 		expect(init_res.ok).toBe(false);
 	});
 
-	it("calls renderFn during init", async () => {
+	it("calls render during init", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -176,11 +182,11 @@ describe("init lifecycle", () => {
 			);
 		}
 		const core = core_res.val;
-		const renderFn = vi.fn();
+		const render = vi.fn();
 
-		await core.init({ renderFn });
+		await core.init({ render });
 
-		expect(renderFn).toHaveBeenCalledTimes(1);
+		expect(render).toHaveBeenCalledTimes(1);
 	});
 
 	it("passes refresh scroll as initial commit scroll intent", async () => {
@@ -596,6 +602,101 @@ describe("navigation flow", () => {
 		await core.navigate("/page");
 
 		expect(transition_called).toBe(true);
+	});
+
+	it("clears active navigation after publish before view transition finishes", async () => {
+		const { core, commit } = await setup({
+			init: { useViewTransitions: true },
+		});
+
+		let finish_transition!: () => void;
+		(document as any).startViewTransition = (cb: () => void) => {
+			cb();
+			return {
+				updateCallbackDone: Promise.resolve(),
+				finished: new Promise<void>((resolve) => {
+					finish_transition = resolve;
+				}),
+			};
+		};
+
+		const { calls, call, wait_for } = mock_fetch();
+		const first = core.navigate("/page#one");
+		await wait_for(1);
+		call(0).resolve(route_response({ MatchedPatterns: ["/page"] }));
+
+		await wait_until(() => {
+			return commit.mock.calls.length > 0;
+		}, "route did not publish during view transition");
+
+		const second = await core.navigate("/page#two");
+
+		expect(calls).toHaveLength(1);
+		expect(second.didNavigate).toBe(true);
+		expect(window.location.hash).toBe("#two");
+
+		finish_transition();
+		await expect(first).resolves.toEqual({ didNavigate: true });
+	});
+
+	it("does not publish a superseded navigation from a delayed view transition callback", async () => {
+		const { core, commit } = await setup({
+			init: { useViewTransitions: true },
+		});
+
+		const transitions: Array<() => void> = [];
+		(document as any).startViewTransition = (cb: () => void) => {
+			let resolve_update!: () => void;
+			const updateCallbackDone = new Promise<void>((resolve) => {
+				resolve_update = resolve;
+			});
+			transitions.push(() => {
+				cb();
+				resolve_update();
+			});
+			return {
+				updateCallbackDone,
+				finished: Promise.resolve(),
+			};
+		};
+
+		const { call, wait_for } = mock_fetch();
+		const first = core.navigate("/first");
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/first"],
+				LoadersData: [{ page: "first" }],
+			}),
+		);
+		await wait_until(() => {
+			return transitions.length === 1;
+		}, "first view transition did not start");
+
+		const second = core.navigate("/second");
+		await wait_for(2);
+		call(1).resolve(
+			route_response({
+				MatchedPatterns: ["/second"],
+				LoadersData: [{ page: "second" }],
+			}),
+		);
+		await wait_until(() => {
+			return transitions.length === 2;
+		}, "second view transition did not start");
+
+		transitions[0]!();
+		await tick();
+
+		expect(commit).not.toHaveBeenCalled();
+		await expect(first).resolves.toEqual({ didNavigate: false });
+
+		transitions[1]!();
+		await expect(second).resolves.toEqual({ didNavigate: true });
+
+		expect(commit).toHaveBeenCalledTimes(1);
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].data).toEqual({ page: "second" });
 	});
 });
 
@@ -1180,16 +1281,17 @@ describe("status integration", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Global loading indicators
+/////// Progress indicators
 /////////////////////////////////////////////////////////////////////
 
-describe("global loading indicators", () => {
+describe("progress indicators", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
-	it("start/stop around navigation with delays", async () => {
-		vi.useFakeTimers();
+	async function setup_core(
+		progressIndicator: ProgressIndicatorConfig,
+	): Promise<ClientCore> {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -1202,10 +1304,12 @@ describe("global loading indicators", () => {
 				`create_client_core failed with error: ${core_res.err}`,
 			);
 		}
-		const core = core_res.val;
+		await core_res.val.init({ progressIndicator });
+		return core_res.val;
+	}
 
-		await core.init({});
-
+	it("start/stop around navigation with delays", async () => {
+		vi.useFakeTimers();
 		let running = false;
 		const config = {
 			start: vi.fn(() => {
@@ -1220,7 +1324,7 @@ describe("global loading indicators", () => {
 			startDelayMS: 10,
 			stopDelayMS: 10,
 		};
-		core.setupGlobalLoadingIndicator(config);
+		const core = await setup_core(config);
 
 		let resolve_fetch!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -1243,22 +1347,6 @@ describe("global loading indicators", () => {
 
 	it("respects inclusion filter for navigations only", async () => {
 		vi.useFakeTimers();
-		seed_payload();
-		const commit = vi.fn();
-		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
-			commit,
-			t_opts(),
-		);
-		if (!core_res.ok) {
-			throw new Error(
-				`create_client_core failed with error: ${core_res.err}`,
-			);
-		}
-		const core = core_res.val;
-
-		await core.init({});
-
 		let running = false;
 		const config = {
 			start: vi.fn(() => {
@@ -1276,7 +1364,7 @@ describe("global loading indicators", () => {
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
-		core.setupGlobalLoadingIndicator(config);
+		const core = await setup_core(config);
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(
 			new Response(JSON.stringify({ ok: true }), {
@@ -1297,24 +1385,8 @@ describe("global loading indicators", () => {
 		expect(config.start).not.toHaveBeenCalled();
 	});
 
-	it("cleanup stops indicator and detaches", async () => {
+	it("skips progress indicator for opted-out submissions", async () => {
 		vi.useFakeTimers();
-		seed_payload();
-		const commit = vi.fn();
-		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
-			commit,
-			t_opts(),
-		);
-		if (!core_res.ok) {
-			throw new Error(
-				`create_client_core failed with error: ${core_res.err}`,
-			);
-		}
-		const core = core_res.val;
-
-		await core.init({});
-
 		let running = false;
 		const config = {
 			start: vi.fn(() => {
@@ -1329,7 +1401,46 @@ describe("global loading indicators", () => {
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
-		const cleanup = core.setupGlobalLoadingIndicator(config);
+		const core = await setup_core(config);
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+
+		await core.submit(
+			"/api/action",
+			{ method: "POST" },
+			{
+				revalidate: false,
+				skipProgressIndicator: true,
+			},
+		);
+		await vi.advanceTimersByTimeAsync(10);
+
+		expect(config.start).not.toHaveBeenCalled();
+		expect(config.stop).not.toHaveBeenCalled();
+	});
+
+	it("skips progress indicator for opted-out navigations", async () => {
+		vi.useFakeTimers();
+		let running = false;
+		const config = {
+			start: vi.fn(() => {
+				running = true;
+			}),
+			stop: vi.fn(() => {
+				running = false;
+			}),
+			isRunning: () => {
+				return running;
+			},
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		const core = await setup_core(config);
 
 		let resolve_fetch!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -1338,38 +1449,22 @@ describe("global loading indicators", () => {
 			});
 		});
 
-		void core.navigate("/page");
-		await vi.advanceTimersByTimeAsync(1);
-
-		expect(config.start).toHaveBeenCalled();
-		cleanup();
-		expect(config.stop).toHaveBeenCalled();
-
-		config.start.mockClear();
-		resolve_fetch(route_response());
+		void core.navigate("/quiet-page", {
+			skipProgressIndicator: true,
+		});
 		await vi.advanceTimersByTimeAsync(10);
 
 		expect(config.start).not.toHaveBeenCalled();
+
+		resolve_fetch(route_response());
+		await vi.advanceTimersByTimeAsync(10);
+		await tick();
+
+		expect(config.stop).not.toHaveBeenCalled();
 	});
 
 	it("overlapping work does not cause start-stop thrash", async () => {
 		vi.useFakeTimers();
-		seed_payload();
-		const commit = vi.fn();
-		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
-			commit,
-			t_opts(),
-		);
-		if (!core_res.ok) {
-			throw new Error(
-				`create_client_core failed with error: ${core_res.err}`,
-			);
-		}
-		const core = core_res.val;
-
-		await core.init({});
-
 		let running = false;
 		const config = {
 			start: vi.fn(() => {
@@ -1384,7 +1479,7 @@ describe("global loading indicators", () => {
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
-		core.setupGlobalLoadingIndicator(config);
+		const core = await setup_core(config);
 
 		let resolve_first!: (r: Response) => void;
 		let resolve_second!: (r: Response) => void;
@@ -1432,22 +1527,6 @@ describe("global loading indicators", () => {
 
 	it("clears pending start timer when work finishes before delay", async () => {
 		vi.useFakeTimers();
-		seed_payload();
-		const commit = vi.fn();
-		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
-			commit,
-			t_opts(),
-		);
-		if (!core_res.ok) {
-			throw new Error(
-				`create_client_core failed with error: ${core_res.err}`,
-			);
-		}
-		const core = core_res.val;
-
-		await core.init({});
-
 		let running = false;
 		const config = {
 			start: vi.fn(() => {
@@ -1462,7 +1541,7 @@ describe("global loading indicators", () => {
 			startDelayMS: 100,
 			stopDelayMS: 10,
 		};
-		core.setupGlobalLoadingIndicator(config);
+		const core = await setup_core(config);
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(route_response());
 
@@ -1475,22 +1554,6 @@ describe("global loading indicators", () => {
 
 	it("cancels pending stop timer when new work begins", async () => {
 		vi.useFakeTimers();
-		seed_payload();
-		const commit = vi.fn();
-		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
-			commit,
-			t_opts(),
-		);
-		if (!core_res.ok) {
-			throw new Error(
-				`create_client_core failed with error: ${core_res.err}`,
-			);
-		}
-		const core = core_res.val;
-
-		await core.init({});
-
 		let running = false;
 		const config = {
 			start: vi.fn(() => {
@@ -1505,7 +1568,7 @@ describe("global loading indicators", () => {
 			startDelayMS: 1,
 			stopDelayMS: 100,
 		};
-		core.setupGlobalLoadingIndicator(config);
+		const core = await setup_core(config);
 
 		let resolve_first!: (r: Response) => void;
 		let resolve_second!: (r: Response) => void;
@@ -1541,86 +1604,6 @@ describe("global loading indicators", () => {
 		await tick();
 
 		expect(config.stop).toHaveBeenCalledTimes(1);
-	});
-
-	it("keeps simultaneous registrations independent", async () => {
-		vi.useFakeTimers();
-		seed_payload();
-		const commit = vi.fn();
-		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
-			commit,
-			t_opts(),
-		);
-		if (!core_res.ok) {
-			throw new Error(
-				`create_client_core failed with error: ${core_res.err}`,
-			);
-		}
-		const core = core_res.val;
-
-		await core.init({});
-
-		let first_running = false;
-		let second_running = false;
-		const first_start = vi.fn(() => {
-			first_running = true;
-		});
-		const first_stop = vi.fn(() => {
-			first_running = false;
-		});
-		const second_start = vi.fn(() => {
-			second_running = true;
-		});
-		const second_stop = vi.fn(() => {
-			second_running = false;
-		});
-
-		const cleanup_first = core.setupGlobalLoadingIndicator({
-			start: first_start,
-			stop: first_stop,
-			isRunning: () => {
-				return first_running;
-			},
-			startDelayMS: 5,
-			stopDelayMS: 5,
-		});
-		const cleanup_second = core.setupGlobalLoadingIndicator({
-			start: second_start,
-			stop: second_stop,
-			isRunning: () => {
-				return second_running;
-			},
-			startDelayMS: 50,
-			stopDelayMS: 5,
-		});
-
-		let resolve_nav!: (r: Response) => void;
-		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
-			return new Promise((r) => {
-				resolve_nav = r;
-			});
-		});
-
-		void core.navigate("/dual-indicator");
-		await vi.advanceTimersByTimeAsync(5);
-
-		expect(first_start).toHaveBeenCalledTimes(1);
-		expect(second_start).not.toHaveBeenCalled();
-
-		await vi.advanceTimersByTimeAsync(45);
-
-		expect(second_start).toHaveBeenCalledTimes(1);
-
-		resolve_nav(route_response());
-		await vi.advanceTimersByTimeAsync(5);
-		await tick();
-
-		expect(first_stop).toHaveBeenCalledTimes(1);
-		expect(second_stop).toHaveBeenCalledTimes(1);
-
-		cleanup_first();
-		cleanup_second();
 	});
 });
 
@@ -2895,14 +2878,96 @@ describe("stale navigation side effects", () => {
 			}),
 		).toBe(false);
 	});
+
+	it("does not commit stale revalidation after navigation supersedes it", async () => {
+		vi.useFakeTimers();
+
+		try {
+			seed_payload({ ClientBuildID: "build-1" });
+			const commit = vi.fn();
+			const core_res = create_client_core(
+				{ actionsMountRoot: "/api/" },
+				commit,
+				t_opts(),
+			);
+			if (!core_res.ok) {
+				throw new Error(
+					`create_client_core failed with error: ${core_res.err}`,
+				);
+			}
+			const core = core_res.val;
+
+			await core.init({});
+			commit.mockClear();
+
+			let resolve_revalidation!: (r: Response) => void;
+			let resolve_navigation!: (r: Response) => void;
+			let call_count = 0;
+			vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+				call_count++;
+				if (call_count === 1) {
+					return new Promise((r) => {
+						resolve_revalidation = r;
+					});
+				}
+				return new Promise((r) => {
+					resolve_navigation = r;
+				});
+			});
+
+			const revalidation = core.revalidate();
+			await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+			await tick();
+
+			expect(call_count).toBe(1);
+
+			const navigation = core.navigate("/winner-page");
+			await tick();
+
+			expect(call_count).toBe(2);
+
+			resolve_navigation(
+				route_response(
+					{
+						MatchedPatterns: ["/winner-page"],
+						Title: { dangerousInnerHTML: "Winner" },
+					},
+					"winner-build",
+				),
+			);
+			await navigation;
+			await revalidation;
+
+			expect(document.title).toBe("Winner");
+			expect(core.getClientBuildID()).toBe("winner-build");
+			expect(commit).toHaveBeenCalledTimes(1);
+
+			resolve_revalidation(
+				route_response(
+					{
+						MatchedPatterns: ["/stale-revalidation"],
+						Title: { dangerousInnerHTML: "Stale" },
+					},
+					"stale-build",
+				),
+			);
+			await tick();
+
+			expect(document.title).toBe("Winner");
+			expect(core.getClientBuildID()).toBe("winner-build");
+			expect(commit).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Route change coherence
+/////// Route commit coherence
 /////////////////////////////////////////////////////////////////////
 
-describe("route change coherence", () => {
-	it("state is updated before onRouteChange fires", async () => {
+describe("route commit coherence", () => {
+	it("state is updated before onRouteCommit fires", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -2918,9 +2983,11 @@ describe("route change coherence", () => {
 		const core = core_res.val;
 
 		let state_during_callback: unknown = null;
+		let route_commit_info: unknown = null;
 		await core.init({
-			onRouteChange: () => {
-				state_during_callback = core.get_current_state();
+			onRouteCommit: (info) => {
+				state_during_callback = core.getRouterData();
+				route_commit_info = info;
 			},
 		});
 
@@ -2935,12 +3002,21 @@ describe("route change coherence", () => {
 
 		expect(state_during_callback).not.toBeNull();
 		const state = state_during_callback as any;
-		expect(state.entries).toHaveLength(1);
-		expect(state.entries[0].pattern).toBe("/coherence");
-		expect(state.entries[0].data).toEqual({ coherent: true });
+		expect(state.matchedPatterns).toEqual(["/coherence"]);
+		expect(route_commit_info).toMatchObject({
+			reason: "navigation",
+			url: `${window.location.origin}/coherence`,
+			previousUrl: `${window.location.origin}/`,
+			urlChanged: true,
+			patternsChanged: true,
+			paramsChanged: false,
+			searchChanged: false,
+			hashChanged: false,
+			historyStateChanged: false,
+		});
 	});
 
-	it("commit is called before onRouteChange fires", async () => {
+	it("commit is called before onRouteCommit fires", async () => {
 		seed_payload();
 		const order: string[] = [];
 		const commit = vi.fn(() => {
@@ -2959,8 +3035,8 @@ describe("route change coherence", () => {
 		const core = core_res.val;
 
 		await core.init({
-			onRouteChange: () => {
-				return order.push("onRouteChange");
+			onRouteCommit: () => {
+				return order.push("onRouteCommit");
 			},
 		});
 		order.length = 0;
@@ -2971,16 +3047,51 @@ describe("route change coherence", () => {
 
 		await core.navigate("/order");
 
-		expect(order).toEqual(["commit", "onRouteChange"]);
+		expect(order).toEqual(["commit", "onRouteCommit"]);
+	});
+
+	it("fires an initial route commit", async () => {
+		seed_payload();
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		let route_commit_info: unknown = null;
+		await core.init({
+			onRouteCommit: (info) => {
+				route_commit_info = info;
+			},
+		});
+
+		expect(route_commit_info).toMatchObject({
+			reason: "initial",
+			url: `${window.location.origin}/`,
+			previousUrl: null,
+			urlChanged: true,
+			patternsChanged: true,
+			paramsChanged: true,
+			searchChanged: true,
+			hashChanged: true,
+			historyStateChanged: true,
+		});
 	});
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Route change blocked by client loaders
+/////// Route commit blocked by client loaders
 /////////////////////////////////////////////////////////////////////
 
-describe("route change blocked by client loaders", () => {
-	it("does not fire onRouteChange until client loaders settle", async () => {
+describe("route commit blocked by client loaders", () => {
+	it("does not fire onRouteCommit until client loaders settle", async () => {
 		let loader_resolve: ((v: unknown) => void) | undefined;
 
 		vi.doMock("/mod-blocking.js", () => {
@@ -3016,7 +3127,10 @@ describe("route change blocked by client loaders", () => {
 
 		let route_changed = false;
 		await core.init({
-			onRouteChange: () => {
+			onRouteCommit: (info) => {
+				if (info.reason === "initial") {
+					return;
+				}
 				route_changed = true;
 			},
 		});

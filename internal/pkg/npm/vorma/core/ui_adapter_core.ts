@@ -1,28 +1,34 @@
+import { jsonDeepEquals } from "vorma/kit/json";
+import { R, type Result } from "vorma/kit/result";
+import { create_typed_api_client } from "./api_client.ts";
+import type {
+	ClientCore,
+	InitOptions as CoreInitOptions,
+	RouteDefinition,
+} from "./create_client_core";
 import {
 	create_client_core,
-	create_typed_api_client,
-	create_typed_navigate,
-	get_entry_key,
-	type AppConfig,
-	type LinkNavFns,
-	type MakeTypedAPIDecorator,
-	type MakeTypedLoaderPattern,
-	type MakeTypedRouteProps,
-	type MakeTypedRouterData,
 	type RouteEntry,
 	type RouteState,
 	type ScrollIntent,
-} from "vorma/__internal";
-import { jsonDeepEquals } from "vorma/kit/json";
-import { R, type Result } from "vorma/kit/result";
-import type { ClientCore, RouteDefinition } from "./create_client_core";
+} from "./create_client_core.ts";
+import { type LinkNavFns } from "./make_link_props.ts";
+import { get_entry_key } from "./resolve_outlet_slot.ts";
 import type {
+	AppConfig,
 	MakeTypedAPIClient,
+	MakeTypedAPIDecorator,
 	MakeTypedDefineRouteInput,
 	MakeTypedLinkProps,
 	MakeTypedLoaderOutput,
-	MakeTypedNavigateProps,
+	MakeTypedLoaderPattern,
+	MakeTypedNavigateOptions,
+	MakeTypedRouteDestination,
+	MakeTypedRouteProps,
+	MakeTypedRouterData,
+	MakeTypedRouteTarget,
 } from "./types";
+import { create_typed_navigate, create_typed_to_href } from "./url.ts";
 
 export type DecomposedState = {
 	// Always a new reference
@@ -45,6 +51,15 @@ export type DecomposedCommitFn = (
 	scroll_intent?: ScrollIntent,
 ) => void;
 
+export type AdapterRenderArgs<App> = {
+	App: App;
+	el: HTMLElement;
+};
+
+export type AdapterInitOptions<App> = Omit<CoreInitOptions, "render"> & {
+	render?: (args: AdapterRenderArgs<App>) => void | Promise<void>;
+};
+
 type AdapterBase<A extends AppConfig> = {
 	core: ClientCore;
 
@@ -52,24 +67,21 @@ type AdapterBase<A extends AppConfig> = {
 
 	passthrough: Pick<
 		ClientCore,
-		| "init"
 		| "revalidate"
 		| "submit"
 		| "getStatus"
 		| "getClientBuildID"
 		| "getRootEl"
-		| "setupGlobalLoadingIndicator"
 		| "revalidateOnWindowFocus"
 	> & {
 		navigate: <P extends MakeTypedLoaderPattern<A>>(
-			props: MakeTypedNavigateProps<A, P> & {
-				replace?: boolean;
-				scrollToTop?: boolean;
-				search?: string;
-				hash?: string;
-				state?: unknown;
-			},
+			target: MakeTypedRouteTarget<A, P>,
+			options?: MakeTypedNavigateOptions,
 		) => Promise<{ didNavigate: boolean }>;
+
+		toHref: <P extends MakeTypedLoaderPattern<A>>(
+			destination: MakeTypedRouteDestination<A, P>,
+		) => string;
 
 		getRouterData: {
 			(): MakeTypedRouterData<A>;
@@ -166,6 +178,7 @@ export function create_adapter_base<A extends AppConfig>(
 	};
 
 	const navigate = create_typed_navigate<A>(core.navigate);
+	const to_href = create_typed_to_href<A>();
 
 	const api_client = create_typed_api_client<A>(
 		app_config.actionsMountRoot,
@@ -185,15 +198,14 @@ export function create_adapter_base<A extends AppConfig>(
 		core,
 		nav_fns,
 		passthrough: {
-			init: core.init,
 			navigate,
+			toHref: to_href,
 			revalidate: core.revalidate,
 			submit: core.submit,
 			getStatus: core.getStatus,
 			getClientBuildID: core.getClientBuildID,
 			getRootEl: core.getRootEl,
 			getRouterData,
-			setupGlobalLoadingIndicator: core.setupGlobalLoadingIndicator,
 			revalidateOnWindowFocus: core.revalidateOnWindowFocus,
 			apiClient: api_client,
 		},
@@ -213,7 +225,10 @@ export type VormaClient<
 	Element,
 	AnchorProps extends object,
 	AccessorWrapped extends boolean = false,
+	App = unknown,
 > = AdapterBase<A>["passthrough"] & {
+	init: (options: AdapterInitOptions<App>) => Promise<Result<void>>;
+
 	defineRoute: <P extends MakeTypedLoaderPattern<A>, T = any>(
 		input: MakeTypedDefineRouteInput<A, P, T, Element>,
 	) => RouteDefinition;
@@ -223,7 +238,7 @@ export type VormaClient<
 	) => Element | null;
 
 	Link: <P extends MakeTypedLoaderPattern<A>>(
-		props: Omit<AnchorProps, "href" | "pattern"> & MakeTypedLinkProps<A, P>,
+		props: Omit<AnchorProps, "href"> & MakeTypedLinkProps<A, P>,
 	) => Element;
 
 	useLoaderData: <P extends MakeTypedLoaderPattern<A>>(

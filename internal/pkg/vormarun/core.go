@@ -187,10 +187,11 @@ type Vorma struct {
 	supported_methods_allow_val string
 }
 
-type LoaderCtx = mux.RequestCtx[mux.None]
+type LoaderCtx[I any] = mux.RequestCtx[I]
 type ActionCtx[I any] = mux.RequestCtx[I]
 
 type AnyLoader interface {
+	IType() *tsgen.GoTypeSrc
 	OType() *tsgen.GoTypeSrc
 	GetPattern() string
 	GetTSModule() string
@@ -207,33 +208,42 @@ type AnyAction interface {
 type Loaders []AnyLoader
 type Actions []AnyAction
 
-type LoaderCtxWrapper[CtxPtr any] interface {
-	Wrap(*LoaderCtx) CtxPtr
+type LoaderCtxWrapper[I any, CtxPtr any] interface {
+	Wrap(*LoaderCtx[I]) CtxPtr
 }
 
-type Loader[O any, CtxPtr ~*Ctx, Ctx LoaderCtxWrapper[CtxPtr]] struct {
+type Loader[
+	I any,
+	O any,
+	CtxPtr ~*Ctx,
+	Ctx LoaderCtxWrapper[I, CtxPtr],
+] struct {
 	Pattern  string
 	Handler  func(CtxPtr) (O, error)
 	TSModule string
 }
 
-func (l Loader[O, CtxPtr, Ctx]) OType() *tsgen.GoTypeSrc {
+func (l Loader[I, O, CtxPtr, Ctx]) IType() *tsgen.GoTypeSrc {
+	return tsgen.GoType[I]()
+}
+
+func (l Loader[I, O, CtxPtr, Ctx]) OType() *tsgen.GoTypeSrc {
 	return tsgen.GoType[O]()
 }
 
-func (l Loader[O, CtxPtr, Ctx]) GetPattern() string { return l.Pattern }
+func (l Loader[I, O, CtxPtr, Ctx]) GetPattern() string { return l.Pattern }
 
-func (l Loader[O, CtxPtr, Ctx]) GetTSModule() string { return l.TSModule }
+func (l Loader[I, O, CtxPtr, Ctx]) GetTSModule() string { return l.TSModule }
 
-func (l Loader[O, CtxPtr, Ctx]) register_to_mux(r *mux.NestedRouter) {
+func (l Loader[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.NestedRouter) {
 	if l.Handler == nil {
 		mux.AddNestedTaskHandler(r, l.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *LoaderCtx) (mux.None, error) { return mux.None{}, nil },
+			func(ctx *LoaderCtx[I]) (mux.None, error) { return mux.None{}, nil },
 		))
 		return
 	}
 	mux.AddNestedTaskHandler(r, l.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *LoaderCtx) (O, error) {
+		func(ctx *LoaderCtx[I]) (O, error) {
 			var zero Ctx
 			return l.Handler(zero.Wrap(ctx))
 		},

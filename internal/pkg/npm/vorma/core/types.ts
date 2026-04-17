@@ -3,6 +3,7 @@
 type LoaderBase = {
 	params?: ReadonlyArray<string>;
 	pattern: string;
+	__I?: unknown;
 	__O?: unknown;
 };
 
@@ -17,7 +18,7 @@ type ActionBase = {
 export type SubmitOptions = {
 	dedupeKey?: string;
 	revalidate?: boolean;
-	skipGlobalLoadingIndicator?: boolean;
+	skipProgressIndicator?: boolean;
 };
 
 export type RevalidationResult =
@@ -37,7 +38,6 @@ export type SubmitResult<T> =
 	  };
 
 export type LinkPropsBase = {
-	href?: string;
 	prefetch?: "intent" | "none";
 	prefetchDelayMs?: number;
 	visitOnPointerDown?: boolean;
@@ -164,6 +164,11 @@ export type MakeTypedLoaderOutput<
 	P extends MakeTypedLoaderPattern<A>,
 > = __LoaderByPattern<A, P> extends { __O: infer O } ? O : never;
 
+export type MakeTypedLoaderInput<
+	A extends AppConfig,
+	P extends MakeTypedLoaderPattern<A>,
+> = __LoaderByPattern<A, P> extends { __I: infer I } ? I : never;
+
 export type MakeTypedQueryInput<
 	A extends AppConfig,
 	P extends MakeTypedQueryPattern<A>,
@@ -198,16 +203,31 @@ export type MakeTypedRouterData<
 	rootData: __ExtractRootData<A>;
 };
 
-/////// NAVIGATE PROPS
+/////// ROUTE TARGETS
 
-export type MakeTypedNavigateProps<
+export type Href = string;
+
+export type MakeTypedRouteDestination<
 	A extends AppConfig,
 	P extends MakeTypedLoaderPattern<A>,
 > = {
 	pattern: __PermissiveLoaderPattern<A, P>;
-	state?: unknown;
+	search?: MakeTypedLoaderInput<A, P>;
+	hash?: string;
 } & __ConditionalLoaderParams<A, P> &
 	__ConditionalSplat<P>;
+
+export type MakeTypedRouteTarget<
+	A extends AppConfig,
+	P extends MakeTypedLoaderPattern<A>,
+> = Href | MakeTypedRouteDestination<A, P>;
+
+export type MakeTypedNavigateOptions = {
+	replace?: boolean;
+	scrollToTop?: boolean;
+	state?: unknown;
+	skipProgressIndicator?: boolean;
+};
 
 /////// QUERY PROPS
 
@@ -290,12 +310,9 @@ export type MakeTypedLinkProps<
 	A extends AppConfig,
 	P extends MakeTypedLoaderPattern<A>,
 > = LinkPropsBase & {
-	pattern: __PermissiveLoaderPattern<A, P>;
-	search?: string;
-	hash?: string;
+	href: MakeTypedRouteTarget<A, P>;
 	state?: unknown;
-} & __ConditionalLoaderParams<A, P> &
-	__ConditionalSplat<P>;
+};
 
 /////// API CLIENT TYPES
 

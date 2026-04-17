@@ -7,18 +7,19 @@ import {
 	createSignal,
 	Show,
 	type Accessor,
+	type Component,
 	type JSX,
 	type ValidComponent,
 } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import {
 	apply_scroll,
-	build_typed_link_href,
 	create_adapter_base,
 	get_entry_key,
 	make_link_props,
 	make_route_id,
 	resolve_outlet_slot,
+	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
 	type LinkPropsBase,
@@ -36,24 +37,29 @@ import {
 } from "vorma/__internal";
 
 export type {
+	Href,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
 	MakeTypedClientLoaderProps,
 	MakeTypedLinkProps,
+	MakeTypedLoaderInput,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
 	MakeTypedMutationInput,
 	MakeTypedMutationOutput,
 	MakeTypedMutationPattern,
 	MakeTypedMutationProps,
-	MakeTypedNavigateProps,
+	MakeTypedNavigateOptions,
 	MakeTypedQueryInput,
 	MakeTypedQueryOutput,
 	MakeTypedQueryPattern,
 	MakeTypedQueryProps,
+	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
 	MakeTypedRouterData,
+	MakeTypedRouteTarget,
+	ProgressIndicatorConfig,
 	RevalidationResult,
 	SubmitOptions,
 	SubmitResult,
@@ -64,7 +70,7 @@ type CreateVormaClientOptions<A extends AppConfig> = {
 	linkDefaultProps?: Partial<
 		Omit<
 			JSX.AnchorHTMLAttributes<HTMLAnchorElement> & LinkPropsBase,
-			"pattern" | "params" | "splatValues"
+			"href"
 		>
 	>;
 	apiDecorator?: MakeTypedAPIDecorator<A>;
@@ -77,7 +83,8 @@ export function createVormaClient<A extends AppConfig>(
 	A,
 	JSX.Element,
 	JSX.AnchorHTMLAttributes<HTMLAnchorElement>,
-	true
+	true,
+	Component
 > {
 	const [entries, set_entries] = createSignal<RouteEntry[]>([]);
 	const [loaders_data, set_loaders_data] = createSignal<unknown[]>([]);
@@ -310,6 +317,24 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
+	const App: Component = () => {
+		return <RootOutlet />;
+	};
+
+	function init(
+		options: AdapterInitOptions<Component>,
+	): ReturnType<typeof core.init> {
+		const { render, ...core_options } = options;
+		return core.init({
+			...core_options,
+			render: render
+				? () => {
+						return render({ App, el: core.getRootEl() });
+					}
+				: undefined,
+		});
+	}
+
 	function BaseLink(
 		props: JSX.AnchorHTMLAttributes<HTMLAnchorElement> & LinkPropsBase,
 	): JSX.Element {
@@ -338,35 +363,25 @@ export function createVormaClient<A extends AppConfig>(
 	}
 
 	const Link = (<P extends MakeTypedLoaderPattern<A>>(
-		raw: Omit<
-			JSX.AnchorHTMLAttributes<HTMLAnchorElement>,
-			"href" | "pattern"
-		> &
+		raw: Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
 			MakeTypedLinkProps<A, P>,
 	): JSX.Element => {
 		const merged = { ...options?.linkDefaultProps, ...raw } as any;
-		const { pattern, params, splatValues, search, hash, ...link_props } =
-			merged;
+		const { href: target, ...link_props } = merged;
 		const href = createMemo(() => {
-			return build_typed_link_href(
-				pattern,
-				params,
-				splatValues,
-				search,
-				hash,
-			);
+			return typeof target === "string"
+				? target
+				: passthrough.toHref(target);
 		});
 		return <BaseLink {...link_props} href={href()} />;
 	}) as <P extends MakeTypedLoaderPattern<A>>(
-		props: Omit<
-			JSX.AnchorHTMLAttributes<HTMLAnchorElement>,
-			"href" | "pattern"
-		> &
+		props: Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
 			MakeTypedLinkProps<A, P>,
 	) => JSX.Element;
 
 	return {
 		...passthrough,
+		init,
 		defineRoute,
 		RootOutlet,
 		Link,

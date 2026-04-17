@@ -12,6 +12,10 @@ type FormData struct{}
 
 func (m FormData) TSType() string { return "FormData" }
 
+func parse_loader_input(r *http.Request, input_ptr any) error {
+	return validate.URLSearchParamsInto(r, input_ptr)
+}
+
 func parse_action_input(r *http.Request, input_ptr any) error {
 	if r.Method == http.MethodGet || r.Method == http.MethodHead {
 		return validate.URLSearchParamsInto(r, input_ptr)

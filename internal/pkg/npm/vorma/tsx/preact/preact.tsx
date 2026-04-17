@@ -1,17 +1,17 @@
 /// <reference types="vite/client" />
 
 import { batch, effect, signal } from "@preact/signals";
-import { h, type HTMLAttributes } from "preact";
+import { h, type ComponentType, type HTMLAttributes } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { JSX } from "preact/jsx-runtime";
 import {
 	apply_scroll,
-	build_typed_link_href,
 	create_adapter_base,
 	get_entry_key,
 	make_link_props,
 	make_route_id,
 	resolve_outlet_slot,
+	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
 	type LinkPropsBase,
@@ -29,24 +29,29 @@ import {
 } from "vorma/__internal";
 
 export type {
+	Href,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
 	MakeTypedClientLoaderProps,
 	MakeTypedLinkProps,
+	MakeTypedLoaderInput,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
 	MakeTypedMutationInput,
 	MakeTypedMutationOutput,
 	MakeTypedMutationPattern,
 	MakeTypedMutationProps,
-	MakeTypedNavigateProps,
+	MakeTypedNavigateOptions,
 	MakeTypedQueryInput,
 	MakeTypedQueryOutput,
 	MakeTypedQueryPattern,
 	MakeTypedQueryProps,
+	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
 	MakeTypedRouterData,
+	MakeTypedRouteTarget,
+	ProgressIndicatorConfig,
 	RevalidationResult,
 	SubmitOptions,
 	SubmitResult,
@@ -55,10 +60,7 @@ export type {
 
 type CreateVormaClientOptions<A extends AppConfig> = {
 	linkDefaultProps?: Partial<
-		Omit<
-			HTMLAttributes<HTMLAnchorElement> & LinkPropsBase,
-			"pattern" | "params" | "splatValues"
-		>
+		Omit<HTMLAttributes<HTMLAnchorElement> & LinkPropsBase, "href">
 	>;
 	apiDecorator?: MakeTypedAPIDecorator<A>;
 };
@@ -66,7 +68,13 @@ type CreateVormaClientOptions<A extends AppConfig> = {
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,
-): VormaClient<A, JSX.Element, HTMLAttributes<HTMLAnchorElement>> {
+): VormaClient<
+	A,
+	JSX.Element,
+	HTMLAttributes<HTMLAnchorElement>,
+	false,
+	ComponentType
+> {
 	const entries_signal = signal<RouteEntry[]>([]);
 	const loaders_data_signal = signal<unknown[]>([]);
 	const client_loaders_data_signal = signal<unknown[]>([]);
@@ -283,6 +291,24 @@ export function createVormaClient<A extends AppConfig>(
 		}
 	}
 
+	const App: ComponentType = () => {
+		return h(RootOutlet, {});
+	};
+
+	function init(
+		options: AdapterInitOptions<ComponentType>,
+	): ReturnType<typeof core.init> {
+		const { render, ...core_options } = options;
+		return core.init({
+			...core_options,
+			render: render
+				? () => {
+						return render({ App, el: core.getRootEl() });
+					}
+				: undefined,
+		});
+	}
+
 	function BaseLink(
 		props: HTMLAttributes<HTMLAnchorElement> & LinkPropsBase,
 	): JSX.Element {
@@ -305,27 +331,22 @@ export function createVormaClient<A extends AppConfig>(
 	}
 
 	const Link = (<P extends MakeTypedLoaderPattern<A>>(
-		raw: Omit<HTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
+		raw: Omit<HTMLAttributes<HTMLAnchorElement>, "href"> &
 			MakeTypedLinkProps<A, P>,
 	): JSX.Element => {
 		const merged = { ...options?.linkDefaultProps, ...raw } as any;
-		const { pattern, params, splatValues, search, hash, ...link_props } =
-			merged;
-		const href = build_typed_link_href(
-			pattern,
-			params,
-			splatValues,
-			search,
-			hash,
-		);
+		const { href: target, ...link_props } = merged;
+		const href =
+			typeof target === "string" ? target : passthrough.toHref(target);
 		return h(BaseLink, { ...link_props, href });
 	}) as <P extends MakeTypedLoaderPattern<A>>(
-		props: Omit<HTMLAttributes<HTMLAnchorElement>, "href" | "pattern"> &
+		props: Omit<HTMLAttributes<HTMLAnchorElement>, "href"> &
 			MakeTypedLinkProps<A, P>,
 	) => JSX.Element;
 
 	return {
 		...passthrough,
+		init,
 		defineRoute,
 		RootOutlet,
 		Link,

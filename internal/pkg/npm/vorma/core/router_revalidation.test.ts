@@ -53,6 +53,47 @@ describe("revalidate", () => {
 		expect(core.getStatus().isRevalidating).toBe(false);
 	});
 
+	it("reports revalidation as a route commit without a URL change", async () => {
+		const route_commits: any[] = [];
+		const { core } = await setup({
+			payload: {
+				MatchedPatterns: ["/"],
+				LoadersData: [{ fresh: false }],
+			},
+			init: {
+				onRouteCommit: (info: unknown) => {
+					route_commits.push(info);
+				},
+			},
+		});
+		route_commits.length = 0;
+		const { call, wait_for } = mock_fetch();
+
+		const rev = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/"],
+				LoadersData: [{ fresh: true }],
+			}),
+		);
+		await rev;
+
+		expect(route_commits).toHaveLength(1);
+		expect(route_commits[0]).toMatchObject({
+			reason: "revalidation",
+			url: `${window.location.origin}/`,
+			previousUrl: `${window.location.origin}/`,
+			urlChanged: false,
+			patternsChanged: false,
+			paramsChanged: false,
+			searchChanged: false,
+			hashChanged: false,
+			historyStateChanged: false,
+		});
+	});
+
 	it("returns a promise that resolves when freshness is achieved", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
@@ -116,6 +157,35 @@ describe("revalidate", () => {
 
 		expect(calls).toHaveLength(2);
 		expect(core.getStatus().isRevalidating).toBe(false);
+	});
+
+	it("does not satisfy a newer debounced revalidation with older in-flight data", async () => {
+		const { core } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		const first = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await wait_for(1);
+
+		const second = core.revalidate();
+		let resolved = false;
+		void Promise.all([first, second]).then(() => {
+			resolved = true;
+		});
+
+		call(0).resolve(route_response());
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(resolved).toBe(false);
+
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await wait_for(2);
+		call(1).resolve(route_response());
+
+		await expect(Promise.all([first, second])).resolves.toEqual([
+			{ ok: true },
+			{ ok: true },
+		]);
 	});
 
 	it("does not push or replace history on successful revalidation", async () => {
@@ -525,6 +595,38 @@ describe("revalidation backoff", () => {
 			ok: false,
 			reason: "max_retries_exhausted",
 		});
+		expect(core.getStatus().isRevalidating).toBe(false);
+	});
+
+	it("can start a new freshness demand after retries are exhausted", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const first = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+
+		for (let i = 0; i < MAX_REVALIDATION_RETRIES; i++) {
+			if (i > 0) {
+				await vi.advanceTimersByTimeAsync(REVALIDATION_BACKOFF_CAP_MS);
+			}
+			await wait_for(i + 1);
+			call(i).resolve(new Response("", { status: 500 }));
+			await vi.advanceTimersByTimeAsync(0);
+		}
+
+		await vi.advanceTimersByTimeAsync(REVALIDATION_BACKOFF_CAP_MS);
+		await expect(first).resolves.toEqual({
+			ok: false,
+			reason: "max_retries_exhausted",
+		});
+
+		const second = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await wait_for(MAX_REVALIDATION_RETRIES + 1);
+		call(MAX_REVALIDATION_RETRIES).resolve(route_response());
+
+		await expect(second).resolves.toEqual({ ok: true });
+		expect(calls).toHaveLength(MAX_REVALIDATION_RETRIES + 1);
 		expect(core.getStatus().isRevalidating).toBe(false);
 	});
 

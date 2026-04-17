@@ -103,7 +103,7 @@ func (cfg vorma_cfg) to_live_ts_result(
 	registry := &tsgen.GoTypeRegistry{}
 
 	for _, l := range loaders {
-		registry.Add(l.OType())
+		registry.Add(l.IType(), l.OType())
 	}
 	for _, a := range actions {
 		registry.Add(a.IType(), a.OType())
@@ -188,6 +188,15 @@ func render_ts_routes_section(
 		}
 
 		fmt.Fprintf(&sb, "\t\tpattern: %q,\n", pattern)
+
+		i_t_rep := to_t_rep(l.IType())
+		if i_t_rep != "" {
+			fmt.Fprintf(
+				&sb,
+				"\t\t__I: null as unknown as %s,\n",
+				i_t_rep,
+			)
+		}
 
 		t_rep := to_t_rep(l.OType())
 		if t_rep != "" {

@@ -7,16 +7,17 @@ import {
 	useRef,
 	useSyncExternalStore,
 	type ComponentProps,
+	type ComponentType,
 	type JSX,
 } from "react";
 import {
 	apply_scroll,
-	build_typed_link_href,
 	create_adapter_base,
 	get_entry_key,
 	make_link_props,
 	make_route_id,
 	resolve_outlet_slot,
+	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
 	type LinkPropsBase,
@@ -33,24 +34,29 @@ import {
 } from "vorma/__internal";
 
 export type {
+	Href,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
 	MakeTypedClientLoaderProps,
 	MakeTypedLinkProps,
+	MakeTypedLoaderInput,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
 	MakeTypedMutationInput,
 	MakeTypedMutationOutput,
 	MakeTypedMutationPattern,
 	MakeTypedMutationProps,
-	MakeTypedNavigateProps,
+	MakeTypedNavigateOptions,
 	MakeTypedQueryInput,
 	MakeTypedQueryOutput,
 	MakeTypedQueryPattern,
 	MakeTypedQueryProps,
+	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
 	MakeTypedRouterData,
+	MakeTypedRouteTarget,
+	ProgressIndicatorConfig,
 	RevalidationResult,
 	SubmitOptions,
 	SubmitResult,
@@ -59,10 +65,7 @@ export type {
 
 type CreateVormaClientOptions<A extends AppConfig> = {
 	linkDefaultProps?: Partial<
-		Omit<
-			ComponentProps<"a"> & LinkPropsBase,
-			"pattern" | "params" | "splatValues"
-		>
+		Omit<ComponentProps<"a"> & LinkPropsBase, "href">
 	>;
 	apiDecorator?: MakeTypedAPIDecorator<A>;
 };
@@ -70,7 +73,7 @@ type CreateVormaClientOptions<A extends AppConfig> = {
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,
-): VormaClient<A, JSX.Element, ComponentProps<"a">> {
+): VormaClient<A, JSX.Element, ComponentProps<"a">, false, ComponentType> {
 	let store: DecomposedState = {
 		entries: [],
 		loaders_data: [],
@@ -302,6 +305,24 @@ export function createVormaClient<A extends AppConfig>(
 		}
 	}
 
+	const App: ComponentType = () => {
+		return <RootOutlet />;
+	};
+
+	function init(
+		options: AdapterInitOptions<ComponentType>,
+	): ReturnType<typeof core.init> {
+		const { render, ...core_options } = options;
+		return core.init({
+			...core_options,
+			render: render
+				? () => {
+						return render({ App, el: core.getRootEl() });
+					}
+				: undefined,
+		});
+	}
+
 	function BaseLink(props: ComponentProps<"a"> & LinkPropsBase): JSX.Element {
 		const r = make_link_props(props as Record<string, unknown>, nav_fns);
 		return (
@@ -323,34 +344,23 @@ export function createVormaClient<A extends AppConfig>(
 
 	const Link = memo(
 		<P extends MakeTypedLoaderPattern<A>>(
-			raw: Omit<ComponentProps<"a">, "href" | "pattern"> &
-				MakeTypedLinkProps<A, P>,
+			raw: Omit<ComponentProps<"a">, "href"> & MakeTypedLinkProps<A, P>,
 		): JSX.Element => {
 			const merged = { ...options?.linkDefaultProps, ...raw } as any;
-			const {
-				pattern,
-				params,
-				splatValues,
-				search,
-				hash,
-				...link_props
-			} = merged;
-			const href = build_typed_link_href(
-				pattern,
-				params,
-				splatValues,
-				search,
-				hash,
-			);
+			const { href: target, ...link_props } = merged;
+			const href =
+				typeof target === "string"
+					? target
+					: passthrough.toHref(target);
 			return <BaseLink {...link_props} href={href} />;
 		},
 	) as unknown as <P extends MakeTypedLoaderPattern<A>>(
-		props: Omit<ComponentProps<"a">, "href" | "pattern"> &
-			MakeTypedLinkProps<A, P>,
+		props: Omit<ComponentProps<"a">, "href"> & MakeTypedLinkProps<A, P>,
 	) => JSX.Element;
 
 	return {
 		...passthrough,
+		init,
 		defineRoute,
 		RootOutlet,
 		Link,

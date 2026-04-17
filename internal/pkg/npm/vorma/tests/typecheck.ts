@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 
-import type { Accessor } from "solid-js";
+import type { ComponentType as PreactComponentType } from "preact";
+import type { ComponentType as ReactComponentType } from "react";
+import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
 	AppConfig,
 	LinkPropsBase,
@@ -10,19 +12,23 @@ import type {
 	MakeTypedClientLoaderProps,
 	MakeTypedDefineRouteInput,
 	MakeTypedLinkProps,
+	MakeTypedLoaderInput,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
 	MakeTypedMutationInput,
 	MakeTypedMutationOutput,
 	MakeTypedMutationPattern,
 	MakeTypedMutationProps,
-	MakeTypedNavigateProps,
+	MakeTypedNavigateOptions,
 	MakeTypedQueryInput,
 	MakeTypedQueryOutput,
 	MakeTypedQueryPattern,
 	MakeTypedQueryProps,
+	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
+	MakeTypedRouteTarget,
 	MakeTypedRouterData,
+	ProgressIndicatorConfig,
 	RevalidationResult,
 	RouteDefinition,
 	RouteEntry,
@@ -60,19 +66,23 @@ const vorma_app_config = {
 	__phantom_loaders: [
 		{
 			pattern: "/",
+			__I: null as unknown as Record<never, never>,
 			__O: null as unknown as { sessionUserID: string | null },
 		},
 		{
 			pattern: "/users/:userID",
 			params: ["userID"] as const,
+			__I: null as unknown as { tab?: string; page?: number },
 			__O: null as unknown as { userName: string },
 		},
 		{
 			pattern: "/docs/*",
+			__I: null as unknown as Record<never, never>,
 			__O: null as unknown as { slugParts: string[] },
 		},
 		{
 			pattern: "/blog/_index",
+			__I: null as unknown as Record<never, never>,
 			__O: null as unknown as { posts: string[] },
 		},
 	] as const,
@@ -175,6 +185,17 @@ function assert_exported_type_contracts(): void {
 		IsExact<MakeTypedLoaderOutput<App, "/blog/_index">, { posts: string[] }>
 	>;
 
+	// Loader input types
+	type _loader_i_root = Assert<
+		IsExact<MakeTypedLoaderInput<App, "/">, Record<never, never>>
+	>;
+	type _loader_i_users = Assert<
+		IsExact<
+			MakeTypedLoaderInput<App, "/users/:userID">,
+			{ tab?: string; page?: number }
+		>
+	>;
+
 	// Query I/O types
 	type _query_i_users = Assert<
 		IsExact<
@@ -267,81 +288,79 @@ function assert_exported_type_contracts(): void {
 		>
 	>;
 
-	// MakeTypedNavigateProps — intersection types are not IsExact-comparable
+	// MakeTypedRouteDestination — intersection types are not IsExact-comparable
 	// to flat object types. We verify bidirectional assignability for the
 	// full type and use IsExact on individual fields. Call-site tests in
 	// assert_navigate_contracts prove full correctness.
-	type _nav_props_users = Assert<
-		MakeTypedNavigateProps<App, "/users/:userID"> extends {
+	type _route_destination_users = Assert<
+		MakeTypedRouteDestination<App, "/users/:userID"> extends {
 			pattern: "/users/:userID";
 			params: { userID: string };
+			search?: { tab?: string; page?: number };
 		}
 			? {
 					pattern: "/users/:userID";
 					params: { userID: string };
-				} extends MakeTypedNavigateProps<App, "/users/:userID">
+					search?: { tab?: string; page?: number };
+				} extends MakeTypedRouteDestination<App, "/users/:userID">
 				? true
 				: false
 			: false
 	>;
-	type _nav_props_docs = Assert<
-		MakeTypedNavigateProps<App, "/docs/*"> extends {
+	type _route_destination_docs = Assert<
+		MakeTypedRouteDestination<App, "/docs/*"> extends {
 			pattern: "/docs/*";
 			splatValues: string[];
 		}
 			? {
 					pattern: "/docs/*";
 					splatValues: string[];
-				} extends MakeTypedNavigateProps<App, "/docs/*">
+				} extends MakeTypedRouteDestination<App, "/docs/*">
 				? true
 				: false
 			: false
 	>;
-	type _nav_props_index_shorthand = Assert<
+	type _route_destination_index_shorthand = Assert<
 		IsExact<
-			MakeTypedNavigateProps<App, "/blog/_index">["pattern"],
+			MakeTypedRouteDestination<App, "/blog/_index">["pattern"],
 			"/blog/_index" | "/blog"
 		>
 	>;
-	type _nav_props_root = Assert<
-		IsExact<MakeTypedNavigateProps<App, "/">["pattern"], "/">
+	type _route_destination_root = Assert<
+		IsExact<MakeTypedRouteDestination<App, "/">["pattern"], "/">
+	>;
+	type _route_target = Assert<
+		IsExact<
+			Extract<MakeTypedRouteTarget<App, "/users/:userID">, string>,
+			string
+		>
+	>;
+	type _navigate_options = Assert<
+		IsExact<
+			MakeTypedNavigateOptions,
+			{
+				replace?: boolean;
+				scrollToTop?: boolean;
+				state?: unknown;
+				skipProgressIndicator?: boolean;
+			}
+		>
 	>;
 
-	// MakeTypedLinkProps — same intersection caveat as NavigateProps.
-	type _link_props_pattern = Assert<
+	// MakeTypedLinkProps
+	type _link_props_href = Assert<
 		IsExact<
-			MakeTypedLinkProps<App, "/users/:userID">["pattern"],
-			"/users/:userID"
+			MakeTypedLinkProps<App, "/users/:userID">["href"],
+			MakeTypedRouteTarget<App, "/users/:userID">
 		>
 	>;
-	type _link_props_params = Assert<
-		MakeTypedLinkProps<App, "/users/:userID"> extends {
-			params: { userID: string };
-		}
-			? true
-			: false
+	type _link_props_state = Assert<
+		IsExact<MakeTypedLinkProps<App, "/users/:userID">["state"], unknown>
 	>;
-	type _link_props_splat = Assert<
-		MakeTypedLinkProps<App, "/docs/*"> extends { splatValues: string[] }
-			? true
-			: false
-	>;
-	type _link_props_search = Assert<
+	type _link_props_prefetch = Assert<
 		IsExact<
-			MakeTypedLinkProps<App, "/users/:userID">["search"],
-			string | undefined
-		>
-	>;
-	type _link_props_hash = Assert<
-		IsExact<
-			MakeTypedLinkProps<App, "/users/:userID">["hash"],
-			string | undefined
-		>
-	>;
-	type _link_props_index_shorthand = Assert<
-		IsExact<
-			MakeTypedLinkProps<App, "/blog/_index">["pattern"],
-			"/blog/_index" | "/blog"
+			MakeTypedLinkProps<App, "/users/:userID">["prefetch"],
+			"intent" | "none" | undefined
 		>
 	>;
 
@@ -475,13 +494,21 @@ function assert_exported_type_contracts(): void {
 	const submit_opts: SubmitOptions = {
 		dedupeKey: "k",
 		revalidate: true,
-		skipGlobalLoadingIndicator: false,
+		skipProgressIndicator: false,
 	};
 	void submit_opts;
 
+	const progress_indicator_config: ProgressIndicatorConfig = {
+		start: () => {},
+		stop: () => {},
+		isRunning: () => {
+			return false;
+		},
+	};
+	void progress_indicator_config;
+
 	// LinkPropsBase
 	const link_props: LinkPropsBase = {
-		href: "/",
 		prefetch: "intent",
 		visitOnPointerDown: true,
 		prefetchDelayMs: 100,
@@ -534,6 +561,9 @@ void assert_exported_type_contracts;
 /////// Navigate Type Safety
 
 function assert_navigate_contracts(): void {
+	// Valid: raw href string
+	void react.navigate("/users/u-1?tab=posts#recent");
+
 	// Valid: dynamic route with params
 	void react.navigate({
 		pattern: "/users/:userID",
@@ -558,18 +588,23 @@ function assert_navigate_contracts(): void {
 	});
 
 	// Valid: with replace and scrollToTop
-	void react.navigate({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-		replace: true,
-		scrollToTop: false,
-	});
+	void react.navigate(
+		{
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+		},
+		{
+			replace: true,
+			scrollToTop: false,
+			skipProgressIndicator: true,
+		},
+	);
 
 	// Valid: with search and hash
 	void react.navigate({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		search: "?tab=posts",
+		search: { tab: "posts", page: 2 },
 		hash: "#recent",
 	});
 
@@ -584,6 +619,12 @@ function assert_navigate_contracts(): void {
 		pattern: "/users/:userID",
 		// @ts-expect-error route params must be string values.
 		params: { userID: 123 },
+	});
+	void react.navigate({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		// @ts-expect-error search must match the loader input type.
+		search: { page: "2" },
 	});
 	// @ts-expect-error splatValues are required for splat loader routes.
 	void react.navigate({ pattern: "/docs/*" });
@@ -1000,19 +1041,28 @@ function assert_react_adapter_contracts(): void {
 
 	// Link: valid cases
 	void react.Link({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
+		href: "/users/u-1?tab=posts",
 	});
 	void react.Link({
-		pattern: "/docs/*",
-		splatValues: ["guide"],
+		href: {
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+		},
 	});
 	void react.Link({
-		pattern: "/blog",
+		href: {
+			pattern: "/docs/*",
+			splatValues: ["guide"],
+		},
 	});
 	void react.Link({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
+		href: { pattern: "/blog" },
+	});
+	void react.Link({
+		href: {
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+		},
 		prefetch: "intent",
 		visitOnPointerDown: true,
 		prefetchDelayMs: 100,
@@ -1020,46 +1070,62 @@ function assert_react_adapter_contracts(): void {
 		scrollToTop: false,
 	});
 	void react.Link({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-		search: "?tab=posts",
-		hash: "#recent",
+		href: {
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+			search: { tab: "posts" },
+			hash: "#recent",
+		},
 	});
 	void react.Link({
-		pattern: "/",
+		href: { pattern: "/" },
 		prefetch: "none",
 	});
 
 	// Link: invalid cases
-	// @ts-expect-error typed links require params for dynamic routes.
 	void react.Link({
-		pattern: "/users/:userID",
+		// @ts-expect-error typed links require params for dynamic routes.
+		href: { pattern: "/users/:userID" },
 	});
 	void react.Link({
-		pattern: "/users/:userID",
-		// @ts-expect-error typed links enforce exact dynamic param keys.
-		params: { id: "u-1" },
+		href: {
+			pattern: "/users/:userID",
+			// @ts-expect-error typed links enforce exact dynamic param keys.
+			params: { id: "u-1" },
+		},
 	});
 	void react.Link({
-		pattern: "/users/:userID",
-		// @ts-expect-error typed links require string param values.
-		params: { userID: 123 },
-	});
-	// @ts-expect-error typed links require splatValues for splat routes.
-	void react.Link({
-		pattern: "/docs/*",
+		href: {
+			pattern: "/users/:userID",
+			// @ts-expect-error typed links require string param values.
+			params: { userID: 123 },
+		},
 	});
 	void react.Link({
-		pattern: "/docs/*",
-		// @ts-expect-error typed links require splatValues to be string[].
-		splatValues: "guide",
+		href: {
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+			// @ts-expect-error typed links enforce loader search input.
+			search: { page: "2" },
+		},
+	});
+	void react.Link({
+		// @ts-expect-error typed links require splatValues for splat routes.
+		href: { pattern: "/docs/*" },
+	});
+	void react.Link({
+		href: {
+			pattern: "/docs/*",
+			// @ts-expect-error typed links require splatValues to be string[].
+			splatValues: "guide",
+		},
 	});
 	void react.Link({
 		// @ts-expect-error typed links reject unknown route patterns.
-		pattern: "/not-a-route",
+		href: { pattern: "/not-a-route" },
 	});
 	void react.Link({
-		pattern: "/",
+		href: { pattern: "/" },
 		// @ts-expect-error prefetch only accepts intent or none.
 		prefetch: "hover",
 	});
@@ -1074,14 +1140,29 @@ void assert_react_adapter_contracts;
 function assert_public_runtime_contracts(): void {
 	// init
 	const init_promise = react.init({
-		renderFn: async () => {},
+		render: async ({ App, el }) => {
+			expect_type<ReactComponentType>(App);
+			expect_type<HTMLElement>(el);
+		},
 		useViewTransitions: true,
 		onStatusChange: (status) => {
 			expect_type<boolean>(status.isNavigating);
 			expect_type<boolean>(status.isSubmitting);
 			expect_type<boolean>(status.isRevalidating);
 		},
-		onRouteChange: () => {},
+		onRouteCommit: (info) => {
+			expect_type<
+				"initial" | "navigation" | "popstate" | "revalidation" | "hmr"
+			>(info.reason);
+			expect_type<string>(info.url);
+			expect_type<string | null>(info.previousUrl);
+			expect_type<boolean>(info.urlChanged);
+			expect_type<boolean>(info.patternsChanged);
+			expect_type<boolean>(info.paramsChanged);
+			expect_type<boolean>(info.searchChanged);
+			expect_type<boolean>(info.hashChanged);
+			expect_type<boolean>(info.historyStateChanged);
+		},
 		onClientBuildIDChange: (prev, next) => {
 			expect_type<string>(prev);
 			expect_type<string>(next);
@@ -1089,13 +1170,33 @@ function assert_public_runtime_contracts(): void {
 	});
 	expect_type<Promise<Result<void>>>(init_promise);
 
-	// navigate
-	const navigate_result = react.navigate({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-		replace: true,
-		scrollToTop: false,
+	const preact_init_promise = preact.init({
+		render: async ({ App, el }) => {
+			expect_type<PreactComponentType>(App);
+			expect_type<HTMLElement>(el);
+		},
 	});
+	expect_type<Promise<Result<void>>>(preact_init_promise);
+
+	const solid_init_promise = solid.init({
+		render: async ({ App, el }) => {
+			expect_type<SolidComponent>(App);
+			expect_type<HTMLElement>(el);
+		},
+	});
+	expect_type<Promise<Result<void>>>(solid_init_promise);
+
+	// navigate
+	const navigate_result = react.navigate(
+		{
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+		},
+		{
+			replace: true,
+			scrollToTop: false,
+		},
+	);
 	expect_type<Promise<{ didNavigate: boolean }>>(navigate_result);
 
 	// revalidate
@@ -1149,7 +1250,7 @@ function assert_public_runtime_contracts(): void {
 		{
 			dedupeKey: "create-user",
 			revalidate: true,
-			skipGlobalLoadingIndicator: false,
+			skipProgressIndicator: false,
 		},
 	);
 
@@ -1175,37 +1276,43 @@ function assert_public_runtime_contracts(): void {
 	const stop_focus_revalidate_default = react.revalidateOnWindowFocus();
 	expect_type<() => void>(stop_focus_revalidate_default);
 
-	// setupGlobalLoadingIndicator (all categories)
-	const stop_global_loading = react.setupGlobalLoadingIndicator({
-		start: () => {},
-		stop: () => {},
-		isRunning: () => {
-			return false;
+	// progressIndicator (all categories)
+	const init_with_progress = react.init({
+		progressIndicator: {
+			start: () => {},
+			stop: () => {},
+			isRunning: () => {
+				return false;
+			},
+			include: ["navigations", "submissions", "revalidations"],
+			startDelayMS: 30,
+			stopDelayMS: 40,
 		},
-		include: ["navigations", "submissions", "revalidations"],
-		startDelayMS: 30,
-		stopDelayMS: 40,
 	});
-	expect_type<() => void>(stop_global_loading);
+	expect_type<Promise<Result<void>>>(init_with_progress);
 
-	// setupGlobalLoadingIndicator (include "all")
-	void react.setupGlobalLoadingIndicator({
-		start: () => {},
-		stop: () => {},
-		isRunning: () => {
-			return false;
+	// progressIndicator (include "all")
+	void react.init({
+		progressIndicator: {
+			start: () => {},
+			stop: () => {},
+			isRunning: () => {
+				return false;
+			},
+			include: "all",
 		},
-		include: "all",
 	});
 
-	// setupGlobalLoadingIndicator (subset)
-	void react.setupGlobalLoadingIndicator({
-		start: () => {},
-		stop: () => {},
-		isRunning: () => {
-			return false;
+	// progressIndicator (subset)
+	void react.init({
+		progressIndicator: {
+			start: () => {},
+			stop: () => {},
+			isRunning: () => {
+				return false;
+			},
+			include: ["navigations"],
 		},
-		include: ["navigations"],
 	});
 }
 void assert_public_runtime_contracts;
@@ -1274,13 +1381,15 @@ function assert_preact_adapter_contracts(): void {
 
 	// Link
 	void preact.Link({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
+		href: {
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+		},
 	});
 
-	// @ts-expect-error typed links require params for dynamic routes.
 	void preact.Link({
-		pattern: "/users/:userID",
+		// @ts-expect-error typed links require params for dynamic routes.
+		href: { pattern: "/users/:userID" },
 	});
 }
 void assert_preact_adapter_contracts;
@@ -1360,13 +1469,15 @@ function assert_solid_adapter_contracts(): void {
 
 	// Link
 	void solid.Link({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
+		href: {
+			pattern: "/users/:userID",
+			params: { userID: "u-1" },
+		},
 	});
 
-	// @ts-expect-error typed links require params for dynamic routes.
 	void solid.Link({
-		pattern: "/users/:userID",
+		// @ts-expect-error typed links require params for dynamic routes.
+		href: { pattern: "/users/:userID" },
 	});
 }
 void assert_solid_adapter_contracts;

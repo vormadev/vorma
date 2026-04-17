@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/kit/tasks"
+	"github.com/vormadev/vorma/kit/validate"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -359,6 +360,53 @@ func TestRunNestedTasks(t *testing.T) {
 		}
 		if results.Params["id"] != "456" {
 			t.Errorf("Expected param id='456', got %q", results.Params["id"])
+		}
+	})
+
+	t.Run("Typed_Input", func(t *testing.T) {
+		type search_input struct {
+			Query string `json:"q"`
+			Page  int    `json:"page"`
+		}
+
+		nr := NewNestedRouter(NestedOptions{
+			ParseInput: func(r *http.Request, input_ptr any) error {
+				return validate.URLSearchParamsInto(r, input_ptr)
+			},
+		})
+		AddNestedTaskHandler(
+			nr,
+			"/users",
+			TaskHandlerFromFunc(
+				func(rd *RequestCtx[search_input]) (map[string]any, error) {
+					input := rd.Input()
+					return map[string]any{
+						"query": input.Query,
+						"page":  input.Page,
+					}, nil
+				},
+			),
+		)
+
+		req := create_request_with_tasks_ctx(http.MethodGet, "/users?q=ada&page=2")
+		results, found := FindNestedMatchesAndRunTasks(nr, req)
+		if !found {
+			t.Fatal("should find matches")
+		}
+
+		users_result := find_nested_result(results, "/users")
+		if users_result == nil {
+			t.Fatal("users result missing")
+		}
+		if !users_result.OK() {
+			t.Fatalf("users task failed: %v", users_result.Err())
+		}
+		data := users_result.Data().(map[string]any)
+		if data["query"] != "ada" {
+			t.Fatalf("expected query ada, got %v", data["query"])
+		}
+		if data["page"] != 2 {
+			t.Fatalf("expected page 2, got %v", data["page"])
 		}
 	})
 
