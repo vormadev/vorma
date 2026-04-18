@@ -418,7 +418,7 @@ export function createVormaClient<A extends AppConfig>(
 		const link_href = createMemo(() => {
 			return (
 				href ??
-				passthrough.buildHref({
+				passthrough.toHref({
 					pattern,
 					params,
 					splatValues,

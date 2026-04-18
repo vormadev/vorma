@@ -69,7 +69,7 @@ export function resolve_path(
 	return path;
 }
 
-export function build_typed_href(
+export function to_typed_href(
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
@@ -85,16 +85,6 @@ export function build_typed_href(
 		url.hash = hash;
 	}
 	return url.href;
-}
-
-export function build_typed_link_href(
-	pattern: string,
-	params?: Record<string, string>,
-	splat_values?: string[],
-	search?: unknown,
-	hash?: string,
-): string {
-	return build_typed_href(pattern, params, splat_values, search, hash);
 }
 
 export function build_action_url(
@@ -115,12 +105,12 @@ export function build_action_url(
 	return url;
 }
 
-export function create_typed_build_href<A extends AppConfig>() {
+export function create_typed_to_href<A extends AppConfig>() {
 	return <P extends MakeTypedLoaderPattern<A>>(
 		destination: MakeTypedRouteDestination<A, P>,
 	): string => {
 		const d = destination as any;
-		return build_typed_href(
+		return to_typed_href(
 			d.pattern,
 			d.params,
 			d.splatValues,
@@ -160,11 +150,11 @@ export function create_typed_navigate<A extends AppConfig>(
 		},
 	) => Promise<{ didNavigate: boolean }>,
 ) {
-	const build_href = create_typed_build_href<A>();
+	const to_href = create_typed_to_href<A>();
 	return async <P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedNavProps<A, P>,
 	): Promise<{ didNavigate: boolean }> => {
-		const href = props.href ?? build_href(props as any);
+		const href = props.href ?? to_href(props as any);
 		return navigate_fn(href, {
 			replace: props.replace,
 			scrollToTop: props.scrollToTop,
@@ -177,10 +167,10 @@ export function create_typed_navigate<A extends AppConfig>(
 export function create_typed_prefetch<A extends AppConfig>(
 	prefetch_fn: (href: string) => void,
 ) {
-	const build_href = create_typed_build_href<A>();
+	const to_href = create_typed_to_href<A>();
 	return <P extends MakeTypedLoaderPattern<A>>(
 		target: MakeTypedNavTarget<A, P>,
 	): void => {
-		prefetch_fn(target.href ?? build_href(target as any));
+		prefetch_fn(target.href ?? to_href(target as any));
 	};
 }

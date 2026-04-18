@@ -42,9 +42,9 @@ import type {
 	MakeTypedRouteProps,
 } from "./types";
 import {
-	create_typed_build_href,
 	create_typed_navigate,
 	create_typed_prefetch,
+	create_typed_to_href,
 } from "./url.ts";
 
 export type DecomposedState = {
@@ -104,7 +104,7 @@ type AdapterBase<A extends AppConfig> = {
 			target: MakeTypedNavTarget<A, P>,
 		) => void;
 
-		buildHref: <P extends MakeTypedLoaderPattern<A>>(
+		toHref: <P extends MakeTypedLoaderPattern<A>>(
 			destination: MakeTypedRouteDestination<A, P>,
 		) => string;
 
@@ -224,7 +224,7 @@ export function create_adapter_base<A extends AppConfig>(
 	const navigate = create_typed_navigate<A>(core.navigate);
 	const prefetch = create_typed_prefetch<A>(core.start_prefetch);
 	const cancel_prefetch = create_typed_prefetch<A>(core.stop_prefetch);
-	const build_href = create_typed_build_href<A>();
+	const to_href = create_typed_to_href<A>();
 
 	const api_client = create_typed_api_client<A>(
 		app_config.actionsMountRoot,
@@ -239,7 +239,7 @@ export function create_adapter_base<A extends AppConfig>(
 			navigate,
 			prefetch,
 			cancelPrefetch: cancel_prefetch,
-			buildHref: build_href,
+			toHref: to_href,
 			revalidate: core.revalidate,
 			getRouteState: core.getRouteState,
 			getWorkState: core.getWorkState,

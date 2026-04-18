@@ -396,7 +396,7 @@ export function createVormaClient<A extends AppConfig>(
 			pattern,
 			href:
 				href ??
-				passthrough.buildHref({
+				passthrough.toHref({
 					pattern,
 					params,
 					splatValues,

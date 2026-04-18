@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { create_typed_api_client } from "./api_client.ts";
+import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 
 type SubmitCall = {
 	url: URL | string;
@@ -154,6 +155,50 @@ describe("submit", () => {
 
 		expect(calls[0]!.init?.credentials).toBe("include");
 		expect(headers_of(calls[0]!).get("X-Trace")).toBe("1");
+	});
+});
+
+describe("toIdentityArray", () => {
+	it("builds a stable action identity array", () => {
+		const { submit_fn } = mock_submit();
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		const key = (client as any).toIdentityArray({
+			method: " post ",
+			pattern: " /users/:id ",
+			params: { id: "42" },
+			splatValues: ["profile"],
+			input: { z: 1, a: { d: 4, c: 3 } },
+		});
+
+		expect(key).toEqual([
+			API_IDENTITY_ARRAY_PREFIX,
+			"/api/",
+			"POST",
+			"/users/:id",
+			`{"id":"42"}`,
+			`["profile"]`,
+			`{"a":{"c":3,"d":4},"z":1}`,
+		]);
+	});
+
+	it("defaults method and missing optional identity parts", () => {
+		const { submit_fn } = mock_submit();
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		const key = (client as any).toIdentityArray({
+			pattern: "/health",
+		});
+
+		expect(key).toEqual([
+			API_IDENTITY_ARRAY_PREFIX,
+			"/api/",
+			"GET",
+			"/health",
+			"null",
+			"[]",
+			"null",
+		]);
 	});
 });
 

@@ -416,4 +416,7 @@ export type MakeTypedAPIClient<A extends AppConfig> = {
 	submit: <Props extends MakeTypedActionSubmitProps<A>>(
 		props: Props,
 	) => Promise<SubmitResult<MakeTypedActionSubmitOutput<A, Props>>>;
+	toIdentityArray: <Props extends MakeTypedActionSubmitProps<A>>(
+		props: Props,
+	) => unknown[];
 };

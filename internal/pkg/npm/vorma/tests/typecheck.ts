@@ -521,7 +521,7 @@ function assert_exported_type_contracts(): void {
 
 	// MakeTypedAPIClient
 	type _api_client_keys = Assert<
-		IsExact<keyof MakeTypedAPIClient<App>, "submit">
+		IsExact<keyof MakeTypedAPIClient<App>, "submit" | "toIdentityArray">
 	>;
 	type _api_client_submit_return = Assert<
 		IsExact<
@@ -837,6 +837,16 @@ void assert_link_contracts;
 /////// API Client Type Safety
 
 function assert_api_client_contracts(): void {
+	const health_identity = react.apiClient.toIdentityArray({
+		pattern: "/health",
+	});
+	expect_type<unknown[]>(health_identity);
+
+	// @ts-expect-error identity arrays use the same action identity typing.
+	void react.apiClient.toIdentityArray({
+		pattern: "/logout",
+	});
+
 	// Valid GET action with required params and input. Method is required
 	// because this pattern has multiple action methods.
 	const user_get_result = react.apiClient.submit({
@@ -1429,8 +1439,8 @@ function assert_public_runtime_contracts(): void {
 	});
 	react.cancelPrefetch({ href: "/users/u-1" });
 
-	// buildHref
-	const built_href = react.buildHref({
+	// toHref
+	const built_href = react.toHref({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		search: { sort: "name", tab: "posts" },

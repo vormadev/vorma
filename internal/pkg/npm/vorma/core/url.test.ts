@@ -3,9 +3,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	build_action_url,
-	build_typed_link_href,
 	resolve_body,
 	resolve_path,
+	to_typed_href,
 } from "./url.ts";
 
 describe("resolve_path", () => {
@@ -80,27 +80,24 @@ describe("resolve_path", () => {
 	});
 });
 
-describe("build_typed_link_href", () => {
+describe("to_typed_href", () => {
 	it("builds href from pattern and params", () => {
-		const href = build_typed_link_href("/users/:id", { id: "42" });
+		const href = to_typed_href("/users/:id", { id: "42" });
 		const url = new URL(href);
 		expect(url.pathname).toBe("/users/42");
 	});
 
 	it("appends search params", () => {
-		const href = build_typed_link_href(
-			"/users/:id",
-			{ id: "42" },
-			undefined,
-			{ q: "abc" },
-		);
+		const href = to_typed_href("/users/:id", { id: "42" }, undefined, {
+			q: "abc",
+		});
 		const url = new URL(href);
 		expect(url.pathname).toBe("/users/42");
 		expect(url.searchParams.get("q")).toBe("abc");
 	});
 
 	it("appends hash", () => {
-		const href = build_typed_link_href(
+		const href = to_typed_href(
 			"/users/:id",
 			{ id: "42" },
 			undefined,
@@ -113,16 +110,13 @@ describe("build_typed_link_href", () => {
 	});
 
 	it("builds href with splat values", () => {
-		const href = build_typed_link_href("/docs/*", undefined, [
-			"guide",
-			"intro",
-		]);
+		const href = to_typed_href("/docs/*", undefined, ["guide", "intro"]);
 		const url = new URL(href);
 		expect(url.pathname).toBe("/docs/guide/intro");
 	});
 
 	it("combines params, search, and hash", () => {
-		const href = build_typed_link_href(
+		const href = to_typed_href(
 			"/users/:id",
 			{ id: "42" },
 			undefined,
@@ -136,7 +130,7 @@ describe("build_typed_link_href", () => {
 	});
 
 	it("strips _index for loader patterns", () => {
-		const href = build_typed_link_href("/blog/_index");
+		const href = to_typed_href("/blog/_index");
 		const url = new URL(href);
 		expect(url.pathname).toBe("/blog");
 	});

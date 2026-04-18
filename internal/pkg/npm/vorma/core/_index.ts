@@ -77,11 +77,10 @@ export {
 } from "./ui_adapter_core.ts";
 export {
 	build_action_url,
-	build_typed_href,
-	build_typed_link_href,
-	create_typed_build_href,
 	create_typed_navigate,
 	create_typed_prefetch,
+	create_typed_to_href,
 	resolve_body,
 	resolve_path,
+	to_typed_href,
 } from "./url.ts";
