@@ -426,26 +426,56 @@ function assert_exported_type_contracts(): void {
 			AbortSignal
 		>
 	>;
+	type _cl_props_href = Assert<
+		IsExact<
+			MakeTypedClientLoaderProps<App, "/users/:userID">["href"],
+			string
+		>
+	>;
+	type _cl_props_history_state = Assert<
+		IsExact<
+			MakeTypedClientLoaderProps<App, "/users/:userID">["historyState"],
+			unknown
+		>
+	>;
+	type _cl_props_pattern = Assert<
+		IsExact<
+			MakeTypedClientLoaderProps<App, "/users/:userID">["pattern"],
+			"/users/:userID"
+		>
+	>;
+	type _cl_props_input = Assert<
+		IsExact<
+			MakeTypedClientLoaderProps<App, "/users/:userID">["input"],
+			{ tab?: string; page?: number }
+		>
+	>;
+	type _cl_props_known_matches = Assert<
+		IsExact<
+			MakeTypedClientLoaderProps<App, "/users/:userID">["knownMatches"],
+			Array<{ pattern: string; input: unknown }>
+		>
+	>;
 	type _cl_props_loader_data = Assert<
 		IsExact<
 			Awaited<
 				MakeTypedClientLoaderProps<
 					App,
 					"/users/:userID"
-				>["serverDataPromise"]
+				>["serverPromise"]
 			>["loaderData"],
 			{ userName: string }
 		>
 	>;
-	type _cl_props_root_data = Assert<
+	type _cl_props_server_matches = Assert<
 		IsExact<
 			Awaited<
 				MakeTypedClientLoaderProps<
 					App,
 					"/users/:userID"
-				>["serverDataPromise"]
-			>["rootData"],
-			{ sessionUserID: string | null }
+				>["serverPromise"]
+			>["matches"],
+			Array<{ pattern: string; input: unknown; loaderData: unknown }>
 		>
 	>;
 	type _cl_props_root_params = Assert<
@@ -590,10 +620,20 @@ function assert_exported_type_contracts(): void {
 		prefetch: "intent",
 		visitOnPointerDown: true,
 		prefetchDelayMs: 100,
+		attributeMatchRules: { includeSearch: true, includeHash: true },
 		replace: false,
 		scrollToTop: true,
 	};
 	void link_props;
+	const skipped_link_props: LinkPropsBase = {
+		attributeMatchRules: { skip: true },
+	};
+	void skipped_link_props;
+	const invalid_skipped_link_props: LinkPropsBase = {
+		// @ts-expect-error skipped link attributes cannot also match search.
+		attributeMatchRules: { skip: true, includeSearch: true },
+	};
+	void invalid_skipped_link_props;
 
 	// RouteRenderEntry
 	const entry: RouteRenderEntry = {
@@ -1168,9 +1208,14 @@ function assert_react_adapter_contracts(): void {
 			return props.Outlet();
 		},
 		clientLoader: async ({
+			href,
+			historyState,
+			input,
+			knownMatches,
 			params,
+			pattern,
 			splatValues,
-			serverDataPromise,
+			serverPromise,
 			signal,
 			trigger,
 		}) => {
@@ -1183,13 +1228,24 @@ function assert_react_adapter_contracts(): void {
 			expect_type<"init" | "navigation" | "revalidation" | "prefetch">(
 				trigger,
 			);
-			const server_data = await serverDataPromise;
+			expect_type<string>(href);
+			expect_type<unknown>(historyState);
+			expect_type<"/users/:userID">(pattern);
+			expect_type<{ tab?: string; page?: number }>(input);
+			expect_type<Array<{ pattern: string; input: unknown }>>(
+				knownMatches,
+			);
+			const server_data = await serverPromise;
 			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(
 				server_data.loaderData,
 			);
-			expect_type<{ sessionUserID: string | null }>(server_data.rootData);
-			expect_type<string[]>(server_data.matchedPatterns);
 			expect_type<string>(server_data.clientBuildID);
+			expect_type<
+				Array<{ pattern: string; input: unknown; loaderData: unknown }>
+			>(server_data.matches);
+			expect_type<null | { idx: number; error: unknown }>(
+				server_data.outermostServerError,
+			);
 			return server_data.loaderData.userName.length;
 		},
 		runClientLoaderOnHMR: true,

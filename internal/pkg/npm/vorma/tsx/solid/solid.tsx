@@ -376,10 +376,18 @@ export function createVormaClient<A extends AppConfig>(
 	}
 
 	function BaseLink(
-		props: JSX.AnchorHTMLAttributes<HTMLAnchorElement> & LinkPropsBase,
+		props: JSX.AnchorHTMLAttributes<HTMLAnchorElement> &
+			LinkPropsBase & { pattern?: string },
 	): JSX.Element {
+		const link_route_state = useRouteState();
+		const link_work_state = useWorkState();
 		const r = createMemo(() => {
-			return make_link_props(props as Record<string, unknown>, nav_fns);
+			return make_link_props(
+				props as Record<string, unknown>,
+				nav_fns,
+				link_route_state(),
+				link_work_state(),
+			);
 		});
 		const anchor_props = createMemo(() => {
 			return r()
@@ -421,7 +429,7 @@ export function createVormaClient<A extends AppConfig>(
 				} as any)
 			);
 		});
-		return <BaseLink {...props} href={link_href()} />;
+		return <BaseLink {...props} pattern={pattern} href={link_href()} />;
 	}) as <P extends MakeTypedLoaderPattern<A>>(
 		props: Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
 			MakeTypedLinkProps<A, P>,

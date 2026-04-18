@@ -407,8 +407,17 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function BaseLink(props: ComponentProps<"a"> & LinkPropsBase): JSX.Element {
-		const r = make_link_props(props as Record<string, unknown>, nav_fns);
+	function BaseLink(
+		props: ComponentProps<"a"> & LinkPropsBase & { pattern?: string },
+	): JSX.Element {
+		const route_state = useRouteState();
+		const work_state = useWorkState();
+		const r = make_link_props(
+			props as Record<string, unknown>,
+			nav_fns,
+			route_state,
+			work_state,
+		);
 		return (
 			<a
 				data-external={r.is_external || undefined}
@@ -443,6 +452,7 @@ export function createVormaClient<A extends AppConfig>(
 			return (
 				<BaseLink
 					{...props}
+					pattern={pattern}
 					href={
 						href ??
 						passthrough.buildHref({

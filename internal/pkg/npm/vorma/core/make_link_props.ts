@@ -3,6 +3,14 @@ import {
 	getIsModifiedNavigationClick,
 	getIsPrimaryNavigationClick,
 } from "vorma/kit/url";
+import {
+	LINK_ACTIVE_ANCESTOR_ATTR,
+	LINK_ACTIVE_EXACT_ATTR,
+	LINK_PENDING_ANCESTOR_ATTR,
+	LINK_PENDING_EXACT_ATTR,
+} from "./constants.ts";
+import type { RouteState, WorkState } from "./create_client_core.ts";
+import type { LinkPropsBase } from "./types.ts";
 
 export type LinkPropsResult = {
 	is_external: boolean;
@@ -26,9 +34,23 @@ export type LinkNavFns = {
 	start_prefetch: (href: string) => void;
 	stop_prefetch: (href: string) => void;
 	save_current_scroll: () => void;
+	register_link_pattern: (pattern: string) => void;
+	get_link_attribute_state: (
+		href: string,
+		match_rules: LinkPropsBase["attributeMatchRules"],
+		route_state: RouteState | null,
+		work_state: WorkState,
+	) => {
+		active_exact: boolean;
+		active_ancestor: boolean;
+		pending_exact: boolean;
+		pending_ancestor: boolean;
+	};
 };
 
 const VORMA_KEYS = new Set([
+	"attributeMatchRules",
+	"pattern",
 	"prefetch",
 	"prefetchDelayMs",
 	"replace",
@@ -89,10 +111,17 @@ function strip_keys(
 export function make_link_props(
 	props: Record<string, unknown>,
 	nav: LinkNavFns,
+	route_state: RouteState | null = null,
+	work_state?: WorkState,
 ): LinkPropsResult {
 	register_input_modality();
 
 	const href = (props.href as string) ?? "";
+	const pattern = props.pattern as string | undefined;
+	if (pattern) {
+		nav.register_link_pattern(pattern);
+	}
+
 	const details = getHrefDetails(href);
 	const is_external = details.isHTTP ? details.isExternal : true;
 	const consumer_click = props.onClick as ((e: unknown) => void) | undefined;
@@ -109,6 +138,35 @@ export function make_link_props(
 		strip_keys(props, VORMA_KEYS),
 		COMPOSED_EVENT_KEYS,
 	);
+	const attribute_match_rules =
+		props.attributeMatchRules as LinkPropsBase["attributeMatchRules"];
+	const link_state =
+		attribute_match_rules?.skip === true || !route_state || !work_state
+			? null
+			: nav.get_link_attribute_state(
+					href,
+					attribute_match_rules,
+					route_state,
+					work_state,
+				);
+	if (link_state?.active_exact) {
+		anchor_props[LINK_ACTIVE_EXACT_ATTR] = "";
+	}
+	if (link_state?.active_ancestor) {
+		anchor_props[LINK_ACTIVE_ANCESTOR_ATTR] = "";
+	}
+	if (link_state?.pending_exact) {
+		anchor_props[LINK_PENDING_EXACT_ATTR] = "";
+	}
+	if (link_state?.pending_ancestor) {
+		anchor_props[LINK_PENDING_ANCESTOR_ATTR] = "";
+	}
+	if (
+		link_state?.active_exact &&
+		anchor_props["aria-current"] === undefined
+	) {
+		anchor_props["aria-current"] = "page";
+	}
 
 	const prefetch_mode = props.prefetch as string | undefined;
 	const prefetch_delay = (props.prefetchDelayMs as number | undefined) ?? 100;

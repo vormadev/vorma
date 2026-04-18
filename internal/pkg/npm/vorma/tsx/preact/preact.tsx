@@ -339,11 +339,15 @@ export function createVormaClient<A extends AppConfig>(
 
 	function BaseLink(
 		props: HTMLAttributes<HTMLAnchorElement> &
-			LinkPropsBase & { href: string },
+			LinkPropsBase & { href: string; pattern?: string },
 	): JSX.Element {
+		const route_state = useRouteState();
+		const work_state = useWorkState();
 		const r = make_link_props(
 			props as unknown as Record<string, unknown>,
 			nav_fns,
+			route_state,
+			work_state,
 		);
 		return h(
 			"a",
@@ -371,6 +375,7 @@ export function createVormaClient<A extends AppConfig>(
 			merged;
 		return h(BaseLink, {
 			...props,
+			pattern,
 			href:
 				href ??
 				passthrough.buildHref({

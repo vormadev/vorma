@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	BUILD_ID_HEADER,
 	DATA_SCRIPT_ID,
+	LINK_ACTIVE_ANCESTOR_ATTR,
+	LINK_ACTIVE_EXACT_ATTR,
+	LINK_PENDING_ANCESTOR_ATTR,
+	LINK_PENDING_EXACT_ATTR,
 	type InitOptions,
 	type RevalidationResult,
 } from "vorma/__internal";
@@ -17,13 +21,28 @@ type TestRouteProps = {
 
 type TestClientLoaderProps = {
 	trigger: "init" | "navigation" | "revalidation" | "prefetch";
+	href: string;
+	historyState: unknown;
+	pattern: string;
 	params: Record<string, string>;
 	splatValues: string[];
-	serverDataPromise: Promise<{
-		matchedPatterns: string[];
-		rootData: unknown;
-		loaderData: unknown;
+	input: unknown;
+	knownMatches: Array<{
+		pattern: string;
+		input: unknown;
+	}>;
+	serverPromise: Promise<{
 		clientBuildID: string;
+		matches: Array<{
+			pattern: string;
+			input: unknown;
+			loaderData: unknown;
+		}>;
+		outermostServerError: null | {
+			idx: number;
+			error: unknown;
+		};
+		loaderData: unknown;
 	}>;
 	signal: AbortSignal;
 };
@@ -869,8 +888,8 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 							captured = client.useClientLoaderData(props);
 							return harness.h("div", {}, "cl-test");
 						},
-						client_loader: async ({ serverDataPromise }: any) => {
-							await serverDataPromise;
+						client_loader: async ({ serverPromise }: any) => {
+							await serverPromise;
 							return { enhanced: true };
 						},
 					},
@@ -1078,6 +1097,171 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 					"custom-class",
 				);
 			} finally {
+				cleanup();
+			}
+		});
+
+		it("adds exact and ancestor attributes for the current route", async () => {
+			window.history.replaceState({}, "", "/products/7?tab=reviews#top");
+			seed_payload({
+				MatchedPatterns: ["/", "/products/:id"],
+				LoadersData: [{}, {}],
+				Params: { id: "7" },
+				SplatValues: [],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.init({});
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(
+					harness.h(client.Link as any, {
+						pattern: "/products/:id",
+						params: { id: "7" },
+						children: "Product",
+					}),
+				);
+				let anchor = container.querySelector("a")!;
+				expect(anchor.getAttribute(LINK_ACTIVE_EXACT_ATTR)).toBe("");
+				expect(anchor.getAttribute("aria-current")).toBe("page");
+				expect(
+					anchor.getAttribute(LINK_ACTIVE_ANCESTOR_ATTR),
+				).toBeNull();
+
+				render(
+					harness.h(client.Link as any, {
+						pattern: "/",
+						children: "Root",
+					}),
+				);
+				anchor = container.querySelector("a")!;
+				expect(anchor.getAttribute(LINK_ACTIVE_EXACT_ATTR)).toBeNull();
+				expect(anchor.getAttribute(LINK_ACTIVE_ANCESTOR_ATTR)).toBe("");
+				expect(anchor.getAttribute("aria-current")).toBeNull();
+			} finally {
+				cleanup();
+			}
+		});
+
+		it("uses attribute match rules for search and hash exactness", async () => {
+			window.history.replaceState({}, "", "/products/7?tab=reviews#top");
+			seed_payload({
+				MatchedPatterns: ["/products/:id"],
+				LoadersData: [{}],
+				Params: { id: "7" },
+				SplatValues: [],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.init({});
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(
+					harness.h(client.Link as any, {
+						pattern: "/products/:id",
+						params: { id: "7" },
+						search: { tab: "details" },
+						hash: "#other",
+						children: "Product",
+					}),
+				);
+				let anchor = container.querySelector("a")!;
+				expect(anchor.getAttribute(LINK_ACTIVE_EXACT_ATTR)).toBe("");
+
+				render(
+					harness.h(client.Link as any, {
+						pattern: "/products/:id",
+						params: { id: "7" },
+						search: { tab: "details" },
+						hash: "#other",
+						attributeMatchRules: {
+							includeSearch: true,
+							includeHash: true,
+						},
+						children: "Product",
+					}),
+				);
+				anchor = container.querySelector("a")!;
+				expect(anchor.getAttribute(LINK_ACTIVE_EXACT_ATTR)).toBeNull();
+
+				render(
+					harness.h(client.Link as any, {
+						pattern: "/products/:id",
+						params: { id: "7" },
+						attributeMatchRules: { skip: true },
+						children: "Product",
+					}),
+				);
+				anchor = container.querySelector("a")!;
+				expect(anchor.getAttribute(LINK_ACTIVE_EXACT_ATTR)).toBeNull();
+				expect(
+					anchor.getAttribute(LINK_ACTIVE_ANCESTOR_ATTR),
+				).toBeNull();
+				expect(anchor.getAttribute("aria-current")).toBeNull();
+			} finally {
+				cleanup();
+			}
+		});
+
+		it("adds pending attributes for the pending navigation route", async () => {
+			seed_payload({
+				MatchedPatterns: ["/"],
+				LoadersData: [{}],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.init({});
+
+			let resolve_response!: (response: Response) => void;
+			const response_promise = new Promise<Response>((resolve) => {
+				resolve_response = resolve;
+			});
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response_promise);
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(
+					harness.h(
+						"div",
+						{},
+						harness.h(client.Link as any, {
+							pattern: "/pending",
+							children: "Pending",
+						}),
+						harness.h(client.Link as any, {
+							pattern: "/",
+							children: "Root",
+						}),
+					),
+				);
+				const anchors = container.querySelectorAll("a");
+				const pending_anchor = anchors[0]!;
+				const root_anchor = anchors[1]!;
+				pending_anchor.dispatchEvent(
+					new MouseEvent("click", {
+						bubbles: true,
+						cancelable: true,
+						button: 0,
+					}),
+				);
+
+				await wait_for_dom(() => {
+					expect(
+						pending_anchor.getAttribute(LINK_PENDING_EXACT_ATTR),
+					).toBe("");
+					expect(
+						root_anchor.getAttribute(LINK_PENDING_ANCESTOR_ATTR),
+					).toBe("");
+				});
+			} finally {
+				resolve_response(
+					route_response({
+						MatchedPatterns: ["/pending"],
+						LoadersData: [{}],
+					}),
+				);
 				cleanup();
 			}
 		});

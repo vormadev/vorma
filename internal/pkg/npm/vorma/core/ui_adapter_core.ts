@@ -1,4 +1,9 @@
 import { jsonDeepEquals } from "vorma/kit/json";
+import { findNestedMatches } from "vorma/kit/matcher/find-nested";
+import {
+	createPatternRegistry,
+	registerPattern,
+} from "vorma/kit/matcher/register";
 import { R, type Result } from "vorma/kit/result";
 import { create_typed_api_client } from "./api_client.ts";
 import type {
@@ -19,6 +24,7 @@ import { type LinkNavFns } from "./make_link_props.ts";
 import { get_entry_key } from "./resolve_outlet_slot.ts";
 import type {
 	AppConfig,
+	LinkPropsBase,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedDefineRouteInput,
@@ -57,6 +63,11 @@ export type DecomposedCommitFn = (
 	state: DecomposedState,
 	scroll_intent?: ScrollIntent,
 ) => void;
+
+type LinkAttributeCandidate = {
+	url: URL;
+	matched_patterns: string[];
+};
 
 export type AdapterRenderArgs<App> = {
 	App: App;
@@ -101,6 +112,18 @@ export function create_adapter_base<A extends AppConfig>(
 	on_commit: DecomposedCommitFn,
 	api_decorator?: MakeTypedAPIDecorator<A>,
 ): Result<AdapterBase<A>> {
+	const attribute_registry_res = createPatternRegistry({
+		dynamicParamPrefixRune: ":",
+		splatSegmentRune: "*",
+		explicitIndexSegment: "_index",
+	});
+	if (!attribute_registry_res.ok) {
+		return R.err(
+			`Failed to create link attribute registry: ${attribute_registry_res.err}`,
+		);
+	}
+	const attribute_registry = attribute_registry_res.val;
+
 	let prev: DecomposedState = {
 		entries: [],
 		error: null,
@@ -119,6 +142,10 @@ export function create_adapter_base<A extends AppConfig>(
 		route_state: RouteRenderState,
 		scroll_intent?: ScrollIntent,
 	): void {
+		for (const entry of route_state.entries) {
+			register_link_pattern(entry.pattern);
+		}
+
 		const next: DecomposedState = {
 			entries: route_state.entries,
 			error: route_state.error,
@@ -185,6 +212,8 @@ export function create_adapter_base<A extends AppConfig>(
 		start_prefetch: core.start_prefetch,
 		stop_prefetch: core.stop_prefetch,
 		save_current_scroll: core.save_current_scroll,
+		register_link_pattern,
+		get_link_attribute_state,
 	};
 
 	const navigate = create_typed_navigate<A>(core.navigate);
@@ -212,6 +241,99 @@ export function create_adapter_base<A extends AppConfig>(
 			apiClient: api_client,
 		},
 	});
+
+	function register_link_pattern(pattern: string): void {
+		registerPattern(attribute_registry, pattern);
+	}
+
+	function href_to_link_candidate(href: string): LinkAttributeCandidate {
+		const url = new URL(href, window.location.href);
+		const match = findNestedMatches(attribute_registry, url.pathname);
+		return {
+			url,
+			matched_patterns:
+				match?.matches.map((m) => {
+					return m.registeredPattern.originalPattern;
+				}) ?? [],
+		};
+	}
+
+	function exact_link_match(
+		target: LinkAttributeCandidate,
+		candidate: LinkAttributeCandidate,
+		match_rules: LinkPropsBase["attributeMatchRules"],
+	): boolean {
+		return (
+			target.url.pathname === candidate.url.pathname &&
+			(target.matched_patterns.length === 0 ||
+				candidate.matched_patterns.length === 0 ||
+				jsonDeepEquals(
+					target.matched_patterns,
+					candidate.matched_patterns,
+				)) &&
+			(match_rules?.includeSearch !== true ||
+				target.url.search === candidate.url.search) &&
+			(match_rules?.includeHash !== true ||
+				target.url.hash === candidate.url.hash)
+		);
+	}
+
+	function ancestor_link_match(
+		target: LinkAttributeCandidate,
+		candidate: LinkAttributeCandidate,
+	): boolean {
+		const target_path =
+			target.url.pathname === "/" ? "/" : `${target.url.pathname}/`;
+		return (
+			target.matched_patterns.length > 0 &&
+			candidate.matched_patterns.length >
+				target.matched_patterns.length &&
+			(target_path === "/" ||
+				candidate.url.pathname.startsWith(target_path)) &&
+			target.matched_patterns.every((pattern, i) => {
+				return candidate.matched_patterns[i] === pattern;
+			})
+		);
+	}
+
+	function get_link_attribute_state(
+		href: string,
+		match_rules: LinkPropsBase["attributeMatchRules"],
+		route_state: RouteState | null,
+		work_state: WorkState,
+	) {
+		if (match_rules?.skip === true || !route_state) {
+			return {
+				active_exact: false,
+				active_ancestor: false,
+				pending_exact: false,
+				pending_ancestor: false,
+			};
+		}
+
+		const target = href_to_link_candidate(href);
+		const route_url = new URL(route_state.href, window.location.href);
+		const route = {
+			url: route_url,
+			matched_patterns: route_state.matches.map((m) => {
+				return m.pattern;
+			}),
+		};
+		const pending = work_state.navigation
+			? href_to_link_candidate(work_state.navigation.href)
+			: null;
+
+		return {
+			active_exact: exact_link_match(target, route, match_rules),
+			active_ancestor: ancestor_link_match(target, route),
+			pending_exact: pending
+				? exact_link_match(target, pending, match_rules)
+				: false,
+			pending_ancestor: pending
+				? ancestor_link_match(target, pending)
+				: false,
+		};
+	}
 }
 
 function stable<T>(prev: T, next: T): T {

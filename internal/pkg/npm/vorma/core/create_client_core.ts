@@ -146,16 +146,35 @@ export type RouteDefinition = {
 
 type ClientLoaderFn = (props: {
 	trigger: "init" | "navigation" | "revalidation" | "prefetch";
+	href: string;
+	historyState: unknown;
+	pattern: string;
 	params: Record<string, string>;
 	splatValues: string[];
-	serverDataPromise: Promise<{
-		matchedPatterns: string[];
-		rootData: unknown;
-		loaderData: unknown;
-		clientBuildID: string;
-	}>;
+	input: unknown;
+	knownMatches: ClientLoaderKnownMatch[];
+	serverPromise: Promise<ClientLoaderServerState>;
 	signal: AbortSignal;
 }) => Promise<unknown>;
+
+type ClientLoaderKnownMatch = {
+	pattern: string;
+	input: unknown;
+};
+
+type ClientLoaderServerState = {
+	clientBuildID: string;
+	matches: Array<{
+		pattern: string;
+		input: unknown;
+		loaderData: unknown;
+	}>;
+	outermostServerError: null | {
+		idx: number;
+		error: unknown;
+	};
+	loaderData: unknown;
+};
 
 type SubmitResult<T> =
 	| {
@@ -438,7 +457,7 @@ export function create_client_core(
 
 	type ClientLoaderPrefetch = {
 		pattern: string;
-		resolve_server_data: (data: unknown) => void;
+		resolve_server_state: (data: ClientLoaderServerState) => void;
 		abort: () => void;
 		result_promise: Promise<unknown>;
 	};
@@ -555,6 +574,7 @@ export function create_client_core(
 
 	const work_update_listeners = new Set<(work: WorkState) => void>();
 	const module_map: Record<string, ClientLoaderFn> = {};
+	const search_schema_map: Record<string, unknown> = {};
 	const hmr_rerun_patterns = new Set<string>();
 	const module_cache = new Map<string, Record<string, unknown>>();
 
@@ -759,9 +779,11 @@ export function create_client_core(
 		const search_params = url.searchParams;
 
 		const routes: DecodedRoute[] = patterns.map((pattern, i) => {
+			const schema = schemas[i];
+			search_schema_map[pattern] = schema;
 			return {
 				pattern,
-				input: parseSearchParams(schemas[i], search_params),
+				input: parseSearchParams(schema, search_params),
 				module_url: import_urls[i] ?? "",
 				loader_data: loaders_data[i],
 				server_error:
@@ -790,64 +812,103 @@ export function create_client_core(
 
 	/////// Modules And Client Loader Prefetches
 
-	function make_cl_prefetch(
-		pattern: string,
-		loader: ClientLoaderFn,
-		trigger: "navigation" | "revalidation" | "prefetch",
-		params: Record<string, string>,
-		splat_values: string[],
-		signal: AbortSignal,
-	): ClientLoaderPrefetch {
-		let resolve_server_data!: (v: unknown) => void;
-		let reject_server_data!: (err: unknown) => void;
-		const server_data_promise = new Promise<any>((res, rej) => {
-			resolve_server_data = res;
-			reject_server_data = rej;
-		});
-		server_data_promise.catch(() => {});
+	function make_cl_prefetch(input: {
+		href: string;
+		history_state: unknown;
+		known_matches: ClientLoaderKnownMatch[];
+		loader: ClientLoaderFn;
+		params: Record<string, string>;
+		pattern: string;
+		route_input: unknown;
+		signal: AbortSignal;
+		splat_values: string[];
+		trigger: "navigation" | "revalidation" | "prefetch";
+	}): ClientLoaderPrefetch {
+		let resolve_server_state!: (v: ClientLoaderServerState) => void;
+		let reject_server_state!: (err: unknown) => void;
+		const server_promise = new Promise<ClientLoaderServerState>(
+			(res, rej) => {
+				resolve_server_state = res;
+				reject_server_state = rej;
+			},
+		);
+		server_promise.catch(() => {});
 
 		const ac = new AbortController();
-		if (signal.aborted) {
+		if (input.signal.aborted) {
 			ac.abort();
-			reject_server_data(new_abort_error());
+			reject_server_state(new_abort_error());
 		} else {
-			signal.addEventListener(
+			input.signal.addEventListener(
 				"abort",
 				() => {
 					ac.abort();
-					reject_server_data(new_abort_error());
+					reject_server_state(new_abort_error());
 				},
 				{ once: true },
 			);
 		}
 
-		const result_promise = loader({
-			trigger,
-			params,
-			splatValues: splat_values,
-			serverDataPromise: server_data_promise,
+		const result_promise = input.loader({
+			trigger: input.trigger,
+			href: input.href,
+			historyState: input.history_state,
+			pattern: input.pattern,
+			params: input.params,
+			splatValues: input.splat_values,
+			input: input.route_input,
+			knownMatches: input.known_matches,
+			serverPromise: server_promise,
 			signal: ac.signal,
 		});
 		result_promise.catch(() => {});
 
 		return {
-			pattern,
-			resolve_server_data,
+			pattern: input.pattern,
+			resolve_server_state,
 			abort: () => {
 				ac.abort();
-				reject_server_data(new_abort_error());
+				reject_server_state(new_abort_error());
 			},
 			result_promise,
 		};
 	}
 
-	function build_server_data(routes: DecodedRoute[], idx: number) {
-		const patterns = routes.map((r) => r.pattern);
+	function routes_to_known_matches(
+		routes: DecodedRoute[],
+	): ClientLoaderKnownMatch[] {
+		return routes.map((r) => {
+			return {
+				pattern: r.pattern,
+				input: r.input,
+			};
+		});
+	}
+
+	function build_server_state(
+		routes: DecodedRoute[],
+		idx: number,
+	): ClientLoaderServerState {
+		const err_idx = routes.findIndex((r) => {
+			return r.server_error !== undefined;
+		});
 		return {
-			matchedPatterns: patterns,
-			rootData: patterns[0] === "/" ? routes[0]?.loader_data : undefined,
-			loaderData: routes[idx]?.loader_data,
 			clientBuildID: client_build_id,
+			matches: routes.map((r) => {
+				return {
+					pattern: r.pattern,
+					input: r.input,
+					loaderData: r.loader_data,
+				};
+			}),
+			outermostServerError:
+				err_idx === -1
+					? null
+					: {
+							idx: err_idx,
+							error: routes[err_idx]!.server_error,
+						},
+			loaderData: routes[idx]?.loader_data,
 		};
 	}
 
@@ -856,6 +917,8 @@ export function create_client_core(
 		payload: DecodedPayload,
 		cl_prefetches: ClientLoaderPrefetch[],
 		trigger: "init" | "navigation" | "revalidation",
+		href: string,
+		history_state: unknown,
 		signal: AbortSignal,
 	): Promise<Array<{ data: unknown } | { error: unknown } | undefined>> {
 		const by_pattern = new Map<string, ClientLoaderPrefetch>();
@@ -863,6 +926,7 @@ export function create_client_core(
 			by_pattern.set(p.pattern, p);
 		}
 		const err_idx = routes.findIndex((r) => r.server_error !== undefined);
+		const known_matches = routes_to_known_matches(routes);
 
 		const abort_later: Array<(() => void) | null> = [];
 		const promises: Array<Promise<unknown>> = [];
@@ -878,7 +942,7 @@ export function create_client_core(
 				continue;
 			}
 			if (existing) {
-				existing.resolve_server_data(build_server_data(routes, i));
+				existing.resolve_server_state(build_server_state(routes, i));
 				retained_prefetches.add(existing);
 				abort_later.push(existing.abort);
 				promises.push(existing.result_promise);
@@ -904,10 +968,15 @@ export function create_client_core(
 			promises.push(
 				loader({
 					trigger,
+					href,
+					historyState: history_state,
+					pattern: route.pattern,
 					params: payload.params,
 					splatValues: payload.splat_values,
-					serverDataPromise: Promise.resolve(
-						build_server_data(routes, i),
+					input: route.input,
+					knownMatches: known_matches,
+					serverPromise: Promise.resolve(
+						build_server_state(routes, i),
 					),
 					signal: ac.signal,
 				}),
@@ -1052,6 +1121,8 @@ export function create_client_core(
 		payload: DecodedPayload,
 		cl_prefetches: ClientLoaderPrefetch[],
 		trigger: "navigation" | "revalidation",
+		href: string,
+		history_state: unknown,
 		signal: AbortSignal,
 	): Promise<PreparedRoute | null> {
 		const modules = await prepare_modules(payload, signal);
@@ -1063,6 +1134,8 @@ export function create_client_core(
 			payload,
 			cl_prefetches,
 			trigger,
+			href,
+			history_state,
 			signal,
 		);
 		if (signal.aborted) {
@@ -1115,6 +1188,18 @@ export function create_client_core(
 		}
 	}
 
+	function history_state_for_fetch(intent: FetchIntent): unknown {
+		if (intent.kind === "nav") {
+			return intent.options.is_popstate
+				? browser.state
+				: intent.options.state;
+		}
+		if (intent.kind === "reval") {
+			return browser.state;
+		}
+		return undefined;
+	}
+
 	/////// Fetch Lifecycle
 
 	function start_fetch<T extends FetchIntent>(
@@ -1138,23 +1223,44 @@ export function create_client_core(
 			}
 		}
 		if (match) {
+			const known_matches = match.matches.map((m) => {
+				const pattern = m.registeredPattern.originalPattern;
+				return {
+					pattern,
+					input: parseSearchParams(
+						search_schema_map[pattern],
+						url.searchParams,
+					),
+				};
+			});
+			const input_by_pattern = new Map(
+				known_matches.map((m) => {
+					return [m.pattern, m.input] as const;
+				}),
+			);
+			const history_state = history_state_for_fetch(intent);
 			for (const m of match.matches) {
 				const pattern = m.registeredPattern.originalPattern;
 				const loader = module_map[pattern];
 				if (loader) {
 					cl_prefetches.push(
-						make_cl_prefetch(
-							pattern,
+						make_cl_prefetch({
+							href: url.href,
+							history_state,
+							known_matches,
 							loader,
-							intent.kind === "prefetch"
-								? "prefetch"
-								: intent.kind === "reval"
-									? "revalidation"
-									: "navigation",
-							match.params,
-							match.splatValues,
-							ac.signal,
-						),
+							params: match.params,
+							pattern,
+							route_input: input_by_pattern.get(pattern),
+							signal: ac.signal,
+							splat_values: match.splatValues,
+							trigger:
+								intent.kind === "prefetch"
+									? "prefetch"
+									: intent.kind === "reval"
+										? "revalidation"
+										: "navigation",
+						}),
 					);
 				}
 			}
@@ -1256,6 +1362,8 @@ export function create_client_core(
 				payload,
 				f.cl_prefetches,
 				f.intent.kind === "reval" ? "revalidation" : "navigation",
+				f.url.href,
+				history_state_for_fetch(f.intent),
 				f.ac.signal,
 			);
 			if (!prepared || !can_commit(f)) {
@@ -1855,6 +1963,8 @@ export function create_client_core(
 				payload,
 				f.cl_prefetches,
 				"revalidation",
+				f.url.href,
+				history_state_for_fetch(f.intent),
 				f.ac.signal,
 			);
 			if (!prepared || !can_commit(f)) {
@@ -1909,6 +2019,7 @@ export function create_client_core(
 			const err_idx = payload.routes.findIndex((r) => {
 				return r.server_error !== undefined;
 			});
+			const known_matches = routes_to_known_matches(payload.routes);
 			const next_cl_prefetches: ClientLoaderPrefetch[] = [];
 			const retained_prefetches = new Set<ClientLoaderPrefetch>();
 			for (let i = 0; i < payload.routes.length; i++) {
@@ -1919,8 +2030,8 @@ export function create_client_core(
 					continue;
 				}
 				if (existing) {
-					existing.resolve_server_data(
-						build_server_data(payload.routes, i),
+					existing.resolve_server_state(
+						build_server_state(payload.routes, i),
 					);
 					next_cl_prefetches.push(existing);
 					retained_prefetches.add(existing);
@@ -1930,15 +2041,19 @@ export function create_client_core(
 				if (!loader) {
 					continue;
 				}
-				const p = make_cl_prefetch(
-					route.pattern,
+				const p = make_cl_prefetch({
+					href: f.url.href,
+					history_state: undefined,
+					known_matches,
 					loader,
-					"prefetch",
-					payload.params,
-					payload.splat_values,
-					f.ac.signal,
-				);
-				p.resolve_server_data(build_server_data(payload.routes, i));
+					params: payload.params,
+					pattern: route.pattern,
+					route_input: route.input,
+					signal: f.ac.signal,
+					splat_values: payload.splat_values,
+					trigger: "prefetch",
+				});
+				p.resolve_server_state(build_server_state(payload.routes, i));
 				next_cl_prefetches.push(p);
 				retained_prefetches.add(p);
 			}
@@ -2406,26 +2521,32 @@ export function create_client_core(
 				const loader = module_map[match.pattern];
 				if (loader) {
 					try {
-						const patterns = route_snapshot.route.matches.map(
-							(m) => m.pattern,
-						);
+						const current_route = route_snapshot.route;
+						const routes = current_route.matches.map((m, i) => {
+							return {
+								pattern: m.pattern,
+								input: m.input,
+								module_url: m.module_url,
+								loader_data: m.loader_data,
+								server_error:
+									current_route.error?.source === "server" &&
+									current_route.error.idx === i
+										? current_route.error.error
+										: undefined,
+							};
+						});
 						client_loader_data = await loader({
 							trigger: "revalidation",
+							href: route_snapshot.position.href,
+							historyState: route_snapshot.position.state,
+							pattern: match.pattern,
 							params: route_snapshot.route.params,
 							splatValues: route_snapshot.route.splat_values,
-							serverDataPromise: Promise.resolve({
-								matchedPatterns: patterns,
-								rootData:
-									patterns[0] === "/"
-										? route_snapshot.route.matches[0]
-												?.loader_data
-										: undefined,
-								loaderData:
-									route_snapshot.route.matches[idx]
-										?.loader_data,
-								clientBuildID:
-									route_snapshot.route.client_build_id,
-							}),
+							input: match.input,
+							knownMatches: routes_to_known_matches(routes),
+							serverPromise: Promise.resolve(
+								build_server_state(routes, idx),
+							),
 							signal: new AbortController().signal,
 						});
 					} catch (err) {
@@ -2605,6 +2726,8 @@ export function create_client_core(
 			payload,
 			[],
 			"init",
+			browser.href,
+			browser.state,
 			initial_ac.signal,
 		);
 		if (initial_ac.signal.aborted) {

@@ -1,5 +1,12 @@
 export { create_typed_api_client } from "./api_client.ts";
-export { BUILD_ID_HEADER, DATA_SCRIPT_ID } from "./constants.ts";
+export {
+	BUILD_ID_HEADER,
+	DATA_SCRIPT_ID,
+	LINK_ACTIVE_ANCESTOR_ATTR,
+	LINK_ACTIVE_EXACT_ATTR,
+	LINK_PENDING_ANCESTOR_ATTR,
+	LINK_PENDING_EXACT_ATTR,
+} from "./constants.ts";
 export {
 	apply_scroll,
 	create_client_core,
@@ -30,6 +37,8 @@ export {
 } from "./resolve_outlet_slot.ts";
 export type {
 	AppConfig,
+	ClientLoaderKnownMatch,
+	ClientLoaderServerState,
 	LinkPropsBase,
 	MakeTypedActionInput,
 	MakeTypedActionMethod,

@@ -1,7 +1,31 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	LINK_ACTIVE_ANCESTOR_ATTR,
+	LINK_ACTIVE_EXACT_ATTR,
+	LINK_PENDING_ANCESTOR_ATTR,
+	LINK_PENDING_EXACT_ATTR,
+} from "./constants.ts";
+import type { RouteState, WorkState } from "./create_client_core.ts";
 import { make_link_props, type LinkNavFns } from "./make_link_props.ts";
+
+const TEST_ROUTE_STATE: RouteState = {
+	href: "/page",
+	historyState: undefined,
+	clientBuildID: "test-build",
+	params: {},
+	splatValues: [],
+	matches: [],
+	error: null,
+};
+
+const TEST_WORK_STATE: WorkState = {
+	navigation: null,
+	revalidation: null,
+	prefetch: null,
+	submissions: [],
+};
 
 function mock_nav(): LinkNavFns {
 	return {
@@ -9,6 +33,13 @@ function mock_nav(): LinkNavFns {
 		start_prefetch: vi.fn(),
 		stop_prefetch: vi.fn(),
 		save_current_scroll: vi.fn(),
+		register_link_pattern: vi.fn(),
+		get_link_attribute_state: vi.fn().mockReturnValue({
+			active_exact: false,
+			active_ancestor: false,
+			pending_exact: false,
+			pending_ancestor: false,
+		}),
 	};
 }
 
@@ -166,7 +197,12 @@ describe("internal click interception", () => {
 describe("fallthrough", () => {
 	it("does not intercept meta-click", async () => {
 		const nav = mock_nav();
-		const result = make_link_props({ href: "/page" }, nav);
+		const result = make_link_props(
+			{ href: "/page" },
+			nav,
+			TEST_ROUTE_STATE,
+			TEST_WORK_STATE,
+		);
 		const ev = primary_click({ metaKey: true });
 
 		result.onClick!(ev);
@@ -568,6 +604,8 @@ describe("prop stripping", () => {
 		const result = make_link_props(
 			{
 				href: "/page",
+				attributeMatchRules: { includeSearch: true },
+				pattern: "/page",
 				prefetch: "intent",
 				prefetchDelayMs: 200,
 				replace: true,
@@ -579,6 +617,8 @@ describe("prop stripping", () => {
 		);
 
 		expect(result.anchor_props).not.toHaveProperty("prefetch");
+		expect(result.anchor_props).not.toHaveProperty("attributeMatchRules");
+		expect(result.anchor_props).not.toHaveProperty("pattern");
 		expect(result.anchor_props).not.toHaveProperty("prefetchDelayMs");
 		expect(result.anchor_props).not.toHaveProperty("replace");
 		expect(result.anchor_props).not.toHaveProperty("scrollToTop");
@@ -627,6 +667,71 @@ describe("prop stripping", () => {
 		expect(result.anchor_props).not.toHaveProperty("onFocus");
 		expect(result.anchor_props).not.toHaveProperty("onPointerLeave");
 		expect(result.anchor_props).not.toHaveProperty("onBlur");
+	});
+});
+
+/////////////////////////////////////////////////////////////////////
+/////// Route state attributes
+/////////////////////////////////////////////////////////////////////
+
+describe("route state attributes", () => {
+	it("adds Vorma link state attributes from nav state", () => {
+		const nav = mock_nav();
+		vi.mocked(nav.get_link_attribute_state).mockReturnValue({
+			active_exact: true,
+			active_ancestor: true,
+			pending_exact: true,
+			pending_ancestor: true,
+		});
+
+		const result = make_link_props(
+			{ href: "/page" },
+			nav,
+			TEST_ROUTE_STATE,
+			TEST_WORK_STATE,
+		);
+
+		expect(result.anchor_props).toHaveProperty(LINK_ACTIVE_EXACT_ATTR, "");
+		expect(result.anchor_props).toHaveProperty(
+			LINK_ACTIVE_ANCESTOR_ATTR,
+			"",
+		);
+		expect(result.anchor_props).toHaveProperty(LINK_PENDING_EXACT_ATTR, "");
+		expect(result.anchor_props).toHaveProperty(
+			LINK_PENDING_ANCESTOR_ATTR,
+			"",
+		);
+		expect(result.anchor_props).toHaveProperty("aria-current", "page");
+	});
+
+	it("does not overwrite user aria-current", () => {
+		const nav = mock_nav();
+		vi.mocked(nav.get_link_attribute_state).mockReturnValue({
+			active_exact: true,
+			active_ancestor: false,
+			pending_exact: false,
+			pending_ancestor: false,
+		});
+
+		const result = make_link_props(
+			{
+				href: "/page",
+				"aria-current": "step",
+			},
+			nav,
+			TEST_ROUTE_STATE,
+			TEST_WORK_STATE,
+		);
+
+		expect(result.anchor_props).toHaveProperty("aria-current", "step");
+	});
+
+	it("registers object-form link patterns", () => {
+		const nav = mock_nav();
+
+		make_link_props({ href: "/page", pattern: "/page" }, nav);
+
+		expect(nav.register_link_pattern).toHaveBeenCalledWith("/page");
 	});
 });
 

@@ -38,9 +38,22 @@ export type SubmitResult<T> =
 			revalidationPromise: Promise<RevalidationResult>;
 	  };
 
+export type LinkAttributeMatchRules =
+	| {
+			skip?: false;
+			includeSearch?: boolean;
+			includeHash?: boolean;
+	  }
+	| {
+			skip: true;
+			includeSearch?: never;
+			includeHash?: never;
+	  };
+
 export type LinkPropsBase = {
 	prefetch?: "intent" | "none";
 	prefetchDelayMs?: number;
+	attributeMatchRules?: LinkAttributeMatchRules;
 	visitOnPointerDown?: boolean;
 	replace?: boolean;
 	scrollToTop?: boolean;
@@ -162,11 +175,6 @@ type __ActionMethodField<
 			? { method: M }
 			: { method?: M }
 		: { method: M };
-
-/////// ROOT DATA
-
-type __ExtractRootData<A extends AppConfig> =
-	__LoaderByPattern<A, "/"> extends { __O: infer T } ? T : never;
 
 /////// PERMISSIVE PATTERN (for navigate / link _index shorthand)
 
@@ -314,19 +322,41 @@ export type MakeTypedRouteProps<
 
 /////// CLIENT LOADER PROPS
 
+export type ClientLoaderKnownMatch = {
+	pattern: string;
+	input: unknown;
+};
+
+export type ClientLoaderServerState<
+	A extends AppConfig,
+	P extends MakeTypedLoaderPattern<A>,
+> = {
+	clientBuildID: string;
+	matches: Array<{
+		pattern: string;
+		input: unknown;
+		loaderData: unknown;
+	}>;
+	outermostServerError: null | {
+		idx: number;
+		error: unknown;
+	};
+	loaderData: MakeTypedLoaderOutput<A, P>;
+};
+
 export type MakeTypedClientLoaderProps<
 	A extends AppConfig,
 	P extends MakeTypedLoaderPattern<A>,
 > = {
 	trigger: "init" | "navigation" | "revalidation" | "prefetch";
+	href: string;
+	historyState: unknown;
+	pattern: P;
 	params: __LoaderParamsRecord<A, P>;
 	splatValues: string[];
-	serverDataPromise: Promise<{
-		matchedPatterns: string[];
-		rootData: __ExtractRootData<A>;
-		loaderData: MakeTypedLoaderOutput<A, P>;
-		clientBuildID: string;
-	}>;
+	input: MakeTypedLoaderInput<A, P>;
+	knownMatches: ClientLoaderKnownMatch[];
+	serverPromise: Promise<ClientLoaderServerState<A, P>>;
 	signal: AbortSignal;
 };
 

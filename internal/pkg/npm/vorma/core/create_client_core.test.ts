@@ -800,9 +800,9 @@ describe("client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						call_order.push("a_start");
-						await serverDataPromise;
+						await serverPromise;
 						call_order.push("a_end");
 						return { a: true };
 					},
@@ -817,9 +817,9 @@ describe("client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						call_order.push("b_start");
-						await serverDataPromise;
+						await serverPromise;
 						call_order.push("b_end");
 						return { b: true };
 					},
@@ -867,7 +867,7 @@ describe("client loaders", () => {
 		);
 	});
 
-	it("receives correct serverDataPromise content", async () => {
+	it("receives correct serverPromise content", async () => {
 		let captured_server_data: any = null;
 
 		vi.doMock("/mod-root.js", () => {
@@ -888,8 +888,8 @@ describe("client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
-						captured_server_data = await serverDataPromise;
+					client_loader: async ({ serverPromise }: any) => {
+						captured_server_data = await serverPromise;
 						return { enhanced: true };
 					},
 				},
@@ -924,10 +924,119 @@ describe("client loaders", () => {
 		await core.navigate("/users/42");
 
 		expect(captured_server_data).toEqual({
-			matchedPatterns: ["/", "/users/:id"],
-			rootData: { session: "abc" },
-			loaderData: { name: "Ada" },
 			clientBuildID: "build-1",
+			matches: [
+				{
+					pattern: "/",
+					input: {},
+					loaderData: { session: "abc" },
+				},
+				{
+					pattern: "/users/:id",
+					input: {},
+					loaderData: { name: "Ada" },
+				},
+			],
+			outermostServerError: null,
+			loaderData: { name: "Ada" },
+		});
+	});
+
+	it("passes target facts and finalized server state to client loaders", async () => {
+		let captured_args: any = null;
+		let captured_server_data: any = null;
+
+		vi.doMock("/mod-root.js", () => {
+			return {
+				default: {
+					pattern: "/",
+					component: () => {
+						return null;
+					},
+				},
+			};
+		});
+
+		vi.doMock("/mod-users.js", () => {
+			return {
+				default: {
+					pattern: "/users/:id",
+					component: () => {
+						return null;
+					},
+					client_loader: async (args: any) => {
+						captured_args = args;
+						captured_server_data = await args.serverPromise;
+						return { enhanced: true };
+					},
+				},
+			};
+		});
+
+		seed_payload();
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		await core.init({});
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({
+				MatchedPatterns: ["/", "/users/:id"],
+				LoadersData: [{ session: "abc" }, { name: "Ada" }],
+				ImportURLs: ["/mod-root.js", "/mod-users.js"],
+				Params: { id: "42" },
+				SearchSchemas: [
+					{},
+					{
+						page: SEARCH_PARAM_SCHEMA_NUMBER,
+					},
+				],
+			}),
+		);
+
+		const href = new URL("/users/42?page=2#bio", window.location.href).href;
+		await core.navigate(href, { state: { from: "test" } });
+
+		expect(captured_args).toMatchObject({
+			trigger: "navigation",
+			href,
+			historyState: { from: "test" },
+			pattern: "/users/:id",
+			params: { id: "42" },
+			splatValues: [],
+			input: { page: 2 },
+			knownMatches: [
+				{ pattern: "/", input: {} },
+				{ pattern: "/users/:id", input: { page: 2 } },
+			],
+		});
+		expect(captured_args.signal).toBeInstanceOf(AbortSignal);
+		expect(captured_server_data).toEqual({
+			clientBuildID: "build-1",
+			matches: [
+				{
+					pattern: "/",
+					input: {},
+					loaderData: { session: "abc" },
+				},
+				{
+					pattern: "/users/:id",
+					input: { page: 2 },
+					loaderData: { name: "Ada" },
+				},
+			],
+			outermostServerError: null,
+			loaderData: { name: "Ada" },
 		});
 	});
 
@@ -941,12 +1050,9 @@ describe("client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({
-						signal,
-						serverDataPromise,
-					}: any) => {
+					client_loader: async ({ signal, serverPromise }: any) => {
 						captured_signal = signal;
-						await serverDataPromise;
+						await serverPromise;
 						await new Promise((r) => {
 							return setTimeout(r, 1000);
 						});
@@ -1027,12 +1133,9 @@ describe("client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({
-						signal,
-						serverDataPromise,
-					}: any) => {
+					client_loader: async ({ signal, serverPromise }: any) => {
 						second_signal = signal;
-						await serverDataPromise;
+						await serverPromise;
 						return {};
 					},
 				},
@@ -1127,8 +1230,8 @@ describe("client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
-						const server = await serverDataPromise;
+					client_loader: async ({ serverPromise }: any) => {
+						const server = await serverPromise;
 						return { enhanced: true, original: server.loaderData };
 					},
 				},
@@ -2103,9 +2206,9 @@ describe("HMR", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						loader_run_count++;
-						await serverDataPromise;
+						await serverPromise;
 						return { run: loader_run_count };
 					},
 				},
@@ -2134,9 +2237,9 @@ describe("HMR", () => {
 			component: () => {
 				return null;
 			},
-			clientLoader: async ({ serverDataPromise }: any) => {
+			clientLoader: async ({ serverPromise }: any) => {
 				loader_run_count++;
-				await serverDataPromise;
+				await serverPromise;
 				return { run: loader_run_count };
 			},
 			runClientLoaderOnHMR: true,
@@ -2160,9 +2263,9 @@ describe("HMR", () => {
 				component: () => {
 					return null;
 				},
-				client_loader: async ({ serverDataPromise }: any) => {
+				client_loader: async ({ serverPromise }: any) => {
 					loader_run_count++;
-					await serverDataPromise;
+					await serverPromise;
 					return { run: loader_run_count };
 				},
 			},
@@ -2183,9 +2286,9 @@ describe("HMR", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						loader_run_count++;
-						await serverDataPromise;
+						await serverPromise;
 						return { run: loader_run_count };
 					},
 				},
@@ -2226,9 +2329,9 @@ describe("HMR", () => {
 				component: () => {
 					return null;
 				},
-				client_loader: async ({ serverDataPromise }: any) => {
+				client_loader: async ({ serverPromise }: any) => {
 					loader_run_count++;
-					await serverDataPromise;
+					await serverPromise;
 					return { run: loader_run_count };
 				},
 			},
@@ -2443,9 +2546,9 @@ describe("prefetch integration", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						loader_call_count++;
-						seen_server_data = await serverDataPromise;
+						seen_server_data = await serverPromise;
 						return { client: true };
 					},
 				},
@@ -2494,10 +2597,16 @@ describe("prefetch integration", () => {
 
 		expect(calls).toHaveLength(3);
 		expect(seen_server_data).toEqual({
-			matchedPatterns: ["/known-prefetch"],
-			rootData: undefined,
-			loaderData: { prefetched: true },
 			clientBuildID: "build-1",
+			matches: [
+				{
+					pattern: "/known-prefetch",
+					input: {},
+					loaderData: { prefetched: true },
+				},
+			],
+			outermostServerError: null,
+			loaderData: { prefetched: true },
 		});
 	});
 
@@ -2512,9 +2621,9 @@ describe("prefetch integration", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						loader_call_count++;
-						seen_server_data = await serverDataPromise;
+						seen_server_data = await serverPromise;
 						return { from_client: true };
 					},
 				},
@@ -2542,10 +2651,16 @@ describe("prefetch integration", () => {
 		expect(commit).not.toHaveBeenCalled();
 		expect(loader_call_count).toBe(1);
 		expect(seen_server_data).toEqual({
-			matchedPatterns: ["/first-prefetch"],
-			rootData: undefined,
-			loaderData: { from_server: true },
 			clientBuildID: "build-1",
+			matches: [
+				{
+					pattern: "/first-prefetch",
+					input: {},
+					loaderData: { from_server: true },
+				},
+			],
+			outermostServerError: null,
+			loaderData: { from_server: true },
 		});
 
 		const result = await core.navigate("/first-prefetch");
@@ -2626,9 +2741,9 @@ describe("client loader cancellation", () => {
 		const core = core_res.val;
 
 		let captured_signal: AbortSignal | null = null;
-		const client_loader = async ({ signal, serverDataPromise }: any) => {
+		const client_loader = async ({ signal, serverPromise }: any) => {
 			captured_signal = signal;
-			await serverDataPromise;
+			await serverPromise;
 			return {};
 		};
 
@@ -2685,13 +2800,10 @@ describe("client loader cancellation", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({
-						signal,
-						serverDataPromise,
-					}: any) => {
+					client_loader: async ({ signal, serverPromise }: any) => {
 						captured_signal = signal;
 						try {
-							await serverDataPromise;
+							await serverPromise;
 						} catch (err) {
 							server_data_rejected =
 								err instanceof DOMException &&
@@ -2764,13 +2876,10 @@ describe("client loader cancellation", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({
-						signal,
-						serverDataPromise,
-					}: any) => {
+					client_loader: async ({ signal, serverPromise }: any) => {
 						signals.parent = signal;
 						try {
-							await serverDataPromise;
+							await serverPromise;
 						} catch (err) {
 							server_data_rejected.parent =
 								err instanceof DOMException &&
@@ -2788,13 +2897,10 @@ describe("client loader cancellation", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({
-						signal,
-						serverDataPromise,
-					}: any) => {
+					client_loader: async ({ signal, serverPromise }: any) => {
 						signals.child = signal;
 						try {
-							await serverDataPromise;
+							await serverPromise;
 						} catch (err) {
 							server_data_rejected.child =
 								err instanceof DOMException &&
@@ -2890,9 +2996,9 @@ describe("client loader prefetch isolation from unrelated work", () => {
 		const core = core_res.val;
 
 		let captured_signal: AbortSignal | null = null;
-		const client_loader = async ({ signal, serverDataPromise }: any) => {
+		const client_loader = async ({ signal, serverPromise }: any) => {
 			captured_signal = signal;
-			await serverDataPromise;
+			await serverPromise;
 			return {};
 		};
 
@@ -2972,9 +3078,9 @@ describe("client loader prefetch partial matching", () => {
 		const core = core_res.val;
 
 		let prestart_count = 0;
-		const client_loader = async ({ serverDataPromise }: any) => {
+		const client_loader = async ({ serverPromise }: any) => {
 			prestart_count++;
-			const data = await serverDataPromise;
+			const data = await serverPromise;
 			return data;
 		};
 
@@ -3379,8 +3485,8 @@ describe("route update blocked by client loaders", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
-						await serverDataPromise;
+					client_loader: async ({ serverPromise }: any) => {
+						await serverPromise;
 						return new Promise((r) => {
 							loader_resolve = r;
 						});
@@ -3550,9 +3656,9 @@ describe("client loader promise reuse on hash change", () => {
 					component: () => {
 						return null;
 					},
-					client_loader: async ({ serverDataPromise }: any) => {
+					client_loader: async ({ serverPromise }: any) => {
 						invocation_count++;
-						await serverDataPromise;
+						await serverPromise;
 						return { count: invocation_count };
 					},
 				},

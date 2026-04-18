@@ -17,3 +17,8 @@ export const HISTORY_USER_STATE_FIELD = "vorma-user-state";
 
 export const ACTION_RESPONSE_DATA_KEY = "Data";
 export const ACTION_RESPONSE_SKIP_REVALIDATION_KEY = "SkipRevalidation";
+
+export const LINK_ACTIVE_EXACT_ATTR = "data-vorma-active-exact";
+export const LINK_ACTIVE_ANCESTOR_ATTR = "data-vorma-active-ancestor";
+export const LINK_PENDING_EXACT_ATTR = "data-vorma-pending-exact";
+export const LINK_PENDING_ANCESTOR_ATTR = "data-vorma-pending-ancestor";
