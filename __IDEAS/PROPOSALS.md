@@ -8,36 +8,6 @@ changes.
 ////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////
 
-## Dev Debug Event Stream
-
-Consider a dev-only route/debug event stream.
-
-Useful events:
-
-- Route fetch start/finish.
-- Trigger: init, navigation, popstate, revalidation, prefetch.
-- Matched patterns.
-- Import URLs.
-- Hard reload / build mismatch events.
-- Client loader timings.
-- Server loader timings when available.
-- Route state diffs per commit.
-
-Potential value:
-
-- Debugging navigation, revalidation, prefetch, and stale client builds becomes
-  much easier.
-- Route state diffs could explain exactly what changed on a commit.
-
-Constraints:
-
-- Keep production cost near zero.
-- Prefer one coherent debug stream over scattered debug APIs.
-
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////
-
 ## Client Cache Key Helpers
 
 Consider a small typed helper for canonical client-cache keys for Vorma API

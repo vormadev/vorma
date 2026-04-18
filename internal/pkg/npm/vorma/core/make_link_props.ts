@@ -12,6 +12,15 @@ import {
 import type { RouteState, WorkState } from "./create_client_core.ts";
 import type { LinkPropsBase } from "./types.ts";
 
+export type LinkRouteState = {
+	href: string;
+	matchedPatterns: string[];
+};
+
+export type LinkWorkState = {
+	navigationHref: string | null;
+};
+
 export type LinkPropsResult = {
 	is_external: boolean;
 	anchor_props: Record<string, unknown>;
@@ -38,8 +47,8 @@ export type LinkNavFns = {
 	get_link_attribute_state: (
 		href: string,
 		match_rules: LinkPropsBase["attributeMatchRules"],
-		route_state: RouteState | null,
-		work_state: WorkState,
+		route_state: LinkRouteState | null,
+		work_state: LinkWorkState,
 	) => {
 		active_exact: boolean;
 		active_ancestor: boolean;
@@ -95,6 +104,21 @@ function register_input_modality(): void {
 	window.addEventListener("pointermove", on_pointer);
 }
 
+export function select_link_route_state(route: RouteState): LinkRouteState {
+	return {
+		href: route.href,
+		matchedPatterns: route.matches.map((m) => {
+			return m.pattern;
+		}),
+	};
+}
+
+export function select_link_work_state(work: WorkState): LinkWorkState {
+	return {
+		navigationHref: work.navigation?.href ?? null,
+	};
+}
+
 function strip_keys(
 	props: Record<string, unknown>,
 	keys: Set<string>,
@@ -111,8 +135,8 @@ function strip_keys(
 export function make_link_props(
 	props: Record<string, unknown>,
 	nav: LinkNavFns,
-	route_state: RouteState | null = null,
-	work_state?: WorkState,
+	route_state: LinkRouteState | null = null,
+	work_state?: LinkWorkState,
 ): LinkPropsResult {
 	register_input_modality();
 

@@ -7,24 +7,20 @@ import {
 	LINK_PENDING_ANCESTOR_ATTR,
 	LINK_PENDING_EXACT_ATTR,
 } from "./constants.ts";
-import type { RouteState, WorkState } from "./create_client_core.ts";
-import { make_link_props, type LinkNavFns } from "./make_link_props.ts";
+import {
+	make_link_props,
+	type LinkNavFns,
+	type LinkRouteState,
+	type LinkWorkState,
+} from "./make_link_props.ts";
 
-const TEST_ROUTE_STATE: RouteState = {
+const TEST_ROUTE_STATE: LinkRouteState = {
 	href: "/page",
-	historyState: undefined,
-	clientBuildID: "test-build",
-	params: {},
-	splatValues: [],
-	matches: [],
-	error: null,
+	matchedPatterns: [],
 };
 
-const TEST_WORK_STATE: WorkState = {
-	navigation: null,
-	revalidation: null,
-	prefetch: null,
-	submissions: [],
+const TEST_WORK_STATE: LinkWorkState = {
+	navigationHref: null,
 };
 
 function mock_nav(): LinkNavFns {

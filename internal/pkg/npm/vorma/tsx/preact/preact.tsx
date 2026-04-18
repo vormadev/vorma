@@ -4,8 +4,10 @@ import {
 	batch,
 	signal,
 	untracked,
+	useComputed,
 	useSignal,
 	useSignalEffect,
+	type ReadonlySignal,
 } from "@preact/signals";
 import { h, type ComponentType, type HTMLAttributes } from "preact";
 import type { JSX } from "preact/jsx-runtime";
@@ -16,6 +18,8 @@ import {
 	make_link_props,
 	make_route_id,
 	resolve_outlet_slot,
+	select_link_route_state,
+	select_link_work_state,
 	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
@@ -78,7 +82,7 @@ export function createVormaClient<A extends AppConfig>(
 	A,
 	JSX.Element,
 	HTMLAttributes<HTMLAnchorElement>,
-	false,
+	"signal",
 	ComponentType
 > {
 	const entries_signal = signal<DecomposedState["entries"]>([]);
@@ -106,35 +110,28 @@ export function createVormaClient<A extends AppConfig>(
 		return work_state_signal.value;
 	}
 
-	function use_signal_selector<State, Selected>(
-		get_state: () => State,
-		selector: (state: State) => Selected,
-	): Selected {
-		const selected_signal = useSignal({
-			value: untracked(() => {
-				return selector(get_state());
+	function use_computed_signal<T>(compute: () => T): ReadonlySignal<T> {
+		const selected_signal = useSignal(
+			untracked(() => {
+				return compute();
 			}),
-		});
+		);
 		const render_selected = untracked(() => {
-			return selector(get_state());
+			return compute();
 		});
-		if (!jsonDeepEquals(selected_signal.peek().value, render_selected)) {
-			selected_signal.value = {
-				value: render_selected,
-			};
+		if (!jsonDeepEquals(selected_signal.peek(), render_selected)) {
+			selected_signal.value = render_selected;
 		}
 
 		useSignalEffect(() => {
-			const selected = selector(get_state());
-			if (jsonDeepEquals(selected_signal.peek().value, selected)) {
+			const selected = compute();
+			if (jsonDeepEquals(selected_signal.peek(), selected)) {
 				return;
 			}
-			selected_signal.value = {
-				value: selected,
-			};
+			selected_signal.value = selected;
 		});
 
-		return selected_signal.value.value;
+		return selected_signal;
 	}
 
 	let pending_scroll_intent: ScrollIntent | undefined;
@@ -165,69 +162,83 @@ export function createVormaClient<A extends AppConfig>(
 
 	const { core, nav_fns, passthrough } = adapter_base_res.val;
 
-	function useRouteState(): RouteState;
-	function useRouteState<T>(selector: (route: RouteState) => T): T;
+	function useRouteState(): ReadonlySignal<RouteState>;
+	function useRouteState<T>(
+		selector: (route: RouteState) => T,
+	): ReadonlySignal<T>;
 	function useRouteState<T>(
 		selector?: (route: RouteState) => T,
-	): RouteState | T {
-		const select: (route: RouteState) => RouteState | T = selector
-			? (route: RouteState) => {
-					return selector(route);
-				}
-			: (route: RouteState) => {
-					return route;
-				};
-		return use_signal_selector(get_route_snapshot, select);
+	): ReadonlySignal<RouteState | T> {
+		return use_computed_signal(() => {
+			const route = get_route_snapshot();
+			if (selector) {
+				return selector(route);
+			}
+			return route;
+		});
 	}
 
-	function useWorkState(): WorkState;
-	function useWorkState<T>(selector: (work: WorkState) => T): T;
-	function useWorkState<T>(selector?: (work: WorkState) => T): WorkState | T {
-		const select: (work: WorkState) => WorkState | T = selector
-			? (work: WorkState) => {
-					return selector(work);
-				}
-			: (work: WorkState) => {
-					return work;
-				};
-		return use_signal_selector(get_work_snapshot, select);
+	function useWorkState(): ReadonlySignal<WorkState>;
+	function useWorkState<T>(
+		selector: (work: WorkState) => T,
+	): ReadonlySignal<T>;
+	function useWorkState<T>(
+		selector?: (work: WorkState) => T,
+	): ReadonlySignal<WorkState | T> {
+		return use_computed_signal(() => {
+			const work = get_work_snapshot();
+			if (selector) {
+				return selector(work);
+			}
+			return work;
+		});
 	}
 
 	function useLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
-	): MakeTypedLoaderOutput<A, P> {
-		return loaders_data_signal.value[props.idx] as MakeTypedLoaderOutput<
-			A,
-			P
-		>;
+	): ReadonlySignal<MakeTypedLoaderOutput<A, P>> {
+		return use_computed_signal(() => {
+			return loaders_data_signal.value[
+				props.idx
+			] as MakeTypedLoaderOutput<A, P>;
+		});
 	}
 
 	function usePatternLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
-	): MakeTypedLoaderOutput<A, P> | undefined {
-		const patterns = matched_patterns_signal.value;
-		const idx = patterns.indexOf(pattern);
-		if (idx < 0) {
-			return undefined;
-		}
-		return loaders_data_signal.value[idx] as MakeTypedLoaderOutput<A, P>;
+	): ReadonlySignal<MakeTypedLoaderOutput<A, P> | undefined> {
+		return use_computed_signal(() => {
+			const patterns = matched_patterns_signal.value;
+			const idx = patterns.indexOf(pattern);
+			if (idx < 0) {
+				return undefined;
+			}
+			return loaders_data_signal.value[idx] as MakeTypedLoaderOutput<
+				A,
+				P
+			>;
+		});
 	}
 
 	function useClientLoaderData<P extends MakeTypedLoaderPattern<A>, T>(
 		props: MakeTypedRouteProps<A, P, T>,
-	): T {
-		return client_loaders_data_signal.value[props.idx] as T;
+	): ReadonlySignal<T> {
+		return use_computed_signal(() => {
+			return client_loaders_data_signal.value[props.idx] as T;
+		});
 	}
 
 	function usePatternClientLoaderData<T>(
 		pattern: MakeTypedLoaderPattern<A>,
-	): T | undefined {
-		const patterns = matched_patterns_signal.value;
-		const idx = patterns.indexOf(pattern);
-		if (idx < 0) {
-			return undefined;
-		}
-		return client_loaders_data_signal.value[idx] as T;
+	): ReadonlySignal<T | undefined> {
+		return use_computed_signal(() => {
+			const patterns = matched_patterns_signal.value;
+			const idx = patterns.indexOf(pattern);
+			if (idx < 0) {
+				return undefined;
+			}
+			return client_loaders_data_signal.value[idx] as T;
+		});
 	}
 
 	function defineRoute<P extends MakeTypedLoaderPattern<A>, T = any>(
@@ -341,26 +352,33 @@ export function createVormaClient<A extends AppConfig>(
 		props: HTMLAttributes<HTMLAnchorElement> &
 			LinkPropsBase & { href: string; pattern?: string },
 	): JSX.Element {
-		const route_state = useRouteState();
-		const work_state = useWorkState();
-		const r = make_link_props(
-			props as unknown as Record<string, unknown>,
-			nav_fns,
-			route_state,
-			work_state,
-		);
+		const route_state = useRouteState(select_link_route_state);
+		const work_state = useWorkState(select_link_work_state);
+		const props_signal = useSignal(props);
+		if (props_signal.peek() !== props) {
+			props_signal.value = props;
+		}
+		const r = useComputed(() => {
+			return make_link_props(
+				props_signal.value as unknown as Record<string, unknown>,
+				nav_fns,
+				route_state.value,
+				work_state.value,
+			);
+		});
+		const link_props = r.value;
 		return h(
 			"a",
 			{
-				"data-external": r.is_external || undefined,
-				...(r.anchor_props as HTMLAttributes<HTMLAnchorElement>),
-				onClick: r.onClick,
-				onPointerDown: r.onPointerDown,
-				onPointerEnter: r.onPointerEnter,
-				onFocus: r.onFocus,
-				onPointerLeave: r.onPointerLeave,
-				onBlur: r.onBlur,
-				onTouchCancel: r.onTouchCancel,
+				"data-external": link_props.is_external || undefined,
+				...(link_props.anchor_props as HTMLAttributes<HTMLAnchorElement>),
+				onClick: link_props.onClick,
+				onPointerDown: link_props.onPointerDown,
+				onPointerEnter: link_props.onPointerEnter,
+				onFocus: link_props.onFocus,
+				onPointerLeave: link_props.onPointerLeave,
+				onBlur: link_props.onBlur,
+				onTouchCancel: link_props.onTouchCancel,
 			},
 			props.children,
 		);

@@ -15,6 +15,9 @@ define_adapter_tests({
 
 	h: h as AdapterTestHarness["h"],
 	unwrap: ((v: unknown) => {
+		if (v && typeof v === "object" && "value" in v) {
+			return (v as { value: unknown }).value;
+		}
 		return v;
 	}) as AdapterTestHarness["unwrap"],
 

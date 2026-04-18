@@ -19,6 +19,8 @@ import {
 	make_link_props,
 	make_route_id,
 	resolve_outlet_slot,
+	select_link_route_state,
+	select_link_work_state,
 	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
@@ -84,7 +86,7 @@ export function createVormaClient<A extends AppConfig>(
 	A,
 	JSX.Element,
 	JSX.AnchorHTMLAttributes<HTMLAnchorElement>,
-	true,
+	"accessor",
 	Component
 > {
 	const [entries, set_entries] = createSignal<DecomposedState["entries"]>([]);
@@ -269,13 +271,9 @@ export function createVormaClient<A extends AppConfig>(
 			});
 		});
 
-		const current_entries = createMemo(() => {
-			return entries();
-		});
-
 		const slot = createMemo(() => {
 			return resolve_outlet_slot(
-				current_entries(),
+				entries(),
 				route_error(),
 				idx,
 				core.get_default_error_boundary(),
@@ -283,7 +281,7 @@ export function createVormaClient<A extends AppConfig>(
 		});
 
 		const entry_key_at_idx = createMemo(() => {
-			const e = current_entries();
+			const e = entries();
 			return idx < e.length ? get_entry_key(e[idx]!) : "";
 		});
 
@@ -379,8 +377,8 @@ export function createVormaClient<A extends AppConfig>(
 		props: JSX.AnchorHTMLAttributes<HTMLAnchorElement> &
 			LinkPropsBase & { pattern?: string },
 	): JSX.Element {
-		const link_route_state = useRouteState();
-		const link_work_state = useWorkState();
+		const link_route_state = useRouteState(select_link_route_state);
+		const link_work_state = useWorkState(select_link_work_state);
 		const r = createMemo(() => {
 			return make_link_props(
 				props as Record<string, unknown>,

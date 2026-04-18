@@ -1,3 +1,4 @@
+import type { ReadonlySignal } from "@preact/signals";
 import { jsonDeepEquals } from "vorma/kit/json";
 import { findNestedMatches } from "vorma/kit/matcher/find-nested";
 import {
@@ -20,7 +21,11 @@ import {
 	type ScrollIntent,
 	type WorkState,
 } from "./create_client_core.ts";
-import { type LinkNavFns } from "./make_link_props.ts";
+import {
+	type LinkNavFns,
+	type LinkRouteState,
+	type LinkWorkState,
+} from "./make_link_props.ts";
 import { get_entry_key } from "./resolve_outlet_slot.ts";
 import type {
 	AppConfig,
@@ -299,8 +304,8 @@ export function create_adapter_base<A extends AppConfig>(
 	function get_link_attribute_state(
 		href: string,
 		match_rules: LinkPropsBase["attributeMatchRules"],
-		route_state: RouteState | null,
-		work_state: WorkState,
+		route_state: LinkRouteState | null,
+		work_state: LinkWorkState,
 	) {
 		if (match_rules?.skip === true || !route_state) {
 			return {
@@ -315,12 +320,10 @@ export function create_adapter_base<A extends AppConfig>(
 		const route_url = new URL(route_state.href, window.location.href);
 		const route = {
 			url: route_url,
-			matched_patterns: route_state.matches.map((m) => {
-				return m.pattern;
-			}),
+			matched_patterns: route_state.matchedPatterns,
 		};
-		const pending = work_state.navigation
-			? href_to_link_candidate(work_state.navigation.href)
+		const pending = work_state.navigationHref
+			? href_to_link_candidate(work_state.navigationHref)
 			: null;
 
 		return {
@@ -340,9 +343,14 @@ function stable<T>(prev: T, next: T): T {
 	return jsonDeepEquals(prev, next) ? prev : next;
 }
 
-type HookReturn<T, Wrapped extends boolean> = Wrapped extends true
+type HookReturn<
+	T,
+	Mode extends "value" | "accessor" | "signal",
+> = Mode extends "accessor"
 	? () => T
-	: T;
+	: Mode extends "signal"
+		? ReadonlySignal<T>
+		: T;
 
 type StateSelector<State, Selected> = (state: State) => Selected;
 
@@ -350,7 +358,7 @@ export type VormaClient<
 	A extends AppConfig,
 	Element,
 	AnchorProps extends object,
-	AccessorWrapped extends boolean = false,
+	HookReturnMode extends "value" | "accessor" | "signal" = "value",
 	App = unknown,
 > = AdapterBase<A>["passthrough"] & {
 	init: (options: AdapterInitOptions<App>) => Promise<Result<void>>;
@@ -368,32 +376,32 @@ export type VormaClient<
 	) => Element;
 
 	useRouteState: {
-		(): HookReturn<RouteState, AccessorWrapped>;
+		(): HookReturn<RouteState, HookReturnMode>;
 		<T>(
 			selector: StateSelector<RouteState, T>,
-		): HookReturn<T, AccessorWrapped>;
+		): HookReturn<T, HookReturnMode>;
 	};
 
 	useWorkState: {
-		(): HookReturn<WorkState, AccessorWrapped>;
+		(): HookReturn<WorkState, HookReturnMode>;
 		<T>(
 			selector: StateSelector<WorkState, T>,
-		): HookReturn<T, AccessorWrapped>;
+		): HookReturn<T, HookReturnMode>;
 	};
 
 	useLoaderData: <P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
-	) => HookReturn<MakeTypedLoaderOutput<A, P>, AccessorWrapped>;
+	) => HookReturn<MakeTypedLoaderOutput<A, P>, HookReturnMode>;
 
 	usePatternLoaderData: <P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
-	) => HookReturn<MakeTypedLoaderOutput<A, P> | undefined, AccessorWrapped>;
+	) => HookReturn<MakeTypedLoaderOutput<A, P> | undefined, HookReturnMode>;
 
 	useClientLoaderData: <P extends MakeTypedLoaderPattern<A>, T>(
 		props: MakeTypedRouteProps<A, P, T>,
-	) => HookReturn<T, AccessorWrapped>;
+	) => HookReturn<T, HookReturnMode>;
 
 	usePatternClientLoaderData: <T>(
 		pattern: MakeTypedLoaderPattern<A>,
-	) => HookReturn<T | undefined, AccessorWrapped>;
+	) => HookReturn<T | undefined, HookReturnMode>;
 };

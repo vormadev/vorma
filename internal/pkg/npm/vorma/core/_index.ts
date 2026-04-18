@@ -27,8 +27,12 @@ export {
 } from "./create_client_core.ts";
 export {
 	make_link_props,
+	select_link_route_state,
+	select_link_work_state,
 	type LinkNavFns,
 	type LinkPropsResult,
+	type LinkRouteState,
+	type LinkWorkState,
 } from "./make_link_props.ts";
 export {
 	get_entry_key,

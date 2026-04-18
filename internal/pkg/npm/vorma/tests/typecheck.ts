@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import type { ReadonlySignal } from "@preact/signals";
 import type { ComponentType as PreactComponentType } from "preact";
 import type { ComponentType as ReactComponentType } from "react";
 import type { Accessor, Component as SolidComponent } from "solid-js";
@@ -1505,56 +1506,64 @@ function assert_preact_adapter_contracts(): void {
 		"/users/:userID"
 	>;
 
-	// useLoaderData returns T (same as React)
+	// useLoaderData returns ReadonlySignal<T>
 	const loader_data = preact.useLoaderData(route_props);
-	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(loader_data);
+	expect_type<ReadonlySignal<MakeTypedLoaderOutput<App, "/users/:userID">>>(
+		loader_data,
+	);
+	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(
+		loader_data.value,
+	);
 
 	// usePatternLoaderData
 	const maybe_pattern_data = preact.usePatternLoaderData("/docs/*");
-	expect_type<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>(
-		maybe_pattern_data,
-	);
+	expect_type<
+		ReadonlySignal<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>
+	>(maybe_pattern_data);
 
 	// useRouteState
 	const route_state = preact.useRouteState();
-	expect_type<RouteState>(route_state);
-	expect_type<Record<string, string>>(route_state.params);
-	expect_type<unknown>(route_state.historyState);
+	expect_type<ReadonlySignal<RouteState>>(route_state);
+	expect_type<Record<string, string>>(route_state.value.params);
+	expect_type<unknown>(route_state.value.historyState);
 
 	const selected_params = preact.useRouteState((route) => {
 		return route.params;
 	});
-	expect_type<Record<string, string>>(selected_params);
+	expect_type<ReadonlySignal<Record<string, string>>>(selected_params);
 
 	// useWorkState
 	const work_state = preact.useWorkState();
-	expect_type<WorkState>(work_state);
+	expect_type<ReadonlySignal<WorkState>>(work_state);
 
 	const selected_submission_count = preact.useWorkState((work) => {
 		return work.submissions.length;
 	});
-	expect_type<number>(selected_submission_count);
+	expect_type<ReadonlySignal<number>>(selected_submission_count);
 
-	// useClientLoaderData
+	// useClientLoaderData returns ReadonlySignal<T>
 	const cl_route_props = null as unknown as MakeTypedRouteProps<
 		App,
 		"/users/:userID",
 		number
 	>;
 	const client_loader_data = preact.useClientLoaderData(cl_route_props);
-	expect_type<number>(client_loader_data);
+	expect_type<ReadonlySignal<number>>(client_loader_data);
+	expect_type<number>(client_loader_data.value);
 
 	// usePatternClientLoaderData
 	const maybe_client_loader_data =
 		preact.usePatternClientLoaderData<number>("/users/:userID");
-	expect_type<number | undefined>(maybe_client_loader_data);
+	expect_type<ReadonlySignal<number | undefined>>(maybe_client_loader_data);
 
 	// defineRoute
 	void preact.defineRoute({
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = preact.useLoaderData(props);
-			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(data);
+			expect_type<
+				ReadonlySignal<MakeTypedLoaderOutput<App, "/users/:userID">>
+			>(data);
 			return null!;
 		},
 	});

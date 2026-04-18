@@ -17,6 +17,8 @@ import {
 	make_link_props,
 	make_route_id,
 	resolve_outlet_slot,
+	select_link_route_state,
+	select_link_work_state,
 	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
@@ -75,7 +77,7 @@ type CreateVormaClientOptions<A extends AppConfig> = {
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,
-): VormaClient<A, JSX.Element, ComponentProps<"a">, false, ComponentType> {
+): VormaClient<A, JSX.Element, ComponentProps<"a">, "value", ComponentType> {
 	let store: DecomposedState = {
 		entries: [],
 		error: null,
@@ -244,51 +246,41 @@ export function createVormaClient<A extends AppConfig>(
 	function useLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
 	): MakeTypedLoaderOutput<A, P> {
-		const loaders = use_channel((s) => {
-			return s.loaders_data;
+		return use_channel((s) => {
+			return s.loaders_data[props.idx] as MakeTypedLoaderOutput<A, P>;
 		});
-		return loaders[props.idx] as MakeTypedLoaderOutput<A, P>;
 	}
 
 	function usePatternLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
 	): MakeTypedLoaderOutput<A, P> | undefined {
-		const loaders = use_channel((s) => {
-			return s.loaders_data;
+		return use_channel((s) => {
+			const idx = s.matched_patterns.indexOf(pattern);
+			if (idx < 0) {
+				return undefined;
+			}
+			return s.loaders_data[idx] as MakeTypedLoaderOutput<A, P>;
 		});
-		const patterns = use_channel((s) => {
-			return s.matched_patterns;
-		});
-		const idx = patterns.indexOf(pattern);
-		if (idx < 0) {
-			return undefined;
-		}
-		return loaders[idx] as MakeTypedLoaderOutput<A, P>;
 	}
 
 	function useClientLoaderData<P extends MakeTypedLoaderPattern<A>, T>(
 		props: MakeTypedRouteProps<A, P, T>,
 	): T {
-		const cl = use_channel((s) => {
-			return s.client_loaders_data;
+		return use_channel((s) => {
+			return s.client_loaders_data[props.idx] as T;
 		});
-		return cl[props.idx] as T;
 	}
 
 	function usePatternClientLoaderData<T>(
 		pattern: MakeTypedLoaderPattern<A>,
 	): T | undefined {
-		const cl = use_channel((s) => {
-			return s.client_loaders_data;
+		return use_channel((s) => {
+			const idx = s.matched_patterns.indexOf(pattern);
+			if (idx < 0) {
+				return undefined;
+			}
+			return s.client_loaders_data[idx] as T;
 		});
-		const patterns = use_channel((s) => {
-			return s.matched_patterns;
-		});
-		const idx = patterns.indexOf(pattern);
-		if (idx < 0) {
-			return undefined;
-		}
-		return cl[idx] as T;
 	}
 
 	function defineRoute<P extends MakeTypedLoaderPattern<A>, T = any>(
@@ -310,11 +302,11 @@ export function createVormaClient<A extends AppConfig>(
 		const route_error = use_channel((s) => {
 			return s.error;
 		});
-		const import_urls = use_channel((s) => {
-			return s.import_urls;
+		const next_import_url = use_channel((s) => {
+			return s.import_urls[idx + 1];
 		});
-		const entry_keys = use_channel((s) => {
-			return s.entry_keys;
+		const next_entry_key = use_channel((s) => {
+			return s.entry_keys[idx + 1];
 		});
 
 		useEffect(() => {
@@ -339,9 +331,6 @@ export function createVormaClient<A extends AppConfig>(
 
 			apply_scroll(scroll);
 		});
-
-		const next_import_url = import_urls[idx + 1];
-		const next_entry_key = entry_keys[idx + 1];
 
 		const Outlet = useMemo(() => {
 			return (local?: Record<string, unknown>) => {
@@ -410,14 +399,16 @@ export function createVormaClient<A extends AppConfig>(
 	function BaseLink(
 		props: ComponentProps<"a"> & LinkPropsBase & { pattern?: string },
 	): JSX.Element {
-		const route_state = useRouteState();
-		const work_state = useWorkState();
-		const r = make_link_props(
-			props as Record<string, unknown>,
-			nav_fns,
-			route_state,
-			work_state,
-		);
+		const route_state = useRouteState(select_link_route_state);
+		const work_state = useWorkState(select_link_work_state);
+		const r = useMemo(() => {
+			return make_link_props(
+				props as Record<string, unknown>,
+				nav_fns,
+				route_state,
+				work_state,
+			);
+		}, [props, route_state, work_state]);
 		return (
 			<a
 				data-external={r.is_external || undefined}
