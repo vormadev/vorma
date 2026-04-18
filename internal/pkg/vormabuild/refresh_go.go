@@ -117,6 +117,7 @@ func (rs *run_state) refresh_go() error {
 	}
 	rs.live_ts_result = live_state.TSResult
 	rs.ts_modules = live_state.TSModules
+	rs.search_schemas = live_state.SearchSchemas
 
 	if rs.is_dev && rs.last_cfg != nil {
 		last_cfg_json, err := jsonutil.Serialize(rs.last_cfg)

@@ -50,23 +50,27 @@ describe("revalidate", () => {
 		await expect(rev).resolves.toEqual({ ok: true });
 
 		expect(commit).toHaveBeenCalled();
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
-	it("reports revalidation as a route commit without a URL change", async () => {
-		const route_commits: any[] = [];
+	it("reports revalidation as a route update without a URL change", async () => {
+		const route_updates: any[] = [];
 		const { core } = await setup({
 			payload: {
 				MatchedPatterns: ["/"],
 				LoadersData: [{ fresh: false }],
 			},
 			init: {
-				onRouteCommit: (info: unknown) => {
-					route_commits.push(info);
+				onRouteUpdate: (
+					route: unknown,
+					previous_route: unknown,
+					reason: unknown,
+				) => {
+					route_updates.push({ route, previous_route, reason });
 				},
 			},
 		});
-		route_commits.length = 0;
+		route_updates.length = 0;
 		const { call, wait_for } = mock_fetch();
 
 		const rev = core.revalidate();
@@ -80,17 +84,15 @@ describe("revalidate", () => {
 		);
 		await rev;
 
-		expect(route_commits).toHaveLength(1);
-		expect(route_commits[0]).toMatchObject({
+		expect(route_updates).toHaveLength(1);
+		expect(route_updates[0]).toMatchObject({
 			reason: "revalidation",
-			url: `${window.location.origin}/`,
-			previousUrl: `${window.location.origin}/`,
-			urlChanged: false,
-			patternsChanged: false,
-			paramsChanged: false,
-			searchChanged: false,
-			hashChanged: false,
-			historyStateChanged: false,
+			route: {
+				href: `${window.location.origin}/`,
+			},
+			previous_route: {
+				href: `${window.location.origin}/`,
+			},
 		});
 	});
 
@@ -156,7 +158,7 @@ describe("revalidate", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(calls).toHaveLength(2);
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
 	it("does not satisfy a newer debounced revalidation with older in-flight data", async () => {
@@ -273,7 +275,7 @@ describe("revalidate redirects", () => {
 		call(1).resolve(route_response());
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isNavigating) {
+			if (core.getWorkState().navigation === null) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
@@ -341,7 +343,7 @@ describe("derived isRevalidating status", () => {
 
 		void core.revalidate();
 
-		expect(core.getStatus().isRevalidating).toBe(true);
+		expect(core.getWorkState().revalidation !== null).toBe(true);
 	});
 
 	it("reports isRevalidating during revalidation flight", async () => {
@@ -349,50 +351,50 @@ describe("derived isRevalidating status", () => {
 		const { call, wait_for } = mock_fetch();
 
 		void core.revalidate();
-		expect(core.getStatus().isRevalidating).toBe(true);
+		expect(core.getWorkState().revalidation !== null).toBe(true);
 
 		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
 		await wait_for(1);
-		expect(core.getStatus().isRevalidating).toBe(true);
+		expect(core.getWorkState().revalidation !== null).toBe(true);
 
 		call(0).resolve(route_response());
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isRevalidating) {
+			if (core.getWorkState().revalidation === null) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
-	it("is true immediately when submit sets mutation timestamp", async () => {
+	it("is true immediately when non-GET submit requests refresh", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		void core.submit("/api/action", { method: "POST" }, {});
+		void core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await vi.advanceTimersByTimeAsync(0);
 
-		expect(core.getStatus().isSubmitting).toBe(false);
-		expect(core.getStatus().isRevalidating).toBe(true);
+		expect(core.getWorkState().submissions.length > 0).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(true);
 	});
 
-	it("transitions from isSubmitting to isRevalidating with no gap", async () => {
-		const statuses: any[] = [];
+	it("transitions from submitting to revalidating with no gap", async () => {
+		const work_updates: any[] = [];
 		const { core } = await setup({
 			init: {
-				onStatusChange: (s: any) => {
-					statuses.push({ ...s });
+				onWorkUpdate: (work: any) => {
+					work_updates.push({ ...work });
 				},
 			},
 		});
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -401,26 +403,30 @@ describe("derived isRevalidating status", () => {
 		call(1).resolve(route_response());
 		await result.revalidationPromise;
 
-		// There should be no status where all three are false (idle)
+		// There should be no work update where all work is idle
 		// between submitting and revalidating
-		const non_final = statuses.slice(0, -1);
-		const had_gap = non_final.some((s) => {
-			return !s.isNavigating && !s.isSubmitting && !s.isRevalidating;
+		const non_final = work_updates.slice(0, -1);
+		const had_gap = non_final.some((work) => {
+			return (
+				work.navigation === null &&
+				work.revalidation === null &&
+				work.submissions.length === 0
+			);
 		});
 		expect(had_gap).toBe(false);
 	});
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Post-mutation freshness system
+/////// Post-submit freshness system
 /////////////////////////////////////////////////////////////////////
 
-describe("post-mutation freshness", () => {
-	it("automatically revalidates after a mutating submit", async () => {
+describe("post-submit freshness", () => {
+	it("automatically revalidates after a non-GET submit", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -430,14 +436,14 @@ describe("post-mutation freshness", () => {
 		await result.revalidationPromise;
 
 		expect(calls).toHaveLength(2);
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
-	it("satisfies invariant when user navigates after mutation", async () => {
+	it("satisfies invariant when user navigates after non-GET submit", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const _ = await sub;
@@ -456,7 +462,7 @@ describe("post-mutation freshness", () => {
 		nav_call!.resolve(route_response());
 		await nav;
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 });
 
@@ -485,13 +491,13 @@ describe("revalidation backoff", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isRevalidating) {
+			if (core.getWorkState().revalidation === null) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
 	it("increases delay exponentially on repeated failures", async () => {
@@ -526,16 +532,16 @@ describe("revalidation backoff", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isRevalidating) {
+			if (core.getWorkState().revalidation === null) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
-	it("resets backoff on new mutation", async () => {
+	it("resets backoff on new non-GET submit", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
@@ -547,8 +553,8 @@ describe("revalidation backoff", () => {
 		call(0).resolve(new Response("", { status: 500 }));
 		await vi.advanceTimersByTimeAsync(0);
 
-		// New mutation resets backoff
-		void core.submit("/api/action", { method: "POST" }, {});
+		// New non-GET submit resets backoff
+		void core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(2);
 		call(1).resolve(json_response({ ok: true }));
 		await vi.advanceTimersByTimeAsync(0);
@@ -559,13 +565,13 @@ describe("revalidation backoff", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isRevalidating) {
+			if (core.getWorkState().revalidation === null) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
 	it("gives up after max retries", async () => {
@@ -595,7 +601,7 @@ describe("revalidation backoff", () => {
 			ok: false,
 			reason: "max_retries_exhausted",
 		});
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
 	it("can start a new freshness demand after retries are exhausted", async () => {
@@ -627,7 +633,7 @@ describe("revalidation backoff", () => {
 
 		await expect(second).resolves.toEqual({ ok: true });
 		expect(calls).toHaveLength(MAX_REVALIDATION_RETRIES + 1);
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
 	it("caps backoff delay at maximum", async () => {
@@ -660,13 +666,13 @@ describe("revalidation backoff", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isRevalidating) {
+			if (core.getWorkState().revalidation === null) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 });
 
@@ -733,7 +739,7 @@ describe("revalidation stale-ownership", () => {
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ still_valid: true });
+		expect(state.entries[0].loader_data).toEqual({ still_valid: true });
 	});
 });
 
@@ -779,7 +785,7 @@ describe("revalidation and popstate", () => {
 		}
 
 		expect(commit).toHaveBeenCalled();
-		expect(core.getStatus().isRevalidating).toBe(false);
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 });

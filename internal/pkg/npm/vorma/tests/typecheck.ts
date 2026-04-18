@@ -6,6 +6,11 @@ import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
 	AppConfig,
 	LinkPropsBase,
+	MakeTypedActionInput,
+	MakeTypedActionMethod,
+	MakeTypedActionOutput,
+	MakeTypedActionPattern,
+	MakeTypedActionSubmitProps,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
@@ -15,28 +20,22 @@ import type {
 	MakeTypedLoaderInput,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
-	MakeTypedMutationInput,
-	MakeTypedMutationOutput,
-	MakeTypedMutationPattern,
-	MakeTypedMutationProps,
-	MakeTypedNavigateOptions,
-	MakeTypedQueryInput,
-	MakeTypedQueryOutput,
-	MakeTypedQueryPattern,
-	MakeTypedQueryProps,
+	MakeTypedNavProps,
+	MakeTypedNavTarget,
 	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
-	MakeTypedRouteTarget,
-	MakeTypedRouterData,
 	ProgressIndicatorConfig,
 	RevalidationResult,
 	RouteDefinition,
-	RouteEntry,
+	RouteErrorState,
+	RouteRenderEntry,
+	RouteRenderState,
 	RouteState,
+	RouteUpdateReason,
 	ScrollState,
-	StatusInfo,
 	SubmitOptions,
 	SubmitResult,
+	WorkState,
 } from "vorma/__internal";
 import { type Result } from "vorma/kit/result";
 import { createVormaClient as Preact__createVormaClient } from "vorma/preact";
@@ -70,17 +69,26 @@ const vorma_app_config = {
 			__O: null as unknown as { sessionUserID: string | null },
 		},
 		{
+			parents: ["/"],
+			pattern: "/users",
+			__I: null as unknown as { sort?: "name" | "created" },
+			__O: null as unknown as { userCount: number },
+		},
+		{
+			parents: ["/", "/users"],
 			pattern: "/users/:userID",
 			params: ["userID"] as const,
 			__I: null as unknown as { tab?: string; page?: number },
 			__O: null as unknown as { userName: string },
 		},
 		{
+			parents: ["/"],
 			pattern: "/docs/*",
 			__I: null as unknown as Record<never, never>,
 			__O: null as unknown as { slugParts: string[] },
 		},
 		{
+			parents: ["/"],
 			pattern: "/blog/_index",
 			__I: null as unknown as Record<never, never>,
 			__O: null as unknown as { posts: string[] },
@@ -109,6 +117,13 @@ const vorma_app_config = {
 		},
 		{
 			method: "POST" as const,
+			pattern: "/users/:userID",
+			params: ["userID"] as const,
+			__I: null as unknown as { inviteEmail: string },
+			__O: null as unknown as { invited: true },
+		},
+		{
+			method: "POST" as const,
 			pattern: "/sessions",
 			__I: null as unknown as { email: string; password: string },
 			__O: null as unknown as { token: string },
@@ -128,14 +143,12 @@ type App = typeof vorma_app_config;
 
 const react = React__createVormaClient(vorma_app_config, {
 	apiDecorator: async (context) => {
-		if (context.type === "query") {
+		if (context.method === "GET") {
 			expect_type<"/users/:userID" | "/health">(context.pattern);
-			return { headers: [["x-query", "1"]] };
+			return { headers: [["x-get-action", "1"]] };
 		}
-		expect_type<"/users/:userID" | "/sessions" | "/logout">(
-			context.pattern,
-		);
-		return { headers: [["x-mutation", "1"]] };
+		expect_type<"PATCH" | "POST">(context.method);
+		return { headers: [["x-body-action", "1"]] };
 	},
 });
 const preact = Preact__createVormaClient(vorma_app_config);
@@ -148,19 +161,29 @@ function assert_exported_type_contracts(): void {
 	type _loader_patterns = Assert<
 		IsExact<
 			MakeTypedLoaderPattern<App>,
-			"/" | "/users/:userID" | "/docs/*" | "/blog/_index"
+			"/" | "/users" | "/users/:userID" | "/docs/*" | "/blog/_index"
 		>
 	>;
 
-	// Query patterns
-	type _query_patterns = Assert<
-		IsExact<MakeTypedQueryPattern<App>, "/users/:userID" | "/health">
+	// Action methods and patterns
+	type _action_methods = Assert<
+		IsExact<MakeTypedActionMethod<App>, "GET" | "PATCH" | "POST">
 	>;
-
-	// Mutation patterns
-	type _mutation_patterns = Assert<
+	type _action_patterns = Assert<
 		IsExact<
-			MakeTypedMutationPattern<App>,
+			MakeTypedActionPattern<App>,
+			"/users/:userID" | "/health" | "/sessions" | "/logout"
+		>
+	>;
+	type _get_action_patterns = Assert<
+		IsExact<
+			MakeTypedActionPattern<App, "GET">,
+			"/users/:userID" | "/health"
+		>
+	>;
+	type _post_action_patterns = Assert<
+		IsExact<
+			MakeTypedActionPattern<App, "POST">,
 			"/users/:userID" | "/sessions" | "/logout"
 		>
 	>;
@@ -173,6 +196,9 @@ function assert_exported_type_contracts(): void {
 		>
 	>;
 	type _loader_o_users = Assert<
+		IsExact<MakeTypedLoaderOutput<App, "/users">, { userCount: number }>
+	>;
+	type _loader_o_user_detail = Assert<
 		IsExact<
 			MakeTypedLoaderOutput<App, "/users/:userID">,
 			{ userName: string }
@@ -191,98 +217,94 @@ function assert_exported_type_contracts(): void {
 	>;
 	type _loader_i_users = Assert<
 		IsExact<
+			MakeTypedLoaderInput<App, "/users">,
+			{ sort?: "name" | "created" }
+		>
+	>;
+	type _loader_i_user_detail = Assert<
+		IsExact<
 			MakeTypedLoaderInput<App, "/users/:userID">,
 			{ tab?: string; page?: number }
 		>
 	>;
 
-	// Query I/O types
-	type _query_i_users = Assert<
+	// Action I/O types
+	type _get_i_users = Assert<
 		IsExact<
-			MakeTypedQueryInput<App, "/users/:userID">,
+			MakeTypedActionInput<App, "GET", "/users/:userID">,
 			{ includePosts: boolean }
 		>
 	>;
-	type _query_o_users = Assert<
+	type _get_o_users = Assert<
 		IsExact<
-			MakeTypedQueryOutput<App, "/users/:userID">,
+			MakeTypedActionOutput<App, "GET", "/users/:userID">,
 			{ id: string; posts: number }
 		>
 	>;
-	type _query_i_health = Assert<
-		IsExact<MakeTypedQueryInput<App, "/health">, null>
+	type _get_i_health = Assert<
+		IsExact<MakeTypedActionInput<App, "GET", "/health">, null>
 	>;
-	type _query_o_health = Assert<
-		IsExact<MakeTypedQueryOutput<App, "/health">, { ok: true }>
+	type _get_o_health = Assert<
+		IsExact<MakeTypedActionOutput<App, "GET", "/health">, { ok: true }>
 	>;
-
-	// Mutation I/O types
-	type _mutation_i_users = Assert<
+	type _patch_i_users = Assert<
 		IsExact<
-			MakeTypedMutationInput<App, "/users/:userID">,
+			MakeTypedActionInput<App, "PATCH", "/users/:userID">,
 			{ nickname: string }
 		>
 	>;
-	type _mutation_o_users = Assert<
-		IsExact<MakeTypedMutationOutput<App, "/users/:userID">, { saved: true }>
-	>;
-	type _mutation_i_sessions = Assert<
+	type _patch_o_users = Assert<
 		IsExact<
-			MakeTypedMutationInput<App, "/sessions">,
+			MakeTypedActionOutput<App, "PATCH", "/users/:userID">,
+			{ saved: true }
+		>
+	>;
+	type _post_i_users = Assert<
+		IsExact<
+			MakeTypedActionInput<App, "POST", "/users/:userID">,
+			{ inviteEmail: string }
+		>
+	>;
+	type _post_o_users = Assert<
+		IsExact<
+			MakeTypedActionOutput<App, "POST", "/users/:userID">,
+			{ invited: true }
+		>
+	>;
+	type _post_i_sessions = Assert<
+		IsExact<
+			MakeTypedActionInput<App, "POST", "/sessions">,
 			{ email: string; password: string }
 		>
 	>;
-	type _mutation_o_sessions = Assert<
-		IsExact<MakeTypedMutationOutput<App, "/sessions">, { token: string }>
-	>;
-	type _mutation_i_logout = Assert<
-		IsExact<MakeTypedMutationInput<App, "/logout">, undefined>
-	>;
-	type _mutation_o_logout = Assert<
-		IsExact<MakeTypedMutationOutput<App, "/logout">, { done: true }>
-	>;
-
-	// Router data
-	type _router_data_params_unscoped = Assert<
-		IsExact<MakeTypedRouterData<App>["params"], Record<string, string>>
-	>;
-	type _router_data_params_scoped = Assert<
+	type _post_o_sessions = Assert<
 		IsExact<
-			MakeTypedRouterData<App, "/users/:userID">["params"],
-			{ userID: string }
+			MakeTypedActionOutput<App, "POST", "/sessions">,
+			{ token: string }
 		>
 	>;
-	type _router_data_root_data = Assert<
-		IsExact<
-			MakeTypedRouterData<App>["rootData"],
-			{ sessionUserID: string | null }
-		>
+	type _post_i_logout = Assert<
+		IsExact<MakeTypedActionInput<App, "POST", "/logout">, undefined>
 	>;
-	type _router_data_client_build_id = Assert<
-		IsExact<MakeTypedRouterData<App>["clientBuildID"], string>
-	>;
-	type _router_data_matched_patterns = Assert<
-		IsExact<MakeTypedRouterData<App>["matchedPatterns"], string[]>
-	>;
-	type _router_data_splat_values = Assert<
-		IsExact<MakeTypedRouterData<App>["splatValues"], string[]>
+	type _post_o_logout = Assert<
+		IsExact<MakeTypedActionOutput<App, "POST", "/logout">, { done: true }>
 	>;
 
 	// Decorator context
-	type _decorator_ctx_query = Assert<
+	type _decorator_ctx_get = Assert<
 		IsExact<
 			Extract<
 				MakeTypedAPIDecoratorContext<App>,
-				{ type: "query" }
+				{ method: "GET" }
 			>["pattern"],
 			"/users/:userID" | "/health"
 		>
 	>;
-	type _decorator_ctx_mutation = Assert<
+	type _decorator_ctx_post = Assert<
 		IsExact<
 			Extract<
 				MakeTypedAPIDecoratorContext<App>,
-				{ type: "mutation" }
+				{ method: "POST" }
 			>["pattern"],
 			"/users/:userID" | "/sessions" | "/logout"
 		>
@@ -296,12 +318,20 @@ function assert_exported_type_contracts(): void {
 		MakeTypedRouteDestination<App, "/users/:userID"> extends {
 			pattern: "/users/:userID";
 			params: { userID: string };
-			search?: { tab?: string; page?: number };
+			search?: {
+				sort?: "name" | "created";
+				tab?: string;
+				page?: number;
+			};
 		}
 			? {
 					pattern: "/users/:userID";
 					params: { userID: string };
-					search?: { tab?: string; page?: number };
+					search?: {
+						sort?: "name" | "created";
+						tab?: string;
+						page?: number;
+					};
 				} extends MakeTypedRouteDestination<App, "/users/:userID">
 				? true
 				: false
@@ -331,14 +361,33 @@ function assert_exported_type_contracts(): void {
 	>;
 	type _route_target = Assert<
 		IsExact<
-			Extract<MakeTypedRouteTarget<App, "/users/:userID">, string>,
-			string
+			Extract<
+				MakeTypedNavTarget<App, "/users/:userID">,
+				{ href: string }
+			>,
+			{
+				href: string;
+				pattern?: never;
+				params?: never;
+				splatValues?: never;
+				search?: never;
+				hash?: never;
+			}
 		>
 	>;
-	type _navigate_options = Assert<
+	type _route_target_destination = Assert<
 		IsExact<
-			MakeTypedNavigateOptions,
-			{
+			Extract<
+				MakeTypedNavTarget<App, "/users/:userID">,
+				{ pattern: unknown }
+			>,
+			MakeTypedRouteDestination<App, "/users/:userID">
+		>
+	>;
+	type _navigate_props = Assert<
+		IsExact<
+			MakeTypedNavProps<App, "/users/:userID">,
+			MakeTypedNavTarget<App, "/users/:userID"> & {
 				replace?: boolean;
 				scrollToTop?: boolean;
 				state?: unknown;
@@ -348,12 +397,6 @@ function assert_exported_type_contracts(): void {
 	>;
 
 	// MakeTypedLinkProps
-	type _link_props_href = Assert<
-		IsExact<
-			MakeTypedLinkProps<App, "/users/:userID">["href"],
-			MakeTypedRouteTarget<App, "/users/:userID">
-		>
-	>;
 	type _link_props_state = Assert<
 		IsExact<MakeTypedLinkProps<App, "/users/:userID">["state"], unknown>
 	>;
@@ -447,14 +490,18 @@ function assert_exported_type_contracts(): void {
 
 	// MakeTypedAPIClient
 	type _api_client_keys = Assert<
-		IsExact<keyof MakeTypedAPIClient<App>, "query" | "mutate">
+		IsExact<keyof MakeTypedAPIClient<App>, "submit">
 	>;
-	type _api_client_query_return = Assert<
+	type _api_client_submit_return = Assert<
 		IsExact<
-			Awaited<ReturnType<MakeTypedAPIClient<App>["query"]>>,
+			Awaited<ReturnType<MakeTypedAPIClient<App>["submit"]>>,
 			SubmitResult<
-				| MakeTypedQueryOutput<App, "/users/:userID">
-				| MakeTypedQueryOutput<App, "/health">
+				| MakeTypedActionOutput<App, "GET", "/users/:userID">
+				| MakeTypedActionOutput<App, "GET", "/health">
+				| MakeTypedActionOutput<App, "PATCH", "/users/:userID">
+				| MakeTypedActionOutput<App, "POST", "/users/:userID">
+				| MakeTypedActionOutput<App, "POST", "/sessions">
+				| MakeTypedActionOutput<App, "POST", "/logout">
 			>
 		>
 	>;
@@ -465,13 +512,37 @@ function assert_exported_type_contracts(): void {
 	void scroll_xy;
 	void scroll_hash;
 
-	// StatusInfo
-	const status_info: StatusInfo = {
-		isNavigating: false,
-		isSubmitting: false,
-		isRevalidating: false,
+	// WorkState
+	const work_state: WorkState = {
+		navigation: {
+			href: "/users/u-1",
+			replace: false,
+			source: "navigate",
+		},
+		revalidation: {
+			status: "running",
+			attempt: 1,
+		},
+		prefetch: {
+			href: "/docs/guide",
+		},
+		submissions: [
+			{
+				key: "create-user",
+				method: "POST",
+				href: "/api/users",
+			},
+		],
 	};
-	void status_info;
+	expect_type<"navigate" | "popstate" | "redirect">(
+		work_state.navigation!.source,
+	);
+	expect_type<"debouncing" | "running" | "retrying">(
+		work_state.revalidation!.status,
+	);
+	expect_type<number>(work_state.revalidation!.attempt);
+	expect_type<string>(work_state.prefetch!.href);
+	expect_type<string>(work_state.submissions[0]!.key);
 
 	// SubmitResult
 	const success_result: SubmitResult<number> = {
@@ -507,6 +578,13 @@ function assert_exported_type_contracts(): void {
 	};
 	void progress_indicator_config;
 
+	const route_error_state: RouteErrorState = {
+		idx: 0,
+		error: "boom",
+		source: "server",
+	};
+	void route_error_state;
+
 	// LinkPropsBase
 	const link_props: LinkPropsBase = {
 		prefetch: "intent",
@@ -517,34 +595,72 @@ function assert_exported_type_contracts(): void {
 	};
 	void link_props;
 
-	// RouteEntry
-	const entry: RouteEntry = {
+	// RouteRenderEntry
+	const entry: RouteRenderEntry = {
 		pattern: "/",
+		input: {},
 		module_url: "/mod.js",
 		module: {},
-		data: null,
-		client_data: undefined,
-		error: undefined,
+		loader_data: null,
+		client_loader_data: undefined,
 	};
 	expect_type<string>(entry.pattern);
+	expect_type<unknown>(entry.input);
 	expect_type<string>(entry.module_url);
 	expect_type<Record<string, unknown>>(entry.module);
-	expect_type<unknown>(entry.data);
-	expect_type<unknown>(entry.client_data);
-	expect_type<unknown>(entry.error);
+	expect_type<unknown>(entry.loader_data);
+	expect_type<unknown>(entry.client_loader_data);
 
-	// RouteState
-	const route_state: RouteState = {
+	// RouteRenderState
+	const route_render_state: RouteRenderState = {
 		entries: [entry],
+		error: null,
 		params: {},
 		splat_values: [],
 		client_build_id: "1",
 		history_state: undefined,
 	};
-	expect_type<RouteEntry[]>(route_state.entries);
+	expect_type<RouteRenderEntry[]>(route_render_state.entries);
+	expect_type<RouteRenderState["error"]>(route_render_state.error);
+	expect_type<Record<string, string>>(route_render_state.params);
+	expect_type<string[]>(route_render_state.splat_values);
+	expect_type<string>(route_render_state.client_build_id);
+
+	// RouteState
+	const route_state: RouteState = {
+		href: "/users/u-1?tab=posts",
+		historyState: undefined,
+		clientBuildID: "1",
+		params: {
+			userID: "u-1",
+		},
+		splatValues: [],
+		matches: [
+			{
+				pattern: "/users/:userID",
+				input: {
+					tab: "posts",
+				},
+				loaderData: {
+					userName: "Ada",
+				},
+				clientLoaderData: undefined,
+			},
+		],
+		error: null,
+	};
+	expect_type<string>(route_state.href);
+	expect_type<unknown>(route_state.historyState);
+	expect_type<string>(route_state.clientBuildID);
 	expect_type<Record<string, string>>(route_state.params);
-	expect_type<string[]>(route_state.splat_values);
-	expect_type<string>(route_state.client_build_id);
+	expect_type<string[]>(route_state.splatValues);
+	expect_type<unknown>(route_state.matches[0]!.loaderData);
+	expect_type<RouteState["error"]>(route_state.error);
+
+	const route_update_reason: RouteUpdateReason = "navigation";
+	expect_type<"init" | "navigation" | "popstate" | "revalidation">(
+		route_update_reason,
+	);
 
 	// RouteDefinition
 	const route_def: RouteDefinition = {
@@ -562,7 +678,7 @@ void assert_exported_type_contracts;
 
 function assert_navigate_contracts(): void {
 	// Valid: raw href string
-	void react.navigate("/users/u-1?tab=posts#recent");
+	void react.navigate({ href: "/users/u-1?tab=posts#recent" });
 
 	// Valid: dynamic route with params
 	void react.navigate({
@@ -588,23 +704,19 @@ function assert_navigate_contracts(): void {
 	});
 
 	// Valid: with replace and scrollToTop
-	void react.navigate(
-		{
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-		},
-		{
-			replace: true,
-			scrollToTop: false,
-			skipProgressIndicator: true,
-		},
-	);
+	void react.navigate({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		replace: true,
+		scrollToTop: false,
+		skipProgressIndicator: true,
+	});
 
 	// Valid: with search and hash
 	void react.navigate({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		search: { tab: "posts", page: 2 },
+		search: { sort: "created", tab: "posts", page: 2 },
 		hash: "#recent",
 	});
 
@@ -626,6 +738,17 @@ function assert_navigate_contracts(): void {
 		// @ts-expect-error search must match the loader input type.
 		search: { page: "2" },
 	});
+	void react.navigate({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		// @ts-expect-error search must match parent loader input types.
+		search: { sort: "updated" },
+	});
+	// @ts-expect-error href string cannot be mixed with typed search.
+	void react.navigate({
+		href: "/users/u-1",
+		search: { tab: "posts" },
+	});
 	// @ts-expect-error splatValues are required for splat loader routes.
 	void react.navigate({ pattern: "/docs/*" });
 	void react.navigate({
@@ -638,256 +761,313 @@ function assert_navigate_contracts(): void {
 }
 void assert_navigate_contracts;
 
+/////// Link Type Safety
+
+function assert_link_contracts(): void {
+	void react.Link({
+		href: "/users/u-1?tab=posts#recent",
+		children: null,
+	});
+
+	void react.Link({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { sort: "created", tab: "posts", page: 2 },
+		hash: "#recent",
+		prefetch: "intent",
+		children: null,
+	});
+
+	// @ts-expect-error href string cannot be mixed with typed search.
+	void react.Link({
+		href: "/users/u-1",
+		children: null,
+		search: { tab: "posts" },
+	});
+
+	// @ts-expect-error route params are required for /users/:userID.
+	void react.Link({
+		pattern: "/users/:userID",
+		children: null,
+	});
+}
+void assert_link_contracts;
+
 /////// API Client Type Safety
 
 function assert_api_client_contracts(): void {
-	// Valid query with required params and input
-	const user_query_result = react.apiClient.query({
+	// Valid GET action with required params and input. Method is required
+	// because this pattern has multiple action methods.
+	const user_get_result = react.apiClient.submit({
+		method: "GET",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { includePosts: true },
 	});
 	expect_type<
-		Promise<SubmitResult<MakeTypedQueryOutput<App, "/users/:userID">>>
-	>(user_query_result);
+		Promise<
+			SubmitResult<MakeTypedActionOutput<App, "GET", "/users/:userID">>
+		>
+	>(user_get_result);
 
-	// Valid query with nullable input (omitted)
-	void react.apiClient.query({
+	// Valid GET-only action with nullable input. Method can be omitted.
+	void react.apiClient.submit({
 		pattern: "/health",
 	});
 
-	// Valid query with nullable input (explicit null)
-	void react.apiClient.query({
+	// Valid GET-only action with nullable input (explicit null).
+	void react.apiClient.submit({
 		pattern: "/health",
 		input: null,
 	});
 
-	// Valid query with options
-	void react.apiClient.query({
+	// Valid GET-only action with flattened submit options.
+	void react.apiClient.submit({
 		pattern: "/health",
-		options: { dedupeKey: "health-check", revalidate: false },
+		dedupeKey: "health-check",
+		revalidate: false,
 	});
 
-	// @ts-expect-error object query inputs are required when input type is non-empty.
-	void react.apiClient.query({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-	});
-	void react.apiClient.query({
+	// @ts-expect-error method is required for patterns with multiple action methods.
+	void react.apiClient.submit({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { includePosts: true },
-		// @ts-expect-error query requestInit method must remain GET.
-		requestInit: { method: "POST" },
 	});
-	void react.apiClient.query({
+
+	// @ts-expect-error object action inputs are required when input type is non-empty.
+	void react.apiClient.submit({
+		method: "GET",
 		pattern: "/users/:userID",
-		// @ts-expect-error query params must match route parameter names.
+		params: { userID: "u-1" },
+	});
+
+	void react.apiClient.submit({
+		method: "GET",
+		pattern: "/users/:userID",
+		// @ts-expect-error action params must match route parameter names.
 		params: { id: "u-1" },
 		input: { includePosts: true },
 	});
-	void react.apiClient.query({
+
+	void react.apiClient.submit({
 		pattern: "/health",
-		// @ts-expect-error query input root must be object, null, or undefined.
+		// @ts-expect-error action input root must be object, null, or undefined.
 		input: "invalid",
 	});
-	// @ts-expect-error query route must come from query patterns.
-	void react.apiClient.query<"/docs/*">({
+
+	void react.apiClient.submit({
+		method: "GET",
+		// @ts-expect-error action pattern must come from action patterns.
 		pattern: "/docs/*",
 		splatValues: ["x"],
+		// @ts-expect-error action input must match one of the action inputs.
 		input: {},
 	});
 
-	// Valid PATCH mutation with required params and input
-	const patch_result = react.apiClient.mutate({
+	// Valid PATCH action with required params and input.
+	const patch_result = react.apiClient.submit({
+		method: "PATCH",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { nickname: "neo" },
-		requestInit: { method: "PATCH" },
 	});
 	expect_type<
-		Promise<SubmitResult<MakeTypedMutationOutput<App, "/users/:userID">>>
+		Promise<
+			SubmitResult<MakeTypedActionOutput<App, "PATCH", "/users/:userID">>
+		>
 	>(patch_result);
 
-	// Valid POST mutation
-	const post_result = react.apiClient.mutate({
-		pattern: "/sessions",
-		input: { email: "a@b.com", password: "pw" },
-		requestInit: { method: "POST" },
-	});
-	expect_type<
-		Promise<SubmitResult<MakeTypedMutationOutput<App, "/sessions">>>
-	>(post_result);
-
-	// Valid mutation with optional input (omitted)
-	void react.apiClient.mutate({
-		pattern: "/logout",
-		requestInit: { method: "POST" },
-	});
-
-	// @ts-expect-error requestInit is always required for mutations.
-	void react.apiClient.mutate({
-		pattern: "/logout",
-	});
-	void react.apiClient.mutate({
+	// Valid same-pattern POST action with different input and output.
+	const user_post_result = react.apiClient.submit({
+		method: "POST",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		input: { nickname: "neo" },
-		// @ts-expect-error requestInit method must match mutation method.
-		requestInit: { method: "POST" },
+		input: { inviteEmail: "ada@example.com" },
 	});
-	// @ts-expect-error non-empty mutation input is required.
-	void react.apiClient.mutate({
-		pattern: "/sessions",
-		requestInit: { method: "POST" },
-	});
-	void react.apiClient.mutate({
+	expect_type<
+		Promise<
+			SubmitResult<MakeTypedActionOutput<App, "POST", "/users/:userID">>
+		>
+	>(user_post_result);
+
+	// Valid POST action.
+	const post_result = react.apiClient.submit({
+		method: "POST",
 		pattern: "/sessions",
 		input: { email: "a@b.com", password: "pw" },
-		// @ts-expect-error POST mutation requestInit.method cannot be changed.
-		requestInit: { method: "PUT" },
 	});
-	// @ts-expect-error mutation route must come from mutation patterns.
-	void react.apiClient.mutate<"/health">({
+	expect_type<
+		Promise<SubmitResult<MakeTypedActionOutput<App, "POST", "/sessions">>>
+	>(post_result);
+
+	// Valid POST action with optional input (omitted).
+	void react.apiClient.submit({
+		method: "POST",
+		pattern: "/logout",
+	});
+
+	// @ts-expect-error method is required for non-GET actions.
+	void react.apiClient.submit({
+		pattern: "/logout",
+	});
+
+	void react.apiClient.submit({
+		method: "POST",
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		// @ts-expect-error method/pattern identity selects POST input.
+		input: { nickname: "neo" },
+	});
+
+	// @ts-expect-error non-empty action input is required.
+	void react.apiClient.submit({
+		method: "POST",
+		pattern: "/sessions",
+	});
+
+	void react.apiClient.submit({
+		// @ts-expect-error method must come from action methods.
+		method: "PUT",
+		pattern: "/sessions",
+		input: { email: "a@b.com", password: "pw" },
+	});
+
+	void react.apiClient.submit({
+		method: "POST",
 		pattern: "/health",
+		// @ts-expect-error method/pattern pair must exist.
 		input: {},
-		requestInit: { method: "POST" },
 	});
 }
 void assert_api_client_contracts;
 
-/////// Query and Mutation Props Type Safety
+/////// Action Submit Props Type Safety
 
-function assert_query_and_mutation_props_contracts(): void {
-	// Required query input
-	const required_query_props: MakeTypedQueryProps<App, "/users/:userID"> = {
+function assert_action_submit_props_contracts(): void {
+	// Required GET input.
+	const required_get_props: MakeTypedActionSubmitProps<App> = {
+		method: "GET",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { includePosts: true },
 	};
-	expect_type<{ includePosts: boolean }>(required_query_props.input);
+	expect_type<{ includePosts: boolean }>(required_get_props.input);
 
-	// Optional query input (omitted, null, undefined)
-	const optional_query_omitted: MakeTypedQueryProps<App, "/health"> = {
+	// Optional GET input (omitted, null, undefined).
+	const optional_get_omitted: MakeTypedActionSubmitProps<App> = {
 		pattern: "/health",
 	};
-	const optional_query_null: MakeTypedQueryProps<App, "/health"> = {
+	const optional_get_null: MakeTypedActionSubmitProps<App> = {
 		pattern: "/health",
 		input: null,
 	};
-	const optional_query_undefined: MakeTypedQueryProps<App, "/health"> = {
+	const optional_get_undefined: MakeTypedActionSubmitProps<App> = {
 		pattern: "/health",
 		input: undefined,
 	};
-	void optional_query_omitted;
-	void optional_query_null;
-	void optional_query_undefined;
+	void optional_get_omitted;
+	void optional_get_null;
+	void optional_get_undefined;
 
-	// @ts-expect-error non-empty query input must be required.
-	const missing_query_input: MakeTypedQueryProps<App, "/users/:userID"> = {
+	// @ts-expect-error non-empty GET input must be required.
+	const missing_get_input: MakeTypedActionSubmitProps<App> = {
+		method: "GET",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 	};
-	void missing_query_input;
+	void missing_get_input;
 
-	const wrong_query_method: MakeTypedQueryProps<App, "/users/:userID"> = {
+	const wrong_get_params: MakeTypedActionSubmitProps<App> = {
+		method: "GET",
 		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-		input: { includePosts: true },
-		requestInit: {
-			// @ts-expect-error query requestInit.method must remain GET.
-			method: "POST",
-		},
-	};
-	void wrong_query_method;
-
-	const wrong_query_params: MakeTypedQueryProps<App, "/users/:userID"> = {
-		pattern: "/users/:userID",
-		// @ts-expect-error query params keys must match route params.
+		// @ts-expect-error action params keys must match route params.
 		params: { id: "u-1" },
 		input: { includePosts: true },
 	};
-	void wrong_query_params;
+	void wrong_get_params;
 
-	// Required PATCH mutation with explicit method
-	const required_patch: MakeTypedMutationProps<App, "/users/:userID"> = {
+	// Required PATCH action.
+	const required_patch: MakeTypedActionSubmitProps<App> = {
+		method: "PATCH",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { nickname: "neo" },
-		requestInit: { method: "PATCH" },
 	};
 	expect_type<{ nickname: string }>(required_patch.input);
 
-	// Required POST mutation
-	const required_post: MakeTypedMutationProps<App, "/sessions"> = {
+	// Required same-pattern POST action.
+	const required_user_post: MakeTypedActionSubmitProps<App> = {
+		method: "POST",
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		input: { inviteEmail: "ada@example.com" },
+	};
+	expect_type<{ inviteEmail: string }>(required_user_post.input);
+
+	// Required POST action.
+	const required_post: MakeTypedActionSubmitProps<App> = {
+		method: "POST",
 		pattern: "/sessions",
 		input: { email: "a@b.com", password: "pw" },
-		requestInit: { method: "POST" },
 	};
 	void required_post;
 
-	// Optional mutation input (omitted, undefined)
-	const optional_mutation_omitted: MakeTypedMutationProps<App, "/logout"> = {
+	// Optional POST input (omitted, undefined).
+	const optional_post_omitted: MakeTypedActionSubmitProps<App> = {
+		method: "POST",
 		pattern: "/logout",
-		requestInit: { method: "POST" },
 	};
-	const optional_mutation_undefined: MakeTypedMutationProps<App, "/logout"> =
-		{
-			pattern: "/logout",
-			input: undefined,
-			requestInit: { method: "POST" },
-		};
-	void optional_mutation_omitted;
-	void optional_mutation_undefined;
+	const optional_post_undefined: MakeTypedActionSubmitProps<App> = {
+		method: "POST",
+		pattern: "/logout",
+		input: undefined,
+	};
+	void optional_post_omitted;
+	void optional_post_undefined;
 
-	// @ts-expect-error non-empty mutation input must be required.
-	const missing_mutation_input: MakeTypedMutationProps<App, "/sessions"> = {
+	// @ts-expect-error non-empty POST input must be required.
+	const missing_post_input: MakeTypedActionSubmitProps<App> = {
+		method: "POST",
 		pattern: "/sessions",
-		requestInit: { method: "POST" },
 	};
-	void missing_mutation_input;
+	void missing_post_input;
 
-	// @ts-expect-error requestInit is always required for mutations.
-	const missing_request_init: MakeTypedMutationProps<App, "/users/:userID"> =
-		{
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-			input: { nickname: "neo" },
-		};
-	void missing_request_init;
-
-	const wrong_patch_method: MakeTypedMutationProps<App, "/users/:userID"> = {
+	const wrong_patch_input: MakeTypedActionSubmitProps<App> = {
+		method: "PATCH",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		input: { nickname: "neo" },
-		requestInit: {
-			// @ts-expect-error non-POST mutation method must match route declaration.
-			method: "POST",
-		},
+		// @ts-expect-error method/pattern identity selects PATCH input.
+		input: { inviteEmail: "ada@example.com" },
 	};
-	void wrong_patch_method;
+	void wrong_patch_input;
 
-	const wrong_post_method: MakeTypedMutationProps<App, "/sessions"> = {
+	const wrong_post_method: MakeTypedActionSubmitProps<App> = {
+		// @ts-expect-error method/pattern pair must exist.
+		method: "PUT",
 		pattern: "/sessions",
 		input: { email: "a@b.com", password: "pw" },
-		requestInit: {
-			// @ts-expect-error POST mutation requestInit.method cannot be changed.
-			method: "PUT",
-		},
 	};
 	void wrong_post_method;
 
-	const wrong_mutation_params: MakeTypedMutationProps<App, "/users/:userID"> =
-		{
-			pattern: "/users/:userID",
-			// @ts-expect-error mutation params keys must match route params.
-			params: { id: "u-1" },
-			input: { nickname: "neo" },
-			requestInit: { method: "PATCH" },
-		};
-	void wrong_mutation_params;
+	const wrong_action_params: MakeTypedActionSubmitProps<App> = {
+		method: "PATCH",
+		pattern: "/users/:userID",
+		// @ts-expect-error action params keys must match route params.
+		params: { id: "u-1" },
+		input: { nickname: "neo" },
+	};
+	void wrong_action_params;
+
+	const body_not_allowed: MakeTypedActionSubmitProps<App> = {
+		method: "POST",
+		pattern: "/logout",
+		// @ts-expect-error typed action submit uses input, not body.
+		body: "raw",
+	};
+	void body_not_allowed;
 }
-void assert_query_and_mutation_props_contracts;
+void assert_action_submit_props_contracts;
 
 /////// React Adapter Type Safety
 
@@ -920,33 +1100,38 @@ function assert_react_adapter_contracts(): void {
 		"/not-a-route",
 	);
 
-	// useRouterData (unscoped)
-	const unscoped_router_data = react.useRouterData();
-	expect_type<string>(unscoped_router_data.clientBuildID);
-	expect_type<string[]>(unscoped_router_data.matchedPatterns);
-	expect_type<string[]>(unscoped_router_data.splatValues);
-	expect_type<Record<string, string>>(unscoped_router_data.params);
-	expect_type<unknown>(unscoped_router_data.historyState);
-	expect_type<{ sessionUserID: string | null }>(
-		unscoped_router_data.rootData,
-	);
+	// useRouteState
+	const route_state = react.useRouteState();
+	expect_type<RouteState>(route_state);
+	expect_type<string>(route_state.clientBuildID);
+	expect_type<string[]>(route_state.splatValues);
+	expect_type<Record<string, string>>(route_state.params);
+	expect_type<unknown>(route_state.historyState);
 
-	// useRouterData (scoped)
-	const scoped_router_data = react.useRouterData(route_props);
-	expect_type<{ userID: string }>(scoped_router_data.params);
-	expect_type<{ sessionUserID: string | null }>(scoped_router_data.rootData);
+	const selected_route_href = react.useRouteState((route) => {
+		return route.href;
+	});
+	expect_type<string>(selected_route_href);
 
-	// getRouterData (unscoped)
-	const unscoped_get_router_data = react.getRouterData();
-	expect_type<Record<string, string>>(unscoped_get_router_data.params);
-	expect_type<unknown>(unscoped_get_router_data.historyState);
-	expect_type<{ sessionUserID: string | null }>(
-		unscoped_get_router_data.rootData,
-	);
+	// useWorkState
+	const work_state = react.useWorkState();
+	expect_type<WorkState>(work_state);
+	expect_type<WorkState["navigation"]>(work_state.navigation);
 
-	// getRouterData (scoped)
-	const scoped_get_router_data = react.getRouterData(route_props);
-	expect_type<{ userID: string }>(scoped_get_router_data.params);
+	const selected_navigation_href = react.useWorkState((work) => {
+		return work.navigation?.href;
+	});
+	expect_type<string | undefined>(selected_navigation_href);
+
+	// getRouteState
+	const current_route_state = react.getRouteState();
+	expect_type<RouteState>(current_route_state);
+	expect_type<Record<string, string>>(current_route_state.params);
+	expect_type<unknown>(current_route_state.historyState);
+
+	// getWorkState
+	const current_work_state = react.getWorkState();
+	expect_type<WorkState>(current_work_state);
 
 	// defineRoute: basic
 	void react.defineRoute({
@@ -977,8 +1162,8 @@ function assert_react_adapter_contracts(): void {
 			const data = react.useLoaderData(props);
 			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(data);
 
-			const client_data = react.useClientLoaderData(props);
-			expect_type<number>(client_data);
+			const client_loader_data = react.useClientLoaderData(props);
+			expect_type<number>(client_loader_data);
 
 			return props.Outlet();
 		},
@@ -987,6 +1172,7 @@ function assert_react_adapter_contracts(): void {
 			splatValues,
 			serverDataPromise,
 			signal,
+			trigger,
 		}) => {
 			expect_type<{ userID: string }>(params);
 			expect_type<string>(params.userID);
@@ -994,6 +1180,9 @@ function assert_react_adapter_contracts(): void {
 			void params.bogus;
 			expect_type<string[]>(splatValues);
 			expect_type<AbortSignal>(signal);
+			expect_type<"init" | "navigation" | "revalidation" | "prefetch">(
+				trigger,
+			);
 			const server_data = await serverDataPromise;
 			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(
 				server_data.loaderData,
@@ -1012,13 +1201,13 @@ function assert_react_adapter_contracts(): void {
 		"/users/:userID",
 		number
 	>;
-	const client_data = react.useClientLoaderData(cl_route_props);
-	expect_type<number>(client_data);
+	const client_loader_data = react.useClientLoaderData(cl_route_props);
+	expect_type<number>(client_loader_data);
 
 	// usePatternClientLoaderData
-	const maybe_client_data =
+	const maybe_client_loader_data =
 		react.usePatternClientLoaderData<number>("/users/:userID");
-	expect_type<number | undefined>(maybe_client_data);
+	expect_type<number | undefined>(maybe_client_loader_data);
 
 	// defineRoute: invalid pattern
 	void react.defineRoute({
@@ -1044,25 +1233,19 @@ function assert_react_adapter_contracts(): void {
 		href: "/users/u-1?tab=posts",
 	});
 	void react.Link({
-		href: {
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
 	});
 	void react.Link({
-		href: {
-			pattern: "/docs/*",
-			splatValues: ["guide"],
-		},
+		pattern: "/docs/*",
+		splatValues: ["guide"],
 	});
 	void react.Link({
-		href: { pattern: "/blog" },
+		pattern: "/blog",
 	});
 	void react.Link({
-		href: {
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
 		prefetch: "intent",
 		visitOnPointerDown: true,
 		prefetchDelayMs: 100,
@@ -1070,62 +1253,59 @@ function assert_react_adapter_contracts(): void {
 		scrollToTop: false,
 	});
 	void react.Link({
-		href: {
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-			search: { tab: "posts" },
-			hash: "#recent",
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { sort: "name", tab: "posts" },
+		hash: "#recent",
 	});
 	void react.Link({
-		href: { pattern: "/" },
+		pattern: "/",
 		prefetch: "none",
 	});
 
 	// Link: invalid cases
+	// @ts-expect-error typed links require params for dynamic routes.
+	void react.Link({ pattern: "/users/:userID" });
 	void react.Link({
-		// @ts-expect-error typed links require params for dynamic routes.
-		href: { pattern: "/users/:userID" },
+		pattern: "/users/:userID",
+		// @ts-expect-error typed links enforce exact dynamic param keys.
+		params: { id: "u-1" },
 	});
 	void react.Link({
-		href: {
-			pattern: "/users/:userID",
-			// @ts-expect-error typed links enforce exact dynamic param keys.
-			params: { id: "u-1" },
-		},
+		pattern: "/users/:userID",
+		// @ts-expect-error typed links require string param values.
+		params: { userID: 123 },
 	});
 	void react.Link({
-		href: {
-			pattern: "/users/:userID",
-			// @ts-expect-error typed links require string param values.
-			params: { userID: 123 },
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		// @ts-expect-error typed links enforce loader search input.
+		search: { page: "2" },
 	});
 	void react.Link({
-		href: {
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-			// @ts-expect-error typed links enforce loader search input.
-			search: { page: "2" },
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		// @ts-expect-error typed links enforce parent loader search input.
+		search: { sort: "updated" },
 	});
+	// @ts-expect-error href string cannot be mixed with typed hash.
 	void react.Link({
-		// @ts-expect-error typed links require splatValues for splat routes.
-		href: { pattern: "/docs/*" },
+		href: "/users/u-1",
+		hash: "#recent",
 	});
+	// @ts-expect-error typed links require splatValues for splat routes.
+	void react.Link({ pattern: "/docs/*" });
 	void react.Link({
-		href: {
-			pattern: "/docs/*",
-			// @ts-expect-error typed links require splatValues to be string[].
-			splatValues: "guide",
-		},
+		pattern: "/docs/*",
+		// @ts-expect-error typed links require splatValues to be string[].
+		splatValues: "guide",
 	});
 	void react.Link({
 		// @ts-expect-error typed links reject unknown route patterns.
-		href: { pattern: "/not-a-route" },
+		pattern: "/not-a-route",
 	});
 	void react.Link({
-		href: { pattern: "/" },
+		pattern: "/",
 		// @ts-expect-error prefetch only accepts intent or none.
 		prefetch: "hover",
 	});
@@ -1145,23 +1325,13 @@ function assert_public_runtime_contracts(): void {
 			expect_type<HTMLElement>(el);
 		},
 		useViewTransitions: true,
-		onStatusChange: (status) => {
-			expect_type<boolean>(status.isNavigating);
-			expect_type<boolean>(status.isSubmitting);
-			expect_type<boolean>(status.isRevalidating);
+		onRouteUpdate: (route, previous_route, reason) => {
+			expect_type<RouteState>(route);
+			expect_type<RouteState | null>(previous_route);
+			expect_type<RouteUpdateReason>(reason);
 		},
-		onRouteCommit: (info) => {
-			expect_type<
-				"initial" | "navigation" | "popstate" | "revalidation" | "hmr"
-			>(info.reason);
-			expect_type<string>(info.url);
-			expect_type<string | null>(info.previousUrl);
-			expect_type<boolean>(info.urlChanged);
-			expect_type<boolean>(info.patternsChanged);
-			expect_type<boolean>(info.paramsChanged);
-			expect_type<boolean>(info.searchChanged);
-			expect_type<boolean>(info.hashChanged);
-			expect_type<boolean>(info.historyStateChanged);
+		onWorkUpdate: (work) => {
+			expect_type<WorkState>(work);
 		},
 		onClientBuildIDChange: (prev, next) => {
 			expect_type<string>(prev);
@@ -1187,94 +1357,48 @@ function assert_public_runtime_contracts(): void {
 	expect_type<Promise<Result<void>>>(solid_init_promise);
 
 	// navigate
-	const navigate_result = react.navigate(
-		{
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-		},
-		{
-			replace: true,
-			scrollToTop: false,
-		},
-	);
+	const navigate_result = react.navigate({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		replace: true,
+		scrollToTop: false,
+	});
 	expect_type<Promise<{ didNavigate: boolean }>>(navigate_result);
+
+	// prefetch
+	react.prefetch({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+	});
+	react.cancelPrefetch({ href: "/users/u-1" });
+
+	// buildHref
+	const built_href = react.buildHref({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { sort: "name", tab: "posts" },
+	});
+	expect_type<string>(built_href);
 
 	// revalidate
 	const revalidate_result = react.revalidate();
 	expect_type<Promise<RevalidationResult>>(revalidate_result);
 
-	// submit (untyped)
-	const submit_result = react.submit("/api/users", { method: "POST" });
-	expect_type<
-		Promise<
-			| {
-					success: true;
-					data: unknown;
-					response: Response;
-					revalidationPromise: Promise<RevalidationResult>;
-			  }
-			| {
-					success: false;
-					error: string;
-					response?: Response;
-					revalidationPromise: Promise<RevalidationResult>;
-			  }
-		>
-	>(submit_result);
-
-	// submit (typed)
-	const typed_submit_result = react.submit<{ ok: true }>("/api/users", {
-		method: "POST",
-	});
-	expect_type<
-		Promise<
-			| {
-					success: true;
-					data: { ok: true };
-					response: Response;
-					revalidationPromise: Promise<RevalidationResult>;
-			  }
-			| {
-					success: false;
-					error: string;
-					response?: Response;
-					revalidationPromise: Promise<RevalidationResult>;
-			  }
-		>
-	>(typed_submit_result);
-
-	// submit with options
-	void react.submit(
-		"/api/users",
-		{ method: "POST" },
-		{
-			dedupeKey: "create-user",
-			revalidate: true,
-			skipProgressIndicator: false,
-		},
-	);
-
-	// getStatus
-	const status = react.getStatus();
-	expect_type<boolean>(status.isNavigating);
-	expect_type<boolean>(status.isSubmitting);
-	expect_type<boolean>(status.isRevalidating);
-
-	// getClientBuildID
-	expect_type<string>(react.getClientBuildID());
-
-	// getRootEl
-	expect_type<HTMLElement>(react.getRootEl());
+	// getWorkState
+	const work = react.getWorkState();
+	expect_type<WorkState>(work);
+	expect_type<WorkState["submissions"]>(work.submissions);
 
 	// revalidateOnWindowFocus
-	const stop_focus_revalidate = react.revalidateOnWindowFocus({
-		staleTimeMS: 3000,
+	void react.init({
+		revalidateOnWindowFocus: true,
 	});
-	expect_type<() => void>(stop_focus_revalidate);
-
-	// revalidateOnWindowFocus (no options)
-	const stop_focus_revalidate_default = react.revalidateOnWindowFocus();
-	expect_type<() => void>(stop_focus_revalidate_default);
+	void react.init({
+		revalidateOnWindowFocus: false,
+	});
+	void react.init({
+		revalidateOnWindowFocus: { staleTimeMS: 3000 },
+	});
 
 	// progressIndicator (all categories)
 	const init_with_progress = react.init({
@@ -1335,17 +1459,25 @@ function assert_preact_adapter_contracts(): void {
 		maybe_pattern_data,
 	);
 
-	// useRouterData (unscoped)
-	const unscoped_router_data = preact.useRouterData();
-	expect_type<Record<string, string>>(unscoped_router_data.params);
-	expect_type<unknown>(unscoped_router_data.historyState);
-	expect_type<{ sessionUserID: string | null }>(
-		unscoped_router_data.rootData,
-	);
+	// useRouteState
+	const route_state = preact.useRouteState();
+	expect_type<RouteState>(route_state);
+	expect_type<Record<string, string>>(route_state.params);
+	expect_type<unknown>(route_state.historyState);
 
-	// useRouterData (scoped)
-	const scoped_router_data = preact.useRouterData(route_props);
-	expect_type<{ userID: string }>(scoped_router_data.params);
+	const selected_params = preact.useRouteState((route) => {
+		return route.params;
+	});
+	expect_type<Record<string, string>>(selected_params);
+
+	// useWorkState
+	const work_state = preact.useWorkState();
+	expect_type<WorkState>(work_state);
+
+	const selected_submission_count = preact.useWorkState((work) => {
+		return work.submissions.length;
+	});
+	expect_type<number>(selected_submission_count);
 
 	// useClientLoaderData
 	const cl_route_props = null as unknown as MakeTypedRouteProps<
@@ -1353,13 +1485,13 @@ function assert_preact_adapter_contracts(): void {
 		"/users/:userID",
 		number
 	>;
-	const client_data = preact.useClientLoaderData(cl_route_props);
-	expect_type<number>(client_data);
+	const client_loader_data = preact.useClientLoaderData(cl_route_props);
+	expect_type<number>(client_loader_data);
 
 	// usePatternClientLoaderData
-	const maybe_client_data =
+	const maybe_client_loader_data =
 		preact.usePatternClientLoaderData<number>("/users/:userID");
-	expect_type<number | undefined>(maybe_client_data);
+	expect_type<number | undefined>(maybe_client_loader_data);
 
 	// defineRoute
 	void preact.defineRoute({
@@ -1381,16 +1513,12 @@ function assert_preact_adapter_contracts(): void {
 
 	// Link
 	void preact.Link({
-		href: {
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
 	});
 
-	void preact.Link({
-		// @ts-expect-error typed links require params for dynamic routes.
-		href: { pattern: "/users/:userID" },
-	});
+	// @ts-expect-error typed links require params for dynamic routes.
+	void preact.Link({ pattern: "/users/:userID" });
 }
 void assert_preact_adapter_contracts;
 
@@ -1416,21 +1544,25 @@ function assert_solid_adapter_contracts(): void {
 		maybe_pattern_data,
 	);
 
-	// useRouterData returns Accessor (unscoped)
-	const unscoped_router_data = solid.useRouterData();
-	expect_type<Accessor<MakeTypedRouterData<App>>>(unscoped_router_data);
-	expect_type<Record<string, string>>(unscoped_router_data().params);
-	expect_type<unknown>(unscoped_router_data().historyState);
-	expect_type<{ sessionUserID: string | null }>(
-		unscoped_router_data().rootData,
-	);
+	// useRouteState returns Accessor
+	const route_state = solid.useRouteState();
+	expect_type<Accessor<RouteState>>(route_state);
+	expect_type<Record<string, string>>(route_state().params);
+	expect_type<unknown>(route_state().historyState);
 
-	// useRouterData returns Accessor (scoped)
-	const scoped_router_data = solid.useRouterData(route_props);
-	expect_type<Accessor<MakeTypedRouterData<App, "/users/:userID">>>(
-		scoped_router_data,
-	);
-	expect_type<{ userID: string }>(scoped_router_data().params);
+	const selected_params = solid.useRouteState((route) => {
+		return route.params;
+	});
+	expect_type<Accessor<Record<string, string>>>(selected_params);
+
+	// useWorkState returns Accessor
+	const work_state = solid.useWorkState();
+	expect_type<Accessor<WorkState>>(work_state);
+
+	const selected_submission_count = solid.useWorkState((work) => {
+		return work.submissions.length;
+	});
+	expect_type<Accessor<number>>(selected_submission_count);
 
 	// useClientLoaderData returns Accessor<T>
 	const cl_route_props = null as unknown as MakeTypedRouteProps<
@@ -1438,14 +1570,14 @@ function assert_solid_adapter_contracts(): void {
 		"/users/:userID",
 		number
 	>;
-	const client_data = solid.useClientLoaderData(cl_route_props);
-	expect_type<Accessor<number>>(client_data);
-	expect_type<number>(client_data());
+	const client_loader_data = solid.useClientLoaderData(cl_route_props);
+	expect_type<Accessor<number>>(client_loader_data);
+	expect_type<number>(client_loader_data());
 
 	// usePatternClientLoaderData returns Accessor<T | undefined>
-	const maybe_client_data =
+	const maybe_client_loader_data =
 		solid.usePatternClientLoaderData<number>("/users/:userID");
-	expect_type<Accessor<number | undefined>>(maybe_client_data);
+	expect_type<Accessor<number | undefined>>(maybe_client_loader_data);
 
 	// defineRoute
 	void solid.defineRoute({
@@ -1469,15 +1601,11 @@ function assert_solid_adapter_contracts(): void {
 
 	// Link
 	void solid.Link({
-		href: {
-			pattern: "/users/:userID",
-			params: { userID: "u-1" },
-		},
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
 	});
 
-	void solid.Link({
-		// @ts-expect-error typed links require params for dynamic routes.
-		href: { pattern: "/users/:userID" },
-	});
+	// @ts-expect-error typed links require params for dynamic routes.
+	void solid.Link({ pattern: "/users/:userID" });
 }
 void assert_solid_adapter_contracts;

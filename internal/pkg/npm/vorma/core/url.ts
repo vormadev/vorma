@@ -2,9 +2,9 @@ import { serializeToSearchParams } from "vorma/kit/json";
 import type {
 	AppConfig,
 	MakeTypedLoaderPattern,
-	MakeTypedNavigateOptions,
+	MakeTypedNavProps,
+	MakeTypedNavTarget,
 	MakeTypedRouteDestination,
-	MakeTypedRouteTarget,
 } from "./types.ts";
 
 const DYNAMIC_RUNE = ":";
@@ -52,7 +52,7 @@ function resolve_pattern_path(
 }
 
 export function resolve_path(
-	type: "loader" | "query" | "mutation",
+	type: "loader" | "action",
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
@@ -97,14 +97,14 @@ export function build_typed_link_href(
 	return build_typed_href(pattern, params, splat_values, search, hash);
 }
 
-export function build_query_url(
+export function build_action_url(
 	actions_mount_root: string,
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
 	input?: unknown,
 ): URL {
-	const pathname = resolve_path("query", pattern, params, splat_values);
+	const pathname = resolve_path("action", pattern, params, splat_values);
 	const full =
 		strip_trailing_slash(actions_mount_root) +
 		(pathname === "/" ? "" : pathname);
@@ -115,7 +115,7 @@ export function build_query_url(
 	return url;
 }
 
-export function create_typed_to_href<A extends AppConfig>() {
+export function create_typed_build_href<A extends AppConfig>() {
 	return <P extends MakeTypedLoaderPattern<A>>(
 		destination: MakeTypedRouteDestination<A, P>,
 	): string => {
@@ -128,19 +128,6 @@ export function create_typed_to_href<A extends AppConfig>() {
 			d.hash,
 		);
 	};
-}
-
-export function build_mutation_url(
-	actions_mount_root: string,
-	pattern: string,
-	params?: Record<string, string>,
-	splat_values?: string[],
-): URL {
-	const pathname = resolve_path("mutation", pattern, params, splat_values);
-	const full =
-		strip_trailing_slash(actions_mount_root) +
-		(pathname === "/" ? "" : pathname);
-	return new URL(full, window.location.origin);
 }
 
 export function resolve_body(input: unknown): BodyInit | null | undefined {
@@ -173,18 +160,27 @@ export function create_typed_navigate<A extends AppConfig>(
 		},
 	) => Promise<{ didNavigate: boolean }>,
 ) {
-	const to_href = create_typed_to_href<A>();
+	const build_href = create_typed_build_href<A>();
 	return async <P extends MakeTypedLoaderPattern<A>>(
-		target: MakeTypedRouteTarget<A, P>,
-		options?: MakeTypedNavigateOptions,
+		props: MakeTypedNavProps<A, P>,
 	): Promise<{ didNavigate: boolean }> => {
-		const href =
-			typeof target === "string" ? target : to_href(target as any);
+		const href = props.href ?? build_href(props as any);
 		return navigate_fn(href, {
-			replace: options?.replace,
-			scrollToTop: options?.scrollToTop,
-			state: options?.state,
-			skipProgressIndicator: options?.skipProgressIndicator,
+			replace: props.replace,
+			scrollToTop: props.scrollToTop,
+			state: props.state,
+			skipProgressIndicator: props.skipProgressIndicator,
 		});
+	};
+}
+
+export function create_typed_prefetch<A extends AppConfig>(
+	prefetch_fn: (href: string) => void,
+) {
+	const build_href = create_typed_build_href<A>();
+	return <P extends MakeTypedLoaderPattern<A>>(
+		target: MakeTypedNavTarget<A, P>,
+	): void => {
+		prefetch_fn(target.href ?? build_href(target as any));
 	};
 }

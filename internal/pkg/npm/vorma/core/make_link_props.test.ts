@@ -103,7 +103,8 @@ describe("internal click interception", () => {
 		result.onClick!(ev);
 
 		expect(ev.preventDefault).toHaveBeenCalled();
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: undefined,
 			scrollToTop: undefined,
 			state: undefined,
@@ -127,7 +128,8 @@ describe("internal click interception", () => {
 		result.onClick!(ev);
 
 		expect(ev.preventDefault).toHaveBeenCalled();
-		expect(nav.navigate).toHaveBeenCalledWith("/page#details", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page#details",
 			replace: true,
 			scrollToTop: undefined,
 			state: { from: "search" },
@@ -639,7 +641,8 @@ describe("navigate options", () => {
 
 		result.onClick!(primary_click());
 
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: true,
 			scrollToTop: undefined,
 			state: undefined,
@@ -655,7 +658,8 @@ describe("navigate options", () => {
 
 		result.onClick!(primary_click());
 
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: undefined,
 			scrollToTop: false,
 			state: undefined,
@@ -671,7 +675,8 @@ describe("navigate options", () => {
 
 		result.onClick!(primary_click());
 
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: true,
 			scrollToTop: false,
 			state: undefined,
@@ -695,7 +700,8 @@ describe("visitOnPointerDown", () => {
 		result.onPointerDown!(ev);
 
 		expect(ev.preventDefault).toHaveBeenCalled();
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: undefined,
 			scrollToTop: undefined,
 		});
@@ -712,7 +718,8 @@ describe("visitOnPointerDown", () => {
 		result.onPointerDown!(ev);
 
 		expect(ev.preventDefault).toHaveBeenCalled();
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: undefined,
 			scrollToTop: undefined,
 		});
@@ -748,7 +755,8 @@ describe("visitOnPointerDown", () => {
 		const click_ev = primary_click();
 		result.onClick!(click_ev);
 		expect(click_ev.preventDefault).toHaveBeenCalled();
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: undefined,
 			scrollToTop: undefined,
 			state: undefined,
@@ -872,7 +880,8 @@ describe("visitOnPointerDown", () => {
 
 		result.onPointerDown!(pointer_down());
 
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: true,
 			scrollToTop: false,
 		});
@@ -908,7 +917,8 @@ describe("visitOnPointerDown", () => {
 		result.onClick!(click_ev);
 
 		expect(click_ev.preventDefault).toHaveBeenCalled();
-		expect(nav.navigate).toHaveBeenCalledWith("/page", {
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
 			replace: undefined,
 			scrollToTop: undefined,
 			state: undefined,

@@ -2,6 +2,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	SEARCH_PARAM_SCHEMA_BOOL,
+	SEARCH_PARAM_SCHEMA_NUMBER,
+	SEARCH_PARAM_SCHEMA_STRING,
+} from "../../kit/json/search_param_parser.ts";
+import {
 	mock_fetch,
 	register_ccc_lifecycle,
 	route_response,
@@ -150,7 +155,47 @@ describe("init lifecycle", () => {
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/");
-		expect(state.entries[0].data).toEqual({ root: true });
+		expect(state.entries[0].loader_data).toEqual({ root: true });
+	});
+
+	it("parses matched input from initial search schemas", async () => {
+		window.history.replaceState(
+			{},
+			"",
+			"/users?page=2&active=true&tags=a&tags=b",
+		);
+		seed_payload({
+			MatchedPatterns: ["/users"],
+			LoadersData: [{ users: true }],
+			SearchSchemas: [
+				{
+					active: SEARCH_PARAM_SCHEMA_BOOL,
+					page: SEARCH_PARAM_SCHEMA_NUMBER,
+					tags: [SEARCH_PARAM_SCHEMA_STRING],
+				},
+			],
+		});
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		await core.init({});
+
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].input).toEqual({
+			active: true,
+			page: 2,
+			tags: ["a", "b"],
+		});
 	});
 
 	it("returns err when data script element is missing", async () => {
@@ -242,18 +287,18 @@ describe("init lifecycle", () => {
 		expect(scroll_intent?.scroll).toEqual({ hash: "#section" });
 	});
 
-	it("allows initial client loaders to submit API queries", async () => {
+	it("allows initial client loaders to submit API actions", async () => {
 		let core: any;
 
-		vi.doMock("/mod-init-query.js", () => {
+		vi.doMock("/mod-init-action.js", () => {
 			return {
 				default: {
-					pattern: "/init-query",
+					pattern: "/init-action",
 					component: () => {
 						return null;
 					},
 					client_loader: async () => {
-						return core.submit(
+						return core.submit_inner(
 							"/api/some-api",
 							{ method: "GET" },
 							{ revalidate: false },
@@ -264,8 +309,8 @@ describe("init lifecycle", () => {
 		});
 
 		seed_payload({
-			MatchedPatterns: ["/init-query"],
-			ImportURLs: ["/mod-init-query.js"],
+			MatchedPatterns: ["/init-action"],
+			ImportURLs: ["/mod-init-action.js"],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -290,22 +335,22 @@ describe("init lifecycle", () => {
 		await core.init({});
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].client_data.success).toBe(true);
-		expect(state.entries[0].client_data.data).toEqual({ ok: true });
+		expect(state.entries[0].client_loader_data.success).toBe(true);
+		expect(state.entries[0].client_loader_data.data).toEqual({ ok: true });
 	});
 
 	it("does not deadlock initial client loaders awaiting submit revalidation", async () => {
 		let core: any;
 
-		vi.doMock("/mod-init-mutate.js", () => {
+		vi.doMock("/mod-init-submit.js", () => {
 			return {
 				default: {
-					pattern: "/init-mutate",
+					pattern: "/init-submit",
 					component: () => {
 						return null;
 					},
 					client_loader: async () => {
-						const result = await core.submit("/api/save", {
+						const result = await core.submit_inner("/api/save", {
 							method: "POST",
 						});
 						return result.revalidationPromise;
@@ -315,8 +360,8 @@ describe("init lifecycle", () => {
 		});
 
 		seed_payload({
-			MatchedPatterns: ["/init-mutate"],
-			ImportURLs: ["/mod-init-mutate.js"],
+			MatchedPatterns: ["/init-submit"],
+			ImportURLs: ["/mod-init-submit.js"],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -344,7 +389,7 @@ describe("init lifecycle", () => {
 		await tick();
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].client_data).toEqual({ ok: true });
+		expect(state.entries[0].client_loader_data).toEqual({ ok: true });
 		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 	});
 
@@ -370,7 +415,7 @@ describe("init lifecycle", () => {
 						return null;
 					},
 					client_loader: async () => {
-						return core.getRouterData();
+						return core.getRouteState();
 					},
 				},
 			};
@@ -397,13 +442,27 @@ describe("init lifecycle", () => {
 		await core.init({});
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[1].client_data).toEqual({
+		expect(state.entries[1].client_loader_data).toEqual({
+			href: window.location.href,
+			historyState: undefined,
 			clientBuildID: "build-1",
-			matchedPatterns: ["/", "/init-router-data"],
 			splatValues: [],
 			params: {},
-			historyState: undefined,
-			rootData: { root: true },
+			matches: [
+				{
+					pattern: "/",
+					input: {},
+					loaderData: { root: true },
+					clientLoaderData: undefined,
+				},
+				{
+					pattern: "/init-router-data",
+					input: {},
+					loaderData: { route: true },
+					clientLoaderData: undefined,
+				},
+			],
+			error: null,
 		});
 	});
 
@@ -538,7 +597,33 @@ describe("navigation flow", () => {
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/about");
-		expect(state.entries[0].data).toEqual({ page: "about" });
+		expect(state.entries[0].loader_data).toEqual({ page: "about" });
+	});
+
+	it("parses matched input from navigation search schemas", async () => {
+		const { core, commit } = await setup();
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({
+				MatchedPatterns: ["/users"],
+				LoadersData: [{ users: true }],
+				SearchSchemas: [
+					{
+						active: SEARCH_PARAM_SCHEMA_BOOL,
+						page: SEARCH_PARAM_SCHEMA_NUMBER,
+						tags: [SEARCH_PARAM_SCHEMA_STRING],
+					},
+				],
+			}),
+		);
+
+		await core.navigate("/users?page=3&active=false&tags=c&tags=d");
+
+		const state = commit.mock.calls[0]![0];
+		expect(state.entries[0].input).toEqual({
+			active: false,
+			page: 3,
+			tags: ["c", "d"],
+		});
 	});
 
 	it("commit receives scroll intent", async () => {
@@ -696,7 +781,7 @@ describe("navigation flow", () => {
 
 		expect(commit).toHaveBeenCalledTimes(1);
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].data).toEqual({ page: "second" });
+		expect(state.entries[0].loader_data).toEqual({ page: "second" });
 	});
 });
 
@@ -984,7 +1069,7 @@ describe("client loaders", () => {
 		expect(second_signal!.aborted).toBe(true);
 	});
 
-	it("non-abort errors surface as route entry errors", async () => {
+	it("non-abort errors surface as route error state", async () => {
 		vi.doMock("/mod-err.js", () => {
 			return {
 				default: {
@@ -1027,10 +1112,14 @@ describe("client loaders", () => {
 		await core.navigate("/err-route");
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].error).toBe("client loader boom");
+		expect(state.error).toEqual({
+			idx: 0,
+			error: "client loader boom",
+			source: "clientLoader",
+		});
 	});
 
-	it("client loader results stored as client_data on route entries", async () => {
+	it("client loader results stored as client_loader_data on route entries", async () => {
 		vi.doMock("/mod-cl.js", () => {
 			return {
 				default: {
@@ -1074,7 +1163,7 @@ describe("client loaders", () => {
 		await core.navigate("/cl-route");
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].client_data).toEqual({
+		expect(state.entries[0].client_loader_data).toEqual({
 			enhanced: true,
 			original: { raw: "data" },
 		});
@@ -1123,8 +1212,8 @@ describe("client loaders", () => {
 		await core.navigate("/abort-route");
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].error).toBeUndefined();
-		expect(state.entries[0].client_data).toBeUndefined();
+		expect(state.error).toBeNull();
+		expect(state.entries[0].client_loader_data).toBeUndefined();
 	});
 });
 
@@ -1215,11 +1304,11 @@ describe("build ID", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Status integration
+/////// Work integration
 /////////////////////////////////////////////////////////////////////
 
-describe("status integration", () => {
-	it("onStatusChange receives mapped StatusInfo", async () => {
+describe("work integration", () => {
+	it("onWorkUpdate receives current work state", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -1234,10 +1323,10 @@ describe("status integration", () => {
 		}
 		const core = core_res.val;
 
-		const statuses: any[] = [];
+		const work_updates: any[] = [];
 		await core.init({
-			onStatusChange: (s) => {
-				return statuses.push({ ...s });
+			onWorkUpdate: (work) => {
+				return work_updates.push({ ...work });
 			},
 		});
 
@@ -1245,16 +1334,16 @@ describe("status integration", () => {
 
 		await core.navigate("/page");
 
-		expect(statuses.length).toBeGreaterThan(0);
-		const navigating = statuses.find((s) => {
-			return s.isNavigating;
+		expect(work_updates.length).toBeGreaterThan(0);
+		const navigating = work_updates.find((work) => {
+			return work.navigation !== null;
 		});
 		expect(navigating).toBeDefined();
-		expect(navigating).toHaveProperty("isRevalidating");
-		expect(navigating).toHaveProperty("isSubmitting");
+		expect(navigating).toHaveProperty("revalidation");
+		expect(navigating).toHaveProperty("submissions");
 	});
 
-	it("getStatus returns current snapshot", async () => {
+	it("getWorkState returns current snapshot", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -1271,11 +1360,12 @@ describe("status integration", () => {
 
 		await core.init({});
 
-		const idle = core.getStatus();
+		const idle = core.getWorkState();
 		expect(idle).toEqual({
-			isNavigating: false,
-			isRevalidating: false,
-			isSubmitting: false,
+			navigation: null,
+			revalidation: null,
+			prefetch: null,
+			submissions: [],
 		});
 	});
 });
@@ -1373,7 +1463,7 @@ describe("progress indicators", () => {
 			}),
 		);
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1410,7 +1500,7 @@ describe("progress indicators", () => {
 			}),
 		);
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1496,8 +1586,16 @@ describe("progress indicators", () => {
 			});
 		});
 
-		void core.submit("/api/a", { method: "POST" }, { revalidate: false });
-		void core.submit("/api/b", { method: "POST" }, { revalidate: false });
+		void core.submit_inner(
+			"/api/a",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		void core.submit_inner(
+			"/api/b",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
 		await vi.advanceTimersByTimeAsync(1);
 
 		expect(config.start).toHaveBeenCalledTimes(1);
@@ -1632,9 +1730,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 100 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 100 },
+		});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(route_response());
 
@@ -1643,7 +1741,6 @@ describe("focus-triggered revalidation", () => {
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect(globalThis.fetch).toHaveBeenCalled();
-		cleanup();
 	});
 
 	it("does not fire when stale time has not elapsed", async () => {
@@ -1662,9 +1759,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 5000 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 5000 },
+		});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(route_response());
 
@@ -1673,10 +1770,9 @@ describe("focus-triggered revalidation", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(globalThis.fetch).not.toHaveBeenCalled();
-		cleanup();
 	});
 
-	it("cleanup stops listening", async () => {
+	it("does not listen when disabled", async () => {
 		vi.useFakeTimers();
 		seed_payload();
 		const commit = vi.fn();
@@ -1692,10 +1788,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 100 });
-		cleanup();
+		await core.init({ revalidateOnWindowFocus: false });
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(route_response());
 
@@ -1722,9 +1815,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 1000 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 1000 },
+		});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(route_response());
 
@@ -1741,8 +1834,6 @@ describe("focus-triggered revalidation", () => {
 		expect((globalThis.fetch as any).mock.calls.length).toBe(
 			fetch_count_before,
 		);
-
-		cleanup();
 	});
 
 	it("does not fire during active navigation", async () => {
@@ -1761,9 +1852,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 0 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 0 },
+		});
 
 		let resolve_nav!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -1783,7 +1874,6 @@ describe("focus-triggered revalidation", () => {
 
 		resolve_nav(route_response());
 		await vi.advanceTimersByTimeAsync(100);
-		cleanup();
 	});
 
 	it("does not fire during active submission", async () => {
@@ -1802,9 +1892,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 0 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 0 },
+		});
 
 		let resolve_submit!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -1813,7 +1903,7 @@ describe("focus-triggered revalidation", () => {
 			});
 		});
 
-		void core.submit(
+		void core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{ revalidate: false },
@@ -1833,7 +1923,6 @@ describe("focus-triggered revalidation", () => {
 			}),
 		);
 		await vi.advanceTimersByTimeAsync(100);
-		cleanup();
 	});
 
 	it("does not fire during active revalidation", async () => {
@@ -1852,9 +1941,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 0 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 0 },
+		});
 
 		let resolve_rev!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -1874,7 +1963,6 @@ describe("focus-triggered revalidation", () => {
 
 		resolve_rev(route_response());
 		await vi.advanceTimersByTimeAsync(100);
-		cleanup();
 	});
 
 	it("does not advance stale-time timestamp for aborted navigations", async () => {
@@ -1893,9 +1981,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 100 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 100 },
+		});
 
 		vi.spyOn(globalThis, "fetch")
 			.mockRejectedValueOnce(new DOMException("Aborted", "AbortError"))
@@ -1909,7 +1997,6 @@ describe("focus-triggered revalidation", () => {
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect((globalThis.fetch as any).mock.calls.length).toBe(2);
-		cleanup();
 	});
 
 	it("does not reset stale-time for hash-only navigations", async () => {
@@ -1928,9 +2015,9 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-
-		const cleanup = core.revalidateOnWindowFocus({ staleTimeMS: 100 });
+		await core.init({
+			revalidateOnWindowFocus: { staleTimeMS: 100 },
+		});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(route_response());
 
@@ -1943,7 +2030,6 @@ describe("focus-triggered revalidation", () => {
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect((globalThis.fetch as any).mock.calls.length).toBe(1);
-		cleanup();
 	});
 });
 
@@ -2470,7 +2556,9 @@ describe("prefetch integration", () => {
 		expect(commit).toHaveBeenCalledTimes(1);
 
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].client_data).toEqual({ from_client: true });
+		expect(state.entries[0].client_loader_data).toEqual({
+			from_client: true,
+		});
 	});
 
 	it("aborts first-time route client loader when prefetch is stopped", async () => {
@@ -2518,10 +2606,10 @@ describe("prefetch integration", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Client loader prefetch abort on stop
+/////// Client loader cancellation
 /////////////////////////////////////////////////////////////////////
 
-describe("client loader prefetch abort on stop", () => {
+describe("client loader cancellation", () => {
 	it("aborts client loader signal when prefetch is stopped", async () => {
 		seed_payload();
 		const commit = vi.fn();
@@ -2584,6 +2672,200 @@ describe("client loader prefetch abort on stop", () => {
 		core.stop_prefetch("/loader");
 
 		expect(captured_signal!.aborted).toBe(true);
+	});
+
+	it("aborts prestarted client loader when prefetch response has server error", async () => {
+		let captured_signal: AbortSignal | null = null;
+		let server_data_rejected = false;
+
+		vi.doMock("/known-error-module.js", () => {
+			return {
+				default: {
+					pattern: "/known-error",
+					component: () => {
+						return null;
+					},
+					client_loader: async ({
+						signal,
+						serverDataPromise,
+					}: any) => {
+						captured_signal = signal;
+						try {
+							await serverDataPromise;
+						} catch (err) {
+							server_data_rejected =
+								err instanceof DOMException &&
+								err.name === "AbortError";
+						}
+						return {};
+					},
+				},
+			};
+		});
+
+		const { core } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		const first_nav = core.navigate("/known-error");
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/known-error"],
+				LoadersData: [{ value: 1 }],
+				ImportURLs: ["/known-error-module.js"],
+			}),
+		);
+		await first_nav;
+
+		const away_nav = core.navigate("/other");
+		await wait_for(2);
+		call(1).resolve(route_response());
+		await away_nav;
+
+		captured_signal = null;
+		server_data_rejected = false;
+
+		core.start_prefetch("/known-error");
+		await wait_for(3);
+
+		await wait_until(() => {
+			return captured_signal !== null;
+		}, "expected known prefetch client loader to start");
+		expect(captured_signal!.aborted).toBe(false);
+
+		call(2).resolve(
+			route_response({
+				MatchedPatterns: ["/known-error"],
+				ImportURLs: ["/known-error-module.js"],
+				OutermostServerErrIdx: 0,
+				OutermostServerErr: "server boom",
+			}),
+		);
+
+		await wait_until(() => {
+			return captured_signal!.aborted && server_data_rejected;
+		}, "expected server-error prefetch client loader to abort");
+	});
+
+	it("aborts prestarted exact and descendant client loaders when navigation response has server error", async () => {
+		const signals: Record<string, AbortSignal | null> = {
+			parent: null,
+			child: null,
+		};
+		const server_data_rejected = {
+			parent: false,
+			child: false,
+		};
+
+		vi.doMock("/known-parent-module.js", () => {
+			return {
+				default: {
+					pattern: "/known-parent",
+					component: () => {
+						return null;
+					},
+					client_loader: async ({
+						signal,
+						serverDataPromise,
+					}: any) => {
+						signals.parent = signal;
+						try {
+							await serverDataPromise;
+						} catch (err) {
+							server_data_rejected.parent =
+								err instanceof DOMException &&
+								err.name === "AbortError";
+						}
+						return {};
+					},
+				},
+			};
+		});
+		vi.doMock("/known-child-module.js", () => {
+			return {
+				default: {
+					pattern: "/known-parent/child",
+					component: () => {
+						return null;
+					},
+					client_loader: async ({
+						signal,
+						serverDataPromise,
+					}: any) => {
+						signals.child = signal;
+						try {
+							await serverDataPromise;
+						} catch (err) {
+							server_data_rejected.child =
+								err instanceof DOMException &&
+								err.name === "AbortError";
+						}
+						return {};
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		const first_nav = core.navigate("/known-parent/child");
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/known-parent", "/known-parent/child"],
+				LoadersData: [{ parent: 1 }, { child: 1 }],
+				ImportURLs: [
+					"/known-parent-module.js",
+					"/known-child-module.js",
+				],
+			}),
+		);
+		await first_nav;
+
+		const away_nav = core.navigate("/other");
+		await wait_for(2);
+		call(1).resolve(route_response());
+		await away_nav;
+
+		signals.parent = null;
+		signals.child = null;
+		server_data_rejected.parent = false;
+		server_data_rejected.child = false;
+		commit.mockClear();
+
+		const server_error_nav = core.navigate("/known-parent/child");
+		await wait_for(3);
+
+		await wait_until(() => {
+			return signals.parent !== null && signals.child !== null;
+		}, "expected known navigation client loaders to start");
+		expect(signals.parent!.aborted).toBe(false);
+		expect(signals.child!.aborted).toBe(false);
+
+		call(2).resolve(
+			route_response({
+				MatchedPatterns: ["/known-parent", "/known-parent/child"],
+				ImportURLs: ["/known-parent-module.js"],
+				OutermostServerErrIdx: 0,
+				OutermostServerErr: "server boom",
+			}),
+		);
+		await server_error_nav;
+
+		await wait_until(() => {
+			return (
+				signals.parent!.aborted &&
+				signals.child!.aborted &&
+				server_data_rejected.parent &&
+				server_data_rejected.child
+			);
+		}, "expected server-error navigation client loaders to abort");
+		expect(commit.mock.calls[0]![0].error).toEqual({
+			idx: 0,
+			error: "server boom",
+			source: "server",
+		});
 	});
 });
 
@@ -2657,7 +2939,7 @@ describe("client loader prefetch isolation from unrelated work", () => {
 				headers: { "Content-Type": "application/json" },
 			}),
 		);
-		await core.submit(
+		await core.submit_inner(
 			"/api/save",
 			{ method: "POST" },
 			{
@@ -2963,11 +3245,11 @@ describe("stale navigation side effects", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Route commit coherence
+/////// Route update coherence
 /////////////////////////////////////////////////////////////////////
 
-describe("route commit coherence", () => {
-	it("state is updated before onRouteCommit fires", async () => {
+describe("route update coherence", () => {
+	it("state is updated before onRouteUpdate fires", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -2983,11 +3265,11 @@ describe("route commit coherence", () => {
 		const core = core_res.val;
 
 		let state_during_callback: unknown = null;
-		let route_commit_info: unknown = null;
+		let route_update: unknown = null;
 		await core.init({
-			onRouteCommit: (info) => {
-				state_during_callback = core.getRouterData();
-				route_commit_info = info;
+			onRouteUpdate: (route, previous_route, reason) => {
+				state_during_callback = core.getRouteState();
+				route_update = { route, previous_route, reason };
 			},
 		});
 
@@ -3002,21 +3284,21 @@ describe("route commit coherence", () => {
 
 		expect(state_during_callback).not.toBeNull();
 		const state = state_during_callback as any;
-		expect(state.matchedPatterns).toEqual(["/coherence"]);
-		expect(route_commit_info).toMatchObject({
+		expect(state.matches.map((m: any) => m.pattern)).toEqual([
+			"/coherence",
+		]);
+		expect(route_update).toMatchObject({
 			reason: "navigation",
-			url: `${window.location.origin}/coherence`,
-			previousUrl: `${window.location.origin}/`,
-			urlChanged: true,
-			patternsChanged: true,
-			paramsChanged: false,
-			searchChanged: false,
-			hashChanged: false,
-			historyStateChanged: false,
+			route: {
+				href: `${window.location.origin}/coherence`,
+			},
+			previous_route: {
+				href: `${window.location.origin}/`,
+			},
 		});
 	});
 
-	it("commit is called before onRouteCommit fires", async () => {
+	it("commit is called before onRouteUpdate fires", async () => {
 		seed_payload();
 		const order: string[] = [];
 		const commit = vi.fn(() => {
@@ -3035,8 +3317,8 @@ describe("route commit coherence", () => {
 		const core = core_res.val;
 
 		await core.init({
-			onRouteCommit: () => {
-				return order.push("onRouteCommit");
+			onRouteUpdate: () => {
+				return order.push("onRouteUpdate");
 			},
 		});
 		order.length = 0;
@@ -3047,10 +3329,10 @@ describe("route commit coherence", () => {
 
 		await core.navigate("/order");
 
-		expect(order).toEqual(["commit", "onRouteCommit"]);
+		expect(order).toEqual(["commit", "onRouteUpdate"]);
 	});
 
-	it("fires an initial route commit", async () => {
+	it("fires an initial route update", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -3065,33 +3347,29 @@ describe("route commit coherence", () => {
 		}
 		const core = core_res.val;
 
-		let route_commit_info: unknown = null;
+		let route_update: unknown = null;
 		await core.init({
-			onRouteCommit: (info) => {
-				route_commit_info = info;
+			onRouteUpdate: (route, previous_route, reason) => {
+				route_update = { route, previous_route, reason };
 			},
 		});
 
-		expect(route_commit_info).toMatchObject({
-			reason: "initial",
-			url: `${window.location.origin}/`,
-			previousUrl: null,
-			urlChanged: true,
-			patternsChanged: true,
-			paramsChanged: true,
-			searchChanged: true,
-			hashChanged: true,
-			historyStateChanged: true,
+		expect(route_update).toMatchObject({
+			reason: "init",
+			route: {
+				href: `${window.location.origin}/`,
+			},
+			previous_route: null,
 		});
 	});
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Route commit blocked by client loaders
+/////// Route update blocked by client loaders
 /////////////////////////////////////////////////////////////////////
 
-describe("route commit blocked by client loaders", () => {
-	it("does not fire onRouteCommit until client loaders settle", async () => {
+describe("route update blocked by client loaders", () => {
+	it("does not fire onRouteUpdate until client loaders settle", async () => {
 		let loader_resolve: ((v: unknown) => void) | undefined;
 
 		vi.doMock("/mod-blocking.js", () => {
@@ -3127,8 +3405,8 @@ describe("route commit blocked by client loaders", () => {
 
 		let route_changed = false;
 		await core.init({
-			onRouteCommit: (info) => {
-				if (info.reason === "initial") {
+			onRouteUpdate: (_route, _previous_route, reason) => {
+				if (reason === "init") {
 					return;
 				}
 				route_changed = true;
@@ -3478,7 +3756,7 @@ describe("history state", () => {
 		expect(reval_state.history_state).toEqual({ modal: "confirm" });
 	});
 
-	it("getRouterData exposes historyState", async () => {
+	it("getRouteState exposes historyState", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -3503,8 +3781,8 @@ describe("history state", () => {
 			state: { from: "favorites" },
 		});
 
-		const router_data = core.getRouterData();
-		expect(router_data.historyState).toEqual({ from: "favorites" });
+		const route_state = core.getRouteState();
+		expect(route_state.historyState).toEqual({ from: "favorites" });
 	});
 
 	it("hash-only navigation commits state to history", async () => {
@@ -3529,8 +3807,8 @@ describe("history state", () => {
 		});
 
 		// State should be written to history even for hash-only nav
-		const router_data = core.getRouterData();
-		expect(router_data.historyState).toEqual({ tab: "overview" });
+		const route_state = core.getRouteState();
+		expect(route_state.historyState).toEqual({ tab: "overview" });
 	});
 
 	it("state from replace navigation overwrites previous state", async () => {

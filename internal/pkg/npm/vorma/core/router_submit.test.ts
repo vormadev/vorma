@@ -14,7 +14,12 @@ import {
 	text_response,
 	tick,
 } from "./___ccc_test_helpers.ts";
-import { X_CLIENT_REDIRECT, X_VORMA_RELOAD } from "./constants.ts";
+import {
+	ACTION_RESPONSE_DATA_KEY,
+	ACTION_RESPONSE_SKIP_REVALIDATION_KEY,
+	X_CLIENT_REDIRECT,
+	X_VORMA_RELOAD,
+} from "./constants.ts";
 
 register_ccc_lifecycle(beforeEach, afterEach);
 
@@ -27,7 +32,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -45,7 +50,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -63,7 +68,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -81,7 +86,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -99,7 +104,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -124,7 +129,7 @@ describe("submit", () => {
 			new DOMException("Aborted", "AbortError"),
 		);
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -145,7 +150,7 @@ describe("submit", () => {
 			new Error("network down"),
 		);
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -163,7 +168,7 @@ describe("submit", () => {
 		const { core, commit } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -197,7 +202,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const s1 = core.submit(
+		const s1 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -205,7 +210,7 @@ describe("submit", () => {
 				revalidate: false,
 			},
 		);
-		const s2 = core.submit(
+		const s2 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -231,14 +236,14 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, wait_for } = mock_fetch();
 
-		void core.submit(
+		void core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
 				revalidate: false,
 			},
 		);
-		void core.submit(
+		void core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -254,15 +259,21 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
-		call(0).resolve(json_response({ ok: true }));
+		call(0).resolve(
+			json_response({
+				[ACTION_RESPONSE_DATA_KEY]: { ok: true },
+				[ACTION_RESPONSE_SKIP_REVALIDATION_KEY]: false,
+			}),
+		);
 		const result = await sub;
 
 		await wait_for(2);
 		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
 		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
 
+		expect(result).toMatchObject({ success: true, data: { ok: true } });
 		expect(calls).toHaveLength(2);
 	});
 
@@ -270,7 +281,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -285,11 +296,77 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
+	it("skips default POST revalidation when the action response says to skip", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		await wait_for(1);
+		call(0).resolve(
+			json_response({
+				[ACTION_RESPONSE_DATA_KEY]: { ok: true },
+				[ACTION_RESPONSE_SKIP_REVALIDATION_KEY]: true,
+			}),
+		);
+		const result = await sub;
+
+		expect(result).toMatchObject({ success: true, data: { ok: true } });
+		expect(calls).toHaveLength(1);
+	});
+
+	it("lets revalidate: true override action response revalidation skip", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				revalidate: true,
+			},
+		);
+		await wait_for(1);
+		call(0).resolve(
+			json_response({
+				[ACTION_RESPONSE_DATA_KEY]: { ok: true },
+				[ACTION_RESPONSE_SKIP_REVALIDATION_KEY]: true,
+			}),
+		);
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(calls).toHaveLength(2);
+	});
+
+	it("does not unwrap arbitrary JSON payloads with a data field", async () => {
+		const { core } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				revalidate: false,
+			},
+		);
+		await wait_for(1);
+		call(0).resolve(json_response({ data: { ok: true } }));
+		const result = await sub;
+
+		expect(result).toMatchObject({
+			success: true,
+			data: { data: { ok: true } },
+		});
+	});
+
 	it("does not auto-revalidate for implicit GET submissions", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", {}, {});
+		const sub = core.submit_inner("/api/action", {}, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await sub;
@@ -301,7 +378,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "GET" }, {});
+		const sub = core.submit_inner("/api/action", { method: "GET" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await sub;
@@ -313,7 +390,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "HEAD" }, {});
+		const sub = core.submit_inner("/api/action", { method: "HEAD" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await sub;
@@ -325,7 +402,7 @@ describe("submit", () => {
 		const { core, commit } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -357,7 +434,7 @@ describe("submit", () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -377,7 +454,7 @@ describe("submit", () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const s1 = core.submit(
+		const s1 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -385,7 +462,7 @@ describe("submit", () => {
 				revalidate: false,
 			},
 		);
-		void core.submit(
+		void core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -406,7 +483,7 @@ describe("submit", () => {
 		const { core, commit } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -446,7 +523,7 @@ describe("submit", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -477,7 +554,7 @@ describe("submit", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -493,14 +570,14 @@ describe("submit", () => {
 		expect(() => {
 			return call(2);
 		}).toThrow();
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 
 	it("returns error for non-HTTP redirect schemes on submit", async () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -531,7 +608,7 @@ describe("submit body handling", () => {
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(json_response());
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST", body: { a: 1 } as unknown as BodyInit },
 			{ revalidate: false },
@@ -550,7 +627,7 @@ describe("submit body handling", () => {
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(json_response());
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{
 				method: "POST",
@@ -572,7 +649,7 @@ describe("submit body handling", () => {
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(json_response());
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{
 				method: "GET",
@@ -580,7 +657,7 @@ describe("submit body handling", () => {
 			},
 			{},
 		);
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{
 				method: "HEAD",
@@ -588,7 +665,7 @@ describe("submit body handling", () => {
 			},
 			{},
 		);
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{
 				body: "should-strip",
@@ -609,7 +686,7 @@ describe("submit body handling", () => {
 		const form = new FormData();
 		form.set("key", "value");
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST", body: form },
 			{ revalidate: false },
@@ -626,7 +703,7 @@ describe("submit body handling", () => {
 			.mockResolvedValue(json_response());
 		const params = new URLSearchParams({ a: "1" });
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST", body: params },
 			{ revalidate: false },
@@ -646,21 +723,21 @@ describe("submit body handling", () => {
 		const buffer = new ArrayBuffer(16);
 		const view = new Uint8Array([1, 2, 3]);
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/blob",
 			{ method: "POST", body: blob },
 			{
 				revalidate: false,
 			},
 		);
-		await core.submit(
+		await core.submit_inner(
 			"/api/buffer",
 			{ method: "POST", body: buffer },
 			{
 				revalidate: false,
 			},
 		);
-		await core.submit(
+		await core.submit_inner(
 			"/api/view",
 			{ method: "POST", body: view },
 			{
@@ -679,7 +756,7 @@ describe("submit body handling", () => {
 			.spyOn(globalThis, "fetch")
 			.mockResolvedValue(json_response());
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST", body: null },
 			{ revalidate: false },
@@ -692,7 +769,7 @@ describe("submit body handling", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -716,7 +793,7 @@ describe("submit dedupe edge cases", () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const s1 = core.submit(
+		const s1 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -724,7 +801,7 @@ describe("submit dedupe edge cases", () => {
 				revalidate: false,
 			},
 		);
-		const s2 = core.submit(
+		const s2 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -749,7 +826,7 @@ describe("submit dedupe edge cases", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const s1 = core.submit(
+		const s1 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -757,7 +834,7 @@ describe("submit dedupe edge cases", () => {
 				revalidate: false,
 			},
 		);
-		const s2 = core.submit(
+		const s2 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -773,21 +850,21 @@ describe("submit dedupe edge cases", () => {
 
 		expect(r1.success).toBe(false);
 		expect(r2.success).toBe(false);
-		expect(core.getStatus().isSubmitting).toBe(false);
+		expect(core.getWorkState().submissions.length > 0).toBe(false);
 	});
 
 	it("stale deduped submit does not trigger revalidation", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const s1 = core.submit(
+		const s1 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
 			},
 		);
-		const s2 = core.submit(
+		const s2 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -822,7 +899,7 @@ describe("submit response availability", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -850,7 +927,7 @@ describe("submit response availability", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -878,7 +955,7 @@ describe("submit response availability", () => {
 			new Error("network down"),
 		);
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -903,7 +980,7 @@ describe("submit error message preservation", () => {
 			new Error("ECONNREFUSED"),
 		);
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -922,7 +999,7 @@ describe("submit error message preservation", () => {
 
 		vi.spyOn(globalThis, "fetch").mockRejectedValue("not-an-error");
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -941,7 +1018,7 @@ describe("submit error message preservation", () => {
 
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(42);
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -965,7 +1042,7 @@ describe("cross-origin submit rejection", () => {
 		const { core } = await setup();
 		const { calls } = mock_fetch();
 
-		const result = await core.submit(
+		const result = await core.submit_inner(
 			"https://external.example/api",
 			{ method: "POST" },
 			{ revalidate: false },
@@ -985,14 +1062,14 @@ describe("status continuity", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		void core.submit(
+		void core.submit_inner(
 			"/api/a",
 			{ method: "POST" },
 			{
 				revalidate: false,
 			},
 		);
-		void core.submit(
+		void core.submit_inner(
 			"/api/b",
 			{ method: "POST" },
 			{
@@ -1000,18 +1077,18 @@ describe("status continuity", () => {
 			},
 		);
 
-		expect(core.getStatus().isSubmitting).toBe(true);
+		expect(core.getWorkState().submissions.length > 0).toBe(true);
 
 		await wait_for(2);
 		call(0).resolve(json_response());
 		await tick();
-		expect(core.getStatus().isSubmitting).toBe(true);
+		expect(core.getWorkState().submissions.length > 0).toBe(true);
 
 		call(1).resolve(json_response());
 		await tick();
 
 		for (let i = 0; i < 10; i++) {
-			if (!core.getStatus().isSubmitting) {
+			if (core.getWorkState().submissions.length === 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1019,14 +1096,14 @@ describe("status continuity", () => {
 			});
 		}
 
-		expect(core.getStatus().isSubmitting).toBe(false);
+		expect(core.getWorkState().submissions.length > 0).toBe(false);
 	});
 
 	it("keeps submitting continuous through same-key dedupe handoff", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const s1 = core.submit(
+		const s1 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1034,7 +1111,7 @@ describe("status continuity", () => {
 				revalidate: false,
 			},
 		);
-		const s2 = core.submit(
+		const s2 = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1043,10 +1120,10 @@ describe("status continuity", () => {
 			},
 		);
 
-		expect(core.getStatus().isSubmitting).toBe(true);
+		expect(core.getWorkState().submissions.length > 0).toBe(true);
 
 		await s1;
-		expect(core.getStatus().isSubmitting).toBe(true);
+		expect(core.getWorkState().submissions.length > 0).toBe(true);
 
 		// s1 dispatched call 0 (aborted), s2 dispatched call 1
 		await wait_for(2);
@@ -1054,7 +1131,7 @@ describe("status continuity", () => {
 		await s2;
 
 		for (let i = 0; i < 10; i++) {
-			if (!core.getStatus().isSubmitting) {
+			if (core.getWorkState().submissions.length === 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1062,25 +1139,25 @@ describe("status continuity", () => {
 			});
 		}
 
-		expect(core.getStatus().isSubmitting).toBe(false);
+		expect(core.getWorkState().submissions.length > 0).toBe(false);
 	});
 
 	it("keeps loading continuous from submit into auto-revalidate", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
 
-		expect(core.getStatus().isRevalidating).toBe(true);
+		expect(core.getWorkState().revalidation !== null).toBe(true);
 
 		await wait_for(2);
 		call(1).resolve(route_response());
 		await result.revalidationPromise;
 
-		expect(core.getStatus().isRevalidating).toBe(false);
+		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 });
 
@@ -1093,7 +1170,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "GET" }, {});
+		const sub = core.submit_inner("/api/action", { method: "GET" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -1105,7 +1182,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit(
+		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1123,7 +1200,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -1157,7 +1234,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;

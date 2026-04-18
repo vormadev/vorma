@@ -153,6 +153,14 @@ func render_ts_routes_section(
 
 	var sb strings.Builder
 
+	has_root_loader := false
+	for _, l := range loaders {
+		if l.GetPattern() == "/" {
+			has_root_loader = true
+			break
+		}
+	}
+
 	if len(loaders) > 0 {
 		sb.WriteString("const vormaLoaders = [\n")
 	} else {
@@ -185,6 +193,30 @@ func render_ts_routes_section(
 
 		if is_splat {
 			sb.WriteString("\t\tisSplat: true,\n")
+		}
+
+		var parents []string
+		if pattern != "/" && has_root_loader {
+			parents = append(parents, "/")
+		}
+		for _, candidate := range loaders {
+			maybe_parent := candidate.GetPattern()
+			if maybe_parent == pattern {
+				continue
+			}
+			if strings.HasPrefix(pattern, maybe_parent+"/") {
+				parents = append(parents, maybe_parent)
+			}
+		}
+		if len(parents) > 0 {
+			sb.WriteString("\t\tparents: [")
+			for i, parent := range parents {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				fmt.Fprintf(&sb, "%q", parent)
+			}
+			sb.WriteString("],\n")
 		}
 
 		fmt.Fprintf(&sb, "\t\tpattern: %q,\n", pattern)

@@ -8,13 +8,15 @@ import (
 	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/tsgen"
+	"github.com/vormadev/vorma/kit/validate"
 )
 
 type live_state struct {
-	Error       string
-	VormaConfig *vorma.Vorma
-	TSResult    live_ts_result
-	TSModules   map[string]ts_route
+	Error         string
+	VormaConfig   *vorma.Vorma
+	TSResult      live_ts_result
+	TSModules     map[string]ts_route
+	SearchSchemas map[string]validate.URLSearchParamsSchema
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -81,10 +83,29 @@ func get_live_state(
 		return nil, fmt.Errorf("error getting TS modules: %w", err)
 	}
 
+	search_schemas := make(map[string]validate.URLSearchParamsSchema, len(loaders))
+	schema_builder := validate.URLSearchParamsSchemaBuilder{}
+	for _, l := range loaders {
+		pattern := l.GetPattern()
+		if pattern == "" {
+			continue
+		}
+		schema, err := schema_builder.FromValue(l.IType().Instance)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"error generating loader search schema for %s: %w",
+				pattern,
+				err,
+			)
+		}
+		search_schemas[pattern] = schema
+	}
+
 	ls := &live_state{
-		VormaConfig: cfg.V,
-		TSResult:    ts_result,
-		TSModules:   ts_modules,
+		VormaConfig:   cfg.V,
+		TSResult:      ts_result,
+		TSModules:     ts_modules,
+		SearchSchemas: search_schemas,
 	}
 
 	return ls, nil

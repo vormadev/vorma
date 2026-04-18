@@ -17,10 +17,12 @@ export type LinkPropsResult = {
 };
 
 export type LinkNavFns = {
-	navigate: (
-		href: string,
-		options?: { replace?: boolean; scrollToTop?: boolean; state?: unknown },
-	) => Promise<{ didNavigate: boolean }>;
+	navigate: (props: {
+		href: string;
+		replace?: boolean;
+		scrollToTop?: boolean;
+		state?: unknown;
+	}) => Promise<{ didNavigate: boolean }>;
 	start_prefetch: (href: string) => void;
 	stop_prefetch: (href: string) => void;
 	save_current_scroll: () => void;
@@ -177,7 +179,8 @@ export function make_link_props(
 			ev.preventDefault?.();
 
 			try {
-				await nav.navigate(href, {
+				await nav.navigate({
+					href,
 					replace,
 					scrollToTop: scroll_to_top,
 					state,
@@ -228,7 +231,8 @@ export function make_link_props(
 						);
 
 						try {
-							await nav.navigate(href, {
+							await nav.navigate({
+								href,
 								replace,
 								scrollToTop: scroll_to_top,
 							});

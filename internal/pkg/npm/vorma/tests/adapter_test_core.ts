@@ -16,6 +16,7 @@ type TestRouteProps = {
 };
 
 type TestClientLoaderProps = {
+	trigger: "init" | "navigation" | "revalidation" | "prefetch";
 	params: Record<string, string>;
 	splatValues: string[];
 	serverDataPromise: Promise<{
@@ -27,6 +28,10 @@ type TestClientLoaderProps = {
 	signal: AbortSignal;
 };
 
+type TestRouteTarget =
+	| ({ href: string } & Record<string, unknown>)
+	| ({ pattern: string } & Record<string, unknown>);
+
 type TestVormaClient = {
 	init: (
 		options: Omit<Partial<InitOptions>, "render"> & {
@@ -37,10 +42,11 @@ type TestVormaClient = {
 		},
 	) => Promise<void>;
 
-	navigate: (
-		target: string | ({ pattern: string } & Record<string, unknown>),
-		options?: Record<string, unknown>,
-	) => Promise<{ didNavigate: boolean }>;
+	navigate: (props: TestRouteTarget) => Promise<{ didNavigate: boolean }>;
+
+	prefetch: (target: TestRouteTarget) => void;
+
+	cancelPrefetch: (target: TestRouteTarget) => void;
 
 	revalidate: () => Promise<RevalidationResult>;
 
@@ -54,7 +60,9 @@ type TestVormaClient = {
 
 	usePatternLoaderData: (pattern: string) => unknown;
 
-	useRouterData: () => unknown;
+	useRouteState: (selector?: (route: any) => unknown) => unknown;
+
+	useWorkState: (selector?: (work: any) => unknown) => unknown;
 
 	useClientLoaderData: (
 		props: { idx: number } & Record<string, unknown>,
@@ -809,7 +817,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		it("useRouterData returns unscoped router data", async () => {
+		it("useRouteState returns route state", async () => {
 			let captured: unknown;
 
 			vi.doMock("/hook-router.js", () => {
@@ -817,7 +825,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 					default: {
 						pattern: "/users/:id",
 						component: () => {
-							captured = client.useRouterData();
+							captured = client.useRouteState();
 							return harness.h("div", {}, "router-test");
 						},
 					},
@@ -840,15 +848,17 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				render(harness.h(client.RootOutlet, { idx: 0 }));
 				const data = harness.unwrap(captured) as any;
 				expect(data.params).toEqual({ id: "42" });
-				expect(data.matchedPatterns).toEqual(["/users/:id"]);
 				expect(data.clientBuildID).toBe("build-1");
 				expect(data).toHaveProperty("historyState", undefined);
+				expect(data.matches.map((m: any) => m.pattern)).toEqual([
+					"/users/:id",
+				]);
 			} finally {
 				cleanup();
 			}
 		});
 
-		it("useClientLoaderData returns client_data at props.idx", async () => {
+		it("useClientLoaderData returns client loader data at props.idx", async () => {
 			let captured: unknown = "sentinel";
 
 			vi.doMock("/hook-cl.js", () => {
@@ -996,10 +1006,8 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						href: {
-							pattern: "/users/:id",
-							params: { id: "42" },
-						},
+						pattern: "/users/:id",
+						params: { id: "42" },
 						children: "User Link",
 					}),
 				);
@@ -1022,12 +1030,10 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						href: {
-							pattern: "/products/:id",
-							params: { id: "7" },
-							search: { tab: "reviews" },
-							hash: "#top",
-						},
+						pattern: "/products/:id",
+						params: { id: "7" },
+						search: { tab: "reviews" },
+						hash: "#top",
 						children: "Product",
 					}),
 				);
@@ -1053,7 +1059,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						href: { pattern: "/a" },
+						pattern: "/a",
 						children: "A",
 					}),
 				);
@@ -1063,7 +1069,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 				render(
 					harness.h(client.Link as any, {
-						href: { pattern: "/b" },
+						pattern: "/b",
 						className: "custom-class",
 						children: "B",
 					}),
@@ -1090,7 +1096,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						href: { pattern: "/clicked" },
+						pattern: "/clicked",
 						children: "Click Me",
 					}),
 				);
@@ -1123,7 +1129,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						href: { pattern: "/no-nav" },
+						pattern: "/no-nav",
 						children: "Modified",
 					}),
 				);
@@ -1165,7 +1171,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				render(
 					harness.h(client.Link as any, {
-						href: { pattern: "/stripped" },
+						pattern: "/stripped",
 						prefetch: "intent",
 						prefetchDelayMs: 100,
 						replace: true,

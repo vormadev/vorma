@@ -2,8 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
-	build_mutation_url,
-	build_query_url,
+	build_action_url,
 	build_typed_link_href,
 	resolve_body,
 	resolve_path,
@@ -68,27 +67,13 @@ describe("resolve_path", () => {
 		});
 	});
 
-	describe("query paths", () => {
+	describe("action paths", () => {
 		it("does not strip _index suffix", () => {
-			expect(resolve_path("query", "/blog/_index")).toBe("/blog/_index");
+			expect(resolve_path("action", "/blog/_index")).toBe("/blog/_index");
 		});
 
 		it("resolves dynamic params", () => {
-			expect(resolve_path("query", "/users/:id", { id: "42" })).toBe(
-				"/users/42",
-			);
-		});
-	});
-
-	describe("mutation paths", () => {
-		it("does not strip _index suffix", () => {
-			expect(resolve_path("mutation", "/blog/_index")).toBe(
-				"/blog/_index",
-			);
-		});
-
-		it("resolves dynamic params", () => {
-			expect(resolve_path("mutation", "/users/:id", { id: "42" })).toBe(
+			expect(resolve_path("action", "/users/:id", { id: "42" })).toBe(
 				"/users/42",
 			);
 		});
@@ -157,14 +142,14 @@ describe("build_typed_link_href", () => {
 	});
 });
 
-describe("build_query_url", () => {
+describe("build_action_url", () => {
 	it("prepends mount root to resolved path", () => {
-		const url = build_query_url("/api/", "/users/:id", { id: "42" });
+		const url = build_action_url("/api/", "/users/:id", { id: "42" });
 		expect(url.pathname).toBe("/api/users/42");
 	});
 
 	it("serializes input as search params", () => {
-		const url = build_query_url(
+		const url = build_action_url(
 			"/api/",
 			"/users/:id",
 			{ id: "42" },
@@ -177,12 +162,12 @@ describe("build_query_url", () => {
 	});
 
 	it("produces no search params when input is undefined", () => {
-		const url = build_query_url("/api/", "/users/:id", { id: "42" });
+		const url = build_action_url("/api/", "/users/:id", { id: "42" });
 		expect(url.search).toBe("");
 	});
 
 	it("produces no search params when input is null", () => {
-		const url = build_query_url(
+		const url = build_action_url(
 			"/api/",
 			"/users/:id",
 			{ id: "42" },
@@ -193,12 +178,12 @@ describe("build_query_url", () => {
 	});
 
 	it("URL-encodes dynamic params", () => {
-		const url = build_query_url("/api/", "/users/:id", { id: "a/b" });
+		const url = build_action_url("/api/", "/users/:id", { id: "a/b" });
 		expect(url.pathname).toBe("/api/users/a%2Fb");
 	});
 
 	it("handles splat values", () => {
-		const url = build_query_url("/api/", "/docs/*", undefined, [
+		const url = build_action_url("/api/", "/docs/*", undefined, [
 			"guide",
 			"intro",
 		]);
@@ -206,43 +191,24 @@ describe("build_query_url", () => {
 	});
 
 	it("handles root pattern", () => {
-		const url = build_query_url("/api/", "/");
+		const url = build_action_url("/api/", "/");
 		expect(url.pathname).toBe("/api");
 	});
 
 	it("normalizes trailing slash on mount root", () => {
-		const url = build_query_url("/api", "/users/:id", { id: "42" });
-		expect(url.pathname).toBe("/api/users/42");
-	});
-});
-
-describe("build_mutation_url", () => {
-	it("prepends mount root to resolved path", () => {
-		const url = build_mutation_url("/api/", "/users/:id", { id: "42" });
+		const url = build_action_url("/api", "/users/:id", { id: "42" });
 		expect(url.pathname).toBe("/api/users/42");
 	});
 
 	it("does not include any search params", () => {
-		const url = build_mutation_url("/api/", "/users/:id", { id: "42" });
+		const url = build_action_url(
+			"/api/",
+			"/users/:id",
+			{ id: "42" },
+			undefined,
+			undefined,
+		);
 		expect(url.search).toBe("");
-	});
-
-	it("URL-encodes dynamic params", () => {
-		const url = build_mutation_url("/api/", "/users/:id", { id: "a/b" });
-		expect(url.pathname).toBe("/api/users/a%2Fb");
-	});
-
-	it("handles splat values", () => {
-		const url = build_mutation_url("/api/", "/docs/*", undefined, [
-			"guide",
-			"intro",
-		]);
-		expect(url.pathname).toBe("/api/docs/guide/intro");
-	});
-
-	it("handles root pattern", () => {
-		const url = build_mutation_url("/api/", "/");
-		expect(url.pathname).toBe("/api");
 	});
 });
 

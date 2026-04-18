@@ -255,9 +255,15 @@ type ActionCtxWrapper[I any, CtxPtr any] interface {
 }
 
 type Action[I any, O any, CtxPtr ~*Ctx, Ctx ActionCtxWrapper[I, CtxPtr]] struct {
-	Method  string
-	Pattern string
-	Handler func(CtxPtr) (O, error)
+	Method           string
+	Pattern          string
+	SkipRevalidation bool
+	Handler          func(CtxPtr) (O, error)
+}
+
+type action_response[O any] struct {
+	Data             O
+	SkipRevalidation bool
 }
 
 func (a Action[I, O, CtxPtr, Ctx]) IType() *tsgen.GoTypeSrc { return tsgen.GoType[I]() }
@@ -271,14 +277,26 @@ func (a Action[I, O, CtxPtr, Ctx]) GetPattern() string { return a.Pattern }
 func (a Action[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.Router) {
 	if a.Handler == nil {
 		mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *ActionCtx[mux.None]) (mux.None, error) { return mux.None{}, nil },
+			func(ctx *ActionCtx[mux.None]) (action_response[mux.None], error) {
+				return action_response[mux.None]{
+					Data:             mux.None{},
+					SkipRevalidation: a.SkipRevalidation,
+				}, nil
+			},
 		))
 		return
 	}
 	mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *ActionCtx[I]) (O, error) {
+		func(ctx *ActionCtx[I]) (action_response[O], error) {
 			var zero Ctx
-			return a.Handler(zero.Wrap(ctx))
+			data, err := a.Handler(zero.Wrap(ctx))
+			if err != nil {
+				return action_response[O]{}, err
+			}
+			return action_response[O]{
+				Data:             data,
+				SkipRevalidation: a.SkipRevalidation,
+			}, nil
 		},
 	))
 }

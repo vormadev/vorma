@@ -8,9 +8,12 @@ import type {
 } from "./create_client_core";
 import {
 	create_client_core,
-	type RouteEntry,
+	type RouteErrorState,
+	type RouteRenderEntry,
+	type RouteRenderState,
 	type RouteState,
 	type ScrollIntent,
+	type WorkState,
 } from "./create_client_core.ts";
 import { type LinkNavFns } from "./make_link_props.ts";
 import { get_entry_key } from "./resolve_outlet_slot.ts";
@@ -22,17 +25,21 @@ import type {
 	MakeTypedLinkProps,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
-	MakeTypedNavigateOptions,
+	MakeTypedNavProps,
+	MakeTypedNavTarget,
 	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
-	MakeTypedRouterData,
-	MakeTypedRouteTarget,
 } from "./types";
-import { create_typed_navigate, create_typed_to_href } from "./url.ts";
+import {
+	create_typed_build_href,
+	create_typed_navigate,
+	create_typed_prefetch,
+} from "./url.ts";
 
 export type DecomposedState = {
 	// Always a new reference
-	entries: RouteEntry[];
+	entries: RouteRenderEntry[];
+	error: RouteErrorState | null;
 
 	// Stable per channel
 	loaders_data: unknown[];
@@ -67,28 +74,23 @@ type AdapterBase<A extends AppConfig> = {
 
 	passthrough: Pick<
 		ClientCore,
-		| "revalidate"
-		| "submit"
-		| "getStatus"
-		| "getClientBuildID"
-		| "getRootEl"
-		| "revalidateOnWindowFocus"
+		"revalidate" | "getRouteState" | "getWorkState"
 	> & {
 		navigate: <P extends MakeTypedLoaderPattern<A>>(
-			target: MakeTypedRouteTarget<A, P>,
-			options?: MakeTypedNavigateOptions,
+			props: MakeTypedNavProps<A, P>,
 		) => Promise<{ didNavigate: boolean }>;
 
-		toHref: <P extends MakeTypedLoaderPattern<A>>(
+		prefetch: <P extends MakeTypedLoaderPattern<A>>(
+			target: MakeTypedNavTarget<A, P>,
+		) => void;
+
+		cancelPrefetch: <P extends MakeTypedLoaderPattern<A>>(
+			target: MakeTypedNavTarget<A, P>,
+		) => void;
+
+		buildHref: <P extends MakeTypedLoaderPattern<A>>(
 			destination: MakeTypedRouteDestination<A, P>,
 		) => string;
-
-		getRouterData: {
-			(): MakeTypedRouterData<A>;
-			<P extends MakeTypedLoaderPattern<A>>(
-				routeProps: MakeTypedRouteProps<A, P>,
-			): MakeTypedRouterData<A, P>;
-		};
 
 		apiClient: MakeTypedAPIClient<A>;
 	};
@@ -101,6 +103,7 @@ export function create_adapter_base<A extends AppConfig>(
 ): Result<AdapterBase<A>> {
 	let prev: DecomposedState = {
 		entries: [],
+		error: null,
 		loaders_data: [],
 		client_loaders_data: [],
 		matched_patterns: [],
@@ -113,21 +116,22 @@ export function create_adapter_base<A extends AppConfig>(
 	};
 
 	function decomposed_commit(
-		route_state: RouteState,
+		route_state: RouteRenderState,
 		scroll_intent?: ScrollIntent,
 	): void {
 		const next: DecomposedState = {
 			entries: route_state.entries,
+			error: route_state.error,
 			loaders_data: stable(
 				prev.loaders_data,
 				route_state.entries.map((e) => {
-					return e.data;
+					return e.loader_data;
 				}),
 			),
 			client_loaders_data: stable(
 				prev.client_loaders_data,
 				route_state.entries.map((e) => {
-					return e.client_data;
+					return e.client_loader_data;
 				}),
 			),
 			matched_patterns: stable(
@@ -171,42 +175,40 @@ export function create_adapter_base<A extends AppConfig>(
 	const core = core_res.val;
 
 	const nav_fns: LinkNavFns = {
-		navigate: core.navigate,
+		navigate: (props) => {
+			return core.navigate(props.href, {
+				replace: props.replace,
+				scrollToTop: props.scrollToTop,
+				state: props.state,
+			});
+		},
 		start_prefetch: core.start_prefetch,
 		stop_prefetch: core.stop_prefetch,
 		save_current_scroll: core.save_current_scroll,
 	};
 
 	const navigate = create_typed_navigate<A>(core.navigate);
-	const to_href = create_typed_to_href<A>();
+	const prefetch = create_typed_prefetch<A>(core.start_prefetch);
+	const cancel_prefetch = create_typed_prefetch<A>(core.stop_prefetch);
+	const build_href = create_typed_build_href<A>();
 
 	const api_client = create_typed_api_client<A>(
 		app_config.actionsMountRoot,
-		core.submit,
+		core.submit_inner,
 		api_decorator,
 	);
-
-	function getRouterData(): MakeTypedRouterData<A>;
-	function getRouterData<P extends MakeTypedLoaderPattern<A>>(
-		routeProps: MakeTypedRouteProps<A, P>,
-	): MakeTypedRouterData<A, P>;
-	function getRouterData(_routeProps?: any): any {
-		return core.getRouterData();
-	}
 
 	return R.ok({
 		core,
 		nav_fns,
 		passthrough: {
 			navigate,
-			toHref: to_href,
+			prefetch,
+			cancelPrefetch: cancel_prefetch,
+			buildHref: build_href,
 			revalidate: core.revalidate,
-			submit: core.submit,
-			getStatus: core.getStatus,
-			getClientBuildID: core.getClientBuildID,
-			getRootEl: core.getRootEl,
-			getRouterData,
-			revalidateOnWindowFocus: core.revalidateOnWindowFocus,
+			getRouteState: core.getRouteState,
+			getWorkState: core.getWorkState,
 			apiClient: api_client,
 		},
 	});
@@ -219,6 +221,8 @@ function stable<T>(prev: T, next: T): T {
 type HookReturn<T, Wrapped extends boolean> = Wrapped extends true
 	? () => T
 	: T;
+
+type StateSelector<State, Selected> = (state: State) => Selected;
 
 export type VormaClient<
 	A extends AppConfig,
@@ -241,6 +245,20 @@ export type VormaClient<
 		props: Omit<AnchorProps, "href"> & MakeTypedLinkProps<A, P>,
 	) => Element;
 
+	useRouteState: {
+		(): HookReturn<RouteState, AccessorWrapped>;
+		<T>(
+			selector: StateSelector<RouteState, T>,
+		): HookReturn<T, AccessorWrapped>;
+	};
+
+	useWorkState: {
+		(): HookReturn<WorkState, AccessorWrapped>;
+		<T>(
+			selector: StateSelector<WorkState, T>,
+		): HookReturn<T, AccessorWrapped>;
+	};
+
 	useLoaderData: <P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
 	) => HookReturn<MakeTypedLoaderOutput<A, P>, AccessorWrapped>;
@@ -248,13 +266,6 @@ export type VormaClient<
 	usePatternLoaderData: <P extends MakeTypedLoaderPattern<A>>(
 		pattern: P,
 	) => HookReturn<MakeTypedLoaderOutput<A, P> | undefined, AccessorWrapped>;
-
-	useRouterData: {
-		(): HookReturn<MakeTypedRouterData<A>, AccessorWrapped>;
-		<P extends MakeTypedLoaderPattern<A>>(
-			routeProps: MakeTypedRouteProps<A, P>,
-		): HookReturn<MakeTypedRouterData<A, P>, AccessorWrapped>;
-	};
 
 	useClientLoaderData: <P extends MakeTypedLoaderPattern<A>, T>(
 		props: MakeTypedRouteProps<A, P, T>,

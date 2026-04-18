@@ -1033,10 +1033,48 @@ func parse_url_values(values map[string][]string, dest any) error {
 	return set_nested_field(elem, values)
 }
 
+type url_search_params_codec struct{}
+
+var url_search_params = url_search_params_codec{}
+
+func (url_search_params_codec) base_type(t reflect.Type) (reflect.Type, bool) {
+	is_pointer := false
+	for t.Kind() == reflect.Pointer {
+		is_pointer = true
+		t = t.Elem()
+	}
+	return t, is_pointer
+}
+
+func (url_search_params_codec) field_name(field reflect.StructField) string {
+	return reflectutil.JSONFieldName(field)
+}
+
+func (c url_search_params_codec) should_skip_field(
+	field reflect.StructField,
+) bool {
+	return field.PkgPath != "" || c.field_name(field) == ""
+}
+
+func (url_search_params_codec) is_scalar_type(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+	default:
+		return false
+	}
+}
+
 func set_nested_field(v reflect.Value, values map[string][]string) error {
 	t := v.Type()
 	for i := range v.NumField() {
 		field := t.Field(i)
+		if url_search_params.should_skip_field(field) {
+			continue
+		}
 		fv := v.Field(i)
 
 		if fv.Kind() == reflect.Pointer {
@@ -1054,7 +1092,7 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 			continue
 		}
 
-		tag := reflectutil.JSONFieldName(field)
+		tag := url_search_params.field_name(field)
 
 		if field.Anonymous {
 			if err := set_nested_field(fv, values); err != nil {
@@ -1081,8 +1119,8 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 			nested := make(map[string][]string)
 			pfx := tag + "."
 			for k, v := range values {
-				if strings.HasPrefix(k, pfx) {
-					nested[strings.TrimPrefix(k, pfx)] = v
+				if after, ok := strings.CutPrefix(k, pfx); ok {
+					nested[after] = v
 				}
 			}
 			if err := set_map_field(fv, nested); err != nil {
@@ -1165,19 +1203,9 @@ func set_field(field reflect.Value, values []string) error {
 		return set_slice_field(field, values)
 	case reflect.Map:
 		return set_map_field(field, map[string][]string{"": values})
-	case reflect.String,
-		reflect.Int,
-		reflect.Int8,
-		reflect.Int16,
-		reflect.Int32,
-		reflect.Int64,
-		reflect.Uint,
-		reflect.Uint8,
-		reflect.Uint16,
-		reflect.Uint32,
-		reflect.Uint64,
-		reflect.Float32,
-		reflect.Float64,
+	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16,
+		reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64,
 		reflect.Bool:
 		return set_single_value(field, values[0])
 	default:

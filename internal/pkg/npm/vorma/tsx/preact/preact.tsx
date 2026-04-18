@@ -1,8 +1,13 @@
 /// <reference types="vite/client" />
 
-import { batch, effect, signal } from "@preact/signals";
+import {
+	batch,
+	signal,
+	untracked,
+	useSignal,
+	useSignalEffect,
+} from "@preact/signals";
 import { h, type ComponentType, type HTMLAttributes } from "preact";
-import { useEffect, useMemo, useRef } from "preact/hooks";
 import type { JSX } from "preact/jsx-runtime";
 import {
 	apply_scroll,
@@ -21,15 +26,21 @@ import {
 	type MakeTypedLoaderOutput,
 	type MakeTypedLoaderPattern,
 	type MakeTypedRouteProps,
-	type MakeTypedRouterData,
 	type RouteDefinition,
-	type RouteEntry,
+	type RouteState,
 	type ScrollIntent,
 	type VormaClient,
+	type WorkState,
 } from "vorma/__internal";
+import { jsonDeepEquals } from "vorma/kit/json";
 
 export type {
-	Href,
+	MakeTypedActionInput,
+	MakeTypedActionMethod,
+	MakeTypedActionOutput,
+	MakeTypedActionPattern,
+	MakeTypedActionSubmitOutput,
+	MakeTypedActionSubmitProps,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
@@ -38,24 +49,19 @@ export type {
 	MakeTypedLoaderInput,
 	MakeTypedLoaderOutput,
 	MakeTypedLoaderPattern,
-	MakeTypedMutationInput,
-	MakeTypedMutationOutput,
-	MakeTypedMutationPattern,
-	MakeTypedMutationProps,
-	MakeTypedNavigateOptions,
-	MakeTypedQueryInput,
-	MakeTypedQueryOutput,
-	MakeTypedQueryPattern,
-	MakeTypedQueryProps,
+	MakeTypedNavProps,
+	MakeTypedNavTarget,
 	MakeTypedRouteDestination,
 	MakeTypedRouteProps,
-	MakeTypedRouterData,
-	MakeTypedRouteTarget,
 	ProgressIndicatorConfig,
 	RevalidationResult,
+	RouteErrorState,
+	RouteState,
+	RouteUpdateReason,
 	SubmitOptions,
 	SubmitResult,
 	AppConfig as VormaAppConfig,
+	WorkState,
 } from "vorma/__internal";
 
 type CreateVormaClientOptions<A extends AppConfig> = {
@@ -75,16 +81,61 @@ export function createVormaClient<A extends AppConfig>(
 	false,
 	ComponentType
 > {
-	const entries_signal = signal<RouteEntry[]>([]);
+	const entries_signal = signal<DecomposedState["entries"]>([]);
+	const route_error_signal = signal<DecomposedState["error"]>(null);
 	const loaders_data_signal = signal<unknown[]>([]);
 	const client_loaders_data_signal = signal<unknown[]>([]);
 	const matched_patterns_signal = signal<string[]>([]);
-	const import_urls_signal = signal<string[]>([]);
-	const entry_keys_signal = signal<string[]>([]);
-	const params_signal = signal<Record<string, string>>({});
-	const splat_values_signal = signal<string[]>([]);
-	const build_id_signal = signal("");
-	const history_state_signal = signal<unknown>(undefined);
+	const route_state_signal = signal<RouteState | null>(null);
+	const work_state_signal = signal<WorkState>({
+		navigation: null,
+		revalidation: null,
+		prefetch: null,
+		submissions: [],
+	});
+
+	function get_route_snapshot(): RouteState {
+		const route = route_state_signal.value;
+		if (!route) {
+			throw new Error("Vorma not initialized");
+		}
+		return route;
+	}
+
+	function get_work_snapshot(): WorkState {
+		return work_state_signal.value;
+	}
+
+	function use_signal_selector<State, Selected>(
+		get_state: () => State,
+		selector: (state: State) => Selected,
+	): Selected {
+		const selected_signal = useSignal({
+			value: untracked(() => {
+				return selector(get_state());
+			}),
+		});
+		const render_selected = untracked(() => {
+			return selector(get_state());
+		});
+		if (!jsonDeepEquals(selected_signal.peek().value, render_selected)) {
+			selected_signal.value = {
+				value: render_selected,
+			};
+		}
+
+		useSignalEffect(() => {
+			const selected = selector(get_state());
+			if (jsonDeepEquals(selected_signal.peek().value, selected)) {
+				return;
+			}
+			selected_signal.value = {
+				value: selected,
+			};
+		});
+
+		return selected_signal.value.value;
+	}
 
 	let pending_scroll_intent: ScrollIntent | undefined;
 
@@ -97,16 +148,11 @@ export function createVormaClient<A extends AppConfig>(
 
 			batch(() => {
 				entries_signal.value = decomposed.entries;
+				route_error_signal.value = decomposed.error;
 				loaders_data_signal.value = decomposed.loaders_data;
 				client_loaders_data_signal.value =
 					decomposed.client_loaders_data;
 				matched_patterns_signal.value = decomposed.matched_patterns;
-				import_urls_signal.value = decomposed.import_urls;
-				entry_keys_signal.value = decomposed.entry_keys;
-				params_signal.value = decomposed.params;
-				splat_values_signal.value = decomposed.splat_values;
-				build_id_signal.value = decomposed.client_build_id;
-				history_state_signal.value = decomposed.history_state;
 			});
 		},
 		options?.apiDecorator,
@@ -118,6 +164,34 @@ export function createVormaClient<A extends AppConfig>(
 	}
 
 	const { core, nav_fns, passthrough } = adapter_base_res.val;
+
+	function useRouteState(): RouteState;
+	function useRouteState<T>(selector: (route: RouteState) => T): T;
+	function useRouteState<T>(
+		selector?: (route: RouteState) => T,
+	): RouteState | T {
+		const select: (route: RouteState) => RouteState | T = selector
+			? (route: RouteState) => {
+					return selector(route);
+				}
+			: (route: RouteState) => {
+					return route;
+				};
+		return use_signal_selector(get_route_snapshot, select);
+	}
+
+	function useWorkState(): WorkState;
+	function useWorkState<T>(selector: (work: WorkState) => T): T;
+	function useWorkState<T>(selector?: (work: WorkState) => T): WorkState | T {
+		const select: (work: WorkState) => WorkState | T = selector
+			? (work: WorkState) => {
+					return selector(work);
+				}
+			: (work: WorkState) => {
+					return work;
+				};
+		return use_signal_selector(get_work_snapshot, select);
+	}
 
 	function useLoaderData<P extends MakeTypedLoaderPattern<A>>(
 		props: MakeTypedRouteProps<A, P>,
@@ -137,24 +211,6 @@ export function createVormaClient<A extends AppConfig>(
 			return undefined;
 		}
 		return loaders_data_signal.value[idx] as MakeTypedLoaderOutput<A, P>;
-	}
-
-	function useRouterData(): MakeTypedRouterData<A>;
-	function useRouterData<P extends MakeTypedLoaderPattern<A>>(
-		routeProps: MakeTypedRouteProps<A, P>,
-	): MakeTypedRouterData<A, P>;
-	function useRouterData(_routeProps?: any): any {
-		return {
-			clientBuildID: build_id_signal.value,
-			matchedPatterns: matched_patterns_signal.value,
-			splatValues: splat_values_signal.value,
-			params: params_signal.value,
-			historyState: history_state_signal.value,
-			rootData:
-				matched_patterns_signal.value[0] === "/"
-					? loaders_data_signal.value[0]
-					: undefined,
-		};
 	}
 
 	function useClientLoaderData<P extends MakeTypedLoaderPattern<A>, T>(
@@ -184,49 +240,14 @@ export function createVormaClient<A extends AppConfig>(
 		props: { idx?: number } & Record<string, unknown>,
 	): JSX.Element | null {
 		const idx = props.idx ?? 0;
-		const ref = useRef(props);
-		ref.current = props;
 
-		const current_import_url = signal(import_urls_signal.value[idx]);
-		const current_entry_key = signal(entry_keys_signal.value[idx]);
-		const next_import_url = signal(import_urls_signal.value[idx + 1]);
-		const next_entry_key = signal(entry_keys_signal.value[idx + 1]);
-
-		useEffect(() => {
-			const dispose = effect(() => {
-				const urls = import_urls_signal.value;
-				const keys = entry_keys_signal.value;
-
-				batch(() => {
-					const new_url = urls[idx];
-					const new_key = keys[idx];
-					if (current_import_url.value !== new_url) {
-						current_import_url.value = new_url;
-					}
-					if (current_entry_key.value !== new_key) {
-						current_entry_key.value = new_key;
-					}
-
-					const new_next_url = urls[idx + 1];
-					const new_next_key = keys[idx + 1];
-					if (next_import_url.value !== new_next_url) {
-						next_import_url.value = new_next_url;
-					}
-					if (next_entry_key.value !== new_next_key) {
-						next_entry_key.value = new_next_key;
-					}
-				});
-			});
-			return dispose;
-		}, [idx]);
-
-		useEffect(() => {
+		useSignalEffect(() => {
+			const _entries = entries_signal.value;
 			if (!pending_scroll_intent) {
 				return;
 			}
 
-			const current_entries = entries_signal.value;
-			const entry = current_entries[idx];
+			const entry = _entries[idx];
 			if (!entry) {
 				return;
 			}
@@ -245,19 +266,21 @@ export function createVormaClient<A extends AppConfig>(
 		});
 
 		const current_entries = entries_signal.value;
+		const route_error = route_error_signal.value;
 
-		const Outlet = useMemo(() => {
-			return (local?: Record<string, unknown>) => {
-				return h(RootOutlet, {
-					...ref.current,
-					...local,
-					idx: idx + 1,
-				});
-			};
-		}, [idx, next_import_url.value, next_entry_key.value]);
+		const Outlet = (
+			local?: Record<string, unknown>,
+		): JSX.Element | null => {
+			return h(RootOutlet, {
+				...props,
+				...local,
+				idx: idx + 1,
+			});
+		};
 
 		const slot = resolve_outlet_slot(
 			current_entries,
+			route_error,
 			idx,
 			core.get_default_error_boundary(),
 		);
@@ -280,10 +303,6 @@ export function createVormaClient<A extends AppConfig>(
 			}
 
 			case "component": {
-				// Subscribe to per-instance tracking signals.
-				const _url = current_import_url.value;
-				const _key = current_entry_key.value;
-
 				const key = get_entry_key(current_entries[idx]!);
 				const Comp = slot.component;
 				return h(Comp, { key, idx, Outlet });
@@ -298,9 +317,18 @@ export function createVormaClient<A extends AppConfig>(
 	function init(
 		options: AdapterInitOptions<ComponentType>,
 	): ReturnType<typeof core.init> {
-		const { render, ...core_options } = options;
+		const { render, onRouteUpdate, onWorkUpdate, ...core_options } =
+			options;
 		return core.init({
 			...core_options,
+			onRouteUpdate: (route, previous_route, reason) => {
+				route_state_signal.value = route;
+				onRouteUpdate?.(route, previous_route, reason);
+			},
+			onWorkUpdate: (work) => {
+				work_state_signal.value = work;
+				onWorkUpdate?.(work);
+			},
 			render: render
 				? () => {
 						return render({ App, el: core.getRootEl() });
@@ -310,9 +338,13 @@ export function createVormaClient<A extends AppConfig>(
 	}
 
 	function BaseLink(
-		props: HTMLAttributes<HTMLAnchorElement> & LinkPropsBase,
+		props: HTMLAttributes<HTMLAnchorElement> &
+			LinkPropsBase & { href: string },
 	): JSX.Element {
-		const r = make_link_props(props as Record<string, unknown>, nav_fns);
+		const r = make_link_props(
+			props as unknown as Record<string, unknown>,
+			nav_fns,
+		);
 		return h(
 			"a",
 			{
@@ -335,10 +367,20 @@ export function createVormaClient<A extends AppConfig>(
 			MakeTypedLinkProps<A, P>,
 	): JSX.Element => {
 		const merged = { ...options?.linkDefaultProps, ...raw } as any;
-		const { href: target, ...link_props } = merged;
-		const href =
-			typeof target === "string" ? target : passthrough.toHref(target);
-		return h(BaseLink, { ...link_props, href });
+		const { href, pattern, params, splatValues, search, hash, ...props } =
+			merged;
+		return h(BaseLink, {
+			...props,
+			href:
+				href ??
+				passthrough.buildHref({
+					pattern,
+					params,
+					splatValues,
+					search,
+					hash,
+				} as any),
+		});
 	}) as <P extends MakeTypedLoaderPattern<A>>(
 		props: Omit<HTMLAttributes<HTMLAnchorElement>, "href"> &
 			MakeTypedLinkProps<A, P>,
@@ -350,9 +392,10 @@ export function createVormaClient<A extends AppConfig>(
 		defineRoute,
 		RootOutlet,
 		Link,
+		useRouteState,
+		useWorkState,
 		useLoaderData,
 		usePatternLoaderData,
-		useRouterData,
 		useClientLoaderData,
 		usePatternClientLoaderData,
 	};

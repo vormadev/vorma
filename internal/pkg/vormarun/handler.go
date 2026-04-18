@@ -18,6 +18,7 @@ import (
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
 	"github.com/vormadev/vorma/kit/set"
+	"github.com/vormadev/vorma/kit/validate"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -114,8 +115,11 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 
 		matches := match_results.Matches
 		matched_patterns := make([]string, 0, len(matches))
+		search_schemas := make([]validate.URLSearchParamsSchema, 0, len(matches))
 		for _, m := range matches {
-			matched_patterns = append(matched_patterns, m.OriginalPattern())
+			pattern := m.OriginalPattern()
+			matched_patterns = append(matched_patterns, pattern)
+			search_schemas = append(search_schemas, manifest.SearchSchemas[pattern])
 		}
 
 		import_urls := make([]string, 0, len(matches))
@@ -218,6 +222,7 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			MatchedPatterns: matched_patterns,
 			Params:          match_results.Params,
 			SplatValues:     match_results.SplatValues,
+			SearchSchemas:   search_schemas,
 
 			Title:       sorted_head_els.Title,
 			MetaHeadEls: sorted_head_els.Meta,

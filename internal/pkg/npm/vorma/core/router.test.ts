@@ -53,7 +53,7 @@ describe("navigate", () => {
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/about");
-		expect(state.entries[0].data).toEqual({ page: "about" });
+		expect(state.entries[0].loader_data).toEqual({ page: "about" });
 	});
 
 	it("latest navigation wins when earlier is superseded", async () => {
@@ -80,7 +80,7 @@ describe("navigate", () => {
 		expect(r2.didNavigate).toBe(true);
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ page: "second" });
+		expect(state.entries[0].loader_data).toEqual({ page: "second" });
 	});
 
 	it("settles superseded navigation without waiting for ignored abort", async () => {
@@ -134,7 +134,7 @@ describe("navigate", () => {
 
 		expect(commit).toHaveBeenCalledTimes(1);
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].data).toEqual({ page: "second" });
+		expect(state.entries[0].loader_data).toEqual({ page: "second" });
 	});
 
 	it("aborts in-flight fetch when new navigation starts", async () => {
@@ -335,7 +335,7 @@ describe("navigate", () => {
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ winner: true });
+		expect(state.entries[0].loader_data).toEqual({ winner: true });
 	});
 
 	it("recovers after network failure and allows subsequent navigation", async () => {
@@ -361,7 +361,7 @@ describe("navigate", () => {
 		expect(r2.didNavigate).toBe(true);
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ recovered: true });
+		expect(state.entries[0].loader_data).toEqual({ recovered: true });
 	});
 });
 
@@ -404,7 +404,7 @@ describe("prefetch", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].data).toEqual({ prefetched: true });
+		expect(state.entries[0].loader_data).toEqual({ prefetched: true });
 	});
 
 	it("does not promote a completed failed prefetch", async () => {
@@ -553,7 +553,7 @@ describe("navigate redirects", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].data).toEqual({ redirected: true });
+		expect(state.entries[0].loader_data).toEqual({ redirected: true });
 	});
 
 	it("follows redirect even when response is non-ok", async () => {
@@ -669,7 +669,7 @@ describe("navigate redirects", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[0]![0];
-		expect(state.entries[0].data).toEqual({ final: true });
+		expect(state.entries[0].loader_data).toEqual({ final: true });
 	});
 
 	it("maintains navigating status through redirect chains", async () => {
@@ -677,17 +677,17 @@ describe("navigate redirects", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const nav = core.navigate("/start");
-		expect(core.getStatus().isNavigating).toBe(true);
+		expect(core.getWorkState().navigation !== null).toBe(true);
 
 		await wait_for(1);
 		call(0).resolve(redirect_response({ [X_CLIENT_REDIRECT]: "/mid" }));
 		await wait_for(2);
-		expect(core.getStatus().isNavigating).toBe(true);
+		expect(core.getWorkState().navigation !== null).toBe(true);
 
 		call(1).resolve(route_response());
 		await nav;
 
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 
 	it("caps redirect chains and does not commit", async () => {
@@ -734,7 +734,7 @@ describe("navigate redirects", () => {
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ winner: true });
+		expect(state.entries[0].loader_data).toEqual({ winner: true });
 	});
 
 	it("resolves relative redirect targets against request URL", async () => {
@@ -795,7 +795,7 @@ describe("redirect edge cases", () => {
 		expect(() => {
 			return call(2);
 		}).toThrow();
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 
 	it("returns didNavigate false for non-HTTP redirect schemes", async () => {
@@ -813,7 +813,7 @@ describe("redirect edge cases", () => {
 
 		expect(result.didNavigate).toBe(false);
 		expect(hard_redirect).not.toHaveBeenCalled();
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 });
 
@@ -856,7 +856,7 @@ describe("navigate stress", () => {
 				expect(results[i]!.didNavigate).toBe(false);
 			}
 
-			expect(core.getStatus().isNavigating).toBe(false);
+			expect(core.getWorkState().navigation !== null).toBe(false);
 		},
 	);
 });
@@ -1234,7 +1234,7 @@ describe("popstate", () => {
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ home: true });
+		expect(state.entries[0].loader_data).toEqual({ home: true });
 	});
 
 	it("reuses in-flight popstate data for a later navigation intent", async () => {
@@ -1262,7 +1262,7 @@ describe("popstate", () => {
 		expect(reload).not.toHaveBeenCalled();
 		expect(window.location.hash).toBe("#two");
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ target: true });
+		expect(state.entries[0].loader_data).toEqual({ target: true });
 	});
 
 	it("does not push history on popstate navigation", async () => {
@@ -1283,7 +1283,7 @@ describe("popstate", () => {
 		call(1).resolve(route_response());
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isNavigating) {
+			if (core.getWorkState().navigation === null) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1362,7 +1362,7 @@ describe("popstate", () => {
 		);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isNavigating) {
+			if (core.getWorkState().navigation === null) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1372,8 +1372,8 @@ describe("popstate", () => {
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
-		expect(state.entries[0].data).toEqual({ previous: true });
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(state.entries[0].loader_data).toEqual({ previous: true });
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 
 	it("saves scroll for leaving page on popstate", async () => {
@@ -1395,7 +1395,7 @@ describe("popstate", () => {
 		call(1).resolve(route_response());
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isNavigating) {
+			if (core.getWorkState().navigation === null) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1488,19 +1488,19 @@ describe("status", () => {
 
 		const nav = core.navigate("/page");
 		await wait_for(1);
-		expect(core.getStatus().isNavigating).toBe(true);
+		expect(core.getWorkState().navigation !== null).toBe(true);
 
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 
 	it("reports isSubmitting during submission", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		void core.submit(
+		void core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1508,7 +1508,7 @@ describe("status", () => {
 			},
 		);
 		await wait_for(1);
-		expect(core.getStatus().isSubmitting).toBe(true);
+		expect(core.getWorkState().submissions.length > 0).toBe(true);
 
 		call(0).resolve(
 			new Response(JSON.stringify({ ok: true }), {
@@ -1518,7 +1518,7 @@ describe("status", () => {
 		);
 
 		for (let i = 0; i < 50; i++) {
-			if (!core.getStatus().isSubmitting) {
+			if (core.getWorkState().submissions.length === 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1526,15 +1526,15 @@ describe("status", () => {
 			});
 		}
 
-		expect(core.getStatus().isSubmitting).toBe(false);
+		expect(core.getWorkState().submissions.length > 0).toBe(false);
 	});
 
-	it("does not emit duplicate status notifications", async () => {
-		const statuses: any[] = [];
+	it("emits work notifications when navigation target changes", async () => {
+		const work_updates: any[] = [];
 		const { core } = await setup({
 			init: {
-				onStatusChange: (s: any) => {
-					statuses.push({ ...s });
+				onWorkUpdate: (work: any) => {
+					work_updates.push({ ...work });
 				},
 			},
 		});
@@ -1544,7 +1544,11 @@ describe("status", () => {
 		await wait_for(1);
 		void core.navigate("/second");
 
-		expect(statuses).toHaveLength(1);
+		expect(work_updates).toHaveLength(2);
+		expect(work_updates.map((work) => work.navigation?.href)).toEqual([
+			`${window.location.origin}/first`,
+			`${window.location.origin}/second`,
+		]);
 
 		await wait_for(2);
 		call(1).resolve(route_response());
@@ -1560,10 +1564,11 @@ describe("status", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(core.getStatus()).toEqual({
-			isNavigating: false,
-			isRevalidating: false,
-			isSubmitting: false,
+		expect(core.getWorkState()).toEqual({
+			navigation: null,
+			revalidation: null,
+			prefetch: null,
+			submissions: [],
 		});
 	});
 });
@@ -1596,7 +1601,7 @@ describe("X-Accepts-Client-Redirect header", () => {
 			}),
 		);
 
-		await core.submit(
+		await core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
 			{
@@ -1732,7 +1737,7 @@ describe("scroll state storage validation", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 		const raw = sessionStorage.getItem(SCROLL_STORAGE_KEY);
 		const entries = JSON.parse(raw!);
 		expect(entries.length).toBeGreaterThanOrEqual(1);
@@ -1752,6 +1757,6 @@ describe("scroll state storage validation", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(core.getStatus().isNavigating).toBe(false);
+		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 });

@@ -58,7 +58,12 @@ func (rs *run_state) write_manifest() error {
 				fsutil.SysNorm(r.ImportPath),
 			)
 			if err != nil {
-				return fmt.Errorf("error getting relative path for TS route (pattern: %s, import path: %s): %w", pattern, r.ImportPath, err)
+				return fmt.Errorf(
+					"error getting relative path for TS route (pattern: %s, import path: %s): %w",
+					pattern,
+					r.ImportPath,
+					err,
+				)
 			}
 			ts_routes[pattern] = vormarun.ClientModule{
 				URL:           to_url(ip_rel),
@@ -87,7 +92,9 @@ func (rs *run_state) write_manifest() error {
 		}
 	}
 
-	root_html_tmpl_hash := cryptoutil.Sha256Hash([]byte(strings.TrimSpace(cfg.root_html_template())))
+	root_html_tmpl_hash := cryptoutil.Sha256Hash(
+		[]byte(strings.TrimSpace(cfg.root_html_template())),
+	)
 
 	vorma_version, err := npm.Version()
 	if err != nil {
@@ -107,6 +114,7 @@ func (rs *run_state) write_manifest() error {
 
 		PublicFilemap: rs.pub_fm,
 		CriticalCSS:   rs.critical_css,
+		SearchSchemas: rs.search_schemas,
 
 		ClientEntry:  ts_entry_cm,
 		ClientRoutes: ts_routes,

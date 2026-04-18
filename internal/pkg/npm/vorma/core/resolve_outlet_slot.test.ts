@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { RouteEntry } from "./create_client_core.ts";
+import type { RouteRenderEntry } from "./create_client_core.ts";
 import { get_entry_key, resolve_outlet_slot } from "./resolve_outlet_slot.ts";
 
-function make_entry(overrides: Partial<RouteEntry> = {}): RouteEntry {
+function make_entry(
+	overrides: Partial<RouteRenderEntry> = {},
+): RouteRenderEntry {
 	return {
 		pattern: overrides.pattern ?? "/",
+		input: overrides.input,
 		module_url: overrides.module_url ?? "/mod.js",
 		module: overrides.module ?? {},
-		data: overrides.data ?? null,
-		client_data: overrides.client_data ?? undefined,
-		error: overrides.error ?? undefined,
+		loader_data: overrides.loader_data ?? null,
+		client_loader_data: overrides.client_loader_data ?? undefined,
 	};
 }
 
@@ -17,7 +19,7 @@ function make_component_entry(
 	pattern: string,
 	component: (props: any) => any,
 	error_boundary?: (props: { error: unknown }) => any,
-): RouteEntry {
+): RouteRenderEntry {
 	return make_entry({
 		pattern,
 		module_url: `/${pattern}.js`,
@@ -31,14 +33,13 @@ function make_component_entry(
 	});
 }
 
-function make_error_entry(
+function make_boundary_entry(
 	pattern: string,
-	error: unknown,
 	opts?: {
 		component?: (props: any) => any;
 		error_boundary?: (props: { error: unknown }) => any;
 	},
-): RouteEntry {
+): RouteRenderEntry {
 	return make_entry({
 		pattern,
 		module_url: `/${pattern}.js`,
@@ -49,26 +50,25 @@ function make_error_entry(
 				error_boundary: opts?.error_boundary,
 			},
 		},
-		error,
 	});
 }
 
 describe("resolve_outlet_slot", () => {
 	it("returns empty for out-of-bounds index", () => {
 		const entries = [make_component_entry("/", () => "root")];
-		const slot = resolve_outlet_slot(entries, 5, undefined);
+		const slot = resolve_outlet_slot(entries, null, 5, undefined);
 		expect(slot.kind).toBe("empty");
 	});
 
 	it("returns empty for empty entries array", () => {
-		const slot = resolve_outlet_slot([], 0, undefined);
+		const slot = resolve_outlet_slot([], null, 0, undefined);
 		expect(slot.kind).toBe("empty");
 	});
 
 	it("returns component with stable wrapper for valid index", () => {
 		const comp = () => "root";
 		const entries = [make_component_entry("/", comp)];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const slot = resolve_outlet_slot(entries, null, 0, undefined);
 		expect(slot.kind).toBe("component");
 		if (slot.kind === "component") {
 			expect(slot.component({})).toBe("root");
@@ -80,13 +80,13 @@ describe("resolve_outlet_slot", () => {
 			make_entry({ pattern: "/", module: {} }),
 			make_component_entry("/child", () => "child"),
 		];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const slot = resolve_outlet_slot(entries, null, 0, undefined);
 		expect(slot.kind).toBe("pass_through");
 	});
 
 	it("returns empty when entry has no component and is last", () => {
 		const entries = [make_entry({ pattern: "/", module: {} })];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const slot = resolve_outlet_slot(entries, null, 0, undefined);
 		expect(slot.kind).toBe("empty");
 	});
 
@@ -94,9 +94,14 @@ describe("resolve_outlet_slot", () => {
 		const boundary = (props: { error: unknown }) =>
 			`handled:${props.error as any}`;
 		const entries = [
-			make_error_entry("/", "boom", { error_boundary: boundary }),
+			make_boundary_entry("/", { error_boundary: boundary }),
 		];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const slot = resolve_outlet_slot(
+			entries,
+			{ idx: 0, error: "boom", source: "server" },
+			0,
+			undefined,
+		);
 		expect(slot.kind).toBe("error");
 		if (slot.kind === "error") {
 			expect(slot.error).toBe("boom");
@@ -107,8 +112,13 @@ describe("resolve_outlet_slot", () => {
 	it("falls back to default error boundary when route has none", () => {
 		const default_boundary = (props: { error: unknown }) =>
 			`default:${props.error as any}`;
-		const entries = [make_error_entry("/", "boom")];
-		const slot = resolve_outlet_slot(entries, 0, default_boundary);
+		const entries = [make_boundary_entry("/")];
+		const slot = resolve_outlet_slot(
+			entries,
+			{ idx: 0, error: "boom", source: "server" },
+			0,
+			default_boundary,
+		);
 		expect(slot.kind).toBe("error");
 		if (slot.kind === "error") {
 			expect(slot.boundary({ error: "boom" })).toBe("default:boom");
@@ -116,8 +126,13 @@ describe("resolve_outlet_slot", () => {
 	});
 
 	it("falls back to built-in error boundary when no boundaries provided", () => {
-		const entries = [make_error_entry("/", "boom")];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const entries = [make_boundary_entry("/")];
+		const slot = resolve_outlet_slot(
+			entries,
+			{ idx: 0, error: "boom", source: "server" },
+			0,
+			undefined,
+		);
 		expect(slot.kind).toBe("error");
 		if (slot.kind === "error") {
 			expect(slot.boundary({ error: "boom" })).toBe("Error: boom");
@@ -125,8 +140,13 @@ describe("resolve_outlet_slot", () => {
 	});
 
 	it("built-in boundary handles Error instances", () => {
-		const entries = [make_error_entry("/", new Error("test message"))];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const entries = [make_boundary_entry("/")];
+		const slot = resolve_outlet_slot(
+			entries,
+			{ idx: 0, error: new Error("test message"), source: "server" },
+			0,
+			undefined,
+		);
 		if (slot.kind === "error") {
 			expect(slot.boundary({ error: new Error("test message") })).toBe(
 				"Error: test message",
@@ -135,8 +155,13 @@ describe("resolve_outlet_slot", () => {
 	});
 
 	it("built-in boundary handles non-string non-Error values", () => {
-		const entries = [make_error_entry("/", 42)];
-		const slot = resolve_outlet_slot(entries, 0, undefined);
+		const entries = [make_boundary_entry("/")];
+		const slot = resolve_outlet_slot(
+			entries,
+			{ idx: 0, error: 42, source: "server" },
+			0,
+			undefined,
+		);
 		if (slot.kind === "error") {
 			expect(slot.boundary({ error: 42 })).toBe(
 				"An unexpected error occurred.",
@@ -149,22 +174,27 @@ describe("resolve_outlet_slot", () => {
 			`handled:${props.error as any}`;
 		const entries = [
 			make_component_entry("/parent", () => "parent"),
-			make_error_entry("/child", "child-boom", {
+			make_boundary_entry("/child", {
 				error_boundary: boundary,
 			}),
 			make_component_entry("/grandchild", () => "grandchild"),
 		];
+		const error = {
+			idx: 1,
+			error: "child-boom",
+			source: "server" as const,
+		};
 
-		const slot0 = resolve_outlet_slot(entries, 0, undefined);
+		const slot0 = resolve_outlet_slot(entries, error, 0, undefined);
 		expect(slot0.kind).toBe("component");
 
-		const slot1 = resolve_outlet_slot(entries, 1, undefined);
+		const slot1 = resolve_outlet_slot(entries, error, 1, undefined);
 		expect(slot1.kind).toBe("error");
 		if (slot1.kind === "error") {
 			expect(slot1.error).toBe("child-boom");
 		}
 
-		const slot2 = resolve_outlet_slot(entries, 2, undefined);
+		const slot2 = resolve_outlet_slot(entries, error, 2, undefined);
 		expect(slot2.kind).toBe("error");
 		if (slot2.kind === "error") {
 			expect(slot2.error).toBe("child-boom");
@@ -173,14 +203,19 @@ describe("resolve_outlet_slot", () => {
 
 	it("error at root causes all indices to return error slot", () => {
 		const entries = [
-			make_error_entry("/root", "root-boom"),
+			make_boundary_entry("/root"),
 			make_component_entry("/child", () => "child"),
 		];
+		const error = {
+			idx: 0,
+			error: "root-boom",
+			source: "server" as const,
+		};
 
-		const slot0 = resolve_outlet_slot(entries, 0, undefined);
+		const slot0 = resolve_outlet_slot(entries, error, 0, undefined);
 		expect(slot0.kind).toBe("error");
 
-		const slot1 = resolve_outlet_slot(entries, 1, undefined);
+		const slot1 = resolve_outlet_slot(entries, error, 1, undefined);
 		expect(slot1.kind).toBe("error");
 	});
 
@@ -189,10 +224,10 @@ describe("resolve_outlet_slot", () => {
 		const comp_b = () => "version-b";
 
 		const entries_a = [make_component_entry("/stable-test", comp_a)];
-		const slot_a = resolve_outlet_slot(entries_a, 0, undefined);
+		const slot_a = resolve_outlet_slot(entries_a, null, 0, undefined);
 
 		const entries_b = [make_component_entry("/stable-test", comp_b)];
-		const slot_b = resolve_outlet_slot(entries_b, 0, undefined);
+		const slot_b = resolve_outlet_slot(entries_b, null, 0, undefined);
 
 		expect(slot_a.kind).toBe("component");
 		expect(slot_b.kind).toBe("component");
@@ -207,18 +242,19 @@ describe("resolve_outlet_slot", () => {
 		const boundary_b = () => "boundary-b";
 
 		const entries_a = [
-			make_error_entry("/stable-error-test", "err", {
+			make_boundary_entry("/stable-error-test", {
 				error_boundary: boundary_a,
 			}),
 		];
-		const slot_a = resolve_outlet_slot(entries_a, 0, undefined);
+		const error = { idx: 0, error: "err", source: "server" as const };
+		const slot_a = resolve_outlet_slot(entries_a, error, 0, undefined);
 
 		const entries_b = [
-			make_error_entry("/stable-error-test", "err", {
+			make_boundary_entry("/stable-error-test", {
 				error_boundary: boundary_b,
 			}),
 		];
-		const slot_b = resolve_outlet_slot(entries_b, 0, undefined);
+		const slot_b = resolve_outlet_slot(entries_b, error, 0, undefined);
 
 		expect(slot_a.kind).toBe("error");
 		expect(slot_b.kind).toBe("error");

@@ -1,6 +1,9 @@
 package vormarun
 
-import "github.com/vormadev/vorma/kit/htmlutil"
+import (
+	"github.com/vormadev/vorma/kit/htmlutil"
+	"github.com/vormadev/vorma/kit/validate"
+)
 
 type ssr_payload struct {
 	ClientBuildID string `json:",omitempty"`
@@ -13,9 +16,10 @@ type ssr_payload struct {
 type loader_payload struct {
 	/////// Sent no matter what:
 
-	MatchedPatterns []string          `json:",omitempty"`
-	Params          map[string]string `json:",omitempty"`
-	SplatValues     []string          `json:",omitempty"`
+	MatchedPatterns []string                         `json:",omitempty"`
+	Params          map[string]string                `json:",omitempty"`
+	SplatValues     []string                         `json:",omitempty"`
+	SearchSchemas   []validate.URLSearchParamsSchema `json:",omitempty"`
 
 	Title       *htmlutil.Element   `json:",omitempty"`
 	MetaHeadEls []*htmlutil.Element `json:",omitempty"`

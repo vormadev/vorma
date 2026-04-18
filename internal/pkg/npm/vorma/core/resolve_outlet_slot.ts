@@ -1,4 +1,8 @@
-import type { RouteDefinition, RouteEntry } from "./create_client_core.ts";
+import type {
+	RouteDefinition,
+	RouteErrorState,
+	RouteRenderEntry,
+} from "./create_client_core.ts";
 
 export type OutletSlot =
 	| { kind: "component"; component: (props: any) => any }
@@ -63,7 +67,8 @@ function get_stable_error_boundary(
 }
 
 export function resolve_outlet_slot(
-	entries: RouteEntry[],
+	entries: RouteRenderEntry[],
+	error: RouteErrorState | null,
 	idx: number,
 	default_error_boundary: ((props: { error: unknown }) => any) | undefined,
 ): OutletSlot {
@@ -71,10 +76,8 @@ export function resolve_outlet_slot(
 		return { kind: "empty" };
 	}
 
-	const outermost_error_idx = find_outermost_error_idx(entries);
-
-	if (outermost_error_idx !== null && idx >= outermost_error_idx) {
-		const error_entry = entries[outermost_error_idx]!;
+	if (error !== null && idx >= error.idx) {
+		const error_entry = entries[error.idx]!;
 		const def = error_entry.module.default as RouteDefinition | undefined;
 		const raw_boundary =
 			def?.error_boundary ??
@@ -84,7 +87,7 @@ export function resolve_outlet_slot(
 			error_entry.pattern,
 			raw_boundary,
 		);
-		return { kind: "error", error: error_entry.error, boundary };
+		return { kind: "error", error: error.error, boundary };
 	}
 
 	const entry = entries[idx]!;
@@ -101,17 +104,8 @@ export function resolve_outlet_slot(
 	return { kind: "component", component };
 }
 
-export function get_entry_key(entry: RouteEntry): string {
+export function get_entry_key(entry: RouteRenderEntry): string {
 	return `${entry.pattern}::${entry.module_url}`;
-}
-
-function find_outermost_error_idx(entries: RouteEntry[]): number | null {
-	for (let i = 0; i < entries.length; i++) {
-		if (entries[i]!.error !== undefined) {
-			return i;
-		}
-	}
-	return null;
 }
 
 function fallback_error_boundary(props: { error: unknown }): string {

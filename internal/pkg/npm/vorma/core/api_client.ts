@@ -1,18 +1,14 @@
 import type {
 	AppConfig,
+	MakeTypedActionSubmitOutput,
+	MakeTypedActionSubmitProps,
 	MakeTypedAPIClient,
 	MakeTypedAPIDecorator,
 	MakeTypedAPIDecoratorContext,
-	MakeTypedMutationOutput,
-	MakeTypedMutationPattern,
-	MakeTypedMutationProps,
-	MakeTypedQueryOutput,
-	MakeTypedQueryPattern,
-	MakeTypedQueryProps,
 	SubmitOptions,
 	SubmitResult,
 } from "./types.ts";
-import { build_mutation_url, build_query_url, resolve_body } from "./url.ts";
+import { build_action_url, resolve_body } from "./url.ts";
 
 type SubmitFn = <T>(
 	url: string | URL,
@@ -26,82 +22,67 @@ export function create_typed_api_client<A extends AppConfig>(
 	decorator?: MakeTypedAPIDecorator<A>,
 ): MakeTypedAPIClient<A> {
 	return {
-		query: async <P extends MakeTypedQueryPattern<A>>(
-			props: MakeTypedQueryProps<A, P>,
-		): Promise<SubmitResult<MakeTypedQueryOutput<A, P>>> => {
-			const a = props as any;
-			const url = build_query_url(
+		submit: async <Props extends MakeTypedActionSubmitProps<A>>(
+			props: Props,
+		): Promise<SubmitResult<MakeTypedActionSubmitOutput<A, Props>>> => {
+			const {
+				dedupeKey,
+				input,
+				method: raw_method,
+				params,
+				pattern,
+				revalidate,
+				skipProgressIndicator,
+				splatValues,
+				...request_init
+			} = props as any;
+			const method = String(raw_method ?? "GET")
+				.toUpperCase()
+				.trim();
+			const is_get = method === "GET" || method === "HEAD";
+			const url = build_action_url(
 				actions_mount_root,
-				a.pattern,
-				a.params,
-				a.splatValues,
-				a.input,
+				pattern,
+				params,
+				splatValues,
+				is_get ? input : undefined,
 			);
-			const init = await resolve_init(
-				decorator,
-				{
-					type: "query",
-					pattern: a.pattern,
-					requestInit: a.requestInit,
-					input: a.input,
-				},
-				{ method: "GET" },
-			);
-			return submit_fn<MakeTypedQueryOutput<A, P>>(url, init, a.options);
-		},
-		mutate: async <P extends MakeTypedMutationPattern<A>>(
-			props: MakeTypedMutationProps<A, P>,
-		): Promise<SubmitResult<MakeTypedMutationOutput<A, P>>> => {
-			const a = props as any;
-			const url = build_mutation_url(
-				actions_mount_root,
-				a.pattern,
-				a.params,
-				a.splatValues,
-			);
-			const init = await resolve_init(
-				decorator,
-				{
-					type: "mutation",
-					pattern: a.pattern,
-					requestInit: a.requestInit,
-					input: a.input,
-				},
-				{
-					method: a.requestInit?.method ?? "POST",
-					body: resolve_body(a.input),
-				},
-			);
-			return submit_fn<MakeTypedMutationOutput<A, P>>(
+			const ctx = {
+				input,
+				method,
+				pattern,
+				requestInit: request_init,
+			} as MakeTypedAPIDecoratorContext<A>;
+			const decorated = decorator
+				? ((await (decorator as any)(ctx)) ?? {})
+				: {};
+			const init: RequestInit = { ...decorated, ...request_init };
+			const headers = new Headers(decorated.headers ?? undefined);
+			new Headers(request_init.headers ?? undefined).forEach((v, k) => {
+				headers.set(k, v);
+			});
+			init.headers = headers;
+			init.method = method;
+			if (is_get) {
+				delete init.body;
+			} else {
+				init.body = resolve_body(input);
+			}
+			const options: SubmitOptions = {};
+			if (dedupeKey !== undefined) {
+				options.dedupeKey = dedupeKey;
+			}
+			if (revalidate !== undefined) {
+				options.revalidate = revalidate;
+			}
+			if (skipProgressIndicator !== undefined) {
+				options.skipProgressIndicator = skipProgressIndicator;
+			}
+			return submit_fn<MakeTypedActionSubmitOutput<A, Props>>(
 				url,
 				init,
-				a.options,
+				options,
 			);
 		},
 	};
-}
-
-async function resolve_init<A extends AppConfig>(
-	decorator: MakeTypedAPIDecorator<A> | undefined,
-	ctx: MakeTypedAPIDecoratorContext<A> & { requestInit?: RequestInit },
-	fallback: RequestInit,
-): Promise<RequestInit> {
-	const decorated = decorator ? await (decorator as any)(ctx) : undefined;
-	return merge_headers(merge_headers(fallback, decorated), ctx.requestInit);
-}
-
-function merge_headers(
-	base: RequestInit,
-	override?: RequestInit | Record<string, unknown>,
-): RequestInit {
-	if (!override) {
-		return base;
-	}
-	const merged = new Headers(base.headers ?? undefined);
-	new Headers((override as RequestInit).headers ?? undefined).forEach(
-		(v, k) => {
-			merged.set(k, v);
-		},
-	);
-	return { ...base, ...override, headers: merged };
 }
