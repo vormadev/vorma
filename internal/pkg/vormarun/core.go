@@ -187,8 +187,7 @@ type Vorma struct {
 	supported_methods_allow_val string
 }
 
-type LoaderCtx[I any] = mux.RequestCtx[I]
-type ActionCtx[I any] = mux.RequestCtx[I]
+type RequestCtx[I any] = mux.RequestCtx[I]
 
 type AnyLoader interface {
 	IType() *tsgen.GoTypeSrc
@@ -208,15 +207,15 @@ type AnyAction interface {
 type Loaders []AnyLoader
 type Actions []AnyAction
 
-type LoaderCtxWrapper[I any, CtxPtr any] interface {
-	Wrap(*LoaderCtx[I]) CtxPtr
+type RequestCtxWrapper[I any, CtxPtr any] interface {
+	Wrap(*RequestCtx[I]) CtxPtr
 }
 
 type Loader[
 	I any,
 	O any,
 	CtxPtr ~*Ctx,
-	Ctx LoaderCtxWrapper[I, CtxPtr],
+	Ctx RequestCtxWrapper[I, CtxPtr],
 ] struct {
 	Pattern  string
 	Handler  func(CtxPtr) (O, error)
@@ -238,23 +237,24 @@ func (l Loader[I, O, CtxPtr, Ctx]) GetTSModule() string { return l.TSModule }
 func (l Loader[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.NestedRouter) {
 	if l.Handler == nil {
 		mux.AddNestedTaskHandler(r, l.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *LoaderCtx[I]) (mux.None, error) { return mux.None{}, nil },
+			func(ctx *RequestCtx[I]) (mux.None, error) { return mux.None{}, nil },
 		))
 		return
 	}
 	mux.AddNestedTaskHandler(r, l.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *LoaderCtx[I]) (O, error) {
+		func(ctx *RequestCtx[I]) (O, error) {
 			var zero Ctx
 			return l.Handler(zero.Wrap(ctx))
 		},
 	))
 }
 
-type ActionCtxWrapper[I any, CtxPtr any] interface {
-	Wrap(*ActionCtx[I]) CtxPtr
-}
-
-type Action[I any, O any, CtxPtr ~*Ctx, Ctx ActionCtxWrapper[I, CtxPtr]] struct {
+type Action[
+	I any,
+	O any,
+	CtxPtr ~*Ctx,
+	Ctx RequestCtxWrapper[I, CtxPtr],
+] struct {
 	Method           string
 	Pattern          string
 	SkipRevalidation bool
@@ -277,7 +277,7 @@ func (a Action[I, O, CtxPtr, Ctx]) GetPattern() string { return a.Pattern }
 func (a Action[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.Router) {
 	if a.Handler == nil {
 		mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *ActionCtx[mux.None]) (action_response[mux.None], error) {
+			func(ctx *RequestCtx[mux.None]) (action_response[mux.None], error) {
 				return action_response[mux.None]{
 					Data:             mux.None{},
 					SkipRevalidation: a.SkipRevalidation,
@@ -287,7 +287,7 @@ func (a Action[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.Router) {
 		return
 	}
 	mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *ActionCtx[I]) (action_response[O], error) {
+		func(ctx *RequestCtx[I]) (action_response[O], error) {
 			var zero Ctx
 			data, err := a.Handler(zero.Wrap(ctx))
 			if err != nil {

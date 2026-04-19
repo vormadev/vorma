@@ -69,18 +69,13 @@ var App = &vorma.Vorma{
 /////// Loader and Action Types
 
 type (
-	Loader[I any, O any] = vorma.Loader[I, O, *LoaderCtx[I], LoaderCtx[I]]
-	Action[I any, O any] = vorma.Action[I, O, *ActionCtx[I], ActionCtx[I]]
-	LoaderCtx[I any]     struct{ *vorma.LoaderCtx[I] }
-	ActionCtx[I any]     struct{ *vorma.ActionCtx[I] }
+	Loader[I any, O any] = vorma.Loader[I, O, *RequestCtx[I], RequestCtx[I]]
+	Action[I any, O any] = vorma.Action[I, O, *RequestCtx[I], RequestCtx[I]]
+	RequestCtx[I any]    struct{ *vorma.RequestCtx[I] }
 )
 
-func (LoaderCtx[I]) Wrap(c *vorma.LoaderCtx[I]) *LoaderCtx[I] {
-	return &LoaderCtx[I]{LoaderCtx: c}
-}
-
-func (ActionCtx[I]) Wrap(c *vorma.ActionCtx[I]) *ActionCtx[I] {
-	return &ActionCtx[I]{ActionCtx: c}
+func (RequestCtx[I]) Wrap(c *vorma.RequestCtx[I]) *RequestCtx[I] {
+	return &RequestCtx[I]{RequestCtx: c}
 }
 
 func routes(p string) string {
@@ -98,7 +93,7 @@ var Loaders = vorma.Loaders{
 	Loader[struct{}, *fsmarkdown.Result]{
 		Pattern:  "/*",
 		TSModule: routes("md.tsx"),
-		Handler: func(c *LoaderCtx[struct{}]) (*fsmarkdown.Result, error) {
+		Handler: func(c *RequestCtx[struct{}]) (*fsmarkdown.Result, error) {
 			r := c.Request()
 			h := c.HeadEls()
 			rp := c.ResponseProxy()

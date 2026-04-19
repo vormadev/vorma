@@ -35,18 +35,17 @@ type (
 		I any,
 		O any,
 		CtxPtr ~*Ctx,
-		Ctx vormarun.LoaderCtxWrapper[I, CtxPtr],
+		Ctx vormarun.RequestCtxWrapper[I, CtxPtr],
 	] = vormarun.Loader[I, O, CtxPtr, Ctx]
 
 	Action[
 		I any,
 		O any,
 		CtxPtr ~*Ctx,
-		Ctx vormarun.ActionCtxWrapper[I, CtxPtr],
+		Ctx vormarun.RequestCtxWrapper[I, CtxPtr],
 	] = vormarun.Action[I, O, CtxPtr, Ctx]
 
-	LoaderCtx[I any] = vormarun.LoaderCtx[I]
-	ActionCtx[I any] = vormarun.ActionCtx[I]
+	RequestCtx[I any] = vormarun.RequestCtx[I]
 
 	AnyLoader = vormarun.AnyLoader
 	AnyAction = vormarun.AnyAction
