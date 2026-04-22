@@ -201,6 +201,7 @@ type AnyAction interface {
 	OType() *tsgen.GoTypeSrc
 	GetMethod() string
 	GetPattern() string
+	GetKind() ActionKind
 	register_to_mux(*mux.Router)
 }
 
@@ -255,16 +256,18 @@ type Action[
 	CtxPtr ~*Ctx,
 	Ctx RequestCtxWrapper[I, CtxPtr],
 ] struct {
-	Method           string
-	Pattern          string
-	SkipRevalidation bool
-	Handler          func(CtxPtr) (O, error)
+	Method  string
+	Pattern string
+	Kind    ActionKind
+	Handler func(CtxPtr) (O, error)
 }
 
-type action_response[O any] struct {
-	Data             O
-	SkipRevalidation bool
-}
+type ActionKind string
+
+const (
+	ActionKindQuery    ActionKind = "query"
+	ActionKindMutation ActionKind = "mutation"
+)
 
 func (a Action[I, O, CtxPtr, Ctx]) IType() *tsgen.GoTypeSrc { return tsgen.GoType[I]() }
 
@@ -274,29 +277,26 @@ func (a Action[I, O, CtxPtr, Ctx]) GetMethod() string { return a.Method }
 
 func (a Action[I, O, CtxPtr, Ctx]) GetPattern() string { return a.Pattern }
 
+func (a Action[I, O, CtxPtr, Ctx]) GetKind() ActionKind { return a.Kind }
+
 func (a Action[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.Router) {
 	if a.Handler == nil {
 		mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *RequestCtx[mux.None]) (action_response[mux.None], error) {
-				return action_response[mux.None]{
-					Data:             mux.None{},
-					SkipRevalidation: a.SkipRevalidation,
-				}, nil
+			func(ctx *RequestCtx[mux.None]) (mux.None, error) {
+				return mux.None{}, nil
 			},
 		))
 		return
 	}
 	mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *RequestCtx[I]) (action_response[O], error) {
+		func(ctx *RequestCtx[I]) (O, error) {
 			var zero Ctx
+			var zero_output O
 			data, err := a.Handler(zero.Wrap(ctx))
 			if err != nil {
-				return action_response[O]{}, err
+				return zero_output, err
 			}
-			return action_response[O]{
-				Data:             data,
-				SkipRevalidation: a.SkipRevalidation,
-			}, nil
+			return data, nil
 		},
 	))
 }

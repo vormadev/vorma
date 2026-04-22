@@ -1,8 +1,8 @@
 import type {
 	RouteDefinition,
-	RouteErrorState,
 	RouteRenderEntry,
 } from "./create_client_core.ts";
+import type { RouteErrorState } from "./types.ts";
 
 export type OutletSlot =
 	| { kind: "component"; component: (props: any) => any }

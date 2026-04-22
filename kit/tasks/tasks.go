@@ -164,7 +164,10 @@ type cache_entry struct {
 type task_result struct {
 	data any
 	err  error
-	once sync.Once
+	mu   sync.Mutex
+	wait chan struct{}
+	run  bool
+	done bool
 }
 
 // --- core execution ---
@@ -185,29 +188,90 @@ func run_task[I comparable, O any](
 	}
 
 	r := c.get_or_create_result(task.id, input)
-	r.once.Do(func() {
-		val, err := task.fn(c, input)
-		if err != nil {
-			r.err = err
-			return
+	for {
+		if err := c.ctx.Err(); err != nil {
+			return result, err
 		}
-		if cerr := c.ctx.Err(); cerr != nil {
-			r.err = cerr
-			return
-		}
-		r.data = val
-	})
 
-	if r.err != nil {
-		return result, r.err
+		r.mu.Lock()
+		if r.done {
+			data := r.data
+			err := r.err
+			r.mu.Unlock()
+
+			if err != nil {
+				return result, err
+			}
+			if data == nil {
+				return result, nil
+			}
+			if typed, ok := data.(O); ok {
+				return typed, nil
+			}
+			return result, nil
+		}
+
+		if !r.run {
+			r.run = true
+			r.mu.Unlock()
+
+			val, task_err := task.fn(c, input)
+
+			r.mu.Lock()
+			wait := r.wait
+			r.wait = nil
+			r.run = false
+			switch {
+			case task_err != nil &&
+				!errors.Is(task_err, context.Canceled) &&
+				!errors.Is(task_err, context.DeadlineExceeded):
+				r.err = task_err
+				r.done = true
+				r.mu.Unlock()
+				if wait != nil {
+					close(wait)
+				}
+				continue
+
+			case task_err != nil:
+				r.mu.Unlock()
+				if wait != nil {
+					close(wait)
+				}
+				return result, task_err
+
+			case c.ctx.Err() != nil:
+				cancel_err := c.ctx.Err()
+				r.mu.Unlock()
+				if wait != nil {
+					close(wait)
+				}
+				return result, cancel_err
+
+			default:
+				r.data = val
+				r.done = true
+				r.mu.Unlock()
+				if wait != nil {
+					close(wait)
+				}
+				continue
+			}
+		}
+
+		if r.wait == nil {
+			r.wait = make(chan struct{})
+		}
+		wait := r.wait
+		r.mu.Unlock()
+
+		select {
+		case <-wait:
+			continue
+		case <-c.ctx.Done():
+			return result, c.ctx.Err()
+		}
 	}
-	if r.data == nil {
-		return result, nil
-	}
-	if typed, ok := r.data.(O); ok {
-		return typed, nil
-	}
-	return result, nil
 }
 
 // --- cache access ---

@@ -5,26 +5,8 @@ import type { ComponentType as PreactComponentType } from "preact";
 import type { ComponentType as ReactComponentType } from "react";
 import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
+	ActionKind,
 	AppConfig,
-	LinkPropsBase,
-	MakeTypedActionInput,
-	MakeTypedActionMethod,
-	MakeTypedActionOutput,
-	MakeTypedActionPattern,
-	MakeTypedActionSubmitProps,
-	MakeTypedAPIClient,
-	MakeTypedAPIDecorator,
-	MakeTypedAPIDecoratorContext,
-	MakeTypedClientLoaderProps,
-	MakeTypedDefineRouteInput,
-	MakeTypedLinkProps,
-	MakeTypedLoaderInput,
-	MakeTypedLoaderOutput,
-	MakeTypedLoaderPattern,
-	MakeTypedNavProps,
-	MakeTypedNavTarget,
-	MakeTypedRouteDestination,
-	MakeTypedRouteProps,
 	ProgressIndicatorConfig,
 	RevalidationResult,
 	RouteDefinition,
@@ -34,10 +16,33 @@ import type {
 	RouteState,
 	RouteUpdateReason,
 	ScrollState,
-	SubmitOptions,
 	SubmitResult,
+	ToActionInput,
+	ToActionKind,
+	ToActionMethod,
+	ToActionOutput,
+	ToActionPattern,
+	ToActionSubmitArgs,
+	ToActionSubmitArgsByKind,
+	ToActionSubmitError,
+	ToActionSubmitOutput,
+	ToAPIClient,
+	ToAPIDecorator,
+	ToAPIDecoratorContext,
+	ToClientLoaderArgs,
+	ToDefineRouteArgs,
+	ToLinkProps,
+	ToLoaderInput,
+	ToLoaderOutput,
+	ToLoaderPattern,
+	ToNavigateArgs,
+	ToNavigationTarget,
+	ToRouteComponentProps,
+	ToRouteDestination,
+	ToRouteSyncArgs,
 	WorkState,
 } from "vorma/__internal";
+import { SubmitError } from "vorma/__internal";
 import { type Result } from "vorma/kit/result";
 import { createVormaClient as Preact__createVormaClient } from "vorma/preact";
 import { createVormaClient as React__createVormaClient } from "vorma/react";
@@ -106,6 +111,7 @@ const vorma_app_config = {
 		{
 			method: "GET" as const,
 			pattern: "/health",
+			kind: "mutation" as const,
 			__I: null as unknown as null,
 			__O: null as unknown as { ok: true },
 		},
@@ -126,6 +132,7 @@ const vorma_app_config = {
 		{
 			method: "POST" as const,
 			pattern: "/sessions",
+			kind: "query" as const,
 			__I: null as unknown as { email: string; password: string },
 			__O: null as unknown as { token: string },
 		},
@@ -161,70 +168,71 @@ function assert_exported_type_contracts(): void {
 	// Loader patterns
 	type _loader_patterns = Assert<
 		IsExact<
-			MakeTypedLoaderPattern<App>,
+			ToLoaderPattern<App>,
 			"/" | "/users" | "/users/:userID" | "/docs/*" | "/blog/_index"
 		>
 	>;
 
 	// Action methods and patterns
 	type _action_methods = Assert<
-		IsExact<MakeTypedActionMethod<App>, "GET" | "PATCH" | "POST">
+		IsExact<ToActionMethod<App>, "GET" | "PATCH" | "POST">
 	>;
 	type _action_patterns = Assert<
 		IsExact<
-			MakeTypedActionPattern<App>,
+			ToActionPattern<App>,
 			"/users/:userID" | "/health" | "/sessions" | "/logout"
 		>
 	>;
 	type _get_action_patterns = Assert<
-		IsExact<
-			MakeTypedActionPattern<App, "GET">,
-			"/users/:userID" | "/health"
-		>
+		IsExact<ToActionPattern<App, "GET">, "/users/:userID" | "/health">
 	>;
 	type _post_action_patterns = Assert<
 		IsExact<
-			MakeTypedActionPattern<App, "POST">,
+			ToActionPattern<App, "POST">,
 			"/users/:userID" | "/sessions" | "/logout"
 		>
 	>;
+	type _action_type_default_get = Assert<
+		IsExact<ToActionKind<App, "GET", "/users/:userID">, "query">
+	>;
+	type _action_type_default_post = Assert<
+		IsExact<ToActionKind<App, "POST", "/users/:userID">, "mutation">
+	>;
+	type _action_type_override_get = Assert<
+		IsExact<ToActionKind<App, "GET", "/health">, "mutation">
+	>;
+	type _action_type_override_post = Assert<
+		IsExact<ToActionKind<App, "POST", "/sessions">, "query">
+	>;
+	type _action_type_union = Assert<IsExact<ActionKind, "query" | "mutation">>;
 
 	// Loader output types
 	type _loader_o_root = Assert<
-		IsExact<
-			MakeTypedLoaderOutput<App, "/">,
-			{ sessionUserID: string | null }
-		>
+		IsExact<ToLoaderOutput<App, "/">, { sessionUserID: string | null }>
 	>;
 	type _loader_o_users = Assert<
-		IsExact<MakeTypedLoaderOutput<App, "/users">, { userCount: number }>
+		IsExact<ToLoaderOutput<App, "/users">, { userCount: number }>
 	>;
 	type _loader_o_user_detail = Assert<
-		IsExact<
-			MakeTypedLoaderOutput<App, "/users/:userID">,
-			{ userName: string }
-		>
+		IsExact<ToLoaderOutput<App, "/users/:userID">, { userName: string }>
 	>;
 	type _loader_o_docs = Assert<
-		IsExact<MakeTypedLoaderOutput<App, "/docs/*">, { slugParts: string[] }>
+		IsExact<ToLoaderOutput<App, "/docs/*">, { slugParts: string[] }>
 	>;
 	type _loader_o_blog = Assert<
-		IsExact<MakeTypedLoaderOutput<App, "/blog/_index">, { posts: string[] }>
+		IsExact<ToLoaderOutput<App, "/blog/_index">, { posts: string[] }>
 	>;
 
 	// Loader input types
 	type _loader_i_root = Assert<
-		IsExact<MakeTypedLoaderInput<App, "/">, Record<never, never>>
+		IsExact<ToLoaderInput<App, "/">, Record<never, never>>
 	>;
 	type _loader_i_users = Assert<
-		IsExact<
-			MakeTypedLoaderInput<App, "/users">,
-			{ sort?: "name" | "created" }
-		>
+		IsExact<ToLoaderInput<App, "/users">, { sort?: "name" | "created" }>
 	>;
 	type _loader_i_user_detail = Assert<
 		IsExact<
-			MakeTypedLoaderInput<App, "/users/:userID">,
+			ToLoaderInput<App, "/users/:userID">,
 			{ tab?: string; page?: number }
 		>
 	>;
@@ -232,91 +240,79 @@ function assert_exported_type_contracts(): void {
 	// Action I/O types
 	type _get_i_users = Assert<
 		IsExact<
-			MakeTypedActionInput<App, "GET", "/users/:userID">,
+			ToActionInput<App, "GET", "/users/:userID">,
 			{ includePosts: boolean }
 		>
 	>;
 	type _get_o_users = Assert<
 		IsExact<
-			MakeTypedActionOutput<App, "GET", "/users/:userID">,
+			ToActionOutput<App, "GET", "/users/:userID">,
 			{ id: string; posts: number }
 		>
 	>;
 	type _get_i_health = Assert<
-		IsExact<MakeTypedActionInput<App, "GET", "/health">, null>
+		IsExact<ToActionInput<App, "GET", "/health">, null>
 	>;
 	type _get_o_health = Assert<
-		IsExact<MakeTypedActionOutput<App, "GET", "/health">, { ok: true }>
+		IsExact<ToActionOutput<App, "GET", "/health">, { ok: true }>
 	>;
 	type _patch_i_users = Assert<
 		IsExact<
-			MakeTypedActionInput<App, "PATCH", "/users/:userID">,
+			ToActionInput<App, "PATCH", "/users/:userID">,
 			{ nickname: string }
 		>
 	>;
 	type _patch_o_users = Assert<
-		IsExact<
-			MakeTypedActionOutput<App, "PATCH", "/users/:userID">,
-			{ saved: true }
-		>
+		IsExact<ToActionOutput<App, "PATCH", "/users/:userID">, { saved: true }>
 	>;
 	type _post_i_users = Assert<
 		IsExact<
-			MakeTypedActionInput<App, "POST", "/users/:userID">,
+			ToActionInput<App, "POST", "/users/:userID">,
 			{ inviteEmail: string }
 		>
 	>;
 	type _post_o_users = Assert<
 		IsExact<
-			MakeTypedActionOutput<App, "POST", "/users/:userID">,
+			ToActionOutput<App, "POST", "/users/:userID">,
 			{ invited: true }
 		>
 	>;
 	type _post_i_sessions = Assert<
 		IsExact<
-			MakeTypedActionInput<App, "POST", "/sessions">,
+			ToActionInput<App, "POST", "/sessions">,
 			{ email: string; password: string }
 		>
 	>;
 	type _post_o_sessions = Assert<
-		IsExact<
-			MakeTypedActionOutput<App, "POST", "/sessions">,
-			{ token: string }
-		>
+		IsExact<ToActionOutput<App, "POST", "/sessions">, { token: string }>
 	>;
 	type _post_i_logout = Assert<
-		IsExact<MakeTypedActionInput<App, "POST", "/logout">, undefined>
+		IsExact<ToActionInput<App, "POST", "/logout">, undefined>
 	>;
 	type _post_o_logout = Assert<
-		IsExact<MakeTypedActionOutput<App, "POST", "/logout">, { done: true }>
+		IsExact<ToActionOutput<App, "POST", "/logout">, { done: true }>
 	>;
 
 	// Decorator context
 	type _decorator_ctx_get = Assert<
 		IsExact<
-			Extract<
-				MakeTypedAPIDecoratorContext<App>,
-				{ method: "GET" }
-			>["pattern"],
+			Extract<ToAPIDecoratorContext<App>, { method: "GET" }>["pattern"],
 			"/users/:userID" | "/health"
 		>
 	>;
 	type _decorator_ctx_post = Assert<
 		IsExact<
-			Extract<
-				MakeTypedAPIDecoratorContext<App>,
-				{ method: "POST" }
-			>["pattern"],
+			Extract<ToAPIDecoratorContext<App>, { method: "POST" }>["pattern"],
 			"/users/:userID" | "/sessions" | "/logout"
 		>
 	>;
 
-	// MakeTypedRouteDestination — intersection types are not IsExact-comparable
+	// ToRouteDestination — intersection types are not IsExact-comparable
 	// to flat object types. We verify bidirectional assignability for the
 	// full type and use IsExact on individual fields. Call-site tests in
 	// assert_navigate_contracts prove full correctness.
 	type _route_destination_users = Assert<
-		MakeTypedRouteDestination<App, "/users/:userID"> extends {
+		ToRouteDestination<App, "/users/:userID"> extends {
 			pattern: "/users/:userID";
 			params: { userID: string };
 			search?: {
@@ -333,37 +329,37 @@ function assert_exported_type_contracts(): void {
 						tab?: string;
 						page?: number;
 					};
-				} extends MakeTypedRouteDestination<App, "/users/:userID">
+				} extends ToRouteDestination<App, "/users/:userID">
 				? true
 				: false
 			: false
 	>;
 	type _route_destination_docs = Assert<
-		MakeTypedRouteDestination<App, "/docs/*"> extends {
+		ToRouteDestination<App, "/docs/*"> extends {
 			pattern: "/docs/*";
 			splatValues: string[];
 		}
 			? {
 					pattern: "/docs/*";
 					splatValues: string[];
-				} extends MakeTypedRouteDestination<App, "/docs/*">
+				} extends ToRouteDestination<App, "/docs/*">
 				? true
 				: false
 			: false
 	>;
 	type _route_destination_index_shorthand = Assert<
 		IsExact<
-			MakeTypedRouteDestination<App, "/blog/_index">["pattern"],
+			ToRouteDestination<App, "/blog/_index">["pattern"],
 			"/blog/_index" | "/blog"
 		>
 	>;
 	type _route_destination_root = Assert<
-		IsExact<MakeTypedRouteDestination<App, "/">["pattern"], "/">
+		IsExact<ToRouteDestination<App, "/">["pattern"], "/">
 	>;
 	type _route_target = Assert<
 		IsExact<
 			Extract<
-				MakeTypedNavTarget<App, "/users/:userID">,
+				ToNavigationTarget<App, "/users/:userID">,
 				{ href: string }
 			>,
 			{
@@ -379,16 +375,16 @@ function assert_exported_type_contracts(): void {
 	type _route_target_destination = Assert<
 		IsExact<
 			Extract<
-				MakeTypedNavTarget<App, "/users/:userID">,
+				ToNavigationTarget<App, "/users/:userID">,
 				{ pattern: unknown }
 			>,
-			MakeTypedRouteDestination<App, "/users/:userID">
+			ToRouteDestination<App, "/users/:userID">
 		>
 	>;
 	type _navigate_props = Assert<
 		IsExact<
-			MakeTypedNavProps<App, "/users/:userID">,
-			MakeTypedNavTarget<App, "/users/:userID"> & {
+			ToNavigateArgs<App, "/users/:userID">,
+			ToNavigationTarget<App, "/users/:userID"> & {
 				replace?: boolean;
 				scrollToTop?: boolean;
 				state?: unknown;
@@ -396,74 +392,79 @@ function assert_exported_type_contracts(): void {
 			}
 		>
 	>;
+	type _route_sync_args = Assert<
+		IsExact<
+			ToRouteSyncArgs<App, "/users/:userID">,
+			ToRouteDestination<App, "/users/:userID"> & {
+				enabled?: boolean;
+				debounceMs?: number;
+				replace?: boolean;
+				scrollToTop?: boolean;
+			}
+		>
+	>;
 
-	// MakeTypedLinkProps
+	// ToLinkProps
 	type _link_props_state = Assert<
-		IsExact<MakeTypedLinkProps<App, "/users/:userID">["state"], unknown>
+		IsExact<ToLinkProps<App, "/users/:userID">["state"], unknown>
 	>;
 	type _link_props_prefetch = Assert<
 		IsExact<
-			MakeTypedLinkProps<App, "/users/:userID">["prefetch"],
+			ToLinkProps<App, "/users/:userID">["prefetch"],
 			"intent" | "none" | undefined
 		>
 	>;
 
-	// MakeTypedClientLoaderProps
+	// ToClientLoaderArgs
 	type _cl_props_params = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["params"],
+			ToClientLoaderArgs<App, "/users/:userID">["params"],
 			{ userID: string }
 		>
 	>;
 	type _cl_props_splat_values = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["splatValues"],
+			ToClientLoaderArgs<App, "/users/:userID">["splatValues"],
 			string[]
 		>
 	>;
 	type _cl_props_signal = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["signal"],
+			ToClientLoaderArgs<App, "/users/:userID">["signal"],
 			AbortSignal
 		>
 	>;
 	type _cl_props_href = Assert<
-		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["href"],
-			string
-		>
+		IsExact<ToClientLoaderArgs<App, "/users/:userID">["href"], string>
 	>;
 	type _cl_props_history_state = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["historyState"],
+			ToClientLoaderArgs<App, "/users/:userID">["historyState"],
 			unknown
 		>
 	>;
 	type _cl_props_pattern = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["pattern"],
+			ToClientLoaderArgs<App, "/users/:userID">["pattern"],
 			"/users/:userID"
 		>
 	>;
 	type _cl_props_input = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["input"],
+			ToClientLoaderArgs<App, "/users/:userID">["input"],
 			{ tab?: string; page?: number }
 		>
 	>;
 	type _cl_props_known_matches = Assert<
 		IsExact<
-			MakeTypedClientLoaderProps<App, "/users/:userID">["knownMatches"],
+			ToClientLoaderArgs<App, "/users/:userID">["knownMatches"],
 			Array<{ pattern: string; input: unknown }>
 		>
 	>;
 	type _cl_props_loader_data = Assert<
 		IsExact<
 			Awaited<
-				MakeTypedClientLoaderProps<
-					App,
-					"/users/:userID"
-				>["serverPromise"]
+				ToClientLoaderArgs<App, "/users/:userID">["serverPromise"]
 			>["loaderData"],
 			{ userName: string }
 		>
@@ -471,47 +472,40 @@ function assert_exported_type_contracts(): void {
 	type _cl_props_server_matches = Assert<
 		IsExact<
 			Awaited<
-				MakeTypedClientLoaderProps<
-					App,
-					"/users/:userID"
-				>["serverPromise"]
+				ToClientLoaderArgs<App, "/users/:userID">["serverPromise"]
 			>["matches"],
 			Array<{ pattern: string; input: unknown; loaderData: unknown }>
 		>
 	>;
 	type _cl_props_root_params = Assert<
-		IsExact<
-			MakeTypedClientLoaderProps<App, "/">["params"],
-			Record<string, string>
-		>
+		IsExact<ToClientLoaderArgs<App, "/">["params"], Record<string, string>>
 	>;
 
-	// MakeTypedDefineRouteInput
+	// ToDefineRouteArgs
 	type _define_route_pattern = Assert<
-		IsExact<MakeTypedDefineRouteInput<App, "/">["pattern"], "/">
+		IsExact<ToDefineRouteArgs<App, "/">["pattern"], "/">
 	>;
 	type _define_route_error_boundary_optional =
-		undefined extends MakeTypedDefineRouteInput<App, "/">["errorBoundary"]
+		undefined extends ToDefineRouteArgs<App, "/">["errorBoundary"]
 			? true
 			: false;
 	type _define_route_client_loader_optional =
-		undefined extends MakeTypedDefineRouteInput<App, "/">["clientLoader"]
+		undefined extends ToDefineRouteArgs<App, "/">["clientLoader"]
 			? true
 			: false;
-	type _define_route_hmr_optional =
-		undefined extends MakeTypedDefineRouteInput<
-			App,
-			"/"
-		>["runClientLoaderOnHMR"]
-			? true
-			: false;
+	type _define_route_hmr_optional = undefined extends ToDefineRouteArgs<
+		App,
+		"/"
+	>["runClientLoaderOnHMR"]
+		? true
+		: false;
 
-	// MakeTypedAPIDecorator
+	// ToAPIDecorator
 	type _decorator_fn = Assert<
 		IsExact<
-			MakeTypedAPIDecorator<App>,
+			ToAPIDecorator<App>,
 			(
-				context: MakeTypedAPIDecoratorContext<App>,
+				context: ToAPIDecoratorContext<App>,
 			) =>
 				| Omit<RequestInit, "method" | "body">
 				| undefined
@@ -519,23 +513,54 @@ function assert_exported_type_contracts(): void {
 		>
 	>;
 
-	// MakeTypedAPIClient
+	// ToAPIClient
 	type _api_client_keys = Assert<
-		IsExact<keyof MakeTypedAPIClient<App>, "submit" | "toIdentityArray">
+		IsExact<
+			keyof ToAPIClient<App>,
+			"submit" | "submitOrThrow" | "toIdentityArray"
+		>
 	>;
 	type _api_client_submit_return = Assert<
 		IsExact<
-			Awaited<ReturnType<MakeTypedAPIClient<App>["submit"]>>,
+			Awaited<ReturnType<ToAPIClient<App>["submit"]>>,
 			SubmitResult<
-				| MakeTypedActionOutput<App, "GET", "/users/:userID">
-				| MakeTypedActionOutput<App, "GET", "/health">
-				| MakeTypedActionOutput<App, "PATCH", "/users/:userID">
-				| MakeTypedActionOutput<App, "POST", "/users/:userID">
-				| MakeTypedActionOutput<App, "POST", "/sessions">
-				| MakeTypedActionOutput<App, "POST", "/logout">
+				| ToActionOutput<App, "GET", "/users/:userID">
+				| ToActionOutput<App, "GET", "/health">
+				| ToActionOutput<App, "PATCH", "/users/:userID">
+				| ToActionOutput<App, "POST", "/users/:userID">
+				| ToActionOutput<App, "POST", "/sessions">
+				| ToActionOutput<App, "POST", "/logout">
 			>
 		>
 	>;
+	type _api_client_submit_or_throw_return = Assert<
+		IsExact<
+			Awaited<ReturnType<ToAPIClient<App>["submitOrThrow"]>>,
+			| ToActionOutput<App, "GET", "/users/:userID">
+			| ToActionOutput<App, "GET", "/health">
+			| ToActionOutput<App, "PATCH", "/users/:userID">
+			| ToActionOutput<App, "POST", "/users/:userID">
+			| ToActionOutput<App, "POST", "/sessions">
+			| ToActionOutput<App, "POST", "/logout">
+		>
+	>;
+	expect_type<
+		SubmitError<
+			ToActionSubmitOutput<App, ToActionSubmitArgsByKind<App, "query">>
+		>
+	>(
+		null as unknown as ToActionSubmitError<
+			App,
+			ToActionSubmitArgsByKind<App, "query">
+		>,
+	);
+	expect_type<
+		ToActionSubmitError<App, ToActionSubmitArgsByKind<App, "query">>
+	>(
+		null as unknown as SubmitError<
+			ToActionSubmitOutput<App, ToActionSubmitArgsByKind<App, "query">>
+		>,
+	);
 
 	// ScrollState
 	const scroll_xy: ScrollState = { x: 0, y: 0 };
@@ -579,11 +604,13 @@ function assert_exported_type_contracts(): void {
 	const success_result: SubmitResult<number> = {
 		success: true,
 		data: 42,
+		response: new Response(),
 		revalidationPromise: Promise.resolve({ ok: true }),
 	};
 	const fail_result: SubmitResult<number> = {
 		success: false,
 		error: "fail",
+		response: new Response(),
 		revalidationPromise: Promise.resolve({
 			ok: false,
 			reason: "max_retries_exhausted",
@@ -591,14 +618,9 @@ function assert_exported_type_contracts(): void {
 	};
 	void success_result;
 	void fail_result;
-
-	// SubmitOptions
-	const submit_opts: SubmitOptions = {
-		dedupeKey: "k",
-		revalidate: true,
-		skipProgressIndicator: false,
-	};
-	void submit_opts;
+	const submit_error = new SubmitError<number>(fail_result);
+	expect_type<SubmitResult<number> & { success: false }>(submit_error.result);
+	void submit_error;
 
 	const progress_indicator_config: ProgressIndicatorConfig = {
 		start: () => {},
@@ -615,26 +637,6 @@ function assert_exported_type_contracts(): void {
 		source: "server",
 	};
 	void route_error_state;
-
-	// LinkPropsBase
-	const link_props: LinkPropsBase = {
-		prefetch: "intent",
-		visitOnPointerDown: true,
-		prefetchDelayMs: 100,
-		attributeMatchRules: { includeSearch: true, includeHash: true },
-		replace: false,
-		scrollToTop: true,
-	};
-	void link_props;
-	const skipped_link_props: LinkPropsBase = {
-		attributeMatchRules: { skip: true },
-	};
-	void skipped_link_props;
-	const invalid_skipped_link_props: LinkPropsBase = {
-		// @ts-expect-error skipped link attributes cannot also match search.
-		attributeMatchRules: { skip: true, includeSearch: true },
-	};
-	void invalid_skipped_link_props;
 
 	// RouteRenderEntry
 	const entry: RouteRenderEntry = {
@@ -839,6 +841,7 @@ void assert_link_contracts;
 function assert_api_client_contracts(): void {
 	const health_identity = react.apiClient.toIdentityArray({
 		pattern: "/health",
+		kind: "mutation",
 	});
 	expect_type<unknown[]>(health_identity);
 
@@ -856,25 +859,26 @@ function assert_api_client_contracts(): void {
 		input: { includePosts: true },
 	});
 	expect_type<
-		Promise<
-			SubmitResult<MakeTypedActionOutput<App, "GET", "/users/:userID">>
-		>
+		Promise<SubmitResult<ToActionOutput<App, "GET", "/users/:userID">>>
 	>(user_get_result);
 
 	// Valid GET-only action with nullable input. Method can be omitted.
 	void react.apiClient.submit({
 		pattern: "/health",
+		kind: "mutation",
 	});
 
 	// Valid GET-only action with nullable input (explicit null).
 	void react.apiClient.submit({
 		pattern: "/health",
+		kind: "mutation",
 		input: null,
 	});
 
 	// Valid GET-only action with flattened submit options.
 	void react.apiClient.submit({
 		pattern: "/health",
+		kind: "mutation",
 		dedupeKey: "health-check",
 		revalidate: false,
 	});
@@ -903,6 +907,7 @@ function assert_api_client_contracts(): void {
 
 	void react.apiClient.submit({
 		pattern: "/health",
+		kind: "mutation",
 		// @ts-expect-error action input root must be object, null, or undefined.
 		input: "invalid",
 	});
@@ -924,9 +929,7 @@ function assert_api_client_contracts(): void {
 		input: { nickname: "neo" },
 	});
 	expect_type<
-		Promise<
-			SubmitResult<MakeTypedActionOutput<App, "PATCH", "/users/:userID">>
-		>
+		Promise<SubmitResult<ToActionOutput<App, "PATCH", "/users/:userID">>>
 	>(patch_result);
 
 	// Valid same-pattern POST action with different input and output.
@@ -937,19 +940,18 @@ function assert_api_client_contracts(): void {
 		input: { inviteEmail: "ada@example.com" },
 	});
 	expect_type<
-		Promise<
-			SubmitResult<MakeTypedActionOutput<App, "POST", "/users/:userID">>
-		>
+		Promise<SubmitResult<ToActionOutput<App, "POST", "/users/:userID">>>
 	>(user_post_result);
 
 	// Valid POST action.
 	const post_result = react.apiClient.submit({
 		method: "POST",
 		pattern: "/sessions",
+		kind: "query",
 		input: { email: "a@b.com", password: "pw" },
 	});
 	expect_type<
-		Promise<SubmitResult<MakeTypedActionOutput<App, "POST", "/sessions">>>
+		Promise<SubmitResult<ToActionOutput<App, "POST", "/sessions">>>
 	>(post_result);
 
 	// Valid POST action with optional input (omitted).
@@ -981,6 +983,7 @@ function assert_api_client_contracts(): void {
 		// @ts-expect-error method must come from action methods.
 		method: "PUT",
 		pattern: "/sessions",
+		kind: "query",
 		input: { email: "a@b.com", password: "pw" },
 	});
 
@@ -997,7 +1000,7 @@ void assert_api_client_contracts;
 
 function assert_action_submit_props_contracts(): void {
 	// Required GET input.
-	const required_get_props: MakeTypedActionSubmitProps<App> = {
+	const required_get_props: ToActionSubmitArgs<App> = {
 		method: "GET",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
@@ -1006,15 +1009,18 @@ function assert_action_submit_props_contracts(): void {
 	expect_type<{ includePosts: boolean }>(required_get_props.input);
 
 	// Optional GET input (omitted, null, undefined).
-	const optional_get_omitted: MakeTypedActionSubmitProps<App> = {
+	const optional_get_omitted: ToActionSubmitArgs<App> = {
 		pattern: "/health",
+		kind: "mutation",
 	};
-	const optional_get_null: MakeTypedActionSubmitProps<App> = {
+	const optional_get_null: ToActionSubmitArgs<App> = {
 		pattern: "/health",
+		kind: "mutation",
 		input: null,
 	};
-	const optional_get_undefined: MakeTypedActionSubmitProps<App> = {
+	const optional_get_undefined: ToActionSubmitArgs<App> = {
 		pattern: "/health",
+		kind: "mutation",
 		input: undefined,
 	};
 	void optional_get_omitted;
@@ -1022,14 +1028,14 @@ function assert_action_submit_props_contracts(): void {
 	void optional_get_undefined;
 
 	// @ts-expect-error non-empty GET input must be required.
-	const missing_get_input: MakeTypedActionSubmitProps<App> = {
+	const missing_get_input: ToActionSubmitArgs<App> = {
 		method: "GET",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 	};
 	void missing_get_input;
 
-	const wrong_get_params: MakeTypedActionSubmitProps<App> = {
+	const wrong_get_params: ToActionSubmitArgs<App> = {
 		method: "GET",
 		pattern: "/users/:userID",
 		// @ts-expect-error action params keys must match route params.
@@ -1039,7 +1045,7 @@ function assert_action_submit_props_contracts(): void {
 	void wrong_get_params;
 
 	// Required PATCH action.
-	const required_patch: MakeTypedActionSubmitProps<App> = {
+	const required_patch: ToActionSubmitArgs<App> = {
 		method: "PATCH",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
@@ -1048,7 +1054,7 @@ function assert_action_submit_props_contracts(): void {
 	expect_type<{ nickname: string }>(required_patch.input);
 
 	// Required same-pattern POST action.
-	const required_user_post: MakeTypedActionSubmitProps<App> = {
+	const required_user_post: ToActionSubmitArgs<App> = {
 		method: "POST",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
@@ -1057,34 +1063,55 @@ function assert_action_submit_props_contracts(): void {
 	expect_type<{ inviteEmail: string }>(required_user_post.input);
 
 	// Required POST action.
-	const required_post: MakeTypedActionSubmitProps<App> = {
+	const required_post: ToActionSubmitArgs<App> = {
 		method: "POST",
 		pattern: "/sessions",
+		kind: "query",
 		input: { email: "a@b.com", password: "pw" },
 	};
 	void required_post;
 
 	// Optional POST input (omitted, undefined).
-	const optional_post_omitted: MakeTypedActionSubmitProps<App> = {
+	const optional_post_omitted: ToActionSubmitArgs<App> = {
 		method: "POST",
 		pattern: "/logout",
 	};
-	const optional_post_undefined: MakeTypedActionSubmitProps<App> = {
+	const optional_post_undefined: ToActionSubmitArgs<App> = {
 		method: "POST",
 		pattern: "/logout",
 		input: undefined,
 	};
-	void optional_post_omitted;
-	void optional_post_undefined;
-
-	// @ts-expect-error non-empty POST input must be required.
-	const missing_post_input: MakeTypedActionSubmitProps<App> = {
+	const query_get_props: ToActionSubmitArgsByKind<App, "query"> = {
+		method: "GET",
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		input: { includePosts: true },
+	};
+	const query_post_props: ToActionSubmitArgsByKind<App, "query"> = {
 		method: "POST",
 		pattern: "/sessions",
+		kind: "query",
+		input: { email: "a@b.com", password: "pw" },
+	};
+	const mutation_get_props: ToActionSubmitArgsByKind<App, "mutation"> = {
+		pattern: "/health",
+		kind: "mutation",
+	};
+	void optional_post_omitted;
+	void optional_post_undefined;
+	void query_get_props;
+	void query_post_props;
+	void mutation_get_props;
+
+	// @ts-expect-error non-empty POST input must be required.
+	const missing_post_input: ToActionSubmitArgs<App> = {
+		method: "POST",
+		pattern: "/sessions",
+		kind: "query",
 	};
 	void missing_post_input;
 
-	const wrong_patch_input: MakeTypedActionSubmitProps<App> = {
+	const wrong_patch_input: ToActionSubmitArgs<App> = {
 		method: "PATCH",
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
@@ -1093,15 +1120,16 @@ function assert_action_submit_props_contracts(): void {
 	};
 	void wrong_patch_input;
 
-	const wrong_post_method: MakeTypedActionSubmitProps<App> = {
+	const wrong_post_method: ToActionSubmitArgs<App> = {
 		// @ts-expect-error method/pattern pair must exist.
 		method: "PUT",
 		pattern: "/sessions",
+		kind: "query",
 		input: { email: "a@b.com", password: "pw" },
 	};
 	void wrong_post_method;
 
-	const wrong_action_params: MakeTypedActionSubmitProps<App> = {
+	const wrong_action_params: ToActionSubmitArgs<App> = {
 		method: "PATCH",
 		pattern: "/users/:userID",
 		// @ts-expect-error action params keys must match route params.
@@ -1110,7 +1138,7 @@ function assert_action_submit_props_contracts(): void {
 	};
 	void wrong_action_params;
 
-	const body_not_allowed: MakeTypedActionSubmitProps<App> = {
+	const body_not_allowed: ToActionSubmitArgs<App> = {
 		method: "POST",
 		pattern: "/logout",
 		// @ts-expect-error typed action submit uses input, not body.
@@ -1123,26 +1151,24 @@ void assert_action_submit_props_contracts;
 /////// React Adapter Type Safety
 
 function assert_react_adapter_contracts(): void {
-	const route_props = null as unknown as MakeTypedRouteProps<
+	const route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID"
 	>;
 
 	// useLoaderData
 	const loader_data = react.useLoaderData(route_props);
-	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(loader_data);
+	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data);
 
 	// usePatternLoaderData
 	const maybe_pattern_data = react.usePatternLoaderData("/docs/*");
-	expect_type<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>(
-		maybe_pattern_data,
-	);
+	expect_type<ToLoaderOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
 
 	const maybe_root_data = react.usePatternLoaderData("/");
-	expect_type<MakeTypedLoaderOutput<App, "/"> | undefined>(maybe_root_data);
+	expect_type<ToLoaderOutput<App, "/"> | undefined>(maybe_root_data);
 
 	const maybe_blog_data = react.usePatternLoaderData("/blog/_index");
-	expect_type<MakeTypedLoaderOutput<App, "/blog/_index"> | undefined>(
+	expect_type<ToLoaderOutput<App, "/blog/_index"> | undefined>(
 		maybe_blog_data,
 	);
 
@@ -1174,6 +1200,33 @@ function assert_react_adapter_contracts(): void {
 	});
 	expect_type<string | undefined>(selected_navigation_href);
 
+	// useRouteSync
+	react.useRouteSync({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { page: 2, tab: "posts" },
+		enabled: true,
+		debounceMs: 250,
+		replace: true,
+		scrollToTop: false,
+	});
+
+	react.useRouteSync({
+		pattern: "/docs/*",
+		splatValues: ["guides", "intro"],
+	});
+
+	react.useRouteSync({
+		// @ts-expect-error route sync rejects unknown patterns.
+		pattern: "/not-a-route",
+	});
+
+	react.useRouteSync({
+		pattern: "/users/:userID",
+		// @ts-expect-error route sync requires typed params.
+		params: {},
+	});
+
 	// getRouteState
 	const current_route_state = react.getRouteState();
 	expect_type<RouteState>(current_route_state);
@@ -1197,7 +1250,7 @@ function assert_react_adapter_contracts(): void {
 		pattern: "/docs/*",
 		component: (props) => {
 			const data = react.useLoaderData(props);
-			expect_type<MakeTypedLoaderOutput<App, "/docs/*">>(data);
+			expect_type<ToLoaderOutput<App, "/docs/*">>(data);
 			return null!;
 		},
 		errorBoundary: (props) => {
@@ -1211,7 +1264,7 @@ function assert_react_adapter_contracts(): void {
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = react.useLoaderData(props);
-			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(data);
+			expect_type<ToLoaderOutput<App, "/users/:userID">>(data);
 
 			const client_loader_data = react.useClientLoaderData(props);
 			expect_type<number>(client_loader_data);
@@ -1247,7 +1300,7 @@ function assert_react_adapter_contracts(): void {
 				knownMatches,
 			);
 			const server_data = await serverPromise;
-			expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(
+			expect_type<ToLoaderOutput<App, "/users/:userID">>(
 				server_data.loaderData,
 			);
 			expect_type<string>(server_data.clientBuildID);
@@ -1259,11 +1312,23 @@ function assert_react_adapter_contracts(): void {
 			);
 			return server_data.loaderData.userName.length;
 		},
+		beforeRouteCommit: async ({ current, next, signal, trigger }) => {
+			expect_type<Exclude<RouteUpdateReason, "init">>(trigger);
+			expect_type<AbortSignal>(signal);
+			expect_type<string>(current.href);
+			expect_type<string>(next.href);
+		},
+		beforeRouteYield: async ({ current, next, signal, trigger }) => {
+			expect_type<Exclude<RouteUpdateReason, "init">>(trigger);
+			expect_type<AbortSignal>(signal);
+			expect_type<string>(current.href);
+			expect_type<string>(next.href);
+		},
 		runClientLoaderOnHMR: true,
 	});
 
 	// useClientLoaderData: tested with an explicit T via RouteProps
-	const cl_route_props = null as unknown as MakeTypedRouteProps<
+	const cl_route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID",
 		number
@@ -1511,25 +1576,23 @@ void assert_public_runtime_contracts;
 /////// Preact Adapter Type Safety
 
 function assert_preact_adapter_contracts(): void {
-	const route_props = null as unknown as MakeTypedRouteProps<
+	const route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID"
 	>;
 
 	// useLoaderData returns ReadonlySignal<T>
 	const loader_data = preact.useLoaderData(route_props);
-	expect_type<ReadonlySignal<MakeTypedLoaderOutput<App, "/users/:userID">>>(
+	expect_type<ReadonlySignal<ToLoaderOutput<App, "/users/:userID">>>(
 		loader_data,
 	);
-	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(
-		loader_data.value,
-	);
+	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data.value);
 
 	// usePatternLoaderData
 	const maybe_pattern_data = preact.usePatternLoaderData("/docs/*");
-	expect_type<
-		ReadonlySignal<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>
-	>(maybe_pattern_data);
+	expect_type<ReadonlySignal<ToLoaderOutput<App, "/docs/*"> | undefined>>(
+		maybe_pattern_data,
+	);
 
 	// useRouteState
 	const route_state = preact.useRouteState();
@@ -1551,8 +1614,19 @@ function assert_preact_adapter_contracts(): void {
 	});
 	expect_type<ReadonlySignal<number>>(selected_submission_count);
 
+	// useRouteSync
+	preact.useRouteSync({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { page: 2, tab: "posts" },
+		enabled: true,
+		debounceMs: 250,
+		replace: true,
+		scrollToTop: false,
+	});
+
 	// useClientLoaderData returns ReadonlySignal<T>
-	const cl_route_props = null as unknown as MakeTypedRouteProps<
+	const cl_route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID",
 		number
@@ -1571,9 +1645,9 @@ function assert_preact_adapter_contracts(): void {
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = preact.useLoaderData(props);
-			expect_type<
-				ReadonlySignal<MakeTypedLoaderOutput<App, "/users/:userID">>
-			>(data);
+			expect_type<ReadonlySignal<ToLoaderOutput<App, "/users/:userID">>>(
+				data,
+			);
 			return null!;
 		},
 	});
@@ -1600,22 +1674,20 @@ void assert_preact_adapter_contracts;
 /////// Solid Adapter Type Safety
 
 function assert_solid_adapter_contracts(): void {
-	const route_props = null as unknown as MakeTypedRouteProps<
+	const route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID"
 	>;
 
 	// useLoaderData returns Accessor<T>
 	const loader_data = solid.useLoaderData(route_props);
-	expect_type<Accessor<MakeTypedLoaderOutput<App, "/users/:userID">>>(
-		loader_data,
-	);
+	expect_type<Accessor<ToLoaderOutput<App, "/users/:userID">>>(loader_data);
 	// Calling the accessor returns the value
-	expect_type<MakeTypedLoaderOutput<App, "/users/:userID">>(loader_data());
+	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data());
 
 	// usePatternLoaderData returns Accessor<T | undefined>
 	const maybe_pattern_data = solid.usePatternLoaderData("/docs/*");
-	expect_type<Accessor<MakeTypedLoaderOutput<App, "/docs/*"> | undefined>>(
+	expect_type<Accessor<ToLoaderOutput<App, "/docs/*"> | undefined>>(
 		maybe_pattern_data,
 	);
 
@@ -1639,8 +1711,19 @@ function assert_solid_adapter_contracts(): void {
 	});
 	expect_type<Accessor<number>>(selected_submission_count);
 
+	// useRouteSync
+	solid.useRouteSync({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { page: 2, tab: "posts" },
+		enabled: true,
+		debounceMs: 250,
+		replace: true,
+		scrollToTop: false,
+	});
+
 	// useClientLoaderData returns Accessor<T>
-	const cl_route_props = null as unknown as MakeTypedRouteProps<
+	const cl_route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID",
 		number
@@ -1659,9 +1742,7 @@ function assert_solid_adapter_contracts(): void {
 		pattern: "/users/:userID",
 		component: (props) => {
 			const data = solid.useLoaderData(props);
-			expect_type<Accessor<MakeTypedLoaderOutput<App, "/users/:userID">>>(
-				data,
-			);
+			expect_type<Accessor<ToLoaderOutput<App, "/users/:userID">>>(data);
 			return null!;
 		},
 	});

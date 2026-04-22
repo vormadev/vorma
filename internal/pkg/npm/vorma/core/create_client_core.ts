@@ -9,8 +9,6 @@ import {
 } from "vorma/kit/matcher/register";
 import { R, type Result } from "vorma/kit/result";
 import {
-	ACTION_RESPONSE_DATA_KEY,
-	ACTION_RESPONSE_SKIP_REVALIDATION_KEY,
 	BUILD_ID_HEADER,
 	DATA_SCRIPT_ID,
 	HISTORY_KEY_FIELD,
@@ -28,7 +26,16 @@ import {
 import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
 import { preload_modules } from "./modules.ts";
-import type { AppConfig, RevalidationResult } from "./types.ts";
+import type {
+	ActionKind,
+	AppConfig,
+	BeforeRouteCommitFn,
+	BeforeRouteYieldFn,
+	RevalidationResult,
+	RouteErrorState,
+	RouteState,
+	RouteUpdateReason,
+} from "./types.ts";
 
 /////////////////////////////////////////////////////////////////////
 /////// Public Types
@@ -50,12 +57,6 @@ export type RouteRenderEntry = {
 	client_loader_data: unknown;
 };
 
-export type RouteErrorState = {
-	idx: number;
-	error: unknown;
-	source: "server" | "clientLoader";
-};
-
 export type RouteRenderState = {
 	entries: RouteRenderEntry[];
 	error: RouteErrorState | null;
@@ -63,23 +64,6 @@ export type RouteRenderState = {
 	splat_values: string[];
 	client_build_id: string;
 	history_state: unknown;
-};
-
-export type RouteMatchState = {
-	pattern: string;
-	input: unknown;
-	loaderData: unknown;
-	clientLoaderData: unknown;
-};
-
-export type RouteState = {
-	href: string;
-	historyState: unknown;
-	clientBuildID: string;
-	params: Record<string, string>;
-	splatValues: string[];
-	matches: RouteMatchState[];
-	error: RouteErrorState | null;
 };
 
 export type WorkState = {
@@ -101,12 +85,6 @@ export type WorkState = {
 		href: string;
 	}>;
 };
-
-export type RouteUpdateReason =
-	| "init"
-	| "navigation"
-	| "popstate"
-	| "revalidation";
 
 export type ProgressIndicatorConfig = {
 	start: () => void;
@@ -142,9 +120,11 @@ export type RouteDefinition = {
 	component: (props: any) => any;
 	error_boundary?: (props: { error: unknown }) => any;
 	client_loader?: ClientLoaderFn;
+	before_route_commit?: BeforeRouteCommitFn;
+	before_route_yield?: BeforeRouteYieldFn;
 };
 
-type ClientLoaderFn = (props: {
+type ClientLoaderFn = (args: {
 	trigger: "init" | "navigation" | "revalidation" | "prefetch";
 	href: string;
 	historyState: unknown;
@@ -206,6 +186,7 @@ export type ClientCore = {
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: {
+			actionKind?: ActionKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipProgressIndicator?: boolean;
@@ -220,6 +201,8 @@ export type ClientCore = {
 		component: (props: any) => any;
 		errorBoundary?: (props: { error: unknown }) => any;
 		clientLoader?: (props: any) => Promise<T>;
+		beforeRouteCommit?: BeforeRouteCommitFn;
+		beforeRouteYield?: BeforeRouteYieldFn;
 		runClientLoaderOnHMR?: boolean;
 	}) => RouteDefinition & { __phantom_client_loader_data?: T };
 	start_prefetch: (href: string) => void;
@@ -1398,12 +1381,76 @@ export function create_client_core(
 		f: ActiveFetch,
 		prepared: PreparedRoute,
 	): Promise<boolean> {
-		const commit_reason: RouteRenderCommitReason =
+		const commit_reason: Exclude<RouteUpdateReason, "init"> =
 			f.intent.kind === "reval"
 				? "revalidation"
 				: f.intent.options.is_popstate
 					? "popstate"
 					: "navigation";
+
+		const prev_snapshot = route_snapshot;
+		if (!prev_snapshot) {
+			return false;
+		}
+
+		const next_href =
+			f.intent.kind === "nav"
+				? f.intent.url.href
+				: prev_snapshot.position.href;
+		const next_history_state =
+			f.intent.kind === "nav"
+				? f.intent.options.is_popstate
+					? browser.state
+					: f.intent.options.state
+				: prev_snapshot.position.state;
+		const yield_hooks = prev_snapshot.route.matches
+			.map((m) => {
+				return (m.module.default as RouteDefinition | undefined)
+					?.before_route_yield;
+			})
+			.filter((h): h is BeforeRouteYieldFn => {
+				return typeof h === "function";
+			});
+		const commit_hooks = prepared.route.matches
+			.map((m) => {
+				return (m.module.default as RouteDefinition | undefined)
+					?.before_route_commit;
+			})
+			.filter((h): h is BeforeRouteCommitFn => {
+				return typeof h === "function";
+			});
+		if (yield_hooks.length > 0 || commit_hooks.length > 0) {
+			const current = route_snapshot_to_state(prev_snapshot);
+			const next = route_record_to_state(
+				prepared.route,
+				next_href,
+				next_history_state,
+			);
+			await Promise.all(
+				yield_hooks
+					.map((h) => {
+						return h({
+							trigger: commit_reason,
+							signal: f.ac.signal,
+							current,
+							next,
+						});
+					})
+					.concat(
+						commit_hooks.map((h) => {
+							return h({
+								trigger: commit_reason,
+								signal: f.ac.signal,
+								current,
+								next,
+							});
+						}),
+					),
+			);
+			if (!can_commit(f)) {
+				return false;
+			}
+		}
 
 		let did_publish = false;
 
@@ -1508,10 +1555,21 @@ export function create_client_core(
 	}
 
 	function route_snapshot_to_state(snapshot: RouteSnapshot): RouteState {
-		const route = snapshot.route;
+		return route_record_to_state(
+			snapshot.route,
+			snapshot.position.href,
+			snapshot.position.state,
+		);
+	}
+
+	function route_record_to_state(
+		route: RouteRecord,
+		href: string,
+		history_state: unknown,
+	): RouteState {
 		return {
-			href: snapshot.position.href,
-			historyState: snapshot.position.state,
+			href,
+			historyState: history_state,
 			clientBuildID: route.client_build_id,
 			params: route.params,
 			splatValues: route.splat_values,
@@ -2115,6 +2173,7 @@ export function create_client_core(
 		url: string | URL,
 		request_init?: RequestInit,
 		options?: {
+			actionKind?: ActionKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipProgressIndicator?: boolean;
@@ -2136,6 +2195,13 @@ export function create_client_core(
 		const method = request_init?.method
 			? request_init.method.toUpperCase().trim()
 			: "GET";
+		const action_kind =
+			options?.actionKind ??
+			(method === "GET" || method === "HEAD" ? "query" : "mutation");
+		let should_revalidate = action_kind === "mutation";
+		if (options?.revalidate !== undefined) {
+			should_revalidate = options.revalidate;
+		}
 
 		let dedupe_key = options?.dedupeKey;
 		if (dedupe_key) {
@@ -2157,6 +2223,25 @@ export function create_client_core(
 
 		let revalidation_promise: Promise<RevalidationResult> =
 			Promise.resolve(REVALIDATION_OK);
+		let did_dispatch = false;
+
+		function schedule_revalidation(): void {
+			if (!should_revalidate) {
+				return;
+			}
+			if (phase === "ready") {
+				const waiter = make_deferred<RevalidationResult>();
+				revalidation_promise = waiter.promise;
+				require_refresh(waiter);
+				maybe_revalidate();
+			} else {
+				// During boot, register refresh demand so post-init
+				// maybe_revalidate will fire. Do not attach a waiter;
+				// the returned revalidationPromise stays resolved so initial
+				// client loaders awaiting it do not deadlock.
+				require_refresh();
+			}
+		}
 
 		try {
 			const is_get = method === "GET" || method === "HEAD";
@@ -2197,6 +2282,7 @@ export function create_client_core(
 				}
 			}
 
+			did_dispatch = true;
 			const res = await fetch(resolved, final_init);
 
 			update_build_id(res);
@@ -2244,6 +2330,7 @@ export function create_client_core(
 			}
 
 			if (!res.ok) {
+				schedule_revalidation();
 				return {
 					success: false,
 					error: res.statusText,
@@ -2253,49 +2340,17 @@ export function create_client_core(
 			}
 
 			let data: unknown;
-			let skip_revalidation = false;
 			if (res.status !== 204) {
 				const ct = res.headers.get("Content-Type");
 				if (ct?.toLowerCase().includes("json")) {
 					data = await res.json();
-					if (data && typeof data === "object") {
-						const envelope = data as Record<string, unknown>;
-						if (
-							typeof envelope[
-								ACTION_RESPONSE_SKIP_REVALIDATION_KEY
-							] === "boolean" &&
-							Object.hasOwn(envelope, ACTION_RESPONSE_DATA_KEY)
-						) {
-							skip_revalidation =
-								envelope[ACTION_RESPONSE_SKIP_REVALIDATION_KEY];
-							data = envelope[ACTION_RESPONSE_DATA_KEY];
-						}
-					}
 				} else {
 					const t = await res.text();
 					data = t.length > 0 ? t : undefined;
 				}
 			}
 
-			let should_revalidate = !is_get && !skip_revalidation;
-			if (options?.revalidate !== undefined) {
-				should_revalidate = options.revalidate;
-			}
-
-			if (should_revalidate && !ac.signal.aborted) {
-				if (phase === "ready") {
-					const waiter = make_deferred<RevalidationResult>();
-					revalidation_promise = waiter.promise;
-					require_refresh(waiter);
-					maybe_revalidate();
-				} else {
-					// During boot, register refresh demand so post-init
-					// maybe_revalidate will fire. Do not attach a waiter;
-					// the returned revalidationPromise stays resolved so initial
-					// client loaders awaiting it do not deadlock.
-					require_refresh();
-				}
-			}
+			schedule_revalidation();
 
 			return {
 				success: true,
@@ -2305,11 +2360,17 @@ export function create_client_core(
 			};
 		} catch (e) {
 			if (is_abort_error(e)) {
+				if (did_dispatch) {
+					schedule_revalidation();
+				}
 				return {
 					success: false,
 					error: "Aborted",
 					revalidationPromise: revalidation_promise,
 				};
+			}
+			if (did_dispatch) {
+				schedule_revalidation();
 			}
 			return {
 				success: false,
@@ -2927,6 +2988,8 @@ export function create_client_core(
 		component: (props: any) => any;
 		errorBoundary?: (props: { error: unknown }) => any;
 		clientLoader?: (props: any) => Promise<T>;
+		beforeRouteCommit?: BeforeRouteCommitFn;
+		beforeRouteYield?: BeforeRouteYieldFn;
 		runClientLoaderOnHMR?: boolean;
 	}): RouteDefinition & { __phantom_client_loader_data?: T } {
 		if (import.meta.env.DEV) {
@@ -2941,6 +3004,8 @@ export function create_client_core(
 			component: input.component,
 			error_boundary: input.errorBoundary,
 			client_loader: input.clientLoader,
+			before_route_commit: input.beforeRouteCommit,
+			before_route_yield: input.beforeRouteYield,
 		};
 	}
 

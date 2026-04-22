@@ -7,6 +7,7 @@ import {
 	SEARCH_PARAM_SCHEMA_STRING,
 } from "../../kit/json/search_param_parser.ts";
 import {
+	deferred,
 	mock_fetch,
 	register_ccc_lifecycle,
 	route_response,
@@ -782,6 +783,305 @@ describe("navigation flow", () => {
 		expect(commit).toHaveBeenCalledTimes(1);
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries[0].loader_data).toEqual({ page: "second" });
+	});
+});
+
+/////////////////////////////////////////////////////////////////////
+/////// beforeRouteYield / beforeRouteCommit
+/////////////////////////////////////////////////////////////////////
+
+describe("beforeRouteYield / beforeRouteCommit", () => {
+	it("runs current matched yield hooks in parallel before publishing successor route", async () => {
+		const root_gate = deferred<void>();
+		const current_gate = deferred<void>();
+		const calls: string[] = [];
+		const hook_args: any[] = [];
+
+		vi.doMock("/root.js", () => {
+			return {
+				default: {
+					pattern: "/",
+					component: () => {
+						return null;
+					},
+					before_route_yield: async (args: any) => {
+						calls.push("root_start");
+						hook_args.push(args);
+						await root_gate.promise;
+						calls.push("root_end");
+					},
+				},
+			};
+		});
+		vi.doMock("/current.js", () => {
+			return {
+				default: {
+					pattern: "/current",
+					component: () => {
+						return null;
+					},
+					before_route_yield: async (args: any) => {
+						calls.push("current_start");
+						hook_args.push(args);
+						await current_gate.promise;
+						calls.push("current_end");
+					},
+				},
+			};
+		});
+		vi.doMock("/next.js", () => {
+			return {
+				default: {
+					pattern: "/next",
+					component: () => {
+						return null;
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup({
+			payload: {
+				MatchedPatterns: ["/", "/current"],
+				LoadersData: [{ root: "old" }, { page: "current" }],
+				ImportURLs: ["/root.js", "/current.js"],
+			},
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const nav = core.navigate("/next", { state: { via: "test" } });
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/", "/next"],
+				LoadersData: [{ root: "new" }, { page: "next" }],
+				ImportURLs: ["/root.js", "/next.js"],
+			}),
+		);
+		await wait_until(() => {
+			return calls.length === 2;
+		}, "beforeRouteYield hooks did not start");
+
+		expect(calls).toEqual(["root_start", "current_start"]);
+		expect(commit).not.toHaveBeenCalled();
+		expect(hook_args).toHaveLength(2);
+		expect(hook_args[0].trigger).toBe("navigation");
+		expect(hook_args[0].current.href).toBe(window.location.origin + "/");
+		expect(hook_args[0].next.href).toBe(window.location.origin + "/next");
+		expect(hook_args[0].next.historyState).toEqual({ via: "test" });
+
+		root_gate.resolve();
+		await tick();
+		expect(commit).not.toHaveBeenCalled();
+
+		current_gate.resolve();
+		await expect(nav).resolves.toEqual({ didNavigate: true });
+		expect(calls).toEqual([
+			"root_start",
+			"current_start",
+			"root_end",
+			"current_end",
+		]);
+		expect(commit).toHaveBeenCalledTimes(1);
+		expect(commit.mock.calls[0]![0].entries[1].loader_data).toEqual({
+			page: "next",
+		});
+	});
+
+	it("runs current yield hooks and next commit hooks in parallel", async () => {
+		const yield_gate = deferred<void>();
+		const commit_gate = deferred<void>();
+		const calls: string[] = [];
+
+		vi.doMock("/current.js", () => {
+			return {
+				default: {
+					pattern: "/current",
+					component: () => {
+						return null;
+					},
+					before_route_yield: async () => {
+						calls.push("yield_start");
+						await yield_gate.promise;
+						calls.push("yield_end");
+					},
+				},
+			};
+		});
+		vi.doMock("/next.js", () => {
+			return {
+				default: {
+					pattern: "/next",
+					component: () => {
+						return null;
+					},
+					before_route_commit: async () => {
+						calls.push("commit_start");
+						await commit_gate.promise;
+						calls.push("commit_end");
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup({
+			payload: {
+				MatchedPatterns: ["/current"],
+				LoadersData: [{ page: "current" }],
+				ImportURLs: ["/current.js"],
+			},
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const nav = core.navigate("/next");
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/next"],
+				LoadersData: [{ page: "next" }],
+				ImportURLs: ["/next.js"],
+			}),
+		);
+		await wait_until(() => {
+			return calls.length === 2;
+		}, "beforeRouteYield / beforeRouteCommit hooks did not start");
+
+		expect(calls).toEqual(["yield_start", "commit_start"]);
+		expect(commit).not.toHaveBeenCalled();
+
+		yield_gate.resolve();
+		await tick();
+		expect(commit).not.toHaveBeenCalled();
+
+		commit_gate.resolve();
+		await expect(nav).resolves.toEqual({ didNavigate: true });
+		expect(calls).toEqual([
+			"yield_start",
+			"commit_start",
+			"yield_end",
+			"commit_end",
+		]);
+		expect(commit).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not run yield hooks from successor-only routes or commit hooks from current-only routes", async () => {
+		const current_commit_hook = vi.fn();
+		const successor_yield_hook = vi.fn();
+		const successor_commit_hook = vi.fn();
+
+		vi.doMock("/current.js", () => {
+			return {
+				default: {
+					pattern: "/current",
+					component: () => {
+						return null;
+					},
+					before_route_commit: current_commit_hook,
+				},
+			};
+		});
+		vi.doMock("/next.js", () => {
+			return {
+				default: {
+					pattern: "/next",
+					component: () => {
+						return null;
+					},
+					before_route_yield: successor_yield_hook,
+					before_route_commit: successor_commit_hook,
+				},
+			};
+		});
+
+		const { core, commit } = await setup({
+			payload: {
+				MatchedPatterns: ["/current"],
+				LoadersData: [{ page: "current" }],
+				ImportURLs: ["/current.js"],
+			},
+		});
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({
+				MatchedPatterns: ["/next"],
+				LoadersData: [{ page: "next" }],
+				ImportURLs: ["/next.js"],
+			}),
+		);
+
+		await expect(core.navigate("/next")).resolves.toEqual({
+			didNavigate: true,
+		});
+
+		expect(current_commit_hook).not.toHaveBeenCalled();
+		expect(successor_yield_hook).not.toHaveBeenCalled();
+		expect(successor_commit_hook).toHaveBeenCalledTimes(1);
+		expect(commit).toHaveBeenCalledTimes(1);
+	});
+
+	it("aborts superseded yield hooks and does not publish stale route", async () => {
+		let aborted = false;
+		const hook_started = deferred<void>();
+		const first_gate = deferred<void>();
+
+		vi.doMock("/current.js", () => {
+			return {
+				default: {
+					pattern: "/current",
+					component: () => {
+						return null;
+					},
+					before_route_yield: ({ signal }: any) => {
+						hook_started.resolve();
+						signal.addEventListener(
+							"abort",
+							() => {
+								aborted = true;
+								first_gate.resolve();
+							},
+							{ once: true },
+						);
+						return first_gate.promise;
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup({
+			payload: {
+				MatchedPatterns: ["/current"],
+				LoadersData: [{ page: "current" }],
+				ImportURLs: ["/current.js"],
+			},
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const first = core.navigate("/first");
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/first"],
+				LoadersData: [{ page: "first" }],
+			}),
+		);
+		await hook_started.promise;
+
+		const second = core.navigate("/second");
+		await wait_for(2);
+		call(1).resolve(
+			route_response({
+				MatchedPatterns: ["/second"],
+				LoadersData: [{ page: "second" }],
+			}),
+		);
+
+		await expect(first).resolves.toEqual({ didNavigate: false });
+		await expect(second).resolves.toEqual({ didNavigate: true });
+
+		expect(aborted).toBe(true);
+		expect(commit).toHaveBeenCalledTimes(1);
+		expect(commit.mock.calls[0]![0].entries[0].loader_data).toEqual({
+			page: "second",
+		});
 	});
 });
 

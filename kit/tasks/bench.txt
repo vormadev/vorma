@@ -1,14 +1,14 @@
 cpu: Apple M3 Max
-BenchmarkSingleTask-14                           4626920               228.9 ns/op
-BenchmarkParallelIndependentTasks-14              478294              2635 ns/op
-BenchmarkHighContention-14                        212617              6645 ns/op
-BenchmarkTaskWithDependencies-14                 3306726               369.4 ns/op
-BenchmarkAllocations-14                          3704235               301.8 ns/op           696 B/op          8 allocs/op
-BenchmarkParallelScaling/tasks-1-14              3796584               322.3 ns/op
-BenchmarkParallelScaling/tasks-2-14               513513              1984 ns/op
-BenchmarkParallelScaling/tasks-5-14               331957              3769 ns/op
-BenchmarkParallelScaling/tasks-10-14              130753              9464 ns/op
-BenchmarkParallelScaling/tasks-20-14               54878             21851 ns/op
-BenchmarkParallelScaling/tasks-50-14               22288             52957 ns/op
-BenchmarkContextCancellation-14                      100          10785644 ns/op
-BenchmarkRepeatedTaskCalls-14                   71681520                16.10 ns/op            0 B/op          0 allocs/op
+BenchmarkSingleTask-14                           5470154               210.2 ns/op
+BenchmarkParallelIndependentTasks-14              523672              2323 ns/op
+BenchmarkHighContention-14                        211622              6617 ns/op
+BenchmarkTaskWithDependencies-14                 3532400               338.7 ns/op
+BenchmarkAllocations-14                          4124952               286.9 ns/op           712 B/op          8 allocs/op
+BenchmarkParallelScaling/tasks-1-14              4329606               275.9 ns/op
+BenchmarkParallelScaling/tasks-2-14               619677              1798 ns/op
+BenchmarkParallelScaling/tasks-5-14               354436              3472 ns/op
+BenchmarkParallelScaling/tasks-10-14              138728              8690 ns/op
+BenchmarkParallelScaling/tasks-20-14               57964             20830 ns/op
+BenchmarkParallelScaling/tasks-50-14               24066             49628 ns/op
+BenchmarkContextCancellation-14                      100          10716808 ns/op
+BenchmarkRepeatedTaskCalls-14                   58436814                17.12 ns/op            0 B/op          0 allocs/op

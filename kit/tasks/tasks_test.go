@@ -254,6 +254,79 @@ func TestCtxWithNativeContext(t *testing.T) {
 	})
 }
 
+func TestRunParallelCancellationBehavior(t *testing.T) {
+	t.Run("ReturnsOriginalSiblingErrorInsteadOfContextCanceled", func(t *testing.T) {
+		expected_err := errors.New("boom")
+
+		task_fail := NewTask(func(c *Ctx, _ string) (string, error) {
+			return "", expected_err
+		})
+		task_wait_for_cancel := NewTask(func(c *Ctx, _ string) (string, error) {
+			<-c.NativeContext().Done()
+			return "ok", nil
+		})
+
+		ctx := NewCtx(context.Background())
+		err := ctx.RunParallel(
+			task_fail.Bind("a"),
+			task_wait_for_cancel.Bind("b"),
+		)
+
+		if !errors.Is(err, expected_err) {
+			t.Fatalf("error = %v, want %v", err, expected_err)
+		}
+	})
+
+	t.Run("SiblingCancellationPoisoningLeaksIntoSharedCache", func(t *testing.T) {
+		expected_err := errors.New("boom")
+		var task_runs atomic.Int32
+		release := make(chan struct{})
+		started := make(chan struct{}, 1)
+
+		task_fail := NewTask(func(c *Ctx, _ string) (string, error) {
+			<-started
+			return "", expected_err
+		})
+		task_wait_for_cancel := NewTask(func(c *Ctx, input string) (string, error) {
+			task_runs.Add(1)
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			select {
+			case <-c.NativeContext().Done():
+			case <-release:
+			}
+			return "ok-" + input, nil
+		})
+
+		parent := NewCtx(context.Background())
+		err := parent.RunParallel(
+			task_fail.Bind("a"),
+			task_wait_for_cancel.Bind("b"),
+		)
+		if !errors.Is(err, expected_err) {
+			t.Fatalf("parallel error = %v, want %v", err, expected_err)
+		}
+
+		close(release)
+
+		got, err := task_wait_for_cancel.Run(parent, "b")
+		if err != nil {
+			t.Fatalf(
+				"rerun error = %v; this shows the shared cache kept the canceled child result",
+				err,
+			)
+		}
+		if got != "ok-b" {
+			t.Fatalf("rerun value = %q, want %q", got, "ok-b")
+		}
+		if task_runs.Load() != 2 {
+			t.Fatalf("task runs = %d, want 2 after rerun", task_runs.Load())
+		}
+	})
+}
+
 func TestComprehensiveSharedDependencies(t *testing.T) {
 	var execution_order []string
 	var execution_mu sync.Mutex

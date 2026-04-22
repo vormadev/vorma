@@ -422,7 +422,7 @@ describe("derived isRevalidating status", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("post-submit freshness", () => {
-	it("automatically revalidates after a non-GET submit", async () => {
+	it("automatically revalidates after a settled mutation submit", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 

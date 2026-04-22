@@ -5,6 +5,7 @@ import {
 	createEffect,
 	createMemo,
 	createSignal,
+	onCleanup,
 	Show,
 	type Accessor,
 	type Component,
@@ -24,47 +25,56 @@ import {
 	type AdapterInitOptions,
 	type AppConfig,
 	type DecomposedState,
-	type LinkPropsBase,
-	type MakeTypedAPIDecorator,
-	type MakeTypedDefineRouteInput,
-	type MakeTypedLinkProps,
-	type MakeTypedLoaderOutput,
-	type MakeTypedLoaderPattern,
-	type MakeTypedRouteProps,
 	type RouteDefinition,
 	type RouteState,
 	type ScrollIntent,
+	type ToAPIDecorator,
+	type ToDefineRouteArgs,
+	type ToLinkProps,
+	type ToLoaderOutput,
+	type ToLoaderPattern,
+	type ToRouteComponentProps,
+	type ToRouteSyncArgs,
 	type VormaClient,
 	type WorkState,
 } from "vorma/__internal";
 import { jsonDeepEquals } from "vorma/kit/json";
+import type { LinkPropsBase } from "../../core/types.ts";
 
+export { SubmitError } from "vorma/__internal";
 export type {
-	MakeTypedActionInput,
-	MakeTypedActionMethod,
-	MakeTypedActionOutput,
-	MakeTypedActionPattern,
-	MakeTypedActionSubmitOutput,
-	MakeTypedActionSubmitProps,
-	MakeTypedAPIClient,
-	MakeTypedAPIDecorator,
-	MakeTypedAPIDecoratorContext,
-	MakeTypedClientLoaderProps,
-	MakeTypedLinkProps,
-	MakeTypedLoaderInput,
-	MakeTypedLoaderOutput,
-	MakeTypedLoaderPattern,
-	MakeTypedNavProps,
-	MakeTypedNavTarget,
-	MakeTypedRouteDestination,
-	MakeTypedRouteProps,
+	ActionKind,
+	BeforeRouteCommitFn,
+	BeforeRouteTransitionArgs,
+	BeforeRouteYieldFn,
 	ProgressIndicatorConfig,
 	RevalidationResult,
 	RouteErrorState,
 	RouteState,
 	RouteUpdateReason,
-	SubmitOptions,
 	SubmitResult,
+	ToActionInput,
+	ToActionKind,
+	ToActionMethod,
+	ToActionOutput,
+	ToActionPattern,
+	ToActionSubmitArgs,
+	ToActionSubmitArgsByKind,
+	ToActionSubmitError,
+	ToActionSubmitOutput,
+	ToAPIClient,
+	ToAPIDecorator,
+	ToAPIDecoratorContext,
+	ToClientLoaderArgs,
+	ToLinkProps,
+	ToLoaderInput,
+	ToLoaderOutput,
+	ToLoaderPattern,
+	ToNavigateArgs,
+	ToNavigationTarget,
+	ToRouteComponentProps,
+	ToRouteDestination,
+	ToRouteSyncArgs,
 	AppConfig as VormaAppConfig,
 	WorkState,
 } from "vorma/__internal";
@@ -76,7 +86,7 @@ type CreateVormaClientOptions<A extends AppConfig> = {
 			"href"
 		>
 	>;
-	apiDecorator?: MakeTypedAPIDecorator<A>;
+	apiDecorator?: ToAPIDecorator<A>;
 };
 
 export function createVormaClient<A extends AppConfig>(
@@ -190,37 +200,85 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	function useLoaderData<P extends MakeTypedLoaderPattern<A>>(
-		props: MakeTypedRouteProps<A, P>,
-	): Accessor<MakeTypedLoaderOutput<A, P>> {
-		return createMemo(() => {
-			return loaders_data()[props.idx] as MakeTypedLoaderOutput<A, P>;
+	function useRouteSync<P extends ToLoaderPattern<A>>(
+		args: ToRouteSyncArgs<A, P>,
+	): void {
+		const {
+			debounceMs = 0,
+			enabled = true,
+			replace = true,
+			scrollToTop = false,
+			...target
+		} = args;
+		const canonical_href = createMemo(() => {
+			return passthrough.toHref(target as any);
+		});
+
+		createEffect(() => {
+			if (!enabled) {
+				return;
+			}
+
+			const href = canonical_href();
+			const route_href = route_state()?.href;
+			const pending_href = work_state().navigation?.href;
+			if (href === route_href || href === pending_href) {
+				return;
+			}
+
+			if (debounceMs > 0) {
+				const timeout_id = window.setTimeout(() => {
+					void passthrough.navigate({
+						href,
+						replace,
+						scrollToTop,
+					});
+				}, debounceMs);
+				onCleanup(() => {
+					window.clearTimeout(timeout_id);
+				});
+				return;
+			}
+
+			void passthrough.navigate({
+				href,
+				replace,
+				scrollToTop,
+			});
 		});
 	}
 
-	function usePatternLoaderData<P extends MakeTypedLoaderPattern<A>>(
+	function useLoaderData<P extends ToLoaderPattern<A>>(
+		args: ToRouteComponentProps<A, P>,
+	): Accessor<ToLoaderOutput<A, P>> {
+		return createMemo(() => {
+			return loaders_data()[args.idx] as ToLoaderOutput<A, P>;
+		});
+	}
+
+	function usePatternLoaderData<P extends ToLoaderPattern<A>>(
 		pattern: P,
-	): Accessor<MakeTypedLoaderOutput<A, P> | undefined> {
+	): Accessor<ToLoaderOutput<A, P> | undefined> {
 		return createMemo(() => {
 			const patterns = matched_patterns();
 			const idx = patterns.indexOf(pattern);
 			if (idx < 0) {
 				return undefined;
 			}
-			return loaders_data()[idx] as MakeTypedLoaderOutput<A, P>;
+			return loaders_data()[idx] as ToLoaderOutput<A, P>;
 		});
 	}
 
-	function useClientLoaderData<P extends MakeTypedLoaderPattern<A>, T>(
-		props: MakeTypedRouteProps<A, P, T>,
+	function useClientLoaderData<P extends ToLoaderPattern<A>, T>(
+		args: ToRouteComponentProps<A, P, T>,
 	): Accessor<T> {
 		return createMemo(() => {
-			return client_loaders_data()[props.idx] as T;
+			return client_loaders_data()[args.idx] as T;
 		});
 	}
 
 	function usePatternClientLoaderData<T>(
-		pattern: MakeTypedLoaderPattern<A>,
+		pattern: ToLoaderPattern<A>,
 	): Accessor<T | undefined> {
 		return createMemo(() => {
 			const patterns = matched_patterns();
@@ -232,8 +290,8 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function defineRoute<P extends MakeTypedLoaderPattern<A>, T = any>(
-		input: MakeTypedDefineRouteInput<A, P, T, JSX.Element>,
+	function defineRoute<P extends ToLoaderPattern<A>, T = any>(
+		input: ToDefineRouteArgs<A, P, T, JSX.Element>,
 	): RouteDefinition {
 		return core.defineRoute(input as any);
 	}
@@ -408,9 +466,9 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	const Link = (<P extends MakeTypedLoaderPattern<A>>(
+	const Link = (<P extends ToLoaderPattern<A>>(
 		raw: Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
-			MakeTypedLinkProps<A, P>,
+			ToLinkProps<A, P>,
 	): JSX.Element => {
 		const merged = { ...options?.linkDefaultProps, ...raw } as any;
 		const { href, pattern, params, splatValues, search, hash, ...props } =
@@ -428,9 +486,9 @@ export function createVormaClient<A extends AppConfig>(
 			);
 		});
 		return <BaseLink {...props} pattern={pattern} href={link_href()} />;
-	}) as <P extends MakeTypedLoaderPattern<A>>(
+	}) as <P extends ToLoaderPattern<A>>(
 		props: Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "href"> &
-			MakeTypedLinkProps<A, P>,
+			ToLinkProps<A, P>,
 	) => JSX.Element;
 
 	return {
@@ -439,6 +497,7 @@ export function createVormaClient<A extends AppConfig>(
 		defineRoute,
 		RootOutlet,
 		Link,
+		useRouteSync,
 		useRouteState,
 		useWorkState,
 		useLoaderData,

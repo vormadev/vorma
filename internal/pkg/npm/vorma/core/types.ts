@@ -1,3 +1,5 @@
+import type { SubmitError } from "./api_client.ts";
+
 /////// PRIMITIVE TYPES
 
 type LoaderBase = {
@@ -12,29 +14,72 @@ type ActionBase = {
 	method: string;
 	params?: ReadonlyArray<string>;
 	pattern: string;
+	kind?: ActionKind;
 	__I?: unknown;
 	__O?: unknown;
 };
 
-export type SubmitOptions = {
-	dedupeKey?: string;
-	revalidate?: boolean;
-	skipProgressIndicator?: boolean;
-};
+export type ActionKind = "query" | "mutation";
 
 export type RevalidationResult =
 	| { ok: true }
 	| { ok: false; reason: "max_retries_exhausted" };
 
+export type RouteErrorState = {
+	idx: number;
+	error: unknown;
+	source: "server" | "clientLoader";
+};
+
+export type RouteMatchState = {
+	pattern: string;
+	input: unknown;
+	loaderData: unknown;
+	clientLoaderData: unknown;
+};
+
+export type RouteState = {
+	href: string;
+	historyState: unknown;
+	clientBuildID: string;
+	params: Record<string, string>;
+	splatValues: string[];
+	matches: RouteMatchState[];
+	error: RouteErrorState | null;
+};
+
+export type RouteUpdateReason =
+	| "init"
+	| "navigation"
+	| "popstate"
+	| "revalidation";
+
+export type BeforeRouteTransitionArgs = {
+	trigger: Exclude<RouteUpdateReason, "init">;
+	signal: AbortSignal;
+	current: RouteState;
+	next: RouteState;
+};
+
+export type BeforeRouteCommitFn = (
+	args: BeforeRouteTransitionArgs,
+) => void | Promise<void>;
+
+export type BeforeRouteYieldFn = (
+	args: BeforeRouteTransitionArgs,
+) => void | Promise<void>;
+
 export type SubmitResult<T> =
 	| {
 			success: true;
 			data: T;
+			response: Response;
 			revalidationPromise: Promise<RevalidationResult>;
 	  }
 	| {
 			success: false;
 			error: string;
+			response?: Response;
 			revalidationPromise: Promise<RevalidationResult>;
 	  };
 
@@ -88,6 +133,22 @@ type __ActionByMethodAndPattern<
 	}
 >;
 
+type __ResolvedActionKind<Act> = Act extends {
+	kind: infer T extends ActionKind;
+}
+	? T
+	: Act extends {
+				method: "GET" | "HEAD";
+		  }
+		? "query"
+		: "mutation";
+
+type __ActionKindField<Act> = Act extends {
+	kind: infer T extends ActionKind;
+}
+	? { kind: T }
+	: {};
+
 /////// SPLAT DETECTION (pattern-based, no distribution issues)
 
 type __IsSplat<P extends string> = P extends `${string}/*` ? true : false;
@@ -129,16 +190,16 @@ type __LoaderParents<A extends AppConfig, P extends string> =
 	__LoaderByPattern<A, P> extends {
 		parents: ReadonlyArray<infer Parent>;
 	}
-		? Extract<Parent, MakeTypedLoaderPattern<A>>
+		? Extract<Parent, ToLoaderPattern<A>>
 		: never;
 
 type __LoaderInputWithParents<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > = (
 	P | __LoaderParents<A, P> extends infer Pattern
-		? Pattern extends MakeTypedLoaderPattern<A>
-			? (input: MakeTypedLoaderInput<A, Pattern>) => void
+		? Pattern extends ToLoaderPattern<A>
+			? (input: ToLoaderInput<A, Pattern>) => void
 			: never
 		: never
 ) extends (input: infer Input) => void
@@ -180,50 +241,51 @@ type __ActionMethodField<
 
 type __PermissiveLoaderPattern<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > = P extends `${infer Prefix}/_index`
 	? P | (Prefix extends "" ? "/" : Prefix)
 	: P;
 
 /////// PUBLIC PATTERN TYPES
 
-export type MakeTypedLoaderPattern<A extends AppConfig> =
-	__Loader<A>["pattern"];
-export type MakeTypedActionMethod<A extends AppConfig> = __Action<A>["method"];
-export type MakeTypedActionPattern<
+export type ToLoaderPattern<A extends AppConfig> = __Loader<A>["pattern"];
+export type ToActionMethod<A extends AppConfig> = __Action<A>["method"];
+export type ToActionPattern<
 	A extends AppConfig,
-	M extends MakeTypedActionMethod<A> = MakeTypedActionMethod<A>,
+	M extends ToActionMethod<A> = ToActionMethod<A>,
 > = Extract<__Action<A>, { method: M }>["pattern"];
 
 /////// PUBLIC I/O TYPES
 
-export type MakeTypedLoaderOutput<
-	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
-> = __LoaderByPattern<A, P> extends { __O: infer O } ? O : never;
+export type ToLoaderOutput<A extends AppConfig, P extends ToLoaderPattern<A>> =
+	__LoaderByPattern<A, P> extends { __O: infer O } ? O : never;
 
-export type MakeTypedLoaderInput<
-	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
-> = __LoaderByPattern<A, P> extends { __I: infer I } ? I : never;
+export type ToLoaderInput<A extends AppConfig, P extends ToLoaderPattern<A>> =
+	__LoaderByPattern<A, P> extends { __I: infer I } ? I : never;
 
-export type MakeTypedActionInput<
+export type ToActionInput<
 	A extends AppConfig,
-	M extends MakeTypedActionMethod<A>,
-	P extends MakeTypedActionPattern<A, M>,
+	M extends ToActionMethod<A>,
+	P extends ToActionPattern<A, M>,
 > = __ActionByMethodAndPattern<A, M, P> extends { __I: infer I } ? I : never;
 
-export type MakeTypedActionOutput<
+export type ToActionOutput<
 	A extends AppConfig,
-	M extends MakeTypedActionMethod<A>,
-	P extends MakeTypedActionPattern<A, M>,
+	M extends ToActionMethod<A>,
+	P extends ToActionPattern<A, M>,
 > = __ActionByMethodAndPattern<A, M, P> extends { __O: infer O } ? O : never;
+
+export type ToActionKind<
+	A extends AppConfig,
+	M extends ToActionMethod<A>,
+	P extends ToActionPattern<A, M>,
+> = __ResolvedActionKind<__ActionByMethodAndPattern<A, M, P>>;
 
 /////// ROUTE TARGETS
 
-export type MakeTypedRouteDestination<
+export type ToRouteDestination<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > = {
 	href?: never;
 	pattern: __PermissiveLoaderPattern<A, P>;
@@ -232,9 +294,9 @@ export type MakeTypedRouteDestination<
 } & __ConditionalLoaderParams<A, P> &
 	__ConditionalSplat<P>;
 
-export type MakeTypedNavTarget<
+export type ToNavigationTarget<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > =
 	| {
 			href: string;
@@ -244,16 +306,26 @@ export type MakeTypedNavTarget<
 			search?: never;
 			hash?: never;
 	  }
-	| MakeTypedRouteDestination<A, P>;
+	| ToRouteDestination<A, P>;
 
-export type MakeTypedNavProps<
+export type ToNavigateArgs<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
-> = MakeTypedNavTarget<A, P> & {
+	P extends ToLoaderPattern<A>,
+> = ToNavigationTarget<A, P> & {
 	replace?: boolean;
 	scrollToTop?: boolean;
 	state?: unknown;
 	skipProgressIndicator?: boolean;
+};
+
+export type ToRouteSyncArgs<
+	A extends AppConfig,
+	P extends ToLoaderPattern<A>,
+> = ToRouteDestination<A, P> & {
+	enabled?: boolean;
+	debounceMs?: number;
+	replace?: boolean;
+	scrollToTop?: boolean;
 };
 
 /////// ACTION SUBMIT PROPS
@@ -263,14 +335,15 @@ type __ActionSubmitPropsForAction<A extends AppConfig, Act> = Act extends {
 	pattern: infer P;
 	__I?: infer Input;
 }
-	? M extends MakeTypedActionMethod<A>
-		? P extends MakeTypedActionPattern<A, M>
+	? M extends ToActionMethod<A>
+		? P extends ToActionPattern<A, M>
 			? Omit<RequestInit, "body" | "method"> & {
 					dedupeKey?: string;
 					pattern: P;
 					revalidate?: boolean;
 					skipProgressIndicator?: boolean;
 				} & __ActionMethodField<A, P, M> &
+					__ActionKindField<Act> &
 					__ConditionalActionParams<Act> &
 					__ConditionalSplat<P> &
 					__ActionInputField<Input>
@@ -278,40 +351,57 @@ type __ActionSubmitPropsForAction<A extends AppConfig, Act> = Act extends {
 		: never
 	: never;
 
-export type MakeTypedActionSubmitProps<A extends AppConfig> =
+export type ToActionSubmitArgs<A extends AppConfig> =
 	__Action<A> extends infer Act
 		? Act extends unknown
 			? __ActionSubmitPropsForAction<A, Act>
 			: never
 		: never;
 
-export type MakeTypedActionSubmitOutput<
+export type ToActionSubmitArgsByKind<
 	A extends AppConfig,
-	Props extends MakeTypedActionSubmitProps<A>,
-> = Props extends {
-	method: infer M;
-	pattern: infer P;
-}
-	? M extends MakeTypedActionMethod<A>
-		? P extends MakeTypedActionPattern<A, M>
-			? MakeTypedActionOutput<A, M, P>
-			: never
-		: never
-	: Props extends {
-				pattern: infer P;
-		  }
-		? "GET" extends MakeTypedActionMethod<A>
-			? P extends MakeTypedActionPattern<A, "GET">
-				? MakeTypedActionOutput<A, "GET", P>
+	T extends ActionKind,
+> =
+	__Action<A> extends infer Act
+		? Act extends unknown
+			? __ResolvedActionKind<Act> extends T
+				? __ActionSubmitPropsForAction<A, Act>
 				: never
 			: never
 		: never;
 
+export type ToActionSubmitOutput<
+	A extends AppConfig,
+	Args extends ToActionSubmitArgs<A>,
+> = Args extends {
+	method: infer M;
+	pattern: infer P;
+}
+	? M extends ToActionMethod<A>
+		? P extends ToActionPattern<A, M>
+			? ToActionOutput<A, M, P>
+			: never
+		: never
+	: Args extends {
+				pattern: infer P;
+		  }
+		? "GET" extends ToActionMethod<A>
+			? P extends ToActionPattern<A, "GET">
+				? ToActionOutput<A, "GET", P>
+				: never
+			: never
+		: never;
+
+export type ToActionSubmitError<
+	A extends AppConfig,
+	Args extends ToActionSubmitArgs<A>,
+> = SubmitError<ToActionSubmitOutput<A, Args>>;
+
 /////// ROUTE COMPONENT PROPS
 
-export type MakeTypedRouteProps<
+export type ToRouteComponentProps<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 	ClientLoaderData = unknown,
 > = {
 	idx: number;
@@ -329,7 +419,7 @@ export type ClientLoaderKnownMatch = {
 
 export type ClientLoaderServerState<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > = {
 	clientBuildID: string;
 	matches: Array<{
@@ -341,12 +431,12 @@ export type ClientLoaderServerState<
 		idx: number;
 		error: unknown;
 	};
-	loaderData: MakeTypedLoaderOutput<A, P>;
+	loaderData: ToLoaderOutput<A, P>;
 };
 
-export type MakeTypedClientLoaderProps<
+export type ToClientLoaderArgs<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > = {
 	trigger: "init" | "navigation" | "revalidation" | "prefetch";
 	href: string;
@@ -354,7 +444,7 @@ export type MakeTypedClientLoaderProps<
 	pattern: P;
 	params: __LoaderParamsRecord<A, P>;
 	splatValues: string[];
-	input: MakeTypedLoaderInput<A, P>;
+	input: ToLoaderInput<A, P>;
 	knownMatches: ClientLoaderKnownMatch[];
 	serverPromise: Promise<ClientLoaderServerState<A, P>>;
 	signal: AbortSignal;
@@ -362,61 +452,66 @@ export type MakeTypedClientLoaderProps<
 
 /////// DEFINE ROUTE INPUT
 
-export type MakeTypedDefineRouteInput<
+export type ToDefineRouteArgs<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 	T = any,
 	Element = unknown,
 > = {
 	pattern: P;
-	component: (props: MakeTypedRouteProps<A, P, T>) => Element;
+	component: (props: ToRouteComponentProps<A, P, T>) => Element;
 	errorBoundary?: (props: { error: unknown }) => Element;
-	clientLoader?: (props: MakeTypedClientLoaderProps<A, P>) => Promise<T>;
+	clientLoader?: (args: ToClientLoaderArgs<A, P>) => Promise<T>;
+	beforeRouteCommit?: BeforeRouteCommitFn;
+	beforeRouteYield?: BeforeRouteYieldFn;
 	runClientLoaderOnHMR?: boolean;
 };
 
 /////// LINK PROPS
 
-export type MakeTypedLinkProps<
+export type ToLinkProps<
 	A extends AppConfig,
-	P extends MakeTypedLoaderPattern<A>,
+	P extends ToLoaderPattern<A>,
 > = LinkPropsBase &
-	MakeTypedNavTarget<A, P> & {
+	ToNavigationTarget<A, P> & {
 		state?: unknown;
 	};
 
 /////// API CLIENT TYPES
 
-export type MakeTypedAPIDecoratorContext<A extends AppConfig> =
-	MakeTypedActionSubmitProps<A> extends infer Props
-		? Props extends MakeTypedActionSubmitProps<A>
+export type ToAPIDecoratorContext<A extends AppConfig> =
+	ToActionSubmitArgs<A> extends infer Args
+		? Args extends ToActionSubmitArgs<A>
 			? {
-					input?: Props extends { input: infer Input }
+					input?: Args extends { input: infer Input }
 						? Input
-						: Props extends { input?: infer Input }
+						: Args extends { input?: infer Input }
 							? Input
 							: never;
-					method: Props extends { method: infer M extends string }
+					method: Args extends { method: infer M extends string }
 						? M
 						: "GET";
-					pattern: Props["pattern"];
+					pattern: Args["pattern"];
 					requestInit: Omit<RequestInit, "body" | "method">;
 				}
 			: never
 		: never;
 
-export type MakeTypedAPIDecorator<A extends AppConfig> = (
-	context: MakeTypedAPIDecoratorContext<A>,
+export type ToAPIDecorator<A extends AppConfig> = (
+	context: ToAPIDecoratorContext<A>,
 ) =>
 	| Omit<RequestInit, "method" | "body">
 	| undefined
 	| Promise<Omit<RequestInit, "method" | "body"> | undefined>;
 
-export type MakeTypedAPIClient<A extends AppConfig> = {
-	submit: <Props extends MakeTypedActionSubmitProps<A>>(
-		props: Props,
-	) => Promise<SubmitResult<MakeTypedActionSubmitOutput<A, Props>>>;
-	toIdentityArray: <Props extends MakeTypedActionSubmitProps<A>>(
-		props: Props,
+export type ToAPIClient<A extends AppConfig> = {
+	submit: <Args extends ToActionSubmitArgs<A>>(
+		args: Args,
+	) => Promise<SubmitResult<ToActionSubmitOutput<A, Args>>>;
+	submitOrThrow: <Args extends ToActionSubmitArgs<A>>(
+		args: Args,
+	) => Promise<ToActionSubmitOutput<A, Args>>;
+	toIdentityArray: <Args extends ToActionSubmitArgs<A>>(
+		args: Args,
 	) => unknown[];
 };

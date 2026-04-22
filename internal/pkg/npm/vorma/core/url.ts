@@ -1,10 +1,10 @@
 import { serializeToSearchParams } from "vorma/kit/json";
 import type {
 	AppConfig,
-	MakeTypedLoaderPattern,
-	MakeTypedNavProps,
-	MakeTypedNavTarget,
-	MakeTypedRouteDestination,
+	ToLoaderPattern,
+	ToNavigateArgs,
+	ToNavigationTarget,
+	ToRouteDestination,
 } from "./types.ts";
 
 const DYNAMIC_RUNE = ":";
@@ -106,8 +106,8 @@ export function build_action_url(
 }
 
 export function create_typed_to_href<A extends AppConfig>() {
-	return <P extends MakeTypedLoaderPattern<A>>(
-		destination: MakeTypedRouteDestination<A, P>,
+	return <P extends ToLoaderPattern<A>>(
+		destination: ToRouteDestination<A, P>,
 	): string => {
 		const d = destination as any;
 		return to_typed_href(
@@ -151,15 +151,15 @@ export function create_typed_navigate<A extends AppConfig>(
 	) => Promise<{ didNavigate: boolean }>,
 ) {
 	const to_href = create_typed_to_href<A>();
-	return async <P extends MakeTypedLoaderPattern<A>>(
-		props: MakeTypedNavProps<A, P>,
+	return async <P extends ToLoaderPattern<A>>(
+		args: ToNavigateArgs<A, P>,
 	): Promise<{ didNavigate: boolean }> => {
-		const href = props.href ?? to_href(props as any);
+		const href = args.href ?? to_href(args as any);
 		return navigate_fn(href, {
-			replace: props.replace,
-			scrollToTop: props.scrollToTop,
-			state: props.state,
-			skipProgressIndicator: props.skipProgressIndicator,
+			replace: args.replace,
+			scrollToTop: args.scrollToTop,
+			state: args.state,
+			skipProgressIndicator: args.skipProgressIndicator,
 		});
 	};
 }
@@ -168,8 +168,8 @@ export function create_typed_prefetch<A extends AppConfig>(
 	prefetch_fn: (href: string) => void,
 ) {
 	const to_href = create_typed_to_href<A>();
-	return <P extends MakeTypedLoaderPattern<A>>(
-		target: MakeTypedNavTarget<A, P>,
+	return <P extends ToLoaderPattern<A>>(
+		target: ToNavigationTarget<A, P>,
 	): void => {
 		prefetch_fn(target.href ?? to_href(target as any));
 	};

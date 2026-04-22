@@ -56,7 +56,14 @@ type (
 	LoaderError = vormarun.LoaderError
 	FormData    = vormarun.FormData
 
+	ActionKind = vormarun.ActionKind
+
 	Router = vormarun.Router
+)
+
+const (
+	ActionKindQuery    = vormarun.ActionKindQuery
+	ActionKindMutation = vormarun.ActionKindMutation
 )
 
 /////// CORE FUNCTIONS

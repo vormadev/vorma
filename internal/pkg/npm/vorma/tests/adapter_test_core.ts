@@ -83,6 +83,10 @@ type TestVormaClient = {
 
 	useWorkState: (selector?: (work: any) => unknown) => unknown;
 
+	useRouteSync: (
+		props: { pattern: string } & Record<string, unknown>,
+	) => void;
+
 	useClientLoaderData: (
 		props: { idx: number } & Record<string, unknown>,
 	) => unknown;
@@ -872,6 +876,78 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				expect(data.matches.map((m: any) => m.pattern)).toEqual([
 					"/users/:id",
 				]);
+			} finally {
+				cleanup();
+			}
+		});
+
+		it("useRouteSync navigates when route href differs", async () => {
+			seed_payload();
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.init({});
+
+			vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+				route_response({ MatchedPatterns: ["/canonical"] }),
+			);
+
+			const Canonical = () => {
+				client.useRouteSync({
+					pattern: "/canonical",
+				} as any);
+				return harness.h("div", {}, "canonical");
+			};
+
+			const { render, cleanup } = harness.mount();
+			try {
+				render(harness.h(Canonical, {}));
+				await wait_for_dom(() => {
+					expect(window.location.pathname).toBe("/canonical");
+				});
+			} finally {
+				cleanup();
+			}
+		});
+
+		it("useRouteSync does not navigate when already synced", async () => {
+			vi.doMock("/canonical.js", () => {
+				return {
+					default: {
+						pattern: "/canonical",
+						component: () => {
+							return harness.h("div", {}, "canonical-route");
+						},
+					},
+				};
+			});
+			window.history.replaceState({}, "", "/canonical");
+			seed_payload({
+				MatchedPatterns: ["/canonical"],
+				LoadersData: [{}],
+				ImportURLs: ["/canonical.js"],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.init({});
+
+			const fetch_spy = vi.spyOn(globalThis, "fetch");
+
+			const Canonical = () => {
+				client.useRouteSync({
+					pattern: "/canonical",
+				} as any);
+				return harness.h("div", {}, "canonical");
+			};
+
+			const { render, cleanup } = harness.mount();
+			try {
+				render(harness.h(Canonical, {}));
+				for (let i = 0; i < 5; i++) {
+					await new Promise((r) => {
+						return setTimeout(r, 0);
+					});
+				}
+				expect(fetch_spy).not.toHaveBeenCalled();
 			} finally {
 				cleanup();
 			}

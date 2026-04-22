@@ -14,12 +14,7 @@ import {
 	text_response,
 	tick,
 } from "./___ccc_test_helpers.ts";
-import {
-	ACTION_RESPONSE_DATA_KEY,
-	ACTION_RESPONSE_SKIP_REVALIDATION_KEY,
-	X_CLIENT_REDIRECT,
-	X_VORMA_RELOAD,
-} from "./constants.ts";
+import { X_CLIENT_REDIRECT, X_VORMA_RELOAD } from "./constants.ts";
 
 register_ccc_lifecycle(beforeEach, afterEach);
 
@@ -255,18 +250,13 @@ describe("submit", () => {
 		expect(calls).toHaveLength(2);
 	});
 
-	it("auto-revalidates after success by default", async () => {
+	it("auto-revalidates after settled mutation by default", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
-		call(0).resolve(
-			json_response({
-				[ACTION_RESPONSE_DATA_KEY]: { ok: true },
-				[ACTION_RESPONSE_SKIP_REVALIDATION_KEY]: false,
-			}),
-		);
+		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
 
 		await wait_for(2);
@@ -274,6 +264,66 @@ describe("submit", () => {
 		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
 
 		expect(result).toMatchObject({ success: true, data: { ok: true } });
+		expect(calls).toHaveLength(2);
+	});
+
+	it("auto-revalidates after non-ok mutation response by default", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		await wait_for(1);
+		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe("Err");
+		}
+		expect(calls).toHaveLength(2);
+	});
+
+	it("auto-revalidates after aborted mutation by default", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		await wait_for(1);
+		call(0).reject(new DOMException("Aborted", "AbortError"));
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe("Aborted");
+		}
+		expect(calls).toHaveLength(2);
+	});
+
+	it("auto-revalidates after network-failed mutation by default", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		await wait_for(1);
+		call(0).reject(new Error("network down"));
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe("network down");
+		}
 		expect(calls).toHaveLength(2);
 	});
 
@@ -296,25 +346,44 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("skips default POST revalidation when the action response says to skip", async () => {
+	it("skips default POST revalidation when actionKind is query", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
-		await wait_for(1);
-		call(0).resolve(
-			json_response({
-				[ACTION_RESPONSE_DATA_KEY]: { ok: true },
-				[ACTION_RESPONSE_SKIP_REVALIDATION_KEY]: true,
-			}),
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{ actionKind: "query" },
 		);
+		await wait_for(1);
+		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
 
 		expect(result).toMatchObject({ success: true, data: { ok: true } });
 		expect(calls).toHaveLength(1);
 	});
 
-	it("lets revalidate: true override action response revalidation skip", async () => {
+	it("skips default POST revalidation on non-ok when actionKind is query", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{ actionKind: "query" },
+		);
+		await wait_for(1);
+		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
+		const result = await sub;
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe("Err");
+		}
+		expect(calls).toHaveLength(1);
+	});
+
+	it("lets revalidate: true override query action semantics", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
@@ -322,22 +391,62 @@ describe("submit", () => {
 			"/api/action",
 			{ method: "POST" },
 			{
+				actionKind: "query",
 				revalidate: true,
 			},
 		);
 		await wait_for(1);
-		call(0).resolve(
-			json_response({
-				[ACTION_RESPONSE_DATA_KEY]: { ok: true },
-				[ACTION_RESPONSE_SKIP_REVALIDATION_KEY]: true,
-			}),
-		);
+		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
 
 		await wait_for(2);
 		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
 		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
 
+		expect(calls).toHaveLength(2);
+	});
+
+	it("lets mutation action semantics override GET default", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "GET" },
+			{ actionKind: "mutation" },
+		);
+		await wait_for(1);
+		call(0).resolve(json_response({ ok: true }));
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(calls).toHaveLength(2);
+	});
+
+	it("lets mutation action semantics override GET default on non-ok", async () => {
+		const { core } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "GET" },
+			{ actionKind: "mutation" },
+		);
+		await wait_for(1);
+		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(result.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe("Err");
+		}
 		expect(calls).toHaveLength(2);
 	});
 
@@ -853,7 +962,7 @@ describe("submit dedupe edge cases", () => {
 		expect(core.getWorkState().submissions.length > 0).toBe(false);
 	});
 
-	it("stale deduped submit does not trigger revalidation", async () => {
+	it("stale deduped mutation still triggers revalidation after abort", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
@@ -876,17 +985,19 @@ describe("submit dedupe edge cases", () => {
 		// s1 dispatched call 0 (aborted), s2 dispatched call 1
 		await wait_for(2);
 		call(1).resolve(json_response({ ok: true }));
-		await Promise.all([s1, s2]);
+		const [r1, r2] = await Promise.all([s1, s2]);
 
-		// Wait a bit for any async side effects
-		for (let i = 0; i < 10; i++) {
-			await new Promise((r) => {
-				return setTimeout(r, 0);
-			});
+		await wait_for(3);
+		call(2).resolve(route_response({ MatchedPatterns: ["/"] }));
+		await expect(r1.revalidationPromise).resolves.toEqual({ ok: true });
+		await expect(r2.revalidationPromise).resolves.toEqual({ ok: true });
+
+		expect(r1.success).toBe(false);
+		if (!r1.success) {
+			expect(r1.error).toBe("Aborted");
 		}
-
-		// Only the two submit fetches, no revalidation
-		expect(calls).toHaveLength(2);
+		expect(r2).toMatchObject({ success: true, data: { ok: true } });
+		expect(calls).toHaveLength(3);
 	});
 });
 

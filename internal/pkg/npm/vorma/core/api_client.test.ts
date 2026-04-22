@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { create_typed_api_client } from "./api_client.ts";
+import { create_typed_api_client, SubmitError } from "./api_client.ts";
 import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 
 type SubmitCall = {
@@ -135,6 +135,7 @@ describe("submit", () => {
 		});
 
 		expect(calls[0]!.options).toEqual({
+			actionKind: "mutation",
 			dedupeKey: "save",
 			revalidate: false,
 			skipProgressIndicator: true,
@@ -155,6 +156,83 @@ describe("submit", () => {
 
 		expect(calls[0]!.init?.credentials).toBe("include");
 		expect(headers_of(calls[0]!).get("X-Trace")).toBe("1");
+	});
+	it("resolves query override for POST actions", async () => {
+		const { submit_fn, calls } = mock_submit();
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		await (client as any).submit({
+			method: "POST",
+			pattern: "/rpc",
+			kind: "query",
+			input: { op: "quote" },
+		});
+
+		expect(calls[0]!.options).toMatchObject({ actionKind: "query" });
+	});
+
+	it("resolves mutation override for GET actions", async () => {
+		const { submit_fn, calls } = mock_submit();
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		await (client as any).submit({
+			pattern: "/health",
+			kind: "mutation",
+		});
+
+		expect(calls[0]!.options).toMatchObject({ actionKind: "mutation" });
+	});
+
+	it("submitOrThrow returns data for successful submit", async () => {
+		const { submit_fn } = mock_submit();
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		await expect(
+			(client as any).submitOrThrow({
+				method: "POST",
+				pattern: "/sessions",
+				input: { email: "a@b.com", password: "pw" },
+			}),
+		).resolves.toEqual({});
+	});
+
+	it("submitOrThrow throws SubmitError with preserved result", async () => {
+		const submit_fn = vi.fn(async () => {
+			return {
+				success: false as const,
+				error: "Bad Request",
+				response: new Response("", {
+					status: 400,
+					statusText: "Bad Request",
+				}),
+				revalidationPromise: Promise.resolve({ ok: true as const }),
+			};
+		});
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		await expect(
+			(client as any).submitOrThrow({
+				method: "POST",
+				pattern: "/sessions",
+				input: { email: "a@b.com", password: "pw" },
+			}),
+		).rejects.toBeInstanceOf(SubmitError);
+
+		try {
+			await (client as any).submitOrThrow({
+				method: "POST",
+				pattern: "/sessions",
+				input: { email: "a@b.com", password: "pw" },
+			});
+		} catch (err) {
+			expect(err).toBeInstanceOf(SubmitError);
+			expect((err as SubmitError).message).toBe("Bad Request");
+			expect((err as SubmitError).result.success).toBe(false);
+			if (err instanceof SubmitError) {
+				expect(err.result.error).toBe("Bad Request");
+				expect(err.result.response?.status).toBe(400);
+			}
+		}
 	});
 });
 

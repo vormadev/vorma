@@ -44,6 +44,7 @@ git push
 
 ```sh
 make gobump
+make tsinstall # re-install post-nuke
 ```
 
 6. profit

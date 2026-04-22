@@ -15,8 +15,6 @@ export const VORMA_ROOT_EL_ID = "vorma-root";
 export const HISTORY_KEY_FIELD = "vorma-history-key";
 export const HISTORY_USER_STATE_FIELD = "vorma-user-state";
 
-export const ACTION_RESPONSE_DATA_KEY = "Data";
-export const ACTION_RESPONSE_SKIP_REVALIDATION_KEY = "SkipRevalidation";
 export const API_IDENTITY_ARRAY_PREFIX = "vorma-api";
 
 export const LINK_ACTIVE_EXACT_ATTR = "data-vorma-active-exact";

@@ -266,6 +266,14 @@ func render_ts_routes_section(
 
 		sb.WriteString("\t{\n")
 		fmt.Fprintf(&sb, "\t\tmethod: %q,\n", method)
+		action_kind := a.GetKind()
+		default_action_kind := vormarun.ActionKindMutation
+		if method == "GET" || method == "HEAD" {
+			default_action_kind = vormarun.ActionKindQuery
+		}
+		if action_kind != "" && action_kind != default_action_kind {
+			fmt.Fprintf(&sb, "\t\tkind: %q,\n", action_kind)
+		}
 
 		if len(params) > 0 {
 			sb.WriteString("\t\tparams: [")

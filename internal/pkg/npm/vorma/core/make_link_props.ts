@@ -9,8 +9,8 @@ import {
 	LINK_PENDING_ANCESTOR_ATTR,
 	LINK_PENDING_EXACT_ATTR,
 } from "./constants.ts";
-import type { RouteState, WorkState } from "./create_client_core.ts";
-import type { LinkPropsBase } from "./types.ts";
+import type { WorkState } from "./create_client_core.ts";
+import type { LinkPropsBase, RouteState } from "./types.ts";
 
 export type LinkRouteState = {
 	href: string;
@@ -34,7 +34,7 @@ export type LinkPropsResult = {
 };
 
 export type LinkNavFns = {
-	navigate: (props: {
+	navigate: (args: {
 		href: string;
 		replace?: boolean;
 		scrollToTop?: boolean;

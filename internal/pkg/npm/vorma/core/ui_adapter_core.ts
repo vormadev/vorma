@@ -14,10 +14,8 @@ import type {
 } from "./create_client_core";
 import {
 	create_client_core,
-	type RouteErrorState,
 	type RouteRenderEntry,
 	type RouteRenderState,
-	type RouteState,
 	type ScrollIntent,
 	type WorkState,
 } from "./create_client_core.ts";
@@ -30,16 +28,19 @@ import { get_entry_key } from "./resolve_outlet_slot.ts";
 import type {
 	AppConfig,
 	LinkPropsBase,
-	MakeTypedAPIClient,
-	MakeTypedAPIDecorator,
-	MakeTypedDefineRouteInput,
-	MakeTypedLinkProps,
-	MakeTypedLoaderOutput,
-	MakeTypedLoaderPattern,
-	MakeTypedNavProps,
-	MakeTypedNavTarget,
-	MakeTypedRouteDestination,
-	MakeTypedRouteProps,
+	RouteErrorState,
+	RouteState,
+	ToAPIClient,
+	ToAPIDecorator,
+	ToDefineRouteArgs,
+	ToLinkProps,
+	ToLoaderOutput,
+	ToLoaderPattern,
+	ToNavigateArgs,
+	ToNavigationTarget,
+	ToRouteComponentProps,
+	ToRouteDestination,
+	ToRouteSyncArgs,
 } from "./types";
 import {
 	create_typed_navigate,
@@ -92,30 +93,30 @@ type AdapterBase<A extends AppConfig> = {
 		ClientCore,
 		"revalidate" | "getRouteState" | "getWorkState"
 	> & {
-		navigate: <P extends MakeTypedLoaderPattern<A>>(
-			props: MakeTypedNavProps<A, P>,
+		navigate: <P extends ToLoaderPattern<A>>(
+			args: ToNavigateArgs<A, P>,
 		) => Promise<{ didNavigate: boolean }>;
 
-		prefetch: <P extends MakeTypedLoaderPattern<A>>(
-			target: MakeTypedNavTarget<A, P>,
+		prefetch: <P extends ToLoaderPattern<A>>(
+			target: ToNavigationTarget<A, P>,
 		) => void;
 
-		cancelPrefetch: <P extends MakeTypedLoaderPattern<A>>(
-			target: MakeTypedNavTarget<A, P>,
+		cancelPrefetch: <P extends ToLoaderPattern<A>>(
+			target: ToNavigationTarget<A, P>,
 		) => void;
 
-		toHref: <P extends MakeTypedLoaderPattern<A>>(
-			destination: MakeTypedRouteDestination<A, P>,
+		toHref: <P extends ToLoaderPattern<A>>(
+			destination: ToRouteDestination<A, P>,
 		) => string;
 
-		apiClient: MakeTypedAPIClient<A>;
+		apiClient: ToAPIClient<A>;
 	};
 };
 
 export function create_adapter_base<A extends AppConfig>(
 	app_config: A,
 	on_commit: DecomposedCommitFn,
-	api_decorator?: MakeTypedAPIDecorator<A>,
+	api_decorator?: ToAPIDecorator<A>,
 ): Result<AdapterBase<A>> {
 	const attribute_registry_res = createPatternRegistry({
 		dynamicParamPrefixRune: ":",
@@ -207,11 +208,11 @@ export function create_adapter_base<A extends AppConfig>(
 	const core = core_res.val;
 
 	const nav_fns: LinkNavFns = {
-		navigate: (props) => {
-			return core.navigate(props.href, {
-				replace: props.replace,
-				scrollToTop: props.scrollToTop,
-				state: props.state,
+		navigate: (args) => {
+			return core.navigate(args.href, {
+				replace: args.replace,
+				scrollToTop: args.scrollToTop,
+				state: args.state,
 			});
 		},
 		start_prefetch: core.start_prefetch,
@@ -363,17 +364,21 @@ export type VormaClient<
 > = AdapterBase<A>["passthrough"] & {
 	init: (options: AdapterInitOptions<App>) => Promise<Result<void>>;
 
-	defineRoute: <P extends MakeTypedLoaderPattern<A>, T = any>(
-		input: MakeTypedDefineRouteInput<A, P, T, Element>,
+	defineRoute: <P extends ToLoaderPattern<A>, T = any>(
+		input: ToDefineRouteArgs<A, P, T, Element>,
 	) => RouteDefinition;
 
 	RootOutlet: (
 		props: { idx?: number } & Record<string, unknown>,
 	) => Element | null;
 
-	Link: <P extends MakeTypedLoaderPattern<A>>(
-		props: Omit<AnchorProps, "href"> & MakeTypedLinkProps<A, P>,
+	Link: <P extends ToLoaderPattern<A>>(
+		props: Omit<AnchorProps, "href"> & ToLinkProps<A, P>,
 	) => Element;
+
+	useRouteSync: <P extends ToLoaderPattern<A>>(
+		args: ToRouteSyncArgs<A, P>,
+	) => void;
 
 	useRouteState: {
 		(): HookReturn<RouteState, HookReturnMode>;
@@ -389,19 +394,19 @@ export type VormaClient<
 		): HookReturn<T, HookReturnMode>;
 	};
 
-	useLoaderData: <P extends MakeTypedLoaderPattern<A>>(
-		props: MakeTypedRouteProps<A, P>,
-	) => HookReturn<MakeTypedLoaderOutput<A, P>, HookReturnMode>;
+	useLoaderData: <P extends ToLoaderPattern<A>>(
+		args: ToRouteComponentProps<A, P>,
+	) => HookReturn<ToLoaderOutput<A, P>, HookReturnMode>;
 
-	usePatternLoaderData: <P extends MakeTypedLoaderPattern<A>>(
+	usePatternLoaderData: <P extends ToLoaderPattern<A>>(
 		pattern: P,
-	) => HookReturn<MakeTypedLoaderOutput<A, P> | undefined, HookReturnMode>;
+	) => HookReturn<ToLoaderOutput<A, P> | undefined, HookReturnMode>;
 
-	useClientLoaderData: <P extends MakeTypedLoaderPattern<A>, T>(
-		props: MakeTypedRouteProps<A, P, T>,
+	useClientLoaderData: <P extends ToLoaderPattern<A>, T>(
+		args: ToRouteComponentProps<A, P, T>,
 	) => HookReturn<T, HookReturnMode>;
 
 	usePatternClientLoaderData: <T>(
-		pattern: MakeTypedLoaderPattern<A>,
+		pattern: ToLoaderPattern<A>,
 	) => HookReturn<T | undefined, HookReturnMode>;
 };
