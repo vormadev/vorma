@@ -269,15 +269,15 @@ func TestWalk(t *testing.T) {
 		}
 	})
 
-	t.Run("JsonDashCommaOmitted", func(t *testing.T) {
+	t.Run("JsonQuotedDashNamedDash", func(t *testing.T) {
 		type S struct {
 			Keep   string `json:"keep"`
-			Ignore any    `json:"-,"`
+			Ignore any    `json:"'-'"`
 		}
 		entries, _ := walk_type(S{}, "S")
 		e := find_entry(entries, "S")
-		if find_field(e.node.fields, "Ignore") != nil {
-			t.Error("json:\"-,\" field should be omitted")
+		if find_field(e.node.fields, "-") == nil {
+			t.Error("json:\"'-'\" field should be named dash")
 		}
 	})
 

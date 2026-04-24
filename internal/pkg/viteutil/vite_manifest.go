@@ -54,21 +54,29 @@ func (m ViteManifest) FindAllDeps(import_path string) DepsResult {
 
 	recurse(import_path)
 
-	modules := set.New[string]()
-	css_bundles := set.New[string]()
+	seen_modules := set.New[string]()
+	modules := make([]string, 0, len(results))
+	seen_css_bundles := set.New[string]()
+	css_bundles := make([]string, 0, len(results))
 
 	for _, res := range results {
 		if chunk, exists := m[res]; exists {
-			modules.Add(chunk.File)
+			if !seen_modules.Has(chunk.File) {
+				seen_modules.Add(chunk.File)
+				modules = append(modules, chunk.File)
+			}
 			for _, css := range chunk.CSS {
-				css_bundles.Add(css)
+				if !seen_css_bundles.Has(css) {
+					seen_css_bundles.Add(css)
+					css_bundles = append(css_bundles, css)
+				}
 			}
 		}
 	}
 
 	return DepsResult{
 		ImportPath: import_path,
-		Modules:    modules.Slice(),
-		CSSBundles: css_bundles.Slice(),
+		Modules:    modules,
+		CSSBundles: css_bundles,
 	}
 }

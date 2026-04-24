@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/vormadev/vorma/kit/validate"
+	"github.com/vormadev/vorma/kit/schema"
 )
 
 func TestRouterBasics(t *testing.T) {
@@ -139,7 +139,7 @@ func TestHTTPHandlers(t *testing.T) {
 		}
 		r := NewRouter(Options{
 			ParseInput: func(req *http.Request, input_ptr any) error {
-				return &validate.ValidationError{
+				return &schema.ValidationError{
 					Err: errors.New("invalid input"),
 				}
 			},
@@ -805,7 +805,7 @@ func TestValidation(t *testing.T) {
 	t.Run("Validation_Error", func(t *testing.T) {
 		r := NewRouter(Options{
 			ParseInput: func(req *http.Request, input_ptr any) error {
-				return &validate.ValidationError{
+				return &schema.ValidationError{
 					Err: errors.New("Invalid email format"),
 				}
 			},

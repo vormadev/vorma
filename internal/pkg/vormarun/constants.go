@@ -30,6 +30,10 @@ const Critical_CSS_EL_ID = "vorma-critical-css"
 const Vorma_Root_El_ID = "vorma-root"
 const Vorma_Data_JSON_Script_El_ID = "vorma-data-json"
 
+/////// Attributes
+
+const CSS_BUNDLE_ATTR = "data-vorma-css-bundle"
+
 const (
 	Meta_Start_Comment = "<!-- vorma-meta-start -->"
 	Meta_End_Comment   = "<!-- vorma-meta-end -->"

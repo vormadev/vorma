@@ -1,6 +1,7 @@
-package validate
+package searchparams
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -22,7 +23,7 @@ type SchemaString string
 
 type schema_int int
 
-func TestURLSearchParamsSchemaBuilder(t *testing.T) {
+func TestSchemaFromValue(t *testing.T) {
 	type input struct {
 		SchemaEmbedded
 		*SchemaPointerEmbedded
@@ -41,59 +42,45 @@ func TestURLSearchParamsSchemaBuilder(t *testing.T) {
 		Labels        *map[string]string `json:"labels"`
 		Groups        map[string][]uint  `json:"groups"`
 		Skip          string             `json:"-"`
-		SkipComma     string             `json:"-,"`
+		DashName      string             `json:"'-'"`
 		private       string
 	}
 
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(input{})
+	schema, err := SchemaFromValue(input{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := map[string]URLSearchParamsSchema{
-		"embedded":        url_search_params_schema_string,
-		"pointerEmbedded": url_search_params_schema_number,
-		"q":               url_search_params_schema_string,
-		"DefaultName":     url_search_params_schema_string,
-		"page":            url_search_params_schema_number,
-		"enabled":         url_search_params_schema_bool,
-		"tags": []URLSearchParamsSchema{
-			url_search_params_schema_string,
+	expected := map[string]Schema{
+		"embedded":        schema_code_string,
+		"pointerEmbedded": schema_code_number,
+		"q":               schema_code_string,
+		"DefaultName":     schema_code_string,
+		"page":            schema_code_number,
+		"enabled":         schema_code_bool,
+		"tags":            []Schema{schema_code_string},
+		"pointerTags":     []Schema{schema_code_string},
+		"pointerScores":   []Schema{"?" + schema_code_number},
+		"score":           "?" + schema_code_number,
+		"address": map[string]Schema{
+			"city": schema_code_string,
+			"zip":  schema_code_number,
 		},
-		"pointerTags": []URLSearchParamsSchema{
-			url_search_params_schema_string,
+		"pointerAddress": map[string]Schema{
+			"city": schema_code_string,
+			"zip":  schema_code_number,
 		},
-		"pointerScores": []URLSearchParamsSchema{
-			"?" + url_search_params_schema_number,
-		},
-		"score": "?" + url_search_params_schema_number,
-		"address": map[string]URLSearchParamsSchema{
-			"city": url_search_params_schema_string,
-			"zip":  url_search_params_schema_number,
-		},
-		"pointerAddress": map[string]URLSearchParamsSchema{
-			"city": url_search_params_schema_string,
-			"zip":  url_search_params_schema_number,
-		},
-		"flags": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			url_search_params_schema_bool,
-		},
-		"labels": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			url_search_params_schema_string,
-		},
-		"groups": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			[]URLSearchParamsSchema{url_search_params_schema_number},
-		},
+		"flags":  []Schema{schema_code_map, schema_code_bool},
+		"labels": []Schema{schema_code_map, schema_code_string},
+		"groups": []Schema{schema_code_map, []Schema{schema_code_number}},
+		"-":      schema_code_string,
 	}
 	if !reflect.DeepEqual(schema, expected) {
 		t.Fatalf("schema mismatch:\n got: %#v\nwant: %#v", schema, expected)
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderScalarKinds(t *testing.T) {
+func TestSchemaFromValueScalarKinds(t *testing.T) {
 	type input struct {
 		Bool       bool           `json:"bool"`
 		BoolPtr    *bool          `json:"boolPtr"`
@@ -118,40 +105,40 @@ func TestURLSearchParamsSchemaBuilderScalarKinds(t *testing.T) {
 		StringPtr2 **SchemaString `json:"stringPtr2"`
 	}
 
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(input{})
+	schema, err := SchemaFromValue(input{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := map[string]URLSearchParamsSchema{
-		"bool":       url_search_params_schema_bool,
-		"boolPtr":    "?" + url_search_params_schema_bool,
-		"int":        url_search_params_schema_number,
-		"int8":       url_search_params_schema_number,
-		"int16":      url_search_params_schema_number,
-		"int32":      url_search_params_schema_number,
-		"int64":      url_search_params_schema_number,
-		"uint":       url_search_params_schema_number,
-		"uint8":      url_search_params_schema_number,
-		"uint16":     url_search_params_schema_number,
-		"uint32":     url_search_params_schema_number,
-		"uint64":     url_search_params_schema_number,
-		"float32":    url_search_params_schema_number,
-		"float64":    url_search_params_schema_number,
-		"string":     url_search_params_schema_string,
-		"stringPtr":  "?" + url_search_params_schema_string,
-		"alias":      url_search_params_schema_string,
-		"aliasPtr":   "?" + url_search_params_schema_number,
-		"numberPtr":  "?" + url_search_params_schema_number,
-		"boolPtr2":   "?" + url_search_params_schema_bool,
-		"stringPtr2": "?" + url_search_params_schema_string,
+	expected := map[string]Schema{
+		"bool":       schema_code_bool,
+		"boolPtr":    "?" + schema_code_bool,
+		"int":        schema_code_number,
+		"int8":       schema_code_number,
+		"int16":      schema_code_number,
+		"int32":      schema_code_number,
+		"int64":      schema_code_number,
+		"uint":       schema_code_number,
+		"uint8":      schema_code_number,
+		"uint16":     schema_code_number,
+		"uint32":     schema_code_number,
+		"uint64":     schema_code_number,
+		"float32":    schema_code_number,
+		"float64":    schema_code_number,
+		"string":     schema_code_string,
+		"stringPtr":  "?" + schema_code_string,
+		"alias":      schema_code_string,
+		"aliasPtr":   "?" + schema_code_number,
+		"numberPtr":  "?" + schema_code_number,
+		"boolPtr2":   "?" + schema_code_bool,
+		"stringPtr2": "?" + schema_code_string,
 	}
 	if !reflect.DeepEqual(schema, expected) {
 		t.Fatalf("schema mismatch:\n got: %#v\nwant: %#v", schema, expected)
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderContainers(t *testing.T) {
+func TestSchemaFromValueContainers(t *testing.T) {
 	type input struct {
 		StringArray      [2]string             `json:"stringArray"`
 		BoolSlice        []bool                `json:"boolSlice"`
@@ -164,51 +151,28 @@ func TestURLSearchParamsSchemaBuilderContainers(t *testing.T) {
 		PointerMap       *map[string]*string   `json:"pointerMap"`
 	}
 
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(input{})
+	schema, err := SchemaFromValue(input{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := map[string]URLSearchParamsSchema{
-		"stringArray": []URLSearchParamsSchema{
-			url_search_params_schema_string,
-		},
-		"boolSlice": []URLSearchParamsSchema{
-			url_search_params_schema_bool,
-		},
-		"pointerArray": []URLSearchParamsSchema{
-			url_search_params_schema_number,
-		},
-		"optionalNumbers": []URLSearchParamsSchema{
-			"?" + url_search_params_schema_number,
-		},
-		"mapStrings": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			url_search_params_schema_string,
-		},
-		"mapOptionalBools": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			"?" + url_search_params_schema_bool,
-		},
-		"mapNumberSlices": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			[]URLSearchParamsSchema{url_search_params_schema_number},
-		},
-		"mapPointerSlices": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			[]URLSearchParamsSchema{"?" + url_search_params_schema_number},
-		},
-		"pointerMap": []URLSearchParamsSchema{
-			url_search_params_schema_map,
-			"?" + url_search_params_schema_string,
-		},
+	expected := map[string]Schema{
+		"stringArray":      []Schema{schema_code_string},
+		"boolSlice":        []Schema{schema_code_bool},
+		"pointerArray":     []Schema{schema_code_number},
+		"optionalNumbers":  []Schema{"?" + schema_code_number},
+		"mapStrings":       []Schema{schema_code_map, schema_code_string},
+		"mapOptionalBools": []Schema{schema_code_map, "?" + schema_code_bool},
+		"mapNumberSlices":  []Schema{schema_code_map, []Schema{schema_code_number}},
+		"mapPointerSlices": []Schema{schema_code_map, []Schema{"?" + schema_code_number}},
+		"pointerMap":       []Schema{schema_code_map, "?" + schema_code_string},
 	}
 	if !reflect.DeepEqual(schema, expected) {
 		t.Fatalf("schema mismatch:\n got: %#v\nwant: %#v", schema, expected)
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderDeepNesting(t *testing.T) {
+func TestSchemaFromValueDeepNesting(t *testing.T) {
 	type level3 struct {
 		Field string `json:"field"`
 	}
@@ -222,16 +186,16 @@ func TestURLSearchParamsSchemaBuilderDeepNesting(t *testing.T) {
 		Level1 *level1 `json:"level1"`
 	}
 
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(input{})
+	schema, err := SchemaFromValue(input{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := map[string]URLSearchParamsSchema{
-		"level1": map[string]URLSearchParamsSchema{
-			"level2": map[string]URLSearchParamsSchema{
-				"level3": map[string]URLSearchParamsSchema{
-					"field": url_search_params_schema_string,
+	expected := map[string]Schema{
+		"level1": map[string]Schema{
+			"level2": map[string]Schema{
+				"level3": map[string]Schema{
+					"field": schema_code_string,
 				},
 			},
 		},
@@ -241,68 +205,72 @@ func TestURLSearchParamsSchemaBuilderDeepNesting(t *testing.T) {
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderFieldNames(t *testing.T) {
+func TestSchemaFromValueFieldNames(t *testing.T) {
 	type input struct {
 		DefaultName string `json:",omitempty"`
 		ExtraOpts   int    `json:"extra,string,omitempty"`
 		Raw         bool
 		Skip        string `json:"-"`
-		SkipComma   string `json:"-,"`
+		DashName    string `json:"'-'"`
 		private     string
 	}
 
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(input{})
+	schema, err := SchemaFromValue(input{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := map[string]URLSearchParamsSchema{
-		"DefaultName": url_search_params_schema_string,
-		"Raw":         url_search_params_schema_bool,
-		"extra":       url_search_params_schema_number,
+	expected := map[string]Schema{
+		"DefaultName": schema_code_string,
+		"Raw":         schema_code_bool,
+		"extra":       schema_code_number,
+		"-":           schema_code_string,
 	}
 	if !reflect.DeepEqual(schema, expected) {
 		t.Fatalf("schema mismatch:\n got: %#v\nwant: %#v", schema, expected)
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderEmptyStruct(t *testing.T) {
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(struct{}{})
+func TestSchemaFromValueEmptyStruct(t *testing.T) {
+	schema, err := SchemaFromValue(struct{}{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !reflect.DeepEqual(schema, map[string]URLSearchParamsSchema{}) {
+	if !reflect.DeepEqual(schema, map[string]Schema{}) {
 		t.Fatalf("schema mismatch: %#v", schema)
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderRootPointer(t *testing.T) {
+func TestSchemaFromValueRootPointer(t *testing.T) {
 	type input struct {
 		Query string `json:"q"`
 	}
 
-	schema, err := (URLSearchParamsSchemaBuilder{}).FromValue(&input{})
+	schema, err := SchemaFromValue(&input{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := map[string]URLSearchParamsSchema{
-		"q": url_search_params_schema_string,
+	expected := map[string]Schema{
+		"q": schema_code_string,
 	}
 	if !reflect.DeepEqual(schema, expected) {
 		t.Fatalf("schema mismatch:\n got: %#v\nwant: %#v", schema, expected)
 	}
 }
 
-func TestURLSearchParamsSchemaBuilderRejectsUnsupportedShapes(t *testing.T) {
+func TestSchemaFromValueNil(t *testing.T) {
+	_, err := SchemaFromValue(nil)
+	if !errors.Is(err, SchemaNilValueError) {
+		t.Fatalf("expected SchemaNilValueError, got %v", err)
+	}
+}
+
+func TestSchemaFromValueRejectsUnsupportedShapes(t *testing.T) {
 	tests := []struct {
 		name  string
 		value any
 	}{
-		{
-			name:  "nil",
-			value: nil,
-		},
 		{
 			name: "non string map key",
 			value: struct {
@@ -316,6 +284,10 @@ func TestURLSearchParamsSchemaBuilderRejectsUnsupportedShapes(t *testing.T) {
 		{
 			name:  "root slice",
 			value: []string{},
+		},
+		{
+			name:  "root scalar",
+			value: 42,
 		},
 		{
 			name: "channel field",
@@ -381,7 +353,7 @@ func TestURLSearchParamsSchemaBuilderRejectsUnsupportedShapes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := (URLSearchParamsSchemaBuilder{}).FromValue(tt.value)
+			_, err := SchemaFromValue(tt.value)
 			if err == nil {
 				t.Fatal("expected error")
 			}

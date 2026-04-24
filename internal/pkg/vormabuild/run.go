@@ -24,8 +24,8 @@ import (
 	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/kit/netutil"
+	"github.com/vormadev/vorma/kit/searchparams"
 	"github.com/vormadev/vorma/kit/set"
-	"github.com/vormadev/vorma/kit/validate"
 )
 
 type run_state struct {
@@ -42,7 +42,7 @@ type run_state struct {
 	live_ts_result   live_ts_result
 	static_ts_result static_ts_result
 	ts_modules       map[string]ts_route
-	search_schemas   map[string]validate.URLSearchParamsSchema
+	search_schemas   map[string]searchparams.Schema
 	manifest         *vormarun.Manifest
 
 	pub_fm map[string]string

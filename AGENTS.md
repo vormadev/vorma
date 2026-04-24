@@ -31,12 +31,9 @@ always be `PascalCase`, regardless of public exposure.
 
 ---
 
-Avoid inlining magic strings. Further, any constants that are publicly
-observable (e.g., filenames, keys, etc.) should go into a `constants.{go,ts}`
-file for the applicable package so it's all quickly readable and editable from
-one place, and everything else should import from such file. This absolutely
-includes tests; the idea that tests shouldn't import constants from source is
-utterly absurd.
+Avoid inlining magic strings. Shared publicly observable constants (e.g.,
+filenames, keys, etc.) should go into `constants.{go,ts}`, but one-file-local
+values should stay local. Tests should import source constants when applicable.
 
 ---
 

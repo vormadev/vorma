@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it } from "vitest";
+import { CSS_BUNDLE_ATTR } from "./constants.ts";
 import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 
 beforeEach(() => {
@@ -197,6 +198,21 @@ describe("apply_css_bundles", () => {
 
 	it("deduplicates across multiple calls", () => {
 		apply_css_bundles(["/a.css"]);
+		apply_css_bundles(["/a.css"]);
+
+		const links = document.head.querySelectorAll(
+			'link[data-vorma-css-bundle="/a.css"]',
+		);
+		expect(links).toHaveLength(1);
+	});
+
+	it("deduplicates server-rendered bundle links", () => {
+		const link = document.createElement("link");
+		link.rel = "stylesheet";
+		link.setAttribute(CSS_BUNDLE_ATTR, "/a.css");
+		link.href = "/a.css";
+		document.head.appendChild(link);
+
 		apply_css_bundles(["/a.css"]);
 
 		const links = document.head.querySelectorAll(

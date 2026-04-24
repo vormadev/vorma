@@ -450,7 +450,7 @@ func TestResolve(t *testing.T) {
 			Optional    int    `json:"fieldTwo,omitempty"`
 			Ignored     bool   `json:"-"`
 			Pointer     *bool  `json:"pointerField"`
-			IgnoredToo  any    `json:"-,"`
+			DashName    any    `json:"'-'"`
 			OmitZeroVal int    `json:"zeroValField,omitzero"`
 		}
 		defs := resolve_types(t, &GoTypeSrc{Instance: WithTags{}})
@@ -458,6 +458,7 @@ func TestResolve(t *testing.T) {
 			field_one: string;
 			fieldTwo?: number;
 			pointerField?: boolean;
+			"-": unknown;
 			zeroValField?: number;
 		}`)
 	})

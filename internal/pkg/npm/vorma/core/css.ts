@@ -1,19 +1,23 @@
+import {
+	CSS_BUNDLE_ATTR,
+	CSS_PRELOAD_ATTR,
+	CSS_PRELOAD_SETTLED_ATTR,
+} from "./constants.ts";
+
 export function preload_css(bundles: string[]): void {
 	for (const path of new Set(bundles)) {
 		if (
-			document.head.querySelector(
-				`link[data-vorma-css-preload="${path}"]`,
-			)
+			document.head.querySelector(`link[${CSS_PRELOAD_ATTR}="${path}"]`)
 		) {
 			continue;
 		}
 		const link = document.createElement("link");
 		link.rel = "preload";
 		link.setAttribute("as", "style");
-		link.setAttribute("data-vorma-css-preload", path);
-		link.setAttribute("data-vorma-css-settled", "0");
+		link.setAttribute(CSS_PRELOAD_ATTR, path);
+		link.setAttribute(CSS_PRELOAD_SETTLED_ATTR, "0");
 		const mark = () => {
-			link.setAttribute("data-vorma-css-settled", "1");
+			link.setAttribute(CSS_PRELOAD_SETTLED_ATTR, "1");
 		};
 		link.addEventListener("load", mark);
 		link.addEventListener("error", mark);
@@ -30,9 +34,9 @@ export async function wait_for_css(
 
 	for (const path of new Set(bundles)) {
 		const node = document.head.querySelector<HTMLLinkElement>(
-			`link[data-vorma-css-preload="${path}"]`,
+			`link[${CSS_PRELOAD_ATTR}="${path}"]`,
 		);
-		if (!node || node.getAttribute("data-vorma-css-settled") === "1") {
+		if (!node || node.getAttribute(CSS_PRELOAD_SETTLED_ATTR) === "1") {
 			continue;
 		}
 		promises.push(
@@ -47,7 +51,7 @@ export async function wait_for_css(
 					signal.removeEventListener("abort", on_abort);
 				};
 				const done = () => {
-					node.setAttribute("data-vorma-css-settled", "1");
+					node.setAttribute(CSS_PRELOAD_SETTLED_ATTR, "1");
 					cleanup();
 					resolve();
 				};
@@ -69,15 +73,19 @@ export async function wait_for_css(
 
 export function apply_css_bundles(bundles: string[]): void {
 	for (const path of new Set(bundles)) {
-		if (
-			document.head.querySelector(`link[data-vorma-css-bundle="${path}"]`)
-		) {
+		if (find_css_bundle(path)) {
 			continue;
 		}
 		const link = document.createElement("link");
 		link.rel = "stylesheet";
-		link.setAttribute("data-vorma-css-bundle", path);
+		link.setAttribute(CSS_BUNDLE_ATTR, path);
 		link.href = path;
 		document.head.appendChild(link);
 	}
+}
+
+function find_css_bundle(path: string): HTMLLinkElement | null {
+	return document.head.querySelector<HTMLLinkElement>(
+		`link[${CSS_BUNDLE_ATTR}="${path}"]`,
+	);
 }

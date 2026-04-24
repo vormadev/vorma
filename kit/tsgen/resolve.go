@@ -3,6 +3,7 @@ package tsgen
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -243,7 +244,7 @@ func object_to_ts(fields []field_node) string {
 	sb.WriteString("{\n")
 	for _, f := range fields {
 		sb.WriteString("\t")
-		sb.WriteString(f.name)
+		sb.WriteString(ts_property_name(f.name))
 		if f.optional {
 			sb.WriteString("?")
 		}
@@ -253,4 +254,25 @@ func object_to_ts(fields []field_node) string {
 	}
 	sb.WriteString("}")
 	return sb.String()
+}
+
+func ts_property_name(name string) string {
+	if name == "" {
+		return strconv.Quote(name)
+	}
+	for i, r := range name {
+		if i == 0 {
+			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
+				r == '_' || r == '$' {
+				continue
+			}
+			return strconv.Quote(name)
+		}
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '$' {
+			continue
+		}
+		return strconv.Quote(name)
+	}
+	return name
 }

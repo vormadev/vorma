@@ -1,4 +1,4 @@
-package headels
+package head
 
 import (
 	"reflect"
@@ -9,10 +9,10 @@ import (
 	"github.com/vormadev/vorma/kit/htmlutil"
 )
 
-var test_instance = NewInstance("bob")
+var test_renderer = NewRenderer("bob")
 
 func TestGetHeadElements(t *testing.T) {
-	route_data := &SortedAndPreEscapedHeadEls{
+	route_data := &Prepared{
 		Title: &htmlutil.Element{Tag: "title", TextContent: "Test Title"},
 		Meta: []*htmlutil.Element{
 			{
@@ -34,7 +34,7 @@ func TestGetHeadElements(t *testing.T) {
 		},
 	}
 
-	html, err := test_instance.Render(route_data)
+	html, err := test_renderer.Render(route_data)
 	if err != nil {
 		t.Errorf("Expected no error, but got %v", err)
 	}
@@ -52,7 +52,7 @@ func TestGetHeadElements(t *testing.T) {
 }
 
 func TestRender_NilInputPanics(t *testing.T) {
-	inst := NewInstance("nil-input")
+	renderer := NewRenderer("nil-input")
 
 	defer func() {
 		if r := recover(); r == nil {
@@ -60,19 +60,14 @@ func TestRender_NilInputPanics(t *testing.T) {
 		}
 	}()
 
-	inst.Render(nil)
+	renderer.Render(nil)
 }
 
-func TestRender_EmptyInputPanics(t *testing.T) {
-	inst := NewInstance("empty-input")
-
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatal("Render(empty) should panic")
-		}
-	}()
-
-	inst.Render(&SortedAndPreEscapedHeadEls{})
+func TestRender_EmptyInputDoesNotPanic(t *testing.T) {
+	renderer := NewRenderer("empty-input")
+	if _, err := renderer.Render(&Prepared{}); err != nil {
+		t.Fatalf("Render(empty) returned error: %v", err)
+	}
 }
 
 const (
@@ -82,7 +77,7 @@ const (
 	test_description_2 = "This is a different test description."
 )
 
-func TestDedupeHeadEls(t *testing.T) {
+func TestDedupeHead(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    []*htmlutil.Element
@@ -327,7 +322,7 @@ func TestDedupeHeadEls(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := test_instance.dedup_head_els(tt.input)
+			result := test_renderer.dedup_head_els(tt.input)
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Log("Result:")
 				for _, el := range result {
@@ -486,23 +481,23 @@ func TestMatchesRule(t *testing.T) {
 	}
 }
 
-func TestInitUniqueRules(t *testing.T) {
-	inst := NewInstance("test")
+func TestInitDedupeRules(t *testing.T) {
+	renderer := NewRenderer("test")
 
-	e := New()
-	e.Add(Tag("title"))
-	e.Meta(e.Name("keywords"))
-	e.Link(e.Rel("stylesheet"), e.Href("/style.css"))
+	b := NewBuilder()
+	b.Add(Tag("title"))
+	b.Meta(b.Name("keywords"))
+	b.Link(b.Rel("stylesheet"), b.Href("/style.css"))
 
-	inst.InitUniqueRules(e)
+	renderer.InitDedupeRules(b)
 
-	if len(inst.unique_rules_by_tag) == 0 {
+	if len(renderer.unique_rules_by_tag) == 0 {
 		t.Error("Expected unique_rules_by_tag to be populated")
 	}
-	if rules, ok := inst.unique_rules_by_tag["title"]; !ok || len(rules) == 0 {
+	if rules, ok := renderer.unique_rules_by_tag["title"]; !ok || len(rules) == 0 {
 		t.Error("Expected title rules to be present")
 	}
-	meta_rules, ok := inst.unique_rules_by_tag["meta"]
+	meta_rules, ok := renderer.unique_rules_by_tag["meta"]
 	if !ok || len(meta_rules) == 0 {
 		t.Fatal("Expected meta rules to be present")
 	}
@@ -536,7 +531,7 @@ func TestInitUniqueRules(t *testing.T) {
 	}) {
 		t.Error("Expected default charset meta rule to be present")
 	}
-	link_rules, ok := inst.unique_rules_by_tag["link"]
+	link_rules, ok := renderer.unique_rules_by_tag["link"]
 	if !ok || len(link_rules) == 0 {
 		t.Fatal("Expected link rules to be present")
 	}
@@ -553,24 +548,24 @@ func TestInitUniqueRules(t *testing.T) {
 	}
 
 	// Call again to verify once.Do works.
-	prev_rules := inst.unique_rules_by_tag
-	inst.InitUniqueRules(nil)
-	if !reflect.DeepEqual(prev_rules, inst.unique_rules_by_tag) {
+	prev_rules := renderer.unique_rules_by_tag
+	renderer.InitDedupeRules(nil)
+	if !reflect.DeepEqual(prev_rules, renderer.unique_rules_by_tag) {
 		t.Error(
-			"InitUniqueRules did not respect once.Do; rules were reinitialized",
+			"InitDedupeRules did not respect once.Do; rules were reinitialized",
 		)
 	}
 }
 
 func TestHighLevelAPI(t *testing.T) {
-	h := New()
-	h.Add(Tag("meta"), h.Name("description"), h.Content("Test Description"))
+	b := NewBuilder()
+	b.Add(Tag("meta"), b.Name("description"), b.Content("Test Description"))
 
-	if len(h.els) != 1 {
-		t.Fatalf("Expected 1 element, got %d", len(h.els))
+	if len(b.els) != 1 {
+		t.Fatalf("Expected 1 element, got %d", len(b.els))
 	}
 
-	el := h.els[0]
+	el := b.els[0]
 	if el.Tag != "meta" {
 		t.Errorf("Expected tag 'meta', got '%s'", el.Tag)
 	}
@@ -579,25 +574,25 @@ func TestHighLevelAPI(t *testing.T) {
 		t.Errorf("Attributes not set correctly: %v", el.Attributes)
 	}
 
-	h.Title("Test Title")
-	h.Description("Test Description")
+	b.Title("Test Title")
+	b.Description("Test Description")
 
-	if len(h.els) != 3 {
-		t.Fatalf("Expected 3 elements, got %d", len(h.els))
+	if len(b.els) != 3 {
+		t.Fatalf("Expected 3 elements, got %d", len(b.els))
 	}
 
-	title_el := h.els[1]
+	title_el := b.els[1]
 	if title_el.Tag != "title" || title_el.TextContent != "Test Title" {
 		t.Errorf("Title not set correctly: %+v", title_el)
 	}
 
-	h.Add(Tag("link"), h.Href("/style.css").KnownSafe(), h.Rel("stylesheet"))
+	b.Add(Tag("link"), b.Href("/style.css").KnownSafe(), b.Rel("stylesheet"))
 
-	if len(h.els) != 4 {
-		t.Fatalf("Expected 4 elements, got %d", len(h.els))
+	if len(b.els) != 4 {
+		t.Fatalf("Expected 4 elements, got %d", len(b.els))
 	}
 
-	link_el := h.els[3]
+	link_el := b.els[3]
 	if _, ok := link_el.AttributesKnownSafe["href"]; !ok {
 		t.Errorf("Expected href in AttributesKnownSafe: %+v", link_el)
 	}
@@ -606,8 +601,8 @@ func TestHighLevelAPI(t *testing.T) {
 	}
 }
 
-func TestToSortedHeadEls(t *testing.T) {
-	inst := NewInstance("test")
+func TestPrepare(t *testing.T) {
+	renderer := NewRenderer("test")
 
 	elements := []*htmlutil.Element{
 		{Tag: "title", TextContent: "Page Title"},
@@ -635,60 +630,60 @@ func TestToSortedHeadEls(t *testing.T) {
 		},
 	}
 
-	sorted := inst.ToSortedAndPreEscapedHeadEls(elements)
+	prepared := renderer.Prepare(elements)
 
-	if sorted.Title.DangerousInnerHTML != "Page Title" {
+	if prepared.Title.DangerousInnerHTML != "Page Title" {
 		t.Errorf(
 			"Expected title 'Page Title', got '%s'",
-			sorted.Title.DangerousInnerHTML,
+			prepared.Title.DangerousInnerHTML,
 		)
 	}
-	if len(sorted.Meta) != 2 {
-		t.Errorf("Expected 2 meta elements, got %d", len(sorted.Meta))
+	if len(prepared.Meta) != 2 {
+		t.Errorf("Expected 2 meta elements, got %d", len(prepared.Meta))
 	}
-	if len(sorted.Rest) != 2 {
-		t.Errorf("Expected 2 rest elements, got %d", len(sorted.Rest))
+	if len(prepared.Rest) != 2 {
+		t.Errorf("Expected 2 rest elements, got %d", len(prepared.Rest))
 	}
 
 	elements_2 := []*htmlutil.Element{
 		{Tag: "title", DangerousInnerHTML: "Dangerous <b>Title</b>"},
 	}
-	sorted_2 := inst.ToSortedAndPreEscapedHeadEls(elements_2)
-	if sorted_2.Title.DangerousInnerHTML != "Dangerous <b>Title</b>" {
+	prepared_2 := renderer.Prepare(elements_2)
+	if prepared_2.Title.DangerousInnerHTML != "Dangerous <b>Title</b>" {
 		t.Errorf(
 			"Expected title from DangerousInnerHTML, got '%s'",
-			sorted_2.Title.DangerousInnerHTML,
+			prepared_2.Title.DangerousInnerHTML,
 		)
 	}
 }
 
 func TestEdgeCases(t *testing.T) {
-	h := New()
-	h.Add(
+	b := NewBuilder()
+	b.Add(
 		Tag("meta"),
-		h.Name("viewport"),
-		h.Content("width=device-width"),
+		b.Name("viewport"),
+		b.Content("width=device-width"),
 		SelfClosing(true),
 	)
 
-	if len(h.els) != 1 {
-		t.Fatalf("Expected 1 element, got %d", len(h.els))
+	if len(b.els) != 1 {
+		t.Fatalf("Expected 1 element, got %d", len(b.els))
 	}
-	if !h.els[0].SelfClosing {
+	if !b.els[0].SelfClosing {
 		t.Error("Expected SelfClosing to be true")
 	}
 
-	h.Add(
+	b.Add(
 		Tag("script"),
-		h.Attr("src", "/script.js"),
+		b.Attr("src", "/script.js"),
 		BooleanAttribute("async"),
 		BooleanAttribute("defer"),
 	)
 
-	if len(h.els) != 2 {
-		t.Fatalf("Expected 2 elements, got %d", len(h.els))
+	if len(b.els) != 2 {
+		t.Fatalf("Expected 2 elements, got %d", len(b.els))
 	}
-	script_el := h.els[1]
+	script_el := b.els[1]
 	if len(script_el.BooleanAttributes) != 2 {
 		t.Errorf(
 			"Expected 2 boolean attributes, got %d",
@@ -696,27 +691,27 @@ func TestEdgeCases(t *testing.T) {
 		)
 	}
 
-	h.Add(Tag("script"), InnerHTML("console.log('test');"))
+	b.Add(Tag("script"), InnerHTML("console.log('test');"))
 
-	if len(h.els) != 3 {
-		t.Fatalf("Expected 3 elements, got %d", len(h.els))
+	if len(b.els) != 3 {
+		t.Fatalf("Expected 3 elements, got %d", len(b.els))
 	}
-	inner_el := h.els[2]
+	inner_el := b.els[2]
 	if inner_el.DangerousInnerHTML != "console.log('test');" {
 		t.Errorf("Expected innerHTML, got '%s'", inner_el.DangerousInnerHTML)
 	}
 
-	inst := NewInstance("test")
+	renderer := NewRenderer("test")
 	invalid_el := &htmlutil.Element{Tag: ""}
-	sorted := &SortedAndPreEscapedHeadEls{Meta: []*htmlutil.Element{invalid_el}}
-	_, err := inst.Render(sorted)
+	prepared := &Prepared{Meta: []*htmlutil.Element{invalid_el}}
+	_, err := renderer.Render(prepared)
 	if err == nil {
 		t.Error("Expected error when rendering element with empty tag")
 	}
 }
 
 func TestDeduplicationWithMixedContentTypes(t *testing.T) {
-	inst := NewInstance("test")
+	renderer := NewRenderer("test")
 
 	els := []*htmlutil.Element{
 		{Tag: "script", DangerousInnerHTML: "console.log('test1');"},
@@ -763,7 +758,7 @@ func TestDeduplicationWithMixedContentTypes(t *testing.T) {
 		},
 	}
 
-	result := inst.dedup_head_els(els)
+	result := renderer.dedup_head_els(els)
 
 	if len(result) != 6 {
 		t.Errorf("Expected 6 elements after deduplication, got %d", len(result))
@@ -797,8 +792,8 @@ func TestPanic(t *testing.T) {
 		}
 	}()
 
-	h := New()
-	h.Add(h.Name("description"))
+	b := NewBuilder()
+	b.Add(b.Name("description"))
 }
 
 func TestMatchesRuleMultipleBooleanAttributes(t *testing.T) {
@@ -882,27 +877,27 @@ func TestMatchesRuleMultipleBooleanAttributes(t *testing.T) {
 	}
 }
 
-func TestInitUniqueRulesDoesNotMutateInput(t *testing.T) {
-	inst := NewInstance("test")
+func TestInitDedupeRulesDoesNotMutateInput(t *testing.T) {
+	renderer := NewRenderer("test")
 
-	e := New()
-	e.Link(e.Rel("stylesheet"), e.Href("/style.css"))
+	b := NewBuilder()
+	b.Link(b.Rel("stylesheet"), b.Href("/style.css"))
 
-	original_len := len(e.Collect())
-	inst.InitUniqueRules(e)
+	original_len := len(b.Elements())
+	renderer.InitDedupeRules(b)
 
-	if len(e.Collect()) != original_len {
+	if len(b.Elements()) != original_len {
 		t.Errorf(
-			"InitUniqueRules mutated input: had %d elements, now has %d",
+			"InitDedupeRules mutated input: had %d elements, now has %d",
 			original_len,
-			len(e.Collect()),
+			len(b.Elements()),
 		)
 	}
 }
 
-func TestDedupeHeadElsNilElements(t *testing.T) {
-	inst := NewInstance("test")
-	inst.InitUniqueRules(nil)
+func TestDedupeHeadNilElements(t *testing.T) {
+	renderer := NewRenderer("test")
+	renderer.InitDedupeRules(nil)
 
 	els := []*htmlutil.Element{
 		{
@@ -925,7 +920,7 @@ func TestDedupeHeadElsNilElements(t *testing.T) {
 		},
 	}
 
-	result := inst.dedup_head_els(els)
+	result := renderer.dedup_head_els(els)
 
 	if len(result) != 3 {
 		t.Errorf("expected 3 elements, got %d", len(result))
@@ -937,20 +932,20 @@ func TestDedupeHeadElsNilElements(t *testing.T) {
 	}
 }
 
-func TestAddElements_NilSourceIsNoOp(t *testing.T) {
-	h := New()
-	h.Add(Tag("title"), TextContent("Original"))
+func TestAppendNilSourceIsNoOp(t *testing.T) {
+	b := NewBuilder()
+	b.Add(Tag("title"), TextContent("Original"))
 
-	h.AddElements(nil)
+	b.Append(nil)
 
-	collected := h.Collect()
-	if len(collected) != 1 {
+	elements := b.Elements()
+	if len(elements) != 1 {
 		t.Fatalf(
-			"expected 1 element after AddElements(nil), got %d",
-			len(collected),
+			"expected 1 element after Append(nil), got %d",
+			len(elements),
 		)
 	}
-	if collected[0].Tag != "title" || collected[0].TextContent != "Original" {
-		t.Fatalf("unexpected element after AddElements(nil): %+v", collected[0])
+	if elements[0].Tag != "title" || elements[0].TextContent != "Original" {
+		t.Fatalf("unexpected element after Append(nil): %+v", elements[0])
 	}
 }

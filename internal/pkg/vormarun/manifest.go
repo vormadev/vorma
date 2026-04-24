@@ -9,8 +9,8 @@ import (
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/jsonutil"
+	"github.com/vormadev/vorma/kit/searchparams"
 	"github.com/vormadev/vorma/kit/set"
-	"github.com/vormadev/vorma/kit/validate"
 )
 
 // <dist>/.vorma/static/vorma.manifest.dev.json
@@ -43,7 +43,7 @@ type Manifest struct {
 	// Static build outputs
 	PublicFilemap map[string]string
 	CriticalCSS   string
-	SearchSchemas map[string]validate.URLSearchParamsSchema
+	SearchSchemas map[string]searchparams.Schema
 
 	// Dev:    {
 	//             URL: "http://localhost:5173/frontend/entry.tsx",

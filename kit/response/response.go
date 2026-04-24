@@ -18,7 +18,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/head"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -228,7 +228,7 @@ type Proxy struct {
 	_status_text string
 	_header_ops  map[string][]header_op
 	_cookies     []*http.Cookie
-	_head_els    *headels.HeadEls
+	_head        *head.Builder
 	_location    string
 }
 
@@ -327,20 +327,20 @@ func (p *Proxy) Cookies() []*http.Cookie {
 
 // --- Head elements ---
 
-// AddHeadEls merges head elements into the proxy.
-func (p *Proxy) AddHeadEls(els *headels.HeadEls) {
-	if p._head_els == nil {
-		p._head_els = headels.New()
+// MergeHead merges another head builder into the proxy's head state.
+func (p *Proxy) MergeHead(b *head.Builder) {
+	if p._head == nil {
+		p._head = head.NewBuilder()
 	}
-	p._head_els.AddElements(els)
+	p._head.Append(b)
 }
 
-// HeadEls returns the proxy's head elements, creating them if needed.
-func (p *Proxy) HeadEls() *headels.HeadEls {
-	if p._head_els == nil {
-		p._head_els = headels.New()
+// HeadBuilder returns the proxy's head builder, creating it if needed.
+func (p *Proxy) HeadBuilder() *head.Builder {
+	if p._head == nil {
+		p._head = head.NewBuilder()
 	}
-	return p._head_els
+	return p._head
 }
 
 // --- Redirects ---
@@ -477,13 +477,13 @@ func MergeProxyResponses(proxies ...*Proxy) *Proxy {
 
 	// Head elements
 	for _, p := range proxies {
-		if p == nil || p._head_els == nil {
+		if p == nil || p._head == nil {
 			continue
 		}
-		if merged._head_els == nil {
-			merged._head_els = headels.New()
+		if merged._head == nil {
+			merged._head = head.NewBuilder()
 		}
-		merged._head_els.AddElements(p._head_els)
+		merged._head.Append(p._head)
 	}
 
 	// Headers

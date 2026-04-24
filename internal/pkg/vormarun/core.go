@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/kit/envutil"
-	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/head"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/set"
 	"github.com/vormadev/vorma/kit/tsgen"
@@ -18,7 +18,7 @@ func IsDev() bool {
 	return envutil.GetBool(Env_Key_Is_Dev, false)
 }
 
-type HeadEls = headels.HeadEls
+type HeadBuilder = head.Builder
 type GoTypeSrc = tsgen.GoTypeSrc
 
 type DevWatchConfig struct {
@@ -136,12 +136,12 @@ type HTMLConfig struct {
 	// Optional, but highly recommended.
 	// Determines the default head elements rendered by your website
 	// (unless trumped by child loaders).
-	DefaultHead func(*http.Request, *Vorma, *HeadEls) error `json:"-"`
+	DefaultHead func(*http.Request, *Vorma, *HeadBuilder) error `json:"-"`
 
 	// Elements specified here will be deduplicated across
 	// nested loaders, with the "deepest" (most specific)
 	// conflicting route pattern as the ultimate winner.
-	HeadDedupeKeys func(*HeadEls) `json:"-"`
+	HeadDedupeKeys func(*HeadBuilder) `json:"-"`
 }
 
 type PathConfig struct {
@@ -181,7 +181,7 @@ type Vorma struct {
 	_manifest                   *Manifest
 	client_build_id             string
 	parsed_tmpl                 *template.Template
-	headels_instance            *headels.Instance
+	head_renderer               *head.Renderer
 	_final_public_filepaths     *set.Set[string]
 	supported_methods           *set.Set[string]
 	supported_methods_allow_val string

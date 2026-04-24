@@ -21,3 +21,7 @@ export const LINK_ACTIVE_EXACT_ATTR = "data-vorma-active-exact";
 export const LINK_ACTIVE_ANCESTOR_ATTR = "data-vorma-active-ancestor";
 export const LINK_PENDING_EXACT_ATTR = "data-vorma-pending-exact";
 export const LINK_PENDING_ANCESTOR_ATTR = "data-vorma-pending-ancestor";
+
+export const CSS_BUNDLE_ATTR = "data-vorma-css-bundle";
+export const CSS_PRELOAD_ATTR = "data-vorma-css-preload";
+export const CSS_PRELOAD_SETTLED_ATTR = "data-vorma-css-settled";

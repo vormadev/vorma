@@ -230,28 +230,19 @@ func (w *walker) collect(t reflect.Type, user_alias ...string) {
 }
 
 func (w *walker) collect_struct_fields(t reflect.Type) {
-	for i := range t.NumField() {
-		field := t.Field(i)
-		if is_unexported(field) || should_omit_field(field) {
-			continue
+	shape, err := reflectutil.JSONStructShape(t)
+	if err != nil {
+		return
+	}
+	for _, field := range shape.Inlined {
+		if base, ok := field.StructBaseType(); ok {
+			w.get_or_create_reg(base).used_as_embedded = true
 		}
-
-		if field.Anonymous {
-			ft := field.Type
-			if ft.Kind() == reflect.Pointer {
-				ft = ft.Elem()
-			}
-			if ft.Kind() == reflect.Struct {
-				reg := w.get_or_create_reg(ft)
-				reg.used_as_embedded = true
-				if tag := field.Tag.Get("json"); tag != "" && tag != "-" {
-					reg.is_referenced = true
-				}
-				w.collect(ft)
-			}
-			continue
+	}
+	for _, field := range shape.Fields {
+		if base, ok := field.StructBaseType(); ok && field.Field.Anonymous {
+			w.get_or_create_reg(base).used_as_embedded = true
 		}
-
 		w.collect_field_type(field.Type)
 	}
 }
@@ -324,12 +315,15 @@ func (w *walker) to_node(t reflect.Type) *type_node {
 		return &type_node{kind: kind_unknown}
 	case reflect.Bool:
 		return &type_node{kind: kind_bool}
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64:
-		return &type_node{kind: kind_number}
 	case reflect.String:
 		return &type_node{kind: kind_string}
+	default:
+		if reflectutil.IsNumericKind(t.Kind()) {
+			return &type_node{kind: kind_number}
+		}
+	}
+
+	switch t.Kind() {
 	case reflect.Pointer:
 		return w.to_node(t.Elem())
 	case reflect.Slice, reflect.Array:
@@ -393,53 +387,30 @@ func (w *walker) build_struct_fields(t reflect.Type) []field_node {
 	used_overrides := make(map[string]bool)
 	var fields []field_node
 
-	var process func(ct reflect.Type, is_embedded_ptr bool)
-	process = func(ct reflect.Type, is_embedded_ptr bool) {
-		for i := range ct.NumField() {
-			field := ct.Field(i)
-			if is_unexported(field) || should_omit_field(field) {
-				continue
-			}
-
-			// Untagged anonymous field → recurse to match encoding/json order.
-			if field.Anonymous && field.Tag.Get("json") == "" {
-				et := field.Type
-				is_ptr := et.Kind() == reflect.Pointer
-				if is_ptr {
-					et = et.Elem()
-				}
-				if et.Kind() == reflect.Struct {
-					process(et, is_ptr || is_embedded_ptr)
-				}
-				continue
-			}
-
-			json_name := json_field_name(field)
-			if json_name == "" {
-				continue
-			}
-
-			var node *type_node
-
-			// Precedence: TSTyper > ts_type tag > reflection.
-			if custom, ok := ts_type_map[field.Name]; ok {
-				node = &type_node{kind: kind_raw, raw_ts: custom}
-				used_overrides[field.Name] = true
-			} else if custom := field.Tag.Get("ts_type"); custom != "" {
-				node = &type_node{kind: kind_raw, raw_ts: custom}
-			} else {
-				node = w.to_node_or_ref(field.Type)
-			}
-
-			fields = append(fields, field_node{
-				name:     json_name,
-				node:     node,
-				optional: is_embedded_ptr || is_optional_field(field),
-			})
-		}
+	json_fields, err := reflectutil.JSONStructFields(t)
+	if err != nil {
+		return nil
 	}
+	for _, json_field := range json_fields {
+		field := json_field.Field
+		var node *type_node
 
-	process(t, false)
+		// Precedence: TSTyper > ts_type tag > reflection.
+		if custom, ok := ts_type_map[field.Name]; ok {
+			node = &type_node{kind: kind_raw, raw_ts: custom}
+			used_overrides[field.Name] = true
+		} else if custom := field.Tag.Get("ts_type"); custom != "" {
+			node = &type_node{kind: kind_raw, raw_ts: custom}
+		} else {
+			node = w.to_node_or_ref(field.Type)
+		}
+
+		fields = append(fields, field_node{
+			name:     json_field.JSONName,
+			node:     node,
+			optional: json_field.Optional,
+		})
+	}
 
 	// Additive fields from TSTyper that didn't match any Go field.
 	if ts_type_map != nil {
@@ -527,49 +498,15 @@ func is_basic_type(t reflect.Type) bool {
 		t == reflect.TypeFor[time.Duration]() {
 		return true
 	}
-	switch t.Kind() {
-	case reflect.Interface, reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64, reflect.String:
+	switch {
+	case t.Kind() == reflect.Interface:
+		return true
+	case reflectutil.IsScalarType(t):
 		return true
 	default:
 		return false
 	}
 }
-
-func is_unexported(field reflect.StructField) bool {
-	return field.PkgPath != ""
-}
-
-func is_optional_field(field reflect.StructField) bool {
-	if field.Type.Kind() == reflect.Pointer {
-		return true
-	}
-	tag := field.Tag.Get("json")
-	if tag != "" {
-		parts := strings.Split(tag, ",")
-		for _, part := range parts[1:] {
-			if part == "omitempty" || part == "omitzero" {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func should_omit_field(field reflect.StructField) bool {
-	tag := field.Tag.Get("json")
-	return tag == "-" || strings.HasPrefix(tag, "-,")
-}
-
-func json_field_name(field reflect.StructField) string {
-	return reflectutil.JSONFieldName(field)
-}
-
-/////////////////////////////////////////////////////////////////////
-/////// Interface detection
-/////////////////////////////////////////////////////////////////////
 
 func check_ts_typer_raw(instance any) (string, bool) {
 	if instance == nil {
@@ -581,13 +518,13 @@ func check_ts_typer_raw(instance any) (string, bool) {
 		return r.TSType(), true
 	}
 
-	// Pointer-receiver check: create *T and test.
 	t := reflect.TypeOf(instance)
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
-	if r, ok := reflect.New(t).Interface().(TSTyperRaw); ok {
-		return r.TSType(), true
+	v := reflectutil.Type{T: t}.NewValue()
+	if impl, ok := (reflectutil.Value{V: v}).InterfaceImpl(reflect.TypeFor[TSTyperRaw]()); ok {
+		return impl.Interface().(TSTyperRaw).TSType(), true
 	}
 
 	return "", false
@@ -600,38 +537,11 @@ func get_ts_type_map(t reflect.Type) map[string]string {
 
 	iface := reflect.TypeFor[TSTyper]()
 
-	// Value receiver.
-	if t.Implements(iface) {
-		v := reflect.New(t).Elem()
-		init_embedded_pointers(v.Addr())
-		return v.Interface().(TSTyper).TSType()
-	}
-
-	// Pointer receiver.
-	if reflectutil.DoesTypeImplementInterface(t, iface) {
-		v := reflect.New(t)
-		init_embedded_pointers(v)
-		return v.Interface().(TSTyper).TSType()
+	v := reflectutil.Type{T: t}.NewValue()
+	reflectutil.Value{V: v}.InitAnonymousPointerFields()
+	if impl, ok := (reflectutil.Value{V: v}).InterfaceImpl(iface); ok {
+		return impl.Interface().(TSTyper).TSType()
 	}
 
 	return nil
-}
-
-func init_embedded_pointers(v reflect.Value) {
-	if v.Kind() != reflect.Pointer || v.IsNil() {
-		return
-	}
-	elem := v.Elem()
-	if elem.Kind() != reflect.Struct {
-		return
-	}
-	for i := 0; i < elem.NumField(); i++ {
-		f := elem.Field(i)
-		ft := elem.Type().Field(i)
-		if ft.Anonymous && f.Kind() == reflect.Pointer && f.IsNil() {
-			nv := reflect.New(f.Type().Elem())
-			f.Set(nv)
-			init_embedded_pointers(nv)
-		}
-	}
 }

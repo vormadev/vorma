@@ -11,14 +11,14 @@ import (
 
 	"github.com/vormadev/vorma/internal/pkg/viteutil"
 	"github.com/vormadev/vorma/kit/envutil"
-	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/head"
 	"github.com/vormadev/vorma/kit/htmlutil"
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/searchparams"
 	"github.com/vormadev/vorma/kit/set"
-	"github.com/vormadev/vorma/kit/validate"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -79,10 +79,10 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 
 		if v.HTMLConfig.DefaultHead != nil {
 			default_head_wg.Go(func() {
-				h := headels.New()
+				h := head.NewBuilder()
 				default_head_err = v.HTMLConfig.DefaultHead(r, v, h)
 				if default_head_err == nil {
-					default_head_els = h.Collect()
+					default_head_els = h.Elements()
 				}
 			})
 		}
@@ -115,7 +115,7 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 
 		matches := match_results.Matches
 		matched_patterns := make([]string, 0, len(matches))
-		search_schemas := make([]validate.URLSearchParamsSchema, 0, len(matches))
+		search_schemas := make([]searchparams.Schema, 0, len(matches))
 		for _, m := range matches {
 			pattern := m.OriginalPattern()
 			matched_patterns = append(matched_patterns, pattern)
@@ -125,14 +125,22 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 		import_urls := make([]string, 0, len(matches))
 		loaders_data := make([]any, 0, len(matches))
 
-		deps := set.New[string]()
-		css_bundles := set.New[string]()
+		deps := make([]string, 0)
+		seen_deps := set.New[string]()
+		css_bundles := make([]string, 0)
+		seen_css_bundles := set.New[string]()
 
 		for _, dep := range manifest.ClientEntry.DepURLs {
-			deps.Add(dep)
+			if !seen_deps.Has(dep) {
+				seen_deps.Add(dep)
+				deps = append(deps, dep)
+			}
 		}
 		for _, css := range manifest.ClientEntry.CSSBundleURLs {
-			css_bundles.Add(css)
+			if !seen_css_bundles.Has(css) {
+				seen_css_bundles.Add(css)
+				css_bundles = append(css_bundles, css)
+			}
 		}
 
 		outermost_server_err := ""
@@ -152,10 +160,16 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			}
 			import_urls = append(import_urls, route_mod.URL)
 			for _, dep := range route_mod.DepURLs {
-				deps.Add(dep)
+				if !seen_deps.Has(dep) {
+					seen_deps.Add(dep)
+					deps = append(deps, dep)
+				}
 			}
 			for _, css := range route_mod.CSSBundleURLs {
-				css_bundles.Add(css)
+				if !seen_css_bundles.Has(css) {
+					seen_css_bundles.Add(css)
+					css_bundles = append(css_bundles, css)
+				}
 			}
 
 			// Apply only if no loader error
@@ -191,10 +205,10 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 		}
 
 		merged_proxy := response.MergeProxyResponses(tasks_results.ResponseProxies...)
-		raw_head_els := append(default_head_els, merged_proxy.HeadEls().Collect()...)
+		raw_head_els := append(default_head_els, merged_proxy.HeadBuilder().Elements()...)
 
 		if !IsDev() && !is_json {
-			for dep := range deps.Range() {
+			for _, dep := range deps {
 				raw_head_els = append(raw_head_els, &htmlutil.Element{
 					Tag: "link",
 					AttributesKnownSafe: map[string]string{
@@ -204,19 +218,9 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 					SelfClosing: true,
 				})
 			}
-			for css := range css_bundles.Range() {
-				raw_head_els = append(raw_head_els, &htmlutil.Element{
-					Tag: "link",
-					AttributesKnownSafe: map[string]string{
-						"rel":  "stylesheet",
-						"href": css,
-					},
-					SelfClosing: true,
-				})
-			}
 		}
 
-		sorted_head_els := v.headels_instance.ToSortedAndPreEscapedHeadEls(raw_head_els)
+		prepared_head := v.head_renderer.Prepare(raw_head_els)
 
 		payload := loader_payload{
 			MatchedPatterns: matched_patterns,
@@ -224,9 +228,9 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			SplatValues:     match_results.SplatValues,
 			SearchSchemas:   search_schemas,
 
-			Title:       sorted_head_els.Title,
-			MetaHeadEls: sorted_head_els.Meta,
-			RestHeadEls: sorted_head_els.Rest,
+			Title:       prepared_head.Title,
+			MetaHeadEls: prepared_head.Meta,
+			RestHeadEls: prepared_head.Rest,
 
 			OutermostServerErr: outermost_server_err,
 			OutermostServerErrIdx: func() *int {
@@ -237,8 +241,8 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			}(),
 
 			ImportURLs: import_urls,
-			Deps:       deps.Slice(),
-			CSSBundles: css_bundles.Slice(),
+			Deps:       deps,
+			CSSBundles: css_bundles,
 
 			LoadersData: loaders_data,
 		}
@@ -268,7 +272,7 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 
 		vorma_head := &strings.Builder{}
 
-		user_head, err := v.headels_instance.Render(sorted_head_els)
+		user_head, err := v.head_renderer.Render(prepared_head)
 		if err != nil {
 			v.log.Error("error rendering head elements", "err", err)
 			res.InternalServerError()
@@ -305,6 +309,28 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			return
 		}
 		vorma_head.WriteString(string(rendered_main_css_el))
+
+		if !IsDev() {
+			for _, css := range css_bundles {
+				css_bundle_el := &htmlutil.Element{
+					Tag: "link",
+					AttributesKnownSafe: map[string]string{
+						"rel":           "stylesheet",
+						"href":          css,
+						CSS_BUNDLE_ATTR: css,
+					},
+					SelfClosing: true,
+				}
+				rendered_css_bundle_el, err := htmlutil.RenderElement(css_bundle_el)
+				if err != nil {
+					v.log.Error("error rendering CSS bundle element", "err", err)
+					res.InternalServerError()
+					return
+				}
+				vorma_head.WriteString("\n")
+				vorma_head.WriteString(string(rendered_css_bundle_el))
+			}
+		}
 
 		if root_template_data == nil {
 			root_template_data = make(map[string]any)

@@ -39,14 +39,14 @@ var App = &vorma.Vorma{
 	HTMLConfig: vorma.HTMLConfig{
 		Template:     "",
 		TemplateData: func(*http.Request) (map[string]any, error) { return nil, nil },
-		DefaultHead: func(r *http.Request, v *vorma.Vorma, h *vorma.HeadEls) error {
+		DefaultHead: func(r *http.Request, v *vorma.Vorma, h *vorma.HeadBuilder) error {
 			h.MetaCharset("utf-8")
 			h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
 			h.Title("My App")
 			h.Description("Something about my app.")
 			return nil
 		},
-		HeadDedupeKeys: func(*vorma.HeadEls) {},
+		HeadDedupeKeys: func(*vorma.HeadBuilder) {},
 	},
 
 	TSGenConfig: vorma.TSGenConfig{
@@ -95,7 +95,7 @@ var Loaders = vorma.Loaders{
 		TSModule: routes("md.tsx"),
 		Handler: func(c *RequestCtx[struct{}]) (*fsmarkdown.Result, error) {
 			r := c.Request()
-			h := c.HeadEls()
+			h := c.HeadBuilder()
 			rp := c.ResponseProxy()
 
 			data, found, err := md.MD.Lookup(r.URL.Path)

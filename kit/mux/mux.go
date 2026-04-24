@@ -24,12 +24,12 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/contextutil"
 	"github.com/vormadev/vorma/kit/genericsutil"
-	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/head"
 	"github.com/vormadev/vorma/kit/matcher"
 	"github.com/vormadev/vorma/kit/reflectutil"
 	"github.com/vormadev/vorma/kit/response"
+	"github.com/vormadev/vorma/kit/schema"
 	"github.com/vormadev/vorma/kit/tasks"
-	"github.com/vormadev/vorma/kit/validate"
 )
 
 // __TODO add tests for MatchedPattern getters
@@ -43,11 +43,6 @@ var (
 	empty_splat    = []string{}
 	empty_http_mws = []http_mw_with_opts{}
 	empty_task_mws = []task_mw_with_opts{}
-	none_instance  = None{}
-
-	req_ctx_pool = sync.Pool{
-		New: func() any { return &RequestCtx[None]{} },
-	}
 
 	needs_tasks_ctx_type = reflect.TypeFor[TasksCtxRequirer]()
 )
@@ -210,7 +205,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		code := http.StatusInternalServerError
 		msg := "Internal Server Error"
-		if validate.IsValidationError(err) {
+		if schema.IsValidationError(err) {
 			code = http.StatusBadRequest
 			msg = err.Error()
 			mux_log.Error(
@@ -513,7 +508,9 @@ func (rc *RequestCtx[I]) ClearForPool() {
 
 // --- Response proxy convenience helpers ---
 
-func (rc *RequestCtx[I]) HeadEls() *headels.HeadEls { return rc.response_proxy.HeadEls() }
+func (rc *RequestCtx[I]) HeadBuilder() *head.Builder {
+	return rc.response_proxy.HeadBuilder()
+}
 func (rc *RequestCtx[I]) Redirect(url string, code ...int) (bool, error) {
 	return rc.response_proxy.Redirect(rc.req, url, code...)
 }

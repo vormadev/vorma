@@ -2,7 +2,7 @@ package vormarun
 
 import (
 	"github.com/vormadev/vorma/kit/htmlutil"
-	"github.com/vormadev/vorma/kit/validate"
+	"github.com/vormadev/vorma/kit/searchparams"
 )
 
 type ssr_payload struct {
@@ -16,10 +16,10 @@ type ssr_payload struct {
 type loader_payload struct {
 	/////// Sent no matter what:
 
-	MatchedPatterns []string                         `json:",omitempty"`
-	Params          map[string]string                `json:",omitempty"`
-	SplatValues     []string                         `json:",omitempty"`
-	SearchSchemas   []validate.URLSearchParamsSchema `json:",omitempty"`
+	MatchedPatterns []string              `json:",omitempty"`
+	Params          map[string]string     `json:",omitempty"`
+	SplatValues     []string              `json:",omitempty"`
+	SearchSchemas   []searchparams.Schema `json:",omitempty"`
 
 	Title       *htmlutil.Element   `json:",omitempty"`
 	MetaHeadEls []*htmlutil.Element `json:",omitempty"`

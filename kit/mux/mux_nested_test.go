@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vormadev/vorma/kit/schema"
+	"github.com/vormadev/vorma/kit/searchparams"
 	"github.com/vormadev/vorma/kit/tasks"
-	"github.com/vormadev/vorma/kit/validate"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -371,7 +372,13 @@ func TestRunNestedTasks(t *testing.T) {
 
 		nr := NewNestedRouter(NestedOptions{
 			ParseInput: func(r *http.Request, input_ptr any) error {
-				return validate.URLSearchParamsInto(r, input_ptr)
+				if err := searchparams.ParseIntoStructPtr(r, input_ptr); err != nil {
+					return &schema.ValidationError{
+						Err: fmt.Errorf("error parsing URL parameters: %w", err),
+					}
+				}
+				_, err := schema.EnforceAny("validate.URLSearchParamsInto", input_ptr)
+				return err
 			},
 		})
 		AddNestedTaskHandler(

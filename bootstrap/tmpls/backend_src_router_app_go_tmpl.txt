@@ -9,11 +9,11 @@ import (
 
 var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 	Wave: backend.Wave,
-	HeadDedupeKeysFunc: func(h *vorma.HeadEls) {
+	HeadDedupeKeysFunc: func(h *vorma.HeadBuilder) {
 		h.Meta(h.Property("og:title"))
 		h.Meta(h.Property("og:description"))
 	},
-	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadEls) error {
+	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadBuilder) error {
 		h.Title("Vorma Example")
 		h.Description("This is a Vorma example.")
 		h.Link(

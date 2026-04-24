@@ -12,7 +12,7 @@ import (
 
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/fsutil"
-	"github.com/vormadev/vorma/kit/headels"
+	"github.com/vormadev/vorma/kit/head"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/set"
 )
@@ -120,11 +120,11 @@ func InitRouter(
 		}
 		v.parsed_tmpl = tmpl
 
-		v.headels_instance = headels.NewInstance("vorma")
+		v.head_renderer = head.NewRenderer("vorma")
 		if v.HTMLConfig.HeadDedupeKeys != nil {
-			h := headels.New()
+			h := head.NewBuilder()
 			v.HTMLConfig.HeadDedupeKeys(h)
-			v.headels_instance.InitUniqueRules(h)
+			v.head_renderer.InitDedupeRules(h)
 		}
 
 		fpf, err := v.make_final_public_filepaths()

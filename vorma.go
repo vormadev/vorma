@@ -85,7 +85,7 @@ func IsJSONRequest(r *http.Request) bool {
 
 /////// WRAPPER TYPES / HELPERS
 
-type HeadEls = vormarun.HeadEls
+type HeadBuilder = vormarun.HeadBuilder
 
 type GoTypeSrc = vormarun.GoTypeSrc
 
