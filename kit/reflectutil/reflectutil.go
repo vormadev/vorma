@@ -13,7 +13,16 @@ import (
 	"github.com/vormadev/vorma/kit/genericsutil"
 )
 
-func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool {
+func DerefType(t reflect.Type) (reflect.Type, bool) {
+	is_pointer := false
+	for t != nil && t.Kind() == reflect.Pointer {
+		is_pointer = true
+		t = t.Elem()
+	}
+	return t, is_pointer
+}
+
+func TypeImplements(t reflect.Type, iface reflect.Type) bool {
 	if t == nil {
 		return false
 	}
@@ -34,12 +43,12 @@ func DoesTypeImplementInterface(t reflect.Type, iface reflect.Type) bool {
 	return false
 }
 
-func ExcludingNoneGetIsNilOrUltimatelyPointsToNil(v any) bool {
-	return excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v, false)
+func IsNilLikeExceptNone(v any) bool {
+	return is_nil_like_except_none(v, false)
 }
 
-func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck bool) bool {
-	if !skipIsNoneCheck && genericsutil.IsNone(v) {
+func is_nil_like_except_none(v any, skip_none_check bool) bool {
+	if !skip_none_check && genericsutil.IsNone(v) {
 		return false
 	}
 
@@ -54,7 +63,7 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 		if reflectVal.IsNil() {
 			return true
 		}
-		return excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(
+		return is_nil_like_except_none(
 			reflectVal.Elem().Interface(),
 			true,
 		)
@@ -67,70 +76,59 @@ func excludingNoneGetIsNilOrUltimatelyPointsToNil_inner(v any, skipIsNoneCheck b
 	}
 }
 
-type JSONShape struct {
-	Fields   []JSONFieldShape
-	Inlined  []JSONFieldShape
-	Unknowns []JSONFieldShape
+type StructShape struct {
+	Fields   []StructField
+	Inlined  []StructField
+	Unknowns []StructField
 }
 
-type JSONFieldShape struct {
-	Field               reflect.StructField
-	GoName              string
-	JSONName            string
-	Type                reflect.Type
-	BaseType            reflect.Type
-	Index               []int
-	Pointer             bool
-	Optional            bool
-	OmitEmpty           bool
-	OmitZero            bool
-	Inline              bool
-	Unknown             bool
-	ViaOptionalEmbedded bool
+type StructField struct {
+	Field                    reflect.StructField
+	FieldName                string
+	PublicName               string
+	Type                     reflect.Type
+	DerefType                reflect.Type
+	Index                    []int
+	TypeWasPointer           bool
+	OptionalInPublicShape    bool
+	OmitEmpty                bool
+	OmitZero                 bool
+	Inline                   bool
+	Unknown                  bool
+	ViaOptionalEmbeddedField bool
 }
 
 type Value struct {
 	V reflect.Value
 }
 
-type Type struct {
-	T reflect.Type
+func NewValueWithAnonymousPointerFields(t reflect.Type) reflect.Value {
+	v := reflect.New(t).Elem()
+	Value{V: v}.init_anonymous_pointer_fields()
+	return v
 }
 
-func (typ Type) NewValue() reflect.Value {
-	return reflect.New(typ.T).Elem()
-}
-
-func JSONStructShape(t reflect.Type) (JSONShape, error) {
-	base, _ := JSONBaseType(t)
+func PublicStructShape(t reflect.Type) (StructShape, error) {
+	base, _ := DerefType(t)
 	if base == nil {
-		return JSONShape{}, fmt.Errorf("JSONStructShape: type is nil")
+		return StructShape{}, fmt.Errorf("PublicStructShape: type is nil")
 	}
 	if base.Kind() != reflect.Struct {
-		return JSONShape{}, fmt.Errorf("JSONStructShape: expected struct, got %s", base)
+		return StructShape{}, fmt.Errorf("PublicStructShape: expected struct, got %s", base)
 	}
 
-	return collect_json_shape(base)
+	return collect_public_struct_shape(base)
 }
 
-func JSONStructFields(t reflect.Type) ([]JSONFieldShape, error) {
-	shape, err := JSONStructShape(t)
+func PublicStructFields(t reflect.Type) ([]StructField, error) {
+	shape, err := PublicStructShape(t)
 	if err != nil {
 		return nil, err
 	}
 	return shape.Fields, nil
 }
 
-func JSONBaseType(t reflect.Type) (reflect.Type, bool) {
-	is_pointer := false
-	for t != nil && t.Kind() == reflect.Pointer {
-		is_pointer = true
-		t = t.Elem()
-	}
-	return t, is_pointer
-}
-
-func json_indirect_type(t reflect.Type) reflect.Type {
+func unnamed_pointer_elem_type(t reflect.Type) reflect.Type {
 	if t != nil && t.Kind() == reflect.Pointer && t.Name() == "" {
 		return t.Elem()
 	}
@@ -465,27 +463,6 @@ func (value Value) SetScalarFromString(raw string) error {
 	return nil
 }
 
-func (value Value) EffectivelyZero() bool {
-	v := value.V
-	if !v.IsValid() {
-		return true
-	}
-	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
-		if v.IsNil() {
-			return true
-		}
-		v = v.Elem()
-	}
-	switch v.Kind() {
-	case reflect.Struct:
-		return false
-	case reflect.Map, reflect.Slice:
-		return v.IsNil()
-	default:
-		return v.IsZero()
-	}
-}
-
 func (value Value) FormatKey() string {
 	v := value.V
 	if !v.IsValid() {
@@ -505,12 +482,12 @@ func (value Value) ResolveField(
 ) (val reflect.Value, exists bool, write_back func(reflect.Value)) {
 	base := value.V
 	if base.Kind() == reflect.Struct {
-		fields, err := JSONStructFields(base.Type())
+		fields, err := PublicStructFields(base.Type())
 		if err != nil {
 			return reflect.Value{}, false, nil
 		}
 		for _, field := range fields {
-			if field.JSONName != name && field.GoName != name {
+			if field.PublicName != name && field.FieldName != name {
 				continue
 			}
 			fv, ok := field.SettableValue(base)
@@ -522,24 +499,6 @@ func (value Value) ResolveField(
 	copy_val, exists := (Value{V: base}).MapValueCopy(key)
 	write_back = func(v reflect.Value) { (Value{V: base}).SetMapValue(key, v) }
 	return copy_val, exists, write_back
-}
-
-func (value Value) CountNonZeroFields(names []string) int {
-	count := 0
-	for _, name := range names {
-		val, _, _ := value.ResolveField(name)
-		if !(Value{V: val}).EffectivelyZero() {
-			count++
-		}
-	}
-	return count
-}
-
-func (value Value) InterfaceOrNil() any {
-	if value.V.IsValid() && value.V.CanInterface() {
-		return value.V.Interface()
-	}
-	return nil
 }
 
 func (value Value) InterfaceImpl(iface reflect.Type) (reflect.Value, bool) {
@@ -572,7 +531,7 @@ func (value Value) InterfaceImpl(iface reflect.Type) (reflect.Value, bool) {
 	return reflect.Value{}, false
 }
 
-func (value Value) InitAnonymousPointerFields() {
+func (value Value) init_anonymous_pointer_fields() {
 	v := value.V
 	if v.IsValid() && v.Kind() != reflect.Pointer && v.CanAddr() {
 		v = v.Addr()
@@ -590,75 +549,19 @@ func (value Value) InitAnonymousPointerFields() {
 		if ft.Anonymous && f.Kind() == reflect.Pointer && f.IsNil() {
 			nv := reflect.New(f.Type().Elem())
 			f.Set(nv)
-			Value{V: nv}.InitAnonymousPointerFields()
+			Value{V: nv}.init_anonymous_pointer_fields()
 		}
 	}
 }
 
-func (value Value) StringEnumValues() ([]string, error) {
-	base := value.Deref()
-	if !base.IsValid() || base.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("enum must be a struct or pointer to struct")
-	}
-	out := make([]string, 0, base.NumField())
-	for i := 0; i < base.NumField(); i++ {
-		field_type := base.Type().Field(i)
-		if !field_type.IsExported() {
-			continue
-		}
-		fv := Value{V: base.Field(i)}.Deref()
-		if !fv.IsValid() {
-			continue
-		}
-		if fv.Kind() != reflect.String {
-			return nil, fmt.Errorf(
-				"enum field %q is not string-kinded", field_type.Name,
-			)
-		}
-		out = append(out, fv.String())
-	}
-	if len(out) == 0 {
-		return nil, fmt.Errorf("enum is empty")
-	}
-	return out, nil
-}
-
-func (value Value) IntEnumValues() ([]int64, error) {
-	base := value.Deref()
-	if !base.IsValid() || base.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("enum must be a struct or pointer to struct")
-	}
-	out := make([]int64, 0, base.NumField())
-	for i := 0; i < base.NumField(); i++ {
-		field_type := base.Type().Field(i)
-		if !field_type.IsExported() {
-			continue
-		}
-		fv := Value{V: base.Field(i)}.Deref()
-		if !fv.IsValid() {
-			continue
-		}
-		if !IsSignedIntKind(fv.Kind()) {
-			return nil, fmt.Errorf(
-				"enum field %q is not integer-kinded", field_type.Name,
-			)
-		}
-		out = append(out, fv.Int())
-	}
-	if len(out) == 0 {
-		return nil, fmt.Errorf("enum is empty")
-	}
-	return out, nil
-}
-
-func (field JSONFieldShape) StructBaseType() (reflect.Type, bool) {
-	if field.BaseType == nil || field.BaseType.Kind() != reflect.Struct {
+func (field StructField) DerefStructType() (reflect.Type, bool) {
+	if field.DerefType == nil || field.DerefType.Kind() != reflect.Struct {
 		return nil, false
 	}
-	return field.BaseType, true
+	return field.DerefType, true
 }
 
-func (field JSONFieldShape) SettableValue(v reflect.Value) (reflect.Value, bool) {
+func (field StructField) SettableValue(v reflect.Value) (reflect.Value, bool) {
 	for v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
 		if v.Kind() == reflect.Pointer && v.IsNil() {
 			if !v.CanSet() {
@@ -692,7 +595,7 @@ func (field JSONFieldShape) SettableValue(v reflect.Value) (reflect.Value, bool)
 	return v, v.CanSet()
 }
 
-func (field JSONFieldShape) SettableCompositeValue(
+func (field StructField) SettableCompositeValue(
 	v reflect.Value,
 ) (reflect.Value, bool) {
 	v, ok := field.SettableValue(v)
@@ -727,28 +630,28 @@ type json_field_options struct {
 	omit_zero  bool
 }
 
-type json_field_candidate struct {
-	shape  JSONFieldShape
+type struct_field_candidate struct {
+	shape  StructField
 	tagged bool
 	id     int
 }
 
-type json_field_queue_entry struct {
+type struct_field_queue_entry struct {
 	typ                   reflect.Type
 	index                 []int
 	via_optional_embedded bool
 	visit_children        bool
 }
 
-func collect_json_shape(root reflect.Type) (JSONShape, error) {
-	queue := []json_field_queue_entry{{
+func collect_public_struct_shape(root reflect.Type) (StructShape, error) {
+	queue := []struct_field_queue_entry{{
 		typ:            root,
 		visit_children: true,
 	}}
 	seen := map[reflect.Type]bool{root: true}
-	var candidates []json_field_candidate
-	var inlined []JSONFieldShape
-	var unknown []JSONFieldShape
+	var candidates []struct_field_candidate
+	var inlined []StructField
+	var unknown []StructField
 
 	for queue_index := 0; queue_index < len(queue); queue_index++ {
 		entry := queue[queue_index]
@@ -756,19 +659,19 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 		for field := range t.Fields() {
 			options, ignored, err := parse_json_field_options(field)
 			if err != nil {
-				return JSONShape{}, err
+				return StructShape{}, err
 			}
 			if ignored {
 				continue
 			}
 
 			index := append_index(entry.index, field.Index)
-			base, pointer := JSONBaseType(field.Type)
-			inline_base := json_indirect_type(field.Type)
+			base, pointer := DerefType(field.Type)
+			inline_base := unnamed_pointer_elem_type(field.Type)
 			if field.Anonymous && !options.has_name &&
 				(inline_base == nil || inline_base.Kind() != reflect.Struct) {
-				return JSONShape{}, fmt.Errorf(
-					"embedded Go struct field %s of non-struct type must be explicitly given a JSON name",
+				return StructShape{}, fmt.Errorf(
+					"embedded struct field %s of non-struct type must be explicitly given a JSON name",
 					field.Name,
 				)
 			}
@@ -776,7 +679,7 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 				field.Anonymous && !options.has_name &&
 					inline_base != nil && inline_base.Kind() == reflect.Struct
 			if inline || options.unknown {
-				shape := json_field_shape(
+				shape := struct_field_shape(
 					field,
 					options,
 					index,
@@ -790,8 +693,8 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 				if options.unknown {
 					if inline_base == nil || inline_base.Kind() != reflect.Map ||
 						inline_base.Key().Kind() != reflect.String {
-						return JSONShape{}, fmt.Errorf(
-							"Go struct field %s with `unknown` tag must be a map with string keys",
+						return StructShape{}, fmt.Errorf(
+							"struct field %s with `unknown` tag must be a map with string keys",
 							field.Name,
 						)
 					}
@@ -805,8 +708,8 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 						inlined = append(inlined, shape)
 						continue
 					}
-					return JSONShape{}, fmt.Errorf(
-						"inlined Go struct field %s of type %s must be a Go struct or map with string keys",
+					return StructShape{}, fmt.Errorf(
+						"inlined struct field %s of type %s must be a struct or map with string keys",
 						field.Name,
 						field.Type,
 					)
@@ -814,7 +717,7 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 
 				inlined = append(inlined, shape)
 				if entry.visit_children {
-					queue = append(queue, json_field_queue_entry{
+					queue = append(queue, struct_field_queue_entry{
 						typ:                   base,
 						index:                 index,
 						via_optional_embedded: entry.via_optional_embedded || pointer,
@@ -825,8 +728,8 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 				continue
 			}
 
-			candidates = append(candidates, json_field_candidate{
-				shape: json_field_shape(
+			candidates = append(candidates, struct_field_candidate{
+				shape: struct_field_shape(
 					field,
 					options,
 					index,
@@ -840,9 +743,9 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 		}
 	}
 
-	slices.SortStableFunc(candidates, func(a, b json_field_candidate) int {
+	slices.SortStableFunc(candidates, func(a, b struct_field_candidate) int {
 		return cmp.Or(
-			strings.Compare(a.shape.JSONName, b.shape.JSONName),
+			strings.Compare(a.shape.PublicName, b.shape.PublicName),
 			cmp.Compare(len(a.shape.Index), len(b.shape.Index)),
 			compare_bools(!a.tagged, !b.tagged),
 		)
@@ -852,7 +755,7 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 	for len(candidates) > 0 {
 		n := 1
 		for n < len(candidates) &&
-			candidates[n-1].shape.JSONName == candidates[n].shape.JSONName {
+			candidates[n-1].shape.PublicName == candidates[n].shape.PublicName {
 			n++
 		}
 		if n == 1 ||
@@ -863,47 +766,47 @@ func collect_json_shape(root reflect.Type) (JSONShape, error) {
 		candidates = candidates[n:]
 	}
 
-	slices.SortFunc(dominant, func(a, b json_field_candidate) int {
+	slices.SortFunc(dominant, func(a, b struct_field_candidate) int {
 		return cmp.Compare(a.id, b.id)
 	})
-	slices.SortFunc(dominant, func(a, b json_field_candidate) int {
+	slices.SortFunc(dominant, func(a, b struct_field_candidate) int {
 		return slices.Compare(a.shape.Index, b.shape.Index)
 	})
 
-	out := make([]JSONFieldShape, 0, len(dominant))
+	out := make([]StructField, 0, len(dominant))
 	for _, field := range dominant {
 		out = append(out, field.shape)
 	}
-	return JSONShape{
+	return StructShape{
 		Fields:   out,
 		Inlined:  inlined,
 		Unknowns: unknown,
 	}, nil
 }
 
-func json_field_shape(
+func struct_field_shape(
 	field reflect.StructField,
 	options json_field_options,
 	index []int,
 	base reflect.Type,
 	pointer bool,
 	via_optional_embedded bool,
-) JSONFieldShape {
-	return JSONFieldShape{
-		Field:    field,
-		GoName:   field.Name,
-		JSONName: options.name,
-		Type:     field.Type,
-		BaseType: base,
-		Index:    index,
-		Pointer:  pointer,
-		Optional: via_optional_embedded || pointer || options.omit_empty ||
+) StructField {
+	return StructField{
+		Field:          field,
+		FieldName:      field.Name,
+		PublicName:     options.name,
+		Type:           field.Type,
+		DerefType:      base,
+		Index:          index,
+		TypeWasPointer: pointer,
+		OptionalInPublicShape: via_optional_embedded || pointer || options.omit_empty ||
 			options.omit_zero,
-		OmitEmpty:           options.omit_empty,
-		OmitZero:            options.omit_zero,
-		Inline:              options.inline,
-		Unknown:             options.unknown,
-		ViaOptionalEmbedded: via_optional_embedded,
+		OmitEmpty:                options.omit_empty,
+		OmitZero:                 options.omit_zero,
+		Inline:                   options.inline,
+		Unknown:                  options.unknown,
+		ViaOptionalEmbeddedField: via_optional_embedded,
 	}
 }
 
@@ -923,7 +826,7 @@ func parse_json_field_options(
 		name, n, err := consume_json_tag_name(tag)
 		if err != nil {
 			return json_field_options{}, false, fmt.Errorf(
-				"Go struct field %s has malformed `json` tag: %w",
+				"struct field %s has malformed `json` tag: %w",
 				field.Name,
 				err,
 			)
@@ -943,14 +846,14 @@ func parse_json_field_options(
 	for tag != "" {
 		if tag[0] != ',' {
 			return json_field_options{}, false, fmt.Errorf(
-				"Go struct field %s has malformed `json` tag",
+				"struct field %s has malformed `json` tag",
 				field.Name,
 			)
 		}
 		tag = tag[1:]
 		if tag == "" {
 			return json_field_options{}, false, fmt.Errorf(
-				"Go struct field %s has malformed `json` tag",
+				"struct field %s has malformed `json` tag",
 				field.Name,
 			)
 		}
@@ -958,7 +861,7 @@ func parse_json_field_options(
 		option, n, err := consume_json_tag_option(tag)
 		if err != nil {
 			return json_field_options{}, false, fmt.Errorf(
-				"Go struct field %s has malformed `json` tag: %w",
+				"struct field %s has malformed `json` tag: %w",
 				field.Name,
 				err,
 			)
@@ -966,7 +869,7 @@ func parse_json_field_options(
 		tag = tag[n:]
 		if seen[option] {
 			return json_field_options{}, false, fmt.Errorf(
-				"Go struct field %s has duplicate `%s` tag option",
+				"struct field %s has duplicate `%s` tag option",
 				field.Name,
 				option,
 			)
@@ -986,7 +889,7 @@ func parse_json_field_options(
 		case "case", "format":
 			if !strings.HasPrefix(tag, ":") {
 				return json_field_options{}, false, fmt.Errorf(
-					"Go struct field %s is missing value for `%s` tag option",
+					"struct field %s is missing value for `%s` tag option",
 					field.Name,
 					option,
 				)
@@ -1003,13 +906,13 @@ func parse_json_field_options(
 
 	if out.inline && out.unknown {
 		return json_field_options{}, false, fmt.Errorf(
-			"Go struct field %s cannot have both `inline` and `unknown` specified",
+			"struct field %s cannot have both `inline` and `unknown` specified",
 			field.Name,
 		)
 	}
 	if (out.inline || out.unknown) && (out.has_name || len(seen) > 1) {
 		return json_field_options{}, false, fmt.Errorf(
-			"Go struct field %s cannot combine `inline` or `unknown` with other JSON tag options",
+			"struct field %s cannot combine `inline` or `unknown` with other JSON tag options",
 			field.Name,
 		)
 	}

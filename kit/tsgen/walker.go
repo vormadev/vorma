@@ -118,7 +118,7 @@ func walk_type(
 		return nil, ""
 	}
 
-	t := effective_reflect_type(instance)
+	t, _ := reflectutil.DerefType(reflect.TypeOf(instance))
 	if t == nil {
 		return nil, ""
 	}
@@ -230,17 +230,17 @@ func (w *walker) collect(t reflect.Type, user_alias ...string) {
 }
 
 func (w *walker) collect_struct_fields(t reflect.Type) {
-	shape, err := reflectutil.JSONStructShape(t)
+	shape, err := reflectutil.PublicStructShape(t)
 	if err != nil {
 		return
 	}
 	for _, field := range shape.Inlined {
-		if base, ok := field.StructBaseType(); ok {
+		if base, ok := field.DerefStructType(); ok {
 			w.get_or_create_reg(base).used_as_embedded = true
 		}
 	}
 	for _, field := range shape.Fields {
-		if base, ok := field.StructBaseType(); ok && field.Field.Anonymous {
+		if base, ok := field.DerefStructType(); ok && field.Field.Anonymous {
 			w.get_or_create_reg(base).used_as_embedded = true
 		}
 		w.collect_field_type(field.Type)
@@ -387,12 +387,12 @@ func (w *walker) build_struct_fields(t reflect.Type) []field_node {
 	used_overrides := make(map[string]bool)
 	var fields []field_node
 
-	json_fields, err := reflectutil.JSONStructFields(t)
+	public_fields, err := reflectutil.PublicStructFields(t)
 	if err != nil {
 		return nil
 	}
-	for _, json_field := range json_fields {
-		field := json_field.Field
+	for _, public_field := range public_fields {
+		field := public_field.Field
 		var node *type_node
 
 		// Precedence: TSTyper > ts_type tag > reflection.
@@ -402,13 +402,13 @@ func (w *walker) build_struct_fields(t reflect.Type) []field_node {
 		} else if custom := field.Tag.Get("ts_type"); custom != "" {
 			node = &type_node{kind: kind_raw, raw_ts: custom}
 		} else {
-			node = w.to_node_or_ref(field.Type)
+			node = w.to_node_or_ref(public_field.Type)
 		}
 
 		fields = append(fields, field_node{
-			name:     json_field.JSONName,
+			name:     public_field.PublicName,
 			node:     node,
-			optional: json_field.Optional,
+			optional: public_field.OptionalInPublicShape,
 		})
 	}
 
@@ -436,14 +436,6 @@ func (w *walker) build_struct_fields(t reflect.Type) []field_node {
 /////////////////////////////////////////////////////////////////////
 /////// Reflection helpers
 /////////////////////////////////////////////////////////////////////
-
-func effective_reflect_type(instance any) reflect.Type {
-	t := reflect.TypeOf(instance)
-	if t != nil && t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	return t
-}
 
 func effective_requested_name(t reflect.Type, requested string) string {
 	if requested != "" {
@@ -518,11 +510,11 @@ func check_ts_typer_raw(instance any) (string, bool) {
 		return r.TSType(), true
 	}
 
-	t := reflect.TypeOf(instance)
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
+	t, _ := reflectutil.DerefType(reflect.TypeOf(instance))
+	if t == nil {
+		return "", false
 	}
-	v := reflectutil.Type{T: t}.NewValue()
+	v := reflect.New(t).Elem()
 	if impl, ok := (reflectutil.Value{V: v}).InterfaceImpl(reflect.TypeFor[TSTyperRaw]()); ok {
 		return impl.Interface().(TSTyperRaw).TSType(), true
 	}
@@ -537,8 +529,7 @@ func get_ts_type_map(t reflect.Type) map[string]string {
 
 	iface := reflect.TypeFor[TSTyper]()
 
-	v := reflectutil.Type{T: t}.NewValue()
-	reflectutil.Value{V: v}.InitAnonymousPointerFields()
+	v := reflectutil.NewValueWithAnonymousPointerFields(t)
 	if impl, ok := (reflectutil.Value{V: v}).InterfaceImpl(iface); ok {
 		return impl.Interface().(TSTyper).TSType()
 	}

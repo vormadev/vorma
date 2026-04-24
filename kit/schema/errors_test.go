@@ -131,15 +131,15 @@ func (multi_accum) Schema() schema.Schema {
 	}
 }
 
-type optional_field_recursion struct {
-	Required string
-	Optional *simple_validation_failure
+type nilable_field_recursion struct {
+	Name   string
+	Nested *simple_validation_failure
 }
 
-func (optional_field_recursion) Schema() schema.Schema {
+func (nilable_field_recursion) Schema() schema.Schema {
 	return schema.Object{
-		"Required": schema.String{MustNotBeZero: true},
-		"Optional": schema.Any{},
+		"Name":   schema.String{MustNotBeZero: true},
+		"Nested": schema.Any{},
 	}
 }
 
@@ -342,10 +342,10 @@ func TestErrors_UnknownFieldInSchema_SchemaError(t *testing.T) {
 	}
 }
 
-func TestErrors_OptionalFieldRecursionStillRuns(t *testing.T) {
-	h := optional_field_recursion{
-		Required: "present",
-		Optional: &simple_validation_failure{Username: "ab"},
+func TestErrors_NilableFieldRecursionStillRuns(t *testing.T) {
+	h := nilable_field_recursion{
+		Name:   "set",
+		Nested: &simple_validation_failure{Username: "ab"},
 	}
 	_, err := schema.Enforce("o", h)
 	if err == nil {

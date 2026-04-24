@@ -305,7 +305,7 @@ func TestUint_MinMax(t *testing.T) {
 	}
 }
 
-func TestUint_In_NotIn(t *testing.T) {
+func TestUint_MustBeInAndMustNotBeIn(t *testing.T) {
 	_, err := schema.Enforce("s", uint_holder{V: 2}, schema.Object{
 		"V": schema.Uint{
 			MustBeIn:    []uint{1, 2, 3},
@@ -435,7 +435,7 @@ func TestFloat_MinMax(t *testing.T) {
 	}
 }
 
-func TestFloat_In_NotIn(t *testing.T) {
+func TestFloat_MustBeInAndMustNotBeIn(t *testing.T) {
 	_, err := schema.Enforce("s", float_holder{V: 2.5}, schema.Object{
 		"V": schema.Float{
 			MustBeIn:    []float64{1.5, 2.5, 3.5},

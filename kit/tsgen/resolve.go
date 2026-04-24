@@ -2,9 +2,12 @@ package tsgen
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/vormadev/vorma/kit/reflectutil"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -34,7 +37,7 @@ func GoType[T any](requested_name ...string) *GoTypeSrc {
 // It can also be used as a TSTyper value (via string(id)) to create
 // a reference to a system-managed type.
 func (a GoTypeSrc) ID() ID {
-	t := effective_reflect_type(a.Instance)
+	t, _ := reflectutil.DerefType(reflect.TypeOf(a.Instance))
 	eff_name := effective_requested_name(t, a.RequestedName)
 	return ID(make_id(t, eff_name))
 }

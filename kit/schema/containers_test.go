@@ -80,7 +80,7 @@ type not_map_holder struct {
 /////// SLICE CASES
 /////////////////////////////////////////////////////////////////////
 
-func TestSlice_Required_Nil_Fails(t *testing.T) {
+func TestSlice_MustNotBeNil_Nil_Fails(t *testing.T) {
 	_, err := schema.Enforce("s", slice_holder{T: nil}, schema.Object{
 		"T": schema.List{MustNotBeNil: true},
 	})
@@ -89,7 +89,7 @@ func TestSlice_Required_Nil_Fails(t *testing.T) {
 	}
 }
 
-func TestSlice_Required_Empty_Passes(t *testing.T) {
+func TestSlice_MustNotBeNil_Empty_Passes(t *testing.T) {
 	_, err := schema.Enforce("s", slice_holder{T: []string{}}, schema.Object{
 		"T": schema.List{MustNotBeNil: true},
 	})
@@ -282,7 +282,7 @@ func TestSlice_ArrayOfSchematics_Recurses(t *testing.T) {
 /////// MAP CASES
 /////////////////////////////////////////////////////////////////////
 
-func TestMap_Required_Nil_Fails(t *testing.T) {
+func TestMap_MustNotBeNil_Nil_Fails(t *testing.T) {
 	_, err := schema.Enforce("s", container_map_holder{M: nil}, schema.Object{
 		"M": schema.Map{MustNotBeNil: true},
 	})
@@ -291,7 +291,7 @@ func TestMap_Required_Nil_Fails(t *testing.T) {
 	}
 }
 
-func TestMap_NotRequired_Nil_Passes(t *testing.T) {
+func TestMap_WithoutMustNotBeNil_Nil_Passes(t *testing.T) {
 	_, err := schema.Enforce("s", container_map_holder{M: nil}, schema.Object{
 		"M": schema.Map{},
 	})
@@ -471,7 +471,7 @@ func TestMap_FieldsMode_StringKeyedMapAsTarget(t *testing.T) {
 	}
 }
 
-func TestMap_FieldsMode_MissingKey_Required_Fails(t *testing.T) {
+func TestMap_FieldsMode_MissingKey_MustNotBeZero_Fails(t *testing.T) {
 	_, err := schema.Enforce("s", string_keyed_map{}, schema.Object{
 		"required_key": schema.String{MustNotBeZero: true},
 	})

@@ -43,7 +43,7 @@
 // Two locations cannot be mutated in place even through a pointer
 // input, because Go forbids it: map keys, and values stored by-value
 // inside an interface field. For map keys, the containing map is
-// rebuilt so the normalized key is present; for interface-boxed
+// rebuilt so the normalized key exists; for interface-boxed
 // by-value fields, the new value is boxed back into the slot. Both
 // are transparent to the caller.
 //
@@ -59,9 +59,9 @@
 // The four control flags, applied per type where meaningful, are:
 //
 //   - MustNotBeNil: reject a nil slot.
-//   - MustNotBeZero: reject a present zero value.
+//   - MustNotBeZero: reject a zero value after nil handling.
 //   - DefaultIfNil: replace a nil slot with a supplied default.
-//   - DefaultIfZero: replace a present zero value with a supplied default.
+//   - DefaultIfZero: replace a zero value after nil handling with a supplied default.
 //
 // Nil handling runs as a pre-step before leaf rules. On a nil slot:
 // DefaultIfNil (if set) materializes the value and the default flows
@@ -71,9 +71,10 @@
 //
 // # Execution order
 //
-// For each leaf value: (1) SkipFunc, (2) normalize (TrimSpace, case,
-// TransformFunc), (3) DefaultIfZero if still zero, (4) write back,
-// (5) value validators, (6) ValidateFunc.
+// For each leaf value: (1) nil handling and type dispatch,
+// (2) SkipFunc on the concrete value, (3) normalize (TrimSpace,
+// case, TransformFunc), (4) DefaultIfZero if still zero,
+// (5) write back, (6) value validators, (7) ValidateFunc.
 //
 // For objects: (1) field rules, (2) TransformFunc,
 // (3) ValidateFunc.
@@ -306,7 +307,7 @@ func (Bool) is_schema() {}
 // recursive discovery during the outer walk.
 //
 // MinLen and MaxLen are value-level constraints and fire on a
-// present empty slice. Slice does not use zero vocabulary; emptiness
+// non-nil empty slice. Slice does not use zero vocabulary; emptiness
 // is handled by MinLen.
 type Slice struct {
 	MustNotBeNil bool
@@ -335,7 +336,7 @@ type List = Slice
 // before any Schema() method declared by the key or value type.
 //
 // MinLen and MaxLen are value-level constraints and fire on a
-// present empty map. Map does not use zero vocabulary; emptiness is
+// non-nil empty map. Map does not use zero vocabulary; emptiness is
 // handled by MinLen.
 type Map struct {
 	MustNotBeNil bool
@@ -356,8 +357,8 @@ func (Map) is_schema() {}
 /////////////////////////////////////////////////////////////////////
 
 // Any is an escape-hatch rule block for values that do not fit the
-// typed blocks above. It supports nil checks, SkipFunc, and
-// ValidateFunc.
+// typed blocks above. It supports nil checks, nil defaults, SkipFunc,
+// and ValidateFunc.
 type Any struct {
 	MustNotBeNil bool
 	DefaultIfNil any
@@ -598,7 +599,7 @@ func recurse_into_structure(
 	}
 	switch base.Kind() {
 	case reflect.Struct:
-		fields, err := reflectutil.JSONStructFields(base.Type())
+		fields, err := reflectutil.PublicStructFields(base.Type())
 		if err != nil {
 			ce.add_schema(err)
 			return
@@ -608,7 +609,7 @@ func recurse_into_structure(
 			if !ok {
 				continue
 			}
-			child_label := fmt.Sprintf("%s.%s", label, field.JSONName)
+			child_label := fmt.Sprintf("%s.%s", label, field.PublicName)
 			walk_value(child_label, fv, ce)
 		}
 	case reflect.Slice, reflect.Array:
@@ -735,6 +736,17 @@ func assign_default(base reflect.Value, raw any) error {
 	if !base.CanSet() {
 		return fmt.Errorf("target is not settable")
 	}
+	rv := reflect.ValueOf(raw)
+	if !rv.IsValid() {
+		return fmt.Errorf("default value is nil")
+	}
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return fmt.Errorf("default value is nil")
+		}
+		rv = rv.Elem()
+	}
+	raw = rv.Interface()
 
 	switch {
 	case base.Kind() == reflect.String:
@@ -778,10 +790,6 @@ func assign_default(base reflect.Value, raw any) error {
 		base.SetFloat(f)
 		return nil
 	case base.Kind() == reflect.Bool:
-		rv := reflect.ValueOf(raw)
-		if !rv.IsValid() {
-			return fmt.Errorf("default value is nil")
-		}
 		if rv.Kind() != reflect.Bool {
 			return fmt.Errorf("expected bool value, got %T", raw)
 		}
@@ -789,10 +797,6 @@ func assign_default(base reflect.Value, raw any) error {
 		return nil
 	}
 
-	rv := reflect.ValueOf(raw)
-	if !rv.IsValid() {
-		return fmt.Errorf("default value is nil")
-	}
 	if rv.Type().AssignableTo(base.Type()) {
 		base.Set(rv)
 		return nil

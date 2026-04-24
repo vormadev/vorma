@@ -126,7 +126,7 @@ func TestString_TransformFunc_Error(t *testing.T) {
 	}
 }
 
-func TestString_NormalizeThenDefault_WhitespaceOnlyGetsDefault(t *testing.T) {
+func TestString_NormalizeThenDefaultIfZero_WhitespaceOnlyGetsDefault(t *testing.T) {
 	res, err := schema.Enforce("s", string_holder{V: "   "}, schema.Object{
 		"V": schema.String{
 			TrimSpace:     true,

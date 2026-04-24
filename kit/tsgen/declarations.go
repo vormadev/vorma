@@ -5,7 +5,9 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/vormadev/vorma/kit/enum"
 	"github.com/vormadev/vorma/kit/jsonutil"
+	"github.com/vormadev/vorma/kit/reflectutil"
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -62,21 +64,21 @@ func (d *TSDrafter) add_type(prefix, name, val string) *TSDrafter {
 
 func (d *TSDrafter) ExportEnum(
 	const_name, type_name string,
-	val any,
+	val enum.AnyEnum,
 ) *TSDrafter {
 	return d.add_enum("export ", const_name, type_name, val)
 }
 
 func (d *TSDrafter) Enum(
 	const_name, type_name string,
-	val any,
+	val enum.AnyEnum,
 ) *TSDrafter {
 	return d.add_enum("", const_name, type_name, val)
 }
 
 func (d *TSDrafter) add_enum(
 	prefix, const_name, type_name string,
-	val any,
+	val enum.AnyEnum,
 ) *TSDrafter {
 	d.entries = append(
 		d.entries,
@@ -84,7 +86,7 @@ func (d *TSDrafter) add_enum(
 			"%sconst %s = %s;",
 			prefix,
 			const_name,
-			must_serialize(val),
+			must_serialize(val.Struct()),
 		),
 		fmt.Sprintf(
 			"%stype %s = (typeof %s)[keyof typeof %s];",
@@ -154,8 +156,13 @@ func must_serialize(v any) string {
 		panic(err)
 	}
 	code := string(json)
-	kind := reflect.TypeOf(v).Kind()
-	if kind != reflect.String && kind != reflect.Int && kind != reflect.Bool {
+	t := reflect.TypeOf(v)
+	if t == nil {
+		return code
+	}
+	kind := t.Kind()
+	if kind != reflect.String && kind != reflect.Bool &&
+		!reflectutil.IsNumericKind(kind) {
 		code += " as const"
 	}
 	return code

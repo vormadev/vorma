@@ -42,7 +42,7 @@ func ParseToStruct[T any](r *http.Request) (T, error) {
 // ParseIntoStructPtr parses URL search parameters from an HTTP request into the struct
 // pointed to by dest. Used when the destination type is only known at runtime
 // (e.g. via reflection-based type erasure). Callers with a static type should
-// prefer ToStruct.
+// prefer ParseToStruct.
 func ParseIntoStructPtr(r *http.Request, destStructPtr any) error {
 	if r == nil {
 		return ParseNilRequestError
@@ -76,11 +76,10 @@ type Schema any
 // contents are ignored; only its type is inspected. The root must be a struct
 // (or a pointer to one).
 func SchemaFromValue(value any) (Schema, error) {
-	t := reflect.TypeOf(value)
+	t, _ := reflectutil.DerefType(reflect.TypeOf(value))
 	if t == nil {
 		return nil, SchemaNilValueError
 	}
-	t, _ = reflectutil.JSONBaseType(t)
 	if t.Kind() != reflect.Struct {
 		return nil, errors.Join(
 			SchemaNonStructRootError,
@@ -99,7 +98,7 @@ func SchemaFromValue(value any) (Schema, error) {
 /////////////////////////////////////////////////////////////////////
 
 func set_nested_field(v reflect.Value, values map[string][]string) error {
-	fields, err := reflectutil.JSONStructFields(v.Type())
+	fields, err := reflectutil.PublicStructFields(v.Type())
 	if err != nil {
 		return err
 	}
@@ -110,42 +109,58 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 			continue
 		}
 
-		tag := field_shape.JSONName
+		public_name := field_shape.PublicName
 
 		if fv.Kind() == reflect.Struct {
-			if err := set_nested_field(fv, values_with_prefix(values, tag+".")); err != nil {
+			if err := set_nested_field(
+				fv, values_with_prefix(values, public_name+"."),
+			); err != nil {
 				return err
 			}
 			continue
 		}
 
 		if fv.Kind() == reflect.Map {
-			if err := set_map_field(fv, values_with_prefix(values, tag+".")); err != nil {
+			if err := set_map_field(
+				fv, values_with_prefix(values, public_name+"."),
+			); err != nil {
 				return err
 			}
 			continue
 		}
 
 		if fv.Kind() == reflect.Slice {
-			var nested []string
-			for k, v := range values {
-				if strings.HasPrefix(k, tag) {
-					for _, s := range v {
-						if s != "" {
-							nested = append(nested, s)
+			vals, ok := values[public_name]
+			if ok {
+				filtered := make([]string, 0, len(vals))
+				for _, val := range vals {
+					if val != "" {
+						filtered = append(filtered, val)
+					}
+				}
+				vals = filtered
+			}
+			if !ok {
+				prefix := public_name + "."
+				for k, v := range values {
+					if strings.HasPrefix(k, prefix) {
+						for _, s := range v {
+							if s != "" {
+								vals = append(vals, s)
+							}
 						}
 					}
 				}
 			}
-			if len(nested) == 0 {
+			if len(vals) == 0 {
 				reflectutil.Value{V: fv}.SetEmptySlice()
-			} else if err := set_slice_field(fv, nested); err != nil {
+			} else if err := set_slice_field(fv, vals); err != nil {
 				return err
 			}
 			continue
 		}
 
-		if val, ok := values[tag]; ok {
+		if val, ok := values[public_name]; ok {
 			if err := set_field(fv, val); err != nil {
 				return fmt.Errorf("error setting field %s: %w", field.Name, err)
 			}
@@ -235,7 +250,7 @@ const (
 )
 
 func schema_from_type(t reflect.Type) (Schema, error) {
-	base, is_pointer := reflectutil.JSONBaseType(t)
+	base, is_pointer := reflectutil.DerefType(t)
 
 	switch {
 	case base.Kind() == reflect.Bool:
@@ -245,7 +260,7 @@ func schema_from_type(t reflect.Type) (Schema, error) {
 	case base.Kind() == reflect.String:
 		return scalar_schema(schema_code_string, is_pointer), nil
 	case base.Kind() == reflect.Slice || base.Kind() == reflect.Array:
-		elem_base, _ := reflectutil.JSONBaseType(base.Elem())
+		elem_base, _ := reflectutil.DerefType(base.Elem())
 		if !reflectutil.IsScalarType(elem_base) {
 			return nil, fmt.Errorf("slices must contain scalar values: %s", t)
 		}
@@ -258,10 +273,10 @@ func schema_from_type(t reflect.Type) (Schema, error) {
 		if base.Key().Kind() != reflect.String {
 			return nil, fmt.Errorf("map keys must be strings: %s", t)
 		}
-		val_base, _ := reflectutil.JSONBaseType(base.Elem())
+		val_base, _ := reflectutil.DerefType(base.Elem())
 		switch val_base.Kind() {
 		case reflect.Slice, reflect.Array:
-			elem_base, _ := reflectutil.JSONBaseType(val_base.Elem())
+			elem_base, _ := reflectutil.DerefType(val_base.Elem())
 			if !reflectutil.IsScalarType(elem_base) {
 				return nil, fmt.Errorf("map slices must contain scalar values: %s", t)
 			}
@@ -284,16 +299,16 @@ func schema_from_type(t reflect.Type) (Schema, error) {
 
 func struct_schema(t reflect.Type) (Schema, error) {
 	out := make(map[string]Schema)
-	fields, err := reflectutil.JSONStructFields(t)
+	fields, err := reflectutil.PublicStructFields(t)
 	if err != nil {
 		return nil, err
 	}
 	for _, field_shape := range fields {
 		schema, err := schema_from_type(field_shape.Type)
 		if err != nil {
-			return nil, fmt.Errorf("field %s: %w", field_shape.GoName, err)
+			return nil, fmt.Errorf("field %s: %w", field_shape.FieldName, err)
 		}
-		out[field_shape.JSONName] = schema
+		out[field_shape.PublicName] = schema
 	}
 	return out, nil
 }

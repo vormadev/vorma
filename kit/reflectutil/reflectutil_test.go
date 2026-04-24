@@ -19,93 +19,127 @@ func (*testPointerImpl) Foo() {}
 
 type testNoImpl struct{}
 
-func TestDoesTypeImplementInterface(t *testing.T) {
+func TestTypeImplements(t *testing.T) {
 	iface := reflect.TypeFor[testIface]()
 
-	if DoesTypeImplementInterface(nil, iface) {
+	if TypeImplements(nil, iface) {
 		t.Fatal("expected nil concrete type to return false")
 	}
-	if DoesTypeImplementInterface(reflect.TypeOf(testValueImpl{}), nil) {
+	if TypeImplements(reflect.TypeOf(testValueImpl{}), nil) {
 		t.Fatal("expected nil interface type to return false")
 	}
 
-	if !DoesTypeImplementInterface(reflect.TypeOf(testValueImpl{}), iface) {
+	if !TypeImplements(reflect.TypeOf(testValueImpl{}), iface) {
 		t.Fatal("expected value receiver implementation to match")
 	}
-	if !DoesTypeImplementInterface(reflect.TypeOf(&testValueImpl{}), iface) {
+	if !TypeImplements(reflect.TypeOf(&testValueImpl{}), iface) {
 		t.Fatal("expected pointer to value receiver type to match")
 	}
-	if !DoesTypeImplementInterface(reflect.TypeOf(testPointerImpl{}), iface) {
+	if !TypeImplements(reflect.TypeOf(testPointerImpl{}), iface) {
 		t.Fatal("expected pointer receiver implementation to match via PointerTo")
 	}
-	if !DoesTypeImplementInterface(reflect.TypeOf(&testPointerImpl{}), iface) {
+	if !TypeImplements(reflect.TypeOf(&testPointerImpl{}), iface) {
 		t.Fatal("expected pointer receiver implementation to match")
 	}
-	if DoesTypeImplementInterface(reflect.TypeOf(testNoImpl{}), iface) {
+	if TypeImplements(reflect.TypeOf(testNoImpl{}), iface) {
 		t.Fatal("expected non-implementation to return false")
 	}
 }
 
-func TestDoesTypeImplementInterface_PanicsWhenIfaceNotInterface(t *testing.T) {
+func TestTypeImplements_PanicsWhenIfaceNotInterface(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("expected panic for non-interface iface type")
 		}
 	}()
 
-	DoesTypeImplementInterface(
+	TypeImplements(
 		reflect.TypeOf(testValueImpl{}),
 		reflect.TypeOf(testValueImpl{}),
 	)
 }
 
-func TestExcludingNoneGetIsNilOrUltimatelyPointsToNil(t *testing.T) {
-	if !ExcludingNoneGetIsNilOrUltimatelyPointsToNil(nil) {
+func TestIsNilLikeExceptNone(t *testing.T) {
+	if !IsNilLikeExceptNone(nil) {
 		t.Fatal("expected nil to be true")
 	}
 
 	var p *int
-	if !ExcludingNoneGetIsNilOrUltimatelyPointsToNil(p) {
+	if !IsNilLikeExceptNone(p) {
 		t.Fatal("expected nil pointer to be true")
 	}
 
 	var wrapped any = p
-	if !ExcludingNoneGetIsNilOrUltimatelyPointsToNil(wrapped) {
+	if !IsNilLikeExceptNone(wrapped) {
 		t.Fatal("expected interface-wrapped nil pointer to be true")
 	}
 
 	var m map[string]int
-	if !ExcludingNoneGetIsNilOrUltimatelyPointsToNil(m) {
+	if !IsNilLikeExceptNone(m) {
 		t.Fatal("expected nil map to be true")
 	}
 
 	var s []string
-	if !ExcludingNoneGetIsNilOrUltimatelyPointsToNil(s) {
+	if !IsNilLikeExceptNone(s) {
 		t.Fatal("expected nil slice to be true")
 	}
 
-	if ExcludingNoneGetIsNilOrUltimatelyPointsToNil(map[string]int{}) {
+	if IsNilLikeExceptNone(map[string]int{}) {
 		t.Fatal("expected non-nil map to be false")
 	}
-	if ExcludingNoneGetIsNilOrUltimatelyPointsToNil([]string{}) {
+	if IsNilLikeExceptNone([]string{}) {
 		t.Fatal("expected non-nil slice to be false")
 	}
-	if ExcludingNoneGetIsNilOrUltimatelyPointsToNil(testValueImpl{}) {
+	if IsNilLikeExceptNone(testValueImpl{}) {
 		t.Fatal("expected non-pointer struct to be false")
 	}
 
 	none := struct{}{}
-	if ExcludingNoneGetIsNilOrUltimatelyPointsToNil(none) {
+	if IsNilLikeExceptNone(none) {
 		t.Fatal("expected None sentinel struct{} to be false")
 	}
 
 	var nonePtr *struct{}
-	if ExcludingNoneGetIsNilOrUltimatelyPointsToNil(nonePtr) {
+	if IsNilLikeExceptNone(nonePtr) {
 		t.Fatal("expected None sentinel *struct{} nil pointer to be false")
 	}
 }
 
-func TestJSONStructFields(t *testing.T) {
+func TestDerefType(t *testing.T) {
+	type sample struct{}
+
+	tp, is_pointer := DerefType(reflect.TypeOf((**sample)(nil)))
+	if tp != reflect.TypeFor[sample]() {
+		t.Fatalf("DerefType type = %v, want %v", tp, reflect.TypeFor[sample]())
+	}
+	if !is_pointer {
+		t.Fatal("DerefType should report pointer")
+	}
+
+	tp, is_pointer = DerefType(reflect.TypeOf(sample{}))
+	if tp != reflect.TypeFor[sample]() {
+		t.Fatalf("DerefType type = %v, want %v", tp, reflect.TypeFor[sample]())
+	}
+	if is_pointer {
+		t.Fatal("DerefType should not report pointer")
+	}
+}
+
+func TestNewValueWithAnonymousPointerFields(t *testing.T) {
+	type Embedded struct {
+		Name string
+	}
+	type host struct {
+		*Embedded
+	}
+
+	v := NewValueWithAnonymousPointerFields(reflect.TypeFor[host]())
+	if v.Field(0).IsNil() {
+		t.Fatal("anonymous pointer field was not initialized")
+	}
+}
+
+func TestPublicStructFields(t *testing.T) {
 	type Embedded struct {
 		Embedded string `json:"embedded"`
 		private  string
@@ -125,14 +159,14 @@ func TestJSONStructFields(t *testing.T) {
 		private         string
 	}
 
-	fields, err := JSONStructFields(reflect.TypeFor[sample]())
+	fields, err := PublicStructFields(reflect.TypeFor[sample]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got := make(map[string]JSONFieldShape, len(fields))
+	got := make(map[string]StructField, len(fields))
 	for _, field := range fields {
-		got[field.JSONName] = field
+		got[field.PublicName] = field
 	}
 
 	for _, name := range []string{
@@ -145,7 +179,7 @@ func TestJSONStructFields(t *testing.T) {
 		"-",
 	} {
 		if _, ok := got[name]; !ok {
-			t.Fatalf("missing JSON field %q in %#v", name, fields)
+			t.Fatalf("missing public field %q in %#v", name, fields)
 		}
 	}
 	for _, name := range []string{"Ignored", "private"} {
@@ -154,31 +188,31 @@ func TestJSONStructFields(t *testing.T) {
 		}
 	}
 
-	if got["embedded"].Optional {
+	if got["embedded"].OptionalInPublicShape {
 		t.Fatalf("direct embedded value field should not be optional")
 	}
-	if !got["tagged"].Optional {
+	if !got["tagged"].OptionalInPublicShape {
 		t.Fatalf("tagged embedded pointer should be optional")
 	}
-	if got["tagged"].BaseType.Kind() != reflect.Struct {
+	if got["tagged"].DerefType.Kind() != reflect.Struct {
 		t.Fatalf("expected tagged embedded base struct, got %s",
-			got["tagged"].BaseType)
+			got["tagged"].DerefType)
 	}
-	if !got["fromPtr"].Optional || !got["fromPtr"].Pointer {
+	if !got["fromPtr"].OptionalInPublicShape || !got["fromPtr"].TypeWasPointer {
 		t.Fatalf("pointer field should be optional and marked pointer")
 	}
-	if !got["fromOmitEmpty"].Optional || !got["fromOmitEmpty"].OmitEmpty {
+	if !got["fromOmitEmpty"].OptionalInPublicShape || !got["fromOmitEmpty"].OmitEmpty {
 		t.Fatalf("omitempty field should be optional")
 	}
-	if !got["fromOmitZero"].Optional || !got["fromOmitZero"].OmitZero {
+	if !got["fromOmitZero"].OptionalInPublicShape || !got["fromOmitZero"].OmitZero {
 		t.Fatalf("omitzero field should be optional")
 	}
-	if got["required"].Optional {
+	if got["required"].OptionalInPublicShape {
 		t.Fatalf("plain non-pointer field should be required")
 	}
 }
 
-func TestJSONStructFields_OptionalEmbeddedPointer(t *testing.T) {
+func TestPublicStructFields_OptionalEmbeddedPointer(t *testing.T) {
 	type Embedded struct {
 		Name string `json:"name"`
 	}
@@ -187,27 +221,27 @@ func TestJSONStructFields_OptionalEmbeddedPointer(t *testing.T) {
 		ID string `json:"id"`
 	}
 
-	fields, err := JSONStructFields(reflect.TypeFor[sample]())
+	fields, err := PublicStructFields(reflect.TypeFor[sample]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got := make(map[string]JSONFieldShape, len(fields))
+	got := make(map[string]StructField, len(fields))
 	for _, field := range fields {
-		got[field.JSONName] = field
+		got[field.PublicName] = field
 	}
-	if !got["name"].Optional {
+	if !got["name"].OptionalInPublicShape {
 		t.Fatalf("field from optional embedded pointer should be optional")
 	}
-	if !got["name"].ViaOptionalEmbedded {
+	if !got["name"].ViaOptionalEmbeddedField {
 		t.Fatalf("field should be marked as coming through optional embedded pointer")
 	}
-	if got["id"].Optional {
+	if got["id"].OptionalInPublicShape {
 		t.Fatalf("sibling field should not inherit optional embedded state")
 	}
 }
 
-func TestJSONStructFields_Dominance(t *testing.T) {
+func TestPublicStructFields_Dominance(t *testing.T) {
 	type A struct {
 		Name string `json:"name"`
 	}
@@ -218,11 +252,11 @@ func TestJSONStructFields_Dominance(t *testing.T) {
 		A
 		Name string `json:"name"`
 	}
-	fields, err := JSONStructFields(reflect.TypeFor[shallow]())
+	fields, err := PublicStructFields(reflect.TypeFor[shallow]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(fields) != 1 || fields[0].GoName != "Name" ||
+	if len(fields) != 1 || fields[0].FieldName != "Name" ||
 		len(fields[0].Index) != 1 {
 		t.Fatalf("expected shallow field to dominate: %#v", fields)
 	}
@@ -231,7 +265,7 @@ func TestJSONStructFields_Dominance(t *testing.T) {
 		A
 		B
 	}
-	fields, err = JSONStructFields(reflect.TypeFor[ambiguous]())
+	fields, err = PublicStructFields(reflect.TypeFor[ambiguous]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -249,7 +283,7 @@ func TestJSONStructFields_Dominance(t *testing.T) {
 		Untagged
 		Tagged
 	}
-	fields, err = JSONStructFields(reflect.TypeFor[tag_wins]())
+	fields, err = PublicStructFields(reflect.TypeFor[tag_wins]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,7 +293,7 @@ func TestJSONStructFields_Dominance(t *testing.T) {
 	}
 }
 
-func TestJSONStructFields_ExplicitInline(t *testing.T) {
+func TestPublicStructFields_ExplicitInline(t *testing.T) {
 	type Inline struct {
 		Value string `json:"value"`
 	}
@@ -269,14 +303,14 @@ func TestJSONStructFields_ExplicitInline(t *testing.T) {
 		Extra  map[string]any `json:",unknown"`
 	}
 
-	shape, err := JSONStructShape(reflect.TypeFor[sample]())
+	shape, err := PublicStructShape(reflect.TypeFor[sample]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	got := make(map[string]JSONFieldShape, len(shape.Fields))
+	got := make(map[string]StructField, len(shape.Fields))
 	for _, field := range shape.Fields {
-		got[field.JSONName] = field
+		got[field.PublicName] = field
 	}
 	if _, ok := got["value"]; !ok {
 		t.Fatalf("expected explicit inline struct field to be flattened: %#v", shape.Fields)
@@ -285,66 +319,66 @@ func TestJSONStructFields_ExplicitInline(t *testing.T) {
 		t.Fatalf("expected normal field: %#v", shape.Fields)
 	}
 	if _, ok := got["Extra"]; ok {
-		t.Fatalf("unknown fallback should not be a finite JSON field: %#v", shape.Fields)
+		t.Fatalf("unknown fallback should not be a finite public field: %#v", shape.Fields)
 	}
-	if len(shape.Inlined) != 1 || shape.Inlined[0].GoName != "Inline" {
+	if len(shape.Inlined) != 1 || shape.Inlined[0].FieldName != "Inline" {
 		t.Fatalf("expected explicit inline field in shape: %#v", shape.Inlined)
 	}
-	if len(shape.Unknowns) != 1 || shape.Unknowns[0].GoName != "Extra" {
+	if len(shape.Unknowns) != 1 || shape.Unknowns[0].FieldName != "Extra" {
 		t.Fatalf("expected unknown fallback in shape: %#v", shape.Unknowns)
 	}
 }
 
-func TestJSONStructFields_InvalidInlineOptions(t *testing.T) {
+func TestPublicStructFields_InvalidInlineOptions(t *testing.T) {
 	type sample struct {
 		Inline struct{} `json:",inline,omitempty"`
 	}
-	if _, err := JSONStructFields(reflect.TypeFor[sample]()); err == nil {
+	if _, err := PublicStructFields(reflect.TypeFor[sample]()); err == nil {
 		t.Fatalf("expected error for invalid inline options")
 	}
 }
 
-func TestJSONStructFields_InvalidV2Tag(t *testing.T) {
+func TestPublicStructFields_InvalidV2Tag(t *testing.T) {
 	type sample struct {
 		Dash string `json:"-,"`
 	}
-	if _, err := JSONStructFields(reflect.TypeFor[sample]()); err == nil {
+	if _, err := PublicStructFields(reflect.TypeFor[sample]()); err == nil {
 		t.Fatalf("expected error for invalid v2 tag")
 	}
 }
 
-func TestJSONStructFields_AnonymousNonStructRequiresName(t *testing.T) {
+func TestPublicStructFields_AnonymousNonStructRequiresName(t *testing.T) {
 	type SampleString string
 	type sample struct {
 		SampleString
 	}
-	if _, err := JSONStructFields(reflect.TypeFor[sample]()); err == nil {
+	if _, err := PublicStructFields(reflect.TypeFor[sample]()); err == nil {
 		t.Fatalf("expected error for anonymous non-struct without JSON name")
 	}
 
 	type named struct {
 		SampleString `json:"sample"`
 	}
-	fields, err := JSONStructFields(reflect.TypeFor[named]())
+	fields, err := PublicStructFields(reflect.TypeFor[named]())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(fields) != 1 || fields[0].JSONName != "sample" {
+	if len(fields) != 1 || fields[0].PublicName != "sample" {
 		t.Fatalf("expected explicitly named anonymous field: %#v", fields)
 	}
 }
 
-func TestJSONStructFields_NonStruct(t *testing.T) {
-	if _, err := JSONStructFields(reflect.TypeFor[int]()); err == nil {
+func TestPublicStructFields_NonStruct(t *testing.T) {
+	if _, err := PublicStructFields(reflect.TypeFor[int]()); err == nil {
 		t.Fatalf("expected error for non-struct type")
 	}
 }
 
-func TestJSONStructFields_JSONV2InlinePointerDepth(t *testing.T) {
+func TestPublicStructFields_JSONV2InlinePointerDepth(t *testing.T) {
 	type too_deep struct {
 		X **struct{ A int } `json:",inline"`
 	}
-	if _, err := JSONStructFields(reflect.TypeFor[too_deep]()); err == nil {
+	if _, err := PublicStructFields(reflect.TypeFor[too_deep]()); err == nil {
 		t.Fatalf("expected error for double pointer inline field")
 	}
 
@@ -352,7 +386,7 @@ func TestJSONStructFields_JSONV2InlinePointerDepth(t *testing.T) {
 	type named_ptr struct {
 		X NamedPtr `json:",inline"`
 	}
-	if _, err := JSONStructFields(reflect.TypeFor[named_ptr]()); err == nil {
+	if _, err := PublicStructFields(reflect.TypeFor[named_ptr]()); err == nil {
 		t.Fatalf("expected error for named pointer inline field")
 	}
 }

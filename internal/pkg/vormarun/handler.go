@@ -191,9 +191,7 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			} else if result.RanTask() {
 				data := result.Data()
 				loaders_data = append(loaders_data, data)
-				is_nil := reflectutil.
-					ExcludingNoneGetIsNilOrUltimatelyPointsToNil(data)
-				if is_nil {
+				if reflectutil.IsNilLikeExceptNone(data) {
 					v.log.Warn(
 						"Do not return nil values from loaders unless "+
 							"the referenced type is an empty struct "+

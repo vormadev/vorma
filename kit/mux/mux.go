@@ -308,7 +308,7 @@ func AddHTTPHandler(
 	route := new_route[any, any](router, method, pattern)
 	route.handler_type = "http"
 	route.user_http = handler
-	route.needs_tasks_ctx = reflectutil.DoesTypeImplementInterface(
+	route.needs_tasks_ctx = reflectutil.TypeImplements(
 		reflect.TypeOf(handler), needs_tasks_ctx_type,
 	)
 	mm := router.get_or_create_mm(method)
@@ -1426,7 +1426,7 @@ func (rt *Router) task_final_handler(
 		if proxy.IsError() || proxy.IsRedirect() {
 			return
 		}
-		if reflectutil.ExcludingNoneGetIsNilOrUltimatelyPointsToNil(data) {
+		if reflectutil.IsNilLikeExceptNone(data) {
 			mux_log.Warn(
 				"Do not return nil values from task handlers unless the type is an empty struct or you are returning an error.",
 				"pattern",

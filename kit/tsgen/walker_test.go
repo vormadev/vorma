@@ -583,7 +583,7 @@ func TestWalk(t *testing.T) {
 	t.Run("UnexportedFieldsOmitted", func(t *testing.T) {
 		type S struct {
 			Public  string `json:"public"`
-			private string //nolint:unused
+			private string
 		}
 		entries, _ := walk_type(S{}, "S")
 		e := find_entry(entries, "S")
