@@ -11,21 +11,26 @@ type Value interface {
 	~string | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
-// S must be a struct type with fields of type V.
-// The field names will be used as the enum keys,
-// and the field values will be used as the enum values.
-type Enum[V Value, S any] struct {
-	_enum S
-	_vals []V
+type Native interface {
+	string | int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64
 }
 
-func (e Enum[V, S]) is_vorma_kit_enum() {}
-func (e Enum[V, S]) Struct() any        { return e._enum }
+// S must be a struct type with fields of type V.
+// The field names will be used as the enum keys,
+// and the field values will be used as the enum values.
+type Enum[V Value, N Native, S any] struct {
+	_enum        S
+	_vals        []V
+	_native_vals []N
+}
+
+func (e Enum[V, N, S]) is_vorma_kit_enum() {}
+func (e Enum[V, N, S]) Struct() any        { return e._enum }
 
 // S must be a struct type with fields of type V.
 // The field names will be used as the enum keys,
 // and the field values will be used as the enum values.
-func New[V Value, S any](enum S) Enum[V, S] {
+func New[V Value, N Native, S any](enum S) Enum[V, N, S] {
 	enum_value := reflect.ValueOf(enum)
 	if !enum_value.IsValid() {
 		panic("enum.New: enum must be a struct or pointer to struct")
@@ -74,11 +79,19 @@ func New[V Value, S any](enum S) Enum[V, S] {
 		panic("enum.New: enum must not be empty")
 	}
 
-	return Enum[V, S]{
-		_enum: enum,
-		_vals: values,
+	native_type := reflect.TypeFor[N]()
+	_native_values := make([]N, len(values))
+	for i, v := range values {
+		_native_values[i] = reflect.ValueOf(v).Convert(native_type).Interface().(N)
+	}
+
+	return Enum[V, N, S]{
+		_enum:        enum,
+		_vals:        values,
+		_native_vals: _native_values,
 	}
 }
 
-func (e Enum[V, S]) Get() S      { return e._enum }
-func (e Enum[V, S]) Values() []V { return append([]V(nil), e._vals...) }
+func (e Enum[V, N, S]) Get() S            { return e._enum }
+func (e Enum[V, N, S]) Values() []V       { return append([]V(nil), e._vals...) }
+func (e Enum[V, N, S]) NativeValues() []N { return append([]N(nil), e._native_vals...) }

@@ -354,8 +354,8 @@ func (cfg vorma_cfg) render_ts_baked_app_types_section() string {
 
 	fmt.Fprintf(&sb, `export const vormaAppConfig = {
 	actionsMountRoot: "%s",
-    __phantom_loaders: null as unknown as typeof vormaLoaders,
-    __phantom_actions: null as unknown as typeof vormaActions,
+	__phantom_loaders: null as unknown as typeof vormaLoaders,
+	__phantom_actions: null as unknown as typeof vormaActions,
 } as const satisfies VormaAppConfig;`, cfg.actions_mount_root())
 
 	sb.WriteString("\n\n")
@@ -397,11 +397,16 @@ func render_ts_public_url_setup_section(pub_fm map[string]string) string {
 		return sb.String()
 	}
 
-	sb.WriteString("const vormaPublicURLKeys = [\n")
-	for _, k := range collected_pub_fm_keys {
-		fmt.Fprintf(&sb, "\t%q,\n", k)
+	if len(collected_pub_fm_keys) == 1 {
+		fmt.Fprintf(&sb, "const vormaPublicURLKeys = [%q] as const;\n\n", collected_pub_fm_keys[0])
+	} else {
+		sb.WriteString("const vormaPublicURLKeys = [\n")
+		for _, k := range collected_pub_fm_keys {
+			fmt.Fprintf(&sb, "\t%q,\n", k)
+		}
+		sb.WriteString("] as const;\n\n")
 	}
-	sb.WriteString("] as const;\n\n")
+
 	sb.WriteString(
 		"type VormaPublicURLKey = `${\"\" | \"/\"}${(typeof vormaPublicURLKeys)[number]}`;\n",
 	)

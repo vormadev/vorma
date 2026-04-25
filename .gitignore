@@ -1,4 +1,4 @@
-node_modules
+node_modules/
 .DS_Store
 
 *.local
@@ -11,4 +11,6 @@ node_modules
 .vscode/settings.json
 .zed/settings.json
 
-internal/pkg/npm/.dist
+internal/pkg/npm/.dist/
+
+.hegel/

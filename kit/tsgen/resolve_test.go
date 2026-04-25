@@ -218,6 +218,14 @@ type TSTypeBasePtrWrappedJson struct{ *TSTypeBaseJson }
 type TSTypePtrMethodWrappedJson struct{ TSTypePtrMethodJson }
 type TSTypePtrMethodPtrWrappedJson struct{ *TSTypePtrMethodJson }
 
+type ResolveAliasAlpha struct {
+	Next *ResolveAliasBeta `json:"next"`
+}
+
+type ResolveAliasBeta struct {
+	Next *ResolveAliasAlpha `json:"next"`
+}
+
 /////////////////////////////////////////////////////////////////////
 /////// TESTS: Type.ID() AND MAP LOOKUP
 /////////////////////////////////////////////////////////////////////
@@ -887,6 +895,44 @@ func TestResolveAdvanced(t *testing.T) {
 		defs := resolve_types(t, &GoTypeSrc{Instance: Outer{}})
 		assert_type(t, defs, "Outer", `{ items: Array<Inner>; }`)
 		assert_type(t, defs, "Inner", `{ v: string; }`)
+	})
+
+	t.Run("NamedCollectionAliasesAreReferenced", func(t *testing.T) {
+		type Person struct {
+			Name string `json:"name"`
+		}
+		type PersonList []Person
+		type PersonIndex map[string]Person
+		type PersonArray [2]Person
+		type Host struct {
+			Items PersonList   `json:"items"`
+			Index PersonIndex  `json:"index"`
+			Fixed *PersonArray `json:"fixed"`
+		}
+
+		defs := resolve_types(t, &GoTypeSrc{Instance: Host{}})
+		assert_type(t, defs, "Host", `{
+			items: PersonList;
+			index: PersonIndex;
+			fixed?: PersonArray;
+		}`)
+		assert_type(t, defs, "PersonList", `Array<Person>`)
+		assert_type(t, defs, "PersonIndex", `Record<string, Person>`)
+		assert_type(t, defs, "PersonArray", `Array<Person>`)
+		assert_type(t, defs, "Person", `{ name: string; }`)
+	})
+
+	t.Run("ExplicitRootAliasWinsOverDiscoveredNaturalDuplicate", func(t *testing.T) {
+		defs := resolve_types(t,
+			&GoTypeSrc{Instance: ResolveAliasAlpha{}, RequestedName: "AliasAlpha"},
+			&GoTypeSrc{Instance: ResolveAliasBeta{}, RequestedName: "AliasBeta"},
+		)
+
+		assert_named_count(t, defs, 2)
+		assert_absent(t, defs, "ResolveAliasAlpha")
+		assert_absent(t, defs, "ResolveAliasBeta")
+		assert_type(t, defs, "AliasAlpha", `{ next?: AliasBeta; }`)
+		assert_type(t, defs, "AliasBeta", `{ next?: AliasAlpha; }`)
 	})
 }
 

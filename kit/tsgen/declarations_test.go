@@ -9,7 +9,7 @@ import (
 type trade_side string
 
 func TestEnum(t *testing.T) {
-	trade_sides := enum.New[trade_side](struct {
+	trade_sides := enum.New[trade_side, string](struct {
 		Buy  trade_side
 		Sell trade_side
 	}{

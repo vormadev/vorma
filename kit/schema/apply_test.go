@@ -50,6 +50,11 @@ func (interface_boxed_holder) Schema() schema.Schema {
 	}
 }
 
+type explicit_root_object_form struct {
+	Name  string
+	Alias string
+}
+
 type additive_root_user struct {
 	Name string
 }
@@ -232,6 +237,55 @@ func TestEnforce_InterfaceBoxedSchematicValue_WritesBack(t *testing.T) {
 	}
 	if got != "alice@example.com" {
 		t.Fatalf("expected normalized boxed value, got %q", got)
+	}
+}
+
+func TestEnforce_ExplicitRootOnInterfaceBoxedStruct_WritesBack(t *testing.T) {
+	h := interface_boxed_holder{V: explicit_root_object_form{
+		Name:  "  Alice  ",
+		Alias: "",
+	}}
+	_, err := schema.Enforce("h", &h, schema.Object{
+		"V": schema.Object{
+			"Name":  schema.String{TrimSpace: true, ToLower: true},
+			"Alias": schema.String{DefaultIfZero: "AUTO"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := h.V.(explicit_root_object_form)
+	if !ok {
+		t.Fatalf("expected explicit_root_object_form, got %T", h.V)
+	}
+	if got.Name != "alice" {
+		t.Fatalf("expected normalized name, got %q", got.Name)
+	}
+	if got.Alias != "AUTO" {
+		t.Fatalf("expected defaulted alias, got %q", got.Alias)
+	}
+}
+
+func TestEnforce_ExplicitRootOnInterfaceBoxedArray_WritesBack(t *testing.T) {
+	h := interface_boxed_holder{V: [3]string{"", "  A  ", " B "}}
+	_, err := schema.Enforce("h", &h, schema.Object{
+		"V": schema.List{
+			ElementSchema: schema.String{
+				TrimSpace:     true,
+				ToLower:       true,
+				DefaultIfZero: "guest",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := h.V.([3]string)
+	if !ok {
+		t.Fatalf("expected [3]string, got %T", h.V)
+	}
+	if got != [3]string{"guest", "a", "b"} {
+		t.Fatalf("unexpected array output: %#v", got)
 	}
 }
 

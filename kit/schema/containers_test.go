@@ -458,6 +458,50 @@ func TestMap_KeyNormalization_Collision_LastWins(t *testing.T) {
 	if _, ok := value.M["foo"]; !ok {
 		t.Fatalf("expected normalized key to survive: %#v", value.M)
 	}
+	if got := value.M["foo"]; got != "second" {
+		t.Fatalf("expected later colliding value to survive, got %q", got)
+	}
+}
+
+func TestMap_ValidateFunc_UsesNormalizedLengthAfterKeyCollisions(t *testing.T) {
+	_, err := schema.Enforce("s", container_map_holder{M: map[string]string{
+		"FOO": "x",
+		"foo": "y",
+	}}, schema.Object{
+		"M": schema.Map{
+			KeySchema: schema.String{TrimSpace: true, ToLower: true},
+			ValidateFunc: func(n int) error {
+				if n%2 != 0 {
+					return errors.New("length must be even")
+				}
+				return nil
+			},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "length must be even") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMap_MinLen_UsesNormalizedLengthAfterKeyCollisions(t *testing.T) {
+	_, err := schema.Enforce("s", container_map_holder{M: map[string]string{
+		"FOO": "x",
+		"foo": "y",
+	}}, schema.Object{
+		"M": schema.Map{
+			KeySchema: schema.String{TrimSpace: true, ToLower: true},
+			MinLen:    2,
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(err.Error(), "minimum length is 2, got 1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestMap_FieldsMode_StringKeyedMapAsTarget(t *testing.T) {

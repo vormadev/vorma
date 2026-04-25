@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/vormadev/vorma/kit/reflectutil"
@@ -103,13 +104,33 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 		return err
 	}
 	for _, field_shape := range fields {
+		public_name := field_shape.PublicName
+		if field_shape.TypeWasPointer && field_shape.DerefType != nil {
+			field_kind := field_shape.DerefType.Kind()
+			if field_kind == reflect.Struct ||
+				field_kind == reflect.Map ||
+				field_kind == reflect.Slice {
+				if _, ok := values[public_name]; !ok {
+					prefix := public_name + "."
+					found := false
+					for key := range values {
+						if strings.HasPrefix(key, prefix) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						continue
+					}
+				}
+			}
+		}
+
 		field := field_shape.Field
 		fv, ok := field_shape.SettableCompositeValue(v)
 		if !ok {
 			continue
 		}
-
-		public_name := field_shape.PublicName
 
 		if fv.Kind() == reflect.Struct {
 			if err := set_nested_field(
@@ -129,7 +150,7 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 			continue
 		}
 
-		if fv.Kind() == reflect.Slice {
+		if fv.Kind() == reflect.Slice || fv.Kind() == reflect.Array {
 			vals, ok := values[public_name]
 			if ok {
 				filtered := make([]string, 0, len(vals))
@@ -142,19 +163,17 @@ func set_nested_field(v reflect.Value, values map[string][]string) error {
 			}
 			if !ok {
 				prefix := public_name + "."
-				for k, v := range values {
-					if strings.HasPrefix(k, prefix) {
-						for _, s := range v {
-							if s != "" {
-								vals = append(vals, s)
-							}
+				for _, key := range prefixed_keys(values, prefix) {
+					for _, s := range values[key] {
+						if s != "" {
+							vals = append(vals, s)
 						}
 					}
 				}
 			}
-			if len(vals) == 0 {
+			if len(vals) == 0 && fv.Kind() == reflect.Slice {
 				reflectutil.Value{V: fv}.SetEmptySlice()
-			} else if err := set_slice_field(fv, vals); err != nil {
+			} else if err := set_list_field(fv, vals); err != nil {
 				return err
 			}
 			continue
@@ -175,9 +194,11 @@ func set_map_field(v reflect.Value, values map[string][]string) error {
 		kv := reflect.ValueOf(key)
 		ev := reflectutil.Value{V: v}.NewElemValue()
 		if ev.Kind() == reflect.Map {
-			if err := set_map_field(ev, values_with_prefix(values, key+".")); err != nil {
-				return err
-			}
+			return fmt.Errorf(
+				"error setting map value for key %s: unsupported field type %s",
+				key,
+				ev.Type(),
+			)
 		} else {
 			if err := set_field(ev, val); err != nil {
 				return fmt.Errorf("error setting map value for key %s: %w", key, err)
@@ -188,7 +209,31 @@ func set_map_field(v reflect.Value, values map[string][]string) error {
 	return nil
 }
 
-func set_slice_field(field reflect.Value, values []string) error {
+func set_list_field(field reflect.Value, values []string) error {
+	if field.Kind() == reflect.Array {
+		if len(values) > field.Len() {
+			return fmt.Errorf(
+				"too many values for array field: got %d, max %d",
+				len(values),
+				field.Len(),
+			)
+		}
+		for i, val := range values {
+			elem := field.Index(i)
+			if elem.Kind() == reflect.Pointer {
+				var ok bool
+				elem, ok = reflectutil.Value{V: elem}.EnsurePointerElem()
+				if !ok {
+					return fmt.Errorf("field is not settable")
+				}
+			}
+			if err := set_single_value(elem, val); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	slice := reflectutil.Value{V: field}.MakeSlice(len(values))
 	for i, val := range values {
 		elem := slice.Index(i)
@@ -217,17 +262,40 @@ func set_field(field reflect.Value, values []string) error {
 	}
 	switch field.Kind() {
 	case reflect.Pointer:
+		base_type, _ := reflectutil.DerefType(field.Type())
+		if base_type != nil &&
+			(base_type.Kind() == reflect.Slice || base_type.Kind() == reflect.Array) {
+			filtered := make([]string, 0, len(values))
+			for _, value := range values {
+				if value != "" {
+					filtered = append(filtered, value)
+				}
+			}
+			elem, ok := reflectutil.Value{V: field}.EnsureDeref()
+			if !ok {
+				return fmt.Errorf("field is not settable")
+			}
+			return set_list_field(elem, filtered)
+		}
 		if values[0] == "" {
 			reflectutil.Value{V: field}.SetZero()
 			return nil
 		}
-		elem, ok := reflectutil.Value{V: field}.EnsurePointerElem()
+		elem, ok := reflectutil.Value{V: field}.EnsureDeref()
 		if !ok {
 			return fmt.Errorf("field is not settable")
 		}
+		switch elem.Kind() {
+		case reflect.Slice, reflect.Array:
+			return set_list_field(elem, values)
+		case reflect.Map:
+			return set_map_field(elem, map[string][]string{"": values})
+		}
 		return set_single_value(elem, values[0])
 	case reflect.Slice:
-		return set_slice_field(field, values)
+		return set_list_field(field, values)
+	case reflect.Array:
+		return set_list_field(field, values)
 	case reflect.Map:
 		return set_map_field(field, map[string][]string{"": values})
 	default:
@@ -332,4 +400,15 @@ func values_with_prefix(values map[string][]string, prefix string) map[string][]
 		}
 	}
 	return out
+}
+
+func prefixed_keys(values map[string][]string, prefix string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		if strings.HasPrefix(key, prefix) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
 }

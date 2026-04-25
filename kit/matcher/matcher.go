@@ -213,6 +213,19 @@ func (m *Matcher) RegisterPattern(original string) *RegisteredPattern {
 				rp.normalized_pattern,
 			))
 		}
+		if !is_static(rp.normalized_segments) {
+			shape_key := rp.shape_key()
+			for _, existing := range store {
+				if existing.shape_key() != shape_key {
+					continue
+				}
+				panic(fmt.Sprintf(
+					`route shape collision: "%s" and "%s" both match the same paths`,
+					original,
+					existing.original_pattern,
+				))
+			}
+		}
 	}
 
 	if is_static(rp.normalized_segments) {
@@ -258,7 +271,6 @@ func (m *Matcher) FindBestMatch(real_path string) (*BestMatch, bool) {
 	}
 
 	best := new(BestMatch)
-	var best_score uint16
 	found := false
 
 	m.dfs_best(
@@ -267,7 +279,6 @@ func (m *Matcher) FindBestMatch(real_path string) (*BestMatch, bool) {
 		0,
 		0,
 		best,
-		&best_score,
 		&found,
 		has_trailing,
 	)
@@ -418,10 +429,20 @@ func (m *Matcher) FindNestedMatches(
 		has_dyn := longest_dynamic != nil
 		has_spl := longest_splat != nil
 		if real_segs_len == longest_len && has_dyn && has_spl {
-			delete(matches, longest_splat.normalized_pattern)
+			for pat, match := range matches {
+				if len(match.normalized_segments) == longest_len &&
+					match.last_seg_type == seg_types.splat {
+					delete(matches, pat)
+				}
+			}
 		}
 		if real_segs_len > longest_len && has_spl && has_dyn {
-			delete(matches, longest_dynamic.normalized_pattern)
+			for pat, match := range matches {
+				if len(match.normalized_segments) == longest_len &&
+					match.last_seg_type == seg_types.dynamic {
+					delete(matches, pat)
+				}
+			}
 		}
 	}
 
@@ -448,6 +469,27 @@ func (rp *RegisteredPattern) NormalizedSegments() []Segment {
 		}
 	}
 	return out
+}
+
+func (rp *RegisteredPattern) shape_key() string {
+	var sb strings.Builder
+	for i, seg := range rp.normalized_segments {
+		if i > 0 {
+			sb.WriteString("/")
+		}
+		switch seg.seg_type {
+		case seg_types.dynamic:
+			sb.WriteString("D:")
+		case seg_types.splat:
+			sb.WriteString("P:")
+		case seg_types.index:
+			sb.WriteString("I:")
+		default:
+			sb.WriteString("S:")
+			sb.WriteString(seg.normalized_val)
+		}
+	}
+	return sb.String()
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -586,6 +628,17 @@ type segment struct {
 	seg_type       seg_type
 }
 
+func (s segment) best_match_rank() uint16 {
+	switch s.seg_type {
+	case seg_types.static, seg_types.index:
+		return score_static
+	case seg_types.dynamic:
+		return score_dynamic
+	default:
+		return 0
+	}
+}
+
 var seg_types = struct {
 	splat   seg_type
 	static  seg_type
@@ -638,6 +691,34 @@ func (m *Matcher) classify_segment(seg string) seg_type {
 	default:
 		return seg_types.static
 	}
+}
+
+func (m *BestMatch) better_than(other *BestMatch) bool {
+	if other == nil || other.RegisteredPattern == nil {
+		return true
+	}
+	if m.score != other.score {
+		return m.score > other.score
+	}
+	for i := range min(len(m.normalized_segments), len(other.normalized_segments)) {
+		left := m.normalized_segments[i].best_match_rank()
+		right := other.normalized_segments[i].best_match_rank()
+		if left != right {
+			return left > right
+		}
+	}
+	if m.last_seg_type != other.last_seg_type {
+		if m.last_seg_type == seg_types.splat {
+			return false
+		}
+		if other.last_seg_type == seg_types.splat {
+			return true
+		}
+	}
+	if len(m.normalized_segments) != len(other.normalized_segments) {
+		return len(m.normalized_segments) > len(other.normalized_segments)
+	}
+	return false
 }
 
 func is_static(segs []segment) bool {
@@ -708,7 +789,6 @@ func (m *Matcher) dfs_best(
 	depth int,
 	score uint16,
 	best *BestMatch,
-	best_score *uint16,
 	found *bool,
 	check_trailing bool,
 ) {
@@ -718,10 +798,9 @@ func (m *Matcher) dfs_best(
 		if rp, ok := m.dynamic_patterns[node.pattern]; ok {
 			if depth == len(segments) || node.node_type == node_splat ||
 				at_normal_end {
-				if !*found || score > *best_score {
-					best.RegisteredPattern = rp
-					best.score = score
-					*best_score = score
+				candidate := BestMatch{RegisteredPattern: rp, score: score}
+				if !*found || candidate.better_than(best) {
+					*best = candidate
 					*found = true
 				}
 			}
@@ -740,7 +819,6 @@ func (m *Matcher) dfs_best(
 				depth+1,
 				score+score_static,
 				best,
-				best_score,
 				found,
 				check_trailing,
 			)
@@ -760,7 +838,6 @@ func (m *Matcher) dfs_best(
 					depth+1,
 					score+score_dynamic,
 					best,
-					best_score,
 					found,
 					check_trailing,
 				)
@@ -768,8 +845,9 @@ func (m *Matcher) dfs_best(
 		case node_splat:
 			if len(child.pattern) > 0 {
 				if rp := m.dynamic_patterns[child.pattern]; rp != nil {
-					if !*found {
-						best.RegisteredPattern = rp
+					candidate := BestMatch{RegisteredPattern: rp, score: score}
+					if !*found || candidate.better_than(best) {
+						*best = candidate
 						*found = true
 					}
 				}

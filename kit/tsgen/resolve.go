@@ -86,10 +86,42 @@ func merge_and_resolve(all []map[string]*walk_entry) ResolvedTSTypes {
 		return nil
 	}
 
+	rooted_type_keys := make(map[string]bool)
+	root_ids_by_type_key := make(map[string][]string)
+	for _, entries := range all {
+		for _, entry := range entries {
+			if entry.is_root {
+				rooted_type_keys[entry.type_key] = true
+				root_ids_by_type_key[entry.type_key] = append(
+					root_ids_by_type_key[entry.type_key],
+					entry.id,
+				)
+			}
+		}
+	}
+
+	canonical_root_ids := make(map[string]string, len(root_ids_by_type_key))
+	for type_key, ids := range root_ids_by_type_key {
+		slices.Sort(ids)
+		canonical_root_ids[type_key] = ids[0]
+	}
+
+	shadowed_ref_ids := make(map[string]string)
+	for _, entries := range all {
+		for _, entry := range entries {
+			if rooted_type_keys[entry.type_key] && !entry.is_root {
+				shadowed_ref_ids[entry.id] = canonical_root_ids[entry.type_key]
+			}
+		}
+	}
+
 	// Flatten with dedup — merge flags for entries with the same id.
 	flat := make(map[string]*walk_entry)
 	for _, entries := range all {
 		for id, entry := range entries {
+			if rooted_type_keys[entry.type_key] && !entry.is_root {
+				continue
+			}
 			if existing, ok := flat[id]; ok {
 				existing.is_root = existing.is_root || entry.is_root
 				existing.is_referenced = existing.is_referenced ||
@@ -100,6 +132,10 @@ func merge_and_resolve(all []map[string]*walk_entry) ResolvedTSTypes {
 				flat[id] = entry
 			}
 		}
+	}
+
+	for _, entry := range flat {
+		rewrite_shadowed_ref_ids(entry.node, shadowed_ref_ids)
 	}
 
 	// Collect all ids that are referenced via kind_ref or via sentinel
@@ -156,6 +192,32 @@ func merge_and_resolve(all []map[string]*walk_entry) ResolvedTSTypes {
 	}
 
 	return result
+}
+
+func rewrite_shadowed_ref_ids(node *type_node, remap map[string]string) {
+	if node == nil || len(remap) == 0 {
+		return
+	}
+
+	switch node.kind {
+	case kind_ref:
+		if replacement, ok := remap[node.ref_id]; ok {
+			node.ref_id = replacement
+		}
+	case kind_raw:
+		for shadowed_id, canonical_id := range remap {
+			node.raw_ts = strings.ReplaceAll(node.raw_ts, shadowed_id, canonical_id)
+		}
+	case kind_object:
+		for i := range node.fields {
+			rewrite_shadowed_ref_ids(node.fields[i].node, remap)
+		}
+	case kind_array:
+		rewrite_shadowed_ref_ids(node.elem, remap)
+	case kind_map:
+		rewrite_shadowed_ref_ids(node.key_type, remap)
+		rewrite_shadowed_ref_ids(node.val_type, remap)
+	}
 }
 
 /////////////////////////////////////////////////////////////////////

@@ -178,6 +178,10 @@ type rec_leaf_deep struct {
 	Value string
 }
 
+type rec_any_holder struct {
+	V any
+}
+
 func (rec_leaf_deep) Schema() schema.Schema {
 	return schema.Object{
 		"Value": schema.String{TrimSpace: true, ToLower: true},
@@ -189,6 +193,10 @@ func (rec_leaf_root) Schema() schema.Schema {
 }
 
 func (rec_leaf_inner) Schema() schema.Schema {
+	return schema.Object{}
+}
+
+func (rec_any_holder) Schema() schema.Schema {
 	return schema.Object{}
 }
 
@@ -285,6 +293,16 @@ func TestRecursion_SelfReferentialTree(t *testing.T) {
 	}
 }
 
+func TestRecursion_ActualSelfReferentialNodeCycleDoesNotLoop(t *testing.T) {
+	root := &rec_node{Value: "root"}
+	root.Children = []*rec_node{root}
+
+	_, err := schema.Enforce("n", root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRecursion_SelfReferentialTree_WithNilChild(t *testing.T) {
 	root := &rec_node{
 		Value: "root",
@@ -294,6 +312,16 @@ func TestRecursion_SelfReferentialTree_WithNilChild(t *testing.T) {
 		},
 	}
 	_, err := schema.Enforce("n", root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecursion_SelfReferentialSliceInInterfaceDoesNotLoop(t *testing.T) {
+	var items []any
+	items = []any{items}
+
+	_, err := schema.Enforce("h", &rec_any_holder{V: items})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -365,5 +393,15 @@ func TestRecursion_LeafMutationVisibleThroughRootPointer(t *testing.T) {
 	}
 	if r.Inner.Deep.Value != "hello" {
 		t.Fatalf("expected leaf mutation visible through root; got %q", r.Inner.Deep.Value)
+	}
+}
+
+func TestRecursion_SelfReferentialMapInInterfaceDoesNotLoop(t *testing.T) {
+	m := map[string]any{}
+	m["self"] = m
+
+	_, err := schema.Enforce("h", &rec_any_holder{V: m})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -869,6 +869,152 @@ func TestMatchOrderingDeterminism(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("deep splat prunes all competing longest dynamics", func(t *testing.T) {
+		pattern_sets := [][]string{
+			{"", "/a/:x", "/:x/:y", "/a/*"},
+			{"", "/a/*", "/:x/:y", "/a/:x"},
+			{"/:x/:y", "", "/a/:x", "/a/*"},
+			{"/a/:x", "/a/*", "", "/:x/:y"},
+		}
+
+		var first_patterns []string
+		var first_params Params
+		var first_splat []string
+
+		for i, patterns := range pattern_sets {
+			m := New(&Options{Quiet: true})
+			for _, pattern := range patterns {
+				m.RegisterPattern(pattern)
+			}
+
+			results, ok := m.FindNestedMatches("/a/a/a")
+			if !ok {
+				t.Fatalf("pattern set %d: expected matches", i)
+			}
+
+			actual_patterns := make([]string, len(results.Matches))
+			for j, match := range results.Matches {
+				actual_patterns[j] = match.NormalizedPattern()
+			}
+
+			if i == 0 {
+				first_patterns = actual_patterns
+				first_params = results.Params
+				first_splat = results.SplatValues
+				continue
+			}
+			if !reflect.DeepEqual(actual_patterns, first_patterns) {
+				t.Fatalf(
+					"pattern set %d: patterns = %v, want %v",
+					i,
+					actual_patterns,
+					first_patterns,
+				)
+			}
+			if !reflect.DeepEqual(results.Params, first_params) {
+				t.Fatalf(
+					"pattern set %d: params = %v, want %v",
+					i,
+					results.Params,
+					first_params,
+				)
+			}
+			if !reflect.DeepEqual(results.SplatValues, first_splat) {
+				t.Fatalf(
+					"pattern set %d: splat = %v, want %v",
+					i,
+					results.SplatValues,
+					first_splat,
+				)
+			}
+		}
+
+		expected_patterns := []string{"", "/a/*"}
+		if !reflect.DeepEqual(first_patterns, expected_patterns) {
+			t.Fatalf("patterns = %v, want %v", first_patterns, expected_patterns)
+		}
+		if len(first_params) != 0 {
+			t.Fatalf("params = %v, want empty", first_params)
+		}
+		expected_splat := []string{"a", "a"}
+		if !reflect.DeepEqual(first_splat, expected_splat) {
+			t.Fatalf("splat = %v, want %v", first_splat, expected_splat)
+		}
+	})
+
+	t.Run("exact dynamic prunes all competing longest splats", func(t *testing.T) {
+		pattern_sets := [][]string{
+			{"/b/*", "/:x/:y", "/:x/*"},
+			{"/:x/*", "/:x/:y", "/b/*"},
+			{"/:x/:y", "/b/*", "/:x/*"},
+			{"/:x/*", "/b/*", "/:x/:y"},
+		}
+
+		var first_patterns []string
+		var first_params Params
+		var first_splat []string
+
+		for i, patterns := range pattern_sets {
+			m := New(&Options{Quiet: true})
+			for _, pattern := range patterns {
+				m.RegisterPattern(pattern)
+			}
+
+			results, ok := m.FindNestedMatches("/b/a")
+			if !ok {
+				t.Fatalf("pattern set %d: expected matches", i)
+			}
+
+			actual_patterns := make([]string, len(results.Matches))
+			for j, match := range results.Matches {
+				actual_patterns[j] = match.NormalizedPattern()
+			}
+
+			if i == 0 {
+				first_patterns = actual_patterns
+				first_params = results.Params
+				first_splat = results.SplatValues
+				continue
+			}
+			if !reflect.DeepEqual(actual_patterns, first_patterns) {
+				t.Fatalf(
+					"pattern set %d: patterns = %v, want %v",
+					i,
+					actual_patterns,
+					first_patterns,
+				)
+			}
+			if !reflect.DeepEqual(results.Params, first_params) {
+				t.Fatalf(
+					"pattern set %d: params = %v, want %v",
+					i,
+					results.Params,
+					first_params,
+				)
+			}
+			if !reflect.DeepEqual(results.SplatValues, first_splat) {
+				t.Fatalf(
+					"pattern set %d: splat = %v, want %v",
+					i,
+					results.SplatValues,
+					first_splat,
+				)
+			}
+		}
+
+		expected_patterns := []string{"/:x/:y"}
+		if !reflect.DeepEqual(first_patterns, expected_patterns) {
+			t.Fatalf("patterns = %v, want %v", first_patterns, expected_patterns)
+		}
+		expected_params := Params{"x": "b", "y": "a"}
+		if !reflect.DeepEqual(first_params, expected_params) {
+			t.Fatalf("params = %v, want %v", first_params, expected_params)
+		}
+		if len(first_splat) != 0 {
+			t.Fatalf("splat = %v, want empty", first_splat)
+		}
+	})
 }
 
 /////////////////////////////////////////////////////////////////////

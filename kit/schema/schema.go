@@ -484,6 +484,17 @@ func walk_root(
 	explicit_root Schema,
 	ce *classified_errors,
 ) {
+	state := new_walk_state()
+	walk_root_with_state(label, v, explicit_root, ce, state)
+}
+
+func walk_root_with_state(
+	label string,
+	v reflect.Value,
+	explicit_root Schema,
+	ce *classified_errors,
+	state *walk_state,
+) {
 	if !v.IsValid() {
 		return
 	}
@@ -492,7 +503,7 @@ func walk_root(
 		return
 	}
 	apply_schema_via_discovery(label, v, explicit_root, ce)
-	recurse_into_structure(label, v, ce)
+	recurse_into_structure(label, v, ce, state)
 }
 
 // walk_value applies any discovered schema on v, then recurses into
@@ -502,6 +513,15 @@ func walk_value(
 	v reflect.Value,
 	ce *classified_errors,
 ) {
+	walk_value_with_state(label, v, ce, new_walk_state())
+}
+
+func walk_value_with_state(
+	label string,
+	v reflect.Value,
+	ce *classified_errors,
+	state *walk_state,
+) {
 	if !v.IsValid() {
 		return
 	}
@@ -510,7 +530,7 @@ func walk_value(
 		return
 	}
 	apply_schema_via_discovery(label, v, nil, ce)
-	recurse_into_structure(label, v, ce)
+	recurse_into_structure(label, v, ce, state)
 }
 
 // apply_schema_via_discovery walks through pointer and interface
@@ -524,10 +544,10 @@ func apply_schema_via_discovery(
 	explicit_root Schema,
 	ce *classified_errors,
 ) {
-	const max_depth = 8
 	cur := v
 	interface_slot := reflect.Value{}
-	for range max_depth {
+	wrapper_walk := new_wrapper_walk()
+	for {
 		if !cur.IsValid() {
 			return
 		}
@@ -554,9 +574,15 @@ func apply_schema_via_discovery(
 			if cur.IsNil() {
 				return
 			}
+			if wrapper_walk.sees_cycle(cur) {
+				return
+			}
 			cur = cur.Elem()
 		case reflect.Interface:
 			if cur.IsNil() {
+				return
+			}
+			if wrapper_walk.sees_cycle(cur) {
 				return
 			}
 			if cur.CanSet() {
@@ -565,7 +591,18 @@ func apply_schema_via_discovery(
 			cur = cur.Elem()
 		default:
 			if explicit_root != nil {
-				apply_schema(label, explicit_root, cur, ce)
+				target := cur
+				if interface_slot.IsValid() && !target.CanSet() {
+					holder := reflect.New(target.Type()).Elem()
+					holder.Set(target)
+					target = holder
+				}
+				apply_schema(label, explicit_root, target, ce)
+				if interface_slot.IsValid() && interface_slot.CanSet() &&
+					target.IsValid() &&
+					target.Type().AssignableTo(interface_slot.Type()) {
+					interface_slot.Set(target)
+				}
 			}
 			return
 		}
@@ -589,14 +626,17 @@ func recurse_into_structure(
 	label string,
 	v reflect.Value,
 	ce *classified_errors,
+	state *walk_state,
 ) {
-	base := v
-	for base.Kind() == reflect.Pointer || base.Kind() == reflect.Interface {
-		if base.IsNil() {
-			return
-		}
-		base = base.Elem()
+	wrapper_walk := new_wrapper_walk()
+	base, _, ok := wrapper_walk.unwrap(v)
+	if !ok || !base.IsValid() {
+		return
 	}
+	if !state.enter(base) {
+		return
+	}
+	defer state.leave(base)
 	switch base.Kind() {
 	case reflect.Struct:
 		fields, err := reflectutil.PublicStructFields(base.Type())
@@ -610,7 +650,7 @@ func recurse_into_structure(
 				continue
 			}
 			child_label := fmt.Sprintf("%s.%s", label, field.PublicName)
-			walk_value(child_label, fv, ce)
+			walk_value_with_state(child_label, fv, ce, state)
 		}
 	case reflect.Slice, reflect.Array:
 		if base.Kind() == reflect.Slice && base.IsNil() {
@@ -618,7 +658,7 @@ func recurse_into_structure(
 		}
 		for i := 0; i < base.Len(); i++ {
 			elem_label := fmt.Sprintf("%s[%d]", label, i)
-			walk_value(elem_label, base.Index(i), ce)
+			walk_value_with_state(elem_label, base.Index(i), ce, state)
 		}
 	case reflect.Map:
 		if base.IsNil() {
@@ -629,11 +669,158 @@ func recurse_into_structure(
 			key := iter.Key()
 			key_str := reflectutil.Value{V: key}.FormatKey()
 			map_label := fmt.Sprintf("%s[%s]", label, key_str)
-			walk_value(map_label+"(key)", key, ce)
+			walk_value_with_state(map_label+"(key)", key, ce, state)
 			holder, _ := reflectutil.Value{V: base}.MapValueCopy(key)
-			walk_value(map_label+"(value)", holder, ce)
+			walk_value_with_state(map_label+"(value)", holder, ce, state)
 			reflectutil.Value{V: base}.SetMapValue(key, holder)
 		}
+	}
+}
+
+type wrapper_walk struct {
+	seen map[wrapper_walk_node]struct{}
+}
+
+type wrapper_walk_node struct {
+	addr uintptr
+	kind reflect.Kind
+	typ  reflect.Type
+}
+
+func new_wrapper_walk() wrapper_walk {
+	return wrapper_walk{seen: make(map[wrapper_walk_node]struct{})}
+}
+
+func (walk *wrapper_walk) sees_cycle(v reflect.Value) bool {
+	node, ok := walk.node(v)
+	if !ok {
+		return false
+	}
+	if _, exists := walk.seen[node]; exists {
+		return true
+	}
+	walk.seen[node] = struct{}{}
+	return false
+}
+
+func (walk *wrapper_walk) node(v reflect.Value) (wrapper_walk_node, bool) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		return wrapper_walk_node{
+			addr: v.Pointer(),
+			kind: v.Kind(),
+			typ:  v.Type(),
+		}, true
+	case reflect.Interface:
+		if !v.CanAddr() {
+			return wrapper_walk_node{}, false
+		}
+		return wrapper_walk_node{
+			addr: v.Addr().Pointer(),
+			kind: v.Kind(),
+			typ:  v.Type(),
+		}, true
+	default:
+		return wrapper_walk_node{}, false
+	}
+}
+
+func (walk *wrapper_walk) unwrap(v reflect.Value) (reflect.Value, bool, bool) {
+	cur := v
+	for cur.IsValid() &&
+		(cur.Kind() == reflect.Pointer || cur.Kind() == reflect.Interface) {
+		if cur.IsNil() {
+			return reflect.Value{}, true, true
+		}
+		if walk.sees_cycle(cur) {
+			return reflect.Value{}, false, false
+		}
+		cur = cur.Elem()
+	}
+	return cur, false, true
+}
+
+type walk_state struct {
+	active map[walk_state_node]int
+}
+
+type walk_state_node struct {
+	addr uintptr
+	cap  int
+	kind reflect.Kind
+	len  int
+	typ  reflect.Type
+}
+
+func new_walk_state() *walk_state {
+	return &walk_state{active: make(map[walk_state_node]int)}
+}
+
+func (state *walk_state) enter(v reflect.Value) bool {
+	node, ok := state.node(v)
+	if !ok {
+		return true
+	}
+	if state.active[node] > 0 {
+		return false
+	}
+	state.active[node] = 1
+	return true
+}
+
+func (state *walk_state) leave(v reflect.Value) {
+	node, ok := state.node(v)
+	if !ok {
+		return
+	}
+	count := state.active[node]
+	if count <= 1 {
+		delete(state.active, node)
+		return
+	}
+	state.active[node] = count - 1
+}
+
+func (state *walk_state) node(v reflect.Value) (walk_state_node, bool) {
+	switch v.Kind() {
+	case reflect.Struct:
+		if !v.CanAddr() {
+			return walk_state_node{}, false
+		}
+		return walk_state_node{
+			addr: v.Addr().Pointer(),
+			kind: v.Kind(),
+			typ:  v.Type(),
+		}, true
+	case reflect.Map:
+		if v.IsNil() {
+			return walk_state_node{}, false
+		}
+		return walk_state_node{
+			addr: v.Pointer(),
+			kind: v.Kind(),
+			typ:  v.Type(),
+		}, true
+	case reflect.Slice:
+		if v.IsNil() {
+			return walk_state_node{}, false
+		}
+		if v.CanAddr() {
+			return walk_state_node{
+				addr: v.Addr().Pointer(),
+				kind: v.Kind(),
+				typ:  v.Type(),
+			}, true
+		}
+		return walk_state_node{
+			addr: v.Pointer(),
+			cap:  v.Cap(),
+			kind: v.Kind(),
+			len:  v.Len(),
+			typ:  v.Type(),
+		}, true
+	default:
+		return walk_state_node{}, false
 	}
 }
 
@@ -664,7 +851,12 @@ func resolve_nilable(
 	ce *classified_errors,
 ) (reflect.Value, bool) {
 	value := reflectutil.Value{V: val}
-	if value.PointsToNil() {
+	wrapper_walk := new_wrapper_walk()
+	base, points_to_nil, ok := wrapper_walk.unwrap(val)
+	if !ok {
+		return reflect.Value{}, false
+	}
+	if points_to_nil {
 		if default_if_nil != nil {
 			rv := reflect.ValueOf(default_if_nil)
 			if rv.IsValid() {
@@ -705,7 +897,6 @@ func resolve_nilable(
 		return reflect.Value{}, false
 	}
 
-	base := value.Deref()
 	if base.IsValid() &&
 		(base.Kind() == reflect.Slice || base.Kind() == reflect.Map) &&
 		base.IsNil() {
@@ -908,7 +1099,7 @@ func run_object_transform(
 	ce *classified_errors,
 ) reflect.Value {
 	fn := reflect.ValueOf(raw)
-	if !fn.IsValid() {
+	if !fn.IsValid() || (fn.Kind() == reflect.Func && fn.IsNil()) {
 		ce.add_schema_f("%s: object TransformFunc is nil", label)
 		return base
 	}
@@ -964,7 +1155,7 @@ func run_object_validate(
 	ce *classified_errors,
 ) {
 	fn := reflect.ValueOf(raw)
-	if !fn.IsValid() {
+	if !fn.IsValid() || (fn.Kind() == reflect.Func && fn.IsNil()) {
 		ce.add_schema_f("%s: object ValidateFunc is nil", label)
 		return
 	}
@@ -1030,79 +1221,97 @@ func apply_rule(
 	val reflect.Value,
 	ce *classified_errors,
 ) {
+	target := val
+	if val.IsValid() &&
+		val.Kind() == reflect.Interface &&
+		val.CanSet() &&
+		!val.IsNil() {
+		base := reflectutil.Value{V: val}.Deref()
+		if base.IsValid() && !base.CanSet() {
+			holder := reflect.New(base.Type()).Elem()
+			holder.Set(base)
+			target = holder
+			defer func() {
+				if target.IsValid() && target.Type().AssignableTo(val.Type()) {
+					val.Set(target)
+				}
+			}()
+		}
+	}
+
 	switch s := spec.(type) {
 	case String:
-		apply_string(label, s, val, ce)
+		apply_string(label, s, target, ce)
 	case *String:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.String rule", label)
 			return
 		}
-		apply_string(label, *s, val, ce)
+		apply_string(label, *s, target, ce)
 	case Int:
-		apply_int(label, s, val, ce)
+		apply_int(label, s, target, ce)
 	case *Int:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Int rule", label)
 			return
 		}
-		apply_int(label, *s, val, ce)
+		apply_int(label, *s, target, ce)
 	case Uint:
-		apply_uint(label, s, val, ce)
+		apply_uint(label, s, target, ce)
 	case *Uint:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Uint rule", label)
 			return
 		}
-		apply_uint(label, *s, val, ce)
+		apply_uint(label, *s, target, ce)
 	case Float:
-		apply_float(label, s, val, ce)
+		apply_float(label, s, target, ce)
 	case *Float:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Float rule", label)
 			return
 		}
-		apply_float(label, *s, val, ce)
+		apply_float(label, *s, target, ce)
 	case Bool:
-		apply_bool(label, s, val, ce)
+		apply_bool(label, s, target, ce)
 	case *Bool:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Bool rule", label)
 			return
 		}
-		apply_bool(label, *s, val, ce)
+		apply_bool(label, *s, target, ce)
 	case Slice:
-		apply_slice(label, s, val, ce)
+		apply_slice(label, s, target, ce)
 	case *Slice:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Slice rule", label)
 			return
 		}
-		apply_slice(label, *s, val, ce)
+		apply_slice(label, *s, target, ce)
 	case Map:
-		apply_map(label, s, val, ce)
+		apply_map(label, s, target, ce)
 	case *Map:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Map rule", label)
 			return
 		}
-		apply_map(label, *s, val, ce)
+		apply_map(label, *s, target, ce)
 	case Any:
-		apply_any(label, s, val, ce)
+		apply_any(label, s, target, ce)
 	case *Any:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Any rule", label)
 			return
 		}
-		apply_any(label, *s, val, ce)
+		apply_any(label, *s, target, ce)
 	case Object:
-		apply_object(label, s, val, ce)
+		apply_object(label, s, target, ce)
 	case *Object:
 		if s == nil {
 			ce.add_schema_f("%s: nil *schema.Object rule", label)
 			return
 		}
-		apply_object(label, *s, val, ce)
+		apply_object(label, *s, target, ce)
 	default:
 		ce.add_schema_f("%s: unknown rule type %T", label, spec)
 	}
@@ -1773,6 +1982,44 @@ func apply_map(
 		)
 		return
 	}
+	if s.KeySchema != nil || s.ValueSchema != nil {
+		keys := reflectutil.Value{V: base}.SortedMapKeys()
+		type map_entry struct {
+			key   reflect.Value
+			value reflect.Value
+		}
+		entries := make([]map_entry, 0, len(keys))
+		for _, key := range keys {
+			val_holder, exists := reflectutil.Value{V: base}.MapValueCopy(key)
+			if !exists {
+				continue
+			}
+			entries = append(entries, map_entry{
+				key:   key,
+				value: val_holder,
+			})
+		}
+		for _, entry := range entries {
+			key := entry.key
+			key_str := reflectutil.Value{V: key}.FormatKey()
+			entry_label := fmt.Sprintf("%s[%s]", label, key_str)
+			new_key := key
+			if s.KeySchema != nil {
+				key_holder := reflectutil.Value{V: key}.SettableCopy()
+				apply_rule(entry_label+"(key)", s.KeySchema, key_holder, ce)
+				new_key = key_holder
+			}
+			val_holder := entry.value
+			if s.ValueSchema != nil {
+				apply_rule(entry_label+"(value)", s.ValueSchema, val_holder, ce)
+			}
+			if new_key.Interface() != key.Interface() {
+				reflectutil.Value{V: base}.DeleteMapValue(key)
+			}
+			reflectutil.Value{V: base}.SetMapValue(new_key, val_holder)
+		}
+	}
+	n = base.Len()
 	if min_len > 0 && n < min_len {
 		ce.add_validation_f(
 			"%s: minimum length is %d, got %d", label, min_len, n,
@@ -1782,30 +2029,6 @@ func apply_map(
 		ce.add_validation_f(
 			"%s: maximum length is %d, got %d", label, max_len, n,
 		)
-	}
-	if s.KeySchema != nil || s.ValueSchema != nil {
-		keys := reflectutil.Value{V: base}.SortedMapKeys()
-		for _, key := range keys {
-			key_str := reflectutil.Value{V: key}.FormatKey()
-			entry_label := fmt.Sprintf("%s[%s]", label, key_str)
-			new_key := key
-			if s.KeySchema != nil {
-				key_holder := reflectutil.Value{V: key}.SettableCopy()
-				apply_rule(entry_label+"(key)", s.KeySchema, key_holder, ce)
-				new_key = key_holder
-			}
-			val_holder, exists := reflectutil.Value{V: base}.MapValueCopy(key)
-			if !exists {
-				continue
-			}
-			if s.ValueSchema != nil {
-				apply_rule(entry_label+"(value)", s.ValueSchema, val_holder, ce)
-			}
-			if new_key.Interface() != key.Interface() {
-				reflectutil.Value{V: base}.DeleteMapValue(key)
-			}
-			reflectutil.Value{V: base}.SetMapValue(new_key, val_holder)
-		}
 	}
 	if s.ValidateFunc != nil {
 		if err := s.ValidateFunc(n); err != nil {

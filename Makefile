@@ -67,6 +67,12 @@ npmbuild:
 npmbump:
 	@go run ./internal/cmd/npm_bumper
 
+bombadil:
+	@$(MAKE) -C ./internal/apps/bombadil bombadil
+
+bombadil-build:
+	@$(MAKE) -C ./internal/apps/bombadil bombadil-build
+
 #####################################################################
 ####### OTHER
 #####################################################################

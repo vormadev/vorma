@@ -1,0 +1,34 @@
+#vorma-root {
+	min-height: 100vh;
+}
+
+.shell {
+	display: grid;
+	gap: 18px;
+	margin: 0 auto;
+	max-width: 920px;
+	padding: 24px;
+}
+
+.nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.panel {
+	background: white;
+	border: 1px solid #d8d2c4;
+	border-radius: 8px;
+	padding: 18px;
+}
+
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.status {
+	min-height: 24px;
+}

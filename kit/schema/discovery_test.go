@@ -154,10 +154,10 @@ func TestDiscovery_NilInterfaceSkipped(t *testing.T) {
 	}
 }
 
-func TestDiscovery_DeeplyWrappedBoundary(t *testing.T) {
+func TestDiscovery_DeeplyWrappedPointerStillDiscovers(t *testing.T) {
 	e := wrapped_email("  foo@BAR.com  ")
 	var v any = &e
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 64; i++ {
 		wrap := v
 		v = &wrap
 	}
@@ -165,17 +165,37 @@ func TestDiscovery_DeeplyWrappedBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if string(e) != "  foo@BAR.com  " {
-		t.Fatalf("expected no mutation beyond discovery bound, got %q", e)
+	if string(e) != "foo@bar.com" {
+		t.Fatalf("expected mutation through deep wrapping, got %q", e)
 	}
+}
 
-	e2 := wrapped_email("  foo@BAR.com  ")
-	var shallow any = &e2
-	_, err = schema.EnforceAny("v", shallow)
-	if err != nil {
-		t.Fatalf("shallow case: unexpected error: %v", err)
+func TestDiscovery_DeeplyWrappedBoxedValueStillDiscovers(t *testing.T) {
+	var boxed any = wrapped_email("  foo@BAR.com  ")
+	var v any = &boxed
+	for i := 0; i < 64; i++ {
+		wrap := v
+		v = &wrap
 	}
-	if string(e2) != "foo@bar.com" {
-		t.Fatalf("shallow case: expected mutation, got %q", e2)
+	_, err := schema.EnforceAny("v", v)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got, ok := boxed.(wrapped_email)
+	if !ok {
+		t.Fatalf("expected wrapped_email in box, got %T", boxed)
+	}
+	if string(got) != "foo@bar.com" {
+		t.Fatalf("expected boxed value mutation through deep wrapping, got %q", got)
+	}
+}
+
+func TestDiscovery_WrapperCycleDoesNotLoop(t *testing.T) {
+	var v any
+	v = &v
+
+	_, err := schema.EnforceAny("v", v)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

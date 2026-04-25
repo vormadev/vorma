@@ -361,6 +361,38 @@ func TestIntegration_ObjectTransformRunsBeforeObjectValidate(t *testing.T) {
 	}
 }
 
+func TestIntegration_NilObjectCallbacksAreSchemaErrors(t *testing.T) {
+	form := signup_confirmation_form{}
+
+	var nil_transform func(signup_confirmation_form) (signup_confirmation_form, error)
+	_, err := schema.Enforce("signup", form, schema.Object{
+		schema.TransformFunc: nil_transform,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !schema.IsSchemaError(err) {
+		t.Fatalf("expected SchemaError, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "object TransformFunc is nil") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var nil_validate func(signup_confirmation_form) error
+	_, err = schema.Enforce("signup", form, schema.Object{
+		schema.ValidateFunc: nil_validate,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !schema.IsSchemaError(err) {
+		t.Fatalf("expected SchemaError, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "object ValidateFunc is nil") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // Case 210: applying the same transformations twice through a pointer
 // is idempotent.
 func TestIntegration_RepeatedApply_PointerIdempotent(t *testing.T) {

@@ -1,0 +1,36 @@
+import * as runtime from "#variant-runtime";
+import {
+	Link,
+	apiClient,
+	cancelPrefetch,
+	defineRoute,
+	navigate,
+	prefetch,
+	revalidate,
+	useClientLoaderData,
+	useLoaderData,
+	useRouteState,
+	useWorkState,
+} from "./vorma.app.ts";
+
+export const ui = {
+	variant: runtime.variant,
+	defineRoute,
+	Link,
+	navigate,
+	prefetch,
+	cancelPrefetch,
+	apiClient,
+	revalidate,
+	useLoaderData,
+	useClientLoaderData,
+	useRouteState,
+	useWorkState,
+	h: runtime.h,
+	class_prop: runtime.class_prop,
+	input_event: runtime.input_event,
+	use_text_state: runtime.use_text_state,
+	read_box: runtime.read_box,
+	read_text_state: runtime.read_text_state,
+	dynamic: runtime.dynamic,
+};

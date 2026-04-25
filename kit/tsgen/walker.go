@@ -72,6 +72,7 @@ type field_node struct {
 
 type walk_entry struct {
 	id               string
+	type_key         string
 	requested_name   string
 	node             *type_node
 	is_root          bool
@@ -295,6 +296,7 @@ func (w *walker) build_entries() map[string]*walk_entry {
 		id := make_id(t, reg.requested_name)
 		entries[id] = &walk_entry{
 			id:               id,
+			type_key:         fmt.Sprintf("%v", t),
 			requested_name:   reg.requested_name,
 			node:             w.to_node(t),
 			is_referenced:    reg.is_referenced,
@@ -358,15 +360,16 @@ func (w *walker) to_node_or_ref(t reflect.Type) *type_node {
 		return &type_node{kind: kind_null}
 	}
 
-	// Pointers are transparent in TS.
+	// Pointers are transparent in TS, but named wrapper types should still
+	// preserve their own alias when present.
 	effective := t
-	if effective.Kind() == reflect.Pointer {
+	if effective.Kind() == reflect.Pointer && effective.Name() == "" {
 		effective = effective.Elem()
 	}
 
-	// Named structs (non-basic) that were collected get a reference.
-	if effective.Kind() == reflect.Struct && effective.Name() != "" &&
-		!is_basic_type(effective) {
+	// Any named, non-basic collected type should be referenced by name so the
+	// resolved graph does not retain unreachable aliases.
+	if effective.Name() != "" && !is_basic_type(effective) {
 		if reg, ok := w.types[effective]; ok {
 			return &type_node{
 				kind:   kind_ref,

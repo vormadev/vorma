@@ -415,6 +415,74 @@ func TestFindBestMatchAdditionalScenarios(t *testing.T) {
 	}
 }
 
+func TestFindBestMatchSplatSpecificityIsRegistrationOrderIndependent(t *testing.T) {
+	pattern_sets := [][]string{
+		{"/*", "/:x/*"},
+		{"/:x/*", "/*"},
+	}
+
+	for i, patterns := range pattern_sets {
+		m := New(&Options{Quiet: true})
+		for _, pattern := range patterns {
+			m.RegisterPattern(pattern)
+		}
+
+		match, ok := m.FindBestMatch("/a/")
+		if !ok || match == nil {
+			t.Fatalf("pattern set %d: expected match", i)
+		}
+		if got, want := match.NormalizedPattern(), "/:x/*"; got != want {
+			t.Fatalf(
+				"pattern set %d: NormalizedPattern() = %q, want %q",
+				i,
+				got,
+				want,
+			)
+		}
+		if got, want := match.Params, (Params{"x": "a"}); !reflect.DeepEqual(got, want) {
+			t.Fatalf("pattern set %d: Params = %v, want %v", i, got, want)
+		}
+		if got, want := match.SplatValues, []string{""}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("pattern set %d: SplatValues = %v, want %v", i, got, want)
+		}
+	}
+}
+
+func TestFindBestMatchTrailingDynamicBeatsTrailingSplat(t *testing.T) {
+	pattern_sets := [][]string{
+		{"/:x/*", "/:y"},
+		{"/:y", "/:x/*"},
+		{"/*", "/:x/*", "/:y"},
+		{"/*", "/:y", "/:x/*"},
+	}
+
+	for i, patterns := range pattern_sets {
+		m := New(&Options{Quiet: true})
+		for _, pattern := range patterns {
+			m.RegisterPattern(pattern)
+		}
+
+		match, ok := m.FindBestMatch("/a/")
+		if !ok || match == nil {
+			t.Fatalf("pattern set %d: expected match", i)
+		}
+		if got, want := match.NormalizedPattern(), "/:y"; got != want {
+			t.Fatalf(
+				"pattern set %d: NormalizedPattern() = %q, want %q",
+				i,
+				got,
+				want,
+			)
+		}
+		if got, want := match.Params, (Params{"y": "a"}); !reflect.DeepEqual(got, want) {
+			t.Fatalf("pattern set %d: Params = %v, want %v", i, got, want)
+		}
+		if len(match.SplatValues) != 0 {
+			t.Fatalf("pattern set %d: SplatValues = %v, want empty", i, match.SplatValues)
+		}
+	}
+}
+
 /////////////////////////////////////////////////////////////////////
 /////// API SURFACE TESTS
 /////////////////////////////////////////////////////////////////////
@@ -578,6 +646,53 @@ func TestRegisterPatternPanicsOnNormalizedCollision(t *testing.T) {
 	}()
 
 	m.RegisterPattern("/users/:id")
+}
+
+func TestRegisterPatternPanicsOnRouteShapeCollision(t *testing.T) {
+	test_cases := []struct {
+		name     string
+		first    string
+		second   string
+		expected string
+	}{
+		{
+			name:     "single dynamic segment",
+			first:    "/users/:id",
+			second:   "/users/:slug",
+			expected: `route shape collision: "/users/:slug" and "/users/:id" both match the same paths`,
+		},
+		{
+			name:     "dynamic plus splat",
+			first:    "/:section/*",
+			second:   "/:page/*",
+			expected: `route shape collision: "/:page/*" and "/:section/*" both match the same paths`,
+		},
+		{
+			name:     "repeated param names are still shape equivalent",
+			first:    "/:x/:x",
+			second:   "/:x/:y",
+			expected: `route shape collision: "/:x/:y" and "/:x/:x" both match the same paths`,
+		},
+	}
+
+	for _, tc := range test_cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := New(&Options{Quiet: true})
+			m.RegisterPattern(tc.first)
+
+			defer func() {
+				recovered := recover()
+				if recovered == nil {
+					t.Fatal("expected panic for route shape collision")
+				}
+				if got := recovered.(string); got != tc.expected {
+					t.Fatalf("panic = %q, want %q", got, tc.expected)
+				}
+			}()
+
+			m.RegisterPattern(tc.second)
+		})
+	}
 }
 
 /////////////////////////////////////////////////////////////////////

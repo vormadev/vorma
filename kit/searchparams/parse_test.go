@@ -617,6 +617,142 @@ func TestParseIntoPointerToNonStruct(t *testing.T) {
 	}
 }
 
+func TestParseAbsentPointerCompositesRemainNil(t *testing.T) {
+	r, _ := http.NewRequest("GET", "http://example.com?name=John", nil)
+
+	got, err := ParseToStruct[struct {
+		Name    string             `json:"name"`
+		Scores  *[]int             `json:"scores"`
+		Meta    *map[string]string `json:"meta"`
+		Address *struct {
+			City string `json:"city"`
+		} `json:"address"`
+	}](r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got.Scores != nil {
+		t.Fatalf("expected nil scores pointer, got %#v", *got.Scores)
+	}
+	if got.Meta != nil {
+		t.Fatalf("expected nil meta pointer, got %#v", *got.Meta)
+	}
+	if got.Address != nil {
+		t.Fatalf("expected nil address pointer, got %#v", *got.Address)
+	}
+}
+
+func TestParseMapOfMapsFails(t *testing.T) {
+	r, _ := http.NewRequest(
+		"GET",
+		"http://example.com?data.outer.inner=value",
+		nil,
+	)
+
+	_, err := ParseToStruct[struct {
+		Data map[string]map[string]string `json:"data"`
+	}](r)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, ParseError) {
+		t.Fatalf("expected ParseError, got %v", err)
+	}
+}
+
+func TestParseArrays(t *testing.T) {
+	r, _ := http.NewRequest(
+		"GET",
+		"http://example.com?tags=a&tags=b&scores=1&scores=2",
+		nil,
+	)
+
+	got, err := ParseToStruct[struct {
+		Tags   [2]string `json:"tags"`
+		Scores *[2]int   `json:"scores"`
+	}](r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got.Tags != [2]string{"a", "b"} {
+		t.Fatalf("unexpected tags: %#v", got.Tags)
+	}
+	if got.Scores == nil || *got.Scores != [2]int{1, 2} {
+		t.Fatalf("unexpected scores: %#v", got.Scores)
+	}
+}
+
+func TestParseArrayOverflowFails(t *testing.T) {
+	r, _ := http.NewRequest(
+		"GET",
+		"http://example.com?tags=a&tags=b&tags=c",
+		nil,
+	)
+
+	_, err := ParseToStruct[struct {
+		Tags [2]string `json:"tags"`
+	}](r)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, ParseError) {
+		t.Fatalf("expected ParseError, got %v", err)
+	}
+}
+
+func TestParseMultiPointerScalars(t *testing.T) {
+	r, _ := http.NewRequest(
+		"GET",
+		"http://example.com?stringPtr=hello&numberPtr=7&boolPtr=true&stringPtr3=deep",
+		nil,
+	)
+
+	got, err := ParseToStruct[struct {
+		StringPtr  **string  `json:"stringPtr"`
+		NumberPtr  **int     `json:"numberPtr"`
+		BoolPtr    **bool    `json:"boolPtr"`
+		StringPtr3 ***string `json:"stringPtr3"`
+	}](r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got.StringPtr == nil || **got.StringPtr != "hello" {
+		t.Fatalf("unexpected StringPtr: %#v", got.StringPtr)
+	}
+	if got.NumberPtr == nil || **got.NumberPtr != 7 {
+		t.Fatalf("unexpected NumberPtr: %#v", got.NumberPtr)
+	}
+	if got.BoolPtr == nil || !**got.BoolPtr {
+		t.Fatalf("unexpected BoolPtr: %#v", got.BoolPtr)
+	}
+	if got.StringPtr3 == nil || ***got.StringPtr3 != "deep" {
+		t.Fatalf("unexpected StringPtr3: %#v", got.StringPtr3)
+	}
+}
+
+func TestParsePrefixedSliceFallbackUsesSortedChildKeys(t *testing.T) {
+	r, _ := http.NewRequest(
+		"GET",
+		"http://example.com?tags.beta=two&tags.alpha=one&address.phones.gamma=333&address.phones.alpha=111&address.phones.beta=222",
+		nil,
+	)
+
+	got, err := ParseToStruct[property_slice_fallback_form](r)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(got.Tags, []string{"one", "two"}) {
+		t.Fatalf("unexpected tags: %#v", got.Tags)
+	}
+	if !reflect.DeepEqual(got.Address.Phones, []string{"111", "222", "333"}) {
+		t.Fatalf("unexpected phones: %#v", got.Address.Phones)
+	}
+}
+
 // parser returns a closure that invokes Parse[T] and returns the result as any.
 // This lets table-driven tests with different T values share a single field type.
 func parser[T any]() func(*http.Request) (any, error) {
