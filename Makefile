@@ -68,10 +68,19 @@ npmbump:
 	@go run ./internal/cmd/npm_bumper
 
 bombadil:
-	@$(MAKE) -C ./internal/apps/bombadil bombadil
+	@cd ./internal/apps/bombadil && pnpm i
+	@cd ./internal/apps/bombadil && go run ./cmd/bombadil run -multiplier $(multiplier)
 
 bombadil-build:
-	@$(MAKE) -C ./internal/apps/bombadil bombadil-build
+	@cd ./internal/apps/bombadil && pnpm i
+	@cd ./internal/apps/bombadil && go run ./cmd/bombadil build
+
+# Pass multiplier as a positive integer, e.g. make stress multiplier=2.
+stress:
+	@go run ./internal/cmd/stress -multiplier $(multiplier)
+
+hegel-stress:
+	@go test -race ./kit/matcher ./kit/schema ./kit/searchparams ./kit/tsgen -count=$(multiplier)
 
 #####################################################################
 ####### OTHER

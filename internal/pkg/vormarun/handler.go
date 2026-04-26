@@ -49,11 +49,7 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 			submitted_client_build_id != expected_client_build_id &&
 			// lets us get JSON responses manually by setting `vorma_json=_` in the query
 			submitted_client_build_id != "_" {
-			reload_url := *r.URL
-			q := reload_url.Query()
-			q.Del(Query_Key_Vorma_JSON)
-			reload_url.RawQuery = q.Encode()
-			res.SetHeader(X_Vorma_Reload, reload_url.String())
+			res.SetHeader(X_Vorma_Build_Skew, "1")
 			res.SetHeader("Cache-Control", "no-store")
 			res.OK()
 			return

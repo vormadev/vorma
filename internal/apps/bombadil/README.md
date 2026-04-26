@@ -39,14 +39,14 @@ Start one adapter variant:
 
 ```bash
 cd internal/apps/bombadil
-pnpm dev:react
+pnpm i
+go run ./cmd/bombadil dev react
 ```
 
 Then, in another terminal:
 
 ```bash
-pnpm bombadil:react
+make bombadil multiplier=1
 ```
 
-Swap `react` for `preact` or `solid` to run the same scenario against another
-adapter.
+Swap `react` for `preact` or `solid` to run another adapter in dev mode.

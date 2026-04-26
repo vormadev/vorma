@@ -17,13 +17,14 @@ import {
 	tick,
 } from "./___ccc_test_helpers.ts";
 import {
+	BUILD_ID_HEADER,
 	HISTORY_KEY_FIELD,
 	SCROLL_STORAGE_KEY,
 	SCROLL_STORAGE_RELOAD_KEY,
 	VORMA_JSON_KEY,
 	X_ACCEPTS_CLIENT_REDIRECT,
 	X_CLIENT_REDIRECT,
-	X_VORMA_RELOAD,
+	X_VORMA_BUILD_SKEW,
 } from "./constants.ts";
 import { MAX_REDIRECTS, MAX_SCROLL_ENTRIES } from "./create_client_core.ts";
 
@@ -573,23 +574,41 @@ describe("navigate redirects", () => {
 		expect(commit).toHaveBeenCalled();
 	});
 
-	it("follows X-Vorma-Reload via hard_redirect", async () => {
-		const { core, hard_redirect } = await setup();
+	it("hard reloads navigation when route data reports build skew", async () => {
+		const on_build_skew = vi.fn();
+		const { core, hard_redirect } = await setup({
+			init: { onBuildSkewDetected: on_build_skew },
+		});
 		const { call, wait_for } = mock_fetch();
 
 		const nav = core.navigate("/start");
 		await wait_for(1);
 		call(0).resolve(
-			redirect_response({ [X_VORMA_RELOAD]: "/hard-target" }),
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_VORMA_BUILD_SKEW]: "1",
+			}),
 		);
 		await nav;
 
 		expect(hard_redirect).toHaveBeenCalledWith(
-			expect.stringContaining("/hard-target"),
+			expect.stringContaining("/start"),
+		);
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "hardReload",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					trigger: "navigation",
+					requestedHref: `${window.location.origin}/start`,
+				}),
+			}),
 		);
 	});
 
-	it("prioritizes X-Vorma-Reload over X-Client-Redirect", async () => {
+	it("prioritizes build skew over X-Client-Redirect", async () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
@@ -597,14 +616,15 @@ describe("navigate redirects", () => {
 		await wait_for(1);
 		call(0).resolve(
 			redirect_response({
-				[X_VORMA_RELOAD]: "/hard",
+				[BUILD_ID_HEADER]: "build-2",
+				[X_VORMA_BUILD_SKEW]: "1",
 				[X_CLIENT_REDIRECT]: "/soft",
 			}),
 		);
 		await nav;
 
 		expect(hard_redirect).toHaveBeenCalledWith(
-			expect.stringContaining("/hard"),
+			expect.stringContaining("/start"),
 		);
 	});
 
@@ -759,19 +779,22 @@ describe("navigate redirects", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("redirect edge cases", () => {
-	it("resolves relative X-Vorma-Reload against request URL path", async () => {
+	it("hard reloads build skew responses to the requested URL", async () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
 		const nav = core.navigate("/base/start");
 		await wait_for(1);
 		call(0).resolve(
-			redirect_response({ [X_VORMA_RELOAD]: "child-reload" }),
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_VORMA_BUILD_SKEW]: "1",
+			}),
 		);
 		await nav;
 
 		expect(hard_redirect).toHaveBeenCalledWith(
-			expect.stringContaining("/base/child-reload"),
+			expect.stringContaining("/base/start"),
 		);
 	});
 

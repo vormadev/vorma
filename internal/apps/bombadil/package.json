@@ -1,18 +1,6 @@
 {
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"dev:react": "VORMA_BOMBADIL_VARIANT=react go run ./cmd/build --dev",
-		"dev:preact": "VORMA_BOMBADIL_VARIANT=preact go run ./cmd/build --dev",
-		"dev:solid": "VORMA_BOMBADIL_VARIANT=solid go run ./cmd/build --dev",
-		"build:react": "VORMA_BOMBADIL_VARIANT=react go run ./cmd/build && VORMA_BOMBADIL_VARIANT=react go build -o ./.dist.react/.vorma/main -tags=prod ./cmd/serve",
-		"build:preact": "VORMA_BOMBADIL_VARIANT=preact go run ./cmd/build && VORMA_BOMBADIL_VARIANT=preact go build -o ./.dist.preact/.vorma/main -tags=prod ./cmd/serve",
-		"build:solid": "VORMA_BOMBADIL_VARIANT=solid go run ./cmd/build && VORMA_BOMBADIL_VARIANT=solid go build -o ./.dist.solid/.vorma/main -tags=prod ./cmd/serve",
-		"bombadil:react": "bombadil test http://127.0.0.1:8080 ./specs/vorma.spec.ts --headless --exit-on-violation --time-limit 30s --output-path ./.bombadil/react --chrome-grant-permissions ''",
-		"bombadil:preact": "bombadil test http://127.0.0.1:8080 ./specs/vorma.spec.ts --headless --exit-on-violation --time-limit 30s --output-path ./.bombadil/preact --chrome-grant-permissions ''",
-		"bombadil:solid": "bombadil test http://127.0.0.1:8080 ./specs/vorma.spec.ts --headless --exit-on-violation --time-limit 30s --output-path ./.bombadil/solid --chrome-grant-permissions ''",
-		"bombadil:inspect": "bombadil inspect ./.bombadil"
-	},
 	"devDependencies": {
 		"@antithesishq/bombadil": "^0.4.5",
 		"@preact/preset-vite": "^2.10.5",

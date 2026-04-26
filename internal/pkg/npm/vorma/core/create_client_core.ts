@@ -21,7 +21,7 @@ import {
 	VORMA_ROOT_EL_ID,
 	X_ACCEPTS_CLIENT_REDIRECT,
 	X_CLIENT_REDIRECT,
-	X_VORMA_RELOAD,
+	X_VORMA_BUILD_SKEW,
 } from "./constants.ts";
 import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
@@ -86,6 +86,44 @@ export type WorkState = {
 	}>;
 };
 
+export type RevalidationReason =
+	| "manual"
+	| "retry"
+	| "submission"
+	| "windowFocus";
+
+export type BuildSkewDetectedEvent = {
+	activeClientBuildID: string;
+	serverBuildID: string;
+	triggeringResponse:
+		| {
+				kind: "route";
+				trigger: "navigation" | "popstate" | "prefetch";
+				requestedHref: string;
+				status: number;
+				ok: boolean;
+		  }
+		| {
+				kind: "route";
+				trigger: "revalidation";
+				revalidationReason: RevalidationReason;
+				requestedHref: string;
+				status: number;
+				ok: boolean;
+		  }
+		| {
+				kind: "action";
+				actionKind: ActionKind;
+				requestedHref: string;
+				method: string;
+				status: number;
+				ok: boolean;
+		  };
+	currentRouteState: RouteState;
+	currentWorkState: WorkState;
+	defaultBehavior: "dropResponse" | "hardReload" | "notifyOnly";
+};
+
 export type ProgressIndicatorConfig = {
 	start: () => void;
 	stop: () => void;
@@ -107,7 +145,7 @@ export type InitOptions = {
 		reason: RouteUpdateReason,
 	) => void;
 	onWorkUpdate?: (work: WorkState) => void;
-	onClientBuildIDChange?: (prev: string, next: string) => void;
+	onBuildSkewDetected?: (event: BuildSkewDetectedEvent) => void;
 };
 
 export type CommitFn = (
@@ -226,6 +264,10 @@ export const REVALIDATION_BACKOFF_BASE_MS = 500;
 export const REVALIDATION_BACKOFF_CAP_MS = 30000;
 
 const REVALIDATION_OK: RevalidationResult = { ok: true };
+const REVALIDATION_BUILD_SKEW: RevalidationResult = {
+	ok: false,
+	reason: "build_skew",
+};
 const REVALIDATION_EXHAUSTED: RevalidationResult = {
 	ok: false,
 	reason: "max_retries_exhausted",
@@ -400,7 +442,11 @@ export function create_client_core(
 		deferred: Deferred<NavResult>;
 	};
 
-	type RevalidationFetchIntent = { kind: "reval"; attempt: number };
+	type RevalidationFetchIntent = {
+		kind: "reval";
+		attempt: number;
+		reason: RevalidationReason;
+	};
 
 	type ActiveFetchIntent = NavFetchIntent | RevalidationFetchIntent;
 
@@ -430,6 +476,7 @@ export function create_client_core(
 
 	type FetchResult =
 		| { kind: "data"; data: unknown; response: Response }
+		| { kind: "build_skew"; response: Response }
 		| { kind: "redirect"; href: string; hard: boolean; response: Response }
 		| {
 				kind: "error";
@@ -482,6 +529,7 @@ export function create_client_core(
 	type RefreshDemand = {
 		// A fetch with seq > this value satisfies the demand.
 		after_seq: number;
+		reason: RevalidationReason;
 		waiters: RefreshWaiter[];
 	};
 
@@ -548,8 +596,8 @@ export function create_client_core(
 		  ) => void)
 		| undefined;
 	let user_on_work_update: ((work: WorkState) => void) | undefined;
-	let user_on_build_id_change:
-		| ((prev: string, next: string) => void)
+	let user_on_build_skew_detected:
+		| ((event: BuildSkewDetectedEvent) => void)
 		| undefined;
 	let deferred_submit_redirect: URL | null = null;
 	let last_activity_ts = Date.now();
@@ -1148,10 +1196,6 @@ export function create_client_core(
 		res: Response,
 		base: URL,
 	): { href: string; hard: boolean } | null {
-		const hard = res.headers.get(X_VORMA_RELOAD);
-		if (hard) {
-			return { href: new URL(hard, base).href, hard: true };
-		}
 		const soft = res.headers.get(X_CLIENT_REDIRECT);
 		if (soft) {
 			return { href: new URL(soft, base).href, hard: false };
@@ -1162,13 +1206,72 @@ export function create_client_core(
 		return null;
 	}
 
-	function update_build_id(res: Response): void {
-		const next = res.headers.get(BUILD_ID_HEADER) ?? "";
-		if (next && next !== client_build_id) {
-			const prev = client_build_id;
-			client_build_id = next;
-			user_on_build_id_change?.(prev, next);
+	function report_build_skew(
+		event: Omit<
+			BuildSkewDetectedEvent,
+			| "activeClientBuildID"
+			| "currentRouteState"
+			| "currentWorkState"
+			| "serverBuildID"
+		> & {
+			response: Response;
+		},
+	): boolean {
+		const server_build_id =
+			event.response.headers.get(BUILD_ID_HEADER) ?? "";
+		if (!server_build_id || server_build_id === client_build_id) {
+			return false;
 		}
+		if (!route_snapshot) {
+			return false;
+		}
+		user_on_build_skew_detected?.({
+			activeClientBuildID: client_build_id,
+			serverBuildID: server_build_id,
+			triggeringResponse: event.triggeringResponse,
+			currentRouteState: route_snapshot_to_state(route_snapshot),
+			currentWorkState: derive_work_state(),
+			defaultBehavior: event.defaultBehavior,
+		});
+		return true;
+	}
+
+	function report_route_build_skew(
+		f: FetchBase & { intent: FetchIntent },
+		response: Response,
+		default_behavior: BuildSkewDetectedEvent["defaultBehavior"],
+	): boolean {
+		const base = {
+			kind: "route" as const,
+			requestedHref: f.url.href,
+			status: response.status,
+			ok: response.ok,
+		};
+		let triggeringResponse: BuildSkewDetectedEvent["triggeringResponse"];
+		if (f.intent.kind === "reval") {
+			triggeringResponse = {
+				...base,
+				trigger: "revalidation",
+				revalidationReason: f.intent.reason,
+			};
+		} else if (f.intent.kind === "prefetch") {
+			triggeringResponse = {
+				...base,
+				trigger: "prefetch",
+			};
+		} else {
+			triggeringResponse = {
+				...base,
+				trigger:
+					f.intent.source === "popstate" ? "popstate" : "navigation",
+			};
+		}
+
+		return report_build_skew({
+			response,
+			triggeringResponse,
+			defaultBehavior: default_behavior,
+		});
 	}
 
 	function history_state_for_fetch(intent: FetchIntent): unknown {
@@ -1266,6 +1369,9 @@ export function create_client_core(
 					headers: { [X_ACCEPTS_CLIENT_REDIRECT]: "1" },
 				});
 
+				if (res.headers.get(X_VORMA_BUILD_SKEW) === "1") {
+					return { kind: "build_skew", response: res };
+				}
 				const redirect = detect_redirect(res, modified);
 				if (redirect) {
 					return { kind: "redirect", ...redirect, response: res };
@@ -1320,12 +1426,47 @@ export function create_client_core(
 				return;
 			}
 
-			if (result.kind === "error") {
+			if (result.kind === "build_skew") {
+				report_route_build_skew(
+					f,
+					result.response,
+					f.intent.kind === "reval" ? "dropResponse" : "hardReload",
+				);
+				if (f.intent.kind === "reval") {
+					mark_refresh_build_skew();
+					return;
+				}
+				hard_redirect(f.url.href);
 				return;
 			}
 
 			if (result.response) {
-				update_build_id(result.response);
+				const default_behavior =
+					result.kind === "redirect" &&
+					result.hard &&
+					is_http(result.href)
+						? f.intent.kind === "reval"
+							? "dropResponse"
+							: "hardReload"
+						: "notifyOnly";
+				const did_detect_skew = report_route_build_skew(
+					f,
+					result.response,
+					default_behavior,
+				);
+				if (
+					did_detect_skew &&
+					result.kind === "redirect" &&
+					result.hard &&
+					f.intent.kind === "reval"
+				) {
+					mark_refresh_build_skew();
+					return;
+				}
+			}
+
+			if (result.kind === "error") {
+				return;
 			}
 
 			if (result.kind === "redirect") {
@@ -1871,6 +2012,18 @@ export function create_client_core(
 		}
 	}
 
+	function mark_refresh_build_skew(): void {
+		const demand = refresh_demand();
+		if (!demand) {
+			return;
+		}
+		const waiters = demand.waiters;
+		clear_refresh();
+		for (const w of waiters) {
+			w.resolve(REVALIDATION_BUILD_SKEW);
+		}
+	}
+
 	function refresh_demand(): RefreshDemand | null {
 		if (refresh.kind === "idle") {
 			return null;
@@ -1885,13 +2038,21 @@ export function create_client_core(
 		refresh = { kind: "idle" };
 	}
 
-	function require_refresh(waiter?: RefreshWaiter, debounce?: boolean): void {
+	function require_refresh(
+		reason: RevalidationReason,
+		waiter?: RefreshWaiter,
+		debounce?: boolean,
+	): void {
 		const waiters = refresh_demand()?.waiters ?? [];
 		clear_refresh();
 		if (waiter) {
 			waiters.push(waiter);
 		}
-		const demand: RefreshDemand = { after_seq: next_seq(), waiters };
+		const demand: RefreshDemand = {
+			after_seq: next_seq(),
+			reason,
+			waiters,
+		};
 
 		if (debounce) {
 			let next_refresh!: Extract<RefreshState, { kind: "debouncing" }>;
@@ -1956,12 +2117,20 @@ export function create_client_core(
 			refresh = { kind: "pending", demand, attempt: attempt + 1 };
 			void run_revalidation().catch(() => {});
 		} else {
+			const retry_demand: RefreshDemand = {
+				...demand,
+				reason: "retry",
+			};
 			let next_refresh!: Extract<RefreshState, { kind: "retrying" }>;
 			const timer = setTimeout(() => {
 				if (refresh !== next_refresh) {
 					return;
 				}
-				refresh = { kind: "pending", demand, attempt: attempt + 1 };
+				refresh = {
+					kind: "pending",
+					demand: retry_demand,
+					attempt: attempt + 1,
+				};
 				if (active) {
 					return;
 				}
@@ -1969,7 +2138,7 @@ export function create_client_core(
 			}, delay);
 			next_refresh = {
 				kind: "retrying",
-				demand,
+				demand: retry_demand,
 				attempt: attempt + 1,
 				timer,
 			};
@@ -1981,7 +2150,9 @@ export function create_client_core(
 	async function run_revalidation(): Promise<void> {
 		const url = new URL(browser.href || window.location.href);
 		const attempt = refresh.kind === "pending" ? refresh.attempt : 0;
-		const f = start_fetch(url, { kind: "reval", attempt }, true);
+		const reason =
+			refresh.kind === "pending" ? refresh.demand.reason : "manual";
+		const f = start_fetch(url, { kind: "reval", attempt, reason }, true);
 
 		// Guard: discard if URL path changes during flight (hash-only changes
 		// are OK; matches_without_hash on publish time handles it).
@@ -2003,8 +2174,31 @@ export function create_client_core(
 			if (!matches_without_hash(new URL(browser.href), expected)) {
 				return;
 			}
+			if (result.kind === "build_skew") {
+				report_route_build_skew(f, result.response, "dropResponse");
+				mark_refresh_build_skew();
+				return;
+			}
 			if (result.response) {
-				update_build_id(result.response);
+				const default_behavior =
+					result.kind === "redirect" &&
+					result.hard &&
+					is_http(result.href)
+						? "dropResponse"
+						: "notifyOnly";
+				const did_detect_skew = report_route_build_skew(
+					f,
+					result.response,
+					default_behavior,
+				);
+				if (
+					did_detect_skew &&
+					result.kind === "redirect" &&
+					result.hard
+				) {
+					mark_refresh_build_skew();
+					return;
+				}
 			}
 			if (result.kind === "error") {
 				return;
@@ -2053,6 +2247,13 @@ export function create_client_core(
 	async function prepare_prefetch(f: PrefetchFetch): Promise<void> {
 		try {
 			const result = await f.data_promise;
+			if (result.response) {
+				report_route_build_skew(
+					f,
+					result.response,
+					result.kind === "data" ? "notifyOnly" : "dropResponse",
+				);
+			}
 			if (f.ac.signal.aborted || result.kind !== "data") {
 				if (prefetch === f) {
 					prefetch = null;
@@ -2232,14 +2433,14 @@ export function create_client_core(
 			if (phase === "ready") {
 				const waiter = make_deferred<RevalidationResult>();
 				revalidation_promise = waiter.promise;
-				require_refresh(waiter);
+				require_refresh("submission", waiter);
 				maybe_revalidate();
 			} else {
 				// During boot, register refresh demand so post-init
 				// maybe_revalidate will fire. Do not attach a waiter;
 				// the returned revalidationPromise stays resolved so initial
 				// client loaders awaiting it do not deadlock.
-				require_refresh();
+				require_refresh("submission");
 			}
 		}
 
@@ -2285,9 +2486,25 @@ export function create_client_core(
 			did_dispatch = true;
 			const res = await fetch(resolved, final_init);
 
-			update_build_id(res);
-
 			const redirect = detect_redirect(res, resolved);
+			report_build_skew({
+				response: res,
+				triggeringResponse: {
+					kind: "action",
+					actionKind: action_kind,
+					requestedHref: resolved.href,
+					method,
+					status: res.status,
+					ok: res.ok,
+				},
+				defaultBehavior:
+					redirect &&
+					is_http(redirect.href) &&
+					(redirect.hard || !is_same_origin_href(redirect.href))
+						? "hardReload"
+						: "notifyOnly",
+			});
+
 			if (redirect && !ac.signal.aborted) {
 				if (!is_http(redirect.href)) {
 					return {
@@ -2741,7 +2958,7 @@ export function create_client_core(
 
 		user_on_route_update = options.onRouteUpdate;
 		user_on_work_update = options.onWorkUpdate;
-		user_on_build_id_change = options.onClientBuildIDChange;
+		user_on_build_skew_detected = options.onBuildSkewDetected;
 		default_error_boundary = options.defaultErrorBoundary;
 		use_view_transitions = options.useViewTransitions ?? false;
 
@@ -2879,7 +3096,8 @@ export function create_client_core(
 					return;
 				}
 				if (Date.now() - last_activity_ts >= stale_ms) {
-					void revalidate();
+					require_refresh("windowFocus", undefined, true);
+					notify_work_update();
 				}
 			});
 		}
@@ -2952,7 +3170,7 @@ export function create_client_core(
 			throw new Error("Vorma not initialized");
 		}
 		const waiter = make_deferred<RevalidationResult>();
-		require_refresh(waiter, true);
+		require_refresh("manual", waiter, true);
 		notify_work_update();
 		return waiter.promise;
 	}

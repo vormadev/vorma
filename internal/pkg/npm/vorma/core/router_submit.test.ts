@@ -14,7 +14,12 @@ import {
 	text_response,
 	tick,
 } from "./___ccc_test_helpers.ts";
-import { X_CLIENT_REDIRECT, X_VORMA_RELOAD } from "./constants.ts";
+import {
+	BUILD_ID_HEADER,
+	VERCEL_X_DEPLOYMENT_ID,
+	X_CLIENT_REDIRECT,
+	X_VORMA_BUILD_SKEW,
+} from "./constants.ts";
 
 register_ccc_lifecycle(beforeEach, afterEach);
 
@@ -39,6 +44,28 @@ describe("submit", () => {
 		const result = await sub;
 
 		expect(result).toMatchObject({ success: true, data: { ok: true } });
+	});
+
+	it("sends Vercel deployment ID on action requests when present", async () => {
+		const { core } = await setup({
+			payload: { DeploymentID: "dpl_test_123" },
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				revalidate: false,
+			},
+		);
+		await wait_for(1);
+
+		const headers = new Headers(call(0).init?.headers);
+		expect(headers.get(VERCEL_X_DEPLOYMENT_ID)).toBe("dpl_test_123");
+
+		call(0).resolve(json_response({ ok: true }));
+		await sub;
 	});
 
 	it("returns success with text for non-JSON responses", async () => {
@@ -267,13 +294,60 @@ describe("submit", () => {
 		expect(calls).toHaveLength(2);
 	});
 
+	it("reports submission as the build skew revalidation reason", async () => {
+		const on_build_skew = vi.fn();
+		const { core } = await setup({
+			init: { onBuildSkewDetected: on_build_skew },
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		await wait_for(1);
+		call(0).resolve(json_response({ ok: true }));
+		const result = await sub;
+
+		await wait_for(2);
+		call(1).resolve(
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_VORMA_BUILD_SKEW]: "1",
+			}),
+		);
+
+		await expect(result.revalidationPromise).resolves.toEqual({
+			ok: false,
+			reason: "build_skew",
+		});
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "dropResponse",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					trigger: "revalidation",
+					revalidationReason: "submission",
+				}),
+			}),
+		);
+	});
+
 	it("auto-revalidates after non-ok mutation response by default", async () => {
-		const { core } = await setup();
+		const on_build_skew = vi.fn();
+		const { core } = await setup({
+			init: { onBuildSkewDetected: on_build_skew },
+		});
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
 		await wait_for(1);
-		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
+		call(0).resolve(
+			new Response("", {
+				status: 500,
+				statusText: "Err",
+				headers: { [BUILD_ID_HEADER]: "build-2" },
+			}),
+		);
 		const result = await sub;
 
 		await wait_for(2);
@@ -284,7 +358,111 @@ describe("submit", () => {
 		if (!result.success) {
 			expect(result.error).toBe("Err");
 		}
+		expect(core.getClientBuildID()).toBe("build-1");
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "notifyOnly",
+				triggeringResponse: expect.objectContaining({
+					kind: "action",
+					actionKind: "mutation",
+					requestedHref: `${window.location.origin}/api/action`,
+					method: "POST",
+					status: 500,
+					ok: false,
+				}),
+				currentWorkState: expect.objectContaining({
+					submissions: [
+						expect.objectContaining({
+							href: `${window.location.origin}/api/action`,
+							method: "POST",
+						}),
+					],
+				}),
+			}),
+		);
 		expect(calls).toHaveLength(2);
+	});
+
+	it("reports build skew from successful mutation responses", async () => {
+		const on_build_skew = vi.fn();
+		const { core } = await setup({
+			init: { onBuildSkewDetected: on_build_skew },
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await wait_for(1);
+		call(0).resolve(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: {
+					"Content-Type": "application/json",
+					[BUILD_ID_HEADER]: "build-2",
+				},
+			}),
+		);
+		const result = await sub;
+
+		expect(result).toMatchObject({ success: true, data: { ok: true } });
+		expect(core.getClientBuildID()).toBe("build-1");
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "notifyOnly",
+				triggeringResponse: expect.objectContaining({
+					kind: "action",
+					actionKind: "mutation",
+					requestedHref: `${window.location.origin}/api/action`,
+					method: "POST",
+					status: 200,
+					ok: true,
+				}),
+			}),
+		);
+	});
+
+	it("reports build skew from failed query responses", async () => {
+		const on_build_skew = vi.fn();
+		const { core } = await setup({
+			init: { onBuildSkewDetected: on_build_skew },
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner("/api/action", { method: "GET" }, {});
+		await wait_for(1);
+		call(0).resolve(
+			new Response("", {
+				status: 500,
+				statusText: "Err",
+				headers: { [BUILD_ID_HEADER]: "build-2" },
+			}),
+		);
+		const result = await sub;
+
+		expect(result.success).toBe(false);
+		expect(core.getClientBuildID()).toBe("build-1");
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "notifyOnly",
+				triggeringResponse: expect.objectContaining({
+					kind: "action",
+					actionKind: "query",
+					requestedHref: `${window.location.origin}/api/action`,
+					method: "GET",
+					status: 500,
+					ok: false,
+				}),
+			}),
+		);
 	});
 
 	it("auto-revalidates after aborted mutation by default", async () => {
@@ -539,7 +717,7 @@ describe("submit", () => {
 		expect(commit).toHaveBeenCalled();
 	});
 
-	it("follows hard redirect via hard_redirect", async () => {
+	it("hard redirects cross-origin submit redirects", async () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();
 
@@ -551,12 +729,14 @@ describe("submit", () => {
 			},
 		);
 		await wait_for(1);
-		call(0).resolve(redirect_response({ [X_VORMA_RELOAD]: "/hard" }));
+		call(0).resolve(
+			redirect_response({
+				[X_CLIENT_REDIRECT]: "https://example.com/hard",
+			}),
+		);
 		await sub;
 
-		expect(hard_redirect).toHaveBeenCalledWith(
-			expect.stringContaining("/hard"),
-		);
+		expect(hard_redirect).toHaveBeenCalledWith("https://example.com/hard");
 	});
 
 	it("does not follow redirect from aborted submit", async () => {

@@ -84,6 +84,7 @@ const vormaActions = [
 
 export type RootData = {
 	Name: string;
+	Deployment: string;
 };
 
 export type CountActionInput = {
@@ -104,41 +105,50 @@ export type EchoActionInput = {
 
 export type ItemData = {
 	ID: string;
+	Deployment: string;
 };
 
 export type SlowData = {
 	DelayMS: number;
 	Stamp: string;
+	Deployment: string;
 };
 
 export type EchoData = {
 	Message: string;
+	Deployment: string;
 };
 
 export type CountActionData = {
 	Next: number;
+	Deployment: string;
 };
 
 export type CounterData = {
 	Value: number;
+	Deployment: string;
 };
 
 export type ClientData = {
 	ID: string;
 	ServerStamp: string;
+	Deployment: string;
 };
 
 export type NestedData = {
 	Section: string;
+	Deployment: string;
 };
 
 export type NestedDetailData = {
 	ID: string;
 	Section: string;
+	Deployment: string;
 };
 
 export type EchoActionData = {
 	Message: string;
+	Deployment: string;
 };
 
 /////////////////////////////////////////////////////////////////////

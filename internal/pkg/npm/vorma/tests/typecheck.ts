@@ -7,7 +7,9 @@ import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
 	ActionKind,
 	AppConfig,
+	BuildSkewDetectedEvent,
 	ProgressIndicatorConfig,
+	RevalidationReason,
 	RevalidationResult,
 	RouteDefinition,
 	RouteErrorState,
@@ -1465,9 +1467,27 @@ function assert_public_runtime_contracts(): void {
 		onWorkUpdate: (work) => {
 			expect_type<WorkState>(work);
 		},
-		onClientBuildIDChange: (prev, next) => {
-			expect_type<string>(prev);
-			expect_type<string>(next);
+		onBuildSkewDetected: (event) => {
+			expect_type<BuildSkewDetectedEvent>(event);
+			expect_type<string>(event.activeClientBuildID);
+			expect_type<string>(event.serverBuildID);
+			expect_type<RouteState>(event.currentRouteState);
+			expect_type<WorkState>(event.currentWorkState);
+			expect_type<"dropResponse" | "hardReload" | "notifyOnly">(
+				event.defaultBehavior,
+			);
+			if (event.triggeringResponse.kind === "route") {
+				expect_type<
+					"navigation" | "popstate" | "revalidation" | "prefetch"
+				>(event.triggeringResponse.trigger);
+				if (event.triggeringResponse.trigger === "revalidation") {
+					expect_type<RevalidationReason>(
+						event.triggeringResponse.revalidationReason,
+					);
+				}
+			} else {
+				expect_type<ActionKind>(event.triggeringResponse.actionKind);
+			}
 		},
 	});
 	expect_type<Promise<Result<void>>>(init_promise);

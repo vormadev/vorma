@@ -14,7 +14,7 @@ const Query_Key_Vorma_JSON = "vorma-json"
 /////// Headers
 
 const X_Vorma_Client_Build_Id = "X-Vorma-Client-Build-Id"
-const X_Vorma_Reload = "X-Vorma-Reload"
+const X_Vorma_Build_Skew = "X-Vorma-Build-Skew"
 
 /////// Filenames
 

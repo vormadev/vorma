@@ -1,26 +1,53 @@
 type ProbeRoute = {
 	href: string;
-	clientBuildID: string;
-	matchPatterns: string[];
-	errorSource: string | null;
-	errorIndex: number | null;
+	client_build_id: string;
+	match_patterns: string[];
+	error_source: string | null;
+	error_index: number | null;
 	params: Record<string, string>;
 };
 
 type ProbeWork = {
-	navigationHref: string | null;
-	revalidationStatus: string | null;
-	prefetchHref: string | null;
-	submissionCount: number;
+	navigation_href: string | null;
+	revalidation_status: string | null;
+	prefetch_href: string | null;
+	submission_count: number;
+};
+
+type ProbeBuildSkew = {
+	active_client_build_id: string;
+	server_build_id: string;
+	default_behavior: string;
+	response_kind: string;
+	response_trigger: string | null;
+	action_kind: string | null;
+	revalidation_reason: string | null;
+	requested_href: string;
+	status: number;
+	ok: boolean;
+	current_route_href: string;
+	current_work_navigation_href: string | null;
+	current_work_revalidation_status: string | null;
+	current_work_prefetch_href: string | null;
+	current_work_submission_count: number;
 };
 
 type Probe = {
 	variant: string;
 	route: ProbeRoute | null;
 	work: ProbeWork | null;
-	routeUpdates: number;
-	workUpdates: number;
-	lastReason: string | null;
+	route_updates: number;
+	work_updates: number;
+	build_skew_detections: number;
+	action_build_skew_detections: number;
+	query_build_skew_detections: number;
+	mutation_build_skew_detections: number;
+	failed_action_build_skew_detections: number;
+	manual_revalidation_build_skew_detections: number;
+	last_build_skew_server_id: string | null;
+	last_build_skew: ProbeBuildSkew | null;
+	last_action_build_skew: ProbeBuildSkew | null;
+	last_reason: string | null;
 	revalidate: () => Promise<unknown>;
 };
 
@@ -48,9 +75,33 @@ type WorkLike = {
 	submissions: unknown[];
 };
 
+type BuildSkewEventLike = {
+	activeClientBuildID: string;
+	serverBuildID: string;
+	defaultBehavior: string;
+	triggeringResponse:
+		| {
+				kind: "route";
+				trigger: string;
+				revalidationReason?: string;
+				requestedHref: string;
+				status: number;
+				ok: boolean;
+		  }
+		| {
+				kind: "action";
+				actionKind: string;
+				requestedHref: string;
+				status: number;
+				ok: boolean;
+		  };
+	currentRouteState: RouteLike;
+	currentWorkState: WorkLike;
+};
+
 declare global {
 	interface Window {
-		__vormaBombadil?: Probe;
+		__vorma_bombadil?: Probe;
 	}
 }
 
@@ -71,6 +122,7 @@ export async function install_vorma_probe(input: {
 				reason: string,
 			) => void;
 			onWorkUpdate: (work: WorkLike) => void;
+			onBuildSkewDetected: (event: BuildSkewEventLike) => void;
 		}) => Promise<InitResult>;
 		revalidate: () => Promise<unknown>;
 		getRouteState: () => RouteLike;
@@ -80,23 +132,58 @@ export async function install_vorma_probe(input: {
 		variant: input.variant,
 		route: null,
 		work: null,
-		routeUpdates: 0,
-		workUpdates: 0,
-		lastReason: null,
+		route_updates: 0,
+		work_updates: 0,
+		build_skew_detections: 0,
+		action_build_skew_detections: 0,
+		query_build_skew_detections: 0,
+		mutation_build_skew_detections: 0,
+		failed_action_build_skew_detections: 0,
+		manual_revalidation_build_skew_detections: 0,
+		last_build_skew_server_id: null,
+		last_build_skew: null,
+		last_action_build_skew: null,
+		last_reason: null,
 		revalidate: app.revalidate,
 	};
-	window.__vormaBombadil = probe;
+	window.__vorma_bombadil = probe;
 
 	const result = await app.init({
 		render: input.render,
 		onRouteUpdate: (route, _previous_route, reason) => {
 			probe.route = serialize_route(route);
-			probe.routeUpdates += 1;
-			probe.lastReason = reason;
+			probe.route_updates += 1;
+			probe.last_reason = reason;
 		},
 		onWorkUpdate: (work) => {
 			probe.work = serialize_work(work);
-			probe.workUpdates += 1;
+			probe.work_updates += 1;
+		},
+		onBuildSkewDetected: (event) => {
+			probe.build_skew_detections += 1;
+			const serialized_event = serialize_build_skew(event);
+			if (
+				event.triggeringResponse.kind === "route" &&
+				event.triggeringResponse.trigger === "revalidation" &&
+				event.triggeringResponse.revalidationReason === "manual"
+			) {
+				probe.manual_revalidation_build_skew_detections += 1;
+			}
+			if (event.triggeringResponse.kind === "action") {
+				probe.action_build_skew_detections += 1;
+				probe.last_action_build_skew = serialized_event;
+				if (event.triggeringResponse.actionKind === "query") {
+					probe.query_build_skew_detections += 1;
+				}
+				if (event.triggeringResponse.actionKind === "mutation") {
+					probe.mutation_build_skew_detections += 1;
+				}
+				if (!event.triggeringResponse.ok) {
+					probe.failed_action_build_skew_detections += 1;
+				}
+			}
+			probe.last_build_skew_server_id = event.serverBuildID;
+			probe.last_build_skew = serialized_event;
 		},
 	});
 	if (!result.ok) {
@@ -109,21 +196,51 @@ export async function install_vorma_probe(input: {
 function serialize_route(route: RouteLike): ProbeRoute {
 	return {
 		href: route.href,
-		clientBuildID: route.clientBuildID,
-		matchPatterns: route.matches.map((match) => {
+		client_build_id: route.clientBuildID,
+		match_patterns: route.matches.map((match) => {
 			return match.pattern;
 		}),
-		errorSource: route.error?.source ?? null,
-		errorIndex: route.error?.idx ?? null,
+		error_source: route.error?.source ?? null,
+		error_index: route.error?.idx ?? null,
 		params: route.params,
+	};
+}
+
+function serialize_build_skew(event: BuildSkewEventLike): ProbeBuildSkew {
+	const work = serialize_work(event.currentWorkState);
+	return {
+		active_client_build_id: event.activeClientBuildID,
+		server_build_id: event.serverBuildID,
+		default_behavior: event.defaultBehavior,
+		response_kind: event.triggeringResponse.kind,
+		response_trigger:
+			event.triggeringResponse.kind === "route"
+				? event.triggeringResponse.trigger
+				: null,
+		action_kind:
+			event.triggeringResponse.kind === "action"
+				? event.triggeringResponse.actionKind
+				: null,
+		revalidation_reason:
+			event.triggeringResponse.kind === "route"
+				? (event.triggeringResponse.revalidationReason ?? null)
+				: null,
+		requested_href: event.triggeringResponse.requestedHref,
+		status: event.triggeringResponse.status,
+		ok: event.triggeringResponse.ok,
+		current_route_href: event.currentRouteState.href,
+		current_work_navigation_href: work.navigation_href,
+		current_work_revalidation_status: work.revalidation_status,
+		current_work_prefetch_href: work.prefetch_href,
+		current_work_submission_count: work.submission_count,
 	};
 }
 
 function serialize_work(work: WorkLike): ProbeWork {
 	return {
-		navigationHref: work.navigation?.href ?? null,
-		revalidationStatus: work.revalidation?.status ?? null,
-		prefetchHref: work.prefetch?.href ?? null,
-		submissionCount: work.submissions.length,
+		navigation_href: work.navigation?.href ?? null,
+		revalidation_status: work.revalidation?.status ?? null,
+		prefetch_href: work.prefetch?.href ?? null,
+		submission_count: work.submissions.length,
 	};
 }

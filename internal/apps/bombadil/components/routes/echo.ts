@@ -2,6 +2,7 @@ import { ui } from "../../route_factory.ts";
 import {
 	action_echo_pattern,
 	dynamic,
+	echo_action_fail_message,
 	h,
 	klass,
 	loader_box,
@@ -15,6 +16,7 @@ export default ui.defineRoute({
 		const data = loader_box(props);
 		const message = text_state("hello");
 		const output = text_state(data().Message);
+		const operation = text_state("");
 		return h(
 			"section",
 			{ ...klass("panel"), "data-bmb-route": "echo" },
@@ -39,6 +41,7 @@ export default ui.defineRoute({
 						"data-bmb-action": "echo-submit",
 						type: "button",
 						onClick: () => {
+							operation.set("submit-pending");
 							void ui.apiClient
 								.submit({
 									method: "POST",
@@ -48,14 +51,46 @@ export default ui.defineRoute({
 								})
 								.then((result: any) => {
 									if (result.success) {
+										operation.set("submit-ok");
 										output.set(result.data.Message);
 										return;
 									}
+									operation.set("submit-error");
 									output.set(result.error);
 								});
 						},
 					},
 					"Send",
+				),
+				h(
+					"button",
+					{
+						...klass("button"),
+						"data-bmb-action": "echo-fail",
+						type: "button",
+						onClick: () => {
+							operation.set("fail-pending");
+							void ui.apiClient
+								.submit({
+									method: "POST",
+									pattern: action_echo_pattern,
+									input: {
+										Message: echo_action_fail_message,
+									},
+									revalidate: true,
+								})
+								.then((result: any) => {
+									if (result.success) {
+										operation.set("fail-ok");
+										output.set(result.data.Message);
+										return;
+									}
+									operation.set("fail-error");
+									output.set(result.error);
+								});
+						},
+					},
+					"Fail",
 				),
 				h(
 					"button",
@@ -75,6 +110,13 @@ export default ui.defineRoute({
 				{ ...klass("status"), "data-bmb-echo-output": true },
 				dynamic(() => {
 					return output.value();
+				}),
+			),
+			h(
+				"div",
+				{ "data-bmb-echo-operation": true },
+				dynamic(() => {
+					return operation.value();
 				}),
 			),
 		);

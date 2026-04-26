@@ -109,6 +109,61 @@ func TestLoadersHandlerProdCSSBundlesKeepOrderAfterMainCSS(t *testing.T) {
 	}
 }
 
+func TestLoadersHandlerInjectsVercelDeploymentID(t *testing.T) {
+	t.Setenv("VERCEL_SKEW_PROTECTION_ENABLED", "1")
+	t.Setenv("VERCEL_DEPLOYMENT_ID", "dpl_test_123")
+
+	h := handler_test_harness{t: t}
+	manifest := Manifest{
+		VormaVersion:         "test",
+		PublicStaticBasePath: "/static/",
+		ActionsMountRoot:     "/api/",
+		UIVariant:            "react",
+		PublicFilemap: map[string]string{
+			Main_CSS_Filename: "/static/main.css",
+		},
+		ClientEntry: ClientModule{
+			URL: "/static/entry.js",
+		},
+		ClientRoutes: map[string]ClientModule{
+			"/": {
+				URL: "/static/root.js",
+			},
+		},
+	}
+
+	router := h.init_router(manifest)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", res.Code)
+	}
+
+	body := res.Body.String()
+	id_idx := strings.Index(body, `id="`+Vorma_Data_JSON_Script_El_ID+`"`)
+	if id_idx == -1 {
+		t.Fatalf("expected body to contain %s script", Vorma_Data_JSON_Script_El_ID)
+	}
+	open_end := strings.Index(body[id_idx:], ">")
+	if open_end == -1 {
+		t.Fatalf("expected %s script opening tag to close", Vorma_Data_JSON_Script_El_ID)
+	}
+	open_end += id_idx
+	close_idx := strings.Index(body[open_end:], "</script>")
+	if close_idx == -1 {
+		t.Fatalf("expected %s script closing tag", Vorma_Data_JSON_Script_El_ID)
+	}
+	close_idx += open_end
+
+	var payload ssr_payload
+	if err := json.Unmarshal([]byte(body[open_end+1:close_idx]), &payload); err != nil {
+		t.Fatalf("error unmarshaling SSR payload: %v", err)
+	}
+	if payload.DeploymentID != "dpl_test_123" {
+		t.Fatalf("expected DeploymentID %q, got %q", "dpl_test_123", payload.DeploymentID)
+	}
+}
+
 func (h handler_test_harness) init_router(manifest Manifest) *Router {
 	h.t.Helper()
 

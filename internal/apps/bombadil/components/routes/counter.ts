@@ -1,5 +1,6 @@
 import { ui } from "../../route_factory.ts";
 import {
+	action_count_pattern,
 	counter_href,
 	counter_next,
 	counter_previous,
@@ -90,7 +91,7 @@ export default ui.defineRoute({
 							void ui.apiClient
 								.submit({
 									method: "GET",
-									pattern: "/count",
+									pattern: action_count_pattern,
 									input: { delta: -9 },
 								})
 								.then((result: any) => {
@@ -116,7 +117,7 @@ export default ui.defineRoute({
 							void ui.apiClient
 								.submit({
 									method: "GET",
-									pattern: "/count",
+									pattern: action_count_pattern,
 									input: { delta: 9 },
 								})
 								.then((result: any) => {

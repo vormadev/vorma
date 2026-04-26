@@ -11,7 +11,12 @@ import {
 	setup,
 	simulate_popstate,
 } from "./___ccc_test_helpers.ts";
-import { X_CLIENT_REDIRECT, X_VORMA_RELOAD } from "./constants.ts";
+import {
+	BUILD_ID_HEADER,
+	VERCEL_DPL_QUERY_PARAM_KEY,
+	X_CLIENT_REDIRECT,
+	X_VORMA_BUILD_SKEW,
+} from "./constants.ts";
 import {
 	MAX_REVALIDATION_RETRIES,
 	REVALIDATION_BACKOFF_BASE_MS,
@@ -51,6 +56,25 @@ describe("revalidate", () => {
 
 		expect(commit).toHaveBeenCalled();
 		expect(core.getWorkState().revalidation !== null).toBe(false);
+	});
+
+	it("sends Vercel deployment ID on revalidation requests when present", async () => {
+		const { core } = await setup({
+			payload: { DeploymentID: "dpl_test_123" },
+		});
+		const { call, wait_for } = mock_fetch();
+
+		const rev = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await wait_for(1);
+
+		const url = new URL(call(0).url);
+		expect(url.searchParams.get(VERCEL_DPL_QUERY_PARAM_KEY)).toBe(
+			"dpl_test_123",
+		);
+
+		call(0).resolve(route_response());
+		await expect(rev).resolves.toEqual({ ok: true });
 	});
 
 	it("reports revalidation as a route update without a URL change", async () => {
@@ -243,18 +267,41 @@ describe("revalidate redirects", () => {
 		expect(commit).toHaveBeenCalled();
 	});
 
-	it("follows hard redirect via hard_redirect", async () => {
-		const { core, hard_redirect } = await setup();
+	it("drops stale build skew responses by default", async () => {
+		const on_build_skew = vi.fn();
+		const { core, hard_redirect } = await setup({
+			init: { onBuildSkewDetected: on_build_skew },
+		});
 		const { call, wait_for } = mock_fetch();
 
-		void core.revalidate();
+		const rev = core.revalidate();
 		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
 		await wait_for(1);
-		call(0).resolve(redirect_response({ [X_VORMA_RELOAD]: "/hard" }));
+		call(0).resolve(
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_VORMA_BUILD_SKEW]: "1",
+			}),
+		);
 		await vi.advanceTimersByTimeAsync(0);
 
-		expect(hard_redirect).toHaveBeenCalledWith(
-			expect.stringContaining("/hard"),
+		await expect(rev).resolves.toEqual({
+			ok: false,
+			reason: "build_skew",
+		});
+		expect(hard_redirect).not.toHaveBeenCalled();
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "dropResponse",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					trigger: "revalidation",
+					revalidationReason: "manual",
+					requestedHref: `${window.location.origin}/`,
+				}),
+			}),
 		);
 	});
 

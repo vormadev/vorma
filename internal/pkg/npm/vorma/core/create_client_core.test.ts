@@ -15,6 +15,7 @@ import {
 	setup,
 	tick,
 } from "./___ccc_test_helpers.ts";
+import { BUILD_ID_HEADER, X_VORMA_BUILD_SKEW } from "./constants.ts";
 import {
 	REVALIDATION_DEBOUNCE_MS,
 	apply_scroll,
@@ -1625,7 +1626,7 @@ describe("client loaders", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("build ID", () => {
-	it("extracts build ID from response header", async () => {
+	it("keeps active build ID stable when a route response has a newer build", async () => {
 		seed_payload({ ClientBuildID: "build-1" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -1648,10 +1649,10 @@ describe("build ID", () => {
 
 		await core.navigate("/page");
 
-		expect(core.getClientBuildID()).toBe("build-2");
+		expect(core.getClientBuildID()).toBe("build-1");
 	});
 
-	it("fires onClientBuildIDChange on change", async () => {
+	it("fires onBuildSkewDetected when a route response has a newer build", async () => {
 		seed_payload({ ClientBuildID: "build-1" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -1666,8 +1667,8 @@ describe("build ID", () => {
 		}
 		const core = core_res.val;
 
-		const on_change = vi.fn();
-		await core.init({ onClientBuildIDChange: on_change });
+		const on_build_skew = vi.fn();
+		await core.init({ onBuildSkewDetected: on_build_skew });
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({}, "build-2"),
@@ -1675,7 +1676,29 @@ describe("build ID", () => {
 
 		await core.navigate("/page");
 
-		expect(on_change).toHaveBeenCalledWith("build-1", "build-2");
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "notifyOnly",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					trigger: "navigation",
+					requestedHref: `${window.location.origin}/page`,
+					status: 200,
+					ok: true,
+				}),
+				currentRouteState: expect.objectContaining({
+					clientBuildID: "build-1",
+					href: `${window.location.origin}/`,
+				}),
+				currentWorkState: expect.objectContaining({
+					navigation: expect.objectContaining({
+						href: `${window.location.origin}/page`,
+					}),
+				}),
+			}),
+		);
 	});
 
 	it("does not fire notification when build ID is same", async () => {
@@ -1693,8 +1716,8 @@ describe("build ID", () => {
 		}
 		const core = core_res.val;
 
-		const on_change = vi.fn();
-		await core.init({ onClientBuildIDChange: on_change });
+		const on_build_skew = vi.fn();
+		await core.init({ onBuildSkewDetected: on_build_skew });
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({}, "build-1"),
@@ -1702,7 +1725,7 @@ describe("build ID", () => {
 
 		await core.navigate("/page");
 
-		expect(on_change).not.toHaveBeenCalled();
+		expect(on_build_skew).not.toHaveBeenCalled();
 	});
 });
 
@@ -2144,6 +2167,56 @@ describe("focus-triggered revalidation", () => {
 		await vi.advanceTimersByTimeAsync(100);
 
 		expect(globalThis.fetch).toHaveBeenCalled();
+	});
+
+	it("reports window focus as the build skew revalidation reason", async () => {
+		vi.useFakeTimers();
+		seed_payload();
+		const commit = vi.fn();
+		const on_build_skew = vi.fn();
+		const core_res = create_client_core(
+			{ actionsMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		await core.init({
+			onBuildSkewDetected: on_build_skew,
+			revalidateOnWindowFocus: { staleTimeMS: 100 },
+		});
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValue(
+			new Response("", {
+				headers: {
+					[BUILD_ID_HEADER]: "build-2",
+					[X_VORMA_BUILD_SKEW]: "1",
+				},
+			}),
+		);
+
+		await vi.advanceTimersByTimeAsync(100);
+		window.dispatchEvent(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100 + REVALIDATION_DEBOUNCE_MS);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				defaultBehavior: "dropResponse",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					trigger: "revalidation",
+					revalidationReason: "windowFocus",
+				}),
+			}),
+		);
 	});
 
 	it("does not fire when stale time has not elapsed", async () => {
@@ -3509,10 +3582,10 @@ describe("stale navigation side effects", () => {
 		}
 		const core = core_res.val;
 
-		const build_changes: Array<{ prev: string; next: string }> = [];
+		const build_skews: string[] = [];
 		await core.init({
-			onClientBuildIDChange: (prev, next) => {
-				build_changes.push({ prev, next });
+			onBuildSkewDetected: (event) => {
+				build_skews.push(event.serverBuildID);
 			},
 		});
 		commit.mockClear();
@@ -3539,7 +3612,7 @@ describe("stale navigation side effects", () => {
 		await core.navigate("/winner-page");
 
 		expect(document.title).toBe("Winner");
-		expect(core.getClientBuildID()).toBe("winner-build");
+		expect(core.getClientBuildID()).toBe("build-1");
 
 		resolve_stale(
 			route_response(
@@ -3554,15 +3627,15 @@ describe("stale navigation side effects", () => {
 		await tick();
 
 		expect(document.title).toBe("Winner");
-		expect(core.getClientBuildID()).toBe("winner-build");
+		expect(core.getClientBuildID()).toBe("build-1");
 		expect(
 			document.head.querySelector(
 				'link[data-vorma-css-bundle="/stale.css"]',
 			),
 		).toBeNull();
 		expect(
-			build_changes.some((c) => {
-				return c.next === "stale-build";
+			build_skews.some((server_build_id) => {
+				return server_build_id === "stale-build";
 			}),
 		).toBe(false);
 	});
@@ -3627,7 +3700,7 @@ describe("stale navigation side effects", () => {
 			await revalidation;
 
 			expect(document.title).toBe("Winner");
-			expect(core.getClientBuildID()).toBe("winner-build");
+			expect(core.getClientBuildID()).toBe("build-1");
 			expect(commit).toHaveBeenCalledTimes(1);
 
 			resolve_revalidation(
@@ -3642,7 +3715,7 @@ describe("stale navigation side effects", () => {
 			await tick();
 
 			expect(document.title).toBe("Winner");
-			expect(core.getClientBuildID()).toBe("winner-build");
+			expect(core.getClientBuildID()).toBe("build-1");
 			expect(commit).toHaveBeenCalledTimes(1);
 		} finally {
 			vi.useRealTimers();

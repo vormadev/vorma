@@ -10,42 +10,76 @@ export * from "@antithesishq/bombadil/defaults";
 
 type FixtureState = {
 	title: string;
-	rootCount: number;
-	dataScriptCount: number;
-	dataScriptParses: boolean;
-	shellCount: number;
+	root_count: number;
+	data_script_count: number;
+	data_script_parses: boolean;
+	shell_count: number;
 	variant: string | null;
+	route_deployment: string;
+	client_build_tag: string;
+	switch_result: string;
+	expected_deployment: string;
+	expected_operation: string;
 	pathname: string;
-	searchN: number | null;
-	searchDelayMS: number | null;
-	currentHrefText: string;
-	locationHref: string;
-	probeHref: string | null;
-	probeReady: boolean;
-	renderedRoute: string | null;
-	counterValueText: string;
-	countActionNextText: string;
-	slowDelayText: string;
-	itemID: string | null;
-	clientID: string | null;
-	clientServerIDText: string;
-	clientServerStampText: string;
-	clientLoaderIDText: string;
-	clientLoaderTriggerText: string;
-	clientLoaderStampText: string;
-	nestedLayoutCount: number;
-	nestedSection: string | null;
-	nestedDetailID: string | null;
-	nestedDetailSectionText: string;
-	echoOutput: string;
-	errorText: string;
-	pendingHref: string;
-	revalidationStatus: string;
-	prefetchHref: string;
-	submissionCount: number;
-	historyBackCount: number;
-	historyForwardCount: number;
-	duplicateCSSHref: string | null;
+	search_n: number | null;
+	search_delay_ms: number | null;
+	current_href_text: string;
+	location_href: string;
+	probe_href: string | null;
+	route_client_build_id: string | null;
+	probe_ready: boolean;
+	rendered_route: string | null;
+	counter_value_text: string;
+	count_action_next_text: string;
+	slow_delay_text: string;
+	item_id: string | null;
+	client_id: string | null;
+	client_server_id_text: string;
+	client_server_stamp_text: string;
+	client_loader_id_text: string;
+	client_loader_trigger_text: string;
+	client_loader_stamp_text: string;
+	echo_operation: string;
+	nested_layout_count: number;
+	nested_section: string | null;
+	nested_detail_id: string | null;
+	nested_detail_section_text: string;
+	echo_output: string;
+	error_text: string;
+	pending_href: string;
+	revalidation_status: string;
+	prefetch_href: string;
+	submission_count: number;
+	build_skew_detections: number;
+	action_build_skew_detections: number;
+	query_build_skew_detections: number;
+	mutation_build_skew_detections: number;
+	failed_action_build_skew_detections: number;
+	manual_revalidation_build_skew_detections: number;
+	last_build_skew_server_id: string | null;
+	last_build_skew_active_client_id: string | null;
+	last_build_skew_default_behavior: string | null;
+	last_build_skew_response_kind: string | null;
+	last_build_skew_response_trigger: string | null;
+	last_build_skew_action_kind: string | null;
+	last_build_skew_revalidation_reason: string | null;
+	last_build_skew_requested_href: string | null;
+	last_build_skew_status: number | null;
+	last_build_skew_ok: boolean | null;
+	last_build_skew_current_route_href: string | null;
+	last_build_skew_current_work_navigation_href: string | null;
+	last_build_skew_current_work_revalidation_status: string | null;
+	last_build_skew_current_work_prefetch_href: string | null;
+	last_build_skew_current_work_submission_count: number | null;
+	last_action_build_skew_server_id: string | null;
+	last_action_build_skew_active_client_id: string | null;
+	last_action_build_skew_default_behavior: string | null;
+	last_action_build_skew_action_kind: string | null;
+	last_action_build_skew_status: number | null;
+	last_action_build_skew_ok: boolean | null;
+	history_back_count: number;
+	history_forward_count: number;
+	duplicate_css_href: string | null;
 };
 
 type ClickTarget = {
@@ -68,7 +102,7 @@ const fixture_state = extract((state): FixtureState => {
 		}
 	}
 
-	const probe = state.window.__vormaBombadil ?? null;
+	const probe = state.window.__vorma_bombadil ?? null;
 	const css_hrefs = Array.from(
 		state.document.querySelectorAll(
 			"link[data-vorma-css-bundle], link[data-vorma-css-preload]",
@@ -88,102 +122,189 @@ const fixture_state = extract((state): FixtureState => {
 
 	return {
 		title: state.document.title,
-		rootCount: state.document.querySelectorAll("#vorma-root").length,
-		dataScriptCount: data_scripts.length,
-		dataScriptParses: data_script_parses,
-		shellCount: state.document.querySelectorAll("[data-bmb-shell]").length,
+		root_count: state.document.querySelectorAll("#vorma-root").length,
+		data_script_count: data_scripts.length,
+		data_script_parses: data_script_parses,
+		shell_count: state.document.querySelectorAll("[data-bmb-shell]").length,
 		variant:
 			state.document
 				.querySelector("[data-bmb-shell]")
 				?.getAttribute("data-bmb-shell") ?? null,
+		route_deployment:
+			state.document.querySelector("[data-bmb-route-deployment]")
+				?.textContent ?? "",
+		client_build_tag:
+			state.document.querySelector("[data-bmb-client-build-tag]")
+				?.textContent ?? "",
+		switch_result:
+			state.document.querySelector("[data-bmb-switch-result]")
+				?.textContent ?? "",
+		expected_deployment:
+			state.document.querySelector("[data-bmb-expected-deployment]")
+				?.textContent ?? "",
+		expected_operation:
+			state.document.querySelector("[data-bmb-expected-operation]")
+				?.textContent ?? "",
 		pathname: url.pathname,
-		searchN: Number.isFinite(search_n) ? search_n : null,
-		searchDelayMS: Number.isFinite(search_delay_ms)
+		search_n: Number.isFinite(search_n) ? search_n : null,
+		search_delay_ms: Number.isFinite(search_delay_ms)
 			? search_delay_ms
 			: null,
-		currentHrefText:
+		current_href_text:
 			state.document.querySelector("[data-bmb-current-href]")
 				?.textContent ?? "",
-		locationHref: state.window.location.href,
-		probeHref: probe?.route?.href ?? null,
-		probeReady: probe?.route !== null && probe?.work !== null,
-		renderedRoute:
+		location_href: state.window.location.href,
+		probe_href: probe?.route?.href ?? null,
+		route_client_build_id: probe?.route?.client_build_id ?? null,
+		probe_ready:
+			probe !== null && probe.route !== null && probe.work !== null,
+		rendered_route:
 			state.document
 				.querySelector("[data-bmb-route]")
 				?.getAttribute("data-bmb-route") ?? null,
-		counterValueText:
+		counter_value_text:
 			state.document.querySelector("[data-bmb-counter-value]")
 				?.textContent ?? "",
-		countActionNextText:
+		count_action_next_text:
 			state.document.querySelector("[data-bmb-count-action-next]")
 				?.textContent ?? "",
-		slowDelayText:
+		slow_delay_text:
 			state.document.querySelector("[data-bmb-slow-delay]")
 				?.textContent ?? "",
-		itemID:
+		item_id:
 			state.document
 				.querySelector("[data-bmb-item-id]")
 				?.getAttribute("data-bmb-item-id") ?? null,
-		clientID:
+		client_id:
 			state.document
 				.querySelector("[data-bmb-client-id]")
 				?.getAttribute("data-bmb-client-id") ?? null,
-		clientServerIDText:
+		client_server_id_text:
 			state.document.querySelector("[data-bmb-client-server-id]")
 				?.textContent ?? "",
-		clientServerStampText:
+		client_server_stamp_text:
 			state.document.querySelector("[data-bmb-client-server-stamp]")
 				?.textContent ?? "",
-		clientLoaderIDText:
+		client_loader_id_text:
 			state.document.querySelector("[data-bmb-client-loader-id]")
 				?.textContent ?? "",
-		clientLoaderTriggerText:
+		client_loader_trigger_text:
 			state.document.querySelector("[data-bmb-client-loader-trigger]")
 				?.textContent ?? "",
-		clientLoaderStampText:
+		client_loader_stamp_text:
 			state.document.querySelector("[data-bmb-client-loader-stamp]")
 				?.textContent ?? "",
-		nestedLayoutCount: state.document.querySelectorAll(
+		echo_operation:
+			state.document.querySelector("[data-bmb-echo-operation]")
+				?.textContent ?? "",
+		nested_layout_count: state.document.querySelectorAll(
 			"[data-bmb-nested-layout]",
 		).length,
-		nestedSection:
+		nested_section:
 			state.document
 				.querySelector("[data-bmb-nested-section]")
 				?.getAttribute("data-bmb-nested-section") ?? null,
-		nestedDetailID:
+		nested_detail_id:
 			state.document
 				.querySelector("[data-bmb-nested-detail-id]")
 				?.getAttribute("data-bmb-nested-detail-id") ?? null,
-		nestedDetailSectionText:
+		nested_detail_section_text:
 			state.document.querySelector("[data-bmb-nested-detail-section]")
 				?.textContent ?? "",
-		echoOutput:
+		echo_output:
 			state.document.querySelector("[data-bmb-echo-output]")
 				?.textContent ?? "",
-		errorText:
+		error_text:
 			state.document.querySelector("[data-bmb-error]")?.textContent ?? "",
-		pendingHref: probe?.work?.navigationHref ?? "",
-		revalidationStatus: probe?.work?.revalidationStatus ?? "",
-		prefetchHref: probe?.work?.prefetchHref ?? "",
-		submissionCount: probe?.work?.submissionCount ?? 0,
-		historyBackCount: state.navigationHistory.back.length,
-		historyForwardCount: state.navigationHistory.forward.length,
-		duplicateCSSHref: duplicate_css_href,
+		pending_href: probe?.work?.navigation_href ?? "",
+		revalidation_status: probe?.work?.revalidation_status ?? "",
+		prefetch_href: probe?.work?.prefetch_href ?? "",
+		submission_count: probe?.work?.submission_count ?? 0,
+		build_skew_detections: probe?.build_skew_detections ?? 0,
+		action_build_skew_detections: probe?.action_build_skew_detections ?? 0,
+		query_build_skew_detections: probe?.query_build_skew_detections ?? 0,
+		mutation_build_skew_detections:
+			probe?.mutation_build_skew_detections ?? 0,
+		failed_action_build_skew_detections:
+			probe?.failed_action_build_skew_detections ?? 0,
+		manual_revalidation_build_skew_detections:
+			probe?.manual_revalidation_build_skew_detections ?? 0,
+		last_build_skew_server_id: probe?.last_build_skew_server_id ?? null,
+		last_build_skew_active_client_id:
+			probe?.last_build_skew?.active_client_build_id ?? null,
+		last_build_skew_default_behavior:
+			probe?.last_build_skew?.default_behavior ?? null,
+		last_build_skew_response_kind:
+			probe?.last_build_skew?.response_kind ?? null,
+		last_build_skew_response_trigger:
+			probe?.last_build_skew?.response_trigger ?? null,
+		last_build_skew_action_kind:
+			probe?.last_build_skew?.action_kind ?? null,
+		last_build_skew_revalidation_reason:
+			probe?.last_build_skew?.revalidation_reason ?? null,
+		last_build_skew_requested_href:
+			probe?.last_build_skew?.requested_href ?? null,
+		last_build_skew_status: probe?.last_build_skew?.status ?? null,
+		last_build_skew_ok: probe?.last_build_skew?.ok ?? null,
+		last_build_skew_current_route_href:
+			probe?.last_build_skew?.current_route_href ?? null,
+		last_build_skew_current_work_navigation_href:
+			probe?.last_build_skew?.current_work_navigation_href ?? null,
+		last_build_skew_current_work_revalidation_status:
+			probe?.last_build_skew?.current_work_revalidation_status ?? null,
+		last_build_skew_current_work_prefetch_href:
+			probe?.last_build_skew?.current_work_prefetch_href ?? null,
+		last_build_skew_current_work_submission_count:
+			probe?.last_build_skew?.current_work_submission_count ?? null,
+		last_action_build_skew_server_id:
+			probe?.last_action_build_skew?.server_build_id ?? null,
+		last_action_build_skew_active_client_id:
+			probe?.last_action_build_skew?.active_client_build_id ?? null,
+		last_action_build_skew_default_behavior:
+			probe?.last_action_build_skew?.default_behavior ?? null,
+		last_action_build_skew_action_kind:
+			probe?.last_action_build_skew?.action_kind ?? null,
+		last_action_build_skew_status:
+			probe?.last_action_build_skew?.status ?? null,
+		last_action_build_skew_ok: probe?.last_action_build_skew?.ok ?? null,
+		history_back_count: state.navigationHistory.back.length,
+		history_forward_count: state.navigationHistory.forward.length,
+		duplicate_css_href: duplicate_css_href,
 	};
 });
 
 function is_settled_route() {
 	return (
-		fixture_state.current.probeHref !== null &&
-		fixture_state.current.probeHref ===
-			fixture_state.current.locationHref &&
-		fixture_state.current.currentHrefText ===
-			fixture_state.current.locationHref
+		fixture_state.current.probe_href !== null &&
+		fixture_state.current.probe_href ===
+			fixture_state.current.location_href &&
+		fixture_state.current.current_href_text ===
+			fixture_state.current.location_href
 	);
 }
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(Math.max(value, min), max);
+}
+
+function action_skew_kept_client_build_id(action_kind: string, ok: boolean) {
+	return (
+		fixture_state.current.route_client_build_id !== null &&
+		fixture_state.current.last_action_build_skew_server_id !== null &&
+		fixture_state.current.last_action_build_skew_active_client_id !==
+			null &&
+		fixture_state.current.last_action_build_skew_default_behavior ===
+			"notifyOnly" &&
+		fixture_state.current.last_action_build_skew_action_kind ===
+			action_kind &&
+		fixture_state.current.last_action_build_skew_ok === ok &&
+		fixture_state.current.route_client_build_id ===
+			fixture_state.current.last_action_build_skew_active_client_id &&
+		fixture_state.current.route_client_build_id !==
+			fixture_state.current.last_action_build_skew_server_id &&
+		fixture_state.current.client_build_tag !==
+			`client-${fixture_state.current.expected_deployment}`
+	);
 }
 
 const click_targets = extract((state): ClickTarget[] => {
@@ -212,11 +333,11 @@ const click_targets = extract((state): ClickTarget[] => {
 
 export const vorma_fixture_is_mounted = always(() => {
 	return (
-		fixture_state.current.rootCount === 1 &&
-		fixture_state.current.dataScriptCount === 1 &&
-		fixture_state.current.dataScriptParses &&
-		fixture_state.current.shellCount === 1 &&
-		fixture_state.current.probeReady
+		fixture_state.current.root_count === 1 &&
+		fixture_state.current.data_script_count === 1 &&
+		fixture_state.current.data_script_parses &&
+		fixture_state.current.shell_count === 1 &&
+		fixture_state.current.probe_ready
 	);
 });
 
@@ -225,41 +346,187 @@ export const vorma_has_title = always(() => {
 });
 
 export const vorma_probe_matches_browser_location = always(() => {
-	const probe_href = fixture_state.current.probeHref;
+	const probe_href = fixture_state.current.probe_href;
 	if (probe_href === null) {
 		return false;
 	}
-	return probe_href === fixture_state.current.locationHref;
+	return probe_href === fixture_state.current.location_href;
 });
 
 export const vorma_rendered_route_matches_probe = always(() => {
-	const probe_href = fixture_state.current.probeHref;
+	const probe_href = fixture_state.current.probe_href;
 	if (probe_href === null) {
 		return false;
 	}
-	return fixture_state.current.currentHrefText === probe_href;
+	return fixture_state.current.current_href_text === probe_href;
 });
 
 export const vorma_has_no_duplicate_css_links = always(() => {
-	return fixture_state.current.duplicateCSSHref === null;
+	return fixture_state.current.duplicate_css_href === null;
 });
+
+export const vorma_deployment_marker_is_known = always(() => {
+	return (
+		fixture_state.current.route_deployment === "from-A" ||
+		fixture_state.current.route_deployment === "from-B"
+	);
+});
+
+export const vorma_client_build_tag_is_known = always(() => {
+	return (
+		fixture_state.current.client_build_tag === "client-A" ||
+		fixture_state.current.client_build_tag === "client-B"
+	);
+});
+
+export const vorma_switch_result_is_known = always(() => {
+	return (
+		fixture_state.current.switch_result === "" ||
+		fixture_state.current.switch_result === "A" ||
+		fixture_state.current.switch_result === "B" ||
+		fixture_state.current.switch_result === "revalidated:ok" ||
+		fixture_state.current.switch_result === "revalidated:build_skew" ||
+		fixture_state.current.switch_result ===
+			"revalidated:max_retries_exhausted" ||
+		fixture_state.current.switch_result === "query:ok" ||
+		fixture_state.current.switch_result === "query:error" ||
+		fixture_state.current.switch_result === "mutation:ok" ||
+		fixture_state.current.switch_result === "mutation:error" ||
+		fixture_state.current.switch_result === "mutation-error:ok" ||
+		fixture_state.current.switch_result === "mutation-error:error"
+	);
+});
+
+export const vorma_build_skew_events_include_context = always(() => {
+	if (fixture_state.current.build_skew_detections === 0) {
+		return true;
+	}
+	return (
+		fixture_state.current.last_build_skew_server_id !== null &&
+		fixture_state.current.last_build_skew_active_client_id !== null &&
+		fixture_state.current.last_build_skew_default_behavior !== null &&
+		fixture_state.current.last_build_skew_response_kind !== null &&
+		fixture_state.current.last_build_skew_requested_href !== null &&
+		fixture_state.current.last_build_skew_status !== null &&
+		fixture_state.current.last_build_skew_ok !== null &&
+		fixture_state.current.last_build_skew_current_route_href !== null &&
+		fixture_state.current.last_build_skew_current_work_submission_count !==
+			null
+	);
+});
+
+export const vorma_switch_revalidation_detects_build_skew = always(
+	now(() => {
+		return (
+			fixture_state.current.expected_operation === "revalidate-pending"
+		);
+	}).implies(
+		eventually(() => {
+			return (
+				fixture_state.current
+					.manual_revalidation_build_skew_detections > 0 &&
+				fixture_state.current.expected_operation ===
+					"revalidate-build_skew" &&
+				fixture_state.current.switch_result === "revalidated:build_skew"
+			);
+		}).within(5, "seconds"),
+	),
+);
+
+export const vorma_switch_navigation_reaches_new_deployment = always(
+	now(() => {
+		return (
+			fixture_state.current.expected_operation === "navigate" &&
+			(fixture_state.current.expected_deployment === "A" ||
+				fixture_state.current.expected_deployment === "B")
+		);
+	}).implies(
+		eventually(() => {
+			return (
+				is_settled_route() &&
+				fixture_state.current.route_deployment ===
+					`from-${fixture_state.current.expected_deployment}` &&
+				fixture_state.current.client_build_tag ===
+					`client-${fixture_state.current.expected_deployment}`
+			);
+		}).within(5, "seconds"),
+	),
+);
+
+export const vorma_switch_query_detects_api_skew_without_adoption = always(
+	now(() => {
+		return (
+			fixture_state.current.expected_operation === "query-pending" &&
+			(fixture_state.current.expected_deployment === "A" ||
+				fixture_state.current.expected_deployment === "B")
+		);
+	}).implies(
+		eventually(() => {
+			return (
+				fixture_state.current.expected_operation === "query-ok" &&
+				fixture_state.current.query_build_skew_detections > 0 &&
+				action_skew_kept_client_build_id("query", true)
+			);
+		}).within(5, "seconds"),
+	),
+);
+
+export const vorma_switch_mutation_detects_api_skew_without_adoption = always(
+	now(() => {
+		return (
+			fixture_state.current.expected_operation === "mutation-pending" &&
+			(fixture_state.current.expected_deployment === "A" ||
+				fixture_state.current.expected_deployment === "B")
+		);
+	}).implies(
+		eventually(() => {
+			return (
+				fixture_state.current.expected_operation === "mutation-ok" &&
+				fixture_state.current.mutation_build_skew_detections > 0 &&
+				action_skew_kept_client_build_id("mutation", true)
+			);
+		}).within(5, "seconds"),
+	),
+);
+
+export const vorma_switch_failed_mutation_detects_api_skew_without_adoption =
+	always(
+		now(() => {
+			return (
+				fixture_state.current.expected_operation ===
+					"mutation-error-pending" &&
+				(fixture_state.current.expected_deployment === "A" ||
+					fixture_state.current.expected_deployment === "B")
+			);
+		}).implies(
+			eventually(() => {
+				return (
+					fixture_state.current.expected_operation ===
+						"mutation-error-error" &&
+					fixture_state.current.failed_action_build_skew_detections >
+						0 &&
+					action_skew_kept_client_build_id("mutation", false)
+				);
+			}).within(5, "seconds"),
+		),
+	);
 
 export const vorma_home_route_renders_home = always(() => {
 	if (!is_settled_route() || fixture_state.current.pathname !== "/") {
 		return true;
 	}
-	return fixture_state.current.renderedRoute === "home";
+	return fixture_state.current.rendered_route === "home";
 });
 
 export const vorma_counter_route_matches_loader_value = always(() => {
 	if (!is_settled_route() || fixture_state.current.pathname !== "/counter") {
 		return true;
 	}
-	const n = fixture_state.current.searchN ?? 0;
+	const n = fixture_state.current.search_n ?? 0;
 	const expected = String(clamp(n, -5, 5));
 	return (
-		fixture_state.current.renderedRoute === "counter" &&
-		fixture_state.current.counterValueText === expected
+		fixture_state.current.rendered_route === "counter" &&
+		fixture_state.current.counter_value_text === expected
 	);
 });
 
@@ -267,13 +534,13 @@ export const vorma_count_query_action_returns_clamped_value = always(() => {
 	if (
 		!is_settled_route() ||
 		fixture_state.current.pathname !== "/counter" ||
-		fixture_state.current.countActionNextText === ""
+		fixture_state.current.count_action_next_text === ""
 	) {
 		return true;
 	}
 	return (
-		fixture_state.current.countActionNextText === "-5" ||
-		fixture_state.current.countActionNextText === "5"
+		fixture_state.current.count_action_next_text === "-5" ||
+		fixture_state.current.count_action_next_text === "5"
 	);
 });
 
@@ -281,11 +548,11 @@ export const vorma_slow_route_matches_loader_delay = always(() => {
 	if (!is_settled_route() || fixture_state.current.pathname !== "/slow") {
 		return true;
 	}
-	const delay_ms = fixture_state.current.searchDelayMS ?? 0;
+	const delay_ms = fixture_state.current.search_delay_ms ?? 0;
 	const expected = String(clamp(delay_ms, 0, 250));
 	return (
-		fixture_state.current.renderedRoute === "slow" &&
-		fixture_state.current.slowDelayText === expected
+		fixture_state.current.rendered_route === "slow" &&
+		fixture_state.current.slow_delay_text === expected
 	);
 });
 
@@ -298,8 +565,8 @@ export const vorma_item_route_matches_url_param = always(() => {
 	}
 	const expected = fixture_state.current.pathname.slice("/items/".length);
 	return (
-		fixture_state.current.renderedRoute === "item" &&
-		fixture_state.current.itemID === expected
+		fixture_state.current.rendered_route === "item" &&
+		fixture_state.current.item_id === expected
 	);
 });
 
@@ -312,10 +579,10 @@ export const vorma_client_route_matches_url_param = always(() => {
 	}
 	const expected = fixture_state.current.pathname.slice("/client/".length);
 	return (
-		fixture_state.current.renderedRoute === "client" &&
-		fixture_state.current.clientID === expected &&
-		fixture_state.current.clientServerIDText === expected &&
-		fixture_state.current.clientLoaderIDText === expected
+		fixture_state.current.rendered_route === "client" &&
+		fixture_state.current.client_id === expected &&
+		fixture_state.current.client_server_id_text === expected &&
+		fixture_state.current.client_loader_id_text === expected
 	);
 });
 
@@ -327,9 +594,9 @@ export const vorma_client_route_has_client_loader_data = always(() => {
 		return true;
 	}
 	return (
-		fixture_state.current.clientServerStampText.trim().length > 0 &&
-		fixture_state.current.clientLoaderTriggerText.trim().length > 0 &&
-		fixture_state.current.clientLoaderStampText.trim().length > 0
+		fixture_state.current.client_server_stamp_text.trim().length > 0 &&
+		fixture_state.current.client_loader_trigger_text.trim().length > 0 &&
+		fixture_state.current.client_loader_stamp_text.trim().length > 0
 	);
 });
 
@@ -338,9 +605,9 @@ export const vorma_nested_index_renders_layout = always(() => {
 		return true;
 	}
 	return (
-		fixture_state.current.renderedRoute === "nested-index" &&
-		fixture_state.current.nestedLayoutCount === 1 &&
-		fixture_state.current.nestedSection === "nested"
+		fixture_state.current.rendered_route === "nested-index" &&
+		fixture_state.current.nested_layout_count === 1 &&
+		fixture_state.current.nested_section === "nested"
 	);
 });
 
@@ -356,11 +623,11 @@ export const vorma_nested_detail_renders_parent_and_leaf = always(() => {
 	const id_end = fixture_state.current.pathname.length - "/details".length;
 	const expected = fixture_state.current.pathname.slice(id_start, id_end);
 	return (
-		fixture_state.current.renderedRoute === "nested-detail" &&
-		fixture_state.current.nestedLayoutCount === 1 &&
-		fixture_state.current.nestedSection === "nested" &&
-		fixture_state.current.nestedDetailID === expected &&
-		fixture_state.current.nestedDetailSectionText === "nested"
+		fixture_state.current.rendered_route === "nested-detail" &&
+		fixture_state.current.nested_layout_count === 1 &&
+		fixture_state.current.nested_section === "nested" &&
+		fixture_state.current.nested_detail_id === expected &&
+		fixture_state.current.nested_detail_section_text === "nested"
 	);
 });
 
@@ -369,8 +636,8 @@ export const vorma_echo_route_has_output = always(() => {
 		return true;
 	}
 	return (
-		fixture_state.current.renderedRoute === "echo" &&
-		fixture_state.current.echoOutput.trim().length > 0
+		fixture_state.current.rendered_route === "echo" &&
+		fixture_state.current.echo_output.trim().length > 0
 	);
 });
 
@@ -379,8 +646,8 @@ export const vorma_fail_route_uses_error_boundary = always(() => {
 		return true;
 	}
 	return (
-		fixture_state.current.renderedRoute === "fail" &&
-		fixture_state.current.errorText.includes(
+		fixture_state.current.rendered_route === "fail" &&
+		fixture_state.current.error_text.includes(
 			"Fixture loader failed on purpose.",
 		)
 	);
@@ -388,15 +655,34 @@ export const vorma_fail_route_uses_error_boundary = always(() => {
 
 export const vorma_echo_submit_eventually_updates_output = always(
 	now(() => {
-		const last_action = fixture_state.current;
 		return (
-			last_action.pathname === "/echo" &&
-			last_action.renderedRoute === "echo" &&
-			last_action.submissionCount > 0
+			fixture_state.current.pathname === "/echo" &&
+			fixture_state.current.rendered_route === "echo" &&
+			fixture_state.current.echo_operation === "submit-pending"
 		);
 	}).implies(
 		eventually(() => {
-			return fixture_state.current.echoOutput === "hello";
+			return (
+				fixture_state.current.echo_operation === "submit-ok" &&
+				fixture_state.current.echo_output === "hello"
+			);
+		}).within(5, "seconds"),
+	),
+);
+
+export const vorma_echo_failed_submit_eventually_reports_error = always(
+	now(() => {
+		return (
+			fixture_state.current.pathname === "/echo" &&
+			fixture_state.current.rendered_route === "echo" &&
+			fixture_state.current.echo_operation === "fail-pending"
+		);
+	}).implies(
+		eventually(() => {
+			return (
+				fixture_state.current.echo_operation === "fail-error" &&
+				fixture_state.current.echo_output.trim().length > 0
+			);
 		}).within(5, "seconds"),
 	),
 );
@@ -404,18 +690,18 @@ export const vorma_echo_submit_eventually_updates_output = always(
 export const vorma_work_eventually_settles = always(
 	now(() => {
 		return (
-			fixture_state.current.pendingHref !== "" ||
-			fixture_state.current.revalidationStatus !== "" ||
-			fixture_state.current.prefetchHref !== "" ||
-			fixture_state.current.submissionCount > 0
+			fixture_state.current.pending_href !== "" ||
+			fixture_state.current.revalidation_status !== "" ||
+			fixture_state.current.prefetch_href !== "" ||
+			fixture_state.current.submission_count > 0
 		);
 	}).implies(
 		eventually(() => {
 			return (
-				fixture_state.current.pendingHref === "" &&
-				fixture_state.current.revalidationStatus === "" &&
-				fixture_state.current.prefetchHref === "" &&
-				fixture_state.current.submissionCount === 0
+				fixture_state.current.pending_href === "" &&
+				fixture_state.current.revalidation_status === "" &&
+				fixture_state.current.prefetch_href === "" &&
+				fixture_state.current.submission_count === 0
 			);
 		}).within(5, "seconds"),
 	),
@@ -423,8 +709,17 @@ export const vorma_work_eventually_settles = always(
 
 export const vorma_fixture_actions = actions(() => {
 	if (
+		fixture_state.current.pending_href !== "" ||
+		fixture_state.current.revalidation_status !== "" ||
+		fixture_state.current.submission_count > 0 ||
+		fixture_state.current.expected_operation.endsWith("-pending")
+	) {
+		return ["Wait"];
+	}
+
+	if (
 		fixture_state.current.pathname === "/counter" &&
-		fixture_state.current.countActionNextText === ""
+		fixture_state.current.count_action_next_text === ""
 	) {
 		const count_action_targets = click_targets.current.filter((target) => {
 			return target.name.startsWith("count-action-");
@@ -445,10 +740,10 @@ export const vorma_fixture_actions = actions(() => {
 	return [
 		"Wait",
 		...(is_settled_route() ? ["Reload" as const] : []),
-		...(fixture_state.current.historyBackCount > 0
+		...(fixture_state.current.history_back_count > 0
 			? ["Back" as const]
 			: []),
-		...(fixture_state.current.historyForwardCount > 0
+		...(fixture_state.current.history_forward_count > 0
 			? ["Forward" as const]
 			: []),
 		...click_targets.current.map((target) => {

@@ -23,7 +23,7 @@ export type ActionKind = "query" | "mutation";
 
 export type RevalidationResult =
 	| { ok: true }
-	| { ok: false; reason: "max_retries_exhausted" };
+	| { ok: false; reason: "build_skew" | "max_retries_exhausted" };
 
 export type RouteErrorState = {
 	idx: number;

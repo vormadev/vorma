@@ -1,5 +1,7 @@
 import { ui } from "../../route_factory.ts";
 
+declare const __BOMBADIL_CLIENT_BUILD_TAG__: string;
+
 type TextState = {
 	value: () => string;
 	set: (next: string) => void;
@@ -15,8 +17,15 @@ export const route_nested_pattern = "/nested";
 export const route_nested_detail_pattern = "/nested/:id/details";
 export const route_fail_pattern = "/fail";
 export const action_echo_pattern = "/echo";
+export const action_count_pattern = "/count";
+export const echo_action_fail_message = "__bombadil_fail__";
+export const route_counter_one_href = "/counter?n=1";
 export const route_nested_detail_alpha_href = "/nested/alpha/details";
 export const route_nested_detail_beta_href = "/nested/beta/details";
+export const switch_path = "/__bombadil/switch";
+export const expected_deployment_storage_key = "bombadil-expected-deployment";
+export const expected_operation_storage_key = "bombadil-expected-operation";
+export const client_build_tag = __BOMBADIL_CLIENT_BUILD_TAG__;
 
 export const nav_items = [
 	{ href: "/", key: "home", label: "Home" },
@@ -30,7 +39,6 @@ export const nav_items = [
 		key: "nested-alpha",
 		label: "Nested Alpha",
 	},
-	{ href: "/fail", key: "fail", label: "Fail" },
 ];
 
 export function h(tag: any, props: any, ...children: any[]) {
@@ -71,6 +79,16 @@ export function text_state(initial: string): TextState {
 		},
 		set: set_value,
 	};
+}
+
+export async function switch_deployment(to?: string): Promise<string> {
+	const url = new URL(switch_path, window.location.href);
+	if (to) {
+		url.searchParams.set("to", to);
+	}
+	const res = await fetch(url.pathname + url.search, { method: "POST" });
+	const body = await res.json();
+	return String(body.deployment ?? "");
 }
 
 export function counter_href(value: number) {

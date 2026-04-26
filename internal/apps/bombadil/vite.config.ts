@@ -7,7 +7,9 @@ import vorma from "vorma/vite";
 declare const process: { env: Record<string, string | undefined> };
 
 const variant_env_key = "VORMA_BOMBADIL_VARIANT";
+const deployment_env_key = "VORMA_BOMBADIL_DEPLOYMENT";
 const variant = process.env[variant_env_key];
+const deployment = process.env[deployment_env_key] ?? "A";
 
 function from_root(path: string) {
 	return new URL(path, import.meta.url).pathname;
@@ -27,6 +29,9 @@ function variant_plugin() {
 }
 
 export default defineConfig({
+	define: {
+		__BOMBADIL_CLIENT_BUILD_TAG__: JSON.stringify(`client-${deployment}`),
+	},
 	plugins: [variant_plugin(), vorma()],
 	resolve: {
 		alias: {

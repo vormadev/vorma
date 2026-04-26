@@ -121,6 +121,7 @@ export function deferred<T>() {
 /////////////////////////////////////////////////////////////////////
 
 export type FetchCall = {
+	init?: RequestInit;
 	url: string;
 	resolve: (r: Response) => void;
 	reject: (e: unknown) => void;
@@ -169,6 +170,7 @@ export function mock_fetch() {
 				);
 			}
 			calls.push({
+				init,
 				url:
 					input instanceof URL
 						? input.href
