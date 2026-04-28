@@ -506,16 +506,6 @@ func walk_root_with_state(
 	recurse_into_structure(label, v, ce, state)
 }
 
-// walk_value applies any discovered schema on v, then recurses into
-// its structure.
-func walk_value(
-	label string,
-	v reflect.Value,
-	ce *classified_errors,
-) {
-	walk_value_with_state(label, v, ce, new_walk_state())
-}
-
 func walk_value_with_state(
 	label string,
 	v reflect.Value,
@@ -613,7 +603,7 @@ func schematic_impl(v reflect.Value) (reflect.Value, bool) {
 	return reflectutil.Value{V: v}.InterfaceImpl(schematic_type)
 }
 
-var schematic_type = reflect.TypeOf((*Schematic)(nil)).Elem()
+var schematic_type = reflect.TypeFor[Schematic]()
 
 func schematic_target(impl reflect.Value) reflect.Value {
 	if impl.Kind() == reflect.Pointer {
@@ -1209,7 +1199,7 @@ func object_callback_arg(base reflect.Value, want reflect.Type) (reflect.Value, 
 	return reflect.Value{}, false
 }
 
-var error_type = reflect.TypeOf((*error)(nil)).Elem()
+var error_type = reflect.TypeFor[error]()
 
 /////////////////////////////////////////////////////////////////////
 /////// INTERNAL: RULE DISPATCH
@@ -1927,7 +1917,7 @@ func apply_slice(
 		)
 	}
 	if s.ElementSchema != nil {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			elem_label := fmt.Sprintf("%s[%d]", label, i)
 			apply_rule(elem_label, s.ElementSchema, base.Index(i), ce)
 		}

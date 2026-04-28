@@ -14,6 +14,7 @@ import (
 	"github.com/vormadev/vorma/internal/pkg/staticproc"
 	"github.com/vormadev/vorma/internal/pkg/vormarun"
 	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/kit/globset"
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
@@ -51,6 +52,9 @@ func to_cfg(v *vorma.Vorma) (*vorma_cfg, error) {
 	if _, err := cfg.__validate_pub_src_pattern(); err != nil {
 		return nil, fmt.Errorf("error with public static source pattern: %w", err)
 	}
+	if _, err := cfg.__validate_global_watch_patterns(); err != nil {
+		return nil, fmt.Errorf("error with global ignore patterns: %w", err)
+	}
 	if _, err := cfg.__validate_server_watch_patterns(); err != nil {
 		return nil, fmt.Errorf("error with server watch patterns: %w", err)
 	}
@@ -82,11 +86,18 @@ func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.V.Dist
 func (cfg vorma_cfg) ts_gen_out_file() string { return fsutil.SysNorm(cfg.V.TSGenConfig.OutFile) }
 
 func (cfg vorma_cfg) global_watch_exclude_patterns() []string {
+	x, _ := cfg.__validate_global_watch_patterns()
+	return x
+}
+func (cfg vorma_cfg) __validate_global_watch_patterns() ([]string, error) {
 	patterns := make([]string, len(cfg.V.DevWatchConfig.GlobalIgnore))
 	for i, p := range cfg.V.DevWatchConfig.GlobalIgnore {
-		patterns[i] = fsutil.SysNorm(p)
+		patterns[i] = strings.TrimSpace(p)
 	}
-	return patterns
+	if _, err := globset.Compile(patterns); err != nil {
+		return nil, err
+	}
+	return patterns, nil
 }
 
 func (cfg vorma_cfg) server_entry() string { return fsutil.SysNorm(cfg.V.ServerEntry) }
@@ -101,11 +112,13 @@ func (cfg vorma_cfg) server_watch_patterns() []string {
 func (cfg vorma_cfg) __validate_server_watch_patterns() ([]string, error) {
 	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeRecompileGo))
 	for i, p := range cfg.V.DevWatchConfig.OnChangeRecompileGo {
-		is_valid := doublestar.ValidatePathPattern(p)
-		if !is_valid {
-			return nil, fmt.Errorf("invalid server watch pattern: %s", p)
-		}
-		patterns[i] = fsutil.SysNorm(p)
+		patterns[i] = strings.TrimSpace(p)
+	}
+	if len(patterns) == 0 {
+		patterns = []string{"**/*.go"}
+	}
+	if _, err := globset.Compile(patterns); err != nil {
+		return nil, err
 	}
 	return patterns, nil
 }
@@ -117,11 +130,10 @@ func (cfg vorma_cfg) client_revalidate_on_change_patterns() []string {
 func (cfg vorma_cfg) __validate_client_revalidate_on_change_patterns() ([]string, error) {
 	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeClientRevalidate))
 	for i, p := range cfg.V.DevWatchConfig.OnChangeClientRevalidate {
-		is_valid := doublestar.ValidatePathPattern(p)
-		if !is_valid {
-			return nil, fmt.Errorf("invalid server watch pattern: %s", p)
-		}
-		patterns[i] = fsutil.SysNorm(p)
+		patterns[i] = strings.TrimSpace(p)
+	}
+	if _, err := globset.Compile(patterns); err != nil {
+		return nil, err
 	}
 	return patterns, nil
 }
@@ -207,21 +219,12 @@ func (cfg vorma_cfg) matches_pub_src(p string) bool {
 	return doublestar.PathMatchUnvalidated(cfg.pub_src_pattern(), p)
 }
 
-func (cfg vorma_cfg) matches_server_watch(p string) bool {
-	for _, pattern := range cfg.server_watch_patterns() {
-		if doublestar.PathMatchUnvalidated(pattern, p) {
-			return true
-		}
+func (cfg vorma_cfg) watch_relative_path(p string) string {
+	rel_path, err := filepath.Rel(cfg.watch_root(), p)
+	if err != nil {
+		return p
 	}
-	return false
-}
-func (cfg vorma_cfg) matches_client_revalidate_on_change(p string) bool {
-	for _, pattern := range cfg.client_revalidate_on_change_patterns() {
-		if doublestar.PathMatchUnvalidated(pattern, p) {
-			return true
-		}
-	}
-	return false
+	return rel_path
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -399,6 +402,7 @@ func (cfg vorma_cfg) run_vite_server_cmd(
 ) *exec.Cmd {
 	args := append(cfg.js_package_manager_cmd_base(),
 		"vite",
+		"--host", dev_loopback_host,
 		"--port", fmt.Sprintf("%d", vite_port),
 		"--clearScreen", "false",
 		"--strictPort", "true",

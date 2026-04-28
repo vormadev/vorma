@@ -157,7 +157,7 @@ func TestDiscovery_NilInterfaceSkipped(t *testing.T) {
 func TestDiscovery_DeeplyWrappedPointerStillDiscovers(t *testing.T) {
 	e := wrapped_email("  foo@BAR.com  ")
 	var v any = &e
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		wrap := v
 		v = &wrap
 	}
@@ -173,7 +173,7 @@ func TestDiscovery_DeeplyWrappedPointerStillDiscovers(t *testing.T) {
 func TestDiscovery_DeeplyWrappedBoxedValueStillDiscovers(t *testing.T) {
 	var boxed any = wrapped_email("  foo@BAR.com  ")
 	var v any = &boxed
-	for i := 0; i < 64; i++ {
+	for range 64 {
 		wrap := v
 		v = &wrap
 	}

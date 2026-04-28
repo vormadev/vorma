@@ -261,7 +261,7 @@ func TestSchemaFromValueRootPointer(t *testing.T) {
 
 func TestSchemaFromValueNil(t *testing.T) {
 	_, err := SchemaFromValue(nil)
-	if !errors.Is(err, SchemaNilValueError) {
+	if !errors.Is(err, ErrNilValueInSchema) {
 		t.Fatalf("expected SchemaNilValueError, got %v", err)
 	}
 }

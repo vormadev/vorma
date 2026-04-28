@@ -353,7 +353,7 @@ func (tc property_boxed_root_object_case) direct_outcome(
 	err error,
 ) property_boxed_root_object_outcome {
 	outcome := property_boxed_root_object_outcome{
-		value_type: reflect.TypeOf(value).String(),
+		value_type: reflect.TypeFor[property_boxed_root_object_form]().String(),
 		snapshot:   value,
 	}
 	return outcome.with_error(err)
@@ -378,7 +378,7 @@ func (tc property_boxed_root_array_case) direct_outcome(
 	err error,
 ) property_boxed_root_array_outcome {
 	outcome := property_boxed_root_array_outcome{
-		value_type: reflect.TypeOf(value).String(),
+		value_type: reflect.TypeFor[[3]string]().String(),
 		snapshot:   value,
 	}
 	return outcome.with_error(err)

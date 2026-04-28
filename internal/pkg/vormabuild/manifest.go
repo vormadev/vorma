@@ -38,7 +38,8 @@ func (rs *run_state) write_manifest() error {
 	if rs.is_dev {
 		var to_url = func(p string) string {
 			return fmt.Sprintf(
-				"http://localhost:%d/%s",
+				"http://%s:%d/%s",
+				dev_loopback_host,
 				vite_server_port,
 				filepath.ToSlash(p),
 			)

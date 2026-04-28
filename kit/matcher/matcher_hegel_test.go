@@ -605,31 +605,22 @@ func (c property_pattern_catalog) draw_case(
 	max_patterns int,
 	max_path_segments int,
 ) property_route_case {
+	path_segment_count := hegel.Draw(ht, hegel.Integers(0, max_path_segments))
+	path_segments := make([]string, path_segment_count)
+	for i := range path_segments {
+		path_segments[i] = hegel.Draw(ht, hegel.SampledFrom(property_path_segments))
+	}
+
 	return property_route_case{
-		catalog: c,
-		pattern_indexes: hegel.Draw(
-			ht,
-			hegel.Lists(
-				hegel.Integers(0, len(c)-1),
-			).MaxSize(max_patterns),
-		),
-		path_segments: hegel.Draw(
-			ht,
-			hegel.Lists(
-				hegel.SampledFrom(property_path_segments),
-			).MaxSize(max_path_segments),
-		),
-		trailing_slash: hegel.Draw(ht, hegel.Booleans()),
+		catalog:         c,
+		pattern_indexes: c.draw_indexes(ht, max_patterns),
+		path_segments:   path_segments,
+		trailing_slash:  hegel.Draw(ht, hegel.Booleans()),
 	}
 }
 
 func (c property_pattern_catalog) draw_patterns(ht *hegel.T, max_patterns int) []string {
-	indexes := hegel.Draw(
-		ht,
-		hegel.Lists(
-			hegel.Integers(0, len(c)-1),
-		).MaxSize(max_patterns),
-	)
+	indexes := c.draw_indexes(ht, max_patterns)
 	index_seen := make(map[int]bool, len(indexes))
 	patterns := make([]string, 0, len(indexes))
 	for _, idx := range indexes {
@@ -640,6 +631,15 @@ func (c property_pattern_catalog) draw_patterns(ht *hegel.T, max_patterns int) [
 		patterns = append(patterns, c[idx])
 	}
 	return patterns
+}
+
+func (c property_pattern_catalog) draw_indexes(ht *hegel.T, max_patterns int) []int {
+	index_count := hegel.Draw(ht, hegel.Integers(0, max_patterns))
+	indexes := make([]int, index_count)
+	for i := range indexes {
+		indexes[i] = hegel.Draw(ht, hegel.Integers(0, len(c)-1))
+	}
+	return indexes
 }
 
 func (property_generated_pattern_space) draw_case(
@@ -1128,13 +1128,6 @@ func (tc property_route_case) path() string {
 		path += "/"
 	}
 	return path
-}
-
-func (tc property_route_case) actual_match_with_order(
-	opts *Options,
-	order property_registration_order,
-) (*BestMatch, bool) {
-	return tc.actual_match_with_order_and_source_index(opts, "", order)
 }
 
 func (tc property_route_case) actual_match_with_order_and_source_index(
@@ -1659,10 +1652,6 @@ func (p property_model_pattern_string) model_with_options(
 	}
 }
 
-func (p property_model_pattern_string) normalized() string {
-	return p.normalized_with_options(&Options{})
-}
-
 func (p property_model_pattern_string) normalized_with_options(opts *Options) string {
 	if p == "" {
 		return ""
@@ -2024,8 +2013,8 @@ func (p property_model_path_string) segments() []string {
 		return []string{""}
 	}
 	path = strings.TrimPrefix(path, "/")
-	if strings.HasSuffix(path, "/") {
-		path = strings.TrimSuffix(path, "/")
+	if before, ok := strings.CutSuffix(path, "/"); ok {
+		path = before
 		return append(strings.Split(path, "/"), "")
 	}
 	return strings.Split(path, "/")

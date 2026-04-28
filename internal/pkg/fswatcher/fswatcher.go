@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/kit/globset"
 	"github.com/vormadev/vorma/kit/set"
 )
 
@@ -56,7 +56,7 @@ type Watcher struct {
 	mu                sync.Mutex
 	watcher           *fsnotify.Watcher
 	watch_root        string
-	ignore_patterns   []string
+	ignore_set        *globset.Set
 	debounce_duration time.Duration
 	logger            *slog.Logger
 	on_add_path       func(path string)
@@ -81,9 +81,14 @@ func NewWatcher(opts ...WatcherOptions) *Watcher {
 		o.Logger = colorlog.New("Watcher")
 	}
 
+	ignore_set, err := globset.Compile(o.IgnorePatterns)
+	if err != nil {
+		panic("[Watcher.NewWatcher]: invalid ignore pattern: " + err.Error())
+	}
+
 	return &Watcher{
 		watch_root:        o.WatchRoot,
-		ignore_patterns:   o.IgnorePatterns,
+		ignore_set:        ignore_set,
 		debounce_duration: o.DebounceDuration,
 		logger:            o.Logger,
 		on_add_path:       o.OnAddPath,
@@ -304,10 +309,14 @@ func (w *Watcher) reconcile(fw *fsnotify.Watcher) error {
 }
 
 func (w *Watcher) is_ignored(path string) bool {
-	for _, pattern := range w.ignore_patterns {
-		if doublestar.PathMatchUnvalidated(fsutil.SysNorm(pattern), fsutil.SysNorm(path)) {
-			return true
-		}
+	if w.ignore_set == nil {
+		return false
 	}
-	return false
+
+	rel_path, err := filepath.Rel(w.watch_root, path)
+	if err != nil {
+		rel_path = path
+	}
+
+	return w.ignore_set.Match(rel_path)
 }

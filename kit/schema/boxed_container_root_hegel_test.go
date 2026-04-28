@@ -3,6 +3,7 @@ package schema_test
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 	"strings"
@@ -267,9 +268,7 @@ func (tc property_boxed_root_map_case) direct_value() map[string]string {
 		return nil
 	}
 	value := make(map[string]string, len(tc.entries))
-	for key, entry_value := range tc.entries {
-		value[key] = entry_value
-	}
+	maps.Copy(value, tc.entries)
 	return value
 }
 
@@ -334,7 +333,7 @@ func (tc property_boxed_root_slice_case) direct_outcome(
 	err error,
 ) property_boxed_container_outcome {
 	outcome := property_boxed_container_outcome{
-		value_type: reflect.TypeOf(value).String(),
+		value_type: reflect.TypeFor[[]string]().String(),
 		value_text: tc.format_slice(value),
 	}
 	return outcome.with_error(err)
@@ -359,7 +358,7 @@ func (tc property_boxed_root_map_case) direct_outcome(
 	err error,
 ) property_boxed_container_outcome {
 	outcome := property_boxed_container_outcome{
-		value_type: reflect.TypeOf(value).String(),
+		value_type: reflect.TypeFor[map[string]string]().String(),
 		value_text: tc.format_map(value),
 	}
 	return outcome.with_error(err)

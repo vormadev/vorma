@@ -83,7 +83,6 @@ func TestValue_Get(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
 				got := tc.c()
@@ -126,7 +125,7 @@ func TestNew(t *testing.T) {
 			panic("boom")
 		})
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			func() {
 				defer func() {
 					if r := recover(); r == nil {

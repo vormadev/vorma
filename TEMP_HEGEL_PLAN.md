@@ -518,7 +518,7 @@ are clearer:
 - `internal/pkg/cssbundle`: mostly esbuild/plugin integration. Use fixture
   integration tests unless URL rewriting grows a pure seam.
 - `internal/pkg/npm`, `internal/cmd/*`, `internal/apps/docs`,
-  `internal/apps/bombadil`, `bootstrap`, and `build`: these are
+  `internal/integration_tests`, `bootstrap`, and `build`: these are
   entrypoint/app/integration layers. Hegel only makes sense here after
   extracting a pure model or when testing generated end-to-end scenarios outside
   the normal unit gate.

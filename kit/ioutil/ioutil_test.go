@@ -183,13 +183,10 @@ func (r *failingReader) Read(p []byte) (n int, err error) {
 
 	// Calculate how many bytes we can read
 	remaining := r.failAt - r.read
-	toRead := len(p)
-	if toRead > remaining {
-		toRead = remaining
-	}
+	toRead := min(len(p), remaining)
 
 	// Fill the buffer with sequential numbers
-	for i := 0; i < toRead; i++ {
+	for i := range toRead {
 		p[i] = byte('1' + r.read + i)
 	}
 

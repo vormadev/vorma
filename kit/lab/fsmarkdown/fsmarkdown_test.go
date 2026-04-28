@@ -54,7 +54,7 @@ func fake_yaml_into(block string, dest any) {
 		}
 	}
 
-	for _, line := range strings.Split(block, "\n") {
+	for line := range strings.SplitSeq(block, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

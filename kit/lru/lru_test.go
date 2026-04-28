@@ -163,15 +163,13 @@ func TestConcurrency(t *testing.T) {
 		goroutines := 10
 
 		for i := range goroutines {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for j := range iterations {
 					key := fmt.Sprintf("key%d-%d", i, j)
 					cache.Set(key, j, false)
 					_, _ = cache.Get(key)
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -188,9 +186,7 @@ func TestConcurrency(t *testing.T) {
 		goroutines := 10
 
 		for i := range goroutines {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for j := range iterations {
 					key := fmt.Sprintf("key%d-%d", i, j)
 					cache.Set(key, j, j%2 == 0)
@@ -199,7 +195,7 @@ func TestConcurrency(t *testing.T) {
 						cache.Delete(key)
 					}
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
@@ -216,9 +212,7 @@ func TestConcurrency(t *testing.T) {
 		goroutines := 20
 
 		for i := range goroutines {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for j := range iterations {
 					key := fmt.Sprintf("key%d-%d", i%10, j%100)
 					switch j % 10 {
@@ -236,7 +230,7 @@ func TestConcurrency(t *testing.T) {
 						cache.Delete(key)
 					}
 				}
-			}()
+			})
 		}
 
 		done := make(chan struct{})
@@ -456,23 +450,19 @@ func TestConcurrentTTL(t *testing.T) {
 
 	// Start goroutines that add items with different TTLs
 	for i := range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range iterations {
 				key := fmt.Sprintf("key%d-%d", i, j)
 				// Use longer TTLs that are still shorter than the test duration
 				ttl := time.Duration((j%3)+1) * 500 * time.Millisecond
 				cache.SetWithTTL(key, j, j%2 == 0, ttl)
 			}
-		}()
+		})
 	}
 
 	// Start goroutines that read items
 	for i := range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for j := range iterations {
 				time.Sleep(time.Millisecond)
 				for k := range 5 {
@@ -480,7 +470,7 @@ func TestConcurrentTTL(t *testing.T) {
 					_, _ = cache.Get(key)
 				}
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

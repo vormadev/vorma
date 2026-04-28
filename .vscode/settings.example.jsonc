@@ -1,0 +1,37 @@
+{
+	/////// GLOBAL
+	"search.exclude": {
+		"**/node_modules": true
+	},
+
+	/////// GO
+	"[go]": {
+		"editor.defaultFormatter": "golang.go",
+		"editor.formatOnSave": true,
+		"editor.codeActionsOnSave": {
+			"source.organizeImports": "explicit",
+			"source.fixAll": "explicit"
+		}
+	},
+	"gopls": {
+		"ui.semanticTokens": true,
+		"ui.diagnostic.staticcheck": true,
+		"ui.diagnostic.analyses": {
+			"ST1000": false,
+			"ST1003": false,
+			"ST1005": false,
+			"ST1021": false,
+			"ST1020": false
+		}
+	},
+
+	/////// HTML / CSS / JSON / JS / TS / REACT / MARKDOWN
+	"oxc.fmt.configPath": ".oxfmtrc.jsonc",
+	"[html][css][json][jsonc][javascript][typescript][javascriptreact][typescriptreact][markdown]": {
+		"editor.defaultFormatter": "oxc.oxc-vscode",
+		"editor.formatOnSave": true
+	},
+	"ts.experimental.useTsgo": true,
+	"js.preferences.importModuleSpecifierEnding": "js",
+	"ts.preferences.importModuleSpecifierEnding": "js"
+}

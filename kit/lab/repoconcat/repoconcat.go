@@ -13,7 +13,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/bmatcuk/doublestar/v4"
+	"github.com/vormadev/vorma/kit/globset"
 )
 
 // Buffer pool for isTextFile
@@ -76,17 +76,10 @@ var defaultExcludedFiles = map[string]bool{
 	"bun.lockb":         true,
 }
 
-// compiledPattern holds a pre-processed pattern with its child pattern for directory matching
-type compiledPattern struct {
-	pattern  string
-	childPat string // pattern + "/**" for matching files inside matching directories
-	neg      bool
-	dirOnly  bool // trailing slash pattern
-}
-
 type patternSet struct {
-	broad    []compiledPattern
-	specific []compiledPattern
+	broad           globset.Rules
+	specific        globset.Rules
+	overridden_dirs map[string]bool
 }
 
 // MustConcat calls Concat and panics on error.
@@ -142,7 +135,10 @@ func Concat(
 
 	roots := extractRoots(normalizedPatterns)
 	userPatterns := compileUserPatterns(normalizedPatterns)
-	defaultPatterns := compileDefaults()
+	defaultPatterns, err := globset.Compile(defaultExclude)
+	if err != nil {
+		return fmt.Errorf("compile default rules: %w", err)
+	}
 
 	cwd, _ := os.Getwd()
 	absOutput, _ := filepath.Abs(output)
@@ -155,27 +151,11 @@ func Concat(
 	log.Grow(4096) // Pre-allocate for typical output
 	var included, skippedBinary int
 	seen := make(map[string]bool, 256) // Pre-size for typical repo
-	gitignoreCache := make(map[string][]compiledPattern, 32)
-	patternCache := make(map[string][]compiledPattern, 64)
-
-	// Check which default-excluded dirs user explicitly included
-	overriddenDirs := make(map[string]bool)
-	for _, p := range normalizedPatterns {
-		if strings.HasPrefix(p, "!") {
-			continue
-		}
-		p = strings.TrimPrefix(p, "/")
-		p = strings.TrimPrefix(p, "./")
-		p = strings.TrimSuffix(p, "/")
-		p = strings.TrimSuffix(p, "/**")
-		parts := strings.SplitN(p, "/", 2)
-		if defaultExcludedRoots[parts[0]] {
-			overriddenDirs[parts[0]] = true
-		}
-	}
+	gitignoreCache := make(map[string]globset.Rules, 32)
+	patternCache := make(map[string]*globset.Set, 64)
 
 	var lastDir string
-	var lastPatterns []compiledPattern
+	var lastPatterns *globset.Set
 
 	for _, root := range roots {
 		walkErr := filepath.WalkDir(
@@ -196,7 +176,7 @@ func Concat(
 				if d.IsDir() {
 					name := d.Name()
 					if (name == ".git" || name == "node_modules" || name == ".vscode") &&
-						!overriddenDirs[name] {
+						!userPatterns.overridden_dirs[name] {
 						return filepath.SkipDir
 					}
 					return nil
@@ -220,7 +200,7 @@ func Concat(
 				dir := filepath.Dir(path)
 
 				// Fast path: same directory as last file
-				var pats []compiledPattern
+				var pats *globset.Set
 				if dir == lastDir {
 					pats = lastPatterns
 				} else {
@@ -228,14 +208,19 @@ func Concat(
 					pats, ok = patternCache[dir]
 					if !ok {
 						gitignore := getGitignorePatterns(dir, gitignoreCache)
-						pats = combinePatterns(userPatterns, defaultPatterns, gitignore)
+						rules := combinePatterns(
+							userPatterns,
+							defaultPatterns.Rules(),
+							gitignore,
+						)
+						pats = rules.Compile()
 						patternCache[dir] = pats
 					}
 					lastDir = dir
 					lastPatterns = pats
 				}
 
-				if !matchPatterns(pats, relPath) {
+				if !pats.Match(relPath) {
 					return nil
 				}
 
@@ -292,169 +277,61 @@ func Concat(
 	return nil
 }
 
-func compilePattern(pattern string) compiledPattern {
-	neg := strings.HasPrefix(pattern, "!")
-	pat := strings.TrimPrefix(pattern, "!")
-	dirOnly := strings.HasSuffix(pat, "/")
-	if dirOnly {
-		pat = strings.TrimSuffix(pat, "/")
-	}
-
-	childPat := ""
-	if !strings.HasSuffix(pat, "**") {
-		childPat = pat + "/**"
-	}
-
-	return compiledPattern{
-		pattern:  pat,
-		childPat: childPat,
-		neg:      neg,
-		dirOnly:  dirOnly,
-	}
-}
-
-func compileDefaults() []compiledPattern {
-	out := make([]compiledPattern, len(defaultExclude))
-	for i, p := range defaultExclude {
-		out[i] = compilePattern(p)
-	}
-	return out
-}
-
 func compileUserPatterns(patterns []string) patternSet {
-	var ps patternSet
+	ps := patternSet{
+		overridden_dirs: make(map[string]bool),
+	}
+
 	for _, p := range patterns {
-		norm := normalizePattern(p)
-		cp := compilePattern(norm)
-
-		if cp.neg || isOverridePattern(p) {
-			ps.specific = append(ps.specific, cp)
+		rule, ok, err := globset.Parse(p)
+		if err != nil || !ok {
 			continue
 		}
 
-		pat := strings.TrimPrefix(norm, "!")
-		if !strings.ContainsAny(pat, "*") && !strings.HasSuffix(p, "/") &&
-			pat != "." {
-			ps.specific = append(ps.specific, cp)
+		if !rule.Excluded {
+			for root := range defaultExcludedRoots {
+				if rule.HasSegment(root) {
+					ps.overridden_dirs[root] = true
+				}
+			}
+		}
+
+		if rule.Excluded || isOverridePattern(rule) {
+			ps.specific = append(ps.specific, rule)
 			continue
 		}
 
-		ps.broad = append(ps.broad, cp)
+		if !rule.HasGlob && !rule.DirOnly && rule.Pattern != "." {
+			ps.specific = append(ps.specific, rule)
+			continue
+		}
+
+		ps.broad = append(ps.broad, rule)
 	}
 	return ps
 }
-
-func normalizePattern(pattern string) string {
-	neg := strings.HasPrefix(pattern, "!")
-	pat := strings.TrimPrefix(pattern, "!")
-
-	// Treat "./" as equivalent to "/" (anchored to root)
-	if strings.HasPrefix(pat, "./") {
-		pat = "/" + pat[2:]
-	}
-
-	if pat == "." || strings.HasPrefix(pat, "**") {
-		if neg {
-			return "!" + pat
-		}
-		return pat
-	}
-
-	anchored := strings.HasPrefix(pat, "/")
-	if anchored {
-		pat = pat[1:]
-	} else {
-		trimmed := strings.TrimSuffix(pat, "/")
-		if !strings.Contains(trimmed, "/") {
-			pat = "**/" + pat
-		}
-	}
-
-	if neg {
-		return "!" + pat
-	}
-	return pat
-}
-
-func isOverridePattern(pattern string) bool {
-	pat := strings.TrimPrefix(pattern, "!")
-	pat = strings.TrimPrefix(pat, "/")
-	pat = strings.TrimPrefix(pat, "./")
-	pat = strings.TrimPrefix(pat, "**/")
-
+func isOverridePattern(rule globset.Rule) bool {
+	pat := strings.TrimPrefix(rule.Pattern, "**/")
 	parts := strings.SplitN(pat, "/", 2)
 	if defaultExcludedRoots[parts[0]] {
 		return true
 	}
 
-	filename := filepath.Base(strings.TrimSuffix(pat, "/"))
+	filename := filepath.Base(pat)
 	return defaultExcludedFiles[filename]
 }
 
 func combinePatterns(
 	user patternSet,
-	defaults, gitignore []compiledPattern,
-) []compiledPattern {
-	total := len(
-		user.broad,
-	) + len(
-		defaults,
-	) + len(
-		gitignore,
-	) + len(
-		user.specific,
-	)
-	out := make([]compiledPattern, 0, total)
+	defaults, gitignore globset.Rules,
+) globset.Rules {
+	total := len(user.broad) + len(defaults) + len(gitignore) + len(user.specific)
+	out := make(globset.Rules, 0, total)
 	out = append(out, user.broad...)
 	out = append(out, defaults...)
 	out = append(out, gitignore...)
 	out = append(out, user.specific...)
 	return out
-}
-
-func matchPatterns(patterns []compiledPattern, path string) bool {
-	matched := false
-	for i := range patterns {
-		p := &patterns[i]
-
-		if p.pattern == "." {
-			matched = !p.neg
-			continue
-		}
-
-		var ok bool
-		if p.dirOnly {
-			// Trailing slash: only match if a parent directory matches
-			// (not the file itself, even if it has the same name)
-			ok = parentMatches(p.pattern, path)
-		} else {
-			// Check direct match
-			ok, _ = doublestar.Match(p.pattern, path)
-			// Check if inside a matching directory
-			if !ok && p.childPat != "" {
-				ok, _ = doublestar.Match(p.childPat, path)
-			}
-		}
-
-		if ok {
-			matched = !p.neg
-		}
-	}
-	return matched
-}
-
-func parentMatches(pattern, path string) bool {
-	dir := path
-	for {
-		dir = filepath.ToSlash(filepath.Dir(dir))
-		if dir == "." {
-			break
-		}
-		if ok, _ := doublestar.Match(pattern, dir); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func extractRoots(patterns []string) []string {
@@ -502,8 +379,8 @@ func extractRoots(patterns []string) []string {
 
 func getGitignorePatterns(
 	dir string,
-	cache map[string][]compiledPattern,
-) []compiledPattern {
+	cache map[string]globset.Rules,
+) globset.Rules {
 	absDir, _ := filepath.Abs(dir)
 	if patterns, ok := cache[absDir]; ok {
 		return patterns
@@ -514,7 +391,7 @@ func getGitignorePatterns(
 	// Walk up looking for cached parent first
 	var uncached []string
 	curr := absDir
-	var parentPatterns []compiledPattern
+	var parentPatterns globset.Rules
 
 	for {
 		if cached, ok := cache[curr]; ok {
@@ -532,7 +409,7 @@ func getGitignorePatterns(
 	// Process uncached directories from root toward target
 	for i := len(uncached) - 1; i >= 0; i-- {
 		curr := uncached[i]
-		var dirPatterns []compiledPattern
+		var dirPatterns globset.Rules
 		for _, name := range []string{".gitignore", ".gitignore.local"} {
 			path := filepath.Join(curr, name)
 			relBase, _ := filepath.Rel(cwd, curr)
@@ -541,11 +418,7 @@ func getGitignorePatterns(
 			}
 			dirPatterns = append(dirPatterns, parseGitignore(path, relBase)...)
 		}
-		combined := make(
-			[]compiledPattern,
-			0,
-			len(parentPatterns)+len(dirPatterns),
-		)
+		combined := make(globset.Rules, 0, len(parentPatterns)+len(dirPatterns))
 		combined = append(combined, parentPatterns...)
 		combined = append(combined, dirPatterns...)
 		cache[curr] = combined
@@ -555,14 +428,14 @@ func getGitignorePatterns(
 	return cache[absDir]
 }
 
-func parseGitignore(path, base string) []compiledPattern {
+func parseGitignore(path, base string) globset.Rules {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil
 	}
 	defer file.Close()
 
-	var patterns []compiledPattern
+	var patterns globset.Rules
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -590,19 +463,24 @@ func parseGitignore(path, base string) []compiledPattern {
 		var finalPattern string
 		if anchored {
 			if base == "" {
-				finalPattern = pattern
+				finalPattern = "/" + pattern
 			} else {
-				finalPattern = base + "/" + pattern
+				finalPattern = "/" + base + "/" + pattern
 			}
 		} else {
 			finalPattern = "**/" + pattern
 		}
 
-		// Gitignore: negation means include, non-negation means exclude
+		var rule string
 		if neg {
-			patterns = append(patterns, compilePattern(finalPattern))
+			rule = finalPattern
 		} else {
-			patterns = append(patterns, compilePattern("!"+finalPattern))
+			rule = "!" + finalPattern
+		}
+
+		compiled, ok, err := globset.Parse(rule)
+		if err == nil && ok {
+			patterns = append(patterns, compiled)
 		}
 	}
 	return patterns
@@ -642,7 +520,7 @@ func isTextFile(path string) bool {
 	}
 
 	if mimeType == "application/octet-stream" {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if buf[i] == 0 {
 				return false
 			}

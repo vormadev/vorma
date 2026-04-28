@@ -173,7 +173,7 @@ func TestNestedRouteRegistration(t *testing.T) {
 			var successes atomic.Int32
 			done := make(chan struct{})
 
-			for i := 0; i < goroutines; i++ {
+			for range goroutines {
 				go func() {
 					<-start
 					if nr.AddPatternWithoutHandlerIfMissing("/concurrent") {
@@ -278,7 +278,7 @@ func TestFindNestedMatchesMux(t *testing.T) {
 			close(done)
 		}()
 		close(start)
-		for i := 0; i < total; i++ {
+		for i := range total {
 			req := create_request_with_tasks_ctx(
 				http.MethodGet,
 				fmt.Sprintf("/concurrent/%d", i),
@@ -1027,7 +1027,7 @@ func TestNestedRouterRouteReplacement(t *testing.T) {
 		}()
 
 		expected_patterns := []string{"", "/items", "/items/:id"}
-		for i := 0; i < 500; i++ {
+		for range 500 {
 			req := create_request_with_tasks_ctx(http.MethodGet, "/items/123")
 			results, found := FindNestedMatchesAndRunTasks(nr, req)
 			if !found {

@@ -108,7 +108,7 @@ func (runner stress_runner) run_bombadil() error {
 	defer log_file.Close()
 
 	install := exec.Command("pnpm", "i")
-	install.Dir = "./internal/apps/bombadil"
+	install.Dir = "./internal/integration_tests"
 	install.Stdout = log_file
 	install.Stderr = log_file
 	if err := install.Run(); err != nil {
@@ -123,7 +123,7 @@ func (runner stress_runner) run_bombadil() error {
 		"-multiplier",
 		strconv.Itoa(runner.multiplier),
 	)
-	cmd.Dir = "./internal/apps/bombadil"
+	cmd.Dir = "./internal/integration_tests"
 	cmd.Stdout = log_file
 	cmd.Stderr = log_file
 	if err := cmd.Run(); err != nil {

@@ -99,25 +99,25 @@ func (tc property_agreement_case) root_type_and_expected_value() (reflect.Type, 
 func (tc property_agreement_case) field_type() reflect.Type {
 	switch tc.kind {
 	case 0:
-		return reflect.TypeOf("")
+		return reflect.TypeFor[string]()
 	case 1:
-		return reflect.TypeOf((*string)(nil))
+		return reflect.TypeFor[*string]()
 	case 2:
-		return reflect.TypeOf((**int)(nil))
+		return reflect.TypeFor[**int]()
 	case 3:
-		return reflect.TypeOf([]string{})
+		return reflect.TypeFor[[]string]()
 	case 4:
-		return reflect.TypeOf([2]string{})
+		return reflect.TypeFor[[2]string]()
 	case 5:
-		return reflect.TypeOf((*[2]int)(nil))
+		return reflect.TypeFor[*[2]int]()
 	case 6:
-		return reflect.TypeOf(map[string]string{})
+		return reflect.TypeFor[map[string]string]()
 	case 7:
-		return reflect.TypeOf(map[string][]bool{})
+		return reflect.TypeFor[map[string][]bool]()
 	default:
 		nested_field := reflect.StructField{
 			Name: "Child",
-			Type: reflect.TypeOf(""),
+			Type: reflect.TypeFor[string](),
 			Tag:  `json:"child"`,
 		}
 		return reflect.PointerTo(reflect.StructOf([]reflect.StructField{nested_field}))
@@ -149,7 +149,7 @@ func (tc property_agreement_case) expected_value() any {
 	case 6:
 		return map[string]string{"k": "v"}
 	case 7:
-		return map[string][]bool{"k": []bool{true, false}}
+		return map[string][]bool{"k": {true, false}}
 	default:
 		nested := reflect.New(tc.field_type().Elem()).Elem()
 		nested.Field(0).SetString("child")

@@ -59,7 +59,7 @@ func (tc property_array_case) assert_matches_model(ht *hegel.T) {
 		if err == nil {
 			ht.Fatalf("expected error %q, got nil", expected_err)
 		}
-		if !errors.Is(err, ParseError) {
+		if !errors.Is(err, ErrCannotParse) {
 			ht.Fatalf("expected ParseError, got %v", err)
 		}
 		if !reflect.DeepEqual(actual, expected) {
@@ -101,9 +101,7 @@ func (tc property_array_case) expected_form() (property_array_form, string) {
 	if len(tag_values) > len(expected.Tags) {
 		return property_array_form{}, "tags overflow"
 	}
-	for i, value := range tag_values {
-		expected.Tags[i] = value
-	}
+	copy(expected.Tags[:], tag_values)
 
 	score_values := tc.filtered_values(tc.raw_values(tc.scores_mode, true))
 	if len(score_values) > 2 {

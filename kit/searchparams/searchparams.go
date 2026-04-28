@@ -19,16 +19,16 @@ import (
 
 var (
 	// Parse/ParseInto errors.
-	ParseError              = errors.New("error parsing URL search parameters")
-	ParseNilRequestError    = errors.New("parse: request is nil")
-	ParseNilURLError        = errors.New("parse: request URL is nil")
-	ParseNilDestError       = errors.New("parse: destination must be a non-nil pointer")
-	ParseNonStructDestError = errors.New("parse: destination must point to a struct")
+	ErrCannotParse   = errors.New("error parsing URL search parameters")
+	ErrNilRequest    = errors.New("parse: request is nil")
+	ErrNilURL        = errors.New("parse: request URL is nil")
+	ErrNilDest       = errors.New("parse: destination must be a non-nil pointer")
+	ErrNonStructDest = errors.New("parse: destination must point to a struct")
 
 	// SchemaFromValue errors.
-	SchemaError              = errors.New("invalid URL search params schema")
-	SchemaNilValueError      = errors.New("schema: value cannot be nil")
-	SchemaNonStructRootError = errors.New("schema: root must be a struct")
+	ErrInvalidSchema    = errors.New("invalid URL search params schema")
+	ErrNilValueInSchema = errors.New("schema: value cannot be nil")
+	ErrNonStructRoot    = errors.New("schema: root must be a struct")
 )
 
 // ParseToStruct parses URL search parameters from an HTTP request into a struct of type T.
@@ -46,21 +46,21 @@ func ParseToStruct[T any](r *http.Request) (T, error) {
 // prefer ParseToStruct.
 func ParseIntoStructPtr(r *http.Request, destStructPtr any) error {
 	if r == nil {
-		return ParseNilRequestError
+		return ErrNilRequest
 	}
 	if r.URL == nil {
-		return ParseNilURLError
+		return ErrNilURL
 	}
 	dv := reflect.ValueOf(destStructPtr)
 	if !dv.IsValid() || dv.Kind() != reflect.Pointer || dv.IsNil() {
-		return ParseNilDestError
+		return ErrNilDest
 	}
 	elem := dv.Elem()
 	if elem.Kind() != reflect.Struct {
-		return ParseNonStructDestError
+		return ErrNonStructDest
 	}
 	if err := set_nested_field(elem, r.URL.Query()); err != nil {
-		return errors.Join(ParseError, err)
+		return errors.Join(ErrCannotParse, err)
 	}
 	return nil
 }
@@ -79,17 +79,17 @@ type Schema any
 func SchemaFromValue(value any) (Schema, error) {
 	t, _ := reflectutil.DerefType(reflect.TypeOf(value))
 	if t == nil {
-		return nil, SchemaNilValueError
+		return nil, ErrNilValueInSchema
 	}
 	if t.Kind() != reflect.Struct {
 		return nil, errors.Join(
-			SchemaNonStructRootError,
+			ErrNonStructRoot,
 			fmt.Errorf("got %s", t),
 		)
 	}
 	schema, err := schema_from_type(t)
 	if err != nil {
-		return nil, errors.Join(SchemaError, err)
+		return nil, errors.Join(ErrInvalidSchema, err)
 	}
 	return schema, nil
 }

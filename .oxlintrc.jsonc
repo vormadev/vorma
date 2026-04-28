@@ -4,9 +4,9 @@
 	"jsPlugins": ["./internal/lint-rules/vorma-rules.mjs"],
 	"rules": {
 		"curly": "error",
-		"vorma-rules/smart-explicit-returns": "error",
+		"vorma-rules/smart-explicit-returns": "error"
 	},
 	"options": {
-		"typeAware": true,
-	},
+		"typeAware": true
+	}
 }

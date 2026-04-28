@@ -523,7 +523,7 @@ func TestParse(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected an error, got nil")
 				}
-				if !errors.Is(err, ParseError) {
+				if !errors.Is(err, ErrCannotParse) {
 					t.Errorf("expected ParseError, got %v", err)
 				}
 				return
@@ -541,14 +541,14 @@ func TestParse(t *testing.T) {
 
 func TestParseNilRequest(t *testing.T) {
 	_, err := ParseToStruct[BasicTypes](nil)
-	if !errors.Is(err, ParseNilRequestError) {
+	if !errors.Is(err, ErrNilRequest) {
 		t.Fatalf("expected ParseNilRequestError, got %v", err)
 	}
 }
 
 func TestParseNilURL(t *testing.T) {
 	_, err := ParseToStruct[BasicTypes](&http.Request{})
-	if !errors.Is(err, ParseNilURLError) {
+	if !errors.Is(err, ErrNilURL) {
 		t.Fatalf("expected ParseNilURLError, got %v", err)
 	}
 }
@@ -556,7 +556,7 @@ func TestParseNilURL(t *testing.T) {
 func TestParseNonStructType(t *testing.T) {
 	r, _ := http.NewRequest("GET", "http://example.com", nil)
 	_, err := ParseToStruct[int](r)
-	if !errors.Is(err, ParseNonStructDestError) {
+	if !errors.Is(err, ErrNonStructDest) {
 		t.Fatalf("expected ParseNonStructDestError, got %v", err)
 	}
 }
@@ -574,21 +574,21 @@ func TestParseIntoHappyPath(t *testing.T) {
 
 func TestParseIntoNilRequest(t *testing.T) {
 	var dest BasicTypes
-	if err := ParseIntoStructPtr(nil, &dest); !errors.Is(err, ParseNilRequestError) {
+	if err := ParseIntoStructPtr(nil, &dest); !errors.Is(err, ErrNilRequest) {
 		t.Fatalf("expected ParseNilRequestError, got %v", err)
 	}
 }
 
 func TestParseIntoNilURL(t *testing.T) {
 	var dest BasicTypes
-	if err := ParseIntoStructPtr(&http.Request{}, &dest); !errors.Is(err, ParseNilURLError) {
+	if err := ParseIntoStructPtr(&http.Request{}, &dest); !errors.Is(err, ErrNilURL) {
 		t.Fatalf("expected ParseNilURLError, got %v", err)
 	}
 }
 
 func TestParseIntoNilDest(t *testing.T) {
 	r, _ := http.NewRequest("GET", "http://example.com", nil)
-	if err := ParseIntoStructPtr(r, nil); !errors.Is(err, ParseNilDestError) {
+	if err := ParseIntoStructPtr(r, nil); !errors.Is(err, ErrNilDest) {
 		t.Fatalf("expected ParseNilDestError, got %v", err)
 	}
 }
@@ -596,7 +596,7 @@ func TestParseIntoNilDest(t *testing.T) {
 func TestParseIntoNilPointerDest(t *testing.T) {
 	r, _ := http.NewRequest("GET", "http://example.com", nil)
 	var dest *BasicTypes
-	if err := ParseIntoStructPtr(r, dest); !errors.Is(err, ParseNilDestError) {
+	if err := ParseIntoStructPtr(r, dest); !errors.Is(err, ErrNilDest) {
 		t.Fatalf("expected ParseNilDestError, got %v", err)
 	}
 }
@@ -604,7 +604,7 @@ func TestParseIntoNilPointerDest(t *testing.T) {
 func TestParseIntoNonPointerDest(t *testing.T) {
 	r, _ := http.NewRequest("GET", "http://example.com", nil)
 	var dest BasicTypes
-	if err := ParseIntoStructPtr(r, dest); !errors.Is(err, ParseNilDestError) {
+	if err := ParseIntoStructPtr(r, dest); !errors.Is(err, ErrNilDest) {
 		t.Fatalf("expected ParseNilDestError, got %v", err)
 	}
 }
@@ -612,7 +612,7 @@ func TestParseIntoNonPointerDest(t *testing.T) {
 func TestParseIntoPointerToNonStruct(t *testing.T) {
 	r, _ := http.NewRequest("GET", "http://example.com", nil)
 	var dest int
-	if err := ParseIntoStructPtr(r, &dest); !errors.Is(err, ParseNonStructDestError) {
+	if err := ParseIntoStructPtr(r, &dest); !errors.Is(err, ErrNonStructDest) {
 		t.Fatalf("expected ParseNonStructDestError, got %v", err)
 	}
 }
@@ -656,7 +656,7 @@ func TestParseMapOfMapsFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, ParseError) {
+	if !errors.Is(err, ErrCannotParse) {
 		t.Fatalf("expected ParseError, got %v", err)
 	}
 }
@@ -697,7 +697,7 @@ func TestParseArrayOverflowFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, ParseError) {
+	if !errors.Is(err, ErrCannotParse) {
 		t.Fatalf("expected ParseError, got %v", err)
 	}
 }

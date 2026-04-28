@@ -247,7 +247,7 @@ func TestSerializeDoesNotMutateAndIsDeterministic(t *testing.T) {
 }
 
 func TestRoundTripForGeneratedIDs(t *testing.T) {
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		id, err := New()
 		if err != nil {
 			t.Fatalf("New() error at iteration %d: %v", i, err)

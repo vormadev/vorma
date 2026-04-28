@@ -20,6 +20,11 @@ gobump: gotest
 gobench:
 	@go test -bench=. $(pkg)
 
+gofix:
+	@go fix ./...
+	@cd internal/integration_tests && go fix ./...
+	@cd internal/apps/docs && go fix ./...
+
 #####################################################################
 ####### TS
 #####################################################################
@@ -39,12 +44,14 @@ tsnuke:
 	@rm -rf node_modules 2>/dev/null || true
 	@find . -path "*/node_modules" -type d -exec rm -rf {} \; 2>/dev/null || true
 
-tsinstall:
+tsi:
 	@pnpm i
 	@cd ./internal/pkg/npm/ && pnpm i
 	@cd ./internal/pkg/npm/vorma/create && pnpm i
+	@cd ./internal/integration_tests && pnpm i
+	@cd ./internal/apps/docs && pnpm i
 
-tsreset: tsnuke tsinstall npmbuild
+tsreset: tsi npmbuild
 
 tslint:
 	@pnpm oxlint
@@ -68,12 +75,16 @@ npmbump:
 	@go run ./internal/cmd/npm_bumper
 
 bombadil:
-	@cd ./internal/apps/bombadil && pnpm i
-	@cd ./internal/apps/bombadil && go run ./cmd/bombadil run -multiplier $(multiplier)
+	@cd ./internal/integration_tests && $(MAKE) test
+
+bombadil-prod:
+	@cd ./internal/integration_tests && $(MAKE) prod
+
+bombadil-dev:
+	@cd ./internal/integration_tests && $(MAKE) dev
 
 bombadil-build:
-	@cd ./internal/apps/bombadil && pnpm i
-	@cd ./internal/apps/bombadil && go run ./cmd/bombadil build
+	@cd ./internal/integration_tests && $(MAKE) build
 
 # Pass multiplier as a positive integer, e.g. make stress multiplier=2.
 stress:

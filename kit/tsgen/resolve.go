@@ -87,26 +87,51 @@ func merge_and_resolve(all []map[string]*walk_entry) ResolvedTSTypes {
 	}
 
 	rooted_type_keys := make(map[string]bool)
-	root_ids_by_type_key := make(map[string][]string)
+	root_entries_by_type_key := make(map[string][]*walk_entry)
 	for _, entries := range all {
 		for _, entry := range entries {
 			if entry.is_root {
 				rooted_type_keys[entry.type_key] = true
-				root_ids_by_type_key[entry.type_key] = append(
-					root_ids_by_type_key[entry.type_key],
-					entry.id,
+				root_entries_by_type_key[entry.type_key] = append(
+					root_entries_by_type_key[entry.type_key],
+					entry,
 				)
 			}
 		}
 	}
 
-	canonical_root_ids := make(map[string]string, len(root_ids_by_type_key))
-	for type_key, ids := range root_ids_by_type_key {
-		slices.Sort(ids)
-		canonical_root_ids[type_key] = ids[0]
+	canonical_root_ids := make(map[string]string, len(root_entries_by_type_key))
+	for type_key, entries := range root_entries_by_type_key {
+		slices.SortFunc(entries, func(a, b *walk_entry) int {
+			if a.requested_name != b.requested_name {
+				if a.requested_name < b.requested_name {
+					return -1
+				}
+				return 1
+			}
+			if a.id < b.id {
+				return -1
+			}
+			if a.id > b.id {
+				return 1
+			}
+			return 0
+		})
+		canonical_root_ids[type_key] = entries[0].id
 	}
 
 	shadowed_ref_ids := make(map[string]string)
+	for type_key, entries := range root_entries_by_type_key {
+		canonical_id := canonical_root_ids[type_key]
+		for _, entry := range entries {
+			if entry.id != canonical_id {
+				shadowed_ref_ids[entry.id] = canonical_id
+			}
+			if entry.natural_id != "" && entry.natural_id != canonical_id {
+				shadowed_ref_ids[entry.natural_id] = canonical_id
+			}
+		}
+	}
 	for _, entries := range all {
 		for _, entry := range entries {
 			if rooted_type_keys[entry.type_key] && !entry.is_root {

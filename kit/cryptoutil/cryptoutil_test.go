@@ -19,10 +19,6 @@ const (
 	xChaCha20Poly1305NonceSize = 24 // Size of XChaCha20-Poly1305 nonce
 )
 
-func new32() *[32]byte {
-	return &[32]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
-}
-
 func TestRandom(t *testing.T) {
 	// Test generating random bytes
 	byteLen := 16
@@ -64,7 +60,7 @@ func TestRandom(t *testing.T) {
 }
 
 func TestSignSymmetric(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message")
 
 	signedMsg, err := SignSymmetric(message, secretKey)
@@ -73,7 +69,11 @@ func TestSignSymmetric(t *testing.T) {
 	}
 
 	if len(signedMsg) != auth.Size+len(message) {
-		t.Fatalf("expected signed message length %d, got %d", auth.Size+len(message), len(signedMsg))
+		t.Fatalf(
+			"expected signed message length %d, got %d",
+			auth.Size+len(message),
+			len(signedMsg),
+		)
 	}
 
 	// Test that the signed message contains the original message
@@ -83,7 +83,7 @@ func TestSignSymmetric(t *testing.T) {
 }
 
 func TestVerifyAndReadSymmetric(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message")
 
 	signedMsg, _ := SignSymmetric(message, secretKey)
@@ -199,7 +199,7 @@ func TestVerifyAndReadAsymmetricBase64(t *testing.T) {
 }
 
 func TestEdgeCases(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
 	var publicKey32 [32]byte
 	copy(publicKey32[:], publicKey)
@@ -245,7 +245,7 @@ func TestEdgeCases(t *testing.T) {
 }
 
 func TestEncryptSymmetricAESGCM(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for encryption")
 
 	// Test successful encryption
@@ -255,7 +255,10 @@ func TestEncryptSymmetricAESGCM(t *testing.T) {
 	}
 
 	if len(encrypted) <= aesNonceSize {
-		t.Fatalf("expected encrypted message to be longer than nonce, got length %d", len(encrypted))
+		t.Fatalf(
+			"expected encrypted message to be longer than nonce, got length %d",
+			len(encrypted),
+		)
 	}
 
 	// Test that encrypted message is different from original
@@ -275,12 +278,15 @@ func TestEncryptSymmetricAESGCM(t *testing.T) {
 		t.Fatalf("expected no error for empty message, got %v", err)
 	}
 	if len(emptyEncrypted) <= aesNonceSize {
-		t.Fatalf("expected encrypted empty message to be longer than nonce, got length %d", len(emptyEncrypted))
+		t.Fatalf(
+			"expected encrypted empty message to be longer than nonce, got length %d",
+			len(emptyEncrypted),
+		)
 	}
 }
 
 func TestDecryptSymmetricAESGCM(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for decryption")
 
 	// Test successful encryption and decryption
@@ -294,7 +300,7 @@ func TestDecryptSymmetricAESGCM(t *testing.T) {
 	}
 
 	// Test decryption with wrong key
-	wrongKey := new32()
+	wrongKey := arr32()
 	wrongKey[0] ^= 0xFF // Flip a bit to make it different
 	_, err = DecryptSymmetricAESGCM(encrypted, wrongKey)
 	if err == nil {
@@ -330,7 +336,7 @@ func TestDecryptSymmetricAESGCM(t *testing.T) {
 }
 
 func TestEncryptSymmetricXChaCha20(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for encryption")
 
 	// Test successful encryption
@@ -340,7 +346,10 @@ func TestEncryptSymmetricXChaCha20(t *testing.T) {
 	}
 
 	if len(encrypted) <= xChaCha20Poly1305NonceSize {
-		t.Fatalf("expected encrypted message to be longer than nonce, got length %d", len(encrypted))
+		t.Fatalf(
+			"expected encrypted message to be longer than nonce, got length %d",
+			len(encrypted),
+		)
 	}
 
 	// Test that encrypted message is different from original
@@ -360,12 +369,15 @@ func TestEncryptSymmetricXChaCha20(t *testing.T) {
 		t.Fatalf("expected no error for empty message, got %v", err)
 	}
 	if len(emptyEncrypted) <= xChaCha20Poly1305NonceSize {
-		t.Fatalf("expected encrypted empty message to be longer than nonce, got length %d", len(emptyEncrypted))
+		t.Fatalf(
+			"expected encrypted empty message to be longer than nonce, got length %d",
+			len(emptyEncrypted),
+		)
 	}
 }
 
 func TestDecryptSymmetricXChaCha20(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for decryption")
 
 	// Test successful encryption and decryption
@@ -379,7 +391,7 @@ func TestDecryptSymmetricXChaCha20(t *testing.T) {
 	}
 
 	// Test decryption with wrong key
-	wrongKey := new32()
+	wrongKey := arr32()
 	wrongKey[0] ^= 0xFF // Flip a bit to make it different
 	_, err = DecryptSymmetricXChaCha20Poly1305(encrypted, wrongKey)
 	if err == nil {
@@ -415,7 +427,7 @@ func TestDecryptSymmetricXChaCha20(t *testing.T) {
 }
 
 func TestCrossEncryptionCompatibility(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for cross-compatibility")
 
 	// Test that AES-GCM encrypted messages can't be decrypted by XChaCha20
@@ -434,7 +446,7 @@ func TestCrossEncryptionCompatibility(t *testing.T) {
 }
 
 func TestReplayProtection(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for replay protection")
 
 	// Test AES-GCM replay protection (nonce reuse)
@@ -453,13 +465,13 @@ func TestReplayProtection(t *testing.T) {
 }
 
 func TestConcurrentEncryption(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for concurrent encryption")
 	iterations := 100
 
 	// Test concurrent AES-GCM encryption
 	done := make(chan bool)
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		go func() {
 			encrypted, err := EncryptSymmetricAESGCM(message, secretKey)
 			if err != nil {
@@ -477,12 +489,12 @@ func TestConcurrentEncryption(t *testing.T) {
 	}
 
 	// Wait for all AES-GCM goroutines
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		<-done
 	}
 
 	// Test concurrent XChaCha20 encryption
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		go func() {
 			encrypted, err := EncryptSymmetricXChaCha20Poly1305(message, secretKey)
 			if err != nil {
@@ -500,20 +512,20 @@ func TestConcurrentEncryption(t *testing.T) {
 	}
 
 	// Wait for all XChaCha20 goroutines
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		<-done
 	}
 }
 
 func TestNonceUniqueness(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message for nonce uniqueness")
 	nonceCount := 1000
 	aesNonces := make(map[string]bool)
 	chachaNonces := make(map[string]bool)
 
 	// Test XChaCha20Poly1305 nonce uniqueness
-	for i := 0; i < nonceCount; i++ {
+	for i := range nonceCount {
 		encrypted, err := EncryptSymmetricXChaCha20Poly1305(message, secretKey)
 		if err != nil {
 			t.Fatalf("XChaCha20Poly1305 encryption failed: %v", err)
@@ -526,7 +538,7 @@ func TestNonceUniqueness(t *testing.T) {
 	}
 
 	// Test AES-GCM nonce uniqueness
-	for i := 0; i < nonceCount; i++ {
+	for i := range nonceCount {
 		encrypted, err := EncryptSymmetricAESGCM(message, secretKey)
 		if err != nil {
 			t.Fatalf("AES-GCM encryption failed: %v", err)
@@ -544,7 +556,7 @@ func TestLargeMessageEncryption(t *testing.T) {
 		t.Skip("skipping large message test in short mode")
 	}
 
-	secretKey := new32()
+	secretKey := arr32()
 	sizes := []int{
 		64 * 1024,        // 64 KB
 		1 * 1024 * 1024,  // 1 MB
@@ -588,7 +600,7 @@ func TestLargeMessageEncryption(t *testing.T) {
 }
 
 func TestTinyMessages(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	messages := [][]byte{
 		{},           // empty
 		{0},          // single byte
@@ -626,7 +638,7 @@ func TestTinyMessages(t *testing.T) {
 }
 
 func TestAuthenticationTag(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	message := []byte("test message")
 
 	// Test XChaCha20Poly1305 authentication
@@ -685,7 +697,7 @@ func TestInvalidKeySize(t *testing.T) {
 }
 
 func TestEmptyInputs(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	publicKey, _, _ := ed25519.GenerateKey(rand.Reader)
 	var publicKey32 [32]byte
 	copy(publicKey32[:], publicKey)
@@ -697,7 +709,11 @@ func TestEmptyInputs(t *testing.T) {
 		t.Errorf("SignSymmetric failed with nil message: %v", err)
 	}
 	if len(signed) != auth.Size {
-		t.Errorf("SignSymmetric with nil message: expected length %d, got %d", auth.Size, len(signed))
+		t.Errorf(
+			"SignSymmetric with nil message: expected length %d, got %d",
+			auth.Size,
+			len(signed),
+		)
 	}
 
 	// Test signature operations with empty string base64
@@ -732,7 +748,7 @@ func TestExtremeMessageSizes(t *testing.T) {
 		t.Skip("skipping extreme size tests in short mode")
 	}
 
-	secretKey := new32()
+	secretKey := arr32()
 	// Test various message sizes including edge cases
 	sizes := []int{
 		0,             // empty
@@ -773,7 +789,7 @@ func TestExtremeMessageSizes(t *testing.T) {
 }
 
 func TestInputValidation(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 	publicKey, privateKey, _ := ed25519.GenerateKey(rand.Reader)
 	var publicKey32 [32]byte
 	copy(publicKey32[:], publicKey)
@@ -843,7 +859,10 @@ func TestInputValidation(t *testing.T) {
 		{
 			name: "VerifyAndReadAsymmetric short message",
 			f: func() error {
-				_, err := VerifyAndReadAsymmetric(make([]byte, ed25519.SignatureSize-1), &publicKey32)
+				_, err := VerifyAndReadAsymmetric(
+					make([]byte, ed25519.SignatureSize-1),
+					&publicKey32,
+				)
 				return err
 			},
 			wantErr: true,
@@ -854,7 +873,10 @@ func TestInputValidation(t *testing.T) {
 		{
 			name: "VerifyAndReadAsymmetricBase64 invalid base64 message",
 			f: func() error {
-				_, err := VerifyAndReadAsymmetricBase64("invalid-base64", bytesutil.ToBase64(publicKey))
+				_, err := VerifyAndReadAsymmetricBase64(
+					"invalid-base64",
+					bytesutil.ToBase64(publicKey),
+				)
 				return err
 			},
 			wantErr: true,
@@ -862,7 +884,10 @@ func TestInputValidation(t *testing.T) {
 		{
 			name: "VerifyAndReadAsymmetricBase64 invalid base64 key",
 			f: func() error {
-				_, err := VerifyAndReadAsymmetricBase64(bytesutil.ToBase64(validSignedAsymmetric), "invalid-base64")
+				_, err := VerifyAndReadAsymmetricBase64(
+					bytesutil.ToBase64(validSignedAsymmetric),
+					"invalid-base64",
+				)
 				return err
 			},
 			wantErr: true,
@@ -913,7 +938,10 @@ func TestInputValidation(t *testing.T) {
 		{
 			name: "DecryptSymmetricXChaCha20Poly1305 short message (< nonce)",
 			f: func() error {
-				_, err := DecryptSymmetricXChaCha20Poly1305(make([]byte, xChaCha20Poly1305NonceSize-1), secretKey)
+				_, err := DecryptSymmetricXChaCha20Poly1305(
+					make([]byte, xChaCha20Poly1305NonceSize-1),
+					secretKey,
+				)
 				return err
 			},
 			wantErr: true,
@@ -922,7 +950,10 @@ func TestInputValidation(t *testing.T) {
 		{
 			name: "DecryptSymmetricXChaCha20Poly1305 short message (no tag)",
 			f: func() error {
-				_, err := DecryptSymmetricXChaCha20Poly1305(make([]byte, xChaCha20Poly1305NonceSize+15), secretKey)
+				_, err := DecryptSymmetricXChaCha20Poly1305(
+					make([]byte, xChaCha20Poly1305NonceSize+15),
+					secretKey,
+				)
 				return err
 			},
 			wantErr: true,
@@ -1228,7 +1259,7 @@ func TestValidateHmacSha256(t *testing.T) {
 }
 
 func TestHkdfSha256(t *testing.T) {
-	secretKey := new32()
+	secretKey := arr32()
 
 	tests := []struct {
 		name        string
@@ -1418,7 +1449,7 @@ func TestToKey32(t *testing.T) {
 }
 
 func TestFromKey32(t *testing.T) {
-	validKey := new32()
+	validKey := arr32()
 	validKey[0] = 0xFF
 	validKey[31] = 0xAA
 
@@ -1436,8 +1467,8 @@ func TestFromKey32(t *testing.T) {
 		},
 		{
 			name:     "new32 key",
-			key:      new32(),
-			expected: (*new32())[:],
+			key:      arr32(),
+			expected: (*arr32())[:],
 		},
 		{
 			name:        "nil key",
@@ -1478,7 +1509,7 @@ func TestKey32RoundTrip(t *testing.T) {
 		make([]byte, 32),
 		bytes.Repeat([]byte{0xFF}, 32),
 		bytes.Repeat([]byte{0x55, 0xAA}, 16),
-		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32},
+		slice32(),
 	}
 
 	for i, data := range testData {
@@ -1505,7 +1536,7 @@ func TestKey32RoundTrip(t *testing.T) {
 
 func TestHmacAndHkdfIntegration(t *testing.T) {
 	// Test using HKDF-derived keys with HMAC
-	masterKey := new32()
+	masterKey := arr32()
 	salt := []byte("application salt")
 
 	// Derive keys for different purposes
@@ -1592,4 +1623,17 @@ func mustHmacSha256(msg, key []byte) []byte {
 		panic(err)
 	}
 	return mac
+}
+
+func arr32() *[32]byte {
+	x := [32]byte(slice32())
+	return &x
+}
+
+func slice32() []byte {
+	s := make([]byte, 32)
+	for i := range s {
+		s[i] = byte(i + 1)
+	}
+	return s
 }

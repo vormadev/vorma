@@ -80,7 +80,7 @@ func (tc property_schema_root_spec) assert_matches_model(ht *hegel.T) {
 	if err == nil {
 		ht.Fatalf("expected error, got schema %#v", actual)
 	}
-	if !errors.Is(err, SchemaError) {
+	if !errors.Is(err, ErrInvalidSchema) {
 		ht.Fatalf("expected SchemaError, got %v", err)
 	}
 }
@@ -130,23 +130,29 @@ func (spec property_schema_field_spec) field_type_and_schema(
 ) (reflect.Type, Schema, bool) {
 	switch spec.kind {
 	case 0:
-		return reflect.TypeOf(""), schema_code_string, true
+		return reflect.TypeFor[string](), schema_code_string, true
 	case 1:
-		return reflect.TypeOf((*string)(nil)), "?" + schema_code_string, true
+		return reflect.TypeFor[*string](), "?" + schema_code_string, true
 	case 2:
-		return reflect.TypeOf(int(0)), schema_code_number, true
+		return reflect.TypeFor[int](), schema_code_number, true
 	case 3:
-		return reflect.TypeOf((**int)(nil)), "?" + schema_code_number, true
+		return reflect.TypeFor[**int](), "?" + schema_code_number, true
 	case 4:
-		return reflect.TypeOf(true), schema_code_bool, true
+		return reflect.TypeFor[bool](), schema_code_bool, true
 	case 5:
-		return reflect.TypeOf([]string{}), []Schema{schema_code_string}, true
+		return reflect.TypeFor[[]string](), []Schema{schema_code_string}, true
 	case 6:
-		return reflect.TypeOf([]*int{}), []Schema{"?" + schema_code_number}, true
+		return reflect.TypeFor[[]*int](), []Schema{"?" + schema_code_number}, true
 	case 7:
-		return reflect.TypeOf(map[string]string{}), []Schema{schema_code_map, schema_code_string}, true
+		return reflect.TypeFor[map[string]string](), []Schema{
+			schema_code_map,
+			schema_code_string,
+		}, true
 	case 8:
-		return reflect.TypeOf(map[string][]bool{}), []Schema{schema_code_map, []Schema{schema_code_bool}}, true
+		return reflect.TypeFor[map[string][]bool](), []Schema{
+			schema_code_map,
+			[]Schema{schema_code_bool},
+		}, true
 	case 9:
 		nested_type, nested_schema, nested_supported := spec.nested_struct_type_and_schema(index)
 		return nested_type, nested_schema, nested_supported
@@ -157,11 +163,11 @@ func (spec property_schema_field_spec) field_type_and_schema(
 		nested_type, _, _ := spec.nested_struct_type_and_schema(index)
 		return reflect.SliceOf(nested_type), nil, false
 	case 12:
-		return reflect.TypeOf(map[string]map[string]string{}), nil, false
+		return reflect.TypeFor[map[string]map[string]string](), nil, false
 	case 13:
-		return reflect.TypeOf((chan int)(nil)), nil, false
+		return reflect.TypeFor[chan int](), nil, false
 	default:
-		return reflect.TypeOf((*any)(nil)).Elem(), nil, false
+		return reflect.TypeFor[any](), nil, false
 	}
 }
 

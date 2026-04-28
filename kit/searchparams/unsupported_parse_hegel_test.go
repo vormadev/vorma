@@ -62,7 +62,7 @@ func (tc property_unsupported_parse_case) assert_matches_model(ht *hegel.T) {
 	if err == nil {
 		ht.Fatalf("expected error for unsupported addressed shape")
 	}
-	if !errors.Is(err, ParseError) {
+	if !errors.Is(err, ErrCannotParse) {
 		ht.Fatalf("expected ParseError, got %v", err)
 	}
 }
@@ -85,28 +85,28 @@ func (tc property_unsupported_parse_case) field_type() reflect.Type {
 	case 0:
 		nested := reflect.StructOf([]reflect.StructField{{
 			Name: "Inner",
-			Type: reflect.TypeOf(""),
+			Type: reflect.TypeFor[string](),
 			Tag:  `json:"inner"`,
 		}})
 		return reflect.SliceOf(nested)
 	case 1:
-		return reflect.TypeOf(map[string]map[string]string{})
+		return reflect.TypeFor[map[string]map[string]string]()
 	case 2:
 		nested := reflect.StructOf([]reflect.StructField{{
 			Name: "Inner",
-			Type: reflect.TypeOf(""),
+			Type: reflect.TypeFor[string](),
 			Tag:  `json:"inner"`,
 		}})
 		return reflect.MapOf(
-			reflect.TypeOf(""),
+			reflect.TypeFor[string](),
 			reflect.SliceOf(nested),
 		)
 	case 3:
-		return reflect.TypeOf((chan int)(nil))
+		return reflect.TypeFor[chan int]()
 	case 4:
-		return reflect.TypeOf((*any)(nil)).Elem()
+		return reflect.TypeFor[any]()
 	default:
-		return reflect.TypeOf((func())(nil))
+		return reflect.TypeFor[func()]()
 	}
 }
 

@@ -1008,7 +1008,7 @@ func setup_api_router() *Router {
 func setup_large_router(n int) *Router {
 	r := NewRouter()
 	ok := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
-	for i := 0; i < n; i++ {
+	for i := range n {
 		path := fmt.Sprintf("/route%d", i)
 		if i%2 == 0 {
 			AddHTTPHandlerFunc(r, http.MethodGet, "/static/path/"+path, ok)

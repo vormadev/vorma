@@ -11,10 +11,8 @@ import (
 	"time"
 )
 
-func ptr[T any](v T) *T { return &v }
-
 func newTestLogger(label string, buf *bytes.Buffer) *slog.Logger {
-	return New(label, Options{Output: buf, UseColor: ptr(true)})
+	return New(label, Options{Output: buf, UseColor: new(true)})
 }
 
 func TestNew(t *testing.T) {
@@ -37,7 +35,7 @@ func TestNew(t *testing.T) {
 		logger := New("TEST", Options{
 			Output:   &buf,
 			Level:    slog.LevelWarn,
-			UseColor: ptr(false),
+			UseColor: new(false),
 		})
 		h := logger.Handler().(*ColorLogHandler)
 		if h.opts.Level != slog.LevelWarn {
@@ -79,7 +77,7 @@ func TestEnabled(t *testing.T) {
 
 func TestLevelFiltering(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, Level: slog.LevelWarn, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, Level: slog.LevelWarn, UseColor: new(true)})
 
 	logger.Debug("debug")
 	logger.Info("info")
@@ -119,7 +117,7 @@ func TestLevels(t *testing.T) {
 			var buf bytes.Buffer
 			logger := New(
 				"TEST",
-				Options{Output: &buf, Level: slog.LevelDebug, UseColor: ptr(true)},
+				Options{Output: &buf, Level: slog.LevelDebug, UseColor: new(true)},
 			)
 			logger.Log(context.Background(), tt.level, "test message")
 			got := buf.String()
@@ -139,7 +137,7 @@ func TestLevels(t *testing.T) {
 
 func TestWithAttrs(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 
 	// WithAttrs should return a new logger
 	logger2 := logger.With("key1", "value1")
@@ -161,7 +159,7 @@ func TestWithAttrs(t *testing.T) {
 
 func TestWithAttrsChained(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 
 	logger.With("a", 1).With("b", 2).Info("chained")
 
@@ -176,7 +174,7 @@ func TestWithAttrsChained(t *testing.T) {
 
 func TestWithGroup(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 
 	logger.WithGroup("grp").Info("message", "key", "value")
 
@@ -188,7 +186,7 @@ func TestWithGroup(t *testing.T) {
 
 func TestWithGroupNested(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 
 	logger.WithGroup("a").WithGroup("b").Info("message", "key", "value")
 
@@ -200,7 +198,7 @@ func TestWithGroupNested(t *testing.T) {
 
 func TestWithGroupAndAttrs(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 
 	logger.With("pre", "val").WithGroup("grp").Info("msg", "key", "value")
 
@@ -215,7 +213,7 @@ func TestWithGroupAndAttrs(t *testing.T) {
 
 func TestColorDisabled(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(false)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(false)})
 
 	logger.Info("test message", "key", "value")
 
@@ -262,10 +260,10 @@ func TestAttributes(t *testing.T) {
 
 func TestThreadSafety(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(false)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(false)})
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -289,7 +287,7 @@ func TestThreadSafety(t *testing.T) {
 
 func TestSharedMutex(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(false)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(false)})
 
 	h1 := logger.Handler().(*ColorLogHandler)
 	h2 := logger.With("key", "value").Handler().(*ColorLogHandler)
@@ -307,7 +305,7 @@ func (errorWriter) Write([]byte) (int, error) {
 }
 
 func TestHandleError(t *testing.T) {
-	logger := New("TEST", Options{Output: errorWriter{}, UseColor: ptr(false)})
+	logger := New("TEST", Options{Output: errorWriter{}, UseColor: new(false)})
 	h := logger.Handler().(*ColorLogHandler)
 
 	err := h.Handle(context.Background(), slog.Record{
@@ -323,7 +321,7 @@ func TestHandleError(t *testing.T) {
 
 func TestWithAttrsEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 	h := logger.Handler().(*ColorLogHandler)
 
 	h2 := h.WithAttrs(nil)
@@ -339,7 +337,7 @@ func TestWithAttrsEmpty(t *testing.T) {
 
 func TestWithGroupEmpty(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 	h := logger.Handler().(*ColorLogHandler)
 
 	h2 := h.WithGroup("")
@@ -350,7 +348,7 @@ func TestWithGroupEmpty(t *testing.T) {
 
 func TestOutputFormat(t *testing.T) {
 	var buf bytes.Buffer
-	logger := New("TEST", Options{Output: &buf, UseColor: ptr(true)})
+	logger := New("TEST", Options{Output: &buf, UseColor: new(true)})
 
 	logger.Info("hello", "k", "v")
 	got := buf.String()

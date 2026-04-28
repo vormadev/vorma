@@ -57,15 +57,13 @@ func BenchmarkHighContention(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ctx := NewCtx(context.Background())
 		var wg sync.WaitGroup
-		for j := 0; j < 10; j++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 10 {
+			wg.Go(func() {
 				_, err := run_task(ctx, shared, struct{}{})
 				if err != nil {
 					b.Error(err)
 				}
-			}()
+			})
 		}
 		wg.Wait()
 	}
@@ -113,7 +111,7 @@ func BenchmarkParallelScaling(b *testing.B) {
 	for _, num := range []int{1, 2, 5, 10, 20, 50} {
 		b.Run(fmt.Sprintf("tasks-%d", num), func(b *testing.B) {
 			task_list := make([]*Task[int, int], num)
-			for i := 0; i < num; i++ {
+			for i := range num {
 				id := i
 				task_list[i] = NewTask(func(c *Ctx, input int) (int, error) {
 					return input + id, nil

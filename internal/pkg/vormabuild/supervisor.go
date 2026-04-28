@@ -10,9 +10,13 @@ import (
 	"time"
 
 	"github.com/vormadev/vorma/internal/pkg/vormarun"
+	"github.com/vormadev/vorma/kit/envutil"
 	"github.com/vormadev/vorma/kit/netutil"
 	"github.com/vormadev/vorma/kit/procutil"
 )
+
+const supervisor_app_server_name = "app server"
+const supervisor_vite_server_name = "Vite server"
 
 /////////////////////////////////////////////////////////////////////
 /////// APP SERVER -- START
@@ -38,7 +42,7 @@ func (rs *run_state) start_app_server() error {
 
 	opts := sv_start_opts{
 		ctx:            build_ctx,
-		preferred_port: 8080,
+		preferred_port: envutil.GetInt(dev_app_server_preferred_port_env_key, 8080),
 		make_cmd: func(ctx context.Context, port int) *exec.Cmd {
 			env := []string{
 				env_item_int("PORT", port),
@@ -47,6 +51,9 @@ func (rs *run_state) start_app_server() error {
 			return cfg.run_app_server_cmd(ctx, env)
 		},
 		ready_endpoint: "/.vorma/healthz",
+		on_unexpected_exit: func(err error) {
+			rs.on_child_process_exit(supervisor_app_server_name, err)
+		},
 	}
 
 	if err := sv.start(opts); err != nil {
@@ -86,11 +93,14 @@ func (rs *run_state) start_vite_server() error {
 
 	opts := sv_start_opts{
 		ctx:            build_ctx,
-		preferred_port: 5173,
+		preferred_port: envutil.GetInt(dev_vite_server_preferred_port_env_key, 5173),
 		make_cmd: func(ctx context.Context, port int) *exec.Cmd {
 			return cfg.run_vite_server_cmd(ctx, port, dev_mux_port)
 		},
 		ready_endpoint: "/@vite/client",
+		on_unexpected_exit: func(err error) {
+			rs.on_child_process_exit(supervisor_vite_server_name, err)
+		},
 	}
 
 	if err := sv.start(opts); err != nil {
@@ -114,14 +124,16 @@ type supervisor struct {
 	process    *os.Process
 	done       chan struct{}
 	exit_err   error
+	stopping   bool
 	start_opts sv_start_opts
 }
 
 type sv_start_opts struct {
-	ctx            context.Context
-	preferred_port int
-	make_cmd       func(ctx context.Context, port int) *exec.Cmd
-	ready_endpoint string
+	ctx                context.Context
+	preferred_port     int
+	make_cmd           func(ctx context.Context, port int) *exec.Cmd
+	ready_endpoint     string
+	on_unexpected_exit func(error)
 }
 
 // Acquires lock.
@@ -165,20 +177,31 @@ func (sv *supervisor) start(opts sv_start_opts) error {
 	sv._port = port
 	sv.process = cmd.Process
 	sv.done = make(chan struct{})
-
-	go func() {
-		sv.exit_err = cmd.Wait()
-		close(sv.done)
-	}()
+	sv.exit_err = nil
+	sv.stopping = false
 
 	done := sv.done
-	exit_err := &sv.exit_err
+	on_unexpected_exit := opts.on_unexpected_exit
+	go func() {
+		err := cmd.Wait()
+
+		sv.mu.Lock()
+		sv.exit_err = err
+		should_notify := !sv.stopping && opts.ctx.Err() == nil
+		close(done)
+		sv.mu.Unlock()
+
+		if should_notify && on_unexpected_exit != nil {
+			on_unexpected_exit(err)
+		}
+	}()
+
 	sv.mu.Unlock()
 
 	if err := poll_http_ready_endpoint(
 		opts.ctx,
 		done,
-		exit_err,
+		sv.exit_error,
 		fmt.Sprintf("http://localhost:%d%s", port, opts.ready_endpoint),
 	); err != nil {
 		sv.stop(true)
@@ -199,6 +222,7 @@ func (sv *supervisor) stop(force bool) {
 
 	pid := sv.process.Pid
 	done := sv.done
+	sv.stopping = true
 	sv.mu.Unlock()
 
 	if force {
@@ -219,7 +243,14 @@ func (sv *supervisor) stop(force bool) {
 	sv.process = nil
 	sv.done = nil
 	sv.exit_err = nil
+	sv.stopping = false
 	sv.mu.Unlock()
+}
+
+func (sv *supervisor) exit_error() error {
+	sv.mu.Lock()
+	defer sv.mu.Unlock()
+	return sv.exit_err
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -229,7 +260,7 @@ func (sv *supervisor) stop(force bool) {
 func poll_http_ready_endpoint(
 	ctx context.Context,
 	done chan struct{},
-	exit_err *error,
+	exit_err func() error,
 	url string,
 ) error {
 	client := &http.Client{Timeout: 1 * time.Second}
@@ -246,7 +277,7 @@ func poll_http_ready_endpoint(
 		case <-done:
 			return fmt.Errorf(
 				"process exited before becoming ready: %w",
-				*exit_err,
+				exit_err(),
 			)
 		default:
 			resp, err := client.Get(url)

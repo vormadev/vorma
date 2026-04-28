@@ -1055,7 +1055,7 @@ func TestConcurrentRequests(t *testing.T) {
 
 	// Run concurrent POST requests
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			req := httptest.NewRequest("POST", "/", nil)
 			req.AddCookie(cookie)
@@ -1072,7 +1072,7 @@ func TestConcurrentRequests(t *testing.T) {
 	}
 
 	// Wait for all goroutines
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 }

@@ -79,6 +79,9 @@ func (rs *run_state) refresh_go() error {
 	}
 
 	rs.log_build_start(is_initial)
+	if !is_initial {
+		rs.panic_if_test_stage(__test_panic_stage_during_go_refresh)
+	}
 
 	wg := sync.WaitGroup{}
 	app_server_build_err_ch := make(chan error, 1)
@@ -160,15 +163,22 @@ func (rs *run_state) refresh_go() error {
 		if rs.watcher != nil {
 			rs.watcher_ctx_cancel()
 		}
+		ignore_patterns := append(
+			base_watch_ignore_patterns,
+			rs.cfg.global_watch_exclude_patterns()...,
+		)
+		ignore_patterns = append(
+			ignore_patterns,
+			fsutil.ToCatchDirPattern(rs.cfg.vorma_out()),
+		)
 		rs.watcher = fswatcher.NewWatcher(fswatcher.WatcherOptions{
-			WatchRoot: rs.cfg.watch_root(),
-			IgnorePatterns: append(
-				base_watch_ignore_patterns,
-				rs.cfg.global_watch_exclude_patterns()...,
-			),
+			WatchRoot:      rs.cfg.watch_root(),
+			IgnorePatterns: ignore_patterns,
 		})
 		rs.watcher_ctx, rs.watcher_ctx_cancel = context.WithCancel(rs.root_ctx)
-		go rs.watcher.Watch(rs.watcher_ctx, rs.on_evt_batch)
+		rs.go_safely(func() {
+			rs.watcher.Watch(rs.watcher_ctx, rs.on_evt_batch)
+		})
 	}
 
 	if err := rs.cfg.write_gitignore(); err != nil {
@@ -215,9 +225,11 @@ func (rs *run_state) refresh_go() error {
 	}
 
 	if !is_initial {
+		rs.panic_if_test_stage(__test_panic_stage_before_vite_restart)
 		if err := rs.send_vite_plugin_restart(); err != nil {
 			return fmt.Errorf("error sending restart command to Vite plugin: %w", err)
 		}
+		rs.panic_if_test_stage(__test_panic_stage_after_vite_restart)
 	}
 
 	if build_ctx.Err() != nil {

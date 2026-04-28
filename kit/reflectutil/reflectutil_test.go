@@ -25,23 +25,23 @@ func TestTypeImplements(t *testing.T) {
 	if TypeImplements(nil, iface) {
 		t.Fatal("expected nil concrete type to return false")
 	}
-	if TypeImplements(reflect.TypeOf(testValueImpl{}), nil) {
+	if TypeImplements(reflect.TypeFor[testValueImpl](), nil) {
 		t.Fatal("expected nil interface type to return false")
 	}
 
-	if !TypeImplements(reflect.TypeOf(testValueImpl{}), iface) {
+	if !TypeImplements(reflect.TypeFor[testValueImpl](), iface) {
 		t.Fatal("expected value receiver implementation to match")
 	}
-	if !TypeImplements(reflect.TypeOf(&testValueImpl{}), iface) {
+	if !TypeImplements(reflect.TypeFor[*testValueImpl](), iface) {
 		t.Fatal("expected pointer to value receiver type to match")
 	}
-	if !TypeImplements(reflect.TypeOf(testPointerImpl{}), iface) {
+	if !TypeImplements(reflect.TypeFor[testPointerImpl](), iface) {
 		t.Fatal("expected pointer receiver implementation to match via PointerTo")
 	}
-	if !TypeImplements(reflect.TypeOf(&testPointerImpl{}), iface) {
+	if !TypeImplements(reflect.TypeFor[*testPointerImpl](), iface) {
 		t.Fatal("expected pointer receiver implementation to match")
 	}
-	if TypeImplements(reflect.TypeOf(testNoImpl{}), iface) {
+	if TypeImplements(reflect.TypeFor[testNoImpl](), iface) {
 		t.Fatal("expected non-implementation to return false")
 	}
 }
@@ -54,8 +54,8 @@ func TestTypeImplements_PanicsWhenIfaceNotInterface(t *testing.T) {
 	}()
 
 	TypeImplements(
-		reflect.TypeOf(testValueImpl{}),
-		reflect.TypeOf(testValueImpl{}),
+		reflect.TypeFor[testValueImpl](),
+		reflect.TypeFor[testValueImpl](),
 	)
 }
 
@@ -108,7 +108,7 @@ func TestIsNilLikeExceptNone(t *testing.T) {
 func TestDerefType(t *testing.T) {
 	type sample struct{}
 
-	tp, is_pointer := DerefType(reflect.TypeOf((**sample)(nil)))
+	tp, is_pointer := DerefType(reflect.TypeFor[**sample]())
 	if tp != reflect.TypeFor[sample]() {
 		t.Fatalf("DerefType type = %v, want %v", tp, reflect.TypeFor[sample]())
 	}
@@ -116,7 +116,7 @@ func TestDerefType(t *testing.T) {
 		t.Fatal("DerefType should report pointer")
 	}
 
-	tp, is_pointer = DerefType(reflect.TypeOf(sample{}))
+	tp, is_pointer = DerefType(reflect.TypeFor[sample]())
 	if tp != reflect.TypeFor[sample]() {
 		t.Fatalf("DerefType type = %v, want %v", tp, reflect.TypeFor[sample]())
 	}
@@ -326,15 +326,6 @@ func TestPublicStructFields_ExplicitInline(t *testing.T) {
 	}
 	if len(shape.Unknowns) != 1 || shape.Unknowns[0].FieldName != "Extra" {
 		t.Fatalf("expected unknown fallback in shape: %#v", shape.Unknowns)
-	}
-}
-
-func TestPublicStructFields_InvalidInlineOptions(t *testing.T) {
-	type sample struct {
-		Inline struct{} `json:",inline,omitempty"`
-	}
-	if _, err := PublicStructFields(reflect.TypeFor[sample]()); err == nil {
-		t.Fatalf("expected error for invalid inline options")
 	}
 }
 

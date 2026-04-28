@@ -22,6 +22,7 @@ import (
 	"github.com/vormadev/vorma/kit/colorlog"
 	"github.com/vormadev/vorma/kit/envutil"
 	"github.com/vormadev/vorma/kit/fsutil"
+	"github.com/vormadev/vorma/kit/globset"
 	"github.com/vormadev/vorma/kit/id"
 	"github.com/vormadev/vorma/kit/netutil"
 	"github.com/vormadev/vorma/kit/searchparams"
@@ -47,8 +48,9 @@ type run_state struct {
 
 	pub_fm map[string]string
 
-	root_ctx context.Context
-	mu       sync.Mutex
+	root_ctx        context.Context
+	root_ctx_cancel context.CancelFunc
+	mu              sync.Mutex
 
 	build_ctx        context.Context
 	build_ctx_cancel context.CancelFunc
@@ -71,11 +73,19 @@ type run_state struct {
 	css_files_to_watch *set.Set[string]
 
 	vite_plugin_control_port int
+
+	child_exit_ch chan child_process_exit
+	panic_ch      chan any
 }
 
 type mail struct {
 	time                       time.Time
 	includes_client_revalidate bool
+}
+
+type child_process_exit struct {
+	name string
+	err  error
 }
 
 func (rs *run_state) stop_child_processes(should_force bool) {
@@ -94,6 +104,54 @@ func (rs *run_state) stop_child_processes(should_force bool) {
 		vsv.stop(should_force)
 	}
 	wg.Wait()
+}
+
+func (rs *run_state) on_child_process_exit(name string, err error) {
+	if rs.root_ctx.Err() != nil {
+		return
+	}
+	select {
+	case rs.child_exit_ch <- child_process_exit{name: name, err: err}:
+	default:
+	}
+	rs.root_ctx_cancel()
+}
+
+func (rs *run_state) go_safely(fn func()) {
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				rs.on_background_panic(p)
+			}
+		}()
+		fn()
+	}()
+}
+
+func (rs *run_state) on_background_panic(p any) {
+	select {
+	case rs.panic_ch <- p:
+	default:
+	}
+	rs.root_ctx_cancel()
+}
+
+func (rs *run_state) panic_for_child_process_exit(child_exit child_process_exit) {
+	panic(fmt.Sprintf(
+		"%s process exited unexpectedly: %v",
+		child_exit.name,
+		child_exit.err,
+	))
+}
+
+func (rs *run_state) panic_if_fatal_event_pending() {
+	select {
+	case p := <-rs.panic_ch:
+		panic(p)
+	case child_exit := <-rs.child_exit_ch:
+		rs.panic_for_child_process_exit(child_exit)
+	default:
+	}
 }
 
 func Run(
@@ -117,6 +175,7 @@ func Run(
 		is_dev:             is_dev,
 		build_entry:        filepath.Dir(caller_file),
 		root_ctx:           root_ctx,
+		root_ctx_cancel:    root_ctx_cancel,
 		build_ctx:          build_ctx,
 		build_ctx_cancel:   build_ctx_cancel,
 		watcher_ctx:        watcher_ctx,
@@ -126,34 +185,35 @@ func Run(
 		mailbox:            mailbox.NewMailbox[string, mail](),
 		css_files_to_watch: set.New[string](),
 		client_manager:     new_client_manager(),
+		child_exit_ch:      make(chan child_process_exit, 1),
+		panic_ch:           make(chan any, 1),
 	}
 
 	defer func() {
 		if rs.dev_lock != nil {
 			_ = rs.dev_lock.Release()
 		}
-		root_ctx_cancel()
 		rs.stop_child_processes(false)
+		root_ctx_cancel()
 	}()
 
 	/////// LISTEN FOR KILL SIGNALS
 	sig_ch := make(chan os.Signal, 2)
 	signal.Notify(sig_ch, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
+	rs.go_safely(func() {
 		<-sig_ch
 
-		// Listen for second signal to force kill
-		go func() {
+		rs.go_safely(func() {
 			<-sig_ch
 			rs.log.Info("Force killing...")
 			rs.stop_child_processes(true)
-		}()
+		})
 
 		rs.log.Info("Shutting down...")
 		rs.stop_child_processes(false)
 
 		root_ctx_cancel()
-	}()
+	})
 
 	if err := rs.refresh_go(); err != nil {
 		panic(fmt.Sprintf("Initialization error: %v", err))
@@ -183,7 +243,12 @@ func Run(
 	if err != nil {
 		panic(fmt.Sprintf("Error starting internal dev server: %v", err))
 	}
-	go http.Serve(listen, dev_mux)
+	rs.go_safely(func() {
+		if err := http.Serve(listen, dev_mux); err != nil &&
+			root_ctx.Err() == nil {
+			panic(fmt.Sprintf("Internal dev server failed: %v", err))
+		}
+	})
 
 	if rs.is_dev {
 		if err := rs.start_vite_server(); err != nil {
@@ -192,6 +257,8 @@ func Run(
 			}
 			panic(fmt.Sprintf("Error starting Vite server: %v", err))
 		}
+		rs.panic_if_test_stage(__test_panic_stage_after_initial_vite_start)
+		rs.panic_async_if_test_stage(__test_panic_stage_async_after_initial_vite_start)
 	}
 
 	if !rs.is_dev {
@@ -226,8 +293,15 @@ func Run(
 	/////// BLOCK AND WATCH FOR FILE CHANGES
 	if rs.is_dev {
 		for {
+			rs.panic_if_fatal_event_pending()
+
 			select {
+			case p := <-rs.panic_ch:
+				panic(p)
+			case child_exit := <-rs.child_exit_ch:
+				rs.panic_for_child_process_exit(child_exit)
 			case <-root_ctx.Done():
+				rs.panic_if_fatal_event_pending()
 				return
 			case <-rs.mailbox.C():
 				data := rs.mailbox.Claim()
@@ -271,14 +345,29 @@ func (rs *run_state) on_evt_batch(evts []fswatcher.Evt) error {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 
+	server_watch_set, err := globset.Compile(cfg.server_watch_patterns())
+	if err != nil {
+		return fmt.Errorf("compile server watch patterns: %w", err)
+	}
+	client_revalidate_watch_set, err := globset.Compile(
+		cfg.client_revalidate_on_change_patterns(),
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"compile client revalidate watch patterns: %w",
+			err,
+		)
+	}
+
 	static_implicated := false
 	go_implicated := false
 	client_revalidate_implicated := false
 
 	for _, evt := range evts {
 		p := fsutil.SysNorm(evt.Path)
+		rel_path := cfg.watch_relative_path(p)
 		if !go_implicated {
-			if cfg.matches_server_watch(p) {
+			if server_watch_set.Match(rel_path) {
 				go_implicated = true
 				break
 			}
@@ -289,7 +378,7 @@ func (rs *run_state) on_evt_batch(evts []fswatcher.Evt) error {
 			}
 		}
 		if !client_revalidate_implicated {
-			if cfg.matches_client_revalidate_on_change(p) {
+			if client_revalidate_watch_set.Match(rel_path) {
 				client_revalidate_implicated = true
 			}
 		}

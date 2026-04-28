@@ -3,6 +3,7 @@ package tsgen
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	"hegel.dev/go/hegel"
@@ -217,10 +218,5 @@ func (tc property_cycle_case) name_for(index int) string {
 }
 
 func (tc property_cycle_case) includes(index int) bool {
-	for _, included := range tc.included {
-		if included == index {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tc.included, index)
 }

@@ -131,7 +131,7 @@ func (lock *PIDLock) Acquire() error {
 	}
 
 	owner_id := build_owner_id()
-	for attempt := 0; attempt < acquire_retry_limit; attempt++ {
+	for range acquire_retry_limit {
 		acquired, held_err, attempt_err := lock.try_acquire(owner_id)
 		if attempt_err != nil {
 			return attempt_err

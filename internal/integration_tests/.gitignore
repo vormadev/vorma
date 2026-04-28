@@ -1,0 +1,4 @@
+node_modules/
+.bombadil/
+.dist.*/
+vorma.*.gen.ts

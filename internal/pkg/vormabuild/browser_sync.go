@@ -104,17 +104,15 @@ func (rs *run_state) dev_refresh_handler() http.HandlerFunc {
 		}
 		client_mgr.add(c)
 
-		// read pump — keeps connection alive, detects close
-		go func() {
+		rs.go_safely(func() {
 			defer client_mgr.remove(c)
 			for {
 				if _, _, err := conn.ReadMessage(); err != nil {
 					break
 				}
 			}
-		}()
+		})
 
-		// write pump
 		for msg := range c.notify {
 			data, err := jsonutil.Serialize(msg)
 			if err != nil {

@@ -8,4 +8,12 @@
 	"sortTailwindcss": {},
 	"sortPackageJson": false,
 	"ignorePatterns": [],
+	"overrides": [
+		{
+			"files": ["*.jsonc"],
+			"options": {
+				"trailingComma": "none"
+			}
+		}
+	]
 }

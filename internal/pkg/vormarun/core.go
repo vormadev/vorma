@@ -32,6 +32,7 @@ type DevWatchConfig struct {
 	// Optional.
 	//
 	// Glob patterns you want the dev watcher to completely ignore.
+	// Supports ordered globset semantics, including `!` exceptions.
 	//
 	// Always ignored: "**/.git" and "**/node_modules".
 	GlobalIgnore []string
@@ -40,6 +41,7 @@ type DevWatchConfig struct {
 	//
 	// Glob patterns pointing to Go files (or files implicating Go files, such
 	// as embedded templates) that should trigger a Go refresh when changed.
+	// Supports ordered globset semantics, including `!` exceptions.
 	//
 	// If empty, defaults to watching all .go files in DevWatchConfig.Root.
 	OnChangeRecompileGo []string
@@ -49,6 +51,7 @@ type DevWatchConfig struct {
 	// Glob patterns pointing to files that, when changed, should trigger a
 	// client-side data revalidation. Useful when editing loader-served
 	// content in dev mode, such as markdown files.
+	// Supports ordered globset semantics, including `!` exceptions.
 	OnChangeClientRevalidate []string
 }
 

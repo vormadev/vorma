@@ -3,6 +3,7 @@ package schema_test
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -1210,9 +1211,7 @@ func (tc property_int_rule_case) snapshot() property_int_rule_snapshot {
 
 func (tc property_map_length_case) holder() container_map_holder {
 	entries := make(map[string]string, len(tc.entries))
-	for key, value := range tc.entries {
-		entries[key] = value
-	}
+	maps.Copy(entries, tc.entries)
 	return container_map_holder{M: entries}
 }
 
@@ -1280,9 +1279,7 @@ func (tc property_map_length_case) expected_outcome(
 
 func (tc property_schema_map_case) holder() container_map_holder {
 	entries := make(map[string]string, len(tc.entries))
-	for key, value := range tc.entries {
-		entries[key] = value
-	}
+	maps.Copy(entries, tc.entries)
 	return container_map_holder{M: entries}
 }
 

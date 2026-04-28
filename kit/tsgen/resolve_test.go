@@ -1,6 +1,7 @@
 package tsgen
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -224,6 +225,33 @@ type ResolveAliasAlpha struct {
 
 type ResolveAliasBeta struct {
 	Next *ResolveAliasAlpha `json:"next"`
+}
+
+type ResolveMultiAliasShared struct {
+	Name string `json:"name"`
+}
+
+type ResolveMultiAliasHost struct {
+	Value ResolveMultiAliasShared `json:"value"`
+}
+
+type ResolveNestedRawDep struct{}
+
+func (ResolveNestedRawDep) TSType() string {
+	return "{ custom: boolean }"
+}
+
+type ResolveNestedRawRefTarget struct {
+	Name string `json:"name"`
+}
+
+type ResolveNestedRawRefDep struct{}
+
+func (ResolveNestedRawRefDep) TSType() string {
+	return fmt.Sprintf(
+		"{ target: %s; }",
+		GoType[ResolveNestedRawRefTarget]().ID(),
+	)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -933,6 +961,78 @@ func TestResolveAdvanced(t *testing.T) {
 		assert_absent(t, defs, "ResolveAliasBeta")
 		assert_type(t, defs, "AliasAlpha", `{ next?: AliasBeta; }`)
 		assert_type(t, defs, "AliasBeta", `{ next?: AliasAlpha; }`)
+	})
+
+	t.Run("MultiAliasReferencesUseLexicallySmallestAlias", func(t *testing.T) {
+		defs := resolve_types(t,
+			&GoTypeSrc{Instance: ResolveMultiAliasShared{}, RequestedName: "AliasZ"},
+			&GoTypeSrc{Instance: ResolveMultiAliasShared{}, RequestedName: "AliasA"},
+			&GoTypeSrc{Instance: ResolveMultiAliasHost{}, RequestedName: "Host"},
+		)
+
+		assert_type(t, defs, "Host", `{ value: AliasA; }`)
+		assert_type(t, defs, "AliasA", `{ name: string; }`)
+		assert_type(t, defs, "AliasZ", `{ name: string; }`)
+	})
+
+	t.Run("DiscoveredNestedTSTyperRawUsesRawBody", func(t *testing.T) {
+		type Host struct {
+			Dep ResolveNestedRawDep `json:"dep"`
+		}
+
+		defs := resolve_types(t, &GoTypeSrc{Instance: Host{}, RequestedName: "Host"})
+		assert_type(t, defs, "Host", `{ dep: ResolveNestedRawDep; }`)
+		assert_type(t, defs, "ResolveNestedRawDep", `{ custom: boolean }`)
+	})
+
+	t.Run("DiscoveredNestedTSTyperRawSentinelKeepsReferencedType", func(t *testing.T) {
+		type Host struct {
+			Dep ResolveNestedRawRefDep `json:"dep"`
+		}
+
+		defs := resolve_types(t,
+			&GoTypeSrc{Instance: Host{}, RequestedName: "Host"},
+			&GoTypeSrc{Instance: ResolveNestedRawRefTarget{}},
+		)
+		assert_type(t, defs, "Host", `{ dep: ResolveNestedRawRefDep; }`)
+		assert_type(t, defs, "ResolveNestedRawRefDep", `{ target: ResolveNestedRawRefTarget; }`)
+		assert_type(t, defs, "ResolveNestedRawRefTarget", `{ name: string; }`)
+	})
+
+	t.Run("NamedScalarAliasesAreReferenced", func(t *testing.T) {
+		type UserID string
+		type Count int
+		type Host struct {
+			ID    UserID `json:"id"`
+			Count Count  `json:"count"`
+		}
+
+		defs := resolve_types(t,
+			&GoTypeSrc{Instance: UserID(""), RequestedName: "UserID"},
+			&GoTypeSrc{Instance: Count(0), RequestedName: "Count"},
+			&GoTypeSrc{Instance: Host{}, RequestedName: "Host"},
+		)
+		assert_type(t, defs, "Host", `{ id: UserID; count: Count; }`)
+		assert_type(t, defs, "UserID", `string`)
+		assert_type(t, defs, "Count", `number`)
+	})
+
+	t.Run("NamedTimeLikeWrappersKeepBuiltinShape", func(t *testing.T) {
+		type CreatedAt time.Time
+		type Elapsed time.Duration
+		type Host struct {
+			Created CreatedAt `json:"created"`
+			Took    Elapsed   `json:"took"`
+		}
+
+		defs := resolve_types(t,
+			&GoTypeSrc{Instance: CreatedAt(time.Time{}), RequestedName: "CreatedAt"},
+			&GoTypeSrc{Instance: Elapsed(0), RequestedName: "Elapsed"},
+			&GoTypeSrc{Instance: Host{}, RequestedName: "Host"},
+		)
+		assert_type(t, defs, "Host", `{ created: CreatedAt; took: Elapsed; }`)
+		assert_type(t, defs, "CreatedAt", `string`)
+		assert_type(t, defs, "Elapsed", `number`)
 	})
 }
 

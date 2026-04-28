@@ -705,7 +705,7 @@ func TestTTL_NoTTL_NeverExpires(t *testing.T) {
 	})
 
 	ctx := NewCtx(context.Background())
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if _, err := task.Run(ctx, "test"); err != nil {
 			t.Fatalf("Execution %d failed: %v", i, err)
 		}
@@ -725,7 +725,7 @@ func TestTTL_ZeroTTL_NeverExpires(t *testing.T) {
 	})
 
 	ctx := NewCtxWithTTL(context.Background(), 0)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if _, err := task.Run(ctx, "test"); err != nil {
 			t.Fatalf("Execution %d failed: %v", i, err)
 		}
@@ -783,7 +783,7 @@ func TestTTL_Cleanup_RemovesExpiredEntries(t *testing.T) {
 	ttl := 100 * time.Millisecond
 	ctx := NewCtxWithTTL(context.Background(), ttl)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if _, err := task.Run(ctx, i); err != nil {
 			t.Fatalf("Failed with input %d: %v", i, err)
 		}
@@ -845,7 +845,7 @@ func TestTTL_ConcurrentAccess_WithExpiration(t *testing.T) {
 
 	var wg sync.WaitGroup
 	results := make([]string, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -867,7 +867,7 @@ func TestTTL_ConcurrentAccess_WithExpiration(t *testing.T) {
 	time.Sleep(110 * time.Millisecond)
 
 	results_2 := make([]string, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -1009,7 +1009,7 @@ func TestTTL_VeryShortTTL(t *testing.T) {
 	ctx := NewCtxWithTTL(context.Background(), ttl)
 
 	var results []int
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		result, err := task.Run(ctx, "test")
 		if err != nil {
 			t.Fatalf("Execution %d failed: %v", i, err)

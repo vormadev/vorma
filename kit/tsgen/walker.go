@@ -72,6 +72,7 @@ type field_node struct {
 
 type walk_entry struct {
 	id               string
+	natural_id       string
 	type_key         string
 	requested_name   string
 	node             *type_node
@@ -179,8 +180,8 @@ func (w *walker) get_or_create_reg(
 	case len(user_alias) > 0 && user_alias[0] != "":
 		reg.requested_name = user_alias[0]
 	default:
-		if !is_basic_type(t) {
-			reg.requested_name = sanitized_name(t)
+		if name := natural_name(t); name != "" {
+			reg.requested_name = name
 		}
 	}
 
@@ -205,6 +206,10 @@ func (w *walker) collect(t reflect.Type, user_alias ...string) {
 			return
 		}
 	} else if !is_root && is_basic_type(t) {
+		return
+	}
+
+	if _, ok := check_ts_typer_raw_type(t); ok {
 		return
 	}
 
@@ -279,6 +284,10 @@ func (w *walker) collect_field_type(t reflect.Type) {
 		}
 		w.collect(t.Key())
 		w.collect(t.Elem())
+	default:
+		if natural_name(t) != "" {
+			w.collect(t)
+		}
 	}
 }
 
@@ -296,6 +305,7 @@ func (w *walker) build_entries() map[string]*walk_entry {
 		id := make_id(t, reg.requested_name)
 		entries[id] = &walk_entry{
 			id:               id,
+			natural_id:       make_id(t, natural_name(t)),
 			type_key:         fmt.Sprintf("%v", t),
 			requested_name:   reg.requested_name,
 			node:             w.to_node(t),
@@ -310,6 +320,10 @@ func (w *walker) build_entries() map[string]*walk_entry {
 func (w *walker) to_node(t reflect.Type) *type_node {
 	if t == nil {
 		return &type_node{kind: kind_null}
+	}
+
+	if raw_str, ok := check_ts_typer_raw_type(t); ok {
+		return &type_node{kind: kind_raw, raw_ts: raw_str}
 	}
 
 	switch t.Kind() {
@@ -341,9 +355,9 @@ func (w *walker) to_node(t reflect.Type) *type_node {
 		}
 	case reflect.Struct:
 		switch {
-		case t == reflect.TypeFor[time.Time]():
+		case is_time_like_type(t):
 			return &type_node{kind: kind_string}
-		case t == reflect.TypeFor[time.Duration]():
+		case is_duration_like_type(t):
 			return &type_node{kind: kind_number}
 		default:
 			return w.struct_to_node(t)
@@ -367,9 +381,9 @@ func (w *walker) to_node_or_ref(t reflect.Type) *type_node {
 		effective = effective.Elem()
 	}
 
-	// Any named, non-basic collected type should be referenced by name so the
-	// resolved graph does not retain unreachable aliases.
-	if effective.Name() != "" && !is_basic_type(effective) {
+	// Any collected type with a natural TS name should be referenced by name so
+	// the resolved graph does not retain unreachable aliases.
+	if natural_name(effective) != "" {
 		if reg, ok := w.types[effective]; ok {
 			return &type_node{
 				kind:   kind_ref,
@@ -452,10 +466,21 @@ func natural_name(t reflect.Type) string {
 		return ""
 	}
 	n := sanitized_name(t)
-	if n != "" && is_basic_type(t) {
+	if n != "" && unnamed_basic_types_have_no_natural_name(t) {
 		return ""
 	}
 	return n
+}
+
+func unnamed_basic_types_have_no_natural_name(t reflect.Type) bool {
+	if t == nil {
+		return true
+	}
+	if t == reflect.TypeFor[time.Time]() ||
+		t == reflect.TypeFor[time.Duration]() {
+		return true
+	}
+	return t.PkgPath() == "" && is_basic_type(t)
 }
 
 var invalid_js_ident_chars = regexp.MustCompile(`[^a-zA-Z0-9_$]`)
@@ -489,8 +514,7 @@ func is_basic_type(t reflect.Type) bool {
 	if t == nil {
 		return false
 	}
-	if t == reflect.TypeFor[time.Time]() ||
-		t == reflect.TypeFor[time.Duration]() {
+	if is_time_like_type(t) || is_duration_like_type(t) {
 		return true
 	}
 	switch {
@@ -501,6 +525,20 @@ func is_basic_type(t reflect.Type) bool {
 	default:
 		return false
 	}
+}
+
+func is_time_like_type(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	return t.ConvertibleTo(reflect.TypeFor[time.Time]())
+}
+
+func is_duration_like_type(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	return t.ConvertibleTo(reflect.TypeFor[time.Duration]())
 }
 
 func check_ts_typer_raw(instance any) (string, bool) {
@@ -514,6 +552,10 @@ func check_ts_typer_raw(instance any) (string, bool) {
 	}
 
 	t, _ := reflectutil.DerefType(reflect.TypeOf(instance))
+	return check_ts_typer_raw_type(t)
+}
+
+func check_ts_typer_raw_type(t reflect.Type) (string, bool) {
 	if t == nil {
 		return "", false
 	}

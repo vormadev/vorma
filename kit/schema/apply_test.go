@@ -88,9 +88,8 @@ func TestEnforce_PreservesConcreteType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	var out normalizing_email = res.Value
-	if out != "foo@bar.com" {
-		t.Fatalf("expected unchanged value, got %q", out)
+	if res.Value != "foo@bar.com" {
+		t.Fatalf("expected unchanged value, got %q", res.Value)
 	}
 }
 
@@ -101,7 +100,7 @@ func TestEnforceAny_PreservesDynamicType(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := reflect.TypeOf(res.Value)
-	want := reflect.TypeOf(in)
+	want := reflect.TypeFor[normalizing_email]()
 	if got != want {
 		t.Fatalf("dynamic type changed: got %v, want %v", got, want)
 	}
