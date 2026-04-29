@@ -1,19 +1,18 @@
 # Vorma Tests
 
-Tests in this repo are organized by ownership. Kit and lab packages keep their
-tests local to the package. Vorma TypeScript packages keep their direct package
-tests in the existing Vitest setup under `internal/pkg/npm`; kit package tests
-and framework package tests are separate buckets there. Framework behavior
-belongs in `internal/framework_tests` when it is about how an app uses the
-framework: `vormarun`, `vormabuild`, generated artifacts, Vite/plugin behavior,
-adapters, dev/prod servers, and browser-observable behavior.
+Tests in this repo are organized by ownership and by whether they cover the
+Vorma framework surface or everything else. Framework tests belong in
+`internal/framework_tests`, except for the framework Vitest suites under
+`internal/pkg/npm/vorma/*`; other Go packages keep their package tests local,
+and other TypeScript package tests live under `internal/pkg/npm`.
 
 The maintenance commands treat `framework` and `other` as a partition. Broad
-commands run both sides. `other` is a complement where the tool supports it, so
-new root-module Go packages and non-framework Vitest files are covered without
-being listed manually. The gate fails when a new Go module, package manifest, or
-TypeScript project appears without being classified. The classified root lists
-live in `internal/cmd/maint/coherence.go`.
+commands run both sides. `other` is a complement where the tool supports it:
+root Go tests use `./...`, docs and framework are separate Go modules, and
+non-framework Vitest runs everything outside the framework package tree. The
+gate fails when a new Go module, package manifest, or TypeScript project appears
+without being classified. The classified root lists live in
+`internal/cmd/maint/coherence.go`.
 
 Do not recreate dependency test suites in the framework tests (for example,
 route matching details belong in `kit/matcher`, schema behavior belongs in

@@ -18,11 +18,12 @@ const create_npm_dir = "internal/pkg/npm/vorma/create"
 const local_output_dir = "__.local"
 
 type command_step struct {
-	name    string
-	dir     string
-	command string
-	args    []string
-	env     []string
+	name     string
+	dir      string
+	command  string
+	args     []string
+	env      []string
+	log_path string
 }
 
 func (app maint_app) find_repo_root() (string, error) {
@@ -57,10 +58,7 @@ func (app maint_app) run_steps(steps []command_step) error {
 }
 
 func (app maint_app) run_step(step command_step) error {
-	step_dir := app.root
-	if step.dir != "" {
-		step_dir = filepath.Join(app.root, step.dir)
-	}
+	step_dir := app.step_dir(step)
 
 	fmt.Println("==>", step.name)
 	if app.verbose || app.dry_run {
@@ -70,33 +68,27 @@ func (app maint_app) run_step(step command_step) error {
 		return nil
 	}
 
+	if err := app.execute_step(step, step_dir); err != nil {
+		return app.command_error(step.name, err)
+	}
+	return nil
+}
+
+func (app maint_app) execute_step(step command_step, step_dir string) error {
 	cmd := exec.Command(step.command, step.args...)
 	cmd.Dir = step_dir
 	cmd.Env = append(os.Environ(), step.env...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return app.command_error(step.name, err)
-	}
-	return nil
+	return cmd.Run()
 }
 
-func (app maint_app) run_logged_step(step command_step, log_path string) error {
-	step_dir := app.root
-	if step.dir != "" {
-		step_dir = filepath.Join(app.root, step.dir)
-	}
-
-	fmt.Println("==>", step.name)
-	fmt.Println("    log:", log_path)
-	if app.verbose || app.dry_run {
-		fmt.Println("   ", app.format_step(step, step_dir))
-	}
-	if app.dry_run {
-		return nil
-	}
-
+func (app maint_app) execute_logged_step(
+	step command_step,
+	step_dir string,
+	log_path string,
+) error {
 	if err := os.MkdirAll(filepath.Dir(log_path), 0755); err != nil {
 		return err
 	}
@@ -124,6 +116,13 @@ func (app maint_app) format_step(step command_step, step_dir string) string {
 		parts = append(parts, "env:", strings.Join(step.env, " "))
 	}
 	return strings.Join(parts, " ")
+}
+
+func (app maint_app) step_dir(step command_step) string {
+	if step.dir == "" {
+		return app.root
+	}
+	return filepath.Join(app.root, step.dir)
 }
 
 func (app maint_app) confirm(prompt string) error {
@@ -157,17 +156,6 @@ func (app maint_app) require_clean_worktree() error {
 	}
 	if len(bytes.TrimSpace(output)) > 0 {
 		return errors.New("worktree is not clean")
-	}
-	return nil
-}
-
-func (app maint_app) require_path(path string) error {
-	if app.dry_run {
-		return nil
-	}
-
-	if _, err := os.Stat(filepath.Join(app.root, path)); err != nil {
-		return fmt.Errorf("%s is not available: %w", path, err)
 	}
 	return nil
 }

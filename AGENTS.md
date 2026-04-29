@@ -19,6 +19,11 @@ anything that doesn't fit on one line.
 
 ## Universal rules (applicable to both Go and TypeScript)
 
+Before writing tests or running commands, make sure to read both
+`TEST_README.md` and `Makefile` in the repo root.
+
+---
+
 Single-use helpers are strictly prohibited unless they dramatically and
 objectively simplify the code.
 
