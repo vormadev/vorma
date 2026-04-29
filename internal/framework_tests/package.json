@@ -4,6 +4,7 @@
 	"devDependencies": {
 		"@antithesishq/bombadil": "^0.4.5",
 		"@preact/preset-vite": "^2.10.5",
+		"@typescript/native-preview": "7.0.0-dev.20260326.1",
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"@vitejs/plugin-react": "^6.0.1",

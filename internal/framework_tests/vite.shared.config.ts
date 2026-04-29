@@ -1,6 +1,6 @@
 import preact from "@preact/preset-vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import type { PluginOption, UserConfig } from "vite";
 import solid from "vite-plugin-solid";
 import vorma from "vorma/vite";
 
@@ -15,17 +15,19 @@ function from_root(path: string) {
 	return new URL(path, import.meta.url).pathname;
 }
 
-function variant_plugin(variant: BombadilVariant) {
+function variant_plugin(variant: BombadilVariant): PluginOption {
 	if (variant === "react") {
-		return react();
+		return react() as PluginOption;
 	}
 	if (variant === "preact") {
-		return preact();
+		return preact() as PluginOption;
 	}
-	return solid();
+	return solid() as PluginOption;
 }
 
-export function define_bombadil_vite_config(variant: BombadilVariant) {
+export function define_bombadil_vite_config(
+	variant: BombadilVariant,
+): UserConfig {
 	const deployment = process.env[deployment_env_key] ?? "A";
 	const mode = process.env[mode_env_key] ?? "prod";
 	const gen_file =
@@ -33,14 +35,14 @@ export function define_bombadil_vite_config(variant: BombadilVariant) {
 			? `./vorma.${variant}.dev.gen.ts`
 			: `./vorma.${variant}.gen.ts`;
 
-	return defineConfig({
+	return {
 		cacheDir: `.bombadil/vite-cache/${mode}-${variant}`,
 		define: {
 			__BOMBADIL_CLIENT_BUILD_TAG__: JSON.stringify(
 				`client-${deployment}`,
 			),
 		},
-		plugins: [variant_plugin(variant), vorma()],
+		plugins: [variant_plugin(variant), vorma() as PluginOption],
 		resolve: {
 			alias: {
 				"#variant-runtime": from_root(`./runtime/${variant}.ts`),
@@ -48,5 +50,5 @@ export function define_bombadil_vite_config(variant: BombadilVariant) {
 				"#vorma-gen": from_root(gen_file),
 			},
 		},
-	});
+	} as UserConfig;
 }

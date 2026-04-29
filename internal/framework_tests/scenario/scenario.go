@@ -299,7 +299,7 @@ func (v Variant) serve_board(board *switchboard) {
 		Handler: board,
 	}
 
-	fmt.Printf("Starting %s Bombadil fixture server at %s\n", v.UIVariant, url)
+	fmt.Printf("Starting %s framework test server at %s\n", v.UIVariant, url)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		panic(fmt.Sprintf("Application server failed: %v", err))
 	}
@@ -384,8 +384,8 @@ func (v Variant) App(d deployment_variant) *vorma.Vorma {
 			DefaultHead: func(_ *http.Request, _ *vorma.Vorma, h *vorma.HeadBuilder) error {
 				h.MetaCharset("utf-8")
 				h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
-				h.Title("Vorma Bombadil Fixture")
-				h.Description("A small Vorma app for Bombadil browser fuzzing.")
+				h.Title("Vorma Framework Test App")
+				h.Description("A small Vorma app for framework runtime testing.")
 				return nil
 			},
 			HeadDedupeKeys: func(*vorma.HeadBuilder) {},
@@ -417,7 +417,7 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			Pattern:  route_root_pattern,
 			TSModule: v.route_module("root.ts"),
 			Handler: func(c *RequestCtx[struct{}]) (RootData, error) {
-				c.HeadBuilder().Title("Vorma Bombadil Fixture")
+				c.HeadBuilder().Title("Vorma Framework Test App")
 				return RootData{Name: "root", Deployment: d.data_suffix}, nil
 			},
 		},
@@ -578,7 +578,7 @@ func (s *switchboard) serve_control(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case panic_path:
 		if envutil.GetBool(panic_route_env_key, false) {
-			panic("Bombadil fixture panic route")
+			panic("framework test panic route")
 		}
 		w.WriteHeader(http.StatusNotFound)
 	case exit_path:

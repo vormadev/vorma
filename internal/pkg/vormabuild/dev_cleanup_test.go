@@ -29,9 +29,9 @@ const bombadil_test_exit_route_env_key = "VORMA_BOMBADIL_ENABLE_EXIT_ROUTE"
 const bombadil_test_exit_path = "/__bombadil/exit"
 
 type dev_cleanup_harness struct {
-	t             *testing.T
-	bombadil_root string
-	build_bin     string
+	t              *testing.T
+	framework_root string
+	build_bin      string
 }
 
 type dev_test_output struct {
@@ -96,9 +96,9 @@ func TestDevPanicCleanupStopsVite(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := dev_cleanup_harness{
-				t:             t,
-				bombadil_root: h.bombadil_root,
-				build_bin:     h.build_bin,
+				t:              t,
+				framework_root: h.framework_root,
+				build_bin:      h.build_bin,
 			}
 			h.run_panic_cleanup_case(tt.stage, tt.triggers_refresh)
 		})
@@ -109,7 +109,7 @@ func TestDevAsyncPanicCleanupStopsVite(t *testing.T) {
 	h := dev_cleanup_harness{t: t}
 	h.init()
 
-	dist_dir := filepath.Join(h.bombadil_root, ".dist.react.dev.a")
+	dist_dir := filepath.Join(h.framework_root, ".dist.react.dev.a")
 	if err := os.RemoveAll(dist_dir); err != nil {
 		t.Fatalf("error removing old dev dist dir: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestDevAppHandlerPanicLeavesViteRunning(t *testing.T) {
 	h := dev_cleanup_harness{t: t}
 	h.init()
 
-	dist_dir := filepath.Join(h.bombadil_root, ".dist.react.dev.a")
+	dist_dir := filepath.Join(h.framework_root, ".dist.react.dev.a")
 	if err := os.RemoveAll(dist_dir); err != nil {
 		t.Fatalf("error removing old dev dist dir: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestDevAppProcessExitStopsVite(t *testing.T) {
 	h := dev_cleanup_harness{t: t}
 	h.init()
 
-	dist_dir := filepath.Join(h.bombadil_root, ".dist.react.dev.a")
+	dist_dir := filepath.Join(h.framework_root, ".dist.react.dev.a")
 	if err := os.RemoveAll(dist_dir); err != nil {
 		t.Fatalf("error removing old dev dist dir: %v", err)
 	}
@@ -190,30 +190,30 @@ func TestDevAppProcessExitStopsVite(t *testing.T) {
 }
 
 func (h *dev_cleanup_harness) init() {
-	bombadil_root, err := filepath.Abs("../../integration_tests")
+	framework_root, err := filepath.Abs("../../framework_tests")
 	if err != nil {
-		h.t.Fatalf("error resolving Bombadil root: %v", err)
+		h.t.Fatalf("error resolving framework test root: %v", err)
 	}
-	h.bombadil_root = bombadil_root
+	h.framework_root = framework_root
 	h.ensure_bombadil_deps()
 
 	temp_dir := h.t.TempDir()
 	h.build_bin = filepath.Join(temp_dir, "bombadil-build")
 	build_cmd := exec.Command("go", "build", "-o", h.build_bin, "./cmd/build")
-	build_cmd.Dir = h.bombadil_root
+	build_cmd.Dir = h.framework_root
 	if out, err := build_cmd.CombinedOutput(); err != nil {
 		h.t.Fatalf("error building Bombadil build helper: %v\n%s", err, out)
 	}
 }
 
 func (h dev_cleanup_harness) ensure_bombadil_deps() {
-	if _, err := os.Stat(filepath.Join(h.bombadil_root, "node_modules", ".bin", "vite")); err == nil {
+	if _, err := os.Stat(filepath.Join(h.framework_root, "node_modules", ".bin", "vite")); err == nil {
 		return
 	}
 	install_cmd := exec.Command("pnpm", "i")
-	install_cmd.Dir = h.bombadil_root
+	install_cmd.Dir = h.framework_root
 	if out, err := install_cmd.CombinedOutput(); err != nil {
-		h.t.Fatalf("error installing Bombadil fixture dependencies: %v\n%s", err, out)
+		h.t.Fatalf("error installing framework test dependencies: %v\n%s", err, out)
 	}
 }
 
@@ -221,7 +221,7 @@ func (h dev_cleanup_harness) run_panic_cleanup_case(
 	stage string,
 	triggers_refresh bool,
 ) {
-	dist_dir := filepath.Join(h.bombadil_root, ".dist.react.dev.a")
+	dist_dir := filepath.Join(h.framework_root, ".dist.react.dev.a")
 	if err := os.RemoveAll(dist_dir); err != nil {
 		h.t.Fatalf("error removing old dev dist dir: %v", err)
 	}
@@ -263,7 +263,7 @@ func (h dev_cleanup_harness) start_dev_command(
 	h.t.Cleanup(output.Close)
 
 	cmd := exec.Command(h.build_bin, "--dev")
-	cmd.Dir = h.bombadil_root
+	cmd.Dir = h.framework_root
 	cmd.SysProcAttr = procutil.SysProcAttr()
 	cmd.Env = append(
 		os.Environ(),
@@ -345,7 +345,7 @@ func (h dev_cleanup_harness) wait_for_app_url(
 		default:
 		}
 
-		manifest := h.wait_for_manifest(filepath.Join(h.bombadil_root, ".dist.react.dev.a"))
+		manifest := h.wait_for_manifest(filepath.Join(h.framework_root, ".dist.react.dev.a"))
 		if manifest.Dev_MuxPort == 0 {
 			time.Sleep(100 * time.Millisecond)
 			continue
@@ -410,7 +410,7 @@ func (h dev_cleanup_harness) read_dev_manifest(dist_dir string) (vormarun.Manife
 
 func (h dev_cleanup_harness) trigger_go_refresh(stage string) {
 	probe_path := filepath.Join(
-		h.bombadil_root,
+		h.framework_root,
 		"scenario",
 		"__vorma_cleanup_probe_test.go",
 	)

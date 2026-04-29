@@ -1,4 +1,4 @@
-module bombadilfixture
+module frameworktests
 
 go 1.26.0
 

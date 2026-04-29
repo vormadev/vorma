@@ -1,21 +1,27 @@
-# Vorma Integration Tests
+# Framework Tests
 
-This directory is the shared black-box integration fixture for Vorma. It is not
-an application product. It gives the test suite one realistic Vorma app matrix
-with routes, loaders, actions, generated TypeScript, dev mode, production
-builds, and browser-level Bombadil properties.
+This directory is the shared test area for framework behavior (not lower-level
+kit/lab primitives). It is not an application product. It contains a realistic
+Vorma app plus whatever runners and checks are needed for public framework
+behavior through observable surfaces.
 
-Bombadil is one runner in this harness. The directory can also host normal Go
-integration tests and Hegel/type-surface tests when they need the same fixture.
+Observable surfaces include subprocesses, generated artifacts, filesystem
+output, HTTP traffic, and browser behavior.
+
+Bombadil is one runner here.
+
+See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
 
 ## Suite Ownership
 
 - Bombadil owns broad runtime behavior: browser navigation, loaders, actions,
   revalidation, prefetch, history, build outputs, dev-server behavior, and
   production deployment switching.
-- Go tests in product packages should stay narrow and public. They are for cheap
-  exported API contracts that do not need a real app fixture.
-- Hegel and TypeScript checks own generated/public TypeScript surface contracts.
+- Framework-level Go and TypeScript tests can live here when the behavior is
+  covered through the shared app setup.
+- Vorma TypeScript package tests stay in the existing local Vitest suites when
+  they cover direct package behavior rather than app-boundary behavior.
+- Primitive `kit/*` and lab behavior belongs to the owning package, not here.
 - Dependency behavior belongs to the dependency suite, not here.
 
 ## Layout
@@ -45,15 +51,23 @@ Bombadil writes run artifacts under `.bombadil/`:
 - `.bombadil/dev-<variant>/` for dev root-route runs.
 - `.bombadil/dev-<variant>-nested/` for dev nested-route runs.
 - `.bombadil/dev-<variant>-counter/` for dev counter-route runs.
+- `.bombadil/logs/build-prod-<variant>-a.log` for production deployment A build
+  output.
+- `.bombadil/logs/build-prod-<variant>-b.log` for production deployment B build
+  output.
+- `.bombadil/logs/build-prod-<variant>-server.log` for production server build
+  output.
+- `.bombadil/logs/build-dev-<variant>.log` for dev fixture build output.
 - `.bombadil/logs/prod-<variant>.log` for prod fixture server logs.
 - `.bombadil/logs/dev-<variant>.log` for dev fixture server logs.
+- `.bombadil/logs/test-<run-name>.log` for Bombadil browser run output.
 - `.bombadil/vite-cache/<mode>-<variant>/` for per-adapter Vite caches.
 
 Inspect artifacts from this directory:
 
 ```bash
 make inspect
-make inspect artifact=.bombadil/dev-react
+go run ../../internal/cmd/maint inspect-framework-artifacts --artifact .bombadil/dev-react
 ```
 
 Each Bombadil test clears its own artifact directory before writing, so repeated
@@ -61,11 +75,11 @@ runs do not accumulate stale screenshots and traces for the same run name.
 Server logs are truncated on each run. Remove all Bombadil artifacts with:
 
 ```bash
-make clean-artifacts
+make clean
 ```
 
-The console output includes the exact `make inspect artifact=...` command for a
-failing Bombadil run, and server logs stay under `.bombadil/logs/`.
+Bombadil failure output includes the artifact path to inspect, and server logs
+stay under `.bombadil/logs/`.
 
 ## Install
 
@@ -87,54 +101,38 @@ pnpm tsdown
 From the repo root:
 
 ```bash
-make bombadil
-make bombadil-prod
-make bombadil-dev
-make bombadil-build
+make test-framework
 ```
+
+`make gate` also runs `test-framework`.
 
 From this directory:
 
 ```bash
-make matrix
-make parallel
-make check
-make prod
-make dev
+make test
+make stress
+make test-prod
+make test-dev
+make test-prod-react
+make test-dev-react
 make build
 make inspect
-make clean-artifacts
+make clean
 ```
 
-`check` installs dependencies, runs the integration module Go tests, runs the
-TypeScript check, and then runs the full prod/dev Bombadil matrix.
+`test` installs dependencies, runs the framework Go module tests, framework
+TypeScript package checks, framework Vitest bucket, fixture TypeScript check,
+and then the full production and development Bombadil suites.
 
-`matrix` runs the prod suite and then the dev suite. Within each suite, adapter
-variants run at the same time. `parallel` is an alias for `matrix`.
+`stress` repeats the root/docs non-framework Go tests, framework Go checks,
+framework TypeScript checks, Vitest bucket, and production/development Bombadil
+suites using the requested `intensity` value.
 
-`prod` and `dev` run every adapter by default. To select one adapter:
-
-```bash
-make prod variant=react
-make dev variant=react
-```
-
-Convenience aliases are also available:
+Use Bombadil directly for selected variants or custom intensity values:
 
 ```bash
-make prod-react
-make prod-preact
-make prod-solid
-make dev-react
-make dev-preact
-make dev-solid
-```
-
-Use `multiplier` to scale Bombadil time limits:
-
-```bash
-make matrix multiplier=2
-make dev variant=react multiplier=1
+go run ./cmd/bombadil test-prod -variant react -intensity 1
+go run ./cmd/bombadil test-dev -variant react -intensity 1
 ```
 
 ## Manual Dev Fixture
@@ -142,7 +140,7 @@ make dev variant=react multiplier=1
 Start one adapter variant by hand:
 
 ```bash
-go run ./cmd/bombadil dev react
+go run ./cmd/bombadil serve-dev react
 ```
 
 Swap `react` for `preact` or `solid`.

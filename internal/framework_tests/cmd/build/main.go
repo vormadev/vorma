@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bombadilfixture/scenario"
+	"frameworktests/scenario"
 	"runtime"
 )
 

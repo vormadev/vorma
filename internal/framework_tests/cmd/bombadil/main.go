@@ -44,8 +44,8 @@ type variant_config struct {
 }
 
 type run_config struct {
-	multiplier int
-	variants   []variant_config
+	intensity int
+	variants  []variant_config
 }
 
 type variant_runner struct {
@@ -80,28 +80,28 @@ func main() {
 
 func (config run_config) run_command(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: bombadil <build|run|dev|dev-test|inspect>")
+		return errors.New("usage: bombadil <build|test-prod|test-dev|serve-dev|inspect>")
 	}
 
 	switch args[0] {
 	case "build":
 		return config.build()
-	case "run":
-		flags := flag.NewFlagSet("run", flag.ContinueOnError)
-		multiplier := flags.Int("multiplier", 1, "time-limit multiplier")
+	case "test-prod":
+		flags := flag.NewFlagSet("test-prod", flag.ContinueOnError)
+		intensity := flags.Int("intensity", 1, "time-limit intensity")
 		variant_name := flags.String("variant", "", "optional variant to test")
 		if err := flags.Parse(args[1:]); err != nil {
 			return err
 		}
-		config.multiplier = *multiplier
-		return config.run(*variant_name)
-	case "dev":
+		config.intensity = *intensity
+		return config.test_prod(*variant_name)
+	case "serve-dev":
 		if len(args) != 2 {
-			return errors.New("usage: bombadil dev <react|preact|solid>")
+			return errors.New("usage: bombadil serve-dev <react|preact|solid>")
 		}
-		return config.dev(args[1])
-	case "dev-test":
-		return config.dev_test(args[1:])
+		return config.serve_dev(args[1])
+	case "test-dev":
+		return config.test_dev(args[1:])
 	case "inspect":
 		inspect_path := bombadil_artifacts_dir
 		if len(args) > 1 {
@@ -122,23 +122,23 @@ func (config run_config) build() error {
 	})
 }
 
-func (config run_config) run(variant_name string) error {
+func (config run_config) test_prod(variant_name string) error {
 	return config.for_each_selected_variant(variant_name, func(runner variant_runner) error {
-		return runner.run()
+		return runner.test_prod()
 	})
 }
 
-func (config run_config) dev_test(args []string) error {
-	flags := flag.NewFlagSet("dev-test", flag.ContinueOnError)
-	multiplier := flags.Int("multiplier", 1, "time-limit multiplier")
+func (config run_config) test_dev(args []string) error {
+	flags := flag.NewFlagSet("test-dev", flag.ContinueOnError)
+	intensity := flags.Int("intensity", 1, "time-limit intensity")
 	variant_name := flags.String("variant", "", "optional variant to test")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	config.multiplier = *multiplier
+	config.intensity = *intensity
 
 	return config.for_each_selected_variant(*variant_name, func(runner variant_runner) error {
-		return runner.dev_test()
+		return runner.test_dev()
 	})
 }
 
@@ -159,7 +159,7 @@ func (config run_config) for_each_selected_variant(
 	return config.for_each_variant(callback)
 }
 
-func (config run_config) dev(name string) error {
+func (config run_config) serve_dev(name string) error {
 	variant, ok := config.find_variant(name)
 	if !ok {
 		return fmt.Errorf("unknown variant %q", name)
@@ -234,14 +234,14 @@ func (config run_config) for_each_variant(callback func(variant_runner) error) e
 	return err
 }
 
-func (runner variant_runner) run() error {
+func (runner variant_runner) test_prod() error {
 	if err := runner.build(); err != nil {
 		return err
 	}
 	return runner.test()
 }
 
-func (runner variant_runner) dev_test() error {
+func (runner variant_runner) test_dev() error {
 	runner.log("starting dev fixture server")
 	log_path, err := runner.log_path("dev")
 	if err != nil {
@@ -307,9 +307,8 @@ func (runner variant_runner) build_dev_binary() (string, func(), error) {
 	}
 	build_binary := filepath.Join(temp_dir, "build")
 	build_cmd := exec.Command("go", "build", "-o", build_binary, "./cmd/build")
-	build_cmd.Stdout = os.Stdout
-	build_cmd.Stderr = os.Stderr
-	if err := runner.run_command(build_cmd); err != nil {
+	log_path := filepath.Join(bombadil_logs_dir, "build-dev-"+runner.variant.name+".log")
+	if err := runner.run_command_to_log(build_cmd, log_path); err != nil {
 		cleanup()
 		return "", nil, err
 	}
@@ -345,9 +344,8 @@ func (runner variant_runner) build() error {
 		bombadil_variant_env_key+"="+runner.variant.name,
 		bombadil_mode_env_key+"="+bombadil_mode_prod,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return runner.run_command(cmd)
+	log_path := filepath.Join(bombadil_logs_dir, "build-prod-"+runner.variant.name+"-server.log")
+	return runner.run_command_to_log(cmd, log_path)
 }
 
 func (runner variant_runner) build_client_deployment(deployment string) error {
@@ -358,9 +356,11 @@ func (runner variant_runner) build_client_deployment(deployment string) error {
 		bombadil_deployment_env_key+"="+deployment,
 		bombadil_mode_env_key+"="+bombadil_mode_prod,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return runner.run_command(cmd)
+	log_path := filepath.Join(
+		bombadil_logs_dir,
+		"build-prod-"+runner.variant.name+"-"+strings.ToLower(deployment)+".log",
+	)
+	return runner.run_command_to_log(cmd, log_path)
 }
 
 func (runner variant_runner) test() error {
@@ -461,13 +461,17 @@ func (runner variant_runner) run_bombadil_test(
 	output_path string,
 	instrument_javascript string,
 ) error {
-	time_limit := strconv.Itoa(seconds*runner.config.multiplier) + "s"
+	time_limit := strconv.Itoa(seconds*runner.config.intensity) + "s"
 	artifact_path := filepath.Join(bombadil_artifacts_dir, output_path)
 	runner.log("testing " + base_url + path + " for " + time_limit)
 	runner.log("writing Bombadil artifacts to " + artifact_path)
 	if err := os.RemoveAll(artifact_path); err != nil {
 		return fmt.Errorf("error removing stale Bombadil artifacts at %s: %w", artifact_path, err)
 	}
+	if err := os.MkdirAll(bombadil_logs_dir, 0755); err != nil {
+		return err
+	}
+	test_log_path := filepath.Join(bombadil_logs_dir, "test-"+output_path+".log")
 
 	cmd := exec.Command(
 		"pnpm",
@@ -487,14 +491,32 @@ func (runner variant_runner) run_bombadil_test(
 		"--output-path",
 		artifact_path,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := runner.run_command(cmd); err != nil {
+	if err := runner.run_command_to_log(cmd, test_log_path); err != nil {
 		return fmt.Errorf(
-			"inspect artifacts with `make inspect artifact=%s`: %w",
+			"inspect artifacts with `go run ../../internal/cmd/maint inspect-framework-artifacts --artifact %s`; read log at %s: %w",
 			artifact_path,
+			test_log_path,
 			err,
 		)
+	}
+	return nil
+}
+
+func (runner variant_runner) run_command_to_log(cmd *exec.Cmd, log_path string) error {
+	if err := os.MkdirAll(filepath.Dir(log_path), 0755); err != nil {
+		return err
+	}
+	log_file, err := os.Create(log_path)
+	if err != nil {
+		return err
+	}
+	defer log_file.Close()
+
+	runner.log("writing command log to " + log_path)
+	cmd.Stdout = log_file
+	cmd.Stderr = log_file
+	if err := runner.run_command(cmd); err != nil {
+		return fmt.Errorf("read log at %s: %w", log_path, err)
 	}
 	return nil
 }
