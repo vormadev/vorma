@@ -55,8 +55,8 @@ type TestVormaClient = {
 	init: (
 		options: Omit<Partial<InitOptions>, "render"> & {
 			render?: (args: {
-				App: (props?: Record<string, unknown>) => unknown;
-				el: HTMLElement;
+				RootOutlet: (props?: Record<string, unknown>) => unknown;
+				rootEl: HTMLElement;
 			}) => void | Promise<void>;
 		},
 	) => Promise<void>;
@@ -226,22 +226,22 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 	///////////////////////////////////////////////////////////////////
 
 	describe("init render", () => {
-		it("passes App and root element to render callback", async () => {
+		it("passes RootOutlet and rootEl to render callback", async () => {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			let received_app: unknown;
-			let received_el: HTMLElement | undefined;
+			let received_root_outlet: unknown;
+			let received_root_el: HTMLElement | undefined;
 
 			await client.init({
-				render: ({ App, el }) => {
-					received_app = App;
-					received_el = el;
+				render: ({ RootOutlet, rootEl }) => {
+					received_root_outlet = RootOutlet;
+					received_root_el = rootEl;
 				},
 			});
 
-			expect(typeof received_app).toBe("function");
-			expect(received_el).toBeInstanceOf(HTMLElement);
+			expect(typeof received_root_outlet).toBe("function");
+			expect(received_root_el).toBeInstanceOf(HTMLElement);
 		});
 	});
 

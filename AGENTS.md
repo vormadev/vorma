@@ -36,9 +36,16 @@ always be `PascalCase`, regardless of public exposure.
 
 ---
 
-Avoid inlining magic strings. Shared publicly observable constants (e.g.,
-filenames, keys, etc.) should go into `constants.{go,ts}`, but one-file-local
-values should stay local. Tests should import source constants when applicable.
+Avoid inlining magic strings.
+
+Use a `constants.{go,ts}` file when the constants are shared across multiple
+source files or packages, especially publicly observable strings such as
+filenames, storage keys, header names, env var names, route names, and protocol
+values.
+
+Do not create a `constants.{go,ts}` file just because a constant is exported. If
+a constant is only used by one source file, keep it in that file near the API or
+logic it belongs to, even when the constant is public.
 
 ---
 

@@ -20,8 +20,8 @@ export function dynamic(read_value: () => any) {
 	return read_value;
 }
 
-export function render_vorma(input: { App: any; el: HTMLElement }) {
+export function render_vorma(input: { RootOutlet: any; rootEl: HTMLElement }) {
 	render(() => {
-		return input.App({});
-	}, input.el);
+		return input.RootOutlet({});
+	}, input.rootEl);
 }

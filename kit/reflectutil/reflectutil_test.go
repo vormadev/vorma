@@ -142,7 +142,8 @@ func TestNewValueWithAnonymousPointerFields(t *testing.T) {
 func TestPublicStructFields(t *testing.T) {
 	type Embedded struct {
 		Embedded string `json:"embedded"`
-		private  string
+		//lint:ignore U1000 .
+		private string
 	}
 	type TaggedEmbedded struct {
 		Value string `json:"value"`
@@ -155,8 +156,10 @@ func TestPublicStructFields(t *testing.T) {
 		FromOmitZero    bool   `json:"fromOmitZero,omitzero"`
 		Required        string `json:"required"`
 		Ignored         string `json:"-"`
-		DashName        string `json:"'-'"`
-		private         string
+		//lint:ignore SA5008 .
+		DashName string `json:"'-'"`
+		//lint:ignore U1000 .
+		private string
 	}
 
 	fields, err := PublicStructFields(reflect.TypeFor[sample]())
@@ -248,11 +251,14 @@ func TestPublicStructFields_Dominance(t *testing.T) {
 	type B struct {
 		Name string `json:"name"`
 	}
-	type shallow struct {
-		A
-		Name string `json:"name"`
-	}
-	fields, err := PublicStructFields(reflect.TypeFor[shallow]())
+	string_type := reflect.TypeFor[string]()
+	a_type := reflect.TypeFor[A]()
+	b_type := reflect.TypeFor[B]()
+	shallow_type := reflect.StructOf([]reflect.StructField{
+		{Name: "A", Type: a_type, Anonymous: true},
+		{Name: "Name", Type: string_type, Tag: `json:"name"`},
+	})
+	fields, err := PublicStructFields(shallow_type)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,11 +267,11 @@ func TestPublicStructFields_Dominance(t *testing.T) {
 		t.Fatalf("expected shallow field to dominate: %#v", fields)
 	}
 
-	type ambiguous struct {
-		A
-		B
-	}
-	fields, err = PublicStructFields(reflect.TypeFor[ambiguous]())
+	ambiguous_type := reflect.StructOf([]reflect.StructField{
+		{Name: "A", Type: a_type, Anonymous: true},
+		{Name: "B", Type: b_type, Anonymous: true},
+	})
+	fields, err = PublicStructFields(ambiguous_type)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

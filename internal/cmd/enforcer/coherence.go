@@ -37,7 +37,12 @@ var known_ts_projects = []string{
 
 type repo_path_list []string
 
-func (app maint_app) check_repo_shape() error {
+func (app enforcer_app) check_repo_shape() error {
+	if app.DryRun {
+		fmt.Println("==> verify repo enforcement shape")
+		fmt.Println("<== verify repo enforcement shape passed (dry run)")
+		return nil
+	}
 	if err := app.check_known_repo_files("Go module", "go.mod", known_go_modules); err != nil {
 		return err
 	}
@@ -51,7 +56,7 @@ func (app maint_app) check_repo_shape() error {
 	return app.check_known_repo_files("TypeScript project", "tsconfig.json", known_ts_projects)
 }
 
-func (app maint_app) check_known_repo_files(
+func (app enforcer_app) check_known_repo_files(
 	label string,
 	file_name string,
 	known []string,
@@ -93,9 +98,9 @@ func (app maint_app) check_known_repo_files(
 	return fmt.Errorf("%s", msg.String())
 }
 
-func (app maint_app) find_repo_files_named(file_name string) ([]string, error) {
+func (app enforcer_app) find_repo_files_named(file_name string) ([]string, error) {
 	paths := []string{}
-	err := filepath.WalkDir(app.root, func(path string, entry fs.DirEntry, err error) error {
+	err := filepath.WalkDir(app.Root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -106,7 +111,7 @@ func (app maint_app) find_repo_files_named(file_name string) ([]string, error) {
 			return nil
 		}
 
-		rel_path, err := filepath.Rel(app.root, path)
+		rel_path, err := filepath.Rel(app.Root, path)
 		if err != nil {
 			return err
 		}

@@ -12,11 +12,11 @@ import (
 
 func TestTasks(t *testing.T) {
 	t.Run("BasicTaskExecution", func(t *testing.T) {
-		task := NewTask(func(c *Ctx, input string) (string, error) {
+		task := NewTask(func(c *Cache, input string) (string, error) {
 			return "Hello, " + input, nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		result, err := task.Run(ctx, "World")
 
 		if err != nil {
@@ -28,23 +28,23 @@ func TestTasks(t *testing.T) {
 	})
 
 	t.Run("ParallelExecution", func(t *testing.T) {
-		task_1 := NewTask(func(c *Ctx, input int) (int, error) {
+		task_1 := NewTask(func(c *Cache, input int) (int, error) {
 			time.Sleep(100 * time.Millisecond)
 			return input * 2, nil
 		})
-		task_2 := NewTask(func(c *Ctx, input string) (string, error) {
+		task_2 := NewTask(func(c *Cache, input string) (string, error) {
 			time.Sleep(100 * time.Millisecond)
 			return input + "3", nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		start := time.Now()
 
 		var r1 int
 		var r2 string
 		err := ctx.RunParallel(
-			task_1.Bind(5, &r1),
-			task_2.Bind("3", &r2),
+			task_1.BindInput(5, &r1),
+			task_2.BindInput("3", &r2),
 		)
 		duration := time.Since(start)
 
@@ -60,10 +60,10 @@ func TestTasks(t *testing.T) {
 	})
 
 	t.Run("TaskDependencies", func(t *testing.T) {
-		auth_task := NewTask(func(c *Ctx, input string) (string, error) {
+		auth_task := NewTask(func(c *Cache, input string) (string, error) {
 			return "token-" + input, nil
 		})
-		user_task := NewTask(func(c *Ctx, input string) (string, error) {
+		user_task := NewTask(func(c *Cache, input string) (string, error) {
 			token, err := auth_task.Run(c, input)
 			if err != nil {
 				return "", err
@@ -71,7 +71,7 @@ func TestTasks(t *testing.T) {
 			return "user-" + token, nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		result, err := user_task.Run(ctx, "123")
 
 		if err != nil {
@@ -83,20 +83,20 @@ func TestTasks(t *testing.T) {
 	})
 
 	t.Run("ContextCancellation", func(t *testing.T) {
-		task := NewTask(func(c *Ctx, _ string) (string, error) {
+		task := NewTask(func(c *Cache, _ string) (string, error) {
 			time.Sleep(200 * time.Millisecond)
 			return "done", nil
 		})
 
 		parent, cancel := context.WithCancel(context.Background())
-		ctx := NewCtx(parent)
+		ctx := NewCache(parent)
 
 		go func() {
 			time.Sleep(50 * time.Millisecond)
 			cancel()
 		}()
 
-		_, err := run_task(ctx, task, "test")
+		_, err := task.Run(ctx, "test")
 		if err == nil {
 			t.Error("Expected context cancellation error, got nil")
 		}
@@ -106,12 +106,12 @@ func TestTasks(t *testing.T) {
 	})
 
 	t.Run("ErrorHandling", func(t *testing.T) {
-		task := NewTask(func(c *Ctx, _ string) (string, error) {
+		task := NewTask(func(c *Cache, _ string) (string, error) {
 			return "", errors.New("task failed")
 		})
 
-		ctx := NewCtx(context.Background())
-		result, err := run_task(ctx, task, "test")
+		ctx := NewCache(context.Background())
+		result, err := task.Run(ctx, "test")
 
 		if err == nil {
 			t.Error("Expected error, got nil")
@@ -126,20 +126,20 @@ func TestTasks(t *testing.T) {
 
 	t.Run("OnceExecution", func(t *testing.T) {
 		var counter int32
-		task := NewTask(func(c *Ctx, _ string) (string, error) {
+		task := NewTask(func(c *Cache, _ string) (string, error) {
 			atomic.AddInt32(&counter, 1)
 			time.Sleep(50 * time.Millisecond)
 			return "done", nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		var wg sync.WaitGroup
 		wg.Add(3)
 
 		for range 3 {
 			go func() {
 				defer wg.Done()
-				_, err := run_task(ctx, task, "test")
+				_, err := task.Run(ctx, "test")
 				if err != nil {
 					t.Errorf("Unexpected error: %v", err)
 				}
@@ -148,7 +148,7 @@ func TestTasks(t *testing.T) {
 		wg.Wait()
 
 		if counter != 1 {
-			t.Errorf("Expected task to run once, ran %d times", counter)
+			t.Errorf("Expected func to run once, ran %d times", counter)
 		}
 	})
 }
@@ -156,14 +156,14 @@ func TestTasks(t *testing.T) {
 func TestTasksWithSharedDependencies(t *testing.T) {
 	t.Run("ParallelTasksWithSharedDependencies", func(t *testing.T) {
 		var auth_counter int32
-		auth_task := NewTask(func(c *Ctx, _ struct{}) (int, error) {
+		auth_task := NewTask(func(c *Cache, _ struct{}) (int, error) {
 			atomic.AddInt32(&auth_counter, 1)
 			time.Sleep(100 * time.Millisecond)
 			return 123, nil
 		})
 
-		user_task := NewTask(func(c *Ctx, _ string) (string, error) {
-			token, err := run_task(c, auth_task, struct{}{})
+		user_task := NewTask(func(c *Cache, _ string) (string, error) {
+			token, err := auth_task.Run(c, struct{}{})
 			if err != nil {
 				return "", err
 			}
@@ -171,8 +171,8 @@ func TestTasksWithSharedDependencies(t *testing.T) {
 			return fmt.Sprintf("user-%d", token), nil
 		})
 
-		user2_task := NewTask(func(c *Ctx, _ string) (string, error) {
-			token, err := run_task(c, auth_task, struct{}{})
+		user2_task := NewTask(func(c *Cache, _ string) (string, error) {
+			token, err := auth_task.Run(c, struct{}{})
 			if err != nil {
 				return "", err
 			}
@@ -180,11 +180,11 @@ func TestTasksWithSharedDependencies(t *testing.T) {
 			return fmt.Sprintf("user2-%d", token), nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		var user_data, user2_data string
 		err := ctx.RunParallel(
-			user_task.Bind("test", &user_data),
-			user2_task.Bind("test", &user2_data),
+			user_task.BindInput("test", &user_data),
+			user2_task.BindInput("test", &user2_data),
 		)
 
 		if err != nil {
@@ -205,16 +205,17 @@ func TestTasksWithSharedDependencies(t *testing.T) {
 	})
 }
 
-func TestCtxWithNativeContext(t *testing.T) {
-	t.Run("SharesTaskCacheWithParent", func(t *testing.T) {
+func TestCacheWithContext(t *testing.T) {
+	t.Run("SharesTaskCache", func(t *testing.T) {
 		var runs atomic.Int32
-		task := NewTask(func(c *Ctx, input string) (string, error) {
+		task := NewTask(func(c *Cache, input string) (string, error) {
 			runs.Add(1)
 			return "ok-" + input, nil
 		})
 
-		parent := NewCtx(context.Background())
-		child := parent.WithNativeContext(context.Background())
+		cache := NewCache(context.Background())
+		parent := cache
+		child := cache.WithContext(context.Background())
 
 		got_parent, err := task.Run(parent, "a")
 		if err != nil {
@@ -233,17 +234,17 @@ func TestCtxWithNativeContext(t *testing.T) {
 		}
 
 		if runs.Load() != 1 {
-			t.Fatalf("task runs = %d, want 1 (shared cache)", runs.Load())
+			t.Fatalf("func runs = %d, want 1 (shared cache)", runs.Load())
 		}
 	})
 
-	t.Run("UsesProvidedNativeContext", func(t *testing.T) {
-		parent := NewCtx(context.Background())
+	t.Run("UsesProvidedContext", func(t *testing.T) {
+		cache := NewCache(context.Background())
 		native, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		child := parent.WithNativeContext(native)
-		task := NewTask(func(c *Ctx, _ string) (string, error) {
+		child := cache.WithContext(native)
+		task := NewTask(func(c *Cache, _ string) (string, error) {
 			return "ok", nil
 		})
 
@@ -258,18 +259,18 @@ func TestRunParallelCancellationBehavior(t *testing.T) {
 	t.Run("ReturnsOriginalSiblingErrorInsteadOfContextCanceled", func(t *testing.T) {
 		expected_err := errors.New("boom")
 
-		task_fail := NewTask(func(c *Ctx, _ string) (string, error) {
+		task_fail := NewTask(func(c *Cache, _ string) (string, error) {
 			return "", expected_err
 		})
-		task_wait_for_cancel := NewTask(func(c *Ctx, _ string) (string, error) {
-			<-c.NativeContext().Done()
+		task_wait_for_cancel := NewTask(func(c *Cache, _ string) (string, error) {
+			<-c.Context().Done()
 			return "ok", nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		err := ctx.RunParallel(
-			task_fail.Bind("a"),
-			task_wait_for_cancel.Bind("b"),
+			task_fail.BindInput("a"),
+			task_wait_for_cancel.BindInput("b"),
 		)
 
 		if !errors.Is(err, expected_err) {
@@ -283,27 +284,27 @@ func TestRunParallelCancellationBehavior(t *testing.T) {
 		release := make(chan struct{})
 		started := make(chan struct{}, 1)
 
-		task_fail := NewTask(func(c *Ctx, _ string) (string, error) {
+		task_fail := NewTask(func(c *Cache, _ string) (string, error) {
 			<-started
 			return "", expected_err
 		})
-		task_wait_for_cancel := NewTask(func(c *Ctx, input string) (string, error) {
+		task_wait_for_cancel := NewTask(func(c *Cache, input string) (string, error) {
 			task_runs.Add(1)
 			select {
 			case started <- struct{}{}:
 			default:
 			}
 			select {
-			case <-c.NativeContext().Done():
+			case <-c.Context().Done():
 			case <-release:
 			}
 			return "ok-" + input, nil
 		})
 
-		parent := NewCtx(context.Background())
+		parent := NewCache(context.Background())
 		err := parent.RunParallel(
-			task_fail.Bind("a"),
-			task_wait_for_cancel.Bind("b"),
+			task_fail.BindInput("a"),
+			task_wait_for_cancel.BindInput("b"),
 		)
 		if !errors.Is(err, expected_err) {
 			t.Fatalf("parallel error = %v, want %v", err, expected_err)
@@ -322,7 +323,7 @@ func TestRunParallelCancellationBehavior(t *testing.T) {
 			t.Fatalf("rerun value = %q, want %q", got, "ok-b")
 		}
 		if task_runs.Load() != 2 {
-			t.Fatalf("task runs = %d, want 2 after rerun", task_runs.Load())
+			t.Fatalf("func runs = %d, want 2 after rerun", task_runs.Load())
 		}
 	})
 }
@@ -341,7 +342,7 @@ func TestComprehensiveSharedDependencies(t *testing.T) {
 	var user_tokens, user2_tokens []int
 	var state_mu sync.Mutex
 
-	auth_task := NewTask(func(c *Ctx, _ struct{}) (int, error) {
+	auth_task := NewTask(func(c *Cache, _ struct{}) (int, error) {
 		record("auth-start")
 		atomic.AddInt32(&auth_counter, 1)
 		time.Sleep(50 * time.Millisecond)
@@ -349,14 +350,14 @@ func TestComprehensiveSharedDependencies(t *testing.T) {
 		return 123, nil
 	})
 
-	user_task := NewTask(func(c *Ctx, input string) (string, error) {
+	user_task := NewTask(func(c *Cache, input string) (string, error) {
 		record("user-start")
 		atomic.AddInt32(&user_counter, 1)
 		if input == "" {
 			t.Error("Expected non-empty input in user_task")
 		}
 
-		token, err := run_task(c, auth_task, struct{}{})
+		token, err := auth_task.Run(c, struct{}{})
 		if err != nil {
 			return "", err
 		}
@@ -371,14 +372,14 @@ func TestComprehensiveSharedDependencies(t *testing.T) {
 		return fmt.Sprintf("user-%s-%d", input, token), nil
 	})
 
-	user2_task := NewTask(func(c *Ctx, input string) (string, error) {
+	user2_task := NewTask(func(c *Cache, input string) (string, error) {
 		record("user2-start")
 		atomic.AddInt32(&user2_counter, 1)
 		if input == "" {
 			t.Error("Expected non-empty input in user2_task")
 		}
 
-		token, err := run_task(c, auth_task, struct{}{})
+		token, err := auth_task.Run(c, struct{}{})
 		if err != nil {
 			return "", err
 		}
@@ -394,14 +395,14 @@ func TestComprehensiveSharedDependencies(t *testing.T) {
 	})
 
 	profile_task := NewTask(
-		func(ctx *Ctx, input string) (map[string]string, error) {
+		func(ctx *Cache, input string) (map[string]string, error) {
 			record("profile-start")
 			atomic.AddInt32(&profile_counter, 1)
 
 			var user_data, user2_data string
 			err := ctx.RunParallel(
-				user_task.Bind(input, &user_data),
-				user2_task.Bind(input+"_alt", &user2_data),
+				user_task.BindInput(input, &user_data),
+				user2_task.BindInput(input+"_alt", &user2_data),
 			)
 			if err != nil {
 				return nil, err
@@ -421,11 +422,11 @@ func TestComprehensiveSharedDependencies(t *testing.T) {
 	const input_1 = "test_input_1"
 	const input_2 = "test_input_2"
 
-	ctx1 := NewCtx(context.Background())
-	result_1, err_1 := run_task(ctx1, profile_task, input_1)
+	ctx1 := NewCache(context.Background())
+	result_1, err_1 := profile_task.Run(ctx1, input_1)
 
-	ctx2 := NewCtx(context.Background())
-	result_2, err_2 := run_task(ctx2, profile_task, input_2)
+	ctx2 := NewCache(context.Background())
+	result_2, err_2 := profile_task.Run(ctx2, input_2)
 
 	if err_1 != nil {
 		t.Errorf("Expected no error from first profile, got %v", err_1)
@@ -521,15 +522,15 @@ func TestComprehensiveSharedDependencies(t *testing.T) {
 func TestTasksWithDifferentInputs(t *testing.T) {
 	t.Run("Same_Input_Uses_Cache", func(t *testing.T) {
 		var exec_count int32
-		task := NewTask(func(ctx *Ctx, input string) (string, error) {
+		task := NewTask(func(ctx *Cache, input string) (string, error) {
 			atomic.AddInt32(&exec_count, 1)
 			return "result-" + input, nil
 		})
 
-		ctx := NewCtx(context.Background())
-		r1, _ := run_task(ctx, task, "foo")
-		r2, _ := run_task(ctx, task, "foo")
-		r3, _ := run_task(ctx, task, "foo")
+		ctx := NewCache(context.Background())
+		r1, _ := task.Run(ctx, "foo")
+		r2, _ := task.Run(ctx, "foo")
+		r3, _ := task.Run(ctx, "foo")
 
 		if r1 != "result-foo" || r2 != "result-foo" || r3 != "result-foo" {
 			t.Error("Expected same result for same input")
@@ -544,7 +545,7 @@ func TestTasksWithDifferentInputs(t *testing.T) {
 		var exec_inputs []string
 		var mu sync.Mutex
 
-		task := NewTask(func(ctx *Ctx, input string) (string, error) {
+		task := NewTask(func(ctx *Cache, input string) (string, error) {
 			atomic.AddInt32(&exec_count, 1)
 			mu.Lock()
 			exec_inputs = append(exec_inputs, input)
@@ -552,12 +553,12 @@ func TestTasksWithDifferentInputs(t *testing.T) {
 			return "result-" + input, nil
 		})
 
-		ctx := NewCtx(context.Background())
-		r1, _ := run_task(ctx, task, "foo")
-		r2, _ := run_task(ctx, task, "bar")
-		r3, _ := run_task(ctx, task, "baz")
-		r1b, _ := run_task(ctx, task, "foo")
-		r2b, _ := run_task(ctx, task, "bar")
+		ctx := NewCache(context.Background())
+		r1, _ := task.Run(ctx, "foo")
+		r2, _ := task.Run(ctx, "bar")
+		r3, _ := task.Run(ctx, "baz")
+		r1b, _ := task.Run(ctx, "foo")
+		r2b, _ := task.Run(ctx, "bar")
 
 		if r1 != "result-foo" || r1b != "result-foo" {
 			t.Error("Expected consistent results for 'foo'")
@@ -577,14 +578,14 @@ func TestTasksWithDifferentInputs(t *testing.T) {
 	})
 
 	t.Run("Different_Input_Types", func(t *testing.T) {
-		int_task := NewTask(func(ctx *Ctx, input int) (int, error) {
+		int_task := NewTask(func(ctx *Cache, input int) (int, error) {
 			return input * 2, nil
 		})
 
-		ctx := NewCtx(context.Background())
-		r1, _ := run_task(ctx, int_task, 5)
-		r2, _ := run_task(ctx, int_task, 10)
-		r3, _ := run_task(ctx, int_task, 5)
+		ctx := NewCache(context.Background())
+		r1, _ := int_task.Run(ctx, 5)
+		r2, _ := int_task.Run(ctx, 10)
+		r3, _ := int_task.Run(ctx, 5)
 
 		if r1 != 10 || r3 != 10 {
 			t.Error("Expected same result for same int input")
@@ -601,18 +602,18 @@ func TestTasksWithDifferentInputs(t *testing.T) {
 		}
 
 		var exec_count int32
-		task := NewTask(func(ctx *Ctx, p person) (string, error) {
+		task := NewTask(func(ctx *Cache, p person) (string, error) {
 			atomic.AddInt32(&exec_count, 1)
 			return fmt.Sprintf("%s is %d", p.Name, p.Age), nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		p1 := person{Name: "Alice", Age: 30}
 		p2 := person{Name: "Bob", Age: 25}
 
-		r1, _ := run_task(ctx, task, p1)
-		r2, _ := run_task(ctx, task, p2)
-		r3, _ := run_task(ctx, task, p1)
+		r1, _ := task.Run(ctx, p1)
+		r2, _ := task.Run(ctx, p2)
+		r3, _ := task.Run(ctx, p1)
 
 		if r1 != "Alice is 30" || r3 != "Alice is 30" {
 			t.Error("Expected same result for same struct")
@@ -627,18 +628,18 @@ func TestTasksWithDifferentInputs(t *testing.T) {
 
 	t.Run("Parallel_Different_Inputs", func(t *testing.T) {
 		var exec_count int32
-		task := NewTask(func(ctx *Ctx, input string) (string, error) {
+		task := NewTask(func(ctx *Cache, input string) (string, error) {
 			atomic.AddInt32(&exec_count, 1)
 			time.Sleep(50 * time.Millisecond)
 			return "result-" + input, nil
 		})
 
-		ctx := NewCtx(context.Background())
+		ctx := NewCache(context.Background())
 		var r1, r2, r3 string
 		err := ctx.RunParallel(
-			task.Bind("alpha", &r1),
-			task.Bind("beta", &r2),
-			task.Bind("alpha", &r3),
+			task.BindInput("alpha", &r1),
+			task.BindInput("beta", &r2),
+			task.BindInput("alpha", &r3),
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -658,13 +659,13 @@ func TestTasksWithDifferentInputs(t *testing.T) {
 
 func TestTTL_BasicExpiration(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, input string) (string, error) {
+	ttl := 100 * time.Millisecond
+	task := NewTask(func(ctx *Cache, input string) (string, error) {
 		count := atomic.AddInt32(&exec_count, 1)
 		return input + "-" + string(rune('0'+count)), nil
-	})
+	}, ttl)
 
-	ttl := 100 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	ctx := NewCache(context.Background())
 
 	r1, err := task.Run(ctx, "test")
 	if err != nil {
@@ -697,14 +698,63 @@ func TestTTL_BasicExpiration(t *testing.T) {
 	}
 }
 
-func TestTTL_NoTTL_NeverExpires(t *testing.T) {
+func TestTTL_StartsAfterCompletion(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, input string) (string, error) {
+	ttl := 50 * time.Millisecond
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	result_ch := make(chan int, 1)
+	err_ch := make(chan error, 1)
+
+	task := NewTask(func(ctx *Cache, _ string) (int, error) {
+		count := atomic.AddInt32(&exec_count, 1)
+		if count == 1 {
+			started <- struct{}{}
+			<-release
+		}
+		return int(count), nil
+	}, ttl)
+
+	ctx := NewCache(context.Background())
+
+	go func() {
+		result, err := task.Run(ctx, "test")
+		result_ch <- result
+		err_ch <- err
+	}()
+
+	<-started
+	time.Sleep(ttl + 20*time.Millisecond)
+	close(release)
+
+	first := <-result_ch
+	if err := <-err_ch; err != nil {
+		t.Fatalf("First execution failed: %v", err)
+	}
+	if first != 1 {
+		t.Fatalf("Expected first result 1, got %d", first)
+	}
+
+	second, err := task.Run(ctx, "test")
+	if err != nil {
+		t.Fatalf("Second execution failed: %v", err)
+	}
+	if second != 1 {
+		t.Fatalf("Expected cached result after completion, got %d", second)
+	}
+	if atomic.LoadInt32(&exec_count) != 1 {
+		t.Fatalf("Expected 1 execution, got %d", exec_count)
+	}
+}
+
+func TestTTL_DefaultNeverExpires(t *testing.T) {
+	var exec_count int32
+	task := NewTask(func(ctx *Cache, input string) (string, error) {
 		atomic.AddInt32(&exec_count, 1)
 		return "result", nil
 	})
 
-	ctx := NewCtx(context.Background())
+	ctx := NewCache(context.Background())
 	for i := range 5 {
 		if _, err := task.Run(ctx, "test"); err != nil {
 			t.Fatalf("Execution %d failed: %v", i, err)
@@ -717,35 +767,61 @@ func TestTTL_NoTTL_NeverExpires(t *testing.T) {
 	}
 }
 
-func TestTTL_ZeroTTL_NeverExpires(t *testing.T) {
+func TestTTL_ZeroExpirationDoesNotRetainCompletedResults(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, input string) (string, error) {
-		atomic.AddInt32(&exec_count, 1)
-		return "result", nil
-	})
+	task := NewTask(func(ctx *Cache, input string) (string, error) {
+		count := atomic.AddInt32(&exec_count, 1)
+		time.Sleep(20 * time.Millisecond)
+		return input + "-" + string(rune('0'+count)), nil
+	}, 0)
 
-	ctx := NewCtxWithTTL(context.Background(), 0)
+	ctx := NewCache(context.Background())
+	var wg sync.WaitGroup
+	results := make([]string, 5)
 	for i := range 5 {
-		if _, err := task.Run(ctx, "test"); err != nil {
-			t.Fatalf("Execution %d failed: %v", i, err)
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			result, err := task.Run(ctx, "test")
+			if err != nil {
+				t.Errorf("Goroutine %d failed: %v", idx, err)
+			}
+			results[idx] = result
+		}(i)
+	}
+	wg.Wait()
+
+	for i, result := range results {
+		if result != "test-1" {
+			t.Fatalf("Goroutine %d got %q, want %q", i, result, "test-1")
 		}
-		time.Sleep(50 * time.Millisecond)
 	}
 
 	if atomic.LoadInt32(&exec_count) != 1 {
-		t.Errorf("Expected 1 execution, got %d", exec_count)
+		t.Fatalf("Expected coalesced execution count 1, got %d", exec_count)
+	}
+
+	second, err := task.Run(ctx, "test")
+	if err != nil {
+		t.Fatalf("Second execution failed: %v", err)
+	}
+	if second != "test-2" {
+		t.Fatalf("Expected fresh result after completion, got %q", second)
+	}
+	if atomic.LoadInt32(&exec_count) != 2 {
+		t.Fatalf("Expected 2 executions, got %d", exec_count)
 	}
 }
 
 func TestTTL_DifferentInputs_SeparateExpiration(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, input string) (string, error) {
+	ttl := 100 * time.Millisecond
+	task := NewTask(func(ctx *Cache, input string) (string, error) {
 		count := atomic.AddInt32(&exec_count, 1)
 		return input + "-" + string(rune('0'+count)), nil
-	})
+	}, ttl)
 
-	ttl := 100 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	ctx := NewCache(context.Background())
 
 	r1, _ := task.Run(ctx, "a")
 	if r1 != "a-1" {
@@ -776,30 +852,30 @@ func TestTTL_DifferentInputs_SeparateExpiration(t *testing.T) {
 }
 
 func TestTTL_Cleanup_RemovesExpiredEntries(t *testing.T) {
-	task := NewTask(func(ctx *Ctx, input int) (int, error) {
-		return input * 2, nil
-	})
-
 	ttl := 100 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	task := NewTask(func(ctx *Cache, input int) (int, error) {
+		return input * 2, nil
+	}, ttl)
+
+	cache := NewCache(context.Background())
 
 	for i := range 10 {
-		if _, err := task.Run(ctx, i); err != nil {
+		if _, err := task.Run(cache, i); err != nil {
 			t.Fatalf("Failed with input %d: %v", i, err)
 		}
 	}
 
-	initial_size := len(ctx.results)
+	initial_size := len(cache.store.results)
 	if initial_size != 10 {
 		t.Errorf("Expected 10 cache entries, got %d", initial_size)
 	}
 
 	time.Sleep(ttl + 10*time.Millisecond)
-	_, _ = task.Run(ctx, 100)
+	_, _ = task.Run(cache, 100)
 
-	ctx.mu.RLock()
-	final_size := len(ctx.results)
-	ctx.mu.RUnlock()
+	cache.store.mu.RLock()
+	final_size := len(cache.store.results)
+	cache.store.mu.RUnlock()
 
 	if final_size != 1 {
 		t.Errorf("Expected cleanup to reduce to 1, got %d", final_size)
@@ -807,41 +883,41 @@ func TestTTL_Cleanup_RemovesExpiredEntries(t *testing.T) {
 }
 
 func TestTTL_Cleanup_OnlyRunsOncePerTTLPeriod(t *testing.T) {
-	task := NewTask(func(ctx *Ctx, input int) (int, error) {
-		return input, nil
-	})
-
 	ttl := 200 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	task := NewTask(func(ctx *Cache, input int) (int, error) {
+		return input, nil
+	}, ttl)
 
-	_, _ = task.Run(ctx, 1)
-	initial_cleanup := ctx.last_cleanup.Load()
+	cache := NewCache(context.Background())
+
+	_, _ = task.Run(cache, 1)
+	initial_cleanup := cache.store.last_cleanup.Load()
 
 	time.Sleep(50 * time.Millisecond)
-	_, _ = task.Run(ctx, 2)
+	_, _ = task.Run(cache, 2)
 
-	if ctx.last_cleanup.Load() != initial_cleanup {
+	if cache.store.last_cleanup.Load() != initial_cleanup {
 		t.Error("Cleanup ran too early")
 	}
 
 	time.Sleep(160 * time.Millisecond)
-	_, _ = task.Run(ctx, 3)
+	_, _ = task.Run(cache, 3)
 
-	if ctx.last_cleanup.Load() == initial_cleanup {
+	if cache.store.last_cleanup.Load() == initial_cleanup {
 		t.Error("Cleanup did not run after TTL period elapsed")
 	}
 }
 
 func TestTTL_ConcurrentAccess_WithExpiration(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, input string) (string, error) {
+	ttl := 100 * time.Millisecond
+	task := NewTask(func(ctx *Cache, input string) (string, error) {
 		count := atomic.AddInt32(&exec_count, 1)
 		time.Sleep(10 * time.Millisecond)
 		return input + "-" + string(rune('0'+count)), nil
-	})
+	}, ttl)
 
-	ttl := 100 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	ctx := NewCache(context.Background())
 
 	var wg sync.WaitGroup
 	results := make([]string, 10)
@@ -893,36 +969,39 @@ func TestTTL_ConcurrentAccess_WithExpiration(t *testing.T) {
 
 func TestTTL_ParallelExecution_WithSharedDependency(t *testing.T) {
 	var auth_count, task1_count, task2_count int32
+	ttl := 100 * time.Millisecond
 
-	auth_task := NewTask(func(ctx *Ctx, _ struct{}) (int, error) {
+	auth_task := NewTask(func(ctx *Cache, _ struct{}) (int, error) {
 		count := atomic.AddInt32(&auth_count, 1)
 		time.Sleep(20 * time.Millisecond)
 		return int(count), nil
-	})
+	}, ttl)
 
-	task_1 := NewTask(func(ctx *Ctx, _ string) (string, error) {
+	task_1 := NewTask(func(ctx *Cache, _ string) (string, error) {
 		atomic.AddInt32(&task1_count, 1)
 		token, err := auth_task.Run(ctx, struct{}{})
 		if err != nil {
 			return "", err
 		}
 		return "task1-" + string(rune('0'+token)), nil
-	})
+	}, ttl)
 
-	task_2 := NewTask(func(ctx *Ctx, _ string) (string, error) {
+	task_2 := NewTask(func(ctx *Cache, _ string) (string, error) {
 		atomic.AddInt32(&task2_count, 1)
 		token, err := auth_task.Run(ctx, struct{}{})
 		if err != nil {
 			return "", err
 		}
 		return "task2-" + string(rune('0'+token)), nil
-	})
+	}, ttl)
 
-	ttl := 100 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	ctx := NewCache(context.Background())
 
 	var r1, r2 string
-	if err := ctx.RunParallel(task_1.Bind("input", &r1), task_2.Bind("input", &r2)); err != nil {
+	if err := ctx.RunParallel(
+		task_1.BindInput("input", &r1),
+		task_2.BindInput("input", &r2),
+	); err != nil {
 		t.Fatalf("First parallel failed: %v", err)
 	}
 	if r1 != "task1-1" || r2 != "task2-1" {
@@ -931,7 +1010,10 @@ func TestTTL_ParallelExecution_WithSharedDependency(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 	var r3, r4 string
-	if err := ctx.RunParallel(task_1.Bind("input", &r3), task_2.Bind("input", &r4)); err != nil {
+	if err := ctx.RunParallel(
+		task_1.BindInput("input", &r3),
+		task_2.BindInput("input", &r4),
+	); err != nil {
 		t.Fatalf("Second parallel failed: %v", err)
 	}
 	if r3 != "task1-1" || r4 != "task2-1" {
@@ -940,7 +1022,10 @@ func TestTTL_ParallelExecution_WithSharedDependency(t *testing.T) {
 
 	time.Sleep(60 * time.Millisecond)
 	var r5, r6 string
-	if err := ctx.RunParallel(task_1.Bind("input", &r5), task_2.Bind("input", &r6)); err != nil {
+	if err := ctx.RunParallel(
+		task_1.BindInput("input", &r5),
+		task_2.BindInput("input", &r6),
+	); err != nil {
 		t.Fatalf("Third parallel failed: %v", err)
 	}
 	if r5 != "task1-2" || r6 != "task2-2" {
@@ -961,17 +1046,17 @@ func TestTTL_ParallelExecution_WithSharedDependency(t *testing.T) {
 func TestTTL_ExpiredResultsAllowRetry(t *testing.T) {
 	var exec_count int32
 	should_fail := true
+	ttl := 100 * time.Millisecond
 
-	task := NewTask(func(ctx *Ctx, _ string) (string, error) {
+	task := NewTask(func(ctx *Cache, _ string) (string, error) {
 		atomic.AddInt32(&exec_count, 1)
 		if should_fail {
 			return "", errors.New("intentional error")
 		}
 		return "success", nil
-	})
+	}, ttl)
 
-	ttl := 100 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	ctx := NewCache(context.Background())
 
 	_, err := task.Run(ctx, "test")
 	if err == nil {
@@ -1001,12 +1086,12 @@ func TestTTL_ExpiredResultsAllowRetry(t *testing.T) {
 
 func TestTTL_VeryShortTTL(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, _ string) (int, error) {
-		return int(atomic.AddInt32(&exec_count, 1)), nil
-	})
-
 	ttl := 10 * time.Millisecond
-	ctx := NewCtxWithTTL(context.Background(), ttl)
+	task := NewTask(func(ctx *Cache, _ string) (int, error) {
+		return int(atomic.AddInt32(&exec_count, 1)), nil
+	}, ttl)
+
+	ctx := NewCache(context.Background())
 
 	var results []int
 	for i := range 5 {
@@ -1031,14 +1116,14 @@ func TestTTL_VeryShortTTL(t *testing.T) {
 
 func TestTTL_MultipleContexts_IndependentCaches(t *testing.T) {
 	var exec_count int32
-	task := NewTask(func(ctx *Ctx, input string) (string, error) {
+	ttl := 100 * time.Millisecond
+	task := NewTask(func(ctx *Cache, input string) (string, error) {
 		count := atomic.AddInt32(&exec_count, 1)
 		return input + "-" + string(rune('0'+count)), nil
-	})
+	}, ttl)
 
-	ttl := 100 * time.Millisecond
-	ctx1 := NewCtxWithTTL(context.Background(), ttl)
-	ctx2 := NewCtxWithTTL(context.Background(), ttl)
+	ctx1 := NewCache(context.Background())
+	ctx2 := NewCache(context.Background())
 
 	r1, _ := task.Run(ctx1, "test")
 	r2, _ := task.Run(ctx2, "test")
@@ -1065,17 +1150,13 @@ func TestTTL_MultipleContexts_IndependentCaches(t *testing.T) {
 	}
 }
 
-func TestNewCtxWithTTLNegativeDisablesTTL(t *testing.T) {
-	ctx := NewCtxWithTTL(context.Background(), -1*time.Second)
-	if ctx.ttl != 0 {
-		t.Fatalf("expected ttl=0 for negative input, got %v", ctx.ttl)
-	}
-
+func TestNewTaskExpirationValidation(t *testing.T) {
 	var count int32
-	task := NewTask(func(_ *Ctx, input string) (string, error) {
+	task := NewTask(func(_ *Cache, input string) (string, error) {
 		n := atomic.AddInt32(&count, 1)
 		return input + "-" + string(rune('0'+n)), nil
 	})
+	ctx := NewCache(context.Background())
 
 	first, err := task.Run(ctx, "a")
 	if err != nil {
@@ -1093,11 +1174,32 @@ func TestNewCtxWithTTLNegativeDisablesTTL(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("expected single execution, got %d", count)
 	}
+
+	assert_panics := func(name string, fn func()) {
+		t.Helper()
+		defer func() {
+			if recover() == nil {
+				t.Fatalf("%s did not panic", name)
+			}
+		}()
+		fn()
+	}
+
+	assert_panics("negative expiration", func() {
+		NewTask(func(_ *Cache, _ string) (string, error) {
+			return "", nil
+		}, -1*time.Second)
+	})
+	assert_panics("multiple expirations", func() {
+		NewTask(func(_ *Cache, _ string) (string, error) {
+			return "", nil
+		}, time.Second, time.Minute)
+	})
 }
 
 func TestRunWithAnyInputTypeChecks(t *testing.T) {
-	ctx := NewCtx(context.Background())
-	task := NewTask(func(_ *Ctx, input string) (string, error) {
+	ctx := NewCache(context.Background())
+	task := NewTask(func(_ *Cache, input string) (string, error) {
 		return "ok:" + input, nil
 	})
 
@@ -1121,8 +1223,8 @@ func TestRunWithAnyInputTypeChecks(t *testing.T) {
 }
 
 func TestRunWithAnyInputTypedNilPointer(t *testing.T) {
-	ctx := NewCtx(context.Background())
-	task := NewTask(func(_ *Ctx, input *int) (bool, error) {
+	ctx := NewCache(context.Background())
+	task := NewTask(func(_ *Cache, input *int) (bool, error) {
 		return input == nil, nil
 	})
 
@@ -1134,4 +1236,45 @@ func TestRunWithAnyInputTypedNilPointer(t *testing.T) {
 	if got != true {
 		t.Fatalf("expected true, got %v", got)
 	}
+}
+
+func TestRunRejectsNilCache(t *testing.T) {
+	task := NewTask(func(_ *Cache, _ string) (string, error) {
+		return "ok", nil
+	})
+
+	if _, err := task.Run(nil, "x"); err == nil {
+		t.Fatal("expected nil cache error")
+	}
+	var cache *Cache
+	if err := cache.RunParallel(task.BindInput("x")); err == nil {
+		t.Fatal("expected nil cache error")
+	}
+}
+
+func TestCachePanicsForNilContext(t *testing.T) {
+	assert_panics := func(name string, fn func()) {
+		t.Helper()
+		defer func() {
+			if recover() == nil {
+				t.Fatalf("%s did not panic", name)
+			}
+		}()
+		fn()
+	}
+
+	assert_panics("nil cache", func() {
+		var cache *Cache
+		cache.WithContext(context.Background())
+	})
+	assert_panics("nil context", func() {
+		NewCache(context.Background()).WithContext(
+			nil, //lint:ignore SA1012 .
+		)
+	})
+	assert_panics("NewCache nil context", func() {
+		NewCache(
+			nil, //lint:ignore SA1012 .
+		)
+	})
 }

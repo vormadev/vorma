@@ -1,7 +1,17 @@
 // Package tasks provides memoized, concurrency-safe task execution.
 //
-// A Task is a function that takes input, returns data (or an error), and
-// runs at most once per Ctx/input pairing, even if invoked repeatedly.
+// A Task takes comparable input and returns data or an error. Calls to the same
+// Task with the same input share one execution within a Cache. The Cache is the
+// sharing boundary: calls using different Cache values do not share results.
+//
+// Task expiration is configured when the Task is created. With no expiration
+// argument, completed results are retained for the lifetime of the Cache. A
+// positive expiration retains completed results for that duration, measured from
+// when the task function returns. A zero expiration coalesces only concurrent
+// in-flight calls and does not retain completed results.
+//
+// Completed results include successful values and non-cancellation errors.
+// Errors caused by context cancellation or deadline expiration are not retained.
 //
 // Tasks are automatically protected from circular dependencies by Go's
 // compile-time "initialization cycle" errors when defined as package-level
@@ -26,30 +36,57 @@ import (
 
 // AnyTask is the type-erased interface implemented by all Task instances.
 type AnyTask interface {
-	RunWithAnyInput(ctx *Ctx, input any) (any, error)
+	RunWithAnyInput(ctx *Cache, input any) (any, error)
 }
 
 // Task is a typed, memoized unit of work.
 type Task[I comparable, O any] struct {
-	id uint64
-	fn func(ctx *Ctx, input I) (O, error)
+	id              uint64
+	fn              func(ctx *Cache, input I) (O, error)
+	cache_completed bool
+	expiration      time.Duration
 }
 
-// NewTask creates a Task from the provided function. Returns nil if fn is nil.
+// NewTask creates a Task from fn.
+//
+// NewTask(fn) caches completed results for the lifetime of the Cache used to run
+// it. NewTask(fn, d) with d > 0 caches completed results for d, measured from
+// when fn returns. NewTask(fn, 0) only coalesces concurrent in-flight calls and
+// does not retain completed results.
+//
+// NewTask returns nil if fn is nil. It panics if more than one expiration is
+// provided or if the expiration is negative.
 func NewTask[I comparable, O any](
-	fn func(ctx *Ctx, input I) (O, error),
+	fn func(ctx *Cache, input I) (O, error),
+	expiration ...time.Duration,
 ) *Task[I, O] {
+	if len(expiration) > 1 {
+		panic("tasks: NewTask accepts at most one expiration")
+	}
+	cache_completed := true
+	var expires_after time.Duration
+	if len(expiration) == 1 {
+		expires_after = expiration[0]
+		if expires_after < 0 {
+			panic("tasks: NewTask expiration must be non-negative")
+		}
+		cache_completed = expires_after != 0
+	}
 	if fn == nil {
 		return nil
 	}
 	return &Task[I, O]{
-		id: global_task_id.Add(1),
-		fn: fn,
+		id:              global_task_id.Add(1),
+		fn:              fn,
+		cache_completed: cache_completed,
+		expiration:      expires_after,
 	}
 }
 
-// RunWithAnyInput executes the task with a type-erased input.
-func (t *Task[I, O]) RunWithAnyInput(ctx *Ctx, input any) (any, error) {
+// RunWithAnyInput executes the Task with a type-erased input.
+//
+// RunWithAnyInput returns an error if input does not have the Task's input type.
+func (t *Task[I, O]) RunWithAnyInput(ctx *Cache, input any) (any, error) {
 	typed, ok := input.(I)
 	if !ok {
 		return nil, fmt.Errorf(
@@ -60,89 +97,82 @@ func (t *Task[I, O]) RunWithAnyInput(ctx *Ctx, input any) (any, error) {
 	return run_task(ctx, t, typed)
 }
 
-// Run executes the task with a typed input.
-func (t *Task[I, O]) Run(ctx *Ctx, input I) (O, error) {
+// Run executes the Task with input using ctx as the sharing boundary.
+func (t *Task[I, O]) Run(ctx *Cache, input I) (O, error) {
 	return run_task(ctx, t, input)
 }
 
-// Bind creates a BoundTask that captures the input and an optional
+// BindInput creates a Prepared that captures the input and an optional
 // destination pointer for the result.
-func (t *Task[I, O]) Bind(input I, dest ...*O) BoundTask {
+//
+// If a destination is provided, running the Prepared stores the completed result
+// there after the Task succeeds.
+func (t *Task[I, O]) BindInput(input I, dest ...*O) Prepared {
 	var dest_ptr *O
 	if len(dest) > 0 {
 		dest_ptr = dest[0]
 	}
-	return bind_task(t, input, dest_ptr)
+	return prepare_task(t, input, dest_ptr)
 }
 
-// Ctx is a task execution context that memoizes results by task/input pair.
-type Ctx struct {
-	mu           *sync.RWMutex
-	results      map[task_key]cache_entry
-	ctx          context.Context
-	ttl          time.Duration
-	last_cleanup *atomic.Int64 // unix nanos; nil when TTL disabled
+// Cache stores memoized task results by task/input pair.
+//
+// A Cache defines which Task calls share in-flight work and completed results.
+// Its context supplies cancellation and deadline semantics.
+type Cache struct {
+	store *cache_store
+	ctx   context.Context
 }
 
-// NewCtx creates a Ctx with no TTL (results cached indefinitely).
-func NewCtx(parent context.Context) *Ctx {
-	return NewCtxWithTTL(parent, 0)
-}
-
-// NewCtxWithTTL creates a Ctx whose cached results expire after ttl.
-// Expired entries are lazily cleaned up during cache access.
-func NewCtxWithTTL(parent context.Context, ttl time.Duration) *Ctx {
+// NewCache creates a Cache for memoized task results.
+//
+// NewCache panics if parent is nil.
+func NewCache(parent context.Context) *Cache {
 	if parent == nil {
-		parent = context.Background()
+		panic("tasks: nil context")
 	}
-	if ttl < 0 {
-		ttl = 0
-	}
-	c := &Ctx{
-		mu:      &sync.RWMutex{},
-		results: make(map[task_key]cache_entry, 4),
-		ctx:     parent,
-		ttl:     ttl,
-	}
-	if ttl > 0 {
-		c.last_cleanup = &atomic.Int64{}
-		c.last_cleanup.Store(time.Now().UnixNano())
+	c := &Cache{
+		store: &cache_store{
+			results: make(map[task_key]cache_entry, 4),
+		},
+		ctx: parent,
 	}
 	return c
 }
 
-// NativeContext returns the underlying context.Context.
-func (c *Ctx) NativeContext() context.Context {
+// Context returns the underlying context.Context.
+func (c *Cache) Context() context.Context {
 	return c.ctx
 }
 
-// WithNativeContext returns a child Ctx that shares the same task cache
+// WithContext returns a child Cache that shares the same task cache
 // but uses the provided context for cancellation/deadline semantics.
-func (c *Ctx) WithNativeContext(native context.Context) *Ctx {
+//
+// WithContext panics if c or native is nil.
+func (c *Cache) WithContext(native context.Context) *Cache {
 	if c == nil {
-		return NewCtx(native)
+		panic("tasks: nil Cache")
 	}
 	if native == nil {
-		native = context.Background()
+		panic("tasks: nil context")
 	}
-	return &Ctx{
-		mu:           c.mu,
-		results:      c.results,
-		ctx:          native,
-		ttl:          c.ttl,
-		last_cleanup: c.last_cleanup,
+	return &Cache{
+		store: c.store,
+		ctx:   native,
 	}
 }
 
-// RunParallel executes all provided BoundTasks concurrently, returning
-// the first non-nil error (if any). All tasks share this Ctx's cache.
-func (c *Ctx) RunParallel(tasks ...BoundTask) error {
+// RunParallel executes all provided prepared tasks concurrently, returning
+// the first non-nil error (if any). All tasks share this Cache.
+//
+// Nil Prepared values are ignored.
+func (c *Cache) RunParallel(tasks ...Prepared) error {
 	return run_tasks(c, tasks...)
 }
 
-// BoundTask is a task with pre-bound input, ready for execution.
-type BoundTask interface {
-	Run(ctx *Ctx) error
+// Prepared is a Task with pre-bound input, ready for RunParallel.
+type Prepared interface {
+	Run(ctx *Cache) error
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -161,6 +191,12 @@ type cache_entry struct {
 	expires_at time.Time
 }
 
+type cache_store struct {
+	mu           sync.RWMutex
+	results      map[task_key]cache_entry
+	last_cleanup atomic.Int64 // unix nanos
+}
+
 type task_result struct {
 	data any
 	err  error
@@ -170,15 +206,15 @@ type task_result struct {
 	done bool
 }
 
-// --- core execution ---
+/////// Core Execution
 
 func run_task[I comparable, O any](
-	c *Ctx,
+	c *Cache,
 	task *Task[I, O],
 	input I,
 ) (result O, err error) {
 	if c == nil {
-		return result, errors.New("tasks: nil Ctx")
+		return result, errors.New("tasks: nil Cache")
 	}
 	if task == nil || task.fn == nil {
 		return result, errors.New("tasks: invalid task")
@@ -187,7 +223,14 @@ func run_task[I comparable, O any](
 		return result, err
 	}
 
-	r := c.get_or_create_result(task.id, input)
+	cache_completed := task.cache_completed
+	expiration := task.expiration
+	finish_on_completion := !cache_completed || expiration > 0
+	key := task_key{task_id: task.id, input: input}
+	r := c.get_or_create_no_ttl(key)
+	if expiration > 0 {
+		r = c.get_or_create_with_expiration(key, expiration)
+	}
 	for {
 		if err := c.ctx.Err(); err != nil {
 			return result, err
@@ -228,6 +271,9 @@ func run_task[I comparable, O any](
 				r.err = task_err
 				r.done = true
 				r.mu.Unlock()
+				if finish_on_completion {
+					c.finish_cache_entry(key, r, cache_completed, expiration)
+				}
 				if wait != nil {
 					close(wait)
 				}
@@ -252,6 +298,9 @@ func run_task[I comparable, O any](
 				r.data = val
 				r.done = true
 				r.mu.Unlock()
+				if finish_on_completion {
+					c.finish_cache_entry(key, r, cache_completed, expiration)
+				}
 				if wait != nil {
 					close(wait)
 				}
@@ -274,107 +323,141 @@ func run_task[I comparable, O any](
 	}
 }
 
-// --- cache access ---
+/////// Cache Access
 
-func (c *Ctx) get_or_create_result(task_id uint64, input any) *task_result {
-	key := task_key{task_id: task_id, input: input}
-	if c.ttl == 0 {
-		return c.get_or_create_no_ttl(key)
-	}
-	return c.get_or_create_with_ttl(key)
-}
-
-func (c *Ctx) get_or_create_no_ttl(key task_key) *task_result {
-	c.mu.RLock()
-	if entry, ok := c.results[key]; ok {
-		c.mu.RUnlock()
+func (c *Cache) get_or_create_no_ttl(key task_key) *task_result {
+	c.store.mu.RLock()
+	if entry, ok := c.store.results[key]; ok {
+		c.store.mu.RUnlock()
 		return entry.result
 	}
-	c.mu.RUnlock()
+	c.store.mu.RUnlock()
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if entry, ok := c.results[key]; ok {
+	c.store.mu.Lock()
+	defer c.store.mu.Unlock()
+	if entry, ok := c.store.results[key]; ok {
 		return entry.result
 	}
 	r := &task_result{}
-	c.results[key] = cache_entry{result: r}
+	c.store.results[key] = cache_entry{result: r}
 	return r
 }
 
-func (c *Ctx) get_or_create_with_ttl(key task_key) *task_result {
+func (c *Cache) get_or_create_with_expiration(
+	key task_key,
+	expiration time.Duration,
+) *task_result {
 	now := time.Now()
 	now_nanos := now.UnixNano()
 
-	if now_nanos-c.last_cleanup.Load() >= int64(c.ttl) {
-		c.cleanup_expired(now, now_nanos)
+	last_cleanup := c.store.last_cleanup.Load()
+	if last_cleanup == 0 {
+		if c.store.last_cleanup.CompareAndSwap(0, now_nanos) {
+			last_cleanup = now_nanos
+		} else {
+			last_cleanup = c.store.last_cleanup.Load()
+		}
 	}
 
-	c.mu.RLock()
-	if entry, ok := c.results[key]; ok && now.Before(entry.expires_at) {
-		c.mu.RUnlock()
-		return entry.result
+	if now_nanos-last_cleanup >= int64(expiration) {
+		c.cleanup_expired(now, now_nanos, expiration)
 	}
-	c.mu.RUnlock()
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if entry, ok := c.results[key]; ok && now.Before(entry.expires_at) {
-		return entry.result
+	c.store.mu.RLock()
+	if entry, ok := c.store.results[key]; ok {
+		if entry.expires_at.IsZero() || now.Before(entry.expires_at) {
+			c.store.mu.RUnlock()
+			return entry.result
+		}
+	}
+	c.store.mu.RUnlock()
+
+	c.store.mu.Lock()
+	defer c.store.mu.Unlock()
+	if entry, ok := c.store.results[key]; ok {
+		if entry.expires_at.IsZero() || now.Before(entry.expires_at) {
+			return entry.result
+		}
 	}
 	r := &task_result{}
-	c.results[key] = cache_entry{result: r, expires_at: now.Add(c.ttl)}
+	c.store.results[key] = cache_entry{result: r}
 	return r
 }
 
-func (c *Ctx) cleanup_expired(now time.Time, now_nanos int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if now_nanos-c.last_cleanup.Load() < int64(c.ttl) {
+func (c *Cache) cleanup_expired(
+	now time.Time,
+	now_nanos int64,
+	expiration time.Duration,
+) {
+	c.store.mu.Lock()
+	defer c.store.mu.Unlock()
+	if now_nanos-c.store.last_cleanup.Load() < int64(expiration) {
 		return
 	}
-	for k, entry := range c.results {
-		if now.After(entry.expires_at) {
-			delete(c.results, k)
+	for k, entry := range c.store.results {
+		if !entry.expires_at.IsZero() && now.After(entry.expires_at) {
+			delete(c.store.results, k)
 		}
 	}
-	c.last_cleanup.Store(now_nanos)
+	c.store.last_cleanup.Store(now_nanos)
 }
 
-// --- bound tasks ---
+func (c *Cache) finish_cache_entry(
+	key task_key,
+	result *task_result,
+	cache_completed bool,
+	expiration time.Duration,
+) {
+	c.store.mu.Lock()
+	defer c.store.mu.Unlock()
+	entry, ok := c.store.results[key]
+	if !ok || entry.result != result {
+		return
+	}
+	if !cache_completed {
+		delete(c.store.results, key)
+		return
+	}
+	if expiration > 0 {
+		entry.expires_at = time.Now().Add(expiration)
+	}
+	c.store.results[key] = entry
+}
 
-type bound_task[O any] struct {
-	runner func(ctx *Ctx) (O, error)
+/////// Prepared Tasks
+
+type prepared_task[O any] struct {
+	runner func(ctx *Cache) (O, error)
 	dest   *O
 }
 
-func bind_task[I comparable, O any](
+func prepare_task[I comparable, O any](
 	task *Task[I, O],
 	input I,
 	dest *O,
-) BoundTask {
+) Prepared {
 	if task == nil || task.fn == nil {
-		return &bound_task[O]{
-			runner: func(_ *Ctx) (O, error) {
+		return &prepared_task[O]{
+			runner: func(_ *Cache) (O, error) {
 				var zero O
 				return zero, errors.New(
-					"tasks: Bind called with nil or invalid task",
+					"tasks: BindInput called with nil or invalid task",
 				)
 			},
 			dest: dest,
 		}
 	}
-	return &bound_task[O]{
-		runner: func(ctx *Ctx) (O, error) {
+	return &prepared_task[O]{
+		runner: func(ctx *Cache) (O, error) {
 			return run_task(ctx, task, input)
 		},
 		dest: dest,
 	}
 }
 
-func (bt *bound_task[O]) Run(ctx *Ctx) error {
+func (bt *prepared_task[O]) Run(ctx *Cache) error {
 	if ctx == nil {
-		return errors.New("tasks: Run called with nil Ctx")
+		return errors.New("tasks: Run called with nil Cache")
 	}
 	if bt.runner == nil {
 		return errors.New("tasks: runner is nil")
@@ -389,11 +472,11 @@ func (bt *bound_task[O]) Run(ctx *Ctx) error {
 	return nil
 }
 
-// --- parallel execution ---
+/////// Parallel Execution
 
-func run_tasks(ctx *Ctx, calls ...BoundTask) error {
+func run_tasks(ctx *Cache, calls ...Prepared) error {
 	if ctx == nil {
-		return errors.New("tasks: RunParallel called with nil Ctx")
+		return errors.New("tasks: RunParallel called with nil Cache")
 	}
 	if err := ctx.ctx.Err(); err != nil {
 		return err
@@ -411,7 +494,7 @@ func run_tasks(ctx *Ctx, calls ...BoundTask) error {
 		return valid[0].Run(ctx)
 	}
 	g, g_ctx := errgroup.WithContext(ctx.ctx)
-	shared := ctx.WithNativeContext(g_ctx)
+	shared := ctx.WithContext(g_ctx)
 	for _, call := range valid {
 		c := call
 		g.Go(func() error {

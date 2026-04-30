@@ -271,8 +271,9 @@ func TestWalk(t *testing.T) {
 
 	t.Run("JsonQuotedDashNamedDash", func(t *testing.T) {
 		type S struct {
-			Keep   string `json:"keep"`
-			Ignore any    `json:"'-'"`
+			Keep string `json:"keep"`
+			//lint:ignore SA5008 .
+			Ignore any `json:"'-'"`
 		}
 		entries, _ := walk_type(S{}, "S")
 		e := find_entry(entries, "S")
@@ -582,7 +583,8 @@ func TestWalk(t *testing.T) {
 
 	t.Run("UnexportedFieldsOmitted", func(t *testing.T) {
 		type S struct {
-			Public  string `json:"public"`
+			Public string `json:"public"`
+			//lint:ignore U1000 .
 			private string
 		}
 		entries, _ := walk_type(S{}, "S")

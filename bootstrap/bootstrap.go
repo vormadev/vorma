@@ -574,14 +574,14 @@ func resolveUIVitePlugin(do derivedOptions) string {
 	panic("unknown UI variant: " + do.UIVariant)
 }
 
-func (d *derivedOptions) mustWriteTmpl(target, name string) {
+func (do *derivedOptions) mustWriteTmpl(target, name string) {
 	tmplStr, err := tmplsFS.ReadFile(name)
 	if err != nil {
 		panic(err)
 	}
 	tmpl := template.Must(template.New(target).Parse(string(tmplStr)))
 	var sb strings.Builder
-	if err := tmpl.Execute(&sb, d); err != nil {
+	if err := tmpl.Execute(&sb, do); err != nil {
 		panic(err)
 	}
 	b := []byte(sb.String())

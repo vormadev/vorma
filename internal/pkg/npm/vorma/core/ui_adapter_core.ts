@@ -76,8 +76,8 @@ type LinkAttributeCandidate = {
 };
 
 export type AdapterRenderArgs<App> = {
-	App: App;
-	el: HTMLElement;
+	RootOutlet: App;
+	rootEl: HTMLElement;
 };
 
 export type AdapterInitOptions<App> = Omit<CoreInitOptions, "render"> & {

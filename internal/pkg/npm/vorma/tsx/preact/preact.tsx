@@ -377,7 +377,7 @@ export function createVormaClient<A extends AppConfig>(
 		}
 	}
 
-	const App: ComponentType = () => {
+	const RootOutletApp: ComponentType = () => {
 		return h(RootOutlet, {});
 	};
 
@@ -398,7 +398,10 @@ export function createVormaClient<A extends AppConfig>(
 			},
 			render: render
 				? () => {
-						return render({ App, el: core.getRootEl() });
+						return render({
+							RootOutlet: RootOutletApp,
+							rootEl: core.getRootEl(),
+						});
 					}
 				: undefined,
 		});

@@ -10,8 +10,8 @@ declare module "#variant-runtime" {
 	export function read_text_state(value: any): any;
 	export function dynamic(read_value: () => any): any;
 	export function render_vorma(input: {
-		App: any;
-		el: HTMLElement;
+		RootOutlet: any;
+		rootEl: HTMLElement;
 	}): void | Promise<void>;
 }
 

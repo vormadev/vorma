@@ -482,12 +482,13 @@ func TestResolve(t *testing.T) {
 
 	t.Run("JSONTagHandling", func(t *testing.T) {
 		type WithTags struct {
-			Renamed     string `json:"field_one"`
-			Optional    int    `json:"fieldTwo,omitempty"`
-			Ignored     bool   `json:"-"`
-			Pointer     *bool  `json:"pointerField"`
-			DashName    any    `json:"'-'"`
-			OmitZeroVal int    `json:"zeroValField,omitzero"`
+			Renamed  string `json:"field_one"`
+			Optional int    `json:"fieldTwo,omitempty"`
+			Ignored  bool   `json:"-"`
+			Pointer  *bool  `json:"pointerField"`
+			//lint:ignore SA5008 .
+			DashName    any `json:"'-'"`
+			OmitZeroVal int `json:"zeroValField,omitzero"`
 		}
 		defs := resolve_types(t, &GoTypeSrc{Instance: WithTags{}})
 		assert_type(t, defs, "WithTags", `{

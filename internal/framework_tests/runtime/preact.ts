@@ -19,6 +19,6 @@ export function dynamic(read_value: () => any) {
 	return read_value();
 }
 
-export function render_vorma(input: { App: any; el: HTMLElement }) {
-	render(h(input.App, {}), input.el);
+export function render_vorma(input: { RootOutlet: any; rootEl: HTMLElement }) {
+	render(h(input.RootOutlet, {}), input.rootEl);
 }

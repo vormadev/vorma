@@ -6,7 +6,7 @@
 //   - NestedRouter: resolves hierarchical ancestor matches (loader/layout routing).
 //
 // Handlers may be standard http.Handlers or typed task handlers that return
-// JSON-serializable data through a tasks.Ctx execution context.
+// JSON-serializable data through a tasks.Cache execution context.
 package mux
 
 import (
@@ -44,7 +44,7 @@ var (
 	empty_http_mws = []http_mw_with_opts{}
 	empty_task_mws = []task_mw_with_opts{}
 
-	needs_tasks_ctx_type = reflect.TypeFor[TasksCtxRequirer]()
+	needs_tasks_cache_type = reflect.TypeFor[TasksCacheRequirer]()
 )
 
 /////////////////////////////////////////////////////////////////////
@@ -66,7 +66,7 @@ type RequestCtx[I any] struct {
 	matched_pattern string
 	params          Params
 	splat_vals      []string
-	tasks_ctx       *tasks.Ctx
+	tasks_cache     *tasks.Cache
 	input           I
 	req             *http.Request
 	response_proxy  *response.Proxy
@@ -178,7 +178,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Fast path: pure HTTP handler without task middleware.
 	if route.get_handler_type() == "http" &&
 		!rt.has_any_task_mw(mm, route) &&
-		!route.get_needs_tasks_ctx() {
+		!route.get_needs_tasks_cache() {
 		r = request_store.RequestWithContextValue(r, &req_ctx_transport{
 			matched_pattern: match.OriginalPattern(),
 			params:          match.Params, splat_vals: match.SplatValues, req: r,
@@ -192,16 +192,16 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Slow path: create tasks context and full request context.
-	tctx := tasks.NewCtx(r.Context())
+	// Slow path: create tasks cache and full request context.
+	tasks_cache := tasks.NewCache(r.Context())
 	r = request_store.RequestWithContextValue(r, &req_ctx_transport{
 		matched_pattern: match.OriginalPattern(),
 		params:          match.Params, splat_vals: match.SplatValues,
-		tasks_ctx: tctx, req: r, response_proxy: response.NewProxy(),
+		tasks_cache: tasks_cache, req: r, response_proxy: response.NewProxy(),
 	})
 
 	getter := mm.req_ctx_getters[match.OriginalPattern()]
-	rc, err := getter.get_req_ctx(r, tctx, match)
+	rc, err := getter.get_req_ctx(r, tasks_cache, match)
 	if err != nil {
 		code := http.StatusInternalServerError
 		msg := "Internal Server Error"
@@ -228,7 +228,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		final = rt.task_final_handler(route, rc)
 	}
-	h := rt.apply_mw_pipeline(tctx, rc, mm, route, final)
+	h := rt.apply_mw_pipeline(tasks_cache, rc, mm, route, final)
 	if best.head_fallback {
 		treat_get_as_head(h, w, r)
 	} else {
@@ -244,17 +244,17 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type Route[I, O any] struct {
 	genericsutil.ZeroHelper[I, O]
 	mw_versions
-	router           *Router
-	method           string
-	original_pattern string
-	http_mws         []http_mw_with_opts
-	task_mws         []task_mw_with_opts
-	handler_type     string
-	user_http        http.Handler
-	task_handler     tasks.AnyTask
-	needs_tasks_ctx  bool
-	compiled_http    atomic.Value
-	compiled_task_mw atomic.Value
+	router            *Router
+	method            string
+	original_pattern  string
+	http_mws          []http_mw_with_opts
+	task_mws          []task_mw_with_opts
+	handler_type      string
+	user_http         http.Handler
+	task_handler      tasks.AnyTask
+	needs_tasks_cache bool
+	compiled_http     atomic.Value
+	compiled_task_mw  atomic.Value
 }
 
 // AnyRoute is the type-erased route interface.
@@ -267,7 +267,7 @@ type AnyRoute interface {
 	get_task_handler() tasks.AnyTask
 	get_http_mws() []http_mw_with_opts
 	get_task_mws() []task_mw_with_opts
-	get_needs_tasks_ctx() bool
+	get_needs_tasks_cache() bool
 	http_chain(rt *Router, mm *method_matcher) http.Handler
 	task_mw_chain(rt *Router, mm *method_matcher) []task_mw_with_opts
 }
@@ -282,7 +282,7 @@ func (r *Route[I, O]) get_task_handler() tasks.AnyTask   { return r.task_handler
 func (r *Route[I, O]) get_http_mws() []http_mw_with_opts { return r.http_mws }
 func (r *Route[I, O]) get_task_mws() []task_mw_with_opts { return r.task_mws }
 
-func (r *Route[I, O]) get_needs_tasks_ctx() bool { return r.needs_tasks_ctx }
+func (r *Route[I, O]) get_needs_tasks_cache() bool { return r.needs_tasks_cache }
 
 /////////////////////////////////////////////////////////////////////
 /////// ROUTE REGISTRATION
@@ -308,8 +308,8 @@ func AddHTTPHandler(
 	route := new_route[any, any](router, method, pattern)
 	route.handler_type = "http"
 	route.user_http = handler
-	route.needs_tasks_ctx = reflectutil.TypeImplements(
-		reflect.TypeOf(handler), needs_tasks_ctx_type,
+	route.needs_tasks_cache = reflectutil.TypeImplements(
+		reflect.TypeOf(handler), needs_tasks_cache_type,
 	)
 	mm := router.get_or_create_mm(method)
 	mm.req_ctx_getters[pattern] = create_req_ctx_getter(route)
@@ -343,7 +343,7 @@ func TaskHandlerFromFunc[I, O any](
 	fn TaskHandlerFunc[I, O],
 ) *TaskHandler[I, O] {
 	return tasks.NewTask(
-		func(_ *tasks.Ctx, rc *RequestCtx[I]) (O, error) { return fn(rc) },
+		func(_ *tasks.Cache, rc *RequestCtx[I]) (O, error) { return fn(rc) },
 	)
 }
 
@@ -352,7 +352,7 @@ func TaskMiddlewareFromFunc[O any](
 	fn TaskMiddlewareFunc[O],
 ) *TaskMiddleware[O] {
 	return tasks.NewTask(
-		func(_ *tasks.Ctx, rc *RequestCtx[None]) (O, error) { return fn(rc) },
+		func(_ *tasks.Cache, rc *RequestCtx[None]) (O, error) { return fn(rc) },
 	)
 }
 
@@ -462,19 +462,20 @@ func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(
 /////// REQUEST CONTEXT METHODS
 /////////////////////////////////////////////////////////////////////
 
-func (rc *RequestCtx[I]) Params() Params          { return rc.params }
-func (rc *RequestCtx[I]) Param(key string) string { return rc.params[key] }
-func (rc *RequestCtx[I]) MatchedPattern() string  { return rc.matched_pattern }
-func (rc *RequestCtx[I]) SplatValues() []string   { return rc.splat_vals }
-func (rc *RequestCtx[I]) TasksCtx() *tasks.Ctx    { return rc.tasks_ctx }
-func (rc *RequestCtx[I]) Request() *http.Request  { return rc.req }
+func (rc *RequestCtx[I]) Params() Params           { return rc.params }
+func (rc *RequestCtx[I]) Param(key string) string  { return rc.params[key] }
+func (rc *RequestCtx[I]) MatchedPattern() string   { return rc.matched_pattern }
+func (rc *RequestCtx[I]) SplatValues() []string    { return rc.splat_vals }
+func (rc *RequestCtx[I]) TasksCache() *tasks.Cache { return rc.tasks_cache }
+func (rc *RequestCtx[I]) Request() *http.Request   { return rc.req }
 
 func (rc *RequestCtx[I]) ResponseProxy() *response.Proxy { return rc.response_proxy }
 func (rc *RequestCtx[I]) Input() I                       { return rc.input }
 
-func (rc *RequestCtx[I]) SetTasksCtx(ctx *tasks.Ctx)  { rc.tasks_ctx = ctx }
-func (rc *RequestCtx[I]) get_input() any              { return rc.input }
-func (rc *RequestCtx[I]) get_underlying_req_ctx() any { return rc }
+func (rc *RequestCtx[I]) SetTasksCache(ctx *tasks.Cache) { rc.tasks_cache = ctx }
+func (rc *RequestCtx[I]) SetRequest(req *http.Request)   { rc.req = req }
+func (rc *RequestCtx[I]) get_input() any                 { return rc.input }
+func (rc *RequestCtx[I]) get_underlying_req_ctx() any    { return rc }
 
 // ResetForReuse reinitializes fields for pooled reuse.
 func (rc *RequestCtx[I]) ResetForReuse(
@@ -491,7 +492,7 @@ func (rc *RequestCtx[I]) ResetForReuse(
 	rc.input = input
 	rc.req = r
 	rc.response_proxy = proxy
-	rc.tasks_ctx = nil
+	rc.tasks_cache = nil
 }
 
 // ClearForPool zeroes fields before returning to a pool.
@@ -500,13 +501,13 @@ func (rc *RequestCtx[I]) ClearForPool() {
 	rc.matched_pattern = ""
 	rc.params = nil
 	rc.splat_vals = nil
-	rc.tasks_ctx = nil
+	rc.tasks_cache = nil
 	rc.input = zero
 	rc.req = nil
 	rc.response_proxy = nil
 }
 
-// --- Response proxy convenience helpers ---
+/////// Response proxy convenience helpers
 
 func (rc *RequestCtx[I]) HeadBuilder() *head.Builder {
 	return rc.response_proxy.HeadBuilder()
@@ -564,10 +565,10 @@ func (rc *RequestCtx[I]) IsResponseSuccess() bool { return rc.response_proxy.IsS
 /////// REQUEST DATA ACCESS
 /////////////////////////////////////////////////////////////////////
 
-// GetTasksCtx extracts the tasks context from a request.
-func GetTasksCtx(r *http.Request) *tasks.Ctx {
+// GetTasksCache extracts the tasks cache from a request.
+func GetTasksCache(r *http.Request) *tasks.Cache {
 	if rc := request_store.Value(r.Context()); rc != nil {
-		return rc.tasks_ctx
+		return rc.tasks_cache
 	}
 	return nil
 }
@@ -580,10 +581,10 @@ func GetMatchedPattern(r *http.Request) string {
 	return ""
 }
 
-// RequestWithTasksCtx returns a request carrying only a tasks context.
-func RequestWithTasksCtx(r *http.Request, ctx *tasks.Ctx) *http.Request {
+// RequestWithTasksCache returns a request carrying only a tasks cache.
+func RequestWithTasksCache(r *http.Request, ctx *tasks.Cache) *http.Request {
 	return request_store.RequestWithContextValue(r, &req_ctx_transport{
-		tasks_ctx: ctx, req: r,
+		tasks_cache: ctx, req: r,
 	})
 }
 
@@ -608,39 +609,39 @@ func GetSplatValues(r *http.Request) []string {
 }
 
 /////////////////////////////////////////////////////////////////////
-/////// TASKS CTX REQUIRER
+/////// TASKS CACHE REQUIRER
 /////////////////////////////////////////////////////////////////////
 
-// TasksCtxRequirer marks HTTP handlers that need a tasks context injected.
-type TasksCtxRequirer interface {
+// TasksCacheRequirer marks HTTP handlers that need a tasks cache injected.
+type TasksCacheRequirer interface {
 	http.Handler
-	NeedsTasksCtx()
+	NeedsTasksCache()
 }
 
-// TasksCtxRequirerFunc adapts a function to a TasksCtxRequirer.
-type TasksCtxRequirerFunc func(http.ResponseWriter, *http.Request)
+// TasksCacheRequirerFunc adapts a function to a TasksCacheRequirer.
+type TasksCacheRequirerFunc func(http.ResponseWriter, *http.Request)
 
-func (h TasksCtxRequirerFunc) ServeHTTP(
+func (h TasksCacheRequirerFunc) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
 	h(w, r)
 }
 
-func (h TasksCtxRequirerFunc) NeedsTasksCtx() {}
+func (h TasksCacheRequirerFunc) NeedsTasksCache() {}
 
-// InjectTasksCtxMiddleware ensures requests carry a tasks context.
-func InjectTasksCtxMiddleware(next http.Handler) http.Handler {
+// InjectTasksCacheMiddleware ensures requests carry a tasks cache.
+func InjectTasksCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if GetTasksCtx(r) != nil {
+		if GetTasksCache(r) != nil {
 			next.ServeHTTP(w, r)
 			return
 		}
-		tctx := tasks.NewCtx(r.Context())
+		task_ctx := tasks.NewCache(r.Context())
 		next.ServeHTTP(
 			w,
 			request_store.RequestWithContextValue(r, &req_ctx_transport{
-				tasks_ctx: tctx, req: r,
+				tasks_cache: task_ctx, req: r,
 			}),
 		)
 	})
@@ -892,9 +893,9 @@ func RunNestedTasks(
 	r *http.Request,
 	find_results *matcher.FindNestedMatchesResults,
 ) *NestedTasksResults {
-	tasks_ctx := GetTasksCtx(r)
-	if tasks_ctx == nil {
-		nested_log.Error("No TasksCtx found in request for RunNestedTasks")
+	tasks_cache := GetTasksCache(r)
+	if tasks_cache == nil {
+		nested_log.Error("No TasksCache found in request for RunNestedTasks")
 		return nil
 	}
 
@@ -943,7 +944,7 @@ func RunNestedTasks(
 
 		rc, err := cr.req_ctx_getter.get_nested_req_ctx(
 			r,
-			tasks_ctx,
+			tasks_cache,
 			pat,
 			results.Params,
 			results.SplatValues,
@@ -964,23 +965,25 @@ func RunNestedTasks(
 	// directional cancellation chain: a parent failure cancels only descendants.
 	if len(bound) > 0 {
 		if len(bound) == 1 {
-			bound[0].req_ctx.SetTasksCtx(tasks_ctx)
+			bound[0].req_ctx.SetTasksCache(tasks_cache)
 		} else {
-			current := tasks_ctx
+			current := tasks_cache
 			for i := range bound {
 				bt := &bound[i]
 				if i < len(bound)-1 {
-					child_native, cancel := context.WithCancel(current.NativeContext())
+					child_native, cancel := context.WithCancel(current.Context())
 					if root_cancel == nil {
 						root_cancel = cancel
 					}
-					child := current.WithNativeContext(child_native)
-					bt.req_ctx.SetTasksCtx(child)
+					child := current.WithContext(child_native)
+					bt.req_ctx.SetTasksCache(child)
+					bt.req_ctx.SetRequest(bt.req_ctx.Request().WithContext(child_native))
 					bt.cancel_descendants = cancel
 					current = child
 					continue
 				}
-				bt.req_ctx.SetTasksCtx(current)
+				bt.req_ctx.SetTasksCache(current)
+				bt.req_ctx.SetRequest(bt.req_ctx.Request().WithContext(current.Context()))
 			}
 		}
 		run_nested_bound(bound)
@@ -1031,7 +1034,7 @@ type req_ctx_transport struct {
 	matched_pattern string
 	params          Params
 	splat_vals      []string
-	tasks_ctx       *tasks.Ctx
+	tasks_cache     *tasks.Cache
 	req             *http.Request
 	response_proxy  *response.Proxy
 }
@@ -1085,24 +1088,25 @@ type req_ctx_marker interface {
 	Params() Params
 	MatchedPattern() string
 	SplatValues() []string
-	TasksCtx() *tasks.Ctx
-	SetTasksCtx(*tasks.Ctx)
+	TasksCache() *tasks.Cache
+	SetTasksCache(*tasks.Cache)
 	Request() *http.Request
+	SetRequest(*http.Request)
 	ResponseProxy() *response.Proxy
 }
 
 type req_ctx_getter interface {
 	get_req_ctx(
 		*http.Request,
-		*tasks.Ctx,
+		*tasks.Cache,
 		*matcher.BestMatch,
 	) (req_ctx_marker, error)
 }
 
-type req_ctx_getter_impl[I any] func(*http.Request, *tasks.Ctx, *matcher.BestMatch) (*RequestCtx[I], error)
+type req_ctx_getter_impl[I any] func(*http.Request, *tasks.Cache, *matcher.BestMatch) (*RequestCtx[I], error)
 
 func (f req_ctx_getter_impl[I]) get_req_ctx(
-	r *http.Request, ctx *tasks.Ctx, m *matcher.BestMatch,
+	r *http.Request, ctx *tasks.Cache, m *matcher.BestMatch,
 ) (req_ctx_marker, error) {
 	return f(r, ctx, m)
 }
@@ -1110,7 +1114,7 @@ func (f req_ctx_getter_impl[I]) get_req_ctx(
 type nested_req_ctx_getter interface {
 	get_nested_req_ctx(
 		*http.Request,
-		*tasks.Ctx,
+		*tasks.Cache,
 		string,
 		Params,
 		[]string,
@@ -1120,7 +1124,7 @@ type nested_req_ctx_getter interface {
 
 type nested_req_ctx_getter_impl[I any] func(
 	*http.Request,
-	*tasks.Ctx,
+	*tasks.Cache,
 	string,
 	Params,
 	[]string,
@@ -1129,7 +1133,7 @@ type nested_req_ctx_getter_impl[I any] func(
 
 func (f nested_req_ctx_getter_impl[I]) get_nested_req_ctx(
 	r *http.Request,
-	ctx *tasks.Ctx,
+	ctx *tasks.Cache,
 	pattern string,
 	params Params,
 	splat_values []string,
@@ -1150,7 +1154,8 @@ type mw_bound_task struct {
 	input *RequestCtx[None]
 }
 
-func (m *mw_bound_task) Run(ctx *tasks.Ctx) error {
+func (m *mw_bound_task) Run(ctx *tasks.Cache) error {
+	m.input.req = m.input.req.WithContext(ctx.Context())
 	_, err := m.task.RunWithAnyInput(ctx, m.input)
 	return err
 }
@@ -1218,12 +1223,12 @@ func (rt *Router) get_or_create_mm(method string) *method_matcher {
 
 func create_req_ctx_getter[I, O any](route *Route[I, O]) req_ctx_getter {
 	return req_ctx_getter_impl[I](
-		func(r *http.Request, ctx *tasks.Ctx, match *matcher.BestMatch) (*RequestCtx[I], error) {
+		func(r *http.Request, ctx *tasks.Cache, match *matcher.BestMatch) (*RequestCtx[I], error) {
 			rc := new(RequestCtx[I])
 			rc.matched_pattern = match.OriginalPattern()
 			rc.params = match.Params
 			rc.splat_vals = match.SplatValues
-			rc.tasks_ctx = ctx
+			rc.tasks_cache = ctx
 			rc.req = r
 			rc.response_proxy = response.NewProxy()
 			ptr := route.IPtr()
@@ -1244,7 +1249,7 @@ func (route *NestedRoute[I, O]) new_nested_req_ctx_getter() nested_req_ctx_gette
 	return nested_req_ctx_getter_impl[I](
 		func(
 			r *http.Request,
-			ctx *tasks.Ctx,
+			ctx *tasks.Cache,
 			pattern string,
 			params Params,
 			splat_values []string,
@@ -1254,7 +1259,7 @@ func (route *NestedRoute[I, O]) new_nested_req_ctx_getter() nested_req_ctx_gette
 			rc.matched_pattern = pattern
 			rc.params = params
 			rc.splat_vals = splat_values
-			rc.tasks_ctx = ctx
+			rc.tasks_cache = ctx
 			rc.req = r
 			rc.response_proxy = proxy
 			ptr := route.IPtr()
@@ -1409,7 +1414,7 @@ func (rt *Router) task_final_handler(
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
 		data, err := route.get_task_handler().
-			RunWithAnyInput(rc.TasksCtx(), rc.get_underlying_req_ctx())
+			RunWithAnyInput(rc.TasksCache(), rc.get_underlying_req_ctx())
 		if err != nil {
 			mux_log.Error(
 				"Error executing task handler",
@@ -1438,7 +1443,7 @@ func (rt *Router) task_final_handler(
 }
 
 func (rt *Router) apply_mw_pipeline(
-	tctx *tasks.Ctx,
+	tasks_cache *tasks.Cache,
 	rc req_ctx_marker,
 	mm *method_matcher,
 	route AnyRoute,
@@ -1455,7 +1460,7 @@ func (rt *Router) apply_mw_pipeline(
 		return with_http
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bound := make([]tasks.BoundTask, 0, len(collected))
+		bound := make([]tasks.Prepared, 0, len(collected))
 		proxies := make([]*response.Proxy, 0, len(collected))
 		for _, tw := range collected {
 			if tw.opts != nil && tw.opts.If != nil && !tw.opts.If(r) {
@@ -1464,8 +1469,12 @@ func (rt *Router) apply_mw_pipeline(
 			p := response.NewProxy()
 			rc := &RequestCtx[None]{
 				matched_pattern: rc.MatchedPattern(),
-				params:          rc.Params(), splat_vals: rc.SplatValues(),
-				tasks_ctx: tctx, input: None{}, req: r, response_proxy: p,
+				params:          rc.Params(),
+				splat_vals:      rc.SplatValues(),
+				tasks_cache:     tasks_cache,
+				input:           None{},
+				req:             r,
+				response_proxy:  p,
 			}
 			proxies = append(proxies, p)
 			bound = append(bound, &mw_bound_task{task: tw.mw, input: rc})
@@ -1474,7 +1483,7 @@ func (rt *Router) apply_mw_pipeline(
 			with_http.ServeHTTP(w, r)
 			return
 		}
-		if err := tctx.RunParallel(bound...); err != nil {
+		if err := tasks_cache.RunParallel(bound...); err != nil {
 			mux_log.Error(
 				"Error during parallel middleware execution",
 				"error",
@@ -1652,7 +1661,7 @@ func (nr *NestedRouter) current_matcher_opts(quiet bool) *matcher.Options {
 
 func (bt *nested_bound_task) run() error {
 	data, err := bt.task_handler.RunWithAnyInput(
-		bt.req_ctx.TasksCtx(),
+		bt.req_ctx.TasksCache(),
 		bt.req_ctx,
 	)
 	bt.result.data = data

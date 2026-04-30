@@ -108,13 +108,16 @@ declare global {
 export async function install_vorma_probe(input: {
 	variant: string;
 	app: unknown;
-	render: (args: { App: unknown; el: HTMLElement }) => void | Promise<void>;
+	render: (args: {
+		RootOutlet: unknown;
+		rootEl: HTMLElement;
+	}) => void | Promise<void>;
 }): Promise<void> {
 	const app = input.app as {
 		init: (options: {
 			render: (args: {
-				App: unknown;
-				el: HTMLElement;
+				RootOutlet: unknown;
+				rootEl: HTMLElement;
 			}) => void | Promise<void>;
 			onRouteUpdate: (
 				route: RouteLike,

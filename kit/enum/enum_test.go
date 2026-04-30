@@ -60,6 +60,32 @@ func TestValues_ReturnsCopy(t *testing.T) {
 	}
 }
 
+func TestParse(t *testing.T) {
+	trade_sides := New[trade_side, string](struct {
+		Buy  trade_side
+		Sell trade_side
+	}{
+		Buy:  "buy",
+		Sell: "sell",
+	})
+
+	value, ok := trade_sides.Parse("sell")
+	if !ok {
+		t.Fatal("Parse(\"sell\") ok = false, want true")
+	}
+	if value != "sell" {
+		t.Fatalf("Parse(\"sell\") value = %q, want %q", value, "sell")
+	}
+
+	value, ok = trade_sides.Parse("hold")
+	if ok {
+		t.Fatal("Parse(\"hold\") ok = true, want false")
+	}
+	if value != "" {
+		t.Fatalf("Parse(\"hold\") value = %q, want zero value", value)
+	}
+}
+
 func TestNew_PanicsOnNonStruct(t *testing.T) {
 	defer func() {
 		if recover() == nil {

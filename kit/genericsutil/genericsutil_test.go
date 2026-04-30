@@ -88,8 +88,8 @@ func TestAnyZeroHelper(t *testing.T) {
 }
 
 func TestAssertOrZero(t *testing.T) {
-	var x int = 1
-	var y int = 2
+	x := 1
+	y := 2
 	if AssertOrZero[int](x) != 1 {
 		t.Error("expected 1, got non-1 value")
 	}

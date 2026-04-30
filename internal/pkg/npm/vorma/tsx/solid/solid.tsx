@@ -406,7 +406,7 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	const App: Component = () => {
+	const RootOutletApp: Component = () => {
 		return <RootOutlet />;
 	};
 
@@ -427,7 +427,10 @@ export function createVormaClient<A extends AppConfig>(
 			},
 			render: render
 				? () => {
-						return render({ App, el: core.getRootEl() });
+						return render({
+							RootOutlet: RootOutletApp,
+							rootEl: core.getRootEl(),
+						});
 					}
 				: undefined,
 		});

@@ -35,14 +35,14 @@ func FromUnwrapped(uks UnwrappedKeyset) (*Keyset, error) {
 	return ks, nil
 }
 
-func (wk *Keyset) Validate() error {
-	if wk == nil {
+func (ks *Keyset) Validate() error {
+	if ks == nil {
 		return fmt.Errorf("keyset is nil")
 	}
-	if len(wk.uks) == 0 {
+	if len(ks.uks) == 0 {
 		return fmt.Errorf("keyset is empty")
 	}
-	for i, key := range wk.uks {
+	for i, key := range ks.uks {
 		if key == nil {
 			return fmt.Errorf("key %d in keyset is nil", i)
 		}
@@ -55,18 +55,18 @@ func (wk *Keyset) Validate() error {
 
 // Unwrap returns the underlying UnwrappedKeyset, which is a
 // latest-first slice of size 32 byte array pointers.
-func (wk *Keyset) Unwrap() UnwrappedKeyset { return wk.uks }
+func (ks *Keyset) Unwrap() UnwrappedKeyset { return ks.uks }
 
 // First returns the first key in the keyset and returns an error
 // if the keyset is nil or empty or if the first key is nil.
-func (wk *Keyset) First() (cryptoutil.Key32, error) {
-	if wk == nil {
+func (ks *Keyset) First() (cryptoutil.Key32, error) {
+	if ks == nil {
 		return nil, fmt.Errorf("keyset is nil")
 	}
-	if len(wk.uks) == 0 {
+	if len(ks.uks) == 0 {
 		return nil, fmt.Errorf("keyset is empty")
 	}
-	first := wk.uks[0]
+	first := ks.uks[0]
 	if first == nil {
 		return nil, fmt.Errorf("first key in keyset is nil")
 	}

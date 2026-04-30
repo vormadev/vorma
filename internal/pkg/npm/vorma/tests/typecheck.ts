@@ -1454,9 +1454,9 @@ void assert_react_adapter_contracts;
 function assert_public_runtime_contracts(): void {
 	// init
 	const init_promise = react.init({
-		render: async ({ App, el }) => {
-			expect_type<ReactComponentType>(App);
-			expect_type<HTMLElement>(el);
+		render: async ({ RootOutlet, rootEl }) => {
+			expect_type<ReactComponentType>(RootOutlet);
+			expect_type<HTMLElement>(rootEl);
 		},
 		useViewTransitions: true,
 		onRouteUpdate: (route, previous_route, reason) => {
@@ -1493,17 +1493,17 @@ function assert_public_runtime_contracts(): void {
 	expect_type<Promise<Result<void>>>(init_promise);
 
 	const preact_init_promise = preact.init({
-		render: async ({ App, el }) => {
-			expect_type<PreactComponentType>(App);
-			expect_type<HTMLElement>(el);
+		render: async ({ RootOutlet, rootEl }) => {
+			expect_type<PreactComponentType>(RootOutlet);
+			expect_type<HTMLElement>(rootEl);
 		},
 	});
 	expect_type<Promise<Result<void>>>(preact_init_promise);
 
 	const solid_init_promise = solid.init({
-		render: async ({ App, el }) => {
-			expect_type<SolidComponent>(App);
-			expect_type<HTMLElement>(el);
+		render: async ({ RootOutlet, rootEl }) => {
+			expect_type<SolidComponent>(RootOutlet);
+			expect_type<HTMLElement>(rootEl);
 		},
 	});
 	expect_type<Promise<Result<void>>>(solid_init_promise);

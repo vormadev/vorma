@@ -493,7 +493,7 @@ func (runner variant_runner) run_bombadil_test(
 	)
 	if err := runner.run_command_to_log(cmd, test_log_path); err != nil {
 		return fmt.Errorf(
-			"inspect artifacts with `go run ../../internal/cmd/maint inspect-framework-artifacts --artifact %s`; read log at %s: %w",
+			"inspect artifacts with `go run ./cmd/bombadil inspect %s`; read log at %s: %w",
 			artifact_path,
 			test_log_path,
 			err,

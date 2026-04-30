@@ -459,7 +459,7 @@ func TestRequestCtxAccess(t *testing.T) {
 				if len(rd.SplatValues()) > 0 && rd.SplatValues()[0] == "foo" {
 					splat_ok = true
 				}
-				if rd.TasksCtx() != nil {
+				if rd.TasksCache() != nil {
 					ctx_ok = true
 				}
 				if rd.Request() != nil {
@@ -488,7 +488,7 @@ func TestRequestCtxAccess(t *testing.T) {
 			t.Error("SplatValues not checked or incorrect")
 		}
 		if !ctx_ok {
-			t.Error("TasksCtx was nil")
+			t.Error("TasksCache was nil")
 		}
 		if !req_ok {
 			t.Error("Request was nil")
@@ -823,7 +823,7 @@ func TestParseInputSkipsHTTPRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("TasksCtxRequirer_SlowPath", func(t *testing.T) {
+	t.Run("TasksCacheRequirer_SlowPath", func(t *testing.T) {
 		parse_calls := 0
 		router := NewRouter(Options{
 			ParseInput: func(req *http.Request, input_ptr any) error {
@@ -837,9 +837,9 @@ func TestParseInputSkipsHTTPRoutes(t *testing.T) {
 			router,
 			http.MethodGet,
 			"/http",
-			TasksCtxRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if GetTasksCtx(r) == nil {
-					t.Fatal("TasksCtx should be available for TasksCtxRequirer")
+			TasksCacheRequirerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if GetTasksCache(r) == nil {
+					t.Fatal("TasksCache should be available for TasksCacheRequirer")
 				}
 				w.WriteHeader(http.StatusNoContent)
 			}),
@@ -857,14 +857,14 @@ func TestParseInputSkipsHTTPRoutes(t *testing.T) {
 	})
 }
 
-func TestTasksCtxRequirer(t *testing.T) {
-	t.Run("Gets_TasksCtx_Even_Without_Middleware", func(t *testing.T) {
+func TestTasksCacheRequirer(t *testing.T) {
+	t.Run("Gets_TasksCache_Even_Without_Middleware", func(t *testing.T) {
 		router := NewRouter()
-		handler := TasksCtxRequirerFunc(
+		handler := TasksCacheRequirerFunc(
 			func(w http.ResponseWriter, r *http.Request) {
-				if GetTasksCtx(r) == nil {
-					t.Error("TasksCtx should be available for TasksCtxRequirer")
-					http.Error(w, "No TasksCtx", http.StatusInternalServerError)
+				if GetTasksCache(r) == nil {
+					t.Error("TasksCache should be available for TasksCacheRequirer")
+					http.Error(w, "No TasksCache", http.StatusInternalServerError)
 					return
 				}
 				w.WriteHeader(http.StatusOK)
@@ -893,16 +893,16 @@ func TestTasksCtxRequirer(t *testing.T) {
 		}
 	})
 
-	t.Run("Regular_Handler_Without_TasksCtxRequirer", func(t *testing.T) {
+	t.Run("Regular_Handler_Without_TasksCacheRequirer", func(t *testing.T) {
 		router := NewRouter()
 		AddHTTPHandlerFunc(
 			router,
 			http.MethodGet,
 			"/test",
 			func(w http.ResponseWriter, r *http.Request) {
-				if GetTasksCtx(r) != nil {
+				if GetTasksCache(r) != nil {
 					t.Error(
-						"TasksCtx should not be available for regular handlers without middleware",
+						"TasksCache should not be available for regular handlers without middleware",
 					)
 				}
 				w.WriteHeader(http.StatusOK)
@@ -921,14 +921,14 @@ func TestTasksCtxRequirer(t *testing.T) {
 type custom_handler struct{ t *testing.T }
 
 func (h custom_handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if GetTasksCtx(r) == nil {
-		h.t.Error("TasksCtx should be available for custom TasksCtxRequirer")
-		http.Error(w, "No TasksCtx", http.StatusInternalServerError)
+	if GetTasksCache(r) == nil {
+		h.t.Error("TasksCache should be available for custom TasksCacheRequirer")
+		http.Error(w, "No TasksCache", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
-func (h custom_handler) NeedsTasksCtx() {}
+func (h custom_handler) NeedsTasksCache() {}
 
 func TestResponseProxy(t *testing.T) {
 	t.Run("Task_Middleware_Sets_Response", func(t *testing.T) {

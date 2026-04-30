@@ -29,7 +29,7 @@ func IsJSONRequest(r *http.Request) bool {
 	return r.URL.Query().Get(Query_Key_Vorma_JSON) != ""
 }
 
-func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
+func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
 
@@ -409,7 +409,7 @@ func (v *Vorma) loaders_handler() mux.TasksCtxRequirerFunc {
 /////// Actions handler
 /////////////////////////////////////////////////////////////////////
 
-func (v *Vorma) actions_handler() mux.TasksCtxRequirerFunc {
+func (v *Vorma) actions_handler() mux.TasksCacheRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := response.New(w)
 

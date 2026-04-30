@@ -234,21 +234,21 @@ behavior under test.
 Why Hegel fits:
 
 The package has Vorma-owned memoization semantics over task id/input pairs,
-shared dependency graphs, cancellation, context sharing, and TTL. Hegel is
-useful only if we model those semantics directly. It should not try to prove
-goroutine scheduling works.
+shared dependency graphs, cancellation, cache sharing, and TTL. Hegel is useful
+only if we model those semantics directly. It should not try to prove goroutine
+scheduling works.
 
 Good property ideas:
 
-- Generated DAG: every reachable task/input pair executes at most once per
-  context while all bound outputs receive the same result.
+- Generated DAG: every reachable op/input pair executes at most once per cache
+  while all prepared outputs receive the same result.
 - Shared dependency law: two parents depending on the same child observe the
   same child result and child execution count is one.
-- Input partition law: same task with different inputs caches independently.
+- Input partition law: same func with different inputs caches independently.
 - Error retry law: ordinary errors are cached according to the package contract;
   cancellation/deadline errors are not cached.
-- Context sharing law: `WithNativeContext` shares memoized data but respects the
-  new native cancellation context.
+- Cache sharing law: `WithContext` shares memoized data but respects the new
+  cancellation context.
 
 Notes:
 

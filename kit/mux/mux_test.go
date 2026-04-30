@@ -402,12 +402,12 @@ func TestParams_NoParamsReturnsNilMap(t *testing.T) {
 	}
 }
 
-func TestInjectTasksCtxMiddleware_NoParamsReturnsNilMap(t *testing.T) {
+func TestInjectTasksCacheMiddleware_NoParamsReturnsNilMap(t *testing.T) {
 	request_count := 0
 	var first_params, second_params Params
 	var first_proxy_nil, second_proxy_nil bool
 
-	handler := InjectTasksCtxMiddleware(
+	handler := InjectTasksCacheMiddleware(
 		http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			request_count++
 			params := GetParams(req)
@@ -884,7 +884,7 @@ func TestAllRoutes(t *testing.T) {
 	}
 }
 
-func TestTasksCtxAvailability(t *testing.T) {
+func TestTasksCacheAvailability(t *testing.T) {
 	t.Run("InHTTPHandler_WithTaskMiddleware", func(t *testing.T) {
 		router := NewRouter()
 		AddGlobalTaskMiddleware(
@@ -898,8 +898,8 @@ func TestTasksCtxAvailability(t *testing.T) {
 			"GET",
 			"/test",
 			func(w http.ResponseWriter, r *http.Request) {
-				if GetTasksCtx(r) == nil {
-					t.Error("TasksCtx is nil in HTTP handler")
+				if GetTasksCache(r) == nil {
+					t.Error("TasksCache is nil in HTTP handler")
 					http.Error(w, "nil", http.StatusInternalServerError)
 					return
 				}
@@ -919,8 +919,8 @@ func TestTasksCtxAvailability(t *testing.T) {
 		AddGlobalTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
-				if rd.TasksCtx() == nil {
-					t.Error("TasksCtx is nil in task middleware")
+				if rd.TasksCache() == nil {
+					t.Error("TasksCache is nil in task middleware")
 				}
 				return None{}, nil
 			}),

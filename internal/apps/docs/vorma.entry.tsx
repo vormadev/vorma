@@ -11,8 +11,8 @@ import { app } from "./vorma.app.ts";
 /////////////////////////////////////////////////////////////////////
 
 // await app.init({
-// 	renderFn: () => {
-// 		preact_render(<app.RootOutlet />, app.getRootEl());
+// 	render: ({ RootOutlet, rootEl }) => {
+// 		preact_render(<RootOutlet />, rootEl);
 // 	},
 // });
 
@@ -21,8 +21,8 @@ import { app } from "./vorma.app.ts";
 /////////////////////////////////////////////////////////////////////
 
 // await app.init({
-// 	renderFn: () => {
-// 		createRoot(app.getRootEl()).render(<app.RootOutlet />);
+// 	render: ({ RootOutlet, rootEl }) => {
+// 		createRoot(rootEl).render(<RootOutlet />);
 // 	},
 // });
 
@@ -31,8 +31,8 @@ import { app } from "./vorma.app.ts";
 /////////////////////////////////////////////////////////////////////
 
 await app.init({
-	renderFn: () => {
-		solid_render(() => <app.RootOutlet />, app.getRootEl());
+	render: ({ RootOutlet, rootEl }) => {
+		solid_render(() => <RootOutlet />, rootEl);
 	},
 });
 

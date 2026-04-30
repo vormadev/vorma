@@ -2,13 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/vormadev/vorma/internal/cmd/internal/tooling"
 	"github.com/vormadev/vorma/kit/lab/bumper"
 )
 
@@ -34,10 +34,8 @@ type release_package struct {
 	Path string `json:"path"`
 }
 
-func (app maint_app) prepare_release(args []string) error {
-	flags := flag.NewFlagSet("prepare-release", flag.ContinueOnError)
-	version := flags.String("version", "", "version to write")
-	if err := flags.Parse(args); err != nil {
+func (app release_app) prepare_release(args []string) error {
+	if err := app.require_no_args("prepare", args); err != nil {
 		return err
 	}
 
@@ -49,14 +47,11 @@ func (app maint_app) prepare_release(args []string) error {
 		return err
 	}
 
-	next := release_version(strings.TrimSpace(*version))
-	if next == "" {
-		prompted, err := app.prompt_line("New release version")
-		if err != nil {
-			return err
-		}
-		next = release_version(prompted)
+	prompted, err := app.prompt_line("New release version")
+	if err != nil {
+		return err
 	}
+	next := release_version(prompted)
 	if next.npm_version() == "" {
 		return fmt.Errorf("version is empty")
 	}
@@ -64,11 +59,11 @@ func (app maint_app) prepare_release(args []string) error {
 	fmt.Printf("release version: %s -> %s\n", npm_content.version, next.npm_version())
 	fmt.Println("npm release tag:", next.npm_tag())
 	fmt.Println("go module tag:", next.go_tag())
-	if err := app.confirm("Write release versions and run release verification?"); err != nil {
+	if err := app.Confirm("Write release versions and run release verification?"); err != nil {
 		return err
 	}
 
-	if app.dry_run {
+	if app.DryRun {
 		fmt.Printf("would write %s to %s\n", next.npm_version(), npm_package.path)
 		fmt.Printf("would write %s to %s\n", next.npm_version(), create_package.path)
 	} else {
@@ -80,7 +75,7 @@ func (app maint_app) prepare_release(args []string) error {
 		}
 	}
 
-	if err := app.gate(); err != nil {
+	if err := app.run_enforcer_gate(); err != nil {
 		return err
 	}
 
@@ -88,9 +83,8 @@ func (app maint_app) prepare_release(args []string) error {
 	return nil
 }
 
-func (app maint_app) publish_go(args []string) error {
-	flags := flag.NewFlagSet("publish-go", flag.ContinueOnError)
-	if err := flags.Parse(args); err != nil {
+func (app release_app) publish_go(args []string) error {
+	if err := app.require_no_args("publish-go", args); err != nil {
 		return err
 	}
 
@@ -99,28 +93,39 @@ func (app maint_app) publish_go(args []string) error {
 		return err
 	}
 	version := release_version(npm_content.version)
-	if err := app.require_clean_worktree(); err != nil {
-		return err
-	}
 	if err := version.verify_go_tag_available(app); err != nil {
 		return err
 	}
 	if err := version.verify_npm_registry(app); err != nil {
 		return err
 	}
+	if err := version.commit_prepared_release(app); err != nil {
+		return err
+	}
+	if err := app.RequireCleanWorktree(); err != nil {
+		return err
+	}
 	return bumper.Config{
-		RootDir:    app.root,
+		RootDir:    app.Root,
 		ModulePath: "github.com/vormadev/vorma",
 		Version:    version.go_tag(),
-		DryRun:     app.dry_run,
-		Yes:        app.yes,
+		DryRun:     app.DryRun,
+		Yes:        app.Yes,
 		Stdin:      os.Stdin,
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
 	}.Publish()
 }
 
-func (app maint_app) prompt_line(prompt string) (string, error) {
+func (app release_app) run_enforcer_gate() error {
+	return app.RunStep(tooling.Step{
+		Name:    "run enforcer gate",
+		Command: "go",
+		Args:    []string{"run", "./internal/cmd/enforcer", "gate"},
+	})
+}
+
+func (app release_app) prompt_line(prompt string) (string, error) {
 	fmt.Print(prompt + ": ")
 	var value string
 	if _, err := fmt.Scanln(&value); err != nil {
@@ -173,7 +178,7 @@ func (file package_json_file) write_version(content package_json_content, versio
 	return os.WriteFile(file.path, []byte(strings.Join(content.lines, "\n")+"\n"), 0644)
 }
 
-func (app maint_app) read_npm_release_packages() (package_json_content, package_json_content, error) {
+func (app release_app) read_npm_release_packages() (package_json_content, package_json_content, error) {
 	npm_content, err := (package_json_file{path: npm_package_json_path}).read()
 	if err != nil {
 		return package_json_content{}, package_json_content{}, err
@@ -211,12 +216,12 @@ func (version release_version) npm_tag() string {
 	return "latest"
 }
 
-func (version release_version) verify_go_tag_available(app maint_app) error {
-	if app.dry_run {
-		return app.run_step(command_step{
-			name:    "verify Go module tag is available",
-			command: "git",
-			args: []string{
+func (version release_version) verify_go_tag_available(app release_app) error {
+	if app.DryRun {
+		return app.RunStep(tooling.Step{
+			Name:    "verify Go module tag is available",
+			Command: "git",
+			Args: []string{
 				"ls-remote",
 				"--exit-code",
 				"--tags",
@@ -234,7 +239,7 @@ func (version release_version) verify_go_tag_available(app maint_app) error {
 		"origin",
 		"refs/tags/"+version.go_tag(),
 	)
-	cmd.Dir = app.root
+	cmd.Dir = app.Root
 	if err := cmd.Run(); err == nil {
 		return fmt.Errorf("Go module tag %s already exists on origin", version.go_tag())
 	} else if exit_err, ok := err.(*exec.ExitError); ok && exit_err.ExitCode() == 2 {
@@ -244,25 +249,64 @@ func (version release_version) verify_go_tag_available(app maint_app) error {
 	}
 }
 
-func (version release_version) verify_npm_registry(app maint_app) error {
-	for _, pkg := range release_packages() {
-		step := command_step{
-			name:    "verify npm package " + pkg.Name + "@" + version.npm_version(),
-			command: "npm",
-			args:    []string{"view", pkg.Name + "@" + version.npm_version(), "version"},
+func (version release_version) verify_npm_registry(app release_app) error {
+	for _, pkg := range app.release_packages() {
+		step := tooling.Step{
+			Name:    "verify npm package " + pkg.Name + "@" + version.npm_version(),
+			Command: "npm",
+			Args:    []string{"view", pkg.Name + "@" + version.npm_version(), "version"},
 		}
-		if err := app.run_step(step); err != nil {
+		if err := app.RunStep(step); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (version release_version) print_npm_publish_instructions(app maint_app) {
+func (version release_version) commit_prepared_release(app release_app) error {
+	if err := app.RunStep(tooling.Step{
+		Name:    "show prepared release status",
+		Command: "git",
+		Args:    []string{"status", "--short"},
+	}); err != nil {
+		return err
+	}
+	if err := app.Confirm(
+		"Stage every current worktree change with `git add .`, commit " + version.go_tag() + ", and push?",
+	); err != nil {
+		return err
+	}
+
+	steps := []tooling.Step{
+		{
+			Name:    "stage prepared release",
+			Command: "git",
+			Args:    []string{"add", "."},
+		},
+		{
+			Name:    "commit prepared release",
+			Command: "git",
+			Args:    []string{"commit", "-m", version.go_tag(), "--no-verify"},
+		},
+		{
+			Name:    "push prepared release commit",
+			Command: "git",
+			Args:    []string{"push"},
+		},
+	}
+	for _, step := range steps {
+		if err := app.RunStep(step); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (version release_version) print_npm_publish_instructions(app release_app) {
 	fmt.Println()
 	fmt.Println("Run these npm publish commands directly from your terminal:")
 	fmt.Println()
-	for _, pkg := range release_packages() {
+	for _, pkg := range app.release_packages() {
 		pkg.print_publish_command(app, version)
 	}
 	fmt.Println("After npm publish succeeds, run:")
@@ -270,13 +314,13 @@ func (version release_version) print_npm_publish_instructions(app maint_app) {
 	fmt.Println("make publish-go")
 }
 
-func (pkg release_package) print_publish_command(app maint_app, version release_version) {
-	fmt.Println("cd " + filepath.Join(app.root, filepath.Dir(pkg.Path)))
+func (pkg release_package) print_publish_command(app release_app, version release_version) {
+	fmt.Println("cd " + filepath.Join(app.Root, filepath.Dir(pkg.Path)))
 	fmt.Println("npm publish --access public --tag " + version.npm_tag())
 	fmt.Println()
 }
 
-func release_packages() []release_package {
+func (app release_app) release_packages() []release_package {
 	return []release_package{
 		{Name: npm_package_name, Path: npm_package_json_path},
 		{Name: create_package_name, Path: create_package_json_path},

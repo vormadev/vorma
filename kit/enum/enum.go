@@ -95,3 +95,14 @@ func New[V Value, N Native, S any](enum S) Enum[V, N, S] {
 func (e Enum[V, N, S]) Get() S            { return e._enum }
 func (e Enum[V, N, S]) Values() []V       { return append([]V(nil), e._vals...) }
 func (e Enum[V, N, S]) NativeValues() []N { return append([]N(nil), e._native_vals...) }
+
+func (e Enum[V, N, S]) Parse(value N) (V, bool) {
+	for i, native_value := range e._native_vals {
+		if native_value == value {
+			return e._vals[i], true
+		}
+	}
+
+	var zero V
+	return zero, false
+}

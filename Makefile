@@ -1,181 +1,219 @@
-# Print the maintenance CLI command list.
-help:
-	@go run ./internal/cmd/maint help
+# Print the enforcer command list.
+enforcer-help:
+	@go run ./internal/cmd/enforcer help
 
 #####################################################################
-####### JavaScript Dependencies
+####### Install
 #####################################################################
 
-# Install JavaScript dependencies in every workspace.
-install-js:
-	@go run ./internal/cmd/maint install-js
+install:
+	@go run ./internal/cmd/enforcer install
 
-# Remove every node_modules directory after confirmation.
+install-fw:
+	@go run ./internal/cmd/enforcer install --scope fw
+
+install-other:
+	@go run ./internal/cmd/enforcer install --scope other
+
+install-go:
+	@go run ./internal/cmd/enforcer install --lang go
+
+install-ts:
+	@go run ./internal/cmd/enforcer install --lang ts
+
+# Remove every node_modules directory in the repo after confirmation.
 clean-js:
-	@go run ./internal/cmd/maint clean-js
+	@go run ./internal/cmd/enforcer clean-js
 
 #####################################################################
-####### TypeScript
+####### Format
 #####################################################################
 
-# Format TypeScript source with oxfmt.
+fmt:
+	@go run ./internal/cmd/enforcer fmt
+
+fmt-fw:
+	@go run ./internal/cmd/enforcer fmt --scope fw
+
+fmt-other:
+	@go run ./internal/cmd/enforcer fmt --scope other
+
+fmt-go:
+	@go run ./internal/cmd/enforcer fmt --lang go
+
 fmt-ts:
-	@go run ./internal/cmd/maint fmt-ts
+	@go run ./internal/cmd/enforcer fmt --lang ts
 
-# Lint TypeScript source with oxlint.
+#####################################################################
+####### Lint
+#####################################################################
+
+lint:
+	@go run ./internal/cmd/enforcer lint
+
+lint-fw:
+	@go run ./internal/cmd/enforcer lint --scope fw
+
+lint-other:
+	@go run ./internal/cmd/enforcer lint --scope other
+
+lint-go:
+	@go run ./internal/cmd/enforcer lint --lang go
+
 lint-ts:
-	@go run ./internal/cmd/maint lint-ts
+	@go run ./internal/cmd/enforcer lint --lang ts
 
-# Typecheck all TypeScript package projects.
+#####################################################################
+####### Fix
+#####################################################################
+
+fix:
+	@go run ./internal/cmd/enforcer fix
+
+fix-fw:
+	@go run ./internal/cmd/enforcer fix --scope fw
+
+fix-other:
+	@go run ./internal/cmd/enforcer fix --scope other
+
+fix-go:
+	@go run ./internal/cmd/enforcer fix --lang go
+
+fix-ts:
+	@go run ./internal/cmd/enforcer fix --lang ts
+
+#####################################################################
+####### Typecheck
+#####################################################################
+
+typecheck:
+	@go run ./internal/cmd/enforcer typecheck
+
+typecheck-fw:
+	@go run ./internal/cmd/enforcer typecheck --scope fw
+
+typecheck-other:
+	@go run ./internal/cmd/enforcer typecheck --scope other
+
+typecheck-go:
+	@go run ./internal/cmd/enforcer typecheck --lang go
+
 typecheck-ts:
-	@go run ./internal/cmd/maint typecheck-ts
-
-# Typecheck non-framework TypeScript package projects.
-typecheck-ts-other:
-	@go run ./internal/cmd/maint typecheck-ts-other
-
-# Typecheck framework TypeScript package projects.
-typecheck-ts-framework:
-	@go run ./internal/cmd/maint typecheck-ts-framework
-
-# Run all TypeScript package tests.
-test-ts:
-	@go run ./internal/cmd/maint test-ts
-
-# Run non-framework TypeScript package tests.
-test-ts-other:
-	@go run ./internal/cmd/maint test-ts-other
-
-# Run framework TypeScript package tests.
-test-ts-framework:
-	@go run ./internal/cmd/maint test-ts-framework
-
-# Build the npm package dist output.
-build-ts:
-	@go run ./internal/cmd/maint build-ts
+	@go run ./internal/cmd/enforcer typecheck --lang ts
 
 #####################################################################
-####### Go
+####### Test
 #####################################################################
 
-# Run all Go test domains.
+test:
+	@go run ./internal/cmd/enforcer test
+
+test-fw:
+	@go run ./internal/cmd/enforcer test --scope fw
+
+test-other:
+	@go run ./internal/cmd/enforcer test --scope other
+
 test-go:
-	@go run ./internal/cmd/maint test-go
+	@go run ./internal/cmd/enforcer test --lang go
 
-# Run non-framework Go test domains.
-test-go-other:
-	@go run ./internal/cmd/maint test-go-other
-
-# Run the root Go module with ./...
-test-root-go:
-	@go run ./internal/cmd/maint test-root-go
-
-# Run internal Go package tests.
-test-internal-go:
-	@go run ./internal/cmd/maint test-internal-go
-
-# Run kit Go package tests.
-test-kit:
-	@go run ./internal/cmd/maint test-kit
-
-# Run kit/lab Go package tests.
-test-lab:
-	@go run ./internal/cmd/maint test-lab
-
-# Run docs Go module tests.
-test-docs:
-	@go run ./internal/cmd/maint test-docs
-
-# Run tests for the framework Go module.
-test-go-framework:
-	@go run ./internal/cmd/maint test-go-framework
+test-ts:
+	@go run ./internal/cmd/enforcer test --lang ts
 
 #####################################################################
-####### Framework Tests
+####### Build
 #####################################################################
 
-# Run framework Go, TypeScript, Vitest, and browser/runtime suites.
-test-framework:
-	@go run ./internal/cmd/maint test-framework
+build:
+	@go run ./internal/cmd/enforcer build
 
-# Run only the production browser/runtime framework suite.
-test-framework-prod:
-	@go run ./internal/cmd/maint test-framework-prod
+build-go:
+	@go run ./internal/cmd/enforcer build --lang go
 
-# Run only the development browser/runtime framework suite.
-test-framework-dev:
-	@go run ./internal/cmd/maint test-framework-dev
+build-ts:
+	@go run ./internal/cmd/enforcer build --lang ts
 
-# Build the framework fixture without running it.
-build-framework-fixture:
-	@go run ./internal/cmd/maint build-framework-fixture
+#####################################################################
+####### Gate
+#####################################################################
 
-# Run one framework development fixture server.
-serve-framework-dev:
-	@go run ./internal/cmd/maint serve-framework-dev
+gate:
+	@go run ./internal/cmd/enforcer gate
 
-# Inspect framework artifacts.
-inspect-framework-artifacts:
-	@go run ./internal/cmd/maint inspect-framework-artifacts
+gate-fw:
+	@go run ./internal/cmd/enforcer gate --scope fw
 
-# Remove framework artifacts after confirmation.
-clean-framework-artifacts:
-	@go run ./internal/cmd/maint clean-framework-artifacts
+gate-other:
+	@go run ./internal/cmd/enforcer gate --scope other
 
 #####################################################################
 ####### Stress
 #####################################################################
 
-# Repeat the non-framework and framework stress partitions.
 # Usage: make stress intensity=10
 stress:
-	@go run ./internal/cmd/maint stress --intensity $(intensity)
+	@go run ./internal/cmd/enforcer stress --intensity $(intensity)
 
-# Repeat the non-framework stress partition.
+# Usage: make stress-fw intensity=10
+stress-fw:
+	@go run ./internal/cmd/enforcer stress --scope fw --intensity $(intensity)
+
 # Usage: make stress-other intensity=10
 stress-other:
-	@go run ./internal/cmd/maint stress-other --intensity $(intensity)
+	@go run ./internal/cmd/enforcer stress --scope other --intensity $(intensity)
 
-# Repeat framework Go, TypeScript, Vitest, and browser/runtime suites.
-# Usage: make stress-framework intensity=10
-stress-framework:
-	@go run ./internal/cmd/maint stress-framework --intensity $(intensity)
+# Usage: make stress-go intensity=10
+stress-go:
+	@go run ./internal/cmd/enforcer stress --lang go --intensity $(intensity)
+
+# Usage: make stress-ts intensity=10
+stress-ts:
+	@go run ./internal/cmd/enforcer stress --lang ts --intensity $(intensity)
 
 #####################################################################
 ####### Docs
 #####################################################################
 
-# Run the docs development server.
 docs-dev:
-	@go run ./internal/cmd/maint docs-dev
+	@cd ./internal/apps/docs && pnpm dev
 
-# Build the docs site.
 build-docs:
-	@go run ./internal/cmd/maint build-docs
+	@cd ./internal/apps/docs && pnpm build
 
 #####################################################################
 ####### Release
 #####################################################################
 
-# Run the full repo confidence workflow.
-gate:
-	@go run ./internal/cmd/maint gate
-
-# Update release versions, run the gate, and print raw npm publish commands.
 prepare-release:
-	@go run ./internal/cmd/maint prepare-release
+	@go run ./internal/cmd/release prepare
 
-# Create and push the Go module tag, then ask the Go proxy for it.
 publish-go:
-	@go run ./internal/cmd/maint publish-go
+	@go run ./internal/cmd/release publish-go
 
 #####################################################################
-####### Other Maintenance
+####### Bench
+#####################################################################
+
+# Usage: make bench-go pkg=./kit/k9
+bench-go:
+	go test -bench=. $(pkg)
+
+# Usage: make bench-ts pkg=./kit/matcher
+bench-ts:
+	cd ./internal/pkg/npm && pnpm vitest bench $(pkg)
+
+#####################################################################
+####### Other
 #####################################################################
 
 # Exercise create-vorma against a local test directory.
-create-local-test:
-	@go run ./internal/cmd/maint create-local-test
+run-create:
+	@go run ./internal/cmd/enforcer install --lang ts
+	@go run ./internal/cmd/enforcer build --lang ts
+	@go run ./internal/cmd/enforcer --yes clean-js
+	@mkdir -p test_create.local && \
+		cd test_create.local && \
+		node ../internal/pkg/npm/vorma/create/.dist/main.js --local-test
 
 sum:
 	@go run ./internal/cmd/sum/

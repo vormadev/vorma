@@ -1,7 +1,7 @@
 # Framework Tests
 
-This directory is the shared test area for framework behavior (not lower-level
-kit/lab primitives). It is not an application product. It contains a realistic
+This directory is the shared test area for framework behavior, not lower-level
+kit/lab primitives. It is not an application product. It contains a realistic
 Vorma app plus whatever runners and checks are needed for public framework
 behavior through observable surfaces.
 
@@ -66,8 +66,7 @@ Bombadil writes run artifacts under `.bombadil/`:
 Inspect artifacts from this directory:
 
 ```bash
-make inspect
-go run ../../internal/cmd/maint inspect-framework-artifacts --artifact .bombadil/dev-react
+go run ./cmd/bombadil inspect .bombadil/dev-react
 ```
 
 Each Bombadil test clears its own artifact directory before writing, so repeated
@@ -75,7 +74,7 @@ runs do not accumulate stale screenshots and traces for the same run name.
 Server logs are truncated on each run. Remove all Bombadil artifacts with:
 
 ```bash
-make clean
+rm -rf .bombadil
 ```
 
 Bombadil failure output includes the artifact path to inspect, and server logs
@@ -96,54 +95,19 @@ cd ../pkg/npm
 pnpm tsdown
 ```
 
-## Targets
+## Commands
 
-From the repo root:
-
-```bash
-make test-framework
-```
-
-`make gate` also runs `test-framework`.
-
-From this directory:
-
-```bash
-make test
-make stress
-make test-prod
-make test-dev
-make test-prod-react
-make test-dev-react
-make build
-make inspect
-make clean
-```
-
-`test` installs dependencies, runs the framework Go module tests, framework
-TypeScript package checks, framework Vitest bucket, fixture TypeScript check,
-and then the full production and development Bombadil suites.
-
-`stress` repeats the root/docs non-framework Go tests, framework Go checks,
-framework TypeScript checks, Vitest bucket, and production/development Bombadil
-suites using the requested `intensity` value.
-
-Use Bombadil directly for selected variants or custom intensity values:
+Use Bombadil directly for selected variants, custom intensity values, manual dev
+servers, or artifact inspection:
 
 ```bash
 go run ./cmd/bombadil test-prod -variant react -intensity 1
 go run ./cmd/bombadil test-dev -variant react -intensity 1
-```
-
-## Manual Dev Fixture
-
-Start one adapter variant by hand:
-
-```bash
 go run ./cmd/bombadil serve-dev react
+go run ./cmd/bombadil inspect .bombadil/dev-react
 ```
 
-Swap `react` for `preact` or `solid`.
+Supported variants are `react`, `preact`, and `solid`.
 
 ## Dev Scope
 

@@ -42,8 +42,10 @@ func TestSchemaFromValue(t *testing.T) {
 		Labels        *map[string]string `json:"labels"`
 		Groups        map[string][]uint  `json:"groups"`
 		Skip          string             `json:"-"`
-		DashName      string             `json:"'-'"`
-		private       string
+		//lint:ignore SA5008 .
+		DashName string `json:"'-'"`
+		//lint:ignore U1000 .
+		private string
 	}
 
 	schema, err := SchemaFromValue(input{})
@@ -211,8 +213,10 @@ func TestSchemaFromValueFieldNames(t *testing.T) {
 		ExtraOpts   int    `json:"extra,string,omitempty"`
 		Raw         bool
 		Skip        string `json:"-"`
-		DashName    string `json:"'-'"`
-		private     string
+		//lint:ignore SA5008 .
+		DashName string `json:"'-'"`
+		//lint:ignore U1000 .
+		private string
 	}
 
 	schema, err := SchemaFromValue(input{})
