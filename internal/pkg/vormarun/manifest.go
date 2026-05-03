@@ -36,7 +36,7 @@ type Manifest struct {
 
 	// Normalized config values needed at runtime
 	PublicStaticBasePath string
-	ActionsMountRoot     string
+	APIMountRoot         string
 	UIVariant            string
 	RootHTMLTemplateHash string
 
@@ -84,8 +84,14 @@ func (m Manifest) to_client_build_id() (string, error) {
 	return strings.ToLower(b32)[:24], nil
 }
 
-func (v *Vorma) PublicURL(src_path string) (string, error) {
-	pub_fm, err := v.public_filemap()
+func (instance *Instance) PublicURL(src_path string) (string, error) {
+	if IsBuild() {
+		return "", nil
+	}
+	if err := instance.init(); err != nil {
+		return "", fmt.Errorf("error initializing instance: %w", err)
+	}
+	pub_fm, err := instance.public_filemap()
 	if err != nil {
 		return "", fmt.Errorf("error getting public filemap: %w", err)
 	}
@@ -97,19 +103,31 @@ func (v *Vorma) PublicURL(src_path string) (string, error) {
 	return url, nil
 }
 
-func (v *Vorma) ClientBuildID() (string, error) {
+func (instance *Instance) ClientBuildID() (string, error) {
+	if IsBuild() {
+		return "", nil
+	}
+	if err := instance.init(); err != nil {
+		return "", fmt.Errorf("error initializing instance: %w", err)
+	}
 	if IsDev() {
-		manifest, err := v.manifest()
+		manifest, err := instance.manifest()
 		if err != nil {
 			return "", fmt.Errorf("error getting manifest: %w", err)
 		}
 		return manifest.to_client_build_id()
 	}
-	return v.client_build_id, nil
+	return instance.client_build_id_cache, nil
 }
 
-func (v *Vorma) CriticalCSSContentSha256() (string, error) {
-	el, err := v.critical_css_el()
+func (instance *Instance) CriticalCSSContentSha256() (string, error) {
+	if IsBuild() {
+		return "", nil
+	}
+	if err := instance.init(); err != nil {
+		return "", fmt.Errorf("error initializing instance: %w", err)
+	}
+	el, err := instance.critical_css_el()
 	if err != nil {
 		return "", fmt.Errorf("error getting critical CSS element: %w", err)
 	}
@@ -120,20 +138,26 @@ func (v *Vorma) CriticalCSSContentSha256() (string, error) {
 	return hash, nil
 }
 
-func (v *Vorma) PublicFS() (fs.FS, error) {
-	return fs.Sub(v.static_fs, "public")
+func (instance *Instance) PublicFS() (fs.FS, error) {
+	if IsBuild() {
+		return nil, nil
+	}
+	if err := instance.init(); err != nil {
+		return nil, fmt.Errorf("error initializing instance: %w", err)
+	}
+	return fs.Sub(instance.static_fs, "public")
 }
 
-func (v *Vorma) public_static_base_path() (string, error) {
-	manifest, err := v.manifest()
+func (instance *Instance) public_static_base_path() (string, error) {
+	manifest, err := instance.manifest()
 	if err != nil {
 		return "", fmt.Errorf("error getting manifest: %w", err)
 	}
 	return manifest.PublicStaticBasePath, nil
 }
 
-func (v *Vorma) critical_css_el() (*htmlutil.Element, error) {
-	manifest, err := v.manifest()
+func (instance *Instance) critical_css_el() (*htmlutil.Element, error) {
+	manifest, err := instance.manifest()
 	if err != nil {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
@@ -144,45 +168,23 @@ func (v *Vorma) critical_css_el() (*htmlutil.Element, error) {
 	}, nil
 }
 
-func (v *Vorma) main_css_el() (*htmlutil.Element, error) {
-	pub_fm, err := v.public_filemap()
-	if err != nil {
-		return nil, fmt.Errorf("error getting public filemap: %w", err)
-	}
-	url, ok := pub_fm[Main_CSS_Filename]
-	if !ok {
-		return nil, fmt.Errorf(
-			"main CSS file %s not found in manifest public filemap",
-			Main_CSS_Filename,
-		)
-	}
-	return &htmlutil.Element{
-		Tag: "link",
-		AttributesKnownSafe: map[string]string{
-			"rel":  "stylesheet",
-			"id":   Main_CSS_El_ID,
-			"href": url,
-		},
-	}, nil
-}
-
-func (v *Vorma) public_filemap() (map[string]string, error) {
-	manifest, err := v.manifest()
+func (instance *Instance) public_filemap() (map[string]string, error) {
+	manifest, err := instance.manifest()
 	if err != nil {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
 	return manifest.PublicFilemap, nil
 }
 
-func (v *Vorma) final_public_filepaths() (*set.Set[string], error) {
+func (instance *Instance) final_public_filepaths() (*set.Set[string], error) {
 	if IsDev() {
-		return v.make_final_public_filepaths()
+		return instance.make_final_public_filepaths()
 	}
-	return v._final_public_filepaths, nil
+	return instance.final_public_filepaths_cache, nil
 }
 
-func (v *Vorma) make_final_public_filepaths() (*set.Set[string], error) {
-	manifest, err := v.manifest()
+func (instance *Instance) make_final_public_filepaths() (*set.Set[string], error) {
+	manifest, err := instance.manifest()
 	if err != nil {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
@@ -207,11 +209,11 @@ func (v *Vorma) make_final_public_filepaths() (*set.Set[string], error) {
 	return filepaths, nil
 }
 
-func (v *Vorma) manifest() (*Manifest, error) {
+func (instance *Instance) manifest() (*Manifest, error) {
 	if IsDev() {
-		return read_manifest(v.static_fs)
+		return read_manifest(instance.static_fs)
 	}
-	return v._manifest, nil
+	return instance.manifest_cache, nil
 }
 
 func read_manifest(static_fs fs.FS) (*Manifest, error) {

@@ -267,7 +267,7 @@ export async function setup(
 		return orig_add(type, handler, ...rest);
 	}) as any;
 
-	const core_res = create_client_core({ actionsMountRoot: "/api/" }, commit, {
+	const core_res = create_client_core({ apiMountRoot: "/api/" }, commit, {
 		hard_redirect,
 		reload,
 		scroll_to,

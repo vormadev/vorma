@@ -8,7 +8,7 @@ import {
 	route_client_pattern,
 } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_client_pattern,
 	clientLoader: async (args: any) => {
 		await new Promise((resolve) => {

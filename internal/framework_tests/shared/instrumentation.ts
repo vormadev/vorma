@@ -20,7 +20,7 @@ type ProbeBuildSkew = {
 	default_behavior: string;
 	response_kind: string;
 	response_trigger: string | null;
-	action_kind: string | null;
+	api_route_kind: string | null;
 	revalidation_reason: string | null;
 	requested_href: string;
 	status: number;
@@ -39,14 +39,14 @@ type Probe = {
 	route_updates: number;
 	work_updates: number;
 	build_skew_detections: number;
-	action_build_skew_detections: number;
+	api_build_skew_detections: number;
 	query_build_skew_detections: number;
 	mutation_build_skew_detections: number;
-	failed_action_build_skew_detections: number;
+	failed_api_build_skew_detections: number;
 	manual_revalidation_build_skew_detections: number;
 	last_build_skew_server_id: string | null;
 	last_build_skew: ProbeBuildSkew | null;
-	last_action_build_skew: ProbeBuildSkew | null;
+	last_api_build_skew: ProbeBuildSkew | null;
 	last_reason: string | null;
 	revalidate: () => Promise<unknown>;
 };
@@ -72,7 +72,7 @@ type WorkLike = {
 	navigation: null | { href: string };
 	revalidation: null | { status: string };
 	prefetch: null | { href: string };
-	submissions: unknown[];
+	apiRequests: unknown[];
 };
 
 type BuildSkewEventLike = {
@@ -89,8 +89,8 @@ type BuildSkewEventLike = {
 				ok: boolean;
 		  }
 		| {
-				kind: "action";
-				actionKind: string;
+				kind: "apiRoute";
+				apiRouteKind: string;
 				requestedHref: string;
 				status: number;
 				ok: boolean;
@@ -105,28 +105,65 @@ declare global {
 	}
 }
 
+let current_probe: Probe | null = null;
+
+export function on_vorma_route_update(
+	route: RouteLike,
+	_previous_route: RouteLike | null,
+	reason: string,
+): void {
+	if (current_probe == null) {
+		return;
+	}
+	current_probe.route = serialize_route(route);
+	current_probe.route_updates += 1;
+	current_probe.last_reason = reason;
+}
+
+export function on_vorma_work_update(work: WorkLike): void {
+	if (current_probe == null) {
+		return;
+	}
+	current_probe.work = serialize_work(work);
+	current_probe.work_updates += 1;
+}
+
+export function on_vorma_build_skew_detected(event: BuildSkewEventLike): void {
+	if (current_probe == null) {
+		return;
+	}
+	current_probe.build_skew_detections += 1;
+	const serialized_event = serialize_build_skew(event);
+	if (
+		event.triggeringResponse.kind === "route" &&
+		event.triggeringResponse.trigger === "revalidation" &&
+		event.triggeringResponse.revalidationReason === "manual"
+	) {
+		current_probe.manual_revalidation_build_skew_detections += 1;
+	}
+	if (event.triggeringResponse.kind === "apiRoute") {
+		current_probe.api_build_skew_detections += 1;
+		current_probe.last_api_build_skew = serialized_event;
+		if (event.triggeringResponse.apiRouteKind === "query") {
+			current_probe.query_build_skew_detections += 1;
+		}
+		if (event.triggeringResponse.apiRouteKind === "mutation") {
+			current_probe.mutation_build_skew_detections += 1;
+		}
+		if (!event.triggeringResponse.ok) {
+			current_probe.failed_api_build_skew_detections += 1;
+		}
+	}
+	current_probe.last_build_skew_server_id = event.serverBuildID;
+	current_probe.last_build_skew = serialized_event;
+}
+
 export async function install_vorma_probe(input: {
 	variant: string;
 	app: unknown;
-	render: (args: {
-		RootOutlet: unknown;
-		rootEl: HTMLElement;
-	}) => void | Promise<void>;
 }): Promise<void> {
 	const app = input.app as {
-		init: (options: {
-			render: (args: {
-				RootOutlet: unknown;
-				rootEl: HTMLElement;
-			}) => void | Promise<void>;
-			onRouteUpdate: (
-				route: RouteLike,
-				previousRoute: RouteLike | null,
-				reason: string,
-			) => void;
-			onWorkUpdate: (work: WorkLike) => void;
-			onBuildSkewDetected: (event: BuildSkewEventLike) => void;
-		}) => Promise<InitResult>;
+		init: () => Promise<InitResult>;
 		revalidate: () => Promise<unknown>;
 		getRouteState: () => RouteLike;
 		getWorkState: () => WorkLike;
@@ -138,57 +175,21 @@ export async function install_vorma_probe(input: {
 		route_updates: 0,
 		work_updates: 0,
 		build_skew_detections: 0,
-		action_build_skew_detections: 0,
+		api_build_skew_detections: 0,
 		query_build_skew_detections: 0,
 		mutation_build_skew_detections: 0,
-		failed_action_build_skew_detections: 0,
+		failed_api_build_skew_detections: 0,
 		manual_revalidation_build_skew_detections: 0,
 		last_build_skew_server_id: null,
 		last_build_skew: null,
-		last_action_build_skew: null,
+		last_api_build_skew: null,
 		last_reason: null,
 		revalidate: app.revalidate,
 	};
+	current_probe = probe;
 	window.__vorma_bombadil = probe;
 
-	const result = await app.init({
-		render: input.render,
-		onRouteUpdate: (route, _previous_route, reason) => {
-			probe.route = serialize_route(route);
-			probe.route_updates += 1;
-			probe.last_reason = reason;
-		},
-		onWorkUpdate: (work) => {
-			probe.work = serialize_work(work);
-			probe.work_updates += 1;
-		},
-		onBuildSkewDetected: (event) => {
-			probe.build_skew_detections += 1;
-			const serialized_event = serialize_build_skew(event);
-			if (
-				event.triggeringResponse.kind === "route" &&
-				event.triggeringResponse.trigger === "revalidation" &&
-				event.triggeringResponse.revalidationReason === "manual"
-			) {
-				probe.manual_revalidation_build_skew_detections += 1;
-			}
-			if (event.triggeringResponse.kind === "action") {
-				probe.action_build_skew_detections += 1;
-				probe.last_action_build_skew = serialized_event;
-				if (event.triggeringResponse.actionKind === "query") {
-					probe.query_build_skew_detections += 1;
-				}
-				if (event.triggeringResponse.actionKind === "mutation") {
-					probe.mutation_build_skew_detections += 1;
-				}
-				if (!event.triggeringResponse.ok) {
-					probe.failed_action_build_skew_detections += 1;
-				}
-			}
-			probe.last_build_skew_server_id = event.serverBuildID;
-			probe.last_build_skew = serialized_event;
-		},
-	});
+	const result = await app.init();
 	if (!result.ok) {
 		throw new Error(result.err);
 	}
@@ -220,9 +221,9 @@ function serialize_build_skew(event: BuildSkewEventLike): ProbeBuildSkew {
 			event.triggeringResponse.kind === "route"
 				? event.triggeringResponse.trigger
 				: null,
-		action_kind:
-			event.triggeringResponse.kind === "action"
-				? event.triggeringResponse.actionKind
+		api_route_kind:
+			event.triggeringResponse.kind === "apiRoute"
+				? event.triggeringResponse.apiRouteKind
 				: null,
 		revalidation_reason:
 			event.triggeringResponse.kind === "route"
@@ -244,6 +245,6 @@ function serialize_work(work: WorkLike): ProbeWork {
 		navigation_href: work.navigation?.href ?? null,
 		revalidation_status: work.revalidation?.status ?? null,
 		prefetch_href: work.prefetch?.href ?? null,
-		submission_count: work.submissions.length,
+		submission_count: work.apiRequests.length,
 	};
 }

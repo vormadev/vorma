@@ -66,9 +66,9 @@ type dev_client_module struct {
 func main() {
 	config := run_config{
 		variants: []variant_config{
-			{name: "react", port: 18080, dev_app_port: 8080, dev_vite_port: 5173},
-			{name: "preact", port: 18081, dev_app_port: 8081, dev_vite_port: 5174},
-			{name: "solid", port: 18082, dev_app_port: 8082, dev_vite_port: 5175},
+			{name: "react", port: 18080, dev_app_port: 19080, dev_vite_port: 19173},
+			{name: "preact", port: 18081, dev_app_port: 19090, dev_vite_port: 19183},
+			{name: "solid", port: 18082, dev_app_port: 19100, dev_vite_port: 19193},
 		},
 	}
 

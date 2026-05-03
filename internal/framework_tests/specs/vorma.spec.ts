@@ -52,17 +52,17 @@ type FixtureState = {
 	prefetch_href: string;
 	submission_count: number;
 	build_skew_detections: number;
-	action_build_skew_detections: number;
+	api_build_skew_detections: number;
 	query_build_skew_detections: number;
 	mutation_build_skew_detections: number;
-	failed_action_build_skew_detections: number;
+	failed_api_build_skew_detections: number;
 	manual_revalidation_build_skew_detections: number;
 	last_build_skew_server_id: string | null;
 	last_build_skew_active_client_id: string | null;
 	last_build_skew_default_behavior: string | null;
 	last_build_skew_response_kind: string | null;
 	last_build_skew_response_trigger: string | null;
-	last_build_skew_action_kind: string | null;
+	last_build_skew_api_route_kind: string | null;
 	last_build_skew_revalidation_reason: string | null;
 	last_build_skew_requested_href: string | null;
 	last_build_skew_status: number | null;
@@ -72,15 +72,16 @@ type FixtureState = {
 	last_build_skew_current_work_revalidation_status: string | null;
 	last_build_skew_current_work_prefetch_href: string | null;
 	last_build_skew_current_work_submission_count: number | null;
-	last_action_build_skew_server_id: string | null;
-	last_action_build_skew_active_client_id: string | null;
-	last_action_build_skew_default_behavior: string | null;
-	last_action_build_skew_action_kind: string | null;
-	last_action_build_skew_status: number | null;
-	last_action_build_skew_ok: boolean | null;
+	last_api_build_skew_server_id: string | null;
+	last_api_build_skew_active_client_id: string | null;
+	last_api_build_skew_default_behavior: string | null;
+	last_api_build_skew_api_route_kind: string | null;
+	last_api_build_skew_status: number | null;
+	last_api_build_skew_ok: boolean | null;
 	history_back_count: number;
 	history_forward_count: number;
 	duplicate_css_href: string | null;
+	public_css_url_probe_background_image: string;
 };
 
 type ClickTarget = {
@@ -116,6 +117,14 @@ const fixture_state = extract((state): FixtureState => {
 		css_hrefs.find((href, idx) => {
 			return css_hrefs.indexOf(href) !== idx;
 		}) ?? null;
+	const public_css_url_probe = state.document.querySelector(
+		"[data-bmb-public-url-probe]",
+	);
+	const public_css_url_probe_background_image =
+		public_css_url_probe === null
+			? ""
+			: state.window.getComputedStyle(public_css_url_probe)
+					.backgroundImage;
 	const url = new URL(state.window.location.href);
 	const raw_n = url.searchParams.get("n");
 	const search_n = raw_n === null ? null : Number(raw_n);
@@ -224,12 +233,12 @@ const fixture_state = extract((state): FixtureState => {
 		prefetch_href: probe?.work?.prefetch_href ?? "",
 		submission_count: probe?.work?.submission_count ?? 0,
 		build_skew_detections: probe?.build_skew_detections ?? 0,
-		action_build_skew_detections: probe?.action_build_skew_detections ?? 0,
+		api_build_skew_detections: probe?.api_build_skew_detections ?? 0,
 		query_build_skew_detections: probe?.query_build_skew_detections ?? 0,
 		mutation_build_skew_detections:
 			probe?.mutation_build_skew_detections ?? 0,
-		failed_action_build_skew_detections:
-			probe?.failed_action_build_skew_detections ?? 0,
+		failed_api_build_skew_detections:
+			probe?.failed_api_build_skew_detections ?? 0,
 		manual_revalidation_build_skew_detections:
 			probe?.manual_revalidation_build_skew_detections ?? 0,
 		last_build_skew_server_id: probe?.last_build_skew_server_id ?? null,
@@ -241,8 +250,8 @@ const fixture_state = extract((state): FixtureState => {
 			probe?.last_build_skew?.response_kind ?? null,
 		last_build_skew_response_trigger:
 			probe?.last_build_skew?.response_trigger ?? null,
-		last_build_skew_action_kind:
-			probe?.last_build_skew?.action_kind ?? null,
+		last_build_skew_api_route_kind:
+			probe?.last_build_skew?.api_route_kind ?? null,
 		last_build_skew_revalidation_reason:
 			probe?.last_build_skew?.revalidation_reason ?? null,
 		last_build_skew_requested_href:
@@ -259,20 +268,21 @@ const fixture_state = extract((state): FixtureState => {
 			probe?.last_build_skew?.current_work_prefetch_href ?? null,
 		last_build_skew_current_work_submission_count:
 			probe?.last_build_skew?.current_work_submission_count ?? null,
-		last_action_build_skew_server_id:
-			probe?.last_action_build_skew?.server_build_id ?? null,
-		last_action_build_skew_active_client_id:
-			probe?.last_action_build_skew?.active_client_build_id ?? null,
-		last_action_build_skew_default_behavior:
-			probe?.last_action_build_skew?.default_behavior ?? null,
-		last_action_build_skew_action_kind:
-			probe?.last_action_build_skew?.action_kind ?? null,
-		last_action_build_skew_status:
-			probe?.last_action_build_skew?.status ?? null,
-		last_action_build_skew_ok: probe?.last_action_build_skew?.ok ?? null,
+		last_api_build_skew_server_id:
+			probe?.last_api_build_skew?.server_build_id ?? null,
+		last_api_build_skew_active_client_id:
+			probe?.last_api_build_skew?.active_client_build_id ?? null,
+		last_api_build_skew_default_behavior:
+			probe?.last_api_build_skew?.default_behavior ?? null,
+		last_api_build_skew_api_route_kind:
+			probe?.last_api_build_skew?.api_route_kind ?? null,
+		last_api_build_skew_status: probe?.last_api_build_skew?.status ?? null,
+		last_api_build_skew_ok: probe?.last_api_build_skew?.ok ?? null,
 		history_back_count: state.navigationHistory.back.length,
 		history_forward_count: state.navigationHistory.forward.length,
 		duplicate_css_href: duplicate_css_href,
+		public_css_url_probe_background_image:
+			public_css_url_probe_background_image,
 	};
 });
 
@@ -290,21 +300,20 @@ function clamp(value: number, min: number, max: number) {
 	return Math.min(Math.max(value, min), max);
 }
 
-function action_skew_kept_client_build_id(action_kind: string, ok: boolean) {
+function api_skew_kept_client_build_id(api_route_kind: string, ok: boolean) {
 	return (
 		fixture_state.current.route_client_build_id !== null &&
-		fixture_state.current.last_action_build_skew_server_id !== null &&
-		fixture_state.current.last_action_build_skew_active_client_id !==
-			null &&
-		fixture_state.current.last_action_build_skew_default_behavior ===
+		fixture_state.current.last_api_build_skew_server_id !== null &&
+		fixture_state.current.last_api_build_skew_active_client_id !== null &&
+		fixture_state.current.last_api_build_skew_default_behavior ===
 			"notifyOnly" &&
-		fixture_state.current.last_action_build_skew_action_kind ===
-			action_kind &&
-		fixture_state.current.last_action_build_skew_ok === ok &&
+		fixture_state.current.last_api_build_skew_api_route_kind ===
+			api_route_kind &&
+		fixture_state.current.last_api_build_skew_ok === ok &&
 		fixture_state.current.route_client_build_id ===
-			fixture_state.current.last_action_build_skew_active_client_id &&
+			fixture_state.current.last_api_build_skew_active_client_id &&
 		fixture_state.current.route_client_build_id !==
-			fixture_state.current.last_action_build_skew_server_id &&
+			fixture_state.current.last_api_build_skew_server_id &&
 		fixture_state.current.client_build_tag !==
 			`client-${fixture_state.current.expected_deployment}`
 	);
@@ -394,6 +403,18 @@ export const vorma_rendered_route_matches_probe = always(() => {
 
 export const vorma_has_no_duplicate_css_links = always(() => {
 	return fixture_state.current.duplicate_css_href === null;
+});
+
+export const vorma_resolves_public_urls_in_imported_css = always(() => {
+	if (!fixture_state.current.probe_ready) {
+		return true;
+	}
+	const background_image =
+		fixture_state.current.public_css_url_probe_background_image;
+	return (
+		background_image.includes("vorma_out_assets_public-url-probe_") &&
+		!background_image.includes("@public")
+	);
 });
 
 export const vorma_deployment_marker_is_known = always(() => {
@@ -502,7 +523,7 @@ export const vorma_switch_query_detects_api_skew_without_adoption = always(
 			return (
 				fixture_state.current.expected_operation === "query-ok" &&
 				fixture_state.current.query_build_skew_detections > 0 &&
-				action_skew_kept_client_build_id("query", true)
+				api_skew_kept_client_build_id("query", true)
 			);
 		}).within(5, "seconds"),
 	),
@@ -520,7 +541,7 @@ export const vorma_switch_mutation_detects_api_skew_without_adoption = always(
 			return (
 				fixture_state.current.expected_operation === "mutation-ok" &&
 				fixture_state.current.mutation_build_skew_detections > 0 &&
-				action_skew_kept_client_build_id("mutation", true)
+				api_skew_kept_client_build_id("mutation", true)
 			);
 		}).within(5, "seconds"),
 	),
@@ -540,9 +561,9 @@ export const vorma_switch_failed_mutation_detects_api_skew_without_adoption =
 				return (
 					fixture_state.current.expected_operation ===
 						"mutation-error-error" &&
-					fixture_state.current.failed_action_build_skew_detections >
+					fixture_state.current.failed_api_build_skew_detections >
 						0 &&
-					action_skew_kept_client_build_id("mutation", false)
+					api_skew_kept_client_build_id("mutation", false)
 				);
 			}).within(5, "seconds"),
 		),

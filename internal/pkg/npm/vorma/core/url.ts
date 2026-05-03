@@ -1,7 +1,7 @@
 import { serializeToSearchParams } from "vorma/kit/json";
 import type {
 	AppConfig,
-	ToLoaderPattern,
+	ToViewPattern,
 	ToNavigateArgs,
 	ToNavigationTarget,
 	ToRouteDestination,
@@ -106,7 +106,7 @@ export function build_action_url(
 }
 
 export function create_typed_to_href<A extends AppConfig>() {
-	return <P extends ToLoaderPattern<A>>(
+	return <P extends ToViewPattern<A>>(
 		destination: ToRouteDestination<A, P>,
 	): string => {
 		const d = destination as any;
@@ -151,7 +151,7 @@ export function create_typed_navigate<A extends AppConfig>(
 	) => Promise<{ didNavigate: boolean }>,
 ) {
 	const to_href = create_typed_to_href<A>();
-	return async <P extends ToLoaderPattern<A>>(
+	return async <P extends ToViewPattern<A>>(
 		args: ToNavigateArgs<A, P>,
 	): Promise<{ didNavigate: boolean }> => {
 		const href = args.href ?? to_href(args as any);
@@ -168,7 +168,7 @@ export function create_typed_prefetch<A extends AppConfig>(
 	prefetch_fn: (href: string) => void,
 ) {
 	const to_href = create_typed_to_href<A>();
-	return <P extends ToLoaderPattern<A>>(
+	return <P extends ToViewPattern<A>>(
 		target: ToNavigationTarget<A, P>,
 	): void => {
 		prefetch_fn(target.href ?? to_href(target as any));

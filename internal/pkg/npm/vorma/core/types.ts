@@ -1,8 +1,8 @@
-import type { SubmitError } from "./api_client.ts";
+import type { MutationError, QueryError } from "./api_client.ts";
 
 /////// PRIMITIVE TYPES
 
-type LoaderBase = {
+type ViewBase = {
 	params?: ReadonlyArray<string>;
 	parents?: ReadonlyArray<string>;
 	pattern: string;
@@ -10,16 +10,16 @@ type LoaderBase = {
 	__O?: unknown;
 };
 
-type ActionBase = {
+type APIRouteBase = {
 	method: string;
 	params?: ReadonlyArray<string>;
 	pattern: string;
-	kind?: ActionKind;
+	kind?: APIRouteKind;
 	__I?: unknown;
 	__O?: unknown;
 };
 
-export type ActionKind = "query" | "mutation";
+export type APIRouteKind = "query" | "mutation";
 
 export type RevalidationResult =
 	| { ok: true }
@@ -69,7 +69,7 @@ export type BeforeRouteYieldFn = (
 	args: BeforeRouteTransitionArgs,
 ) => void | Promise<void>;
 
-export type SubmitResult<T> =
+type APIResultBase<T> =
 	| {
 			success: true;
 			data: T;
@@ -107,34 +107,34 @@ export type LinkPropsBase = {
 /////// APP CONFIG
 
 export type AppConfig = {
-	actionsMountRoot: string;
-	__phantom_loaders: readonly LoaderBase[];
-	__phantom_actions: readonly ActionBase[];
+	apiMountRoot: string;
+	__vormaViews: readonly ViewBase[];
+	__vormaAPIRoutes: readonly APIRouteBase[];
 };
 
-/////// ROUTE-TYPE EXTRACTORS
+/////// APP TYPE EXTRACTORS
 
-type __Loader<A extends AppConfig> = A["__phantom_loaders"][number];
-type __Action<A extends AppConfig> = A["__phantom_actions"][number];
+type __View<A extends AppConfig> = A["__vormaViews"][number];
+type __APIRoute<A extends AppConfig> = A["__vormaAPIRoutes"][number];
 
-type __LoaderByPattern<A extends AppConfig, P extends string> = Extract<
-	__Loader<A>,
+type __ViewByPattern<A extends AppConfig, P extends string> = Extract<
+	__View<A>,
 	{ pattern: P }
 >;
-type __ActionByMethodAndPattern<
+type __APIRouteByMethodAndPattern<
 	A extends AppConfig,
 	M extends string,
 	P extends string,
 > = Extract<
-	__Action<A>,
+	__APIRoute<A>,
 	{
 		method: M;
 		pattern: P;
 	}
 >;
 
-type __ResolvedActionKind<Act> = Act extends {
-	kind: infer T extends ActionKind;
+type __ResolvedAPIRouteKind<Act> = Act extends {
+	kind: infer T extends APIRouteKind;
 }
 	? T
 	: Act extends {
@@ -142,12 +142,6 @@ type __ResolvedActionKind<Act> = Act extends {
 		  }
 		? "query"
 		: "mutation";
-
-type __ActionKindField<Act> = Act extends {
-	kind: infer T extends ActionKind;
-}
-	? { kind: T }
-	: {};
 
 /////// SPLAT DETECTION (pattern-based, no distribution issues)
 
@@ -160,14 +154,14 @@ type __ConditionalSplat<P extends string> =
 /////// result directly in the extends clause so it does NOT distribute
 /////// when P is a union of patterns)
 
-type __ConditionalLoaderParams<A extends AppConfig, P extends string> =
-	__LoaderByPattern<A, P> extends { params: ReadonlyArray<infer Params> }
+type __ConditionalViewParams<A extends AppConfig, P extends string> =
+	__ViewByPattern<A, P> extends { params: ReadonlyArray<infer Params> }
 		? Params extends string
 			? { params: { [K in Params]: string } }
 			: {}
 		: {};
 
-type __ConditionalActionParams<Act> = Act extends {
+type __ConditionalAPIRouteParams<Act> = Act extends {
 	params: ReadonlyArray<infer Params>;
 }
 	? Params extends string
@@ -177,28 +171,28 @@ type __ConditionalActionParams<Act> = Act extends {
 
 /////// PARAMS RECORD (for client loader props and router data)
 
-type __LoaderParamsRecord<A extends AppConfig, P extends string> =
-	__LoaderByPattern<A, P> extends { params: ReadonlyArray<infer Params> }
+type __ViewParamsRecord<A extends AppConfig, P extends string> =
+	__ViewByPattern<A, P> extends { params: ReadonlyArray<infer Params> }
 		? Params extends string
 			? { [K in Params]: string }
 			: Record<string, string>
 		: Record<string, string>;
 
-/////// LOADER PARENT INPUT
+/////// LOADER INPUT FROM PARENT VIEWS
 
-type __LoaderParents<A extends AppConfig, P extends string> =
-	__LoaderByPattern<A, P> extends {
+type __ViewParents<A extends AppConfig, P extends string> =
+	__ViewByPattern<A, P> extends {
 		parents: ReadonlyArray<infer Parent>;
 	}
-		? Extract<Parent, ToLoaderPattern<A>>
+		? Extract<Parent, ToViewPattern<A>>
 		: never;
 
-type __LoaderInputWithParents<
+type __ViewInputWithParentViews<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = (
-	P | __LoaderParents<A, P> extends infer Pattern
-		? Pattern extends ToLoaderPattern<A>
+	P | __ViewParents<A, P> extends infer Pattern
+		? Pattern extends ToViewPattern<A>
 			? (input: ToLoaderInput<A, Pattern>) => void
 			: never
 		: never
@@ -218,85 +212,164 @@ type __IsUnion<T, U = T> = [T] extends [never]
 			: true
 		: false;
 
-type __ActionInputField<Input> =
+type __APIRouteInputField<Input> =
 	__IsEmptyInput<Input> extends true ? { input?: Input } : { input: Input };
 
-type __ActionMethodsForPattern<A extends AppConfig, P extends string> = Extract<
-	__Action<A>,
-	{ pattern: P }
->["method"];
+type __APIRouteMethodsForPattern<
+	A extends AppConfig,
+	P extends string,
+> = Extract<__APIRoute<A>, { pattern: P }>["method"];
 
-type __ActionMethodField<
+type __APIRouteMethodField<
 	A extends AppConfig,
 	P extends string,
 	M extends string,
 > =
-	__ActionMethodsForPattern<A, P> extends "GET"
-		? __IsUnion<__ActionMethodsForPattern<A, P>> extends true
+	__APIRouteMethodsForPattern<A, P> extends "GET"
+		? __IsUnion<__APIRouteMethodsForPattern<A, P>> extends true
 			? { method: M }
 			: { method?: M }
 		: { method: M };
 
 /////// PERMISSIVE PATTERN (for navigate / link _index shorthand)
 
-type __PermissiveLoaderPattern<
+type __PermissiveViewPattern<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = P extends `${infer Prefix}/_index`
 	? P | (Prefix extends "" ? "/" : Prefix)
 	: P;
 
 /////// PUBLIC PATTERN TYPES
 
-export type ToLoaderPattern<A extends AppConfig> = __Loader<A>["pattern"];
-export type ToActionMethod<A extends AppConfig> = __Action<A>["method"];
-export type ToActionPattern<
+export type ToViewPattern<A extends AppConfig> = __View<A>["pattern"];
+
+type __APIRouteMethod<A extends AppConfig> = __APIRoute<A>["method"];
+type __APIRoutePattern<
 	A extends AppConfig,
-	M extends ToActionMethod<A> = ToActionMethod<A>,
-> = Extract<__Action<A>, { method: M }>["pattern"];
+	M extends __APIRouteMethod<A> = __APIRouteMethod<A>,
+> = Extract<__APIRoute<A>, { method: M }>["pattern"];
+
+type __APIRoutesByKind<A extends AppConfig, T extends APIRouteKind> =
+	__APIRoute<A> extends infer Route
+		? Route extends unknown
+			? __ResolvedAPIRouteKind<Route> extends T
+				? Route
+				: never
+			: never
+		: never;
+
+type __APIRouteMethodByKind<A extends AppConfig, T extends APIRouteKind> =
+	__APIRoutesByKind<A, T> extends infer Route
+		? Route extends { method: infer M extends string }
+			? M
+			: never
+		: never;
+
+type __APIRoutePatternByKind<
+	A extends AppConfig,
+	T extends APIRouteKind,
+	M extends __APIRouteMethodByKind<A, T> = __APIRouteMethodByKind<A, T>,
+> =
+	Extract<__APIRoutesByKind<A, T>, { method: M }> extends infer Route
+		? Route extends { pattern: infer P extends string }
+			? P
+			: never
+		: never;
+
+type __APIRouteByKindMethodAndPattern<
+	A extends AppConfig,
+	T extends APIRouteKind,
+	M extends __APIRouteMethodByKind<A, T>,
+	P extends __APIRoutePatternByKind<A, T, M>,
+> = Extract<__APIRoutesByKind<A, T>, { method: M; pattern: P }>;
+
+export type ToQueryMethod<A extends AppConfig> = __APIRouteMethodByKind<
+	A,
+	"query"
+>;
+export type ToQueryPattern<
+	A extends AppConfig,
+	M extends ToQueryMethod<A> = ToQueryMethod<A>,
+> = __APIRoutePatternByKind<A, "query", M>;
+
+export type ToMutationMethod<A extends AppConfig> = __APIRouteMethodByKind<
+	A,
+	"mutation"
+>;
+export type ToMutationPattern<
+	A extends AppConfig,
+	M extends ToMutationMethod<A> = ToMutationMethod<A>,
+> = __APIRoutePatternByKind<A, "mutation", M>;
 
 /////// PUBLIC I/O TYPES
 
-export type ToLoaderOutput<A extends AppConfig, P extends ToLoaderPattern<A>> =
-	__LoaderByPattern<A, P> extends { __O: infer O } ? O : never;
+export type ToLoaderOutput<A extends AppConfig, P extends ToViewPattern<A>> =
+	__ViewByPattern<A, P> extends { __O: infer O } ? O : never;
 
-export type ToLoaderInput<A extends AppConfig, P extends ToLoaderPattern<A>> =
-	__LoaderByPattern<A, P> extends { __I: infer I } ? I : never;
+export type ToLoaderInput<A extends AppConfig, P extends ToViewPattern<A>> =
+	__ViewByPattern<A, P> extends { __I: infer I } ? I : never;
 
-export type ToActionInput<
+export type ToQueryInput<
 	A extends AppConfig,
-	M extends ToActionMethod<A>,
-	P extends ToActionPattern<A, M>,
-> = __ActionByMethodAndPattern<A, M, P> extends { __I: infer I } ? I : never;
+	M extends ToQueryMethod<A>,
+	P extends ToQueryPattern<A, M>,
+> =
+	__APIRouteByKindMethodAndPattern<A, "query", M, P> extends {
+		__I: infer I;
+	}
+		? I
+		: never;
 
-export type ToActionOutput<
+export type ToQueryOutput<
 	A extends AppConfig,
-	M extends ToActionMethod<A>,
-	P extends ToActionPattern<A, M>,
-> = __ActionByMethodAndPattern<A, M, P> extends { __O: infer O } ? O : never;
+	M extends ToQueryMethod<A>,
+	P extends ToQueryPattern<A, M>,
+> =
+	__APIRouteByKindMethodAndPattern<A, "query", M, P> extends {
+		__O: infer O;
+	}
+		? O
+		: never;
 
-export type ToActionKind<
+export type ToMutationInput<
 	A extends AppConfig,
-	M extends ToActionMethod<A>,
-	P extends ToActionPattern<A, M>,
-> = __ResolvedActionKind<__ActionByMethodAndPattern<A, M, P>>;
+	M extends ToMutationMethod<A>,
+	P extends ToMutationPattern<A, M>,
+> =
+	__APIRouteByKindMethodAndPattern<A, "mutation", M, P> extends {
+		__I: infer I;
+	}
+		? I
+		: never;
+
+export type ToMutationOutput<
+	A extends AppConfig,
+	M extends ToMutationMethod<A>,
+	P extends ToMutationPattern<A, M>,
+> =
+	__APIRouteByKindMethodAndPattern<A, "mutation", M, P> extends {
+		__O: infer O;
+	}
+		? O
+		: never;
 
 /////// ROUTE TARGETS
 
 export type ToRouteDestination<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = {
 	href?: never;
-	pattern: __PermissiveLoaderPattern<A, P>;
-	search?: __LoaderInputWithParents<A, P>;
+	pattern: __PermissiveViewPattern<A, P>;
+	search?: __ViewInputWithParentViews<A, P>;
 	hash?: string;
-} & __ConditionalLoaderParams<A, P> &
+} & __ConditionalViewParams<A, P> &
 	__ConditionalSplat<P>;
 
 export type ToNavigationTarget<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > =
 	| {
 			href: string;
@@ -310,7 +383,7 @@ export type ToNavigationTarget<
 
 export type ToNavigateArgs<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = ToNavigationTarget<A, P> & {
 	replace?: boolean;
 	scrollToTop?: boolean;
@@ -320,7 +393,7 @@ export type ToNavigateArgs<
 
 export type ToRouteSyncArgs<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = ToRouteDestination<A, P> & {
 	enabled?: boolean;
 	debounceMs?: number;
@@ -328,80 +401,100 @@ export type ToRouteSyncArgs<
 	scrollToTop?: boolean;
 };
 
-/////// ACTION SUBMIT PROPS
+/////// API CLIENT ARGS
 
-type __ActionSubmitPropsForAction<A extends AppConfig, Act> = Act extends {
+type __APIClientArgsForAPIRoute<A extends AppConfig, Act> = Act extends {
 	method: infer M;
 	pattern: infer P;
 	__I?: infer Input;
 }
-	? M extends ToActionMethod<A>
-		? P extends ToActionPattern<A, M>
+	? M extends __APIRouteMethod<A>
+		? P extends __APIRoutePattern<A, M>
 			? Omit<RequestInit, "body" | "method"> & {
 					dedupeKey?: string;
 					pattern: P;
 					revalidate?: boolean;
 					skipProgressIndicator?: boolean;
-				} & __ActionMethodField<A, P, M> &
-					__ActionKindField<Act> &
-					__ConditionalActionParams<Act> &
+				} & __APIRouteMethodField<A, P, M> &
+					__ConditionalAPIRouteParams<Act> &
 					__ConditionalSplat<P> &
-					__ActionInputField<Input>
+					__APIRouteInputField<Input>
 			: never
 		: never
 	: never;
 
-export type ToActionSubmitArgs<A extends AppConfig> =
-	__Action<A> extends infer Act
+type __APIClientArgs<A extends AppConfig> =
+	__APIRoute<A> extends infer Act
 		? Act extends unknown
-			? __ActionSubmitPropsForAction<A, Act>
+			? __APIClientArgsForAPIRoute<A, Act>
 			: never
 		: never;
 
-export type ToActionSubmitArgsByKind<
-	A extends AppConfig,
-	T extends ActionKind,
-> =
-	__Action<A> extends infer Act
+type __APIClientArgsByKind<A extends AppConfig, T extends APIRouteKind> =
+	__APIRoute<A> extends infer Act
 		? Act extends unknown
-			? __ResolvedActionKind<Act> extends T
-				? __ActionSubmitPropsForAction<A, Act>
+			? __ResolvedAPIRouteKind<Act> extends T
+				? __APIClientArgsForAPIRoute<A, Act>
 				: never
 			: never
 		: never;
 
-export type ToActionSubmitOutput<
+export type __APIClientOutput<
 	A extends AppConfig,
-	Args extends ToActionSubmitArgs<A>,
+	Args extends __APIClientArgs<A>,
 > = Args extends {
 	method: infer M;
 	pattern: infer P;
 }
-	? M extends ToActionMethod<A>
-		? P extends ToActionPattern<A, M>
-			? ToActionOutput<A, M, P>
+	? M extends __APIRouteMethod<A>
+		? P extends __APIRoutePattern<A, M>
+			? __APIRouteByMethodAndPattern<A, M, P> extends { __O: infer O }
+				? O
+				: never
 			: never
 		: never
 	: Args extends {
 				pattern: infer P;
 		  }
-		? "GET" extends ToActionMethod<A>
-			? P extends ToActionPattern<A, "GET">
-				? ToActionOutput<A, "GET", P>
+		? "GET" extends __APIRouteMethod<A>
+			? P extends __APIRoutePattern<A, "GET">
+				? __APIRouteByMethodAndPattern<A, "GET", P> extends {
+						__O: infer O;
+					}
+					? O
+					: never
 				: never
 			: never
 		: never;
 
-export type ToActionSubmitError<
+export type ToQueryArgs<A extends AppConfig> = __APIClientArgsByKind<
+	A,
+	"query"
+>;
+
+export type ToQueryError<
 	A extends AppConfig,
-	Args extends ToActionSubmitArgs<A>,
-> = SubmitError<ToActionSubmitOutput<A, Args>>;
+	Args extends ToQueryArgs<A>,
+> = QueryError<__APIClientOutput<A, Args>>;
+
+export type ToMutationArgs<A extends AppConfig> = __APIClientArgsByKind<
+	A,
+	"mutation"
+>;
+
+export type ToMutationError<
+	A extends AppConfig,
+	Args extends ToMutationArgs<A>,
+> = MutationError<__APIClientOutput<A, Args>>;
+
+export type QueryResult<T> = APIResultBase<T>;
+export type MutationResult<T> = APIResultBase<T>;
 
 /////// ROUTE COMPONENT PROPS
 
 export type ToRouteComponentProps<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 	ClientLoaderData = unknown,
 > = {
 	idx: number;
@@ -419,7 +512,7 @@ export type ClientLoaderKnownMatch = {
 
 export type ClientLoaderServerState<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = {
 	clientBuildID: string;
 	matches: Array<{
@@ -436,13 +529,13 @@ export type ClientLoaderServerState<
 
 export type ToClientLoaderArgs<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = {
 	trigger: "init" | "navigation" | "revalidation" | "prefetch";
 	href: string;
 	historyState: unknown;
 	pattern: P;
-	params: __LoaderParamsRecord<A, P>;
+	params: __ViewParamsRecord<A, P>;
 	splatValues: string[];
 	input: ToLoaderInput<A, P>;
 	knownMatches: ClientLoaderKnownMatch[];
@@ -450,11 +543,11 @@ export type ToClientLoaderArgs<
 	signal: AbortSignal;
 };
 
-/////// DEFINE ROUTE INPUT
+/////// DEFINE VIEW INPUT
 
-export type ToDefineRouteArgs<
+export type ToDefineViewArgs<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 	T = any,
 	Element = unknown,
 > = {
@@ -471,7 +564,7 @@ export type ToDefineRouteArgs<
 
 export type ToLinkProps<
 	A extends AppConfig,
-	P extends ToLoaderPattern<A>,
+	P extends ToViewPattern<A>,
 > = LinkPropsBase &
 	ToNavigationTarget<A, P> & {
 		state?: unknown;
@@ -480,8 +573,8 @@ export type ToLinkProps<
 /////// API CLIENT TYPES
 
 export type ToAPIDecoratorContext<A extends AppConfig> =
-	ToActionSubmitArgs<A> extends infer Args
-		? Args extends ToActionSubmitArgs<A>
+	__APIClientArgs<A> extends infer Args
+		? Args extends __APIClientArgs<A>
 			? {
 					input?: Args extends { input: infer Input }
 						? Input
@@ -505,13 +598,17 @@ export type ToAPIDecorator<A extends AppConfig> = (
 	| Promise<Omit<RequestInit, "method" | "body"> | undefined>;
 
 export type ToAPIClient<A extends AppConfig> = {
-	submit: <Args extends ToActionSubmitArgs<A>>(
+	query: <Args extends ToQueryArgs<A>>(
 		args: Args,
-	) => Promise<SubmitResult<ToActionSubmitOutput<A, Args>>>;
-	submitOrThrow: <Args extends ToActionSubmitArgs<A>>(
+	) => Promise<QueryResult<__APIClientOutput<A, Args>>>;
+	queryOrThrow: <Args extends ToQueryArgs<A>>(
 		args: Args,
-	) => Promise<ToActionSubmitOutput<A, Args>>;
-	toIdentityArray: <Args extends ToActionSubmitArgs<A>>(
+	) => Promise<__APIClientOutput<A, Args>>;
+	mutate: <Args extends ToMutationArgs<A>>(
 		args: Args,
-	) => unknown[];
+	) => Promise<MutationResult<__APIClientOutput<A, Args>>>;
+	mutateOrThrow: <Args extends ToMutationArgs<A>>(
+		args: Args,
+	) => Promise<__APIClientOutput<A, Args>>;
+	toIdentityArray: <Args extends __APIClientArgs<A>>(args: Args) => unknown[];
 };

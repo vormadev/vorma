@@ -4,13 +4,11 @@ const SYMBOLS = {
 };
 const EL_IDS = {
 	critical_css: "vorma-critical-css",
-	main_css: "vorma-main-css",
 	rebuilding_overlay: "vorma-rebuilding-overlay",
 };
 const REFRESH_PAYLOAD_KEY = {
 	change_type: "ChangeType",
 	critical_css: "CriticalCSS",
-	main_css_url: "MainCSSURL",
 	build_error: "BuildError",
 };
 const CHANGE_TYPE = {
@@ -19,7 +17,6 @@ const CHANGE_TYPE = {
 	show_build_error: "show_build_error",
 	hard_reload: "hard_reload",
 	update_critical_css: "update_critical_css",
-	update_main_css: "update_main_css",
 	revalidate_client: "revalidate_client",
 };
 const DEV_REFRESH_EVENTS_PATH_PREFIX = "/vorma-dev-refresh-";
@@ -101,7 +98,6 @@ ws.onmessage = (e) => {
 	const parsed = JSON.parse(e.data);
 	const change_type = parsed[REFRESH_PAYLOAD_KEY.change_type];
 	const critical_css = parsed[REFRESH_PAYLOAD_KEY.critical_css];
-	const main_css_url = parsed[REFRESH_PAYLOAD_KEY.main_css_url];
 	const build_error = parsed[REFRESH_PAYLOAD_KEY.build_error];
 
 	if (change_type === CHANGE_TYPE.show_rebuilding_overlay) {
@@ -124,21 +120,6 @@ ws.onmessage = (e) => {
 			sessionStorage.setItem(SCROLL_Y_KEY, y);
 		}
 		window.location.reload();
-	}
-
-	if (change_type === CHANGE_TYPE.update_main_css) {
-		const _old = document.getElementById(EL_IDS.main_css);
-		if (!_old) {
-			throw missing_el_err(EL_IDS.main_css);
-		}
-		const _new = document.createElement("link");
-		_new.id = EL_IDS.main_css;
-		_new.rel = "stylesheet";
-		_new.href = main_css_url;
-		_new.onload = () => {
-			return _old.remove();
-		};
-		_old.parentNode.insertBefore(_new, _old.nextSibling);
 	}
 
 	if (change_type === CHANGE_TYPE.update_critical_css) {

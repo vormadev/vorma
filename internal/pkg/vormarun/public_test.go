@@ -27,11 +27,11 @@ type page_output struct {
 	Filter string
 }
 
-type action_input struct {
+type api_route_input struct {
 	Message string
 }
 
-type action_output struct {
+type api_route_output struct {
 	ID      string
 	Message string
 }
@@ -40,16 +40,16 @@ func TestPublicRouterServesHTMLLoaderPayload(t *testing.T) {
 	h := public_test_harness{t: t}
 	router := h.init_router(
 		h.default_manifest(),
-		vormarun.Loaders{
-			vormarun.Loader[
+		vormarun.Views{
+			vormarun.View[
 				struct{},
 				page_output,
 				*test_request_ctx[struct{}],
 				test_request_ctx[struct{}],
 			]{
-				Pattern:  "/items/:id",
-				TSModule: "items.tsx",
-				Handler: func(ctx *test_request_ctx[struct{}]) (page_output, error) {
+				Pattern:      "/items/:id",
+				ClientModule: "items.tsx",
+				Loader: func(ctx *test_request_ctx[struct{}]) (page_output, error) {
 					return page_output{
 						ID:     ctx.Param("id"),
 						Filter: ctx.Request().URL.Query().Get("filter"),
@@ -114,16 +114,16 @@ func TestPublicRouterServesJSONAndReportsBuildSkew(t *testing.T) {
 	h := public_test_harness{t: t}
 	router := h.init_router(
 		h.default_manifest(),
-		vormarun.Loaders{
-			vormarun.Loader[
+		vormarun.Views{
+			vormarun.View[
 				struct{},
 				page_output,
 				*test_request_ctx[struct{}],
 				test_request_ctx[struct{}],
 			]{
-				Pattern:  "/items/:id",
-				TSModule: "items.tsx",
-				Handler: func(ctx *test_request_ctx[struct{}]) (page_output, error) {
+				Pattern:      "/items/:id",
+				ClientModule: "items.tsx",
+				Loader: func(ctx *test_request_ctx[struct{}]) (page_output, error) {
 					return page_output{ID: ctx.Param("id")}, nil
 				},
 			},
@@ -176,33 +176,33 @@ func TestPublicRouterServesJSONAndReportsBuildSkew(t *testing.T) {
 	}
 }
 
-func TestPublicRouterServesActionsFromConfiguredAPIMount(t *testing.T) {
+func TestPublicRouterServesAPIRoutesFromConfiguredAPIMount(t *testing.T) {
 	h := public_test_harness{t: t}
 	router := h.init_router(
 		h.default_manifest(),
-		vormarun.Loaders{
-			vormarun.Loader[
+		vormarun.Views{
+			vormarun.View[
 				struct{},
 				struct{},
 				*test_request_ctx[struct{}],
 				test_request_ctx[struct{}],
 			]{
-				Pattern:  "/",
-				TSModule: "root.tsx",
+				Pattern:      "/",
+				ClientModule: "root.tsx",
 			},
 		},
-		vormarun.Actions{
-			vormarun.Action[
-				action_input,
-				action_output,
-				*test_request_ctx[action_input],
-				test_request_ctx[action_input],
+		vormarun.APIRoutes{
+			vormarun.APIRoute[
+				api_route_input,
+				api_route_output,
+				*test_request_ctx[api_route_input],
+				test_request_ctx[api_route_input],
 			]{
 				Method:  http.MethodPost,
 				Pattern: "/echo/:id",
-				Kind:    vormarun.ActionKindMutation,
-				Handler: func(ctx *test_request_ctx[action_input]) (action_output, error) {
-					return action_output{
+				Kind:    vormarun.APIRouteKindMutation,
+				Handler: func(ctx *test_request_ctx[api_route_input]) (api_route_output, error) {
+					return api_route_output{
 						ID:      ctx.Param("id"),
 						Message: ctx.Input().Message,
 					}, nil
@@ -233,48 +233,46 @@ func TestPublicRouterServesActionsFromConfiguredAPIMount(t *testing.T) {
 
 func TestPublicStaticMiddlewareServesManifestAssetsOnly(t *testing.T) {
 	h := public_test_harness{t: t}
-	v := &vormarun.Vorma{}
-	_, err := vormarun.InitRouter(
-		v,
-		vormarun.Loaders{
-			vormarun.Loader[
-				struct{},
-				struct{},
-				*test_request_ctx[struct{}],
-				test_request_ctx[struct{}],
-			]{
-				Pattern:  "/",
-				TSModule: "root.tsx",
-			},
+	v, err := vormarun.New(&vormarun.Config{
+		DistConfig: vormarun.DistConfig{
+			StaticFS: h.static_fs(h.default_manifest()),
 		},
-		nil,
-		h.static_fs(h.default_manifest()),
-	)
+	})
 	if err != nil {
-		t.Fatalf("error initializing router: %v", err)
+		t.Fatalf("error initializing Vorma: %v", err)
 	}
-	middleware, err := v.PublicFileServerMiddleware()
+	router, err := v.Router()
 	if err != nil {
-		t.Fatalf("error creating public file server middleware: %v", err)
+		t.Fatalf("error getting router: %v", err)
 	}
-	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	err = router.AddPublicFileServerMiddleware()
+	if err != nil {
+		t.Fatalf("error adding public file server middleware: %v", err)
+	}
+	router.AddHTTPHandlerFunc("GET", "/*", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
-	}))
+	})
 
 	asset_res := httptest.NewRecorder()
-	handler.ServeHTTP(asset_res, httptest.NewRequest(http.MethodGet, "/static/main.css", nil))
+	router.Router.ServeHTTP(
+		asset_res,
+		httptest.NewRequest(http.MethodGet, "/static/favicon.ico", nil),
+	)
 	if asset_res.Code != http.StatusOK {
 		t.Fatalf("expected asset status 200, got %d", asset_res.Code)
 	}
 	if got := asset_res.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
 		t.Fatalf("expected immutable cache header, got %q", got)
 	}
-	if got := asset_res.Body.String(); got != "body{}" {
+	if got := asset_res.Body.String(); got != "ico" {
 		t.Fatalf("expected static asset body, got %q", got)
 	}
 
 	pass_res := httptest.NewRecorder()
-	handler.ServeHTTP(pass_res, httptest.NewRequest(http.MethodGet, "/not-public", nil))
+	router.Router.ServeHTTP(
+		pass_res,
+		httptest.NewRequest(http.MethodGet, "/not-public", nil),
+	)
 	if pass_res.Code != http.StatusAccepted {
 		t.Fatalf("expected request to pass through, got %d", pass_res.Code)
 	}
@@ -284,11 +282,10 @@ func (h public_test_harness) default_manifest() vormarun.Manifest {
 	return vormarun.Manifest{
 		VormaVersion:         "test",
 		PublicStaticBasePath: "/static/",
-		ActionsMountRoot:     "/api/",
+		APIMountRoot:         "/api/",
 		UIVariant:            "react",
 		PublicFilemap: map[string]string{
-			vormarun.Main_CSS_Filename: "/static/main.css",
-			"favicon.ico":              "/static/favicon.ico",
+			"favicon.ico": "/static/favicon.ico",
 		},
 		CriticalCSS: "html{color-scheme:light}",
 		ClientEntry: vormarun.ClientModule{
@@ -311,13 +308,28 @@ func (h public_test_harness) default_manifest() vormarun.Manifest {
 
 func (h public_test_harness) init_router(
 	manifest vormarun.Manifest,
-	loaders vormarun.Loaders,
-	actions vormarun.Actions,
+	views vormarun.Views,
+	api_routes vormarun.APIRoutes,
 ) *vormarun.Router {
-	v := &vormarun.Vorma{}
-	router, err := vormarun.InitRouter(v, loaders, actions, h.static_fs(manifest))
+	h.t.Helper()
+
+	v, err := vormarun.New(&vormarun.Config{
+		DistConfig: vormarun.DistConfig{
+			StaticFS: h.static_fs(manifest),
+		},
+	})
 	if err != nil {
-		h.t.Fatalf("error initializing router: %v", err)
+		h.t.Fatalf("error initializing Vorma: %v", err)
+	}
+	router, err := v.Router()
+	if err != nil {
+		h.t.Fatalf("error getting router: %v", err)
+	}
+	for _, view := range views {
+		router.View(view)
+	}
+	for _, api_route := range api_routes {
+		router.APIRoute(api_route)
 	}
 	return router
 }
@@ -329,7 +341,6 @@ func (h public_test_harness) static_fs(manifest vormarun.Manifest) fstest.MapFS 
 	}
 	return fstest.MapFS{
 		vormarun.ManifestStaticOutProd: &fstest.MapFile{Data: manifest_json},
-		"public/main.css":              &fstest.MapFile{Data: []byte("body{}")},
 		"public/favicon.ico":           &fstest.MapFile{Data: []byte("ico")},
 	}
 }

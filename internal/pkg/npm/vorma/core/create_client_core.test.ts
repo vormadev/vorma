@@ -140,7 +140,7 @@ describe("init lifecycle", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -179,7 +179,7 @@ describe("init lifecycle", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -203,7 +203,7 @@ describe("init lifecycle", () => {
 	it("returns err when data script element is missing", async () => {
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -219,7 +219,7 @@ describe("init lifecycle", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -249,7 +249,7 @@ describe("init lifecycle", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -272,7 +272,7 @@ describe("init lifecycle", () => {
 		seed_payload({ MatchedPatterns: ["/page"] });
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -316,7 +316,7 @@ describe("init lifecycle", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -367,7 +367,7 @@ describe("init lifecycle", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -430,7 +430,7 @@ describe("init lifecycle", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -472,7 +472,7 @@ describe("init lifecycle", () => {
 		seed_payload({ ClientBuildID: "initial-build" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -500,7 +500,7 @@ describe("title entity decoding", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -524,7 +524,7 @@ describe("title entity decoding", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -546,7 +546,7 @@ describe("title entity decoding", () => {
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -572,7 +572,7 @@ describe("navigation flow", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -632,7 +632,7 @@ describe("navigation flow", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -661,7 +661,7 @@ describe("navigation flow", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1131,7 +1131,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1200,7 +1200,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1277,7 +1277,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1366,7 +1366,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1446,7 +1446,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1491,7 +1491,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1542,7 +1542,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1591,7 +1591,7 @@ describe("client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1630,7 +1630,7 @@ describe("build ID", () => {
 		seed_payload({ ClientBuildID: "build-1" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1656,7 +1656,7 @@ describe("build ID", () => {
 		seed_payload({ ClientBuildID: "build-1" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1705,7 +1705,7 @@ describe("build ID", () => {
 		seed_payload({ ClientBuildID: "build-1" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1738,7 +1738,7 @@ describe("work integration", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1766,14 +1766,14 @@ describe("work integration", () => {
 		});
 		expect(navigating).toBeDefined();
 		expect(navigating).toHaveProperty("revalidation");
-		expect(navigating).toHaveProperty("submissions");
+		expect(navigating).toHaveProperty("apiRequests");
 	});
 
 	it("getWorkState returns current snapshot", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1791,7 +1791,7 @@ describe("work integration", () => {
 			navigation: null,
 			revalidation: null,
 			prefetch: null,
-			submissions: [],
+			apiRequests: [],
 		});
 	});
 });
@@ -1811,7 +1811,7 @@ describe("progress indicators", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -1875,7 +1875,7 @@ describe("progress indicators", () => {
 				return running;
 			},
 			include: ["navigations"] as Array<
-				"navigations" | "submissions" | "revalidations"
+				"navigations" | "apiRequests" | "revalidations"
 			>,
 			startDelayMS: 1,
 			stopDelayMS: 1,
@@ -2145,7 +2145,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2175,7 +2175,7 @@ describe("focus-triggered revalidation", () => {
 		const commit = vi.fn();
 		const on_build_skew = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2224,7 +2224,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2253,7 +2253,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2280,7 +2280,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2317,7 +2317,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2357,7 +2357,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2406,7 +2406,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2446,7 +2446,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2480,7 +2480,7 @@ describe("focus-triggered revalidation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2529,7 +2529,7 @@ describe("HMR", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2591,7 +2591,7 @@ describe("HMR", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2604,8 +2604,8 @@ describe("HMR", () => {
 
 		await core.init({});
 
-		// defineRoute with runClientLoaderOnHMR: true
-		core.defineRoute({
+		// defineView with runClientLoaderOnHMR: true
+		core.defineView({
 			pattern: "/hmr-cl",
 			component: () => {
 				return null;
@@ -2671,7 +2671,7 @@ describe("HMR", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2730,7 +2730,7 @@ describe("HMR", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2768,15 +2768,15 @@ describe("HMR", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// defineRoute
+/////// defineView
 /////////////////////////////////////////////////////////////////////
 
-describe("defineRoute", () => {
-	it("returns RouteDefinition with correct fields", () => {
+describe("defineView", () => {
+	it("returns ViewDefinition with correct fields", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2797,7 +2797,7 @@ describe("defineRoute", () => {
 			return { data: true };
 		};
 
-		const def = core.defineRoute({
+		const def = core.defineView({
 			pattern: "/test",
 			component: comp,
 			errorBoundary: boundary,
@@ -2814,7 +2814,7 @@ describe("defineRoute", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2825,7 +2825,7 @@ describe("defineRoute", () => {
 		}
 		const core = core_res.val;
 
-		const def = core.defineRoute({
+		const def = core.defineView({
 			pattern: "/minimal",
 			component: () => {
 				return null;
@@ -2847,7 +2847,7 @@ describe("prefetch integration", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -2876,7 +2876,7 @@ describe("prefetch integration", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3102,7 +3102,7 @@ describe("client loader cancellation", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3357,7 +3357,7 @@ describe("client loader prefetch isolation from unrelated work", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3439,7 +3439,7 @@ describe("client loader prefetch partial matching", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3528,7 +3528,7 @@ describe("view transition timing", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3571,7 +3571,7 @@ describe("stale navigation side effects", () => {
 		seed_payload({ ClientBuildID: "build-1" });
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3647,7 +3647,7 @@ describe("stale navigation side effects", () => {
 			seed_payload({ ClientBuildID: "build-1" });
 			const commit = vi.fn();
 			const core_res = create_client_core(
-				{ actionsMountRoot: "/api/" },
+				{ apiMountRoot: "/api/" },
 				commit,
 				t_opts(),
 			);
@@ -3732,7 +3732,7 @@ describe("route update coherence", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3784,7 +3784,7 @@ describe("route update coherence", () => {
 			return order.push("commit");
 		});
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3815,7 +3815,7 @@ describe("route update coherence", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3871,7 +3871,7 @@ describe("route update blocked by client loaders", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3930,7 +3930,7 @@ describe("CSS preload gating", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -3975,7 +3975,7 @@ describe("CSS preload gating", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4041,7 +4041,7 @@ describe("client loader promise reuse on hash change", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4117,7 +4117,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4146,7 +4146,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4174,7 +4174,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4197,7 +4197,7 @@ describe("history state", () => {
 		const commit = vi.fn();
 		const opts = t_opts();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			opts,
 		);
@@ -4239,7 +4239,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4268,7 +4268,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4294,7 +4294,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);
@@ -4335,7 +4335,7 @@ describe("history state", () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
-			{ actionsMountRoot: "/api/" },
+			{ apiMountRoot: "/api/" },
 			commit,
 			t_opts(),
 		);

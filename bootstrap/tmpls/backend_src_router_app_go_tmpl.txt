@@ -13,7 +13,7 @@ var App = vorma.NewVormaApp(vorma.VormaAppConfig{
 		h.Meta(h.Property("og:title"))
 		h.Meta(h.Property("og:description"))
 	},
-	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Vorma, h *vorma.HeadBuilder) error {
+	DefaultHeadElsFunc: func(r *http.Request, app *vorma.Instance, h *vorma.HeadBuilder) error {
 		h.Title("Vorma Example")
 		h.Description("This is a Vorma example.")
 		h.Link(

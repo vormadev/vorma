@@ -18,7 +18,7 @@ import (
 	"github.com/vormadev/vorma/kit/matcher"
 )
 
-type vorma_cfg struct{ V *vorma.Vorma }
+type vorma_cfg struct{ C *vorma.Config }
 
 /////////////////////////////////////////////////////////////////////
 /////// RUN STATE -- HIGH-LEVEL CONFIG GETTER
@@ -43,8 +43,8 @@ func (rs *run_state) get_config() (*vorma_cfg, error) {
 // and validates certain fields. Does not set any fields, as
 // all config fields are JIT-derived from live state. This
 // massively simplifies the overall mental model.
-func to_cfg(v *vorma.Vorma) (*vorma_cfg, error) {
-	cfg := &vorma_cfg{V: v}
+func to_cfg(c *vorma.Config) (*vorma_cfg, error) {
+	cfg := &vorma_cfg{C: c}
 
 	if _, err := cfg.__validate_ui_variant(); err != nil {
 		return nil, fmt.Errorf("error with UI variant: %w", err)
@@ -64,6 +64,9 @@ func to_cfg(v *vorma.Vorma) (*vorma_cfg, error) {
 	if _, err := cfg.__validate_vorma_out_abs_slash_pattern(); err != nil {
 		return nil, fmt.Errorf("__validate_vorma_out_abs_slash_pattern err: %w", err)
 	}
+	if _, err := cfg.__validate_vorma_out_watch_ignore_pattern(); err != nil {
+		return nil, fmt.Errorf("error with Vorma output watch ignore pattern: %w", err)
+	}
 	if _, err := cfg.__validate_ts_gen_out_file_abs_slash(); err != nil {
 		return nil, fmt.Errorf("__validate_gen_out_file_abs_slash err: %w", err)
 	}
@@ -81,17 +84,17 @@ func to_cfg(v *vorma.Vorma) (*vorma_cfg, error) {
 /////// CONFIG -- CORE FIELD GETTERS
 /////////////////////////////////////////////////////////////////////
 
-func (cfg vorma_cfg) watch_root() string      { return fsutil.SysNorm(cfg.V.DevWatchConfig.Root) }
-func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.V.DistDir) }
-func (cfg vorma_cfg) ts_gen_out_file() string { return fsutil.SysNorm(cfg.V.TSGenConfig.OutFile) }
+func (cfg vorma_cfg) watch_root() string      { return fsutil.SysNorm(cfg.C.DevWatchConfig.WatchRoot) }
+func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.C.DistConfig.OutDir) }
+func (cfg vorma_cfg) ts_gen_out_file() string { return fsutil.SysNorm(cfg.C.TSGenConfig.OutFile) }
 
 func (cfg vorma_cfg) global_watch_exclude_patterns() []string {
 	x, _ := cfg.__validate_global_watch_patterns()
 	return x
 }
 func (cfg vorma_cfg) __validate_global_watch_patterns() ([]string, error) {
-	patterns := make([]string, len(cfg.V.DevWatchConfig.GlobalIgnore))
-	for i, p := range cfg.V.DevWatchConfig.GlobalIgnore {
+	patterns := make([]string, len(cfg.C.DevWatchConfig.GlobalIgnore))
+	for i, p := range cfg.C.DevWatchConfig.GlobalIgnore {
 		patterns[i] = strings.TrimSpace(p)
 	}
 	if _, err := globset.Compile(patterns); err != nil {
@@ -100,7 +103,7 @@ func (cfg vorma_cfg) __validate_global_watch_patterns() ([]string, error) {
 	return patterns, nil
 }
 
-func (cfg vorma_cfg) server_entry() string { return fsutil.SysNorm(cfg.V.ServerEntry) }
+func (cfg vorma_cfg) server_entry() string { return fsutil.SysNorm(cfg.C.ServerEntry) }
 
 func (cfg vorma_cfg) server_watch_patterns() []string {
 	x, _ := cfg.__validate_server_watch_patterns()
@@ -110,8 +113,8 @@ func (cfg vorma_cfg) server_watch_patterns() []string {
 	return x
 }
 func (cfg vorma_cfg) __validate_server_watch_patterns() ([]string, error) {
-	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeRecompileGo))
-	for i, p := range cfg.V.DevWatchConfig.OnChangeRecompileGo {
+	patterns := make([]string, len(cfg.C.DevWatchConfig.OnChangeRecompileGo))
+	for i, p := range cfg.C.DevWatchConfig.OnChangeRecompileGo {
 		patterns[i] = strings.TrimSpace(p)
 	}
 	if len(patterns) == 0 {
@@ -128,8 +131,8 @@ func (cfg vorma_cfg) client_revalidate_on_change_patterns() []string {
 	return x
 }
 func (cfg vorma_cfg) __validate_client_revalidate_on_change_patterns() ([]string, error) {
-	patterns := make([]string, len(cfg.V.DevWatchConfig.OnChangeClientRevalidate))
-	for i, p := range cfg.V.DevWatchConfig.OnChangeClientRevalidate {
+	patterns := make([]string, len(cfg.C.DevWatchConfig.OnChangeClientRevalidate))
+	for i, p := range cfg.C.DevWatchConfig.OnChangeClientRevalidate {
 		patterns[i] = strings.TrimSpace(p)
 	}
 	if _, err := globset.Compile(patterns); err != nil {
@@ -139,23 +142,20 @@ func (cfg vorma_cfg) __validate_client_revalidate_on_change_patterns() ([]string
 }
 
 func (cfg vorma_cfg) public_static_src_dir() string {
-	return fsutil.SysNorm(cfg.V.FrontendConfig.PublicStaticSrcDir)
+	return fsutil.SysNorm(cfg.C.FrontendConfig.PublicStaticSrcDir)
 }
 
-func (cfg vorma_cfg) main_css_entry() string {
-	return fsutil.SysNorm(cfg.V.FrontendConfig.MainCSSEntry)
-}
 func (cfg vorma_cfg) critical_css_entry() string {
-	return fsutil.SysNorm(cfg.V.FrontendConfig.CriticalCSSEntry)
+	return fsutil.SysNorm(cfg.C.FrontendConfig.CriticalCSSEntry)
 }
 
 func (cfg vorma_cfg) public_static_base_path() string {
 	return matcher.EnsureLeadingAndTrailingSlash(
-		strings.TrimSpace(cfg.V.PathConfig.PublicStaticBase),
+		strings.TrimSpace(cfg.C.PathConfig.PublicStaticBase),
 	)
 }
 func (cfg vorma_cfg) actions_mount_root() string {
-	return matcher.EnsureLeadingAndTrailingSlash(strings.TrimSpace(cfg.V.PathConfig.APIBase))
+	return matcher.EnsureLeadingAndTrailingSlash(strings.TrimSpace(cfg.C.PathConfig.APIBase))
 }
 
 func (cfg vorma_cfg) ui_variant() string {
@@ -163,7 +163,7 @@ func (cfg vorma_cfg) ui_variant() string {
 	return x
 }
 func (cfg vorma_cfg) __validate_ui_variant() (string, error) {
-	ui := strings.TrimSpace(cfg.V.FrontendConfig.UIVariant)
+	ui := strings.TrimSpace(cfg.C.FrontendConfig.UIVariant)
 	if ui != "react" && ui != "preact" && ui != "solid" {
 		return "", fmt.Errorf("invalid UI variant: %s", ui)
 	}
@@ -171,13 +171,13 @@ func (cfg vorma_cfg) __validate_ui_variant() (string, error) {
 }
 
 func (cfg vorma_cfg) ts_entry() string {
-	return filepath.ToSlash(fsutil.SysNorm(cfg.V.FrontendConfig.RenderEntry))
+	return filepath.ToSlash(fsutil.SysNorm(cfg.C.FrontendConfig.RenderEntry))
 }
 func (cfg vorma_cfg) js_package_manager_cmd_base() []string {
-	return strings.Fields(strings.TrimSpace(cfg.V.FrontendConfig.JSPackageManagerBaseCmd))
+	return strings.Fields(strings.TrimSpace(cfg.C.FrontendConfig.JSPackageManagerBaseCmd))
 }
 func (cfg vorma_cfg) js_package_manager_dir() string {
-	return fsutil.SysNorm(cfg.V.FrontendConfig.JSPackageManagerDir)
+	return fsutil.SysNorm(cfg.C.FrontendConfig.JSPackageManagerDir)
 }
 
 func (cfg vorma_cfg) vite_config_file() string {
@@ -185,10 +185,10 @@ func (cfg vorma_cfg) vite_config_file() string {
 	return x
 }
 func (cfg vorma_cfg) __validate_vite_config_file() (string, error) {
-	if strings.TrimSpace(cfg.V.FrontendConfig.ViteConfigFile) == "" {
+	if strings.TrimSpace(cfg.C.FrontendConfig.ViteConfigFile) == "" {
 		return "", nil
 	}
-	cwd_rel := fsutil.SysNorm(cfg.V.FrontendConfig.ViteConfigFile)
+	cwd_rel := fsutil.SysNorm(cfg.C.FrontendConfig.ViteConfigFile)
 	js_dir_rel, err := filepath.Rel(cfg.js_package_manager_dir(), cwd_rel)
 	if err != nil {
 		return "", fmt.Errorf("error calculating relative path: %w", err)
@@ -197,7 +197,7 @@ func (cfg vorma_cfg) __validate_vite_config_file() (string, error) {
 }
 
 func (cfg vorma_cfg) root_html_template() string {
-	return fsutil.SysNorm(cfg.V.HTMLConfig.Template)
+	return fsutil.SysNorm(cfg.C.HTMLConfig.Template)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -225,6 +225,18 @@ func (cfg vorma_cfg) watch_relative_path(p string) string {
 		return p
 	}
 	return rel_path
+}
+
+func (cfg vorma_cfg) vorma_out_watch_ignore_pattern() string {
+	x, _ := cfg.__validate_vorma_out_watch_ignore_pattern()
+	return x
+}
+func (cfg vorma_cfg) __validate_vorma_out_watch_ignore_pattern() (string, error) {
+	pattern := fsutil.ToCatchDirPattern(cfg.watch_relative_path(cfg.vorma_out()))
+	if _, err := globset.Compile([]string{pattern}); err != nil {
+		return "", err
+	}
+	return pattern, nil
 }
 
 /////////////////////////////////////////////////////////////////////

@@ -4,7 +4,7 @@
 /// Routes:
 /////////////////////////////////////////////////////////////////////
 
-const vormaLoaders = [
+const __vormaViews = [
 	{
 		pattern: "/",
 		__O: null as unknown as Record<never, never>,
@@ -16,7 +16,7 @@ const vormaLoaders = [
 	},
 ] as const;
 
-const vormaActions = [] as const;
+const __vormaAPIRoutes = [] as const;
 
 /////////////////////////////////////////////////////////////////////
 /// Core Types:
@@ -56,9 +56,9 @@ export type NavItem = {
 import type { VormaAppConfig } from "vorma/solid";
 
 export const vormaAppConfig = {
-	actionsMountRoot: "/api/",
-	__phantom_loaders: null as unknown as typeof vormaLoaders,
-	__phantom_actions: null as unknown as typeof vormaActions,
+	apiMountRoot: "/api/",
+	__vormaViews: null as unknown as typeof __vormaViews,
+	__vormaAPIRoutes: null as unknown as typeof __vormaAPIRoutes,
 } as const satisfies VormaAppConfig;
 
 export type App = typeof vormaAppConfig;

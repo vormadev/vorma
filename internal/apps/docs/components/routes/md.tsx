@@ -8,7 +8,7 @@
 // import { highlight } from "../../setup.ts";
 // import { app, Link, useLoaderData } from "../../vorma.app.ts";
 
-// export default app.defineRoute({
+// export default app.defineView({
 // 	pattern: "/*",
 // 	component: (props) => {
 // 		const ld = useLoaderData(props);
@@ -99,7 +99,7 @@
 // import { highlight } from "../../setup.ts";
 // import { app, Link, useLoaderData } from "../../vorma.app.ts";
 
-// export default app.defineRoute({
+// export default app.defineView({
 // 	pattern: "/*",
 // 	component: (props) => {
 // 		const ld = useLoaderData(props);
@@ -190,7 +190,7 @@ import { getHrefDetails } from "vorma/kit/url";
 import { highlight } from "../../setup.ts";
 import { app, Link, useLoaderData } from "../../vorma.app.ts";
 
-export default app.defineRoute({
+export default app.defineView({
 	pattern: "/*",
 	component: (props) => {
 		const ld = useLoaderData(props);

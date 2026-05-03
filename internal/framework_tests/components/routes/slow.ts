@@ -7,7 +7,7 @@ import {
 	route_slow_pattern,
 } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_slow_pattern,
 	component: (props: any) => {
 		const data = loader_box(props);

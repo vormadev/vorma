@@ -27,7 +27,7 @@ import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
 import { preload_modules } from "./modules.ts";
 import type {
-	ActionKind,
+	APIRouteKind,
 	AppConfig,
 	BeforeRouteCommitFn,
 	BeforeRouteYieldFn,
@@ -79,7 +79,7 @@ export type WorkState = {
 	prefetch: null | {
 		href: string;
 	};
-	submissions: Array<{
+	apiRequests: Array<{
 		key: string;
 		method: string;
 		href: string;
@@ -89,7 +89,7 @@ export type WorkState = {
 export type RevalidationReason =
 	| "manual"
 	| "retry"
-	| "submission"
+	| "apiRequest"
 	| "windowFocus";
 
 export type BuildSkewDetectedEvent = {
@@ -112,8 +112,8 @@ export type BuildSkewDetectedEvent = {
 				ok: boolean;
 		  }
 		| {
-				kind: "action";
-				actionKind: ActionKind;
+				kind: "apiRoute";
+				apiRouteKind: APIRouteKind;
 				requestedHref: string;
 				method: string;
 				status: number;
@@ -128,7 +128,7 @@ export type ProgressIndicatorConfig = {
 	start: () => void;
 	stop: () => void;
 	isRunning: () => boolean;
-	include?: "all" | Array<"navigations" | "submissions" | "revalidations">;
+	include?: "all" | Array<"navigations" | "apiRequests" | "revalidations">;
 	startDelayMS?: number;
 	stopDelayMS?: number;
 };
@@ -153,7 +153,7 @@ export type CommitFn = (
 	scroll_intent?: ScrollIntent,
 ) => void;
 
-export type RouteDefinition = {
+export type ViewDefinition = {
 	pattern: string;
 	component: (props: any) => any;
 	error_boundary?: (props: { error: unknown }) => any;
@@ -194,7 +194,7 @@ type ClientLoaderServerState = {
 	loaderData: unknown;
 };
 
-type SubmitResult<T> =
+type APIResult<T> =
 	| {
 			success: true;
 			data: T;
@@ -224,17 +224,17 @@ export type ClientCore = {
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: {
-			actionKind?: ActionKind;
+			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipProgressIndicator?: boolean;
 		},
-	) => Promise<SubmitResult<T>>;
+	) => Promise<APIResult<T>>;
 	getRouteState: () => RouteState;
 	getWorkState: () => WorkState;
 	getClientBuildID: () => string;
 	getRootEl: () => HTMLElement;
-	defineRoute: <T = any>(input: {
+	defineView: <T = any>(input: {
 		pattern: string;
 		component: (props: any) => any;
 		errorBoundary?: (props: { error: unknown }) => any;
@@ -242,7 +242,7 @@ export type ClientCore = {
 		beforeRouteCommit?: BeforeRouteCommitFn;
 		beforeRouteYield?: BeforeRouteYieldFn;
 		runClientLoaderOnHMR?: boolean;
-	}) => RouteDefinition & { __phantom_client_loader_data?: T };
+	}) => ViewDefinition & { __phantom_client_loader_data?: T };
 	start_prefetch: (href: string) => void;
 	stop_prefetch: (href: string) => void;
 	save_current_scroll: () => void;
@@ -350,7 +350,7 @@ function make_deferred<T>(): Deferred<T> {
 /////////////////////////////////////////////////////////////////////
 
 export function create_client_core(
-	_: Omit<AppConfig, "__phantom_loaders" | "__phantom_actions">,
+	_: Omit<AppConfig, "__vormaViews" | "__vormaAPIRoutes">,
 	commit: CommitFn,
 	test_options?: TestOptions,
 ): Result<ClientCore> {
@@ -411,7 +411,7 @@ export function create_client_core(
 				kind: "revalidation";
 		  }
 		| {
-				kind: "submission";
+				kind: "apiRequest";
 				skip_progress_indicator?: boolean;
 		  }
 		| {
@@ -559,7 +559,7 @@ export function create_client_core(
 	 4. active: the one in-flight nav or revalidation (at most one, ever)
 	 5. prefetch: the at-most-one in-flight prefetch
 	 6. refresh: outstanding route data demand and its retry timing
-	 7. submissions: concurrent action requests (independent of routes)
+	 7. apiRequests: concurrent action requests (independent of routes)
 	 8. deferred_submit_redirect: submit redirect waiting for init completion
 	 9. seq: monotonic counter; refresh is ordered by seq, never wall clock
 
@@ -1088,7 +1088,7 @@ export function create_client_core(
 			if (!mod) {
 				continue;
 			}
-			const def = mod.default as RouteDefinition | undefined;
+			const def = mod.default as ViewDefinition | undefined;
 			if (def?.client_loader) {
 				module_map[route.pattern] = def.client_loader;
 				registerPattern(pattern_registry, route.pattern);
@@ -1546,7 +1546,7 @@ export function create_client_core(
 				: prev_snapshot.position.state;
 		const yield_hooks = prev_snapshot.route.matches
 			.map((m) => {
-				return (m.module.default as RouteDefinition | undefined)
+				return (m.module.default as ViewDefinition | undefined)
 					?.before_route_yield;
 			})
 			.filter((h): h is BeforeRouteYieldFn => {
@@ -1554,7 +1554,7 @@ export function create_client_core(
 			});
 		const commit_hooks = prepared.route.matches
 			.map((m) => {
-				return (m.module.default as RouteDefinition | undefined)
+				return (m.module.default as ViewDefinition | undefined)
 					?.before_route_commit;
 			})
 			.filter((h): h is BeforeRouteCommitFn => {
@@ -2374,12 +2374,12 @@ export function create_client_core(
 		url: string | URL,
 		request_init?: RequestInit,
 		options?: {
-			actionKind?: ActionKind;
+			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipProgressIndicator?: boolean;
 		},
-	): Promise<SubmitResult<T>> {
+	): Promise<APIResult<T>> {
 		if (!route_snapshot) {
 			throw new Error("Vorma not initialized");
 		}
@@ -2396,10 +2396,10 @@ export function create_client_core(
 		const method = request_init?.method
 			? request_init.method.toUpperCase().trim()
 			: "GET";
-		const action_kind =
-			options?.actionKind ??
+		const api_route_kind =
+			options?.apiRouteKind ??
 			(method === "GET" || method === "HEAD" ? "query" : "mutation");
-		let should_revalidate = action_kind === "mutation";
+		let should_revalidate = api_route_kind === "mutation";
 		if (options?.revalidate !== undefined) {
 			should_revalidate = options.revalidate;
 		}
@@ -2433,14 +2433,14 @@ export function create_client_core(
 			if (phase === "ready") {
 				const waiter = make_deferred<RevalidationResult>();
 				revalidation_promise = waiter.promise;
-				require_refresh("submission", waiter);
+				require_refresh("apiRequest", waiter);
 				maybe_revalidate();
 			} else {
 				// During boot, register refresh demand so post-init
 				// maybe_revalidate will fire. Do not attach a waiter;
 				// the returned revalidationPromise stays resolved so initial
 				// client loaders awaiting it do not deadlock.
-				require_refresh("submission");
+				require_refresh("apiRequest");
 			}
 		}
 
@@ -2490,8 +2490,8 @@ export function create_client_core(
 			report_build_skew({
 				response: res,
 				triggeringResponse: {
-					kind: "action",
-					actionKind: action_kind,
+					kind: "apiRoute",
+					apiRouteKind: api_route_kind,
 					requestedHref: resolved.href,
 					method,
 					status: res.status,
@@ -2692,7 +2692,7 @@ export function create_client_core(
 
 		for (const s of submissions.values()) {
 			work.push({
-				kind: "submission",
+				kind: "apiRequest",
 				skip_progress_indicator: s.skip_progress_indicator,
 			});
 		}
@@ -2711,7 +2711,7 @@ export function create_client_core(
 			navigation: null,
 			revalidation: null,
 			prefetch: null,
-			submissions: [],
+			apiRequests: [],
 		};
 	}
 
@@ -2744,7 +2744,7 @@ export function create_client_core(
 					: null,
 			revalidation,
 			prefetch: prefetch ? { href: prefetch.url.href } : null,
-			submissions: Array.from(submissions.values(), (s) => {
+			apiRequests: Array.from(submissions.values(), (s) => {
 				return {
 					key: s.key,
 					method: s.method,
@@ -2786,7 +2786,7 @@ export function create_client_core(
 			}
 
 			const match = route_snapshot.route.matches[idx]!;
-			const def = mod.default as RouteDefinition | undefined;
+			const def = mod.default as ViewDefinition | undefined;
 			if (def?.client_loader) {
 				module_map[match.pattern] = def.client_loader;
 				registerPattern(pattern_registry, match.pattern);
@@ -2862,7 +2862,7 @@ export function create_client_core(
 		const inc_sub =
 			inc_all ||
 			(Array.isArray(config.include) &&
-				config.include.includes("submissions"));
+				config.include.includes("apiRequests"));
 		const inc_rev =
 			inc_all ||
 			(Array.isArray(config.include) &&
@@ -2885,7 +2885,7 @@ export function create_client_core(
 					return true;
 				}
 				if (
-					w.kind === "submission" &&
+					w.kind === "apiRequest" &&
 					inc_sub &&
 					!w.skip_progress_indicator
 				) {
@@ -3091,7 +3091,7 @@ export function create_client_core(
 				if (
 					work.navigation ||
 					work.revalidation ||
-					work.submissions.length > 0
+					work.apiRequests.length > 0
 				) {
 					return;
 				}
@@ -3201,7 +3201,7 @@ export function create_client_core(
 		return fresh;
 	}
 
-	function defineRoute<T = any>(input: {
+	function defineView<T = any>(input: {
 		pattern: string;
 		component: (props: any) => any;
 		errorBoundary?: (props: { error: unknown }) => any;
@@ -3209,7 +3209,7 @@ export function create_client_core(
 		beforeRouteCommit?: BeforeRouteCommitFn;
 		beforeRouteYield?: BeforeRouteYieldFn;
 		runClientLoaderOnHMR?: boolean;
-	}): RouteDefinition & { __phantom_client_loader_data?: T } {
+	}): ViewDefinition & { __phantom_client_loader_data?: T } {
 		if (import.meta.env.DEV) {
 			if (input.runClientLoaderOnHMR) {
 				hmr_rerun_patterns.add(input.pattern);
@@ -3238,7 +3238,7 @@ export function create_client_core(
 		getWorkState,
 		getClientBuildID: () => client_build_id,
 		getRootEl,
-		defineRoute,
+		defineView,
 		start_prefetch,
 		stop_prefetch,
 		save_current_scroll,

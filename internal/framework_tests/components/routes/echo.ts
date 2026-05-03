@@ -10,7 +10,7 @@ import {
 	text_state,
 } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_echo_pattern,
 	component: (props: any) => {
 		const data = loader_box(props);
@@ -43,7 +43,7 @@ export default ui.defineRoute({
 						onClick: () => {
 							operation.set("submit-pending");
 							void ui.apiClient
-								.submit({
+								.mutate({
 									method: "POST",
 									pattern: action_echo_pattern,
 									input: { Message: message.value() },
@@ -71,7 +71,7 @@ export default ui.defineRoute({
 						onClick: () => {
 							operation.set("fail-pending");
 							void ui.apiClient
-								.submit({
+								.mutate({
 									method: "POST",
 									pattern: action_echo_pattern,
 									input: {

@@ -1,14 +1,16 @@
 import { jsonStringifyStable } from "vorma/kit/json";
 import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 import type {
-	ActionKind,
+	APIRouteKind,
 	AppConfig,
-	SubmitResult,
-	ToActionSubmitArgs,
-	ToActionSubmitOutput,
+	MutationResult,
+	QueryResult,
 	ToAPIClient,
 	ToAPIDecorator,
 	ToAPIDecoratorContext,
+	ToMutationArgs,
+	ToQueryArgs,
+	__APIClientOutput,
 } from "./types.ts";
 import { build_action_url, resolve_body } from "./url.ts";
 
@@ -16,32 +18,19 @@ type SubmitFn = <T>(
 	url: string | URL,
 	requestInit?: RequestInit,
 	options?: {
-		actionKind?: ActionKind;
+		apiRouteKind?: APIRouteKind;
 		dedupeKey?: string;
 		revalidate?: boolean;
 		skipProgressIndicator?: boolean;
 	},
-) => Promise<SubmitResult<T>>;
+) => Promise<QueryResult<T> | MutationResult<T>>;
 
-function normalize_action_method(raw_method: string | undefined): string {
+function normalize_api_method(raw_method: string | undefined): string {
 	return (raw_method ?? "GET").trim().toUpperCase();
 }
 
-function normalize_action_pattern(pattern: string): string {
+function normalize_api_pattern(pattern: string): string {
 	return pattern.trim();
-}
-
-function resolve_action_kind(
-	method: string,
-	kind: ActionKind | undefined,
-): ActionKind {
-	if (kind !== undefined) {
-		return kind;
-	}
-	if (method === "GET" || method === "HEAD") {
-		return "query";
-	}
-	return "mutation";
 }
 
 function stringify_identity_value(value: unknown): string {
@@ -52,14 +41,29 @@ function stringify_identity_value(value: unknown): string {
 	return res.val;
 }
 
-export class SubmitError<T = never> extends Error {
-	result: Extract<SubmitResult<T>, { success: false }>;
+class APIErrorBase<T = never> extends Error {
+	result: Extract<QueryResult<T> | MutationResult<T>, { success: false }>;
 
-	constructor(result: Extract<SubmitResult<T>, { success: false }>) {
+	constructor(
+		result: Extract<QueryResult<T> | MutationResult<T>, { success: false }>,
+	) {
 		super(result.error);
-		this.name = "SubmitError";
 		this.result = result;
 		Object.setPrototypeOf(this, new.target.prototype);
+	}
+}
+
+export class QueryError<T = never> extends APIErrorBase<T> {
+	constructor(result: Extract<QueryResult<T>, { success: false }>) {
+		super(result);
+		this.name = "QueryError";
+	}
+}
+
+export class MutationError<T = never> extends APIErrorBase<T> {
+	constructor(result: Extract<MutationResult<T>, { success: false }>) {
+		super(result);
+		this.name = "MutationError";
 	}
 }
 
@@ -68,13 +72,16 @@ export function create_typed_api_client<A extends AppConfig>(
 	submit_fn: SubmitFn,
 	decorator?: ToAPIDecorator<A>,
 ): ToAPIClient<A> {
-	async function submit<Args extends ToActionSubmitArgs<A>>(
+	async function submit<Args extends ToQueryArgs<A> | ToMutationArgs<A>>(
 		args: Args,
-	): Promise<SubmitResult<ToActionSubmitOutput<A, Args>>> {
+		api_route_kind: APIRouteKind,
+	): Promise<
+		| QueryResult<__APIClientOutput<A, Args>>
+		| MutationResult<__APIClientOutput<A, Args>>
+	> {
 		const {
 			dedupeKey,
 			input,
-			kind,
 			method: raw_method,
 			params,
 			pattern,
@@ -83,13 +90,12 @@ export function create_typed_api_client<A extends AppConfig>(
 			splatValues,
 			...request_init
 		} = args as any;
-		const method = normalize_action_method(raw_method);
-		const action_pattern = normalize_action_pattern(pattern);
-		const action_kind = resolve_action_kind(method, kind);
+		const method = normalize_api_method(raw_method);
+		const api_pattern = normalize_api_pattern(pattern);
 		const is_get = method === "GET" || method === "HEAD";
 		const url = build_action_url(
 			actions_mount_root,
-			action_pattern,
+			api_pattern,
 			params,
 			splatValues,
 			is_get ? input : undefined,
@@ -97,7 +103,7 @@ export function create_typed_api_client<A extends AppConfig>(
 		const ctx = {
 			input,
 			method,
-			pattern: action_pattern,
+			pattern: api_pattern,
 			requestInit: request_init,
 		} as ToAPIDecoratorContext<A>;
 		const decorated = decorator
@@ -116,12 +122,12 @@ export function create_typed_api_client<A extends AppConfig>(
 			init.body = resolve_body(input);
 		}
 		const options: {
-			actionKind?: ActionKind;
+			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipProgressIndicator?: boolean;
 		} = {
-			actionKind: action_kind,
+			apiRouteKind: api_route_kind,
 		};
 		if (dedupeKey !== undefined) {
 			options.dedupeKey = dedupeKey;
@@ -132,11 +138,11 @@ export function create_typed_api_client<A extends AppConfig>(
 		if (skipProgressIndicator !== undefined) {
 			options.skipProgressIndicator = skipProgressIndicator;
 		}
-		return submit_fn<ToActionSubmitOutput<A, Args>>(url, init, options);
+		return submit_fn<__APIClientOutput<A, Args>>(url, init, options);
 	}
 
 	return {
-		toIdentityArray: <Args extends ToActionSubmitArgs<A>>(
+		toIdentityArray: <Args extends ToQueryArgs<A> | ToMutationArgs<A>>(
 			args: Args,
 		): unknown[] => {
 			const {
@@ -146,25 +152,51 @@ export function create_typed_api_client<A extends AppConfig>(
 				pattern,
 				splatValues,
 			} = args as any;
-			const method = normalize_action_method(raw_method);
-			const action_pattern = normalize_action_pattern(pattern);
+			const method = normalize_api_method(raw_method);
+			const api_pattern = normalize_api_pattern(pattern);
 			return [
 				API_IDENTITY_ARRAY_PREFIX,
 				actions_mount_root,
 				method,
-				action_pattern,
+				api_pattern,
 				stringify_identity_value(params ?? null),
 				stringify_identity_value(splatValues ?? []),
 				stringify_identity_value(input ?? null),
 			];
 		},
-		submit,
-		submitOrThrow: async <Args extends ToActionSubmitArgs<A>>(
+		mutate: <Args extends ToMutationArgs<A>>(
 			args: Args,
-		): Promise<ToActionSubmitOutput<A, Args>> => {
-			const result = await submit(args);
+		): Promise<MutationResult<__APIClientOutput<A, Args>>> => {
+			return submit(args, "mutation") as Promise<
+				MutationResult<__APIClientOutput<A, Args>>
+			>;
+		},
+		mutateOrThrow: async <Args extends ToMutationArgs<A>>(
+			args: Args,
+		): Promise<__APIClientOutput<A, Args>> => {
+			const result = (await submit(args, "mutation")) as MutationResult<
+				__APIClientOutput<A, Args>
+			>;
 			if (!result.success) {
-				throw new SubmitError(result);
+				throw new MutationError(result);
+			}
+			return result.data;
+		},
+		query: <Args extends ToQueryArgs<A>>(
+			args: Args,
+		): Promise<QueryResult<__APIClientOutput<A, Args>>> => {
+			return submit(args, "query") as Promise<
+				QueryResult<__APIClientOutput<A, Args>>
+			>;
+		},
+		queryOrThrow: async <Args extends ToQueryArgs<A>>(
+			args: Args,
+		): Promise<__APIClientOutput<A, Args>> => {
+			const result = (await submit(args, "query")) as QueryResult<
+				__APIClientOutput<A, Args>
+			>;
+			if (!result.success) {
+				throw new QueryError(result);
 			}
 			return result.data;
 		},

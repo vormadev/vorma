@@ -8,10 +8,5 @@ import (
 )
 
 func main() {
-	build.Run(build.RunArgs{
-		App:     app.App,
-		Loaders: app.Loaders,
-		Actions: app.Actions,
-		Caller:  build.CaptureCaller(runtime.Caller(0)),
-	})
+	build.Run(app.Router(nil), build.Caller(runtime.Caller(0)))
 }

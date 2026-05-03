@@ -1,8 +1,16 @@
 ## Go rules
 
-Any free-floating function that takes in a non-primitive type should actually be
-a method on that type. For example, `whatever(my_type{})` should really always
-be `my_type{}.whatever`.
+Prefer methods when behavior belongs to a long-lived domain type with state,
+identity, invariants, or an existing method surface.
+
+Do not create free-floating helper functions that merely operate on such a type
+from the outside. For example, prefer `router.register(...)` over
+`register(router, ...)` when `router` is the object whose behavior is being
+extended.
+
+This rule does not apply to short-lived parameter/config structs, conversion
+records, test cases, option bags, or small value objects whose purpose is just
+to carry inputs into a function.
 
 ---
 
@@ -36,16 +44,27 @@ always be `PascalCase`, regardless of public exposure.
 
 ---
 
-Avoid inlining magic strings.
+Never duplicate contract strings. Define constants for values that are reused or
+that form part of an external/internal contract: environment keys, route paths,
+storage keys, generated field names, file names, protocol markers, event names,
+CSS/test selectors, and similar values.
 
-Use a `constants.{go,ts}` file when the constants are shared across multiple
-source files or packages, especially publicly observable strings such as
-filenames, storage keys, header names, env var names, route names, and protocol
-values.
+This absolutely includes tests. Tests should import the same constants as the
+implementation whenever they are asserting contract values. DO NOT UNDER ANY
+CIRCUMSTANCES re-define contract constants in test files.
 
-Do not create a `constants.{go,ts}` file just because a constant is exported. If
-a constant is only used by one source file, keep it in that file near the API or
-logic it belongs to, even when the constant is public.
+Single-use string literals are fine when they are local, self-explanatory, and
+not part of a contract. Do not extract one-off labels, prose, or obvious local
+values into constants just to avoid a literal.
+
+---
+
+Do not make tool calls that need to make network calls (e.g., pnpm installations
+or similar), either directly or indirectly. They will fail from sandbox
+restrictions. Instead, escalate immediately instead of even trying the
+non-escalated call. If you accidentally do this and notice it failing (e.g.,
+`ENOTFOUND` or similar), then kill it immediately and escalate; do not wait for
+natural failure, which is a pure waste of everyone's time.
 
 ---
 

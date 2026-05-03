@@ -109,7 +109,7 @@ func (rs *run_state) write_manifest() error {
 		Dev_RefreshToken:   rs.dev_refresh_token,
 
 		PublicStaticBasePath: cfg.public_static_base_path(),
-		ActionsMountRoot:     cfg.actions_mount_root(),
+		APIMountRoot:         cfg.actions_mount_root(),
 		UIVariant:            cfg.ui_variant(),
 		RootHTMLTemplateHash: bytesutil.ToBase64(root_html_tmpl_hash),
 

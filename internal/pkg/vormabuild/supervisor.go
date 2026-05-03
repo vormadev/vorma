@@ -47,6 +47,7 @@ func (rs *run_state) start_app_server() error {
 			env := []string{
 				env_item_int("PORT", port),
 				env_item_str(vormarun.Env_Key_Is_Dev, fmt.Sprintf("%t", rs.is_dev)),
+				env_item_str(vormarun.Env_Key_Is_Build, ""),
 			}
 			return cfg.run_app_server_cmd(ctx, env)
 		},

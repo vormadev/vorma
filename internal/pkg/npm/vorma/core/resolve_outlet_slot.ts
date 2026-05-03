@@ -1,7 +1,4 @@
-import type {
-	RouteDefinition,
-	RouteRenderEntry,
-} from "./create_client_core.ts";
+import type { ViewDefinition, RouteRenderEntry } from "./create_client_core.ts";
 import type { RouteErrorState } from "./types.ts";
 
 export type OutletSlot =
@@ -78,7 +75,7 @@ export function resolve_outlet_slot(
 
 	if (error !== null && idx >= error.idx) {
 		const error_entry = entries[error.idx]!;
-		const def = error_entry.module.default as RouteDefinition | undefined;
+		const def = error_entry.module.default as ViewDefinition | undefined;
 		const raw_boundary =
 			def?.error_boundary ??
 			default_error_boundary ??
@@ -91,7 +88,7 @@ export function resolve_outlet_slot(
 	}
 
 	const entry = entries[idx]!;
-	const def = entry.module.default as RouteDefinition | undefined;
+	const def = entry.module.default as ViewDefinition | undefined;
 
 	if (!def?.component) {
 		if (idx + 1 < entries.length) {

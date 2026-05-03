@@ -19,7 +19,7 @@ import {
 	text_state,
 } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_root_pattern,
 	component: (props: any) => {
 		const data = loader_box(props);
@@ -92,6 +92,10 @@ export default ui.defineRoute({
 					return work().navigation?.href ?? "";
 				}),
 			},
+			h("div", {
+				...klass("public-url-probe"),
+				"data-bmb-public-url-probe": true,
+			}),
 			h(
 				"nav",
 				{ ...klass("nav"), "data-bmb-nav": true },
@@ -247,7 +251,7 @@ export default ui.defineRoute({
 													"query-pending",
 												);
 												switch_result.set(deployment);
-												return ui.apiClient.submit({
+												return ui.apiClient.query({
 													method: "GET",
 													pattern:
 														action_count_pattern,
@@ -281,7 +285,7 @@ export default ui.defineRoute({
 													"mutation-pending",
 												);
 												switch_result.set(deployment);
-												return ui.apiClient.submit({
+												return ui.apiClient.mutate({
 													method: "POST",
 													pattern:
 														action_echo_pattern,
@@ -317,7 +321,7 @@ export default ui.defineRoute({
 													"mutation-error-pending",
 												);
 												switch_result.set(deployment);
-												return ui.apiClient.submit({
+												return ui.apiClient.mutate({
 													method: "POST",
 													pattern:
 														action_echo_pattern,
@@ -356,7 +360,7 @@ export default ui.defineRoute({
 					"div",
 					{ "data-bmb-work-submissions": true },
 					dynamic(() => {
-						return work().submissions.length;
+						return work().apiRequests.length;
 					}),
 				),
 				h(

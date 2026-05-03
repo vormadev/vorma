@@ -29,13 +29,14 @@ func IsJSONRequest(r *http.Request) bool {
 	return r.URL.Query().Get(Query_Key_Vorma_JSON) != ""
 }
 
-func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
+func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		instance := router.instance
 		res := response.New(w)
 
-		expected_client_build_id, err := v.ClientBuildID()
+		expected_client_build_id, err := instance.ClientBuildID()
 		if err != nil {
-			v.log.Error("error getting client build id", "err", err)
+			instance.log.Error("error getting client build id", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -60,9 +61,11 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 		var root_template_data_wg sync.WaitGroup
 
 		if !is_json {
-			if v.HTMLConfig.TemplateData != nil {
+			if instance.cfg.HTMLConfig.TemplateData != nil {
 				root_template_data_wg.Go(func() {
-					root_template_data, root_template_data_err = v.HTMLConfig.TemplateData(r)
+					root_template_data, root_template_data_err = instance.cfg.HTMLConfig.TemplateData(
+						r,
+					)
 				})
 			} else {
 				root_template_data = make(map[string]any)
@@ -73,23 +76,23 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 		var default_head_err error
 		var default_head_wg sync.WaitGroup
 
-		if v.HTMLConfig.DefaultHead != nil {
+		if instance.cfg.HTMLConfig.DefaultHead != nil {
 			default_head_wg.Go(func() {
 				h := head.NewBuilder()
-				default_head_err = v.HTMLConfig.DefaultHead(r, v, h)
+				default_head_err = instance.cfg.HTMLConfig.DefaultHead(r, instance, h)
 				if default_head_err == nil {
 					default_head_els = h.Elements()
 				}
 			})
 		}
 
-		match_results, found := mux.FindNestedMatches(v.loaders_mux, r)
+		match_results, found := mux.FindNestedMatches(router.loaders_mux, r)
 		if !found {
 			res.NotFound()
 			return
 		}
 
-		tasks_results := mux.RunNestedTasks(v.loaders_mux, r, match_results)
+		tasks_results := mux.RunNestedTasks(router.loaders_mux, r, match_results)
 		if tasks_results == nil {
 			res.InternalServerError()
 			return
@@ -97,14 +100,14 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 
 		default_head_wg.Wait()
 		if default_head_err != nil {
-			v.log.Error("error in DefaultHeadEls func", "err", default_head_err)
+			instance.log.Error("error in DefaultHeadEls func", "err", default_head_err)
 			res.InternalServerError()
 			return
 		}
 
-		manifest, err := v.manifest()
+		manifest, err := instance.manifest()
 		if err != nil {
-			v.log.Error("error getting manifest", "err", err)
+			instance.log.Error("error getting manifest", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -148,7 +151,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 			pattern := m.OriginalPattern()
 			route_mod, ok := manifest.ClientRoutes[pattern]
 			if !ok {
-				v.log.Error("no route module found for matched pattern",
+				instance.log.Error("no route module found for matched pattern",
 					"pattern", pattern,
 				)
 				res.InternalServerError()
@@ -178,7 +181,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 				} else {
 					outermost_server_err = "An unexpected error occurred."
 				}
-				v.log.Error("loader error",
+				instance.log.Error("loader error",
 					"pattern", pattern,
 					"path", r.URL.Path,
 					"err", loader_err,
@@ -188,7 +191,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 				data := result.Data()
 				loaders_data = append(loaders_data, data)
 				if reflectutil.IsNilLikeExceptNone(data) {
-					v.log.Warn(
+					instance.log.Warn(
 						"Do not return nil values from loaders unless "+
 							"the referenced type is an empty struct "+
 							"or you are returning an error.",
@@ -214,7 +217,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 			}
 		}
 
-		prepared_head := v.head_renderer.Prepare(raw_head_els)
+		prepared_head := instance.head_renderer.Prepare(raw_head_els)
 
 		payload := loader_payload{
 			MatchedPatterns: matched_patterns,
@@ -259,50 +262,36 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 
 		root_template_data_wg.Wait()
 		if root_template_data_err != nil {
-			v.log.Error("error in RootHTMLTemplateData func", "err", root_template_data_err)
+			instance.log.Error("error in RootHTMLTemplateData func", "err", root_template_data_err)
 			res.InternalServerError()
 			return
 		}
 
 		vorma_head := &strings.Builder{}
 
-		user_head, err := v.head_renderer.Render(prepared_head)
+		user_head, err := instance.head_renderer.Render(prepared_head)
 		if err != nil {
-			v.log.Error("error rendering head elements", "err", err)
+			instance.log.Error("error rendering head elements", "err", err)
 			res.InternalServerError()
 			return
 		}
 		vorma_head.WriteString(string(user_head))
 		vorma_head.WriteString("\n")
 
-		critical_css_el, error := v.critical_css_el()
+		critical_css_el, error := instance.critical_css_el()
 		if error != nil {
-			v.log.Error("error generating critical CSS element", "err", error)
+			instance.log.Error("error generating critical CSS element", "err", error)
 			res.InternalServerError()
 			return
 		}
 		rendered_critical_css_el, err := htmlutil.RenderElement(critical_css_el)
 		if err != nil {
-			v.log.Error("error rendering critical CSS element", "err", err)
+			instance.log.Error("error rendering critical CSS element", "err", err)
 			res.InternalServerError()
 			return
 		}
 		vorma_head.WriteString(string(rendered_critical_css_el))
 		vorma_head.WriteString("\n")
-
-		main_css_el, error := v.main_css_el()
-		if error != nil {
-			v.log.Error("error generating main CSS element", "err", error)
-			res.InternalServerError()
-			return
-		}
-		rendered_main_css_el, err := htmlutil.RenderElement(main_css_el)
-		if err != nil {
-			v.log.Error("error rendering main CSS element", "err", err)
-			res.InternalServerError()
-			return
-		}
-		vorma_head.WriteString(string(rendered_main_css_el))
 
 		if !IsDev() {
 			for _, css := range css_bundles {
@@ -317,7 +306,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 				}
 				rendered_css_bundle_el, err := htmlutil.RenderElement(css_bundle_el)
 				if err != nil {
-					v.log.Error("error rendering CSS bundle element", "err", err)
+					instance.log.Error("error rendering CSS bundle element", "err", err)
 					res.InternalServerError()
 					return
 				}
@@ -342,7 +331,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 		}
 		payload_json, err := jsonutil.Serialize(ssr_payload)
 		if err != nil {
-			v.log.Error("error serializing loader payload to JSON", "err", err)
+			instance.log.Error("error serializing loader payload to JSON", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -356,7 +345,7 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 		}
 		rendered_data_json_el, err := htmlutil.RenderElement(data_json_el)
 		if err != nil {
-			v.log.Error("error rendering data JSON element", "err", err)
+			instance.log.Error("error rendering data JSON element", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -377,15 +366,15 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 				manifest.UIVariant == "react",
 			)
 			if err != nil {
-				v.log.Error("error generating dev scripts for client entry module", "err", err)
+				instance.log.Error("error generating dev scripts for client entry module", "err", err)
 				res.InternalServerError()
 				return
 			}
 			vorma_body.WriteString(string(dev_scripts))
 			vorma_body.WriteString("\n")
-			refresh_script_inner_html, err := v.refresh_script_inner_html()
+			refresh_script_inner_html, err := instance.refresh_script_inner_html()
 			if err != nil {
-				v.log.Error("error generating refresh script inner HTML", "err", err)
+				instance.log.Error("error generating refresh script inner HTML", "err", err)
 				res.InternalServerError()
 				return
 			}
@@ -395,8 +384,8 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 		root_template_data["VormaBody"] = template.HTML(vorma_body.String())
 
 		var buf bytes.Buffer
-		if err := v.parsed_tmpl.Execute(&buf, root_template_data); err != nil {
-			v.log.Error("error executing template", "err", err)
+		if err := instance.root_template.Execute(&buf, root_template_data); err != nil {
+			instance.log.Error("error executing template", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -406,25 +395,26 @@ func (v *Vorma) loaders_handler() mux.TasksCacheRequirerFunc {
 }
 
 /////////////////////////////////////////////////////////////////////
-/////// Actions handler
+/////// API handler
 /////////////////////////////////////////////////////////////////////
 
-func (v *Vorma) actions_handler() mux.TasksCacheRequirerFunc {
+func (router *Router) api_handler() mux.TasksCacheRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		instance := router.instance
 		res := response.New(w)
 
-		if !v.supported_methods.Has(r.Method) {
-			res.SetHeader("Allow", v.supported_methods_allow_val)
+		if !router.api_http_methods.Has(r.Method) {
+			res.SetHeader("Allow", router.api_allow_header)
 			res.MethodNotAllowed()
 			return
 		}
-		client_build_id, err := v.ClientBuildID()
+		client_build_id, err := instance.ClientBuildID()
 		if err != nil {
-			v.log.Error("error getting client build id", "err", err)
+			instance.log.Error("error getting client build id", "err", err)
 			res.InternalServerError()
 			return
 		}
 		res.SetHeader(X_Vorma_Client_Build_Id, client_build_id)
-		v.actions_mux.ServeHTTP(w, r)
+		router.api_mux.ServeHTTP(w, r)
 	}
 }

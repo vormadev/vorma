@@ -8,9 +8,13 @@ import {
 } from "vite";
 
 /// Plugin contract
+
 const plugin_name = "vorma-vite-plugin";
 const env_key = "__VORMA_VITE_PLUGIN_GO_PORT";
 const loopback_host = "127.0.0.1";
+const public_url_prefix = "@public/";
+const public_url_parse_base = "http://does-not-matter/";
+
 const go_endpoints = {
 	// GET -- returns JSON config for the plugin
 	cfg: () => {
@@ -25,11 +29,14 @@ const go_endpoints = {
 		return go_url(`/set-port?port=${port}`);
 	},
 };
+
 const vite_endpoints = {
 	// POST -- called by the Go dev server when the Vorma config changes
 	cfg_changed: "/cfg-changed",
 };
+
 const node_modules_refresh_exclude = /\/node_modules\//;
+
 type Config = {
 	PublicStaticBasePath: string;
 	EntryModule: string;
@@ -45,17 +52,112 @@ const public_url_regex = new RegExp(
 	`${pub_url_fn_name}${regex_gap}\\(${regex_gap}(["'\`])(.*?)\\1${regex_gap}\\)`,
 	"g",
 );
+const public_css_url_regex = new RegExp(
+	`url\\(${regex_gap}(["']?)(${escape_regex_literal(public_url_prefix)}[^"')\\s]+)\\1${regex_gap}\\)`,
+	"g",
+);
+const js_module_regex = /\.[cm]?[jt]sx?($|\?)/;
 
-async function fetch_public_url(src_path: string): Promise<string> {
+type PostCSSDeclaration = {
+	value: string;
+};
+
+type PostCSSRoot = {
+	walkDecls: (callback: (decl: PostCSSDeclaration) => void) => void;
+};
+
+type PostCSSPlugin = {
+	postcssPlugin: string;
+	Once: (root: PostCSSRoot) => Promise<void>;
+};
+
+type MarkResolvedPublicURL = (public_url: string) => void;
+
+async function fetch_public_url(
+	src_path: string,
+	source: string,
+): Promise<string> {
 	const url = go_endpoints.hash(src_path);
 	const res = await fetch(url);
 	if (res.status === 404) {
 		throw new Error(
-			`[${plugin_name}] unresolved static public asset: ${pub_url_fn_name}("${src_path}")`,
+			`[${plugin_name}] unresolved static public asset: ${source}`,
 		);
 	}
 	await check_ok(url, res);
 	return res.text();
+}
+
+async function resolve_public_css_urls(
+	css_value: string,
+	mark_resolved_public_url: MarkResolvedPublicURL,
+): Promise<string> {
+	public_css_url_regex.lastIndex = 0;
+	if (!public_css_url_regex.test(css_value)) {
+		public_css_url_regex.lastIndex = 0;
+		return css_value;
+	}
+	public_css_url_regex.lastIndex = 0;
+
+	const matches: {
+		full: string;
+		assetPath: string;
+		lookupPath: string;
+		suffix: string;
+	}[] = [];
+	let m: RegExpExecArray | null;
+	while ((m = public_css_url_regex.exec(css_value)) !== null) {
+		const asset_path = m[2]!;
+		const parsed_public_url = new URL(
+			asset_path.slice(public_url_prefix.length),
+			public_url_parse_base,
+		);
+		matches.push({
+			full: m[0],
+			assetPath: asset_path,
+			lookupPath: parsed_public_url.pathname.slice(1),
+			suffix: parsed_public_url.search + parsed_public_url.hash,
+		});
+	}
+
+	const resolved = await Promise.all(
+		matches.map(async ({ full, assetPath, lookupPath, suffix }) => {
+			return {
+				full,
+				hashed:
+					(await fetch_public_url(lookupPath, assetPath)) + suffix,
+			};
+		}),
+	);
+
+	let result = css_value;
+	for (const { full, hashed } of resolved) {
+		mark_resolved_public_url(hashed);
+		result = result.replace(full, `url("${hashed}")`);
+	}
+	return result;
+}
+
+function public_css_url_postcss_plugin(
+	mark_resolved_public_url: MarkResolvedPublicURL,
+): PostCSSPlugin {
+	return {
+		postcssPlugin: `${plugin_name}-public-url`,
+		async Once(root: PostCSSRoot) {
+			const work: Array<Promise<void>> = [];
+			root.walkDecls((decl) => {
+				work.push(
+					resolve_public_css_urls(
+						decl.value,
+						mark_resolved_public_url,
+					).then((value) => {
+						decl.value = value;
+					}),
+				);
+			});
+			await Promise.all(work);
+		},
+	};
 }
 
 /// HMR preamble injected into route modules during dev.
@@ -74,6 +176,18 @@ const hmr_preamble = [
 export default function vorma(): Vite_Plugin {
 	let route_module_ids: Set<string> | null = null;
 	let route_modules: Array<string> = [];
+	const resolved_public_css_urls = new Set<string>();
+
+	const mark_resolved_public_url = (public_url: string) => {
+		resolved_public_css_urls.add(public_url);
+		const parsed_public_url = new URL(public_url, public_url_parse_base);
+		resolved_public_css_urls.add(
+			parsed_public_url.pathname +
+				parsed_public_url.search +
+				parsed_public_url.hash,
+		);
+		resolved_public_css_urls.add(parsed_public_url.pathname);
+	};
 
 	return {
 		name: plugin_name,
@@ -95,13 +209,17 @@ export default function vorma(): Vite_Plugin {
 			});
 			const out_prefix = "vorma_out_vite_[name]_[hash]";
 			const is_prod = command === "build";
-			return {
+			const config: Vite_UserConfig = {
 				base: is_prod ? cfg.PublicStaticBasePath : "/",
+				publicDir: false,
 				build: {
 					target: "es2022",
 					emptyOutDir: false,
 					modulePreload: { polyfill: false },
 					rolldownOptions: {
+						external: (url: string) => {
+							return resolved_public_css_urls.has(url);
+						},
 						input: [cfg.EntryModule, ...cfg.RouteModules],
 						preserveEntrySignatures: "exports-only",
 						output: {
@@ -118,13 +236,26 @@ export default function vorma(): Vite_Plugin {
 				resolve: {
 					dedupe: cfg.DedupeList,
 				},
-				oxc: {
+				css: {
+					postcss: {
+						plugins: [
+							public_css_url_postcss_plugin(
+								mark_resolved_public_url,
+							),
+						],
+					},
+				},
+			};
+			if (!is_prod) {
+				config.oxc = {
+					jsxRefreshInclude: js_module_regex,
 					jsxRefreshExclude: [
 						node_modules_refresh_exclude,
 						...route_refresh_excludes,
 					],
-				},
-			};
+				};
+			}
+			return config;
 		},
 
 		configResolved(resolved: Vite_ResolvedConfig) {
@@ -145,7 +276,9 @@ export default function vorma(): Vite_Plugin {
 			let result = code;
 
 			// Public URL resolution
-			if (public_url_regex.test(result)) {
+			const is_js_module = js_module_regex.test(id);
+
+			if (is_js_module && public_url_regex.test(result)) {
 				// Reset lastIndex after the test pass.
 				public_url_regex.lastIndex = 0;
 
@@ -159,7 +292,10 @@ export default function vorma(): Vite_Plugin {
 					matches.map(async ({ full, assetPath }) => {
 						return {
 							full,
-							hashed: await fetch_public_url(assetPath),
+							hashed: await fetch_public_url(
+								assetPath,
+								`${pub_url_fn_name}("${assetPath}")`,
+							),
 						};
 					}),
 				);

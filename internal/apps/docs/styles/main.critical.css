@@ -17,5 +17,5 @@
 }
 body {
 	background-color: var(--bg);
-	opacity: calc(var(--css1-loaded, 0) * var(--css2-loaded, 0));
+	opacity: calc(var(--css-loaded, 0));
 }

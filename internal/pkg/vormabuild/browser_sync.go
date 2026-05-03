@@ -14,7 +14,6 @@ import (
 type refresh_payload struct {
 	ChangeType  change_type
 	CriticalCSS string
-	MainCSSURL  string
 	BuildError  string
 }
 
@@ -26,7 +25,6 @@ const (
 	show_build_error        change_type = "show_build_error"
 	hard_reload             change_type = "hard_reload"
 	update_critical_css     change_type = "update_critical_css"
-	update_main_css         change_type = "update_main_css"
 	client_revalidate       change_type = "revalidate_client"
 )
 

@@ -6,35 +6,35 @@ import (
 
 	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/internal/pkg/vormabuild"
+	"github.com/vormadev/vorma/internal/pkg/vormarun"
 )
 
-type RunArgs struct {
-	App     *vorma.Vorma
-	Loaders vorma.Loaders
-	Actions vorma.Actions
-	// Do this in your build entry's main func: `Caller: build.CaptureCaller(runtime.Caller(0))`
-	Caller string
-}
-
-func Run(args RunArgs) {
-	if args.App == nil {
-		panic("[build.Run]: args.App is nil")
+// Usage: `build.Run(routerInitFunc, build.Caller(runtime.Caller(0)))`
+func Run(routerInitFunc func() (*vorma.Router, error), caller string) {
+	os.Setenv(vormarun.Env_Key_Is_Build, "1")
+	if routerInitFunc == nil {
+		panic("[build.Run]: *vorma.Router getter is nil")
 	}
-	if args.Caller == "" {
+	router, err := routerInitFunc()
+	if err != nil {
+		panic("[build.Run]: failed to initialize router: " + err.Error())
+	}
+	if router == nil {
+		panic("[build.Run]: *vorma.Router is nil")
+	}
+	if caller == "" {
 		panic(
-			"[build.Run]: args.Caller is empty. Do this in your build entry's main func: `Caller: build.CaptureCaller(runtime.Caller(0))`",
+			"[build.Run]: caller is empty. Proper usage: `build.Run(routerInitFunc, build.Caller(runtime.Caller(0)))`",
 		)
 	}
 	vormabuild.Run(
-		args.App,
-		args.Loaders,
-		args.Actions,
+		router,
+		caller,
 		slices.Contains(os.Args[1:], "--dev"),
-		args.Caller,
 	)
 }
 
 // Pass `runtime.Caller(0)` directly into this function.
-func CaptureCaller(pc uintptr, file string, line int, ok bool) string {
+func Caller(pc uintptr, file string, line int, ok bool) string {
 	return file
 }

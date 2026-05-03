@@ -59,7 +59,7 @@ type derivedOptions struct {
 	PackageJSONExtras          string
 	TailwindViteImport         string
 	TailwindViteCall           string
-	TailwindFileImport         string
+	TailwindCSSImport          string
 	DynamicLinkParamsProp      string
 	BackgroundColorKey         string
 	StylePropOpen              string // "{{"
@@ -87,7 +87,7 @@ type derivedOptions struct {
 
 const tw_vite_import = "import tailwindcss from \"@tailwindcss/vite\";\n"
 const tw_vite_call = ", tailwindcss()"
-const tw_file_import = "import \"./styles/tailwind.css\";\n"
+const tw_css_import = "@import \"tailwindcss\";\n\n"
 const dynamic_link_params_prop = `{{ id: "42790214" }}`
 
 type jsPackageManagerConfig struct {
@@ -284,7 +284,7 @@ func (o Options) derived() derivedOptions {
 	if o.IncludeTailwind {
 		do.TailwindViteImport = tw_vite_import
 		do.TailwindViteCall = tw_vite_call
-		do.TailwindFileImport = tw_file_import
+		do.TailwindCSSImport = tw_css_import
 	}
 
 	return do
@@ -361,7 +361,7 @@ func MustInit(o Options) {
 	do.mustWriteTmpl("vite.config.ts", "tmpls/vite_config_ts_tmpl.txt")
 	do.mustWriteTmpl("package.json", "tmpls/package_json_tmpl.txt")
 	mustWriteStr(".gitignore", "tmpls/gitignore_str.txt")
-	mustWriteStr("frontend/src/styles/main.css", "tmpls/main_css_str.txt")
+	do.mustWriteTmpl("frontend/src/styles/main.css", "tmpls/main_css_str.txt")
 	mustWriteStr(
 		"frontend/src/styles/main.critical.css",
 		"tmpls/main_critical_css_str.txt",
@@ -464,10 +464,6 @@ func MustInit(o Options) {
 		if !o.SkipJavaScriptDependencyInstall {
 			mustInstallJSPkgs(do, "@tailwindcss/vite", "tailwindcss")
 		}
-		mustWriteStr(
-			"frontend/src/styles/tailwind.css",
-			"tmpls/frontend_css_tailwind_css_str.txt",
-		)
 	}
 
 	// write assets

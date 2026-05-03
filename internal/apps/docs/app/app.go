@@ -3,6 +3,7 @@ package app
 import (
 	"docs/app/md"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"path/filepath"
 
@@ -16,62 +17,85 @@ const SiteDescription = "Vorma seeks to be the world's most straightforward web 
 
 /////// App Instance / Config
 
-var App = &vorma.Vorma{
-	DistDir:     "dist",
-	ServerEntry: "serve",
+func Config(static_fs fs.FS) *vorma.Config {
+	return &vorma.Config{
+		ServerEntry: "serve",
 
-	PathConfig: vorma.PathConfig{
-		PublicStaticBase: "/",
-		APIBase:          "/api/",
-	},
-
-	FrontendConfig: vorma.FrontendConfig{
-		UIVariant:               "solid",
-		JSPackageManagerBaseCmd: "pnpm",
-		JSPackageManagerDir:     ".",
-		ViteConfigFile:          "vite.config.ts",
-		RenderEntry:             "vorma.entry.tsx",
-		PublicStaticSrcDir:      "public",
-		MainCSSEntry:            "styles/main.css",
-		CriticalCSSEntry:        "styles/main.critical.css",
-	},
-
-	HTMLConfig: vorma.HTMLConfig{
-		Template:     "",
-		TemplateData: func(*http.Request) (map[string]any, error) { return nil, nil },
-		DefaultHead: func(r *http.Request, v *vorma.Vorma, h *vorma.HeadBuilder) error {
-			h.MetaCharset("utf-8")
-			h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
-			h.Title("My App")
-			h.Description("Something about my app.")
-			return nil
+		DistConfig: vorma.DistConfig{
+			OutDir:   "dist",
+			StaticFS: static_fs,
 		},
-		HeadDedupeKeys: func(*vorma.HeadBuilder) {},
-	},
 
-	TSGenConfig: vorma.TSGenConfig{
-		OutFile:    "vorma.gen.ts",
-		ExtraTypes: []*vorma.GoTypeSrc{},
-		ExtraRawTS: func(d *vorma.TSDrafter) *vorma.TSDrafter {
-			d.ExportConst("highest_start_idx", 1)
-			return d
+		PathConfig: vorma.PathConfig{
+			PublicStaticBase: "/",
+			APIBase:          "/api/",
 		},
-	},
 
-	DevWatchConfig: vorma.DevWatchConfig{
-		Root:                     ".",
-		GlobalIgnore:             []string{},
-		OnChangeRecompileGo:      []string{},
-		OnChangeClientRevalidate: []string{"app/md/content/**/*.md"},
-	},
+		FrontendConfig: vorma.FrontendConfig{
+			UIVariant:               "solid",
+			JSPackageManagerBaseCmd: "pnpm",
+			JSPackageManagerDir:     ".",
+			ViteConfigFile:          "vite.config.ts",
+			RenderEntry:             "vorma.entry.ts",
+			PublicStaticSrcDir:      "public",
+			CriticalCSSEntry:        "styles/main.critical.css",
+		},
+
+		HTMLConfig: vorma.HTMLConfig{
+			Template:     "",
+			TemplateData: func(*http.Request) (map[string]any, error) { return nil, nil },
+			DefaultHead: func(r *http.Request, v *vorma.Instance, h *vorma.HeadBuilder) error {
+				h.MetaCharset("utf-8")
+				h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
+				h.Title("My App")
+				h.Description("Something about my app.")
+				return nil
+			},
+			HeadDedupeKeys: func(*vorma.HeadBuilder) {},
+		},
+
+		TSGenConfig: vorma.TSGenConfig{
+			OutFile:    "vorma.gen.ts",
+			ExtraTypes: []*vorma.GoTypeSrc{},
+			ExtraRawTS: func(d *vorma.TSDrafter) *vorma.TSDrafter {
+				d.ExportConst("highest_start_idx", 1)
+				return d
+			},
+		},
+
+		DevWatchConfig: vorma.DevWatchConfig{
+			WatchRoot:                ".",
+			GlobalIgnore:             []string{},
+			OnChangeRecompileGo:      []string{},
+			OnChangeClientRevalidate: []string{"app/md/content/**/*.md"},
+		},
+	}
 }
 
-/////// Loader and Action Types
+func Router(static_fs fs.FS) func() (*vorma.Router, error) {
+	instance := vorma.New(Config(static_fs))
+	return func() (*vorma.Router, error) {
+		r, err := instance.Router()
+		if err != nil {
+			return nil, err
+		}
+		r.MustAddPublicFileServerMiddleware()
+		for _, view := range Views {
+			r.View(view)
+		}
+		for _, api_route := range APIRoutes {
+			r.APIRoute(api_route)
+		}
+		return r, nil
+	}
+}
+
+/////// View and API Route Types
 
 type (
-	Loader[I any, O any] = vorma.Loader[I, O, *RequestCtx[I], RequestCtx[I]]
-	Action[I any, O any] = vorma.Action[I, O, *RequestCtx[I], RequestCtx[I]]
-	RequestCtx[I any]    struct{ *vorma.RequestCtx[I] }
+	View[I, O any]     = vorma.View[I, O, *RequestCtx[I], RequestCtx[I]]
+	APIRoute[I, O any] = vorma.APIRoute[I, O, *RequestCtx[I], RequestCtx[I]]
+	RequestCtx[I any]  struct{ *vorma.RequestCtx[I] }
 )
 
 func (RequestCtx[I]) Wrap(c *vorma.RequestCtx[I]) *RequestCtx[I] {
@@ -82,18 +106,18 @@ func routes(p string) string {
 	return filepath.Join(filepath.FromSlash("./components/routes/"), p)
 }
 
-/////// Loaders
+/////// Views
 
-var Loaders = vorma.Loaders{
-	Loader[struct{}, struct{}]{
-		Pattern:  "/",
-		TSModule: routes("root.tsx"),
+var Views = vorma.Views{
+	View[struct{}, struct{}]{
+		Pattern:      "/",
+		ClientModule: routes("root.tsx"),
 	},
 
-	Loader[struct{}, *fsmarkdown.Result]{
-		Pattern:  "/*",
-		TSModule: routes("md.tsx"),
-		Handler: func(c *RequestCtx[struct{}]) (*fsmarkdown.Result, error) {
+	View[struct{}, *fsmarkdown.Result]{
+		Pattern:      "/*",
+		ClientModule: routes("md.tsx"),
+		Loader: func(c *RequestCtx[struct{}]) (*fsmarkdown.Result, error) {
 			r := c.Request()
 			h := c.HeadBuilder()
 			rp := c.ResponseProxy()
@@ -127,6 +151,6 @@ var Loaders = vorma.Loaders{
 	},
 }
 
-/////// Actions
+/////// API Routes
 
-var Actions = vorma.Actions{}
+var APIRoutes = vorma.APIRoutes{}

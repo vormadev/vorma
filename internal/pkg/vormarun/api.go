@@ -19,7 +19,7 @@ func parse_loader_input(r *http.Request, input_ptr any) error {
 	return search_params_into_struct(r, input_ptr)
 }
 
-func parse_action_input(r *http.Request, input_ptr any) error {
+func parse_api_input(r *http.Request, input_ptr any) error {
 	if r == nil {
 		return &schema.ValidationError{Err: errors.New("request is nil")}
 	}

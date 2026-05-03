@@ -12,7 +12,7 @@ type AnyZeroHelper interface {
 	OPtr() any // returns `new(O)` (pointer to O)
 }
 
-type ZeroHelper[I any, O any] struct{}
+type ZeroHelper[I, O any] struct{}
 
 func (ZeroHelper[I, O]) I() any    { return Zero[I]() }
 func (ZeroHelper[I, O]) O() any    { return Zero[O]() }

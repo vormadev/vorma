@@ -28,9 +28,7 @@ func TestNone(t *testing.T) {
 	}
 }
 
-type SomeGenericType[I any, O any] struct {
-	ZeroHelper[I, O]
-}
+type SomeGenericType[I, O any] struct{ ZeroHelper[I, O] }
 
 func TestZeroHelper(t *testing.T) {
 	x := SomeGenericType[int, string]{}

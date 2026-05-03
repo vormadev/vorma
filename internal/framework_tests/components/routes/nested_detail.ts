@@ -9,7 +9,7 @@ import {
 	route_nested_detail_pattern,
 } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_nested_detail_pattern,
 	component: (props: any) => {
 		const data = loader_box(props);

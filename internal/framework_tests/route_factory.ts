@@ -3,7 +3,7 @@ import {
 	Link,
 	apiClient,
 	cancelPrefetch,
-	defineRoute,
+	defineView,
 	navigate,
 	prefetch,
 	revalidate,
@@ -15,7 +15,7 @@ import {
 
 export const ui = {
 	variant: runtime.variant,
-	defineRoute,
+	defineView,
 	Link,
 	navigate,
 	prefetch,

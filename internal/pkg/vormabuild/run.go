@@ -31,7 +31,7 @@ import (
 
 type run_state struct {
 	log    *slog.Logger
-	__v    *vorma.Vorma
+	__c    *vorma.Config
 	is_dev bool
 
 	build_entry string
@@ -68,7 +68,6 @@ type run_state struct {
 
 	mailbox *mailbox.Mailbox[string, mail]
 
-	main_css           string
 	critical_css       string
 	css_files_to_watch *set.Set[string]
 
@@ -154,15 +153,22 @@ func (rs *run_state) panic_if_fatal_event_pending() {
 	}
 }
 
+func (rs *run_state) build_cancelled_error(stage string) error {
+	return fmt.Errorf(
+		"build cancelled during %s (build context: %v; root context: %v)",
+		stage,
+		rs.build_ctx.Err(),
+		rs.root_ctx.Err(),
+	)
+}
+
 func Run(
-	v *vorma.Vorma,
-	loaders vorma.Loaders,
-	actions vorma.Actions,
-	is_dev bool,
+	_v *vorma.Router,
 	caller_file string,
+	is_dev bool,
 ) {
 	if envutil.GetBool(live_state_mode_env_key, false) {
-		print_live_state_and_exit(v, loaders, actions)
+		print_live_state_and_exit(_v)
 	}
 
 	root_ctx, root_ctx_cancel := context.WithCancel(context.Background())
@@ -171,7 +177,7 @@ func Run(
 
 	rs := &run_state{
 		log:                colorlog.New("vorma"),
-		__v:                v,
+		__c:                _v.Instance().Config(),
 		is_dev:             is_dev,
 		build_entry:        filepath.Dir(caller_file),
 		root_ctx:           root_ctx,
@@ -385,6 +391,15 @@ func (rs *run_state) on_evt_batch(evts []fswatcher.Evt) error {
 	}
 
 	if go_implicated {
+		paths := make([]string, 0, len(evts))
+		for _, evt := range evts {
+			paths = append(paths, cfg.watch_relative_path(fsutil.SysNorm(evt.Path)))
+		}
+		rs.log.Info(
+			"Detected Go-related file change; cancelling current build and queueing rebuild",
+			"paths",
+			paths,
+		)
 		if rs.build_ctx_cancel != nil {
 			rs.build_ctx_cancel()
 		}

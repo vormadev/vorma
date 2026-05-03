@@ -47,10 +47,14 @@ const render_entry = "vorma.entry.ts"
 const route_module_root = "components/routes"
 
 type (
-	Loader[I any, O any] = vorma.Loader[I, O, *RequestCtx[I], RequestCtx[I]]
-	Action[I any, O any] = vorma.Action[I, O, *RequestCtx[I], RequestCtx[I]]
-	RequestCtx[I any]    struct{ *vorma.RequestCtx[I] }
+	View[I, O any]     = vorma.View[I, O, *RequestCtx[I], RequestCtx[I]]
+	APIRoute[I, O any] = vorma.APIRoute[I, O, *RequestCtx[I], RequestCtx[I]]
+	RequestCtx[I any]  struct{ *vorma.RequestCtx[I] }
 )
+
+func (RequestCtx[I]) Wrap(c *vorma.RequestCtx[I]) *RequestCtx[I] {
+	return &RequestCtx[I]{RequestCtx: c}
+}
 
 type Variant struct {
 	UIVariant       string
@@ -182,18 +186,9 @@ var Solid = Variant{
 	ViteConfigFile:  "vite.solid.config.ts",
 }
 
-func (RequestCtx[I]) Wrap(c *vorma.RequestCtx[I]) *RequestCtx[I] {
-	return &RequestCtx[I]{RequestCtx: c}
-}
-
 func (v Variant) Build(pc uintptr, file string, line int, ok bool) {
 	d := SelectedDeployment()
-	build.Run(build.RunArgs{
-		App:     v.App(d),
-		Loaders: v.loaders(d),
-		Actions: v.actions(d),
-		Caller:  build.CaptureCaller(pc, file, line, ok),
-	})
+	build.Run(v.Router(nil, d), build.Caller(pc, file, line, ok))
 }
 
 func (v Variant) Serve(static_fs fs.FS) {
@@ -214,7 +209,7 @@ func (v Variant) switchboard(static_fss map[string]fs.FS) (*switchboard, error) 
 		if !ok {
 			return nil, fmt.Errorf("missing static fs for deployment %s", d.name)
 		}
-		h, err := v.deployment_handler(static_fs, d)
+		h, err := v.Router(static_fs, d)()
 		if err != nil {
 			return nil, err
 		}
@@ -227,26 +222,6 @@ func (v Variant) switchboard(static_fss map[string]fs.FS) (*switchboard, error) 
 		deployments: deployments,
 		current:     deployment_a,
 	}, nil
-}
-
-func (v Variant) deployment_handler(static_fs fs.FS, d deployment_variant) (http.Handler, error) {
-	app := v.App(d)
-	r, err := vorma.InitRouter(
-		app,
-		v.loaders(d),
-		v.actions(d),
-		static_fs,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	static_mw, err := app.PublicFileServerMiddleware()
-	if err != nil {
-		return nil, err
-	}
-	r.AddGlobalHTTPMiddleware(static_mw)
-	return r, nil
 }
 
 func (v Variant) ServeFromDisk() {
@@ -267,10 +242,10 @@ func (v Variant) ServeFromDisk() {
 
 func (v Variant) ServeSelectedFromDisk() {
 	d := SelectedDeployment()
-	h, err := v.deployment_handler(
+	h, err := v.Router(
 		os.DirFS(filepath.Join(v.deployment_dist_dir(d), ".vorma", "static")),
 		d,
-	)
+	)()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize deployment: %v", err))
 	}
@@ -354,15 +329,19 @@ func SelectedMode() string {
 	}
 }
 
-func (v Variant) App(d deployment_variant) *vorma.Vorma {
+func (v Variant) Config(static_fs fs.FS, d deployment_variant) *vorma.Config {
 	ts_gen_out_file := v.TSGenOutFile
 	if SelectedMode() == mode_dev {
 		ts_gen_out_file = v.DevTSGenOutFile
 	}
 
-	return &vorma.Vorma{
-		DistDir:     v.deployment_dist_dir(d),
+	return &vorma.Config{
 		ServerEntry: server_entry,
+
+		DistConfig: vorma.DistConfig{
+			OutDir:   v.deployment_dist_dir(d),
+			StaticFS: static_fs,
+		},
 
 		PathConfig: vorma.PathConfig{
 			PublicStaticBase: "/",
@@ -376,12 +355,11 @@ func (v Variant) App(d deployment_variant) *vorma.Vorma {
 			ViteConfigFile:          v.ViteConfigFile,
 			RenderEntry:             render_entry,
 			PublicStaticSrcDir:      "public",
-			MainCSSEntry:            "shared/styles/main.css",
 			CriticalCSSEntry:        "shared/styles/main.critical.css",
 		},
 
 		HTMLConfig: vorma.HTMLConfig{
-			DefaultHead: func(_ *http.Request, _ *vorma.Vorma, h *vorma.HeadBuilder) error {
+			DefaultHead: func(_ *http.Request, _ *vorma.Instance, h *vorma.HeadBuilder) error {
 				h.MetaCharset("utf-8")
 				h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
 				h.Title("Vorma Framework Test App")
@@ -396,11 +374,29 @@ func (v Variant) App(d deployment_variant) *vorma.Vorma {
 		},
 
 		DevWatchConfig: vorma.DevWatchConfig{
-			Root:                     ".",
+			WatchRoot:                ".",
 			GlobalIgnore:             []string{".bombadil/**"},
 			OnChangeRecompileGo:      []string{"scenario/**/*.go"},
 			OnChangeClientRevalidate: []string{},
 		},
+	}
+}
+
+func (v Variant) Router(static_fs fs.FS, d deployment_variant) func() (*vorma.Router, error) {
+	instance := vorma.New(v.Config(static_fs, d))
+	return func() (*vorma.Router, error) {
+		r, err := instance.Router()
+		if err != nil {
+			return nil, err
+		}
+		r.MustAddPublicFileServerMiddleware()
+		for _, view := range v.views(d) {
+			r.View(view)
+		}
+		for _, api_route := range v.api_routes(d) {
+			r.APIRoute(api_route)
+		}
+		return r, nil
 	}
 }
 
@@ -411,21 +407,21 @@ func (v Variant) deployment_dist_dir(d deployment_variant) string {
 	return v.DistDir + "." + d.dist_suffix
 }
 
-func (v Variant) loaders(d deployment_variant) vorma.Loaders {
-	return vorma.Loaders{
-		Loader[struct{}, RootData]{
-			Pattern:  route_root_pattern,
-			TSModule: v.route_module("root.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (RootData, error) {
+func (v Variant) views(d deployment_variant) vorma.Views {
+	return vorma.Views{
+		View[struct{}, RootData]{
+			Pattern:      route_root_pattern,
+			ClientModule: v.route_module("root.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (RootData, error) {
 				c.HeadBuilder().Title("Vorma Framework Test App")
 				return RootData{Name: "root", Deployment: d.data_suffix}, nil
 			},
 		},
 
-		Loader[CounterInput, CounterData]{
-			Pattern:  route_counter_pattern,
-			TSModule: v.route_module("counter.ts"),
-			Handler: func(c *RequestCtx[CounterInput]) (CounterData, error) {
+		View[CounterInput, CounterData]{
+			Pattern:      route_counter_pattern,
+			ClientModule: v.route_module("counter.ts"),
+			Loader: func(c *RequestCtx[CounterInput]) (CounterData, error) {
 				value := min(max(c.Input().N, -5), 5)
 				c.HeadBuilder().Title(fmt.Sprintf("Counter %d", value))
 				return CounterData{
@@ -435,10 +431,10 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			},
 		},
 
-		Loader[SlowInput, SlowData]{
-			Pattern:  route_slow_pattern,
-			TSModule: v.route_module("slow.ts"),
-			Handler: func(c *RequestCtx[SlowInput]) (SlowData, error) {
+		View[SlowInput, SlowData]{
+			Pattern:      route_slow_pattern,
+			ClientModule: v.route_module("slow.ts"),
+			Loader: func(c *RequestCtx[SlowInput]) (SlowData, error) {
 				delay_ms := min(max(c.Input().DelayMS, 0), 250)
 				time.Sleep(time.Duration(delay_ms) * time.Millisecond)
 				c.HeadBuilder().Title("Slow Route")
@@ -450,10 +446,10 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			},
 		},
 
-		Loader[struct{}, EchoData]{
-			Pattern:  route_echo_pattern,
-			TSModule: v.route_module("echo.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (EchoData, error) {
+		View[struct{}, EchoData]{
+			Pattern:      route_echo_pattern,
+			ClientModule: v.route_module("echo.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (EchoData, error) {
 				c.HeadBuilder().Title("Echo")
 				return EchoData{
 					Message:    "ready",
@@ -462,20 +458,20 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			},
 		},
 
-		Loader[struct{}, ItemData]{
-			Pattern:  route_item_pattern,
-			TSModule: v.route_module("item.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (ItemData, error) {
+		View[struct{}, ItemData]{
+			Pattern:      route_item_pattern,
+			ClientModule: v.route_module("item.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (ItemData, error) {
 				id := c.Param("id")
 				c.HeadBuilder().Title("Item " + id)
 				return ItemData{ID: id, Deployment: d.data_suffix}, nil
 			},
 		},
 
-		Loader[struct{}, ClientData]{
-			Pattern:  route_client_pattern,
-			TSModule: v.route_module("client.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (ClientData, error) {
+		View[struct{}, ClientData]{
+			Pattern:      route_client_pattern,
+			ClientModule: v.route_module("client.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (ClientData, error) {
 				id := c.Param("id")
 				c.HeadBuilder().Title("Client " + id)
 				return ClientData{
@@ -486,10 +482,10 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			},
 		},
 
-		Loader[struct{}, NestedData]{
-			Pattern:  route_nested_pattern,
-			TSModule: v.route_module("nested.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (NestedData, error) {
+		View[struct{}, NestedData]{
+			Pattern:      route_nested_pattern,
+			ClientModule: v.route_module("nested.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (NestedData, error) {
 				c.HeadBuilder().Title("Nested")
 				return NestedData{
 					Section:    "nested",
@@ -498,10 +494,10 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			},
 		},
 
-		Loader[struct{}, NestedDetailData]{
-			Pattern:  route_nested_detail_pattern,
-			TSModule: v.route_module("nested_detail.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (NestedDetailData, error) {
+		View[struct{}, NestedDetailData]{
+			Pattern:      route_nested_detail_pattern,
+			ClientModule: v.route_module("nested_detail.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (NestedDetailData, error) {
 				id := c.Param("id")
 				c.HeadBuilder().Title("Nested " + id)
 				return NestedDetailData{
@@ -512,10 +508,10 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 			},
 		},
 
-		Loader[struct{}, struct{}]{
-			Pattern:  route_fail_pattern,
-			TSModule: v.route_module("fail.ts"),
-			Handler: func(c *RequestCtx[struct{}]) (struct{}, error) {
+		View[struct{}, struct{}]{
+			Pattern:      route_fail_pattern,
+			ClientModule: v.route_module("fail.ts"),
+			Loader: func(c *RequestCtx[struct{}]) (struct{}, error) {
 				c.SetResponseStatus(500)
 				return struct{}{}, &vorma.LoaderError{
 					ClientMsg: "Fixture loader failed on purpose.",
@@ -525,22 +521,22 @@ func (v Variant) loaders(d deployment_variant) vorma.Loaders {
 	}
 }
 
-func (v Variant) actions(d deployment_variant) vorma.Actions {
-	return vorma.Actions{
-		Action[CountActionInput, CountActionData]{
+func (v Variant) api_routes(d deployment_variant) vorma.APIRoutes {
+	return vorma.APIRoutes{
+		APIRoute[CountActionInput, CountActionData]{
 			Method:  http.MethodGet,
 			Pattern: action_count_pattern,
-			Kind:    vorma.ActionKindQuery,
+			Kind:    vorma.APIRouteKindQuery,
 			Handler: func(c *RequestCtx[CountActionInput]) (CountActionData, error) {
 				next := min(max(c.Input().Delta, -5), 5)
 				return CountActionData{Next: next, Deployment: d.data_suffix}, nil
 			},
 		},
 
-		Action[EchoActionInput, EchoActionData]{
+		APIRoute[EchoActionInput, EchoActionData]{
 			Method:  http.MethodPost,
 			Pattern: action_echo_pattern,
-			Kind:    vorma.ActionKindMutation,
+			Kind:    vorma.APIRouteKindMutation,
 			Handler: func(c *RequestCtx[EchoActionInput]) (EchoActionData, error) {
 				if c.Input().Message == echo_action_fail_message {
 					c.SetResponseStatus(http.StatusConflict, "Fixture action failed on purpose.")

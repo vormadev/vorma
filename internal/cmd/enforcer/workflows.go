@@ -66,7 +66,7 @@ var typecheck_other_projects = ts_project_group{
 	{label: "docs", dir: docs_dir, project: "tsconfig.json", json: true},
 }
 
-var typecheck_fw_projects = ts_project_group{
+var typecheck_fw_source_projects = ts_project_group{
 	{label: "framework core", dir: npm_dir, project: "./vorma/core"},
 	{label: "framework Preact adapter", dir: npm_dir, project: "./vorma/tsx/preact"},
 	{label: "framework React adapter", dir: npm_dir, project: "./vorma/tsx/react"},
@@ -78,6 +78,9 @@ var typecheck_fw_projects = ts_project_group{
 		project: "./vorma/tests/tsconfig.json",
 		json:    true,
 	},
+}
+
+var typecheck_fw_fixture_projects = ts_project_group{
 	{label: "framework fixture", dir: framework_tests_dir, project: "tsconfig.json", json: true},
 }
 
@@ -90,39 +93,39 @@ var task_verify_repo_shape = tasks.NewTask(
 	},
 )
 
-var task_install_root_ts = (enforcer_step{
+var task_install_root_ts = enforcer_task(tooling.Step{
 	Name:    "install root TypeScript dependencies",
 	Command: "pnpm",
 	Args:    []string{"i", "--config.confirmModulesPurge=false"},
-}).task()
+})
 
-var task_install_npm_ts = (enforcer_step{
+var task_install_npm_ts = enforcer_task(tooling.Step{
 	Name:    "install npm package TypeScript dependencies",
 	Dir:     npm_dir,
 	Command: "pnpm",
 	Args:    []string{"i", "--config.confirmModulesPurge=false"},
-}).task()
+})
 
-var task_install_create_ts = (enforcer_step{
+var task_install_create_ts = enforcer_task(tooling.Step{
 	Name:    "install create-vorma TypeScript dependencies",
 	Dir:     create_npm_dir,
 	Command: "pnpm",
 	Args:    []string{"i", "--config.confirmModulesPurge=false"},
-}).task()
+})
 
-var task_install_fw_ts = (enforcer_step{
+var task_install_fw_ts = enforcer_task(tooling.Step{
 	Name:    "install framework TypeScript dependencies",
 	Dir:     framework_tests_dir,
 	Command: "pnpm",
 	Args:    []string{"i", "--config.confirmModulesPurge=false"},
-}).task()
+})
 
-var task_install_docs_ts = (enforcer_step{
+var task_install_docs_ts = enforcer_task(tooling.Step{
 	Name:    "install docs TypeScript dependencies",
 	Dir:     docs_dir,
 	Command: "pnpm",
 	Args:    []string{"i", "--config.confirmModulesPurge=false"},
-}).task()
+})
 
 var task_install_ts_fw = tasks.NewTask(
 	func(ctx *tasks.Cache, input enforcer_input) (struct{}, error) {
@@ -200,10 +203,37 @@ var task_build_ts = tasks.NewTask(
 	},
 )
 
-var task_typecheck_ts_fw = typecheck_fw_projects.typecheck_task(
+var task_build_fw_fixture = enforcer_task(tooling.Step{
+	Name:    "build framework fixture",
+	Dir:     framework_tests_dir,
+	Command: "go",
+	Args:    []string{"run", "./cmd/bombadil", "build"},
+})
+
+var task_typecheck_ts_fw_source = typecheck_fw_source_projects.typecheck_task(
 	"typecheck TypeScript fw",
 	task_build_ts,
 	task_install_fw_ts,
+)
+
+var task_typecheck_ts_fw_fixture = typecheck_fw_fixture_projects.typecheck_task(
+	"typecheck TypeScript fw",
+)
+
+var task_typecheck_ts_fw = tasks.NewTask(
+	func(ctx *tasks.Cache, input enforcer_input) (struct{}, error) {
+		if _, err := input.run_parallel(ctx, task_build_ts, task_install_fw_ts); err != nil {
+			return struct{}{}, err
+		}
+		if _, err := task_build_fw_fixture.Run(ctx, input); err != nil {
+			return struct{}{}, err
+		}
+		return input.run_parallel(
+			ctx,
+			task_typecheck_ts_fw_source,
+			task_typecheck_ts_fw_fixture,
+		)
+	},
 )
 
 var task_typecheck_ts_other = typecheck_other_projects.typecheck_task(
@@ -386,7 +416,7 @@ func (app enforcer_app) stress_ts_fw_task(intensity int) *tasks.Task[enforcer_in
 
 func (app enforcer_app) stress_ts_other_task(intensity int) *tasks.Task[enforcer_input, struct{}] {
 	return tasks.NewTask(func(ctx *tasks.Cache, input enforcer_input) (struct{}, error) {
-		for i := 0; i < intensity; i++ {
+		for range intensity {
 			if _, err := task_test_ts_other.Run(ctx, input); err != nil {
 				return struct{}{}, err
 			}
@@ -580,11 +610,9 @@ func (projects ts_project_group) typecheck_task(
 	})
 }
 
-type enforcer_step tooling.Step
-
-func (step enforcer_step) task() *tasks.Task[enforcer_input, struct{}] {
+func enforcer_task(step tooling.Step) *tasks.Task[enforcer_input, struct{}] {
 	return tasks.NewTask(func(_ *tasks.Cache, input enforcer_input) (struct{}, error) {
-		return input.run_step(tooling.Step(step))
+		return input.run_step(step)
 	})
 }
 

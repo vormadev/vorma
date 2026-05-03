@@ -18,6 +18,10 @@ func IsDev() bool {
 	return envutil.GetBool(Env_Key_Is_Dev, false)
 }
 
+func IsBuild() bool {
+	return envutil.GetBool(Env_Key_Is_Build, false)
+}
+
 type HeadBuilder = head.Builder
 type GoTypeSrc = tsgen.GoTypeSrc
 
@@ -27,7 +31,7 @@ type DevWatchConfig struct {
 	// The outermost directory to watch for changes in dev mode.
 	//
 	// Defaults to the current working directory.
-	Root string
+	WatchRoot string
 
 	// Optional.
 	//
@@ -96,12 +100,6 @@ type FrontendConfig struct {
 
 	// Optional.
 	//
-	// Point this to the file where you define your non-critical global application stylesheet.
-	// That file's CSS bundle will be imported and applied via a traditional stylesheet link element.
-	MainCSSEntry string
-
-	// Optional.
-	//
 	// Point this to the file where you define your critical global application stylesheet.
 	// That file's CSS bundle will be inlined into the HTML document head inside style tags.
 	CriticalCSSEntry string
@@ -139,7 +137,7 @@ type HTMLConfig struct {
 	// Optional, but highly recommended.
 	// Determines the default head elements rendered by your website
 	// (unless trumped by child loaders).
-	DefaultHead func(*http.Request, *Vorma, *HeadBuilder) error `json:"-"`
+	DefaultHead func(*http.Request, *Instance, *HeadBuilder) error `json:"-"`
 
 	// Elements specified here will be deduplicated across
 	// nested loaders, with the "deepest" (most specific)
@@ -159,143 +157,143 @@ type PathConfig struct {
 
 	// Optional.
 	//
-	// The mount root for your actions router.
+	// The mount root for your API router.
 	//
 	// Default: "/api/"
 	APIBase string
 }
 
-type Vorma struct {
+type DistConfig struct {
+	// Required.
+	//
+	// The directory where the Vorma-owned `.vorma/` sub-directory will be emitted.
+	OutDir string
+	// In prod, StaticFS is required and must be rooted at `<OutDir>/.vorma/static/`.
+	// In dev, StaticFS is ignored and as such may be left nil.
+	StaticFS fs.FS
+}
+
+type Config struct {
 	ServerEntry    string
-	DistDir        string
+	DistConfig     DistConfig
 	PathConfig     PathConfig
 	FrontendConfig FrontendConfig
 	HTMLConfig     HTMLConfig
 	TSGenConfig    TSGenConfig
 	DevWatchConfig DevWatchConfig
-
-	init_once                   sync.Once
-	init_err                    error
-	log                         *slog.Logger
-	root_mux                    *mux.Router
-	loaders_mux                 *mux.NestedRouter
-	actions_mux                 *mux.Router
-	static_fs                   fs.FS
-	_manifest                   *Manifest
-	client_build_id             string
-	parsed_tmpl                 *template.Template
-	head_renderer               *head.Renderer
-	_final_public_filepaths     *set.Set[string]
-	supported_methods           *set.Set[string]
-	supported_methods_allow_val string
 }
+
+type Instance struct {
+	init_once                    sync.Once
+	init_err                     error
+	router                       *Router
+	router_once                  sync.Once
+	cfg                          *Config
+	log                          *slog.Logger
+	static_fs                    fs.FS
+	manifest_cache               *Manifest
+	client_build_id_cache        string
+	root_template                *template.Template
+	head_renderer                *head.Renderer
+	final_public_filepaths_cache *set.Set[string]
+}
+
+func (instance *Instance) Config() *Config { return instance.cfg }
 
 type RequestCtx[I any] = mux.RequestCtx[I]
 
-type AnyLoader interface {
+type AnyView interface {
 	IType() *tsgen.GoTypeSrc
 	OType() *tsgen.GoTypeSrc
 	GetPattern() string
-	GetTSModule() string
+	GetClientModule() string
 	register_to_mux(*mux.NestedRouter)
 }
-type AnyAction interface {
+type AnyAPIRoute interface {
 	IType() *tsgen.GoTypeSrc
 	OType() *tsgen.GoTypeSrc
 	GetMethod() string
 	GetPattern() string
-	GetKind() ActionKind
+	GetKind() APIRouteKind
 	register_to_mux(*mux.Router)
 }
 
-type Loaders []AnyLoader
-type Actions []AnyAction
+type Views []AnyView
+type APIRoutes []AnyAPIRoute
 
-type RequestCtxWrapper[I any, CtxPtr any] interface {
-	Wrap(*RequestCtx[I]) CtxPtr
+type RequestCtxWrapper[I, RP any] interface{ Wrap(*RequestCtx[I]) RP }
+
+type View[I, O any, RP ~*R, R RequestCtxWrapper[I, RP]] struct {
+	Pattern      string
+	Loader       func(RP) (O, error)
+	ClientModule string
 }
 
-type Loader[
-	I any,
-	O any,
-	CtxPtr ~*Ctx,
-	Ctx RequestCtxWrapper[I, CtxPtr],
-] struct {
-	Pattern  string
-	Handler  func(CtxPtr) (O, error)
-	TSModule string
-}
-
-func (l Loader[I, O, CtxPtr, Ctx]) IType() *tsgen.GoTypeSrc {
+func (view View[I, O, RP, R]) IType() *tsgen.GoTypeSrc {
 	return tsgen.GoType[I]()
 }
 
-func (l Loader[I, O, CtxPtr, Ctx]) OType() *tsgen.GoTypeSrc {
+func (view View[I, O, RP, R]) OType() *tsgen.GoTypeSrc {
 	return tsgen.GoType[O]()
 }
 
-func (l Loader[I, O, CtxPtr, Ctx]) GetPattern() string { return l.Pattern }
+func (view View[I, O, RP, R]) GetPattern() string { return view.Pattern }
 
-func (l Loader[I, O, CtxPtr, Ctx]) GetTSModule() string { return l.TSModule }
+func (view View[I, O, RP, R]) GetClientModule() string { return view.ClientModule }
 
-func (l Loader[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.NestedRouter) {
-	if l.Handler == nil {
-		mux.AddNestedTaskHandler(r, l.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *RequestCtx[I]) (mux.None, error) { return mux.None{}, nil },
+func (view View[I, O, RP, R]) register_to_mux(r *mux.NestedRouter) {
+	if view.Loader == nil {
+		mux.AddNestedTaskHandler(r, view.Pattern, mux.TaskHandlerFromFunc(
+			func(*RequestCtx[I]) (mux.None, error) { return mux.None{}, nil },
 		))
 		return
 	}
-	mux.AddNestedTaskHandler(r, l.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *RequestCtx[I]) (O, error) {
-			var zero Ctx
-			return l.Handler(zero.Wrap(ctx))
+	mux.AddNestedTaskHandler(r, view.Pattern, mux.TaskHandlerFromFunc(
+		func(c *RequestCtx[I]) (O, error) {
+			var zero R
+			return view.Loader(zero.Wrap(c))
 		},
 	))
 }
 
-type Action[
-	I any,
-	O any,
-	CtxPtr ~*Ctx,
-	Ctx RequestCtxWrapper[I, CtxPtr],
-] struct {
+type APIRoute[I, O any, RP ~*R, R RequestCtxWrapper[I, RP]] struct {
 	Method  string
 	Pattern string
-	Kind    ActionKind
-	Handler func(CtxPtr) (O, error)
+	Kind    APIRouteKind
+	Handler func(RP) (O, error)
 }
 
-type ActionKind string
+type APIRouteKind string
 
 const (
-	ActionKindQuery    ActionKind = "query"
-	ActionKindMutation ActionKind = "mutation"
+	APIRouteKindQuery    APIRouteKind = "query"
+	APIRouteKindMutation APIRouteKind = "mutation"
 )
 
-func (a Action[I, O, CtxPtr, Ctx]) IType() *tsgen.GoTypeSrc { return tsgen.GoType[I]() }
+func (a APIRoute[I, O, RP, R]) IType() *tsgen.GoTypeSrc { return tsgen.GoType[I]() }
 
-func (a Action[I, O, CtxPtr, Ctx]) OType() *tsgen.GoTypeSrc { return tsgen.GoType[O]() }
+func (a APIRoute[I, O, RP, R]) OType() *tsgen.GoTypeSrc { return tsgen.GoType[O]() }
 
-func (a Action[I, O, CtxPtr, Ctx]) GetMethod() string { return a.Method }
+func (a APIRoute[I, O, RP, R]) GetMethod() string { return a.Method }
 
-func (a Action[I, O, CtxPtr, Ctx]) GetPattern() string { return a.Pattern }
+func (a APIRoute[I, O, RP, R]) GetPattern() string { return a.Pattern }
 
-func (a Action[I, O, CtxPtr, Ctx]) GetKind() ActionKind { return a.Kind }
+func (a APIRoute[I, O, RP, R]) GetKind() APIRouteKind { return a.Kind }
 
-func (a Action[I, O, CtxPtr, Ctx]) register_to_mux(r *mux.Router) {
+func (a APIRoute[I, O, RP, R]) register_to_mux(r *mux.Router) {
 	if a.Handler == nil {
 		mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-			func(ctx *RequestCtx[mux.None]) (mux.None, error) {
+			func(*RequestCtx[mux.None]) (mux.None, error) {
 				return mux.None{}, nil
 			},
 		))
 		return
 	}
 	mux.AddTaskHandler(r, a.Method, a.Pattern, mux.TaskHandlerFromFunc(
-		func(ctx *RequestCtx[I]) (O, error) {
-			var zero Ctx
+		func(c *RequestCtx[I]) (O, error) {
+			var zero R
 			var zero_output O
-			data, err := a.Handler(zero.Wrap(ctx))
+			data, err := a.Handler(zero.Wrap(c))
 			if err != nil {
 				return zero_output, err
 			}

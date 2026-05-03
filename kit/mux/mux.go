@@ -53,7 +53,7 @@ var (
 
 type (
 	None                      = genericsutil.None
-	TaskHandler[I any, O any] = tasks.Task[*RequestCtx[I], O]
+	TaskHandler[I, O any]     = tasks.Task[*RequestCtx[I], O]
 	Params                    = matcher.Params
 	HTTPMiddleware            = func(http.Handler) http.Handler
 	TaskMiddlewareFunc[O any] func(*RequestCtx[None]) (O, error)
@@ -755,7 +755,7 @@ func (nr *NestedRouter) Matcher() *matcher.Matcher {
 /////////////////////////////////////////////////////////////////////
 
 // NestedRoute stores metadata and an optional task handler for one nested pattern.
-type NestedRoute[I any, O any] struct {
+type NestedRoute[I, O any] struct {
 	genericsutil.ZeroHelper[I, O]
 	router           *NestedRouter
 	original_pattern string

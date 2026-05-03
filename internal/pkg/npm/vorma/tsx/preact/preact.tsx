@@ -20,17 +20,17 @@ import {
 	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
-	type AdapterInitOptions,
+	type AdapterClientOptions,
 	type AppConfig,
 	type DecomposedState,
-	type RouteDefinition,
+	type ViewDefinition,
 	type RouteState,
 	type ScrollIntent,
 	type ToAPIDecorator,
-	type ToDefineRouteArgs,
+	type ToDefineViewArgs,
 	type ToLinkProps,
 	type ToLoaderOutput,
-	type ToLoaderPattern,
+	type ToViewPattern,
 	type ToRouteComponentProps,
 	type ToRouteSyncArgs,
 	type VormaClient,
@@ -39,9 +39,8 @@ import {
 import { jsonDeepEquals } from "vorma/kit/json";
 import type { LinkPropsBase } from "../../core/types.ts";
 
-export { SubmitError } from "vorma/__internal";
+export { MutationError, QueryError } from "vorma/__internal";
 export type {
-	ActionKind,
 	BeforeRouteCommitFn,
 	BeforeRouteTransitionArgs,
 	BeforeRouteYieldFn,
@@ -52,16 +51,20 @@ export type {
 	RouteErrorState,
 	RouteState,
 	RouteUpdateReason,
-	SubmitResult,
-	ToActionInput,
-	ToActionKind,
-	ToActionMethod,
-	ToActionOutput,
-	ToActionPattern,
-	ToActionSubmitArgs,
-	ToActionSubmitArgsByKind,
-	ToActionSubmitError,
-	ToActionSubmitOutput,
+	MutationResult,
+	ToMutationArgs,
+	ToMutationError,
+	ToMutationInput,
+	ToMutationMethod,
+	ToMutationOutput,
+	ToMutationPattern,
+	ToQueryArgs,
+	ToQueryError,
+	ToQueryInput,
+	ToQueryMethod,
+	ToQueryOutput,
+	ToQueryPattern,
+	QueryResult,
 	ToAPIClient,
 	ToAPIDecorator,
 	ToAPIDecoratorContext,
@@ -69,7 +72,7 @@ export type {
 	ToLinkProps,
 	ToLoaderInput,
 	ToLoaderOutput,
-	ToLoaderPattern,
+	ToViewPattern,
 	ToNavigateArgs,
 	ToNavigationTarget,
 	ToRouteComponentProps,
@@ -79,12 +82,13 @@ export type {
 	WorkState,
 } from "vorma/__internal";
 
-type CreateVormaClientOptions<A extends AppConfig> = {
-	linkDefaultProps?: Partial<
-		Omit<HTMLAttributes<HTMLAnchorElement> & LinkPropsBase, "href">
-	>;
-	apiDecorator?: ToAPIDecorator<A>;
-};
+type CreateVormaClientOptions<A extends AppConfig> =
+	AdapterClientOptions<ComponentType> & {
+		linkDefaultProps?: Partial<
+			Omit<HTMLAttributes<HTMLAnchorElement> & LinkPropsBase, "href">
+		>;
+		apiDecorator?: ToAPIDecorator<A>;
+	};
 
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
@@ -106,7 +110,7 @@ export function createVormaClient<A extends AppConfig>(
 		navigation: null,
 		revalidation: null,
 		prefetch: null,
-		submissions: [],
+		apiRequests: [],
 	});
 
 	function get_route_snapshot(): RouteState {
@@ -205,7 +209,7 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function useRouteSync<P extends ToLoaderPattern<A>>(
+	function useRouteSync<P extends ToViewPattern<A>>(
 		args: ToRouteSyncArgs<A, P>,
 	): void {
 		const {
@@ -255,7 +259,7 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function useLoaderData<P extends ToLoaderPattern<A>>(
+	function useLoaderData<P extends ToViewPattern<A>>(
 		args: ToRouteComponentProps<A, P>,
 	): ReadonlySignal<ToLoaderOutput<A, P>> {
 		return use_computed_signal(() => {
@@ -263,7 +267,7 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function usePatternLoaderData<P extends ToLoaderPattern<A>>(
+	function usePatternLoaderData<P extends ToViewPattern<A>>(
 		pattern: P,
 	): ReadonlySignal<ToLoaderOutput<A, P> | undefined> {
 		return use_computed_signal(() => {
@@ -276,7 +280,7 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function useClientLoaderData<P extends ToLoaderPattern<A>, T>(
+	function useClientLoaderData<P extends ToViewPattern<A>, T>(
 		args: ToRouteComponentProps<A, P, T>,
 	): ReadonlySignal<T> {
 		return use_computed_signal(() => {
@@ -285,7 +289,7 @@ export function createVormaClient<A extends AppConfig>(
 	}
 
 	function usePatternClientLoaderData<T>(
-		pattern: ToLoaderPattern<A>,
+		pattern: ToViewPattern<A>,
 	): ReadonlySignal<T | undefined> {
 		return use_computed_signal(() => {
 			const patterns = matched_patterns_signal.value;
@@ -297,10 +301,10 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function defineRoute<P extends ToLoaderPattern<A>, T = any>(
-		input: ToDefineRouteArgs<A, P, T, JSX.Element>,
-	): RouteDefinition {
-		return core.defineRoute(input as any);
+	function defineView<P extends ToViewPattern<A>, T = any>(
+		input: ToDefineViewArgs<A, P, T, JSX.Element>,
+	): ViewDefinition {
+		return core.defineView(input as any);
 	}
 
 	function RootOutlet(
@@ -381,11 +385,15 @@ export function createVormaClient<A extends AppConfig>(
 		return h(RootOutlet, {});
 	};
 
-	function init(
-		options: AdapterInitOptions<ComponentType>,
-	): ReturnType<typeof core.init> {
-		const { render, onRouteUpdate, onWorkUpdate, ...core_options } =
-			options;
+	function init(): ReturnType<typeof core.init> {
+		const {
+			render,
+			onRouteUpdate,
+			onWorkUpdate,
+			linkDefaultProps: _linkDefaultProps,
+			apiDecorator: _apiDecorator,
+			...core_options
+		} = options ?? {};
 		return core.init({
 			...core_options,
 			onRouteUpdate: (route, previous_route, reason) => {
@@ -443,7 +451,7 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	const Link = (<P extends ToLoaderPattern<A>>(
+	const Link = (<P extends ToViewPattern<A>>(
 		raw: Omit<HTMLAttributes<HTMLAnchorElement>, "href"> &
 			ToLinkProps<A, P>,
 	): JSX.Element => {
@@ -463,7 +471,7 @@ export function createVormaClient<A extends AppConfig>(
 					hash,
 				} as any),
 		});
-	}) as <P extends ToLoaderPattern<A>>(
+	}) as <P extends ToViewPattern<A>>(
 		props: Omit<HTMLAttributes<HTMLAnchorElement>, "href"> &
 			ToLinkProps<A, P>,
 	) => JSX.Element;
@@ -471,7 +479,7 @@ export function createVormaClient<A extends AppConfig>(
 	return {
 		...passthrough,
 		init,
-		defineRoute,
+		defineView,
 		RootOutlet,
 		Link,
 		useRouteSync,

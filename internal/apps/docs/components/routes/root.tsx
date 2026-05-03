@@ -1,6 +1,6 @@
 import { app, Link } from "../../vorma.app.ts";
 
-export default app.defineRoute({
+export default app.defineView({
 	pattern: "/",
 	component: (props) => {
 		return (

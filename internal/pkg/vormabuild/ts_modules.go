@@ -13,15 +13,14 @@ type ts_route struct {
 	Deps       []string
 }
 
-func (cfg vorma_cfg) get_dev_ts_modules(
-	loaders vorma.Loaders,
-) (map[string]ts_route, error) {
-	routes := make(map[string]ts_route, len(loaders))
+func (cfg vorma_cfg) get_dev_ts_modules(r *vorma.Router) (map[string]ts_route, error) {
+	views := r.Views()
+	routes := make(map[string]ts_route, len(views))
 	seen_mods := set.New[string]()
 
-	for _, l := range loaders {
-		pattern := l.GetPattern()
-		mod := l.GetTSModule()
+	for _, view := range views {
+		pattern := view.GetPattern()
+		mod := view.GetClientModule()
 		if pattern == "" || mod == "" {
 			continue
 		}

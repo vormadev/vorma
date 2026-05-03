@@ -3,7 +3,6 @@ package cssbundle
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,11 +17,15 @@ type BundleOutput struct {
 	Imports []string
 }
 
-func Bundle(
-	entry_path string,
-	url_lookup_map map[string]string,
-) (BundleOutput, error) {
-	src, err := os.ReadFile(entry_path)
+type BundleArgs struct {
+	EntryPath  string
+	ResolveURL URLResolver
+}
+
+type URLResolver func(raw string, parsed *url.URL) (string, bool, error)
+
+func Bundle(args BundleArgs) (BundleOutput, error) {
+	src, err := os.ReadFile(args.EntryPath)
 	if err != nil {
 		return BundleOutput{}, err
 	}
@@ -35,11 +38,11 @@ func Bundle(
 		MinifySyntax:      true,
 		Metafile:          true,
 		LogLevel:          esbuild.LogLevelSilent,
-		Plugins:           []esbuild.Plugin{url_rewriter(url_lookup_map)},
+		Plugins:           []esbuild.Plugin{args.ResolveURL.plugin()},
 		Stdin: &esbuild.StdinOptions{
 			Contents:   string(src),
-			ResolveDir: filepath.Dir(entry_path),
-			Sourcefile: filepath.Base(entry_path),
+			ResolveDir: filepath.Dir(args.EntryPath),
+			Sourcefile: filepath.Base(args.EntryPath),
 			Loader:     esbuild.LoaderCSS,
 		},
 	})
@@ -61,9 +64,7 @@ func Bundle(
 	// The entry file is fed via Stdin, so esbuild records it as
 	// "<stdin>" in the metafile inputs. We skip keys starting with
 	// "<" below, which means the entry file itself is excluded from
-	// the returned Imports slice. This is fine because the caller
-	// (classify_evt) checks the entry file path directly via
-	// cfg.core.CSSEntryFiles.Critical / NonCritical.
+	// the returned Imports slice. The entry file is added manually below.
 	imports := set.Set[string]{}
 	for raw := range meta.Inputs {
 		if strings.HasPrefix(raw, "<") {
@@ -73,7 +74,7 @@ func Bundle(
 	}
 
 	// esbuild seems to include this anyway, but add manually to be sure
-	imports.Add(entry_path)
+	imports.Add(args.EntryPath)
 
 	return BundleOutput{
 		CSS:     strings.TrimSpace(string(result.OutputFiles[0].Contents)),
@@ -81,7 +82,7 @@ func Bundle(
 	}, nil
 }
 
-func url_rewriter(url_lookup_map map[string]string) esbuild.Plugin {
+func (resolve_url URLResolver) plugin() esbuild.Plugin {
 	return esbuild.Plugin{
 		Name: "url_rewriter",
 		Setup: func(build esbuild.PluginBuild) {
@@ -102,26 +103,24 @@ func url_rewriter(url_lookup_map map[string]string) esbuild.Plugin {
 						}, nil
 					}
 
-					lookup := strings.TrimPrefix(parsed.Path, "/")
-					if strings.HasPrefix(lookup, ".") {
-						return esbuild.OnResolveResult{}, fmt.Errorf(
-							"[cssbundle]: URL paths must not be relative (must not start with '.' or '..')",
-						)
-					}
-
-					suffix := ""
-					if parsed.RawQuery != "" {
-						suffix += "?" + parsed.RawQuery
-					}
-					if parsed.Fragment != "" {
-						suffix += "#" + parsed.Fragment
-					}
-
-					if public_url, ok := url_lookup_map[lookup]; ok {
+					if parsed.Path == "" && parsed.Fragment != "" {
 						return esbuild.OnResolveResult{
-							Path:     public_url + suffix,
+							Path:     raw,
 							External: true,
 						}, nil
+					}
+
+					if resolve_url != nil {
+						resolved_url, ok, err := resolve_url(raw, parsed)
+						if err != nil {
+							return esbuild.OnResolveResult{}, err
+						}
+						if ok {
+							return esbuild.OnResolveResult{
+								Path:     resolved_url,
+								External: true,
+							}, nil
+						}
 					}
 
 					return esbuild.OnResolveResult{

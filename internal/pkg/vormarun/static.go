@@ -9,12 +9,40 @@ import (
 	"github.com/vormadev/vorma/kit/response"
 )
 
-func (v *Vorma) PublicFileServerHandler() (http.Handler, error) {
-	public_fs, err := v.PublicFS()
+func (router *Router) MustAddPublicFileServerMiddleware() {
+	if err := router.AddPublicFileServerMiddleware(); err != nil {
+		panic(fmt.Sprintf("Failed to add public file server middleware: %v", err))
+	}
+}
+
+func (router *Router) AddPublicFileServerMiddleware() error {
+	if IsBuild() {
+		return nil
+	}
+	instance := router.instance
+	handler, err := instance.public_file_server_handler()
+	if err != nil {
+		return fmt.Errorf("error creating static file server handler: %w", err)
+	}
+	router.AddGlobalHTTPMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ok, err := instance.is_public_asset(r.URL.Path)
+			if err == nil && ok {
+				handler.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
+	return nil
+}
+
+func (instance *Instance) public_file_server_handler() (http.Handler, error) {
+	public_fs, err := instance.PublicFS()
 	if err != nil {
 		return nil, fmt.Errorf("error getting public FS: %w", err)
 	}
-	public_static_base_path, err := v.public_static_base_path()
+	public_static_base_path, err := instance.public_static_base_path()
 	if err != nil {
 		return nil, fmt.Errorf("error getting public static base path: %w", err)
 	}
@@ -26,33 +54,19 @@ func (v *Vorma) PublicFileServerHandler() (http.Handler, error) {
 	}), nil
 }
 
-func (v *Vorma) PublicFileServerMiddleware() (func(http.Handler) http.Handler, error) {
-	handler, err := v.PublicFileServerHandler()
-	if err != nil {
-		return nil, fmt.Errorf("error creating static file server handler: %w", err)
-	}
-	fn := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(_w http.ResponseWriter, r *http.Request) {
-			ok, err := v.is_public_asset(r.URL.Path)
-			if err == nil && ok {
-				handler.ServeHTTP(_w, r)
-				return
-			}
-			next.ServeHTTP(_w, r)
-		})
-	}
-	return fn, nil
-}
-
 // FaviconRedirect returns middleware that redirects requests for
 // /favicon.ico to the hashed public asset URL. Returns 404 if the
 // favicon is not found in the public filemap.
-func (v *Vorma) FaviconRedirect() func(http.Handler) http.Handler {
+func (instance *Instance) FaviconRedirect() func(http.Handler) http.Handler {
+	if err := instance.init(); IsBuild() || err != nil {
+		return func(next http.Handler) http.Handler { return next }
+	}
+
 	return middleware.ToHandlerMiddleware(
 		"/favicon.ico",
 		[]string{http.MethodGet, http.MethodHead},
 		func(w http.ResponseWriter, r *http.Request) {
-			url, err := v.PublicURL("favicon.ico")
+			url, err := instance.PublicURL("favicon.ico")
 			if err != nil {
 				res := response.New(w)
 				res.NotFound()
@@ -63,13 +77,13 @@ func (v *Vorma) FaviconRedirect() func(http.Handler) http.Handler {
 	)
 }
 
-func (v *Vorma) is_public_asset(path string) (bool, error) {
-	public_static_base_path, err := v.public_static_base_path()
+func (instance *Instance) is_public_asset(path string) (bool, error) {
+	public_static_base_path, err := instance.public_static_base_path()
 	if err != nil {
 		return false, fmt.Errorf("error getting public static base path: %w", err)
 	}
 	if public_static_base_path == "" || public_static_base_path == "/" {
-		ipf, err := v.final_public_filepaths()
+		ipf, err := instance.final_public_filepaths()
 		if err != nil {
 			return false, fmt.Errorf("error getting inverse public filemap: %w", err)
 		}

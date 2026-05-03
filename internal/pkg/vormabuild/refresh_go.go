@@ -4,20 +4,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/vormadev/vorma/internal/pkg/cssbundle"
 	"github.com/vormadev/vorma/internal/pkg/fswatcher"
 	"github.com/vormadev/vorma/internal/pkg/lockfile"
 	"github.com/vormadev/vorma/internal/pkg/staticproc"
-	"github.com/vormadev/vorma/internal/pkg/vormarun"
 	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/set"
 )
+
+const public_url_prefix = "@public/"
 
 func (rs *run_state) log_build_start(is_initial bool) {
 	if is_initial {
@@ -51,7 +54,7 @@ func (rs *run_state) refresh_go() error {
 	__cfg, err := rs.get_config()
 	if err != nil {
 		is_initial = true
-		__cfg, err = to_cfg(rs.__v)
+		__cfg, err = to_cfg(rs.__c)
 		if err != nil {
 			return fmt.Errorf("error converting config: %w", err)
 		}
@@ -145,7 +148,7 @@ func (rs *run_state) refresh_go() error {
 				}
 			}
 
-			rs.__v = rs.cfg.V
+			rs.__c = rs.cfg.C
 			rs.cfg = nil
 
 			rs.dev_lock.Release()
@@ -169,7 +172,7 @@ func (rs *run_state) refresh_go() error {
 		)
 		ignore_patterns = append(
 			ignore_patterns,
-			fsutil.ToCatchDirPattern(rs.cfg.vorma_out()),
+			rs.cfg.vorma_out_watch_ignore_pattern(),
 		)
 		rs.watcher = fswatcher.NewWatcher(fswatcher.WatcherOptions{
 			WatchRoot:      rs.cfg.watch_root(),
@@ -187,7 +190,7 @@ func (rs *run_state) refresh_go() error {
 
 	if rs.build_ctx.Err() != nil {
 		rs.mu.Unlock()
-		return fmt.Errorf("build cancelled")
+		return rs.build_cancelled_error("before static build")
 	}
 	rs.mu.Unlock()
 
@@ -199,7 +202,7 @@ func (rs *run_state) refresh_go() error {
 	}
 
 	if build_ctx.Err() != nil {
-		return fmt.Errorf("build cancelled")
+		return rs.build_cancelled_error("after static build")
 	}
 
 	wg.Wait()
@@ -209,11 +212,11 @@ func (rs *run_state) refresh_go() error {
 		}
 	}
 	if build_ctx.Err() != nil {
-		return fmt.Errorf("build cancelled")
+		return rs.build_cancelled_error("after app server compile")
 	}
 
 	if rs.is_dev {
-		// Needed before app start so runtime init has ActionsMountRoot.
+		// Needed before app start so runtime init has APIMountRoot.
 		// Will be re-written later to populate the vite server port,
 		// which is not available at this point.
 		if err := rs.write_manifest(); err != nil {
@@ -233,7 +236,7 @@ func (rs *run_state) refresh_go() error {
 	}
 
 	if build_ctx.Err() != nil {
-		return fmt.Errorf("build cancelled")
+		return rs.build_cancelled_error("before Vite server start")
 	}
 
 	if rs.dev_mux_port != 0 && !rs.vite_server_sv.is_running() {
@@ -258,9 +261,9 @@ type static_build_opts struct {
 
 // Acquires lock.
 // Reads live pub src files.
-// Bundles CSS.
+// Bundles critical CSS.
 // Updates watched CSS files.
-// Sets rs.pub_fm, rs.main_css, rs.critical_css, and rs.css_files_to_watch.
+// Sets rs.pub_fm, rs.critical_css, and rs.css_files_to_watch.
 // Outputs pub static files to disk.
 // Writes vorma public file map to disk.
 // Writes gen TS file to disk.
@@ -280,52 +283,62 @@ func (rs *run_state) run_static_build(opts static_build_opts) error {
 	}
 	pub_fm := cfg.to_pub_fm(pub_files)
 
-	var main_css_result cssbundle.BundleOutput
 	var critical_css_result cssbundle.BundleOutput
-	if cfg.main_css_entry() != "." {
-		main_css_result, err = cssbundle.Bundle(cfg.main_css_entry(), pub_fm)
-		if err != nil {
-			return fmt.Errorf("error bundling main CSS: %w", err)
-		}
-	}
 	if cfg.critical_css_entry() != "." {
-		critical_css_result, err = cssbundle.Bundle(cfg.critical_css_entry(), pub_fm)
+		critical_css_result, err = cssbundle.Bundle(cssbundle.BundleArgs{
+			EntryPath: cfg.critical_css_entry(),
+			ResolveURL: func(raw string, parsed *url.URL) (string, bool, error) {
+				if strings.HasPrefix(parsed.Path, "/") {
+					return raw, true, nil
+				}
+				if !strings.HasPrefix(parsed.Path, public_url_prefix) {
+					return "", false, fmt.Errorf(
+						"CSS URL paths must be absolute, external, or start with %q",
+						public_url_prefix,
+					)
+				}
+
+				lookup := strings.TrimPrefix(parsed.Path, public_url_prefix)
+				suffix := ""
+				if parsed.RawQuery != "" {
+					suffix += "?" + parsed.RawQuery
+				}
+				if parsed.Fragment != "" {
+					suffix += "#" + parsed.Fragment
+				}
+				if public_url, ok := pub_fm[lookup]; ok {
+					return public_url + suffix, true, nil
+				}
+
+				return "", false, fmt.Errorf(
+					"unresolved static public asset %q",
+					parsed.Path,
+				)
+			},
+		})
 		if err != nil {
 			return fmt.Errorf("error bundling critical CSS: %w", err)
 		}
 	}
 
 	css_files_to_watch := set.New([]string{
-		cfg.main_css_entry(),
 		cfg.critical_css_entry(),
 	})
-	for _, f := range main_css_result.Imports {
-		css_files_to_watch.Add(f)
-	}
 	for _, f := range critical_css_result.Imports {
 		css_files_to_watch.Add(f)
 	}
-
-	pub_files.Inject(&staticproc.File{
-		SrcPathRel:    vormarun.Main_CSS_Filename,
-		Bytes:         []byte(main_css_result.CSS),
-		OutNamePrefix: vormarun.Public_Static_Out_Name_Prefix,
-	})
-	pub_fm = cfg.to_pub_fm(pub_files)
 
 	rs.mu.Lock()
 
 	if rs.build_ctx.Err() != nil {
 		rs.mu.Unlock()
-		return fmt.Errorf("build cancelled")
+		return rs.build_cancelled_error("before writing static build state")
 	}
 
-	main_css_changed := main_css_result.CSS != rs.main_css
 	critical_css_changed := critical_css_result.CSS != rs.critical_css
 	pub_fm_changed := hash_pub_fm(rs.pub_fm) != hash_pub_fm(pub_fm)
 
 	rs.pub_fm = pub_fm
-	rs.main_css = main_css_result.CSS
 	rs.critical_css = critical_css_result.CSS
 	rs.css_files_to_watch = css_files_to_watch
 	rs.static_ts_result = cfg.to_static_ts_result(pub_fm)
@@ -362,12 +375,6 @@ func (rs *run_state) run_static_build(opts static_build_opts) error {
 			CriticalCSS: critical_css_result.CSS,
 		})
 	}
-	if main_css_changed {
-		rs.client_manager.broadcast(refresh_payload{
-			ChangeType: update_main_css,
-			MainCSSURL: pub_fm[vormarun.Main_CSS_Filename],
-		})
-	}
 	if opts.includes_client_revalidate {
 		rs.client_manager.broadcast(refresh_payload{
 			ChangeType: client_revalidate,
@@ -387,9 +394,6 @@ func (rs *run_state) run_static_build(opts static_build_opts) error {
 func hash_pub_fm(pub_fm map[string]string) string {
 	keys := make([]string, 0, len(pub_fm))
 	for k := range pub_fm {
-		if k == vormarun.Main_CSS_Filename {
-			continue
-		}
 		keys = append(keys, k)
 	}
 	slices.Sort(keys)

@@ -1531,7 +1531,7 @@ describe("status", () => {
 			},
 		);
 		await wait_for(1);
-		expect(core.getWorkState().submissions.length > 0).toBe(true);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(true);
 
 		call(0).resolve(
 			new Response(JSON.stringify({ ok: true }), {
@@ -1541,7 +1541,7 @@ describe("status", () => {
 		);
 
 		for (let i = 0; i < 50; i++) {
-			if (core.getWorkState().submissions.length === 0) {
+			if (core.getWorkState().apiRequests.length === 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1549,7 +1549,7 @@ describe("status", () => {
 			});
 		}
 
-		expect(core.getWorkState().submissions.length > 0).toBe(false);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(false);
 	});
 
 	it("emits work notifications when navigation target changes", async () => {
@@ -1591,7 +1591,7 @@ describe("status", () => {
 			navigation: null,
 			revalidation: null,
 			prefetch: null,
-			submissions: [],
+			apiRequests: [],
 		});
 	});
 });

@@ -426,7 +426,7 @@ describe("derived isRevalidating status", () => {
 		call(0).resolve(json_response({ ok: true }));
 		await vi.advanceTimersByTimeAsync(0);
 
-		expect(core.getWorkState().submissions.length > 0).toBe(false);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(false);
 		expect(core.getWorkState().revalidation !== null).toBe(true);
 	});
 
@@ -457,7 +457,7 @@ describe("derived isRevalidating status", () => {
 			return (
 				work.navigation === null &&
 				work.revalidation === null &&
-				work.submissions.length === 0
+				work.apiRequests.length === 0
 			);
 		});
 		expect(had_gap).toBe(false);

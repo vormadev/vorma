@@ -8,12 +8,11 @@ import (
 	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/kit/jsonutil"
 	"github.com/vormadev/vorma/kit/searchparams"
-	"github.com/vormadev/vorma/kit/tsgen"
 )
 
 type live_state struct {
 	Error         string
-	VormaConfig   *vorma.Vorma
+	VormaConfig   *vorma.Config
 	TSResult      live_ts_result
 	TSModules     map[string]ts_route
 	SearchSchemas map[string]searchparams.Schema
@@ -50,49 +49,34 @@ func (cfg vorma_cfg) read_live_state_from_subprocess(
 	return ls, nil
 }
 
-func get_live_state(
-	v *vorma.Vorma,
-	loaders vorma.Loaders,
-	actions vorma.Actions,
-) (*live_state, error) {
-	cfg, err := to_cfg(v)
+func get_live_state(v *vorma.Router) (*live_state, error) {
+	cfg, err := to_cfg(v.Instance().Config())
 	if err != nil {
 		return nil, fmt.Errorf("error converting config: %w", err)
 	}
 
-	extra_ts_str := ""
-	if v.TSGenConfig.ExtraRawTS != nil {
-		d := v.TSGenConfig.ExtraRawTS(&tsgen.TSDrafter{})
-		if d != nil {
-			extra_ts_str = d.String()
-		}
-	}
-
-	ts_result, err := cfg.to_live_ts_result(
-		loaders,
-		actions,
-		v.TSGenConfig.ExtraTypes,
-		extra_ts_str,
-	)
+	ts_result, err := cfg.to_live_ts_result(v)
 	if err != nil {
 		return nil, fmt.Errorf("error generating TS types: %w", err)
 	}
 
-	ts_modules, err := cfg.get_dev_ts_modules(loaders)
+	ts_modules, err := cfg.get_dev_ts_modules(v)
 	if err != nil {
 		return nil, fmt.Errorf("error getting TS modules: %w", err)
 	}
 
-	search_schemas := make(map[string]searchparams.Schema, len(loaders))
-	for _, l := range loaders {
-		pattern := l.GetPattern()
+	views := v.Views()
+
+	search_schemas := make(map[string]searchparams.Schema, len(views))
+	for _, view := range views {
+		pattern := view.GetPattern()
 		if pattern == "" {
 			continue
 		}
-		schema, err := searchparams.SchemaFromValue(l.IType().Instance)
+		schema, err := searchparams.SchemaFromValue(view.IType().Instance)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"error generating loader search schema for %s: %w",
+				"error generating view search schema for %s: %w",
 				pattern,
 				err,
 			)
@@ -101,7 +85,7 @@ func get_live_state(
 	}
 
 	ls := &live_state{
-		VormaConfig:   cfg.V,
+		VormaConfig:   cfg.C,
 		TSResult:      ts_result,
 		TSModules:     ts_modules,
 		SearchSchemas: search_schemas,
@@ -110,12 +94,8 @@ func get_live_state(
 	return ls, nil
 }
 
-func print_live_state_and_exit(
-	v *vorma.Vorma,
-	loaders vorma.Loaders,
-	actions vorma.Actions,
-) {
-	ls, err := get_live_state(v, loaders, actions)
+func print_live_state_and_exit(v *vorma.Router) {
+	ls, err := get_live_state(v)
 	if err != nil {
 		print_err_json_and_exit("error getting live state", err)
 	}

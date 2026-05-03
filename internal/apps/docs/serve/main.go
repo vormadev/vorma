@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/vormadev/vorma"
 	"github.com/vormadev/vorma/kit/envutil"
 )
 
@@ -16,18 +15,10 @@ func main() {
 		panic("PORT env var must be set to a valid integer")
 	}
 
-	r, err := vorma.InitRouter(app.App, app.Loaders, app.Actions, dist.FS)
+	r, err := app.Router(dist.FS)()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize router: %v", err))
 	}
-
-	static_mw, err := app.App.PublicFileServerMiddleware()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to initialize public file server middleware: %v", err))
-	}
-
-	// __TODO add other middlewares
-	r.AddGlobalHTTPMiddleware(static_mw)
 
 	addr := fmt.Sprintf(":%d", port)
 	url := "http://localhost" + addr

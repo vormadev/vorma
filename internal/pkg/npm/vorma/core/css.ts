@@ -6,6 +6,9 @@ import {
 
 export function preload_css(bundles: string[]): void {
 	for (const path of new Set(bundles)) {
+		if (find_css_bundle(path)) {
+			continue;
+		}
 		if (
 			document.head.querySelector(`link[${CSS_PRELOAD_ATTR}="${path}"]`)
 		) {

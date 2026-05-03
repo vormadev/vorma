@@ -16,7 +16,7 @@ func (handler_test_request_ctx[I]) Wrap(c *RequestCtx[I]) *handler_test_request_
 	return &handler_test_request_ctx[I]{RequestCtx: c}
 }
 
-type handler_test_loader[I any, O any] = Loader[
+type handler_test_view[I, O any] = View[
 	I,
 	O,
 	*handler_test_request_ctx[I],
@@ -27,17 +27,15 @@ type handler_test_harness struct {
 	t *testing.T
 }
 
-func TestLoadersHandlerProdCSSBundlesKeepOrderAfterMainCSS(t *testing.T) {
+func TestViewsHandlerProdCSSBundlesKeepOrder(t *testing.T) {
 	h := handler_test_harness{t: t}
 	manifest := Manifest{
 		VormaVersion:         "test",
 		PublicStaticBasePath: "/static/",
-		ActionsMountRoot:     "/api/",
+		APIMountRoot:         "/api/",
 		UIVariant:            "react",
-		PublicFilemap: map[string]string{
-			Main_CSS_Filename: "/static/main.css",
-		},
-		CriticalCSS: "body { color: black; }",
+		PublicFilemap:        map[string]string{},
+		CriticalCSS:          "body { color: black; }",
 		ClientEntry: ClientModule{
 			URL:           "/static/entry.js",
 			DepURLs:       []string{"/static/entry.js", "/static/shared.js"},
@@ -66,7 +64,6 @@ func TestLoadersHandlerProdCSSBundlesKeepOrderAfterMainCSS(t *testing.T) {
 
 	body := html_res.Body.String()
 	expected_order := []string{
-		`id="vorma-main-css"`,
 		`data-vorma-css-bundle="/static/entry.css"`,
 		`data-vorma-css-bundle="/static/shared.css"`,
 		`data-vorma-css-bundle="/static/root.css"`,
@@ -109,7 +106,7 @@ func TestLoadersHandlerProdCSSBundlesKeepOrderAfterMainCSS(t *testing.T) {
 	}
 }
 
-func TestLoadersHandlerInjectsVercelDeploymentID(t *testing.T) {
+func TestViewsHandlerInjectsVercelDeploymentID(t *testing.T) {
 	t.Setenv("VERCEL_SKEW_PROTECTION_ENABLED", "1")
 	t.Setenv("VERCEL_DEPLOYMENT_ID", "dpl_test_123")
 
@@ -117,11 +114,9 @@ func TestLoadersHandlerInjectsVercelDeploymentID(t *testing.T) {
 	manifest := Manifest{
 		VormaVersion:         "test",
 		PublicStaticBasePath: "/static/",
-		ActionsMountRoot:     "/api/",
+		APIMountRoot:         "/api/",
 		UIVariant:            "react",
-		PublicFilemap: map[string]string{
-			Main_CSS_Filename: "/static/main.css",
-		},
+		PublicFilemap:        map[string]string{},
 		ClientEntry: ClientModule{
 			URL: "/static/entry.js",
 		},
@@ -172,23 +167,26 @@ func (h handler_test_harness) init_router(manifest Manifest) *Router {
 		h.t.Fatalf("error marshaling manifest: %v", err)
 	}
 
-	v := &Vorma{}
-	router, err := InitRouter(
-		v,
-		Loaders{
-			handler_test_loader[struct{}, struct{}]{
-				Pattern:  "/",
-				TSModule: "root.tsx",
-			},
-		},
-		nil,
-		fstest.MapFS{
-			ManifestStaticOutProd: &fstest.MapFile{Data: manifest_json},
-		},
-	)
-	if err != nil {
-		h.t.Fatalf("error initializing router: %v", err)
+	static_fs := fstest.MapFS{
+		ManifestStaticOutProd: &fstest.MapFile{Data: manifest_json},
 	}
+	v, err := New(&Config{
+		DistConfig: DistConfig{
+			StaticFS: static_fs,
+		},
+	})
+	if err != nil {
+		h.t.Fatalf("error initializing Vorma: %v", err)
+	}
+
+	router, err := v.Router()
+	if err != nil {
+		h.t.Fatalf("error getting router: %v", err)
+	}
+	router.View(handler_test_view[struct{}, struct{}]{
+		Pattern:      "/",
+		ClientModule: "root.tsx",
+	})
 	return router
 }
 

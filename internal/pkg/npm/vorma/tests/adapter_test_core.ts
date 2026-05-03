@@ -52,14 +52,7 @@ type TestRouteTarget =
 	| ({ pattern: string } & Record<string, unknown>);
 
 type TestVormaClient = {
-	init: (
-		options: Omit<Partial<InitOptions>, "render"> & {
-			render?: (args: {
-				RootOutlet: (props?: Record<string, unknown>) => unknown;
-				rootEl: HTMLElement;
-			}) => void | Promise<void>;
-		},
-	) => Promise<void>;
+	init: () => Promise<void>;
 
 	navigate: (props: TestRouteTarget) => Promise<{ didNavigate: boolean }>;
 
@@ -93,7 +86,7 @@ type TestVormaClient = {
 
 	usePatternClientLoaderData: (pattern: string) => unknown;
 
-	defineRoute: (input: {
+	defineView: (input: {
 		pattern: string;
 		component: (props: TestRouteProps) => unknown;
 		errorBoundary?: (props: { error: unknown }) => unknown;
@@ -109,11 +102,16 @@ type TestVormaClient = {
 
 type TestCreateClientOptions = {
 	linkDefaultProps?: Record<string, unknown>;
-};
+} & Omit<Partial<InitOptions>, "render"> & {
+		render?: (args: {
+			RootOutlet: unknown;
+			rootEl: HTMLElement;
+		}) => void | Promise<void>;
+	};
 
 export type AdapterTestHarness = {
 	create_client: (
-		config: { actionsMountRoot: string },
+		config: { apiMountRoot: string },
 		options?: TestCreateClientOptions,
 	) => TestVormaClient;
 
@@ -144,7 +142,7 @@ export type AdapterTestHarness = {
 
 /////// Helpers
 
-const TEST_CONFIG = { actionsMountRoot: "/api/" } as any;
+const TEST_CONFIG = { apiMountRoot: "/api/" } as any;
 
 function seed_payload(overrides: Record<string, unknown> = {}) {
 	const data = {
@@ -228,17 +226,16 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 	describe("init render", () => {
 		it("passes RootOutlet and rootEl to render callback", async () => {
 			seed_payload();
-			const client = harness.create_client(TEST_CONFIG);
-
 			let received_root_outlet: unknown;
 			let received_root_el: HTMLElement | undefined;
-
-			await client.init({
+			const client = harness.create_client(TEST_CONFIG, {
 				render: ({ RootOutlet, rootEl }) => {
 					received_root_outlet = RootOutlet;
 					received_root_el = rootEl;
 				},
 			});
+
+			await client.init();
 
 			expect(typeof received_root_outlet).toBe("function");
 			expect(received_root_el).toBeInstanceOf(HTMLElement);
@@ -269,7 +266,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -303,7 +300,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -338,7 +335,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -353,7 +350,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -383,7 +380,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -422,7 +419,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -458,9 +455,11 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			const default_boundary = (props: { error: unknown }) => {
 				return harness.h("div", {}, `default:${props.error as any}`);
 			};
-			const client = harness.create_client(TEST_CONFIG);
+			const client = harness.create_client(TEST_CONFIG, {
+				defaultErrorBoundary: default_boundary,
+			});
 
-			await client.init({ defaultErrorBoundary: default_boundary });
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -518,7 +517,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -550,7 +549,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const scroll_spy = vi.spyOn(window, "scrollTo");
 			// rAF used by some adapters (Solid) — mock to fire synchronously
@@ -631,7 +630,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -708,7 +707,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -761,7 +760,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -794,7 +793,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -829,7 +828,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -864,7 +863,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -885,7 +884,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 				route_response({ MatchedPatterns: ["/canonical"] }),
@@ -928,7 +927,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const fetch_spy = vi.spyOn(globalThis, "fetch");
 
@@ -979,7 +978,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -1014,7 +1013,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -1057,7 +1056,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				});
 				const client = harness.create_client(TEST_CONFIG);
 
-				await client.init({});
+				await client.init();
 
 				const { container, render, cleanup } = harness.mount();
 				try {
@@ -1095,7 +1094,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1119,7 +1118,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1148,7 +1147,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				linkDefaultProps: { className: "default-class" },
 			});
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1187,7 +1186,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1230,7 +1229,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1288,7 +1287,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			let resolve_response!: (response: Response) => void;
 			const response_promise = new Promise<Response>((resolve) => {
@@ -1346,7 +1345,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 				route_response({ MatchedPatterns: ["/clicked"] }),
@@ -1381,7 +1380,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const fetch_spy = vi.spyOn(globalThis, "fetch");
 
@@ -1425,7 +1424,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init({});
+			await client.init();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1453,11 +1452,11 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 	});
 
 	///////////////////////////////////////////////////////////////////
-	/////// defineRoute
+	/////// defineView
 	///////////////////////////////////////////////////////////////////
 
-	describe("defineRoute", () => {
-		it("returns RouteDefinition with correct fields", async () => {
+	describe("defineView", () => {
+		it("returns ViewDefinition with correct fields", async () => {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
@@ -1471,7 +1470,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				return { data: true };
 			};
 
-			const def = client.defineRoute({
+			const def = client.defineView({
 				pattern: "/test",
 				component: comp,
 				errorBoundary: boundary,

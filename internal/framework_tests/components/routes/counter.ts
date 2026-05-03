@@ -12,7 +12,7 @@ import {
 	text_state,
 } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_counter_pattern,
 	component: (props: any) => {
 		const data = loader_box(props);
@@ -89,7 +89,7 @@ export default ui.defineRoute({
 						type: "button",
 						onClick: () => {
 							void ui.apiClient
-								.submit({
+								.query({
 									method: "GET",
 									pattern: action_count_pattern,
 									input: { delta: -9 },
@@ -115,7 +115,7 @@ export default ui.defineRoute({
 						type: "button",
 						onClick: () => {
 							void ui.apiClient
-								.submit({
+								.query({
 									method: "GET",
 									pattern: action_count_pattern,
 									input: { delta: 9 },

@@ -1,0 +1,7 @@
+.public-url-probe {
+	background-image: url("@public/assets/public-url-probe.svg");
+	height: 1px;
+	overflow: hidden;
+	position: absolute;
+	width: 1px;
+}

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { create_typed_api_client, SubmitError } from "./api_client.ts";
+import { create_typed_api_client, MutationError } from "./api_client.ts";
 import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 
 type SubmitCall = {
@@ -35,12 +35,12 @@ function headers_of(call: SubmitCall): Headers {
 	return new Headers(call.init?.headers ?? undefined);
 }
 
-describe("submit", () => {
+describe("query and mutate", () => {
 	it("defaults to GET and serializes input into URL search", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).query({
 			pattern: "/users/:id",
 			params: { id: "42" },
 			input: { include: "posts" },
@@ -58,7 +58,7 @@ describe("submit", () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).query({
 			method: "GET",
 			pattern: "/health",
 		});
@@ -74,7 +74,7 @@ describe("submit", () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).query({
 			pattern: "/docs/*",
 			splatValues: ["guide", "intro"],
 			input: { format: "html" },
@@ -89,7 +89,7 @@ describe("submit", () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			method: "PATCH",
 			pattern: "/users/:id",
 			params: { id: "42" },
@@ -104,11 +104,11 @@ describe("submit", () => {
 		expect(url.search).toBe("");
 	});
 
-	it("works without input for non-GET actions", async () => {
+	it("works without input for non-GET API routes", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			method: "POST",
 			pattern: "/logout",
 		});
@@ -120,11 +120,11 @@ describe("submit", () => {
 		expect(url.pathname).toBe("/api/logout");
 	});
 
-	it("passes flattened Vorma submit options through", async () => {
+	it("passes flattened Vorma options through", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			method: "POST",
 			pattern: "/users/:id",
 			params: { id: "42" },
@@ -135,7 +135,7 @@ describe("submit", () => {
 		});
 
 		expect(calls[0]!.options).toEqual({
-			actionKind: "mutation",
+			apiRouteKind: "mutation",
 			dedupeKey: "save",
 			revalidate: false,
 			skipProgressIndicator: true,
@@ -146,7 +146,7 @@ describe("submit", () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			method: "POST",
 			pattern: "/sessions",
 			input: { email: "a@b.com" },
@@ -157,38 +157,36 @@ describe("submit", () => {
 		expect(calls[0]!.init?.credentials).toBe("include");
 		expect(headers_of(calls[0]!).get("X-Trace")).toBe("1");
 	});
-	it("resolves query override for POST actions", async () => {
+	it("passes query semantics from query", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).query({
 			method: "POST",
 			pattern: "/rpc",
-			kind: "query",
 			input: { op: "quote" },
 		});
 
-		expect(calls[0]!.options).toMatchObject({ actionKind: "query" });
+		expect(calls[0]!.options).toMatchObject({ apiRouteKind: "query" });
 	});
 
-	it("resolves mutation override for GET actions", async () => {
+	it("passes mutation semantics from mutate", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			pattern: "/health",
-			kind: "mutation",
 		});
 
-		expect(calls[0]!.options).toMatchObject({ actionKind: "mutation" });
+		expect(calls[0]!.options).toMatchObject({ apiRouteKind: "mutation" });
 	});
 
-	it("submitOrThrow returns data for successful submit", async () => {
+	it("mutateOrThrow returns data for successful mutation", async () => {
 		const { submit_fn } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
 		await expect(
-			(client as any).submitOrThrow({
+			(client as any).mutateOrThrow({
 				method: "POST",
 				pattern: "/sessions",
 				input: { email: "a@b.com", password: "pw" },
@@ -196,7 +194,7 @@ describe("submit", () => {
 		).resolves.toEqual({});
 	});
 
-	it("submitOrThrow throws SubmitError with preserved result", async () => {
+	it("mutateOrThrow throws MutationError with preserved result", async () => {
 		const submit_fn = vi.fn(async () => {
 			return {
 				success: false as const,
@@ -211,24 +209,24 @@ describe("submit", () => {
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
 		await expect(
-			(client as any).submitOrThrow({
+			(client as any).mutateOrThrow({
 				method: "POST",
 				pattern: "/sessions",
 				input: { email: "a@b.com", password: "pw" },
 			}),
-		).rejects.toBeInstanceOf(SubmitError);
+		).rejects.toBeInstanceOf(MutationError);
 
 		try {
-			await (client as any).submitOrThrow({
+			await (client as any).mutateOrThrow({
 				method: "POST",
 				pattern: "/sessions",
 				input: { email: "a@b.com", password: "pw" },
 			});
 		} catch (err) {
-			expect(err).toBeInstanceOf(SubmitError);
-			expect((err as SubmitError).message).toBe("Bad Request");
-			expect((err as SubmitError).result.success).toBe(false);
-			if (err instanceof SubmitError) {
+			expect(err).toBeInstanceOf(MutationError);
+			expect((err as MutationError).message).toBe("Bad Request");
+			expect((err as MutationError).result.success).toBe(false);
+			if (err instanceof MutationError) {
 				expect(err.result.error).toBe("Bad Request");
 				expect(err.result.response?.status).toBe(400);
 			}
@@ -290,7 +288,7 @@ describe("decorator", () => {
 			decorator,
 		);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			method: "PATCH",
 			pattern: "/users/:id",
 			params: { id: "42" },
@@ -320,7 +318,7 @@ describe("decorator", () => {
 			decorator,
 		);
 
-		await (client as any).submit({
+		await (client as any).query({
 			pattern: "/users/:id",
 			params: { id: "42" },
 			input: { q: "test" },
@@ -340,7 +338,7 @@ describe("decorator", () => {
 			decorator,
 		);
 
-		await (client as any).submit({
+		await (client as any).query({
 			pattern: "/users/:id",
 			params: { id: "42" },
 			input: { q: "test" },
@@ -363,7 +361,7 @@ describe("decorator", () => {
 			decorator,
 		);
 
-		await (client as any).submit({
+		await (client as any).mutate({
 			method: "POST",
 			pattern: "/sessions",
 			input: { email: "a@b.com" },

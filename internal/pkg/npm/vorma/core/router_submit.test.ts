@@ -326,7 +326,7 @@ describe("submit", () => {
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "revalidation",
-					revalidationReason: "submission",
+					revalidationReason: "apiRequest",
 				}),
 			}),
 		);
@@ -365,15 +365,15 @@ describe("submit", () => {
 				serverBuildID: "build-2",
 				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
-					kind: "action",
-					actionKind: "mutation",
+					kind: "apiRoute",
+					apiRouteKind: "mutation",
 					requestedHref: `${window.location.origin}/api/action`,
 					method: "POST",
 					status: 500,
 					ok: false,
 				}),
 				currentWorkState: expect.objectContaining({
-					submissions: [
+					apiRequests: [
 						expect.objectContaining({
 							href: `${window.location.origin}/api/action`,
 							method: "POST",
@@ -417,8 +417,8 @@ describe("submit", () => {
 				serverBuildID: "build-2",
 				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
-					kind: "action",
-					actionKind: "mutation",
+					kind: "apiRoute",
+					apiRouteKind: "mutation",
 					requestedHref: `${window.location.origin}/api/action`,
 					method: "POST",
 					status: 200,
@@ -454,8 +454,8 @@ describe("submit", () => {
 				serverBuildID: "build-2",
 				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
-					kind: "action",
-					actionKind: "query",
+					kind: "apiRoute",
+					apiRouteKind: "query",
 					requestedHref: `${window.location.origin}/api/action`,
 					method: "GET",
 					status: 500,
@@ -524,14 +524,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("skips default POST revalidation when actionKind is query", async () => {
+	it("skips default POST revalidation when apiRouteKind is query", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
-			{ actionKind: "query" },
+			{ apiRouteKind: "query" },
 		);
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
@@ -541,14 +541,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("skips default POST revalidation on non-ok when actionKind is query", async () => {
+	it("skips default POST revalidation on non-ok when apiRouteKind is query", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "POST" },
-			{ actionKind: "query" },
+			{ apiRouteKind: "query" },
 		);
 		await wait_for(1);
 		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
@@ -561,7 +561,7 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("lets revalidate: true override query action semantics", async () => {
+	it("lets revalidate: true override query API route semantics", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
@@ -569,7 +569,7 @@ describe("submit", () => {
 			"/api/action",
 			{ method: "POST" },
 			{
-				actionKind: "query",
+				apiRouteKind: "query",
 				revalidate: true,
 			},
 		);
@@ -584,14 +584,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(2);
 	});
 
-	it("lets mutation action semantics override GET default", async () => {
+	it("lets mutation API route semantics override GET default", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "GET" },
-			{ actionKind: "mutation" },
+			{ apiRouteKind: "mutation" },
 		);
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
@@ -604,14 +604,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(2);
 	});
 
-	it("lets mutation action semantics override GET default on non-ok", async () => {
+	it("lets mutation API route semantics override GET default on non-ok", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
 			"/api/action",
 			{ method: "GET" },
-			{ actionKind: "mutation" },
+			{ apiRouteKind: "mutation" },
 		);
 		await wait_for(1);
 		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
@@ -1139,7 +1139,7 @@ describe("submit dedupe edge cases", () => {
 
 		expect(r1.success).toBe(false);
 		expect(r2.success).toBe(false);
-		expect(core.getWorkState().submissions.length > 0).toBe(false);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(false);
 	});
 
 	it("stale deduped mutation still triggers revalidation after abort", async () => {
@@ -1368,18 +1368,18 @@ describe("status continuity", () => {
 			},
 		);
 
-		expect(core.getWorkState().submissions.length > 0).toBe(true);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(true);
 
 		await wait_for(2);
 		call(0).resolve(json_response());
 		await tick();
-		expect(core.getWorkState().submissions.length > 0).toBe(true);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(true);
 
 		call(1).resolve(json_response());
 		await tick();
 
 		for (let i = 0; i < 10; i++) {
-			if (core.getWorkState().submissions.length === 0) {
+			if (core.getWorkState().apiRequests.length === 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1387,7 +1387,7 @@ describe("status continuity", () => {
 			});
 		}
 
-		expect(core.getWorkState().submissions.length > 0).toBe(false);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(false);
 	});
 
 	it("keeps submitting continuous through same-key dedupe handoff", async () => {
@@ -1411,10 +1411,10 @@ describe("status continuity", () => {
 			},
 		);
 
-		expect(core.getWorkState().submissions.length > 0).toBe(true);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(true);
 
 		await s1;
-		expect(core.getWorkState().submissions.length > 0).toBe(true);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(true);
 
 		// s1 dispatched call 0 (aborted), s2 dispatched call 1
 		await wait_for(2);
@@ -1422,7 +1422,7 @@ describe("status continuity", () => {
 		await s2;
 
 		for (let i = 0; i < 10; i++) {
-			if (core.getWorkState().submissions.length === 0) {
+			if (core.getWorkState().apiRequests.length === 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1430,7 +1430,7 @@ describe("status continuity", () => {
 			});
 		}
 
-		expect(core.getWorkState().submissions.length > 0).toBe(false);
+		expect(core.getWorkState().apiRequests.length > 0).toBe(false);
 	});
 
 	it("keeps loading continuous from submit into auto-revalidate", async () => {

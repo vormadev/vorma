@@ -1,7 +1,7 @@
 import { ui } from "../../route_factory.ts";
 import { h, klass, route_fail_pattern } from "./support.ts";
 
-export default ui.defineRoute({
+export default ui.defineView({
 	pattern: route_fail_pattern,
 	component: () => {
 		return h("section", { "data-bmb-route": "fail-unexpected" });

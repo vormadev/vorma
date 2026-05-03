@@ -1,7 +1,6 @@
 package vorma
 
 import (
-	"io/fs"
 	"net/http"
 	"path/filepath"
 
@@ -20,7 +19,10 @@ const (
 /////// CONFIG TYPES
 
 type (
-	Vorma          = vormarun.Vorma
+	Instance       = vormarun.Instance
+	Router         = vormarun.Router
+	Config         = vormarun.Config
+	DistConfig     = vormarun.DistConfig
 	DevWatchConfig = vormarun.DevWatchConfig
 	FrontendConfig = vormarun.FrontendConfig
 	TSGenConfig    = vormarun.TSGenConfig
@@ -31,53 +33,41 @@ type (
 /////// RUNTIME TYPES
 
 type (
-	Loader[
-		I any,
-		O any,
-		CtxPtr ~*Ctx,
-		Ctx vormarun.RequestCtxWrapper[I, CtxPtr],
-	] = vormarun.Loader[I, O, CtxPtr, Ctx]
+	RequestCtxWrapper[I, RP any] = vormarun.RequestCtxWrapper[I, RP]
 
-	Action[
-		I any,
-		O any,
-		CtxPtr ~*Ctx,
-		Ctx vormarun.RequestCtxWrapper[I, CtxPtr],
-	] = vormarun.Action[I, O, CtxPtr, Ctx]
+	View[I, O any, RP ~*R, R RequestCtxWrapper[I, RP]]     = vormarun.View[I, O, RP, R]
+	APIRoute[I, O any, RP ~*R, R RequestCtxWrapper[I, RP]] = vormarun.APIRoute[I, O, RP, R]
 
 	RequestCtx[I any] = vormarun.RequestCtx[I]
 
-	AnyLoader = vormarun.AnyLoader
-	AnyAction = vormarun.AnyAction
+	AnyView     = vormarun.AnyView
+	AnyAPIRoute = vormarun.AnyAPIRoute
 
-	Loaders = []AnyLoader
-	Actions = []AnyAction
+	Views     = vormarun.Views
+	APIRoutes = vormarun.APIRoutes
 
 	LoaderError = vormarun.LoaderError
 	FormData    = vormarun.FormData
 
-	ActionKind = vormarun.ActionKind
-
-	Router = vormarun.Router
+	APIRouteKind = vormarun.APIRouteKind
 )
 
 const (
-	ActionKindQuery    = vormarun.ActionKindQuery
-	ActionKindMutation = vormarun.ActionKindMutation
+	APIRouteKindQuery    = vormarun.APIRouteKindQuery
+	APIRouteKindMutation = vormarun.APIRouteKindMutation
 )
 
 /////// CORE FUNCTIONS
 
-func IsDev() bool { return vormarun.IsDev() }
-
-func InitRouter(
-	v *Vorma,
-	loaders []AnyLoader,
-	actions []AnyAction,
-	staticFS fs.FS,
-) (*Router, error) {
-	return vormarun.InitRouter(v, loaders, actions, staticFS)
+func New(config *Config) *Instance {
+	instance, err := vormarun.New(config)
+	if err != nil {
+		panic(err)
+	}
+	return instance
 }
+
+func IsDev() bool { return vormarun.IsDev() }
 
 func IsJSONRequest(r *http.Request) bool {
 	return vormarun.IsJSONRequest(r)

@@ -10,7 +10,7 @@ import { create_typed_api_client } from "./api_client.ts";
 import type {
 	ClientCore,
 	InitOptions as CoreInitOptions,
-	RouteDefinition,
+	ViewDefinition,
 } from "./create_client_core";
 import {
 	create_client_core,
@@ -32,10 +32,10 @@ import type {
 	RouteState,
 	ToAPIClient,
 	ToAPIDecorator,
-	ToDefineRouteArgs,
+	ToDefineViewArgs,
 	ToLinkProps,
 	ToLoaderOutput,
-	ToLoaderPattern,
+	ToViewPattern,
 	ToNavigateArgs,
 	ToNavigationTarget,
 	ToRouteComponentProps,
@@ -80,7 +80,7 @@ export type AdapterRenderArgs<App> = {
 	rootEl: HTMLElement;
 };
 
-export type AdapterInitOptions<App> = Omit<CoreInitOptions, "render"> & {
+export type AdapterClientOptions<App> = Omit<CoreInitOptions, "render"> & {
 	render?: (args: AdapterRenderArgs<App>) => void | Promise<void>;
 };
 
@@ -93,19 +93,19 @@ type AdapterBase<A extends AppConfig> = {
 		ClientCore,
 		"revalidate" | "getRouteState" | "getWorkState"
 	> & {
-		navigate: <P extends ToLoaderPattern<A>>(
+		navigate: <P extends ToViewPattern<A>>(
 			args: ToNavigateArgs<A, P>,
 		) => Promise<{ didNavigate: boolean }>;
 
-		prefetch: <P extends ToLoaderPattern<A>>(
+		prefetch: <P extends ToViewPattern<A>>(
 			target: ToNavigationTarget<A, P>,
 		) => void;
 
-		cancelPrefetch: <P extends ToLoaderPattern<A>>(
+		cancelPrefetch: <P extends ToViewPattern<A>>(
 			target: ToNavigationTarget<A, P>,
 		) => void;
 
-		toHref: <P extends ToLoaderPattern<A>>(
+		toHref: <P extends ToViewPattern<A>>(
 			destination: ToRouteDestination<A, P>,
 		) => string;
 
@@ -228,7 +228,7 @@ export function create_adapter_base<A extends AppConfig>(
 	const to_href = create_typed_to_href<A>();
 
 	const api_client = create_typed_api_client<A>(
-		app_config.actionsMountRoot,
+		app_config.apiMountRoot,
 		core.submit_inner,
 		api_decorator,
 	);
@@ -362,21 +362,21 @@ export type VormaClient<
 	HookReturnMode extends "value" | "accessor" | "signal" = "value",
 	App = unknown,
 > = AdapterBase<A>["passthrough"] & {
-	init: (options: AdapterInitOptions<App>) => Promise<Result<void>>;
+	init: () => Promise<Result<void>>;
 
-	defineRoute: <P extends ToLoaderPattern<A>, T = any>(
-		input: ToDefineRouteArgs<A, P, T, Element>,
-	) => RouteDefinition;
+	defineView: <P extends ToViewPattern<A>, T = any>(
+		input: ToDefineViewArgs<A, P, T, Element>,
+	) => ViewDefinition;
 
 	RootOutlet: (
 		props: { idx?: number } & Record<string, unknown>,
 	) => Element | null;
 
-	Link: <P extends ToLoaderPattern<A>>(
+	Link: <P extends ToViewPattern<A>>(
 		props: Omit<AnchorProps, "href"> & ToLinkProps<A, P>,
 	) => Element;
 
-	useRouteSync: <P extends ToLoaderPattern<A>>(
+	useRouteSync: <P extends ToViewPattern<A>>(
 		args: ToRouteSyncArgs<A, P>,
 	) => void;
 
@@ -394,19 +394,19 @@ export type VormaClient<
 		): HookReturn<T, HookReturnMode>;
 	};
 
-	useLoaderData: <P extends ToLoaderPattern<A>>(
+	useLoaderData: <P extends ToViewPattern<A>>(
 		args: ToRouteComponentProps<A, P>,
 	) => HookReturn<ToLoaderOutput<A, P>, HookReturnMode>;
 
-	usePatternLoaderData: <P extends ToLoaderPattern<A>>(
+	usePatternLoaderData: <P extends ToViewPattern<A>>(
 		pattern: P,
 	) => HookReturn<ToLoaderOutput<A, P> | undefined, HookReturnMode>;
 
-	useClientLoaderData: <P extends ToLoaderPattern<A>, T>(
+	useClientLoaderData: <P extends ToViewPattern<A>, T>(
 		args: ToRouteComponentProps<A, P, T>,
 	) => HookReturn<T, HookReturnMode>;
 
 	usePatternClientLoaderData: <T>(
-		pattern: ToLoaderPattern<A>,
+		pattern: ToViewPattern<A>,
 	) => HookReturn<T | undefined, HookReturnMode>;
 };
