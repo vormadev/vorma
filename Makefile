@@ -12,6 +12,9 @@ install:
 install-fw:
 	@go run ./internal/cmd/enforcer install --scope fw
 
+install-matcher:
+	@go run ./internal/cmd/enforcer install --scope matcher
+
 install-other:
 	@go run ./internal/cmd/enforcer install --scope other
 
@@ -35,6 +38,9 @@ fmt:
 fmt-fw:
 	@go run ./internal/cmd/enforcer fmt --scope fw
 
+fmt-matcher:
+	@go run ./internal/cmd/enforcer fmt --scope matcher
+
 fmt-other:
 	@go run ./internal/cmd/enforcer fmt --scope other
 
@@ -53,6 +59,9 @@ lint:
 
 lint-fw:
 	@go run ./internal/cmd/enforcer lint --scope fw
+
+lint-matcher:
+	@go run ./internal/cmd/enforcer lint --scope matcher
 
 lint-other:
 	@go run ./internal/cmd/enforcer lint --scope other
@@ -73,6 +82,9 @@ fix:
 fix-fw:
 	@go run ./internal/cmd/enforcer fix --scope fw
 
+fix-matcher:
+	@go run ./internal/cmd/enforcer fix --scope matcher
+
 fix-other:
 	@go run ./internal/cmd/enforcer fix --scope other
 
@@ -92,6 +104,9 @@ typecheck:
 typecheck-fw:
 	@go run ./internal/cmd/enforcer typecheck --scope fw
 
+typecheck-matcher:
+	@go run ./internal/cmd/enforcer typecheck --scope matcher
+
 typecheck-other:
 	@go run ./internal/cmd/enforcer typecheck --scope other
 
@@ -110,6 +125,9 @@ test:
 
 test-fw:
 	@go run ./internal/cmd/enforcer test --scope fw
+
+test-matcher:
+	@go run ./internal/cmd/enforcer test --scope matcher
 
 test-other:
 	@go run ./internal/cmd/enforcer test --scope other
@@ -143,6 +161,9 @@ gate:
 gate-fw:
 	@go run ./internal/cmd/enforcer gate --scope fw
 
+gate-matcher:
+	@go run ./internal/cmd/enforcer gate --scope matcher
+
 gate-other:
 	@go run ./internal/cmd/enforcer gate --scope other
 
@@ -157,6 +178,10 @@ stress:
 # Usage: make stress-fw intensity=10
 stress-fw:
 	@go run ./internal/cmd/enforcer stress --scope fw --intensity $(intensity)
+
+# Usage: make stress-matcher intensity=10
+stress-matcher:
+	@go run ./internal/cmd/enforcer stress --scope matcher --intensity $(intensity)
 
 # Usage: make stress-other intensity=10
 stress-other:
@@ -198,9 +223,8 @@ publish-go:
 bench-go:
 	go test -bench=. $(pkg)
 
-# Usage: make bench-ts pkg=./kit/matcher
-bench-ts:
-	cd ./internal/pkg/npm && pnpm vitest bench $(pkg)
+bench-matcher-ts:
+	cd ./internal/pkg/npm && pnpm vitest bench ../../matcher_tests/matcher.bench.ts
 
 #####################################################################
 ####### Other

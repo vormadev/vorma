@@ -1,10 +1,10 @@
 import type { ReadonlySignal } from "@preact/signals";
 import { jsonDeepEquals } from "vorma/kit/json";
-import { findNestedMatches } from "vorma/kit/matcher/find-nested";
 import {
 	createPatternRegistry,
+	findNestedMatches,
 	registerPattern,
-} from "vorma/kit/matcher/register";
+} from "vorma/kit/matcher";
 import { R, type Result } from "vorma/kit/result";
 import { create_typed_api_client } from "./api_client.ts";
 import type {
@@ -35,12 +35,12 @@ import type {
 	ToDefineViewArgs,
 	ToLinkProps,
 	ToLoaderOutput,
-	ToViewPattern,
 	ToNavigateArgs,
 	ToNavigationTarget,
 	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewPattern,
 } from "./types";
 import {
 	create_typed_navigate,

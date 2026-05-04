@@ -1,16 +1,14 @@
-// benchmarks.test.ts
 import { bench, describe } from "vitest";
-import { findBestMatch } from "./find_best_match.ts";
-import { findNestedMatches } from "./find_nested_matches.ts";
 import {
 	createPatternRegistry,
+	findBestMatch,
+	findNestedMatches,
+	parseSegments,
 	registerPattern,
 	type PatternRegistry,
-} from "./register.ts";
-import { parseSegments } from "./utils.ts";
+} from "vorma/kit/matcher";
 
-// Nested patterns for the nested benchmarks
-const NestedPatterns = [
+const nested_patterns = [
 	"/_index",
 	"/articles/_index",
 	"/articles/test/articles/_index",
@@ -47,17 +45,18 @@ const NestedPatterns = [
 	"/j/k/l/m/n/:_/:_",
 ];
 
-// Setup functions - FIXED to avoid duplicates
-function setupNonNestedRegistryForBenchmark(scale: string): PatternRegistry {
+function setup_non_nested_registry_for_benchmark(
+	scale: string,
+): PatternRegistry {
 	const registry_res = createPatternRegistry();
 	if (!registry_res.ok) {
-		throw new Error(`createPatternRegistry() error: ${registry_res.err}`);
+		console.error(`createPatternRegistry() error: ${registry_res.err}`);
+		process.exit(1);
 	}
 	const registry = registry_res.val;
 
 	switch (scale) {
 		case "small":
-			// Basic patterns for simple tests (8 patterns like Go)
 			registerPattern(registry, "/");
 			registerPattern(registry, "/users");
 			registerPattern(registry, "/users/:id");
@@ -69,8 +68,6 @@ function setupNonNestedRegistryForBenchmark(scale: string): PatternRegistry {
 			break;
 
 		case "medium":
-			// Create ~4000 UNIQUE patterns
-			// Mix of static, dynamic, and splat patterns
 			for (let i = 0; i < 1000; i++) {
 				registerPattern(registry, `/api/v1/users${i}`);
 				registerPattern(registry, `/api/v2/users${i}/:id`);
@@ -83,21 +80,17 @@ function setupNonNestedRegistryForBenchmark(scale: string): PatternRegistry {
 			break;
 
 		case "large":
-			// Create ~60000 UNIQUE patterns
 			for (let i = 0; i < 10000; i++) {
-				// Static patterns
 				registerPattern(registry, `/api/v1/users${i}`);
 				registerPattern(registry, `/api/v2/products${i}`);
 				registerPattern(registry, `/docs/section${i}`);
 
-				// Dynamic patterns
 				registerPattern(
 					registry,
 					`/api/v3/users${i}/:id/posts/:post_id`,
 				);
 				registerPattern(registry, `/api/v4/products${i}/:category/:id`);
 
-				// Splat patterns
 				registerPattern(registry, `/files/bucket${i}/*`);
 			}
 			break;
@@ -106,20 +99,20 @@ function setupNonNestedRegistryForBenchmark(scale: string): PatternRegistry {
 	return registry;
 }
 
-function setupNestedRegistryForBenchmark(): PatternRegistry {
+function setup_nested_registry_for_benchmark(): PatternRegistry {
 	const registry_res = createPatternRegistry();
 	if (!registry_res.ok) {
-		throw new Error(`createPatternRegistry() error: ${registry_res.err}`);
+		console.error(`createPatternRegistry() error: ${registry_res.err}`);
+		process.exit(1);
 	}
 	const registry = registry_res.val;
-	for (const pattern of NestedPatterns) {
+	for (const pattern of nested_patterns) {
 		registerPattern(registry, pattern);
 	}
 	return registry;
 }
 
-// Generate test paths
-function generateNonNestedPathsForBenchmark(scale: string): string[] {
+function generate_non_nested_paths_for_benchmark(scale: string): string[] {
 	switch (scale) {
 		case "small":
 			return [
@@ -134,19 +127,19 @@ function generateNonNestedPathsForBenchmark(scale: string): string[] {
 		case "medium":
 		case "large":
 			return [
-				"/api/v1/users500", // Static hit
-				"/api/v2/users500/123", // Dynamic hit
-				"/api/v3/users500/123/posts/456", // Deep dynamic
-				"/files/bucket500/path/to/file.txt", // Splat
-				"/api/v1/users999", // Different static
-				"/api/v2/products500", // Might not exist in medium
-				"/docs/section500", // Another static
+				"/api/v1/users500",
+				"/api/v2/users500/123",
+				"/api/v3/users500/123/posts/456",
+				"/files/bucket500/path/to/file.txt",
+				"/api/v1/users999",
+				"/api/v2/products500",
+				"/docs/section500",
 			];
 	}
 	return ["/"];
 }
 
-function generateNestedPathsForBenchmark(): string[] {
+function generate_nested_paths_for_benchmark(): string[] {
 	return [
 		"/",
 		"/dashboard",
@@ -166,27 +159,25 @@ function generateNestedPathsForBenchmark(): string[] {
 }
 
 describe("FindBestMatch Benchmarks", () => {
-	// Pre-setup registries
-	const mediumRegistry = setupNonNestedRegistryForBenchmark("medium");
-	const smallRegistry = setupNonNestedRegistryForBenchmark("small");
-	const largeRegistry = setupNonNestedRegistryForBenchmark("large");
+	const medium_registry = setup_non_nested_registry_for_benchmark("medium");
+	const small_registry = setup_non_nested_registry_for_benchmark("small");
+	const large_registry = setup_non_nested_registry_for_benchmark("large");
 
-	// Simple scenarios - matching Go's test cases
 	const scenarios = [
 		{
 			name: "StaticPattern",
 			path: "/api/v1/users",
-			registry: mediumRegistry,
+			registry: medium_registry,
 		},
 		{
 			name: "DynamicPattern",
 			path: "/api/v2/users100/123/posts/456",
-			registry: mediumRegistry,
+			registry: medium_registry,
 		},
 		{
 			name: "SplatPattern",
 			path: "/files/bucket100/deep/path/file.txt",
-			registry: mediumRegistry,
+			registry: medium_registry,
 		},
 	];
 
@@ -206,9 +197,9 @@ describe("FindBestMatch Benchmarks", () => {
 		bench(
 			"Scale_small",
 			() => {
-				const paths = generateNonNestedPathsForBenchmark("small");
+				const paths = generate_non_nested_paths_for_benchmark("small");
 				findBestMatch(
-					smallRegistry,
+					small_registry,
 					paths[Math.floor(Math.random() * paths.length)]!,
 				);
 			},
@@ -218,9 +209,9 @@ describe("FindBestMatch Benchmarks", () => {
 		bench(
 			"Scale_medium",
 			() => {
-				const paths = generateNonNestedPathsForBenchmark("medium");
+				const paths = generate_non_nested_paths_for_benchmark("medium");
 				findBestMatch(
-					mediumRegistry,
+					medium_registry,
 					paths[Math.floor(Math.random() * paths.length)]!,
 				);
 			},
@@ -230,9 +221,9 @@ describe("FindBestMatch Benchmarks", () => {
 		bench(
 			"Scale_large",
 			() => {
-				const paths = generateNonNestedPathsForBenchmark("large");
+				const paths = generate_non_nested_paths_for_benchmark("large");
 				findBestMatch(
-					largeRegistry,
+					large_registry,
 					paths[Math.floor(Math.random() * paths.length)]!,
 				);
 			},
@@ -242,8 +233,10 @@ describe("FindBestMatch Benchmarks", () => {
 		bench(
 			"WorstCase_DeepNested",
 			() => {
-				// This path exists in large registry
-				findBestMatch(largeRegistry, "/api/v3/users9999/999/posts/999");
+				findBestMatch(
+					large_registry,
+					"/api/v3/users9999/999/posts/999",
+				);
 			},
 			{ time: 1000 },
 		);
@@ -251,7 +244,7 @@ describe("FindBestMatch Benchmarks", () => {
 });
 
 describe("FindNestedMatches Benchmarks", () => {
-	const nestedRegistry = setupNestedRegistryForBenchmark();
+	const nested_registry = setup_nested_registry_for_benchmark();
 
 	const cases = [
 		{
@@ -293,7 +286,7 @@ describe("FindNestedMatches Benchmarks", () => {
 		},
 		{
 			name: "MixedPatterns",
-			paths: generateNestedPathsForBenchmark(),
+			paths: generate_nested_paths_for_benchmark(),
 		},
 	];
 
@@ -303,7 +296,7 @@ describe("FindNestedMatches Benchmarks", () => {
 			() => {
 				const path =
 					tc.paths[Math.floor(Math.random() * tc.paths.length)];
-				findNestedMatches(nestedRegistry, path!);
+				findNestedMatches(nested_registry, path!);
 			},
 			{ time: 1000 },
 		);

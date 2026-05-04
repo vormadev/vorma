@@ -3049,6 +3049,45 @@ describe("prefetch integration", () => {
 		});
 	});
 
+	it("clears prepared prefetch from work state while retaining it for navigation", async () => {
+		vi.doMock("/work-prefetch-module.js", () => {
+			return {
+				default: {
+					pattern: "/work-prefetch",
+					component: () => {
+						return null;
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup();
+		const { calls, call, wait_for } = mock_fetch();
+
+		core.start_prefetch("/work-prefetch");
+		await wait_for(1);
+
+		expect(core.getWorkState().prefetch?.href).toContain("/work-prefetch");
+
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/work-prefetch"],
+				LoadersData: [{ from_server: true }],
+				ImportURLs: ["/work-prefetch-module.js"],
+			}),
+		);
+
+		await wait_until(() => {
+			return core.getWorkState().prefetch === null;
+		}, "expected prepared prefetch to leave work state");
+
+		const result = await core.navigate("/work-prefetch");
+
+		expect(result.didNavigate).toBe(true);
+		expect(calls).toHaveLength(1);
+		expect(commit).toHaveBeenCalledTimes(1);
+	});
+
 	it("aborts first-time route client loader when prefetch is stopped", async () => {
 		let captured_signal: AbortSignal | null = null;
 

@@ -13,7 +13,7 @@ and parallel execution.
 The command shape is:
 
 ```bash
-go run ./internal/cmd/enforcer <action...> [--lang all|go|ts] [--scope all|fw|other]
+go run ./internal/cmd/enforcer <action...> [--lang all|go|ts] [--scope all|fw|matcher|other]
 ```
 
 Actions:
@@ -31,7 +31,7 @@ Actions:
 Selectors:
 
 - `--lang all|go|ts`
-- `--scope all|fw|other`
+- `--scope all|fw|matcher|other`
 
 Multiple actions in one invocation share one task context, so dependencies are
 ordered, duplicate work is deduped, and independent work can run in parallel.
@@ -48,6 +48,14 @@ tool concerns, not repo enforcement actions.
 `fw` is the public Vorma framework surface. It includes the framework fixture in
 `internal/framework_tests` and the framework TypeScript packages under
 `internal/pkg/npm/vorma/*`.
+
+`matcher` is the cross-language matcher conformance suite in
+`internal/matcher_tests`. It drives the Go implementation and the TypeScript
+mirror through CLI adapters; its test action builds the TypeScript package first
+because the TypeScript adapter imports built package exports. The matcher tests
+are their own package, and their TypeScript files import `vorma/kit/matcher`
+through the local package link instead of reaching into implementation source
+files.
 
 `other` is the complement where the command supports one. It includes repo Go
 tests outside the framework fixture, docs checks, and non-framework TypeScript

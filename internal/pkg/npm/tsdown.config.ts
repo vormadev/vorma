@@ -81,22 +81,7 @@ export default defineConfig([
 	},
 	{
 		...base,
-		entry: ["./kit/matcher/register.ts"],
-		outDir: "./.dist/kit/matcher/",
-	},
-	{
-		...base,
-		entry: ["./kit/matcher/find_best_match.ts"],
-		outDir: "./.dist/kit/matcher/",
-	},
-	{
-		...base,
-		entry: ["./kit/matcher/find_nested_matches.ts"],
-		outDir: "./.dist/kit/matcher/",
-	},
-	{
-		...base,
-		entry: ["./kit/matcher/utils.ts"],
+		entry: ["./kit/matcher/matcher.ts"],
 		outDir: "./.dist/kit/matcher/",
 	},
 	{

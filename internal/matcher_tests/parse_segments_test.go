@@ -1,9 +1,11 @@
-package matcher
+package main
 
 import (
 	"reflect"
 	"runtime"
 	"testing"
+
+	"github.com/vormadev/vorma/kit/matcher"
 )
 
 func TestParseSegments(t *testing.T) {
@@ -54,19 +56,21 @@ func TestParseSegments(t *testing.T) {
 		},
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			result := ParseSegments(tc.path)
-			if !reflect.DeepEqual(result, tc.expected) {
-				t.Errorf(
-					"ParseSegments(%q) = %v, want %v",
-					tc.path,
-					result,
-					tc.expected,
-				)
-			}
-		})
-	}
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				result := backend.parse_segments(t, tc.path)
+				if !reflect.DeepEqual(result, tc.expected) {
+					t.Errorf(
+						"ParseSegments(%q) = %v, want %v",
+						tc.path,
+						result,
+						tc.expected,
+					)
+				}
+			})
+		}
+	})
 }
 
 func BenchmarkParseSegments(b *testing.B) {
@@ -80,7 +84,7 @@ func BenchmarkParseSegments(b *testing.B) {
 	b.Run("ParseSegments", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			segments := ParseSegments(paths[i%len(paths)])
+			segments := matcher.ParseSegments(paths[i%len(paths)])
 			runtime.KeepAlive(segments)
 		}
 	})

@@ -135,7 +135,9 @@ func TestNestedRouteRegistration(t *testing.T) {
 		AddNestedPatternWithoutHandler(nr, "/registered")
 
 		matcher_copy := nr.Matcher()
-		matcher_copy.RegisterPattern("/injected")
+		if _, err := matcher_copy.RegisterPattern("/injected"); err != nil {
+			t.Fatalf("RegisterPattern() error: %v", err)
+		}
 
 		req := create_request_with_tasks_cache(http.MethodGet, "/injected")
 		_, found := FindNestedMatches(nr, req)

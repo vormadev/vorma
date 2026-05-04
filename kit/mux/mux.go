@@ -686,8 +686,12 @@ func NewNestedRouter(options ...NestedOptions) *NestedRouter {
 		ExplicitIndexSegmentIdentifier: opts.ExplicitIndexSegmentIdentifier,
 		Quiet:                          false,
 	}
+	matcher_inst, err := matcher.New(mopts)
+	if err != nil {
+		panic(err)
+	}
 	nr := &NestedRouter{
-		matcher_inst: matcher.New(mopts),
+		matcher_inst: matcher_inst,
 		routes:       make(map[string]AnyNestedRoute),
 		parse_input:  opts.ParseInput,
 	}
@@ -743,9 +747,14 @@ func (nr *NestedRouter) SplatSegmentIdentifier() rune {
 func (nr *NestedRouter) Matcher() *matcher.Matcher {
 	nr.mu.RLock()
 	defer nr.mu.RUnlock()
-	cp := matcher.New(nr.current_matcher_opts(true))
+	cp, err := matcher.New(nr.current_matcher_opts(true))
+	if err != nil {
+		panic(err)
+	}
 	for pat := range nr.routes {
-		cp.RegisterPattern(pat)
+		if _, err := cp.RegisterPattern(pat); err != nil {
+			panic(err)
+		}
 	}
 	return cp
 }
@@ -819,7 +828,9 @@ func (nr *NestedRouter) AddPatternWithoutHandlerIfMissing(pattern string) bool {
 	route := &NestedRoute[None, None]{
 		router: nr, original_pattern: pattern, task_handler: nil,
 	}
-	nr.matcher_inst.RegisterPattern(pattern)
+	if _, err := nr.matcher_inst.RegisterPattern(pattern); err != nil {
+		panic(err)
+	}
 	nr.routes[pattern] = route
 	nr.add_compiled(compiled_route{pattern: pattern, has_handler: false})
 	return true
@@ -1201,7 +1212,9 @@ func new_route[I, O any](rt *Router, method, pattern string) *Route[I, O] {
 
 func (rt *Router) register_route(route AnyRoute) {
 	mm := rt.get_or_create_mm(route.Method())
-	mm.matcher_inst.RegisterPattern(route.OriginalPattern())
+	if _, err := mm.matcher_inst.RegisterPattern(route.OriginalPattern()); err != nil {
+		panic(err)
+	}
 	mm.routes[route.OriginalPattern()] = route
 	rt.all_routes = append(rt.all_routes, route)
 }
@@ -1210,8 +1223,12 @@ func (rt *Router) get_or_create_mm(method string) *method_matcher {
 	if mm, ok := rt.method_matchers[method]; ok {
 		return mm
 	}
+	matcher_inst, err := matcher.New(rt.matcher_opts)
+	if err != nil {
+		panic(err)
+	}
 	mm := &method_matcher{
-		matcher_inst:    matcher.New(rt.matcher_opts),
+		matcher_inst:    matcher_inst,
 		routes:          make(map[string]AnyRoute),
 		req_ctx_getters: make(map[string]req_ctx_getter),
 		http_mws:        empty_http_mws,
@@ -1605,7 +1622,11 @@ func must_register_nested[I, O any](route *NestedRoute[I, O]) {
 			route.original_pattern,
 		))
 	}
-	route.router.matcher_inst.RegisterPattern(route.original_pattern)
+	if _, err := route.router.matcher_inst.RegisterPattern(
+		route.original_pattern,
+	); err != nil {
+		panic(err)
+	}
 	route.router.routes[route.original_pattern] = route
 	route.router.add_compiled(compiled_route{
 		pattern:        route.original_pattern,
@@ -1621,9 +1642,14 @@ func (nr *NestedRouter) replace_routes_locked(
 	cp := make(map[string]AnyNestedRoute, len(new_routes))
 	maps.Copy(cp, new_routes)
 
-	new_matcher := matcher.New(nr.current_matcher_opts(true))
+	new_matcher, err := matcher.New(nr.current_matcher_opts(true))
+	if err != nil {
+		panic(err)
+	}
 	for pat := range cp {
-		new_matcher.RegisterPattern(pat)
+		if _, err := new_matcher.RegisterPattern(pat); err != nil {
+			panic(err)
+		}
 	}
 
 	compiled := make([]compiled_route, 0, len(cp))

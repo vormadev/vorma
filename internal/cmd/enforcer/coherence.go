@@ -12,12 +12,14 @@ var known_go_modules = []string{
 	"go.mod",
 	"internal/apps/docs/go.mod",
 	"internal/framework_tests/go.mod",
+	"internal/matcher_tests/go.mod",
 }
 
 var known_package_manifests = []string{
 	"package.json",
 	"internal/apps/docs/package.json",
 	"internal/framework_tests/package.json",
+	"internal/matcher_tests/package.json",
 	"internal/pkg/npm/package.json",
 	"internal/pkg/npm/vorma/create/package.json",
 }
@@ -25,6 +27,7 @@ var known_package_manifests = []string{
 var known_ts_projects = []string{
 	"internal/apps/docs/tsconfig.json",
 	"internal/framework_tests/tsconfig.json",
+	"internal/matcher_tests/tsconfig.json",
 	"internal/pkg/npm/kit/tsconfig.json",
 	"internal/pkg/npm/vorma/core/tsconfig.json",
 	"internal/pkg/npm/vorma/create/tsconfig.json",

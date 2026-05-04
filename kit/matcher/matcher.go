@@ -7,7 +7,6 @@ package matcher
 
 import (
 	"fmt"
-	"log"
 	"maps"
 	"slices"
 	"strings"
@@ -86,12 +85,12 @@ type FindNestedMatchesResults struct {
 /////////////////////////////////////////////////////////////////////
 
 // New constructs a Matcher with defaulted options.
-func New(opts *Options) *Matcher {
+func New(opts *Options) (*Matcher, error) {
 	if opts == nil {
 		opts = new(Options)
 	}
 	if strings.Contains(opts.ExplicitIndexSegmentIdentifier, "/") {
-		panic("explicit index segment cannot contain a slash")
+		return nil, fmt.Errorf("explicit index segment cannot contain a slash")
 	}
 
 	m := &Matcher{
@@ -108,7 +107,7 @@ func New(opts *Options) *Matcher {
 		quiet:                        opts.Quiet,
 	}
 	m.slash_index_segment = "/" + m.explicit_index_segment
-	return m
+	return m, nil
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -125,13 +124,13 @@ func (m *Matcher) DynamicParamPrefix() rune { return m.dynamic_param_prefix }
 func (m *Matcher) SplatSegmentIdentifier() rune { return m.splat_segment_id }
 
 // NormalizePattern validates and normalizes one input pattern.
-func (m *Matcher) NormalizePattern(original string) *RegisteredPattern {
+func (m *Matcher) NormalizePattern(original string) (*RegisteredPattern, error) {
 	normalized := original
 
 	if m.using_explicit_index_segment {
 		if strings.HasSuffix(normalized, "/") {
 			if normalized != "/" {
-				log.Panicf(
+				return nil, fmt.Errorf(
 					"Error with pattern '%s'. With the exception of any absolute root pattern ('/'), "+
 						"trailing slashes are not permitted when using an explicit index segment.",
 					original,
@@ -191,27 +190,30 @@ func (m *Matcher) NormalizePattern(original string) *RegisteredPattern {
 		last_seg_is_non_root_splat: last_type == seg_types.splat && seg_len > 1,
 		last_seg_is_index:          last_type == seg_types.index,
 		num_dynamic_param_segs:     num_dynamic,
-	}
+	}, nil
 }
 
-// RegisterPattern registers one pattern into the matcher. Panics on
-// normalized-pattern collision from different original strings. Returns
-// the existing entry when the same original is registered twice.
-func (m *Matcher) RegisterPattern(original string) *RegisteredPattern {
-	rp := m.NormalizePattern(original)
+// RegisterPattern registers one pattern into the matcher. Returns an error on
+// normalized-pattern collision from different original strings. Returns the
+// existing entry when the same original is registered twice.
+func (m *Matcher) RegisterPattern(original string) (*RegisteredPattern, error) {
+	rp, err := m.NormalizePattern(original)
+	if err != nil {
+		return nil, err
+	}
 
 	// Check for existing registration / collision.
 	for _, store := range [2]patterns_map{m.static_patterns, m.dynamic_patterns} {
 		if existing, ok := store[rp.normalized_pattern]; ok {
 			if existing.original_pattern == original {
-				return existing
+				return existing, nil
 			}
-			panic(fmt.Sprintf(
+			return nil, fmt.Errorf(
 				`normalized pattern collision: "%s" and "%s" both normalize to "%s"`,
 				original,
 				existing.original_pattern,
 				rp.normalized_pattern,
-			))
+			)
 		}
 		if !is_static(rp.normalized_segments) {
 			shape_key := rp.shape_key()
@@ -219,18 +221,18 @@ func (m *Matcher) RegisterPattern(original string) *RegisteredPattern {
 				if existing.shape_key() != shape_key {
 					continue
 				}
-				panic(fmt.Sprintf(
+				return nil, fmt.Errorf(
 					`route shape collision: "%s" and "%s" both match the same paths`,
 					original,
 					existing.original_pattern,
-				))
+				)
 			}
 		}
 	}
 
 	if is_static(rp.normalized_segments) {
 		m.static_patterns[rp.normalized_pattern] = rp
-		return rp
+		return rp, nil
 	}
 
 	m.dynamic_patterns[rp.normalized_pattern] = rp
@@ -252,7 +254,7 @@ func (m *Matcher) RegisterPattern(original string) *RegisteredPattern {
 		current = child
 	}
 
-	return rp
+	return rp, nil
 }
 
 // FindBestMatch resolves the single highest-scoring match for a real path.

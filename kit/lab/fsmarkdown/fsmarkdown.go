@@ -164,9 +164,14 @@ func (inst *Instance) build_plain_markdown(page *Page) string {
 func (inst *Instance) PlainTextMiddleware(
 	patterns ...string,
 ) func(http.Handler) http.Handler {
-	m := matcher.New(nil)
+	m, err := matcher.New(nil)
+	if err != nil {
+		panic(err)
+	}
 	for _, p := range patterns {
-		m.RegisterPattern(p)
+		if _, err := m.RegisterPattern(p); err != nil {
+			panic(err)
+		}
 	}
 
 	return func(next http.Handler) http.Handler {

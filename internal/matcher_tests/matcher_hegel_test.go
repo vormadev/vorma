@@ -1,4 +1,4 @@
-package matcher
+package main
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vormadev/vorma/kit/matcher"
 	"hegel.dev/go/hegel"
 )
 
@@ -19,6 +20,11 @@ const (
 	property_dynamic_segment
 	property_splat_segment
 	property_index_segment
+)
+
+const (
+	property_score_static  = 2
+	property_score_dynamic = 1
 )
 
 var property_best_match_patterns = property_pattern_catalog{
@@ -197,7 +203,7 @@ type property_model_segment struct {
 
 type property_model_match struct {
 	normalized_pattern string
-	params             Params
+	params             matcher.Params
 	splat_values       []string
 	score              int
 	segment_ranks      []int
@@ -213,16 +219,16 @@ type property_model_match struct {
 type property_nested_observation struct {
 	found        bool
 	patterns     []string
-	params       Params
+	params       matcher.Params
 	splat_values []string
-	match_params []Params
+	match_params []matcher.Params
 	match_splats [][]string
 }
 
 type property_best_match_observation struct {
 	found        bool
 	pattern      string
-	params       Params
+	params       matcher.Params
 	splat_values []string
 }
 
@@ -272,272 +278,314 @@ const (
 	property_custom_dynamic_collision
 )
 
+func matcher_property_test_options() []hegel.Option {
+	return []hegel.Option{
+		hegel.SuppressHealthCheck(hegel.TooSlow),
+		hegel.WithTestCases(500),
+	}
+}
+
 func TestFindBestMatchMatchesModel(t *testing.T) {
-	t.Run("default_options", hegel.Case(func(ht *hegel.T) {
-		tc := property_best_match_patterns.draw_case(ht, 14, 4)
-		tc.assert_best_match_matches_model(ht, &Options{Quiet: true})
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("default_options", hegel.Case(func(ht *hegel.T) {
+			tc := property_best_match_patterns.draw_case(ht, 14, 4)
+			tc.assert_best_match_matches_model(ht, backend, &matcher.Options{Quiet: true})
+		}, matcher_property_test_options()...))
 
-	t.Run("custom_markers", hegel.Case(func(ht *hegel.T) {
-		tc := property_best_match_patterns.draw_case(ht, 14, 4)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{DynamicParamPrefix: '$'},
-			{SplatSegmentIdentifier: '#'},
-			{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>'},
-		}))
-		tc.assert_best_match_matches_model(ht, opts)
-	}, hegel.WithTestCases(500)))
+		t.Run("custom_markers", hegel.Case(func(ht *hegel.T) {
+			tc := property_best_match_patterns.draw_case(ht, 14, 4)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{DynamicParamPrefix: '$'},
+				{SplatSegmentIdentifier: '#'},
+				{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>'},
+			}))
+			tc.assert_best_match_matches_model(ht, backend, opts)
+		}, matcher_property_test_options()...))
 
-	t.Run("explicit_index_generated_patterns", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_explicit_index_pattern_space{}).draw_case(
-			ht,
-			18,
-			5,
-			5,
-		)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
-			{
-				ExplicitIndexSegmentIdentifier: "_______",
-				DynamicParamPrefix:             '<',
-				SplatSegmentIdentifier:         '>',
-				Quiet:                          true,
-			},
-		}))
-		tc.assert_best_match_matches_model_with_options(ht, opts, "_index")
-	}, hegel.WithTestCases(500)))
+		t.Run("explicit_index_generated_patterns", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_explicit_index_pattern_space{}).draw_case(
+				ht,
+				18,
+				5,
+				5,
+			)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+				{
+					ExplicitIndexSegmentIdentifier: "_______",
+					DynamicParamPrefix:             '<',
+					SplatSegmentIdentifier:         '>',
+					Quiet:                          true,
+				},
+			}))
+			tc.assert_best_match_matches_model_with_options(ht, backend, opts, "_index")
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestFindBestMatchIgnoresUnrelatedStaticRoutes(t *testing.T) {
-	t.Run("best_match_catalog", hegel.Case(func(ht *hegel.T) {
-		tc := property_best_match_patterns.draw_case(ht, 14, 4)
-		extra_patterns := property_unrelated_static_patterns.draw_patterns(ht, 8)
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("best_match_catalog", hegel.Case(func(ht *hegel.T) {
+			tc := property_best_match_patterns.draw_case(ht, 14, 4)
+			extra_patterns := property_unrelated_static_patterns.draw_patterns(ht, 8)
 
-		base := tc.best_match_observation_with_order(
-			&Options{Quiet: true},
-			property_original_order,
-		)
-		expanded := tc.best_match_observation_with_extra_patterns(extra_patterns)
+			base := tc.best_match_observation_with_order(
+				ht,
+				backend,
+				&matcher.Options{Quiet: true},
+				property_original_order,
+			)
+			expanded := tc.best_match_observation_with_extra_patterns(
+				ht,
+				backend,
+				extra_patterns,
+			)
 
-		ht.Note(fmt.Sprintf("patterns = %v", tc.patterns()))
-		ht.Note(fmt.Sprintf("extra_patterns = %v", extra_patterns))
-		ht.Note(fmt.Sprintf("path = %q", tc.path()))
+			ht.Note(fmt.Sprintf("patterns = %v", tc.patterns()))
+			ht.Note(fmt.Sprintf("extra_patterns = %v", extra_patterns))
+			ht.Note(fmt.Sprintf("path = %q", tc.path()))
 
-		if !base.equal(expanded) {
-			ht.Fatalf("base best match = %#v, expanded = %#v", base, expanded)
-		}
-	}, hegel.WithTestCases(500)))
+			if !base.equal(expanded) {
+				ht.Fatalf("base best match = %#v, expanded = %#v", base, expanded)
+			}
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestFindBestMatchGeneratedPatternsMatchModel(t *testing.T) {
-	t.Run("generated_patterns", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
-		tc.assert_best_match_matches_model(ht, &Options{Quiet: true})
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("generated_patterns", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
+			tc.assert_best_match_matches_model(ht, backend, &matcher.Options{Quiet: true})
+		}, matcher_property_test_options()...))
 
-	t.Run("generated_patterns_custom_markers", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{DynamicParamPrefix: '$', Quiet: true},
-			{SplatSegmentIdentifier: '#', Quiet: true},
-			{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
-		}))
-		tc.assert_best_match_matches_model(ht, opts)
-	}, hegel.WithTestCases(500)))
+		t.Run("generated_patterns_custom_markers", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{DynamicParamPrefix: '$', Quiet: true},
+				{SplatSegmentIdentifier: '#', Quiet: true},
+				{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
+			}))
+			tc.assert_best_match_matches_model(ht, backend, opts)
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestRegisterPatternRejectsGeneratedRouteShapeCollisions(t *testing.T) {
-	t.Run("generated_shapes", hegel.Case(func(ht *hegel.T) {
-		tc := (property_collision_pattern_space{}).draw_case(ht, 5)
-		tc.assert_route_shape_collision(ht)
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("generated_shapes", hegel.Case(func(ht *hegel.T) {
+			tc := (property_collision_pattern_space{}).draw_case(ht, 5)
+			tc.assert_route_shape_collision(ht, backend)
+		}, matcher_property_test_options()...))
 
-	t.Run("generated_shapes_custom_markers", hegel.Case(func(ht *hegel.T) {
-		tc := (property_collision_pattern_space{}).draw_case(ht, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{DynamicParamPrefix: '$', Quiet: true},
-			{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
-		}))
-		tc.assert_route_shape_collision_with_options(ht, opts)
-	}, hegel.WithTestCases(500)))
+		t.Run("generated_shapes_custom_markers", hegel.Case(func(ht *hegel.T) {
+			tc := (property_collision_pattern_space{}).draw_case(ht, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{DynamicParamPrefix: '$', Quiet: true},
+				{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
+			}))
+			tc.assert_route_shape_collision_with_options(ht, backend, opts)
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestRegisterPatternRejectsGeneratedNormalizedCollisions(t *testing.T) {
-	t.Run("generated_normalized_collisions", hegel.Case(func(ht *hegel.T) {
-		tc := (property_normalized_collision_space{}).draw_case(ht)
-		tc.assert_normalized_collision(ht)
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("generated_normalized_collisions", hegel.Case(func(ht *hegel.T) {
+			tc := (property_normalized_collision_space{}).draw_case(ht)
+			tc.assert_normalized_collision(ht, backend)
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestRegisterPatternRejectsInvalidExplicitIndexTrailingSlashPatterns(t *testing.T) {
-	t.Run("generated_invalid_patterns", hegel.Case(func(ht *hegel.T) {
-		pattern, opts := (property_invalid_pattern_space{}).draw_case(ht)
-		panic_message := register_pattern_panic_message(opts, pattern)
-		ht.Note(fmt.Sprintf("pattern = %q", pattern))
-		ht.Note(fmt.Sprintf(
-			"dynamic = %q, splat = %q, index = %q",
-			opts.DynamicParamPrefix,
-			opts.SplatSegmentIdentifier,
-			opts.ExplicitIndexSegmentIdentifier,
-		))
-		if !strings.Contains(
-			panic_message,
-			"trailing slashes are not permitted when using an explicit index segment",
-		) {
-			ht.Fatalf("panic = %q, want explicit-index trailing-slash rejection", panic_message)
-		}
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("generated_invalid_patterns", hegel.Case(func(ht *hegel.T) {
+			pattern, opts := (property_invalid_pattern_space{}).draw_case(ht)
+			error_message := register_pattern_error_message(ht, backend, opts, pattern)
+			ht.Note(fmt.Sprintf("pattern = %q", pattern))
+			ht.Note(fmt.Sprintf(
+				"dynamic = %q, splat = %q, index = %q",
+				opts.DynamicParamPrefix,
+				opts.SplatSegmentIdentifier,
+				opts.ExplicitIndexSegmentIdentifier,
+			))
+			if !strings.Contains(
+				error_message,
+				"trailing slashes are not permitted when using an explicit index segment",
+			) {
+				ht.Fatalf("error = %q, want explicit-index trailing-slash rejection", error_message)
+			}
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestFindNestedMatchesRegistrationOrderIndependent(t *testing.T) {
-	t.Run("best_match_catalog", hegel.Case(func(ht *hegel.T) {
-		tc := property_best_match_patterns.draw_case(ht, 14, 4)
-		tc.assert_nested_registration_order_independent(ht)
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("best_match_catalog", hegel.Case(func(ht *hegel.T) {
+			tc := property_best_match_patterns.draw_case(ht, 14, 4)
+			tc.assert_nested_registration_order_independent(ht, backend)
+		}, matcher_property_test_options()...))
 
-	t.Run("nested_catalog", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_match_patterns.draw_case(ht, 18, 5)
-		tc.assert_nested_registration_order_independent(ht)
-	}, hegel.WithTestCases(500)))
+		t.Run("nested_catalog", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_match_patterns.draw_case(ht, 18, 5)
+			tc.assert_nested_registration_order_independent(ht, backend)
+		}, matcher_property_test_options()...))
 
-	t.Run("nested_catalog_custom_markers", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_match_patterns.draw_case(ht, 18, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{DynamicParamPrefix: '$', Quiet: true},
-			{SplatSegmentIdentifier: '#', Quiet: true},
-			{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
-		}))
-		tc.assert_nested_registration_order_independent_with_options(ht, opts, "")
-	}, hegel.WithTestCases(500)))
+		t.Run("nested_catalog_custom_markers", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_match_patterns.draw_case(ht, 18, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{DynamicParamPrefix: '$', Quiet: true},
+				{SplatSegmentIdentifier: '#', Quiet: true},
+				{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
+			}))
+			tc.assert_nested_registration_order_independent_with_options(
+				ht,
+				backend,
+				opts,
+				"",
+			)
+		}, matcher_property_test_options()...))
 
-	t.Run("explicit_index_catalog", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_explicit_index_patterns.draw_case(ht, 18, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
-			{
-				ExplicitIndexSegmentIdentifier: "_______",
-				DynamicParamPrefix:             '<',
-				SplatSegmentIdentifier:         '>',
-				Quiet:                          true,
-			},
-		}))
-		tc.assert_nested_registration_order_independent_with_options(
-			ht,
-			opts,
-			"_index",
-		)
-	}, hegel.WithTestCases(500)))
+		t.Run("explicit_index_catalog", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_explicit_index_patterns.draw_case(ht, 18, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+				{
+					ExplicitIndexSegmentIdentifier: "_______",
+					DynamicParamPrefix:             '<',
+					SplatSegmentIdentifier:         '>',
+					Quiet:                          true,
+				},
+			}))
+			tc.assert_nested_registration_order_independent_with_options(
+				ht,
+				backend,
+				opts,
+				"_index",
+			)
+		}, matcher_property_test_options()...))
 
-	t.Run("explicit_index_generated_patterns", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_explicit_index_pattern_space{}).draw_case(
-			ht,
-			18,
-			5,
-			5,
-		)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
-			{
-				ExplicitIndexSegmentIdentifier: "_______",
-				DynamicParamPrefix:             '<',
-				SplatSegmentIdentifier:         '>',
-				Quiet:                          true,
-			},
-		}))
-		tc.assert_nested_registration_order_independent_with_options(
-			ht,
-			opts,
-			"_index",
-		)
-	}, hegel.WithTestCases(500)))
+		t.Run("explicit_index_generated_patterns", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_explicit_index_pattern_space{}).draw_case(
+				ht,
+				18,
+				5,
+				5,
+			)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+				{
+					ExplicitIndexSegmentIdentifier: "_______",
+					DynamicParamPrefix:             '<',
+					SplatSegmentIdentifier:         '>',
+					Quiet:                          true,
+				},
+			}))
+			tc.assert_nested_registration_order_independent_with_options(
+				ht,
+				backend,
+				opts,
+				"_index",
+			)
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestFindNestedMatchesIgnoresUnrelatedStaticRoutes(t *testing.T) {
-	t.Run("nested_catalog", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_match_patterns.draw_case(ht, 18, 5)
-		extra_patterns := property_unrelated_static_patterns.draw_patterns(ht, 8)
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("nested_catalog", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_match_patterns.draw_case(ht, 18, 5)
+			extra_patterns := property_unrelated_static_patterns.draw_patterns(ht, 8)
 
-		base := tc.nested_observation(property_original_order)
-		expanded := tc.nested_observation_with_extra_patterns(extra_patterns)
+			base := tc.nested_observation(ht, backend, property_original_order)
+			expanded := tc.nested_observation_with_extra_patterns(
+				ht,
+				backend,
+				extra_patterns,
+			)
 
-		ht.Note(fmt.Sprintf("patterns = %v", tc.patterns()))
-		ht.Note(fmt.Sprintf("extra_patterns = %v", extra_patterns))
-		ht.Note(fmt.Sprintf("path = %q", tc.path()))
+			ht.Note(fmt.Sprintf("patterns = %v", tc.patterns()))
+			ht.Note(fmt.Sprintf("extra_patterns = %v", extra_patterns))
+			ht.Note(fmt.Sprintf("path = %q", tc.path()))
 
-		if !base.equal(expanded) {
-			ht.Fatalf("base nested result = %#v, expanded = %#v", base, expanded)
-		}
-	}, hegel.WithTestCases(500)))
+			if !base.equal(expanded) {
+				ht.Fatalf("base nested result = %#v, expanded = %#v", base, expanded)
+			}
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestFindNestedMatchesMatchesSemanticModel(t *testing.T) {
-	t.Run("best_match_catalog", hegel.Case(func(ht *hegel.T) {
-		tc := property_best_match_patterns.draw_case(ht, 14, 4)
-		tc.assert_nested_matches_model(ht, &Options{Quiet: true}, "")
-	}, hegel.WithTestCases(500)))
+	run_matcher_backends(t, func(t *testing.T, backend matcher_test_backend) {
+		t.Run("best_match_catalog", hegel.Case(func(ht *hegel.T) {
+			tc := property_best_match_patterns.draw_case(ht, 14, 4)
+			tc.assert_nested_matches_model(ht, backend, &matcher.Options{Quiet: true}, "")
+		}, matcher_property_test_options()...))
 
-	t.Run("default_options", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_match_patterns.draw_case(ht, 18, 5)
-		tc.assert_nested_matches_model(ht, &Options{Quiet: true}, "")
-	}, hegel.WithTestCases(500)))
+		t.Run("default_options", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_match_patterns.draw_case(ht, 18, 5)
+			tc.assert_nested_matches_model(ht, backend, &matcher.Options{Quiet: true}, "")
+		}, matcher_property_test_options()...))
 
-	t.Run("generated_patterns", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
-		tc.assert_nested_matches_model(ht, &Options{Quiet: true}, "")
-	}, hegel.WithTestCases(500)))
+		t.Run("generated_patterns", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
+			tc.assert_nested_matches_model(ht, backend, &matcher.Options{Quiet: true}, "")
+		}, matcher_property_test_options()...))
 
-	t.Run("custom_markers", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_match_patterns.draw_case(ht, 18, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{DynamicParamPrefix: '$', Quiet: true},
-			{SplatSegmentIdentifier: '#', Quiet: true},
-			{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
-		}))
-		tc.assert_nested_matches_model(ht, opts, "")
-	}, hegel.WithTestCases(500)))
+		t.Run("custom_markers", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_match_patterns.draw_case(ht, 18, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{DynamicParamPrefix: '$', Quiet: true},
+				{SplatSegmentIdentifier: '#', Quiet: true},
+				{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
+			}))
+			tc.assert_nested_matches_model(ht, backend, opts, "")
+		}, matcher_property_test_options()...))
 
-	t.Run("generated_patterns_custom_markers", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{DynamicParamPrefix: '$', Quiet: true},
-			{SplatSegmentIdentifier: '#', Quiet: true},
-			{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
-		}))
-		tc.assert_nested_matches_model(ht, opts, "")
-	}, hegel.WithTestCases(500)))
+		t.Run("generated_patterns_custom_markers", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_pattern_space{}).draw_case(ht, 18, 5, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{DynamicParamPrefix: '$', Quiet: true},
+				{SplatSegmentIdentifier: '#', Quiet: true},
+				{DynamicParamPrefix: '<', SplatSegmentIdentifier: '>', Quiet: true},
+			}))
+			tc.assert_nested_matches_model(ht, backend, opts, "")
+		}, matcher_property_test_options()...))
 
-	t.Run("explicit_index", hegel.Case(func(ht *hegel.T) {
-		tc := property_nested_explicit_index_patterns.draw_case(ht, 18, 5)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
-			{
-				ExplicitIndexSegmentIdentifier: "_______",
-				DynamicParamPrefix:             '<',
-				SplatSegmentIdentifier:         '>',
-				Quiet:                          true,
-			},
-		}))
-		tc.assert_nested_matches_model(ht, opts, "_index")
-	}, hegel.WithTestCases(500)))
+		t.Run("explicit_index", hegel.Case(func(ht *hegel.T) {
+			tc := property_nested_explicit_index_patterns.draw_case(ht, 18, 5)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+				{
+					ExplicitIndexSegmentIdentifier: "_______",
+					DynamicParamPrefix:             '<',
+					SplatSegmentIdentifier:         '>',
+					Quiet:                          true,
+				},
+			}))
+			tc.assert_nested_matches_model(ht, backend, opts, "_index")
+		}, matcher_property_test_options()...))
 
-	t.Run("explicit_index_generated_patterns", hegel.Case(func(ht *hegel.T) {
-		tc := (property_generated_explicit_index_pattern_space{}).draw_case(
-			ht,
-			18,
-			5,
-			5,
-		)
-		opts := hegel.Draw(ht, hegel.SampledFrom([]*Options{
-			{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
-			{
-				ExplicitIndexSegmentIdentifier: "_______",
-				DynamicParamPrefix:             '<',
-				SplatSegmentIdentifier:         '>',
-				Quiet:                          true,
-			},
-		}))
-		tc.assert_nested_matches_model(ht, opts, "_index")
-	}, hegel.WithTestCases(500)))
+		t.Run("explicit_index_generated_patterns", hegel.Case(func(ht *hegel.T) {
+			tc := (property_generated_explicit_index_pattern_space{}).draw_case(
+				ht,
+				18,
+				5,
+				5,
+			)
+			opts := hegel.Draw(ht, hegel.SampledFrom([]*matcher.Options{
+				{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+				{
+					ExplicitIndexSegmentIdentifier: "_______",
+					DynamicParamPrefix:             '<',
+					SplatSegmentIdentifier:         '>',
+					Quiet:                          true,
+				},
+			}))
+			tc.assert_nested_matches_model(ht, backend, opts, "_index")
+		}, matcher_property_test_options()...))
+	})
 }
 
 func TestNestedSemanticModelAgreesWithExistingTableCases(t *testing.T) {
@@ -702,7 +750,7 @@ func (property_generated_explicit_index_pattern_space) draw_case(
 		)
 		model := property_model_pattern_string(pattern).model_with_options(
 			len(patterns),
-			&Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
+			&matcher.Options{ExplicitIndexSegmentIdentifier: "_index", Quiet: true},
 			"_index",
 		)
 		if normalized_seen[model.normalized] || shape_seen[model.shape_key()] {
@@ -921,7 +969,7 @@ func (property_normalized_collision_space) draw_case(
 
 func (property_invalid_pattern_space) draw_case(
 	ht *hegel.T,
-) (string, *Options) {
+) (string, *matcher.Options) {
 	prefix := hegel.Draw(ht, hegel.SampledFrom([]string{
 		"/users",
 		"/users/profile",
@@ -935,33 +983,41 @@ func (property_invalid_pattern_space) draw_case(
 		"home",
 	}))
 	return prefix + "/",
-		&Options{ExplicitIndexSegmentIdentifier: explicit_index_id, Quiet: true}
+		&matcher.Options{ExplicitIndexSegmentIdentifier: explicit_index_id, Quiet: true}
 }
 
 func (tc property_route_case) assert_best_match_matches_model(
 	ht *hegel.T,
-	opts *Options,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 ) {
-	tc.assert_best_match_matches_model_with_options(ht, opts, "")
+	tc.assert_best_match_matches_model_with_options(ht, backend, opts, "")
 }
 
 func (tc property_route_case) assert_best_match_matches_model_with_options(
 	ht *hegel.T,
-	opts *Options,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	source_index string,
 ) {
 	expected, expected_found := tc.expectation_with_options(opts, source_index)
 	actual, actual_found := tc.actual_match_with_order_and_source_index(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_original_order,
 	)
 	actual_reversed, actual_reversed_found := tc.actual_match_with_order_and_source_index(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_reversed_order,
 	)
 	actual_sorted, actual_sorted_found := tc.actual_match_with_order_and_source_index(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_sorted_order,
@@ -1007,7 +1063,7 @@ func (tc property_route_case) assert_best_match_matches_model_with_options(
 func (m property_model_match) assert_equal_match(
 	ht *hegel.T,
 	label string,
-	actual *BestMatch,
+	actual *matcher_test_best_match,
 ) {
 	if got := actual.NormalizedPattern(); got != m.normalized_pattern {
 		ht.Fatalf(
@@ -1039,22 +1095,31 @@ func (o property_best_match_observation) equal(
 		equal_splat(o.splat_values, other.splat_values)
 }
 
-func (tc property_collision_case) assert_route_shape_collision(ht *hegel.T) {
+func (tc property_collision_case) assert_route_shape_collision(
+	ht *hegel.T,
+	backend matcher_test_backend,
+) {
 	left, right := tc.pattern_pair()
 	ht.Note(fmt.Sprintf("left = %q", left))
 	ht.Note(fmt.Sprintf("right = %q", right))
 
 	for _, patterns := range [][2]string{{left, right}, {right, left}} {
-		panic_message := tc.register_collision_message(patterns[0], patterns[1])
-		if !strings.Contains(panic_message, "route shape collision:") {
-			ht.Fatalf("panic = %q, want route shape collision", panic_message)
+		error_message := tc.register_collision_message(
+			ht,
+			backend,
+			patterns[0],
+			patterns[1],
+		)
+		if !strings.Contains(error_message, "route shape collision:") {
+			ht.Fatalf("error = %q, want route shape collision", error_message)
 		}
 	}
 }
 
 func (tc property_collision_case) assert_route_shape_collision_with_options(
 	ht *hegel.T,
-	opts *Options,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 ) {
 	left, right := tc.pattern_pair_with_options(opts)
 	ht.Note(fmt.Sprintf("left = %q", left))
@@ -1067,18 +1132,23 @@ func (tc property_collision_case) assert_route_shape_collision_with_options(
 	))
 
 	for _, patterns := range [][2]string{{left, right}, {right, left}} {
-		panic_message := tc.register_collision_message_with_options(
+		error_message := tc.register_collision_message_with_options(
+			ht,
+			backend,
 			opts,
 			patterns[0],
 			patterns[1],
 		)
-		if !strings.Contains(panic_message, "route shape collision:") {
-			ht.Fatalf("panic = %q, want route shape collision", panic_message)
+		if !strings.Contains(error_message, "route shape collision:") {
+			ht.Fatalf("error = %q, want route shape collision", error_message)
 		}
 	}
 }
 
-func (tc property_normalized_collision_case) assert_normalized_collision(ht *hegel.T) {
+func (tc property_normalized_collision_case) assert_normalized_collision(
+	ht *hegel.T,
+	backend matcher_test_backend,
+) {
 	first, second, opts := tc.collision_inputs()
 	ht.Note(fmt.Sprintf("first = %q", first))
 	ht.Note(fmt.Sprintf("second = %q", second))
@@ -1089,13 +1159,19 @@ func (tc property_normalized_collision_case) assert_normalized_collision(ht *heg
 		opts.ExplicitIndexSegmentIdentifier,
 	))
 
-	panic_message := tc.register_collision_message_with_options(opts, first, second)
-	if !strings.Contains(panic_message, "normalized pattern collision:") {
-		ht.Fatalf("panic = %q, want normalized pattern collision", panic_message)
+	error_message := tc.register_collision_message_with_options(
+		ht,
+		backend,
+		opts,
+		first,
+		second,
+	)
+	if !strings.Contains(error_message, "normalized pattern collision:") {
+		ht.Fatalf("error = %q, want normalized pattern collision", error_message)
 	}
 }
 
-func (tc property_route_case) note(ht *hegel.T, opts *Options) {
+func (tc property_route_case) note(ht *hegel.T, opts *matcher.Options) {
 	ht.Note(fmt.Sprintf("patterns = %v", tc.patterns()))
 	ht.Note(fmt.Sprintf("path = %q", tc.path()))
 	ht.Note(fmt.Sprintf(
@@ -1131,62 +1207,81 @@ func (tc property_route_case) path() string {
 }
 
 func (tc property_route_case) actual_match_with_order_and_source_index(
-	opts *Options,
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	source_index string,
 	order property_registration_order,
-) (*BestMatch, bool) {
-	m := New(opts)
+) (*matcher_test_best_match, bool) {
+	m := new_matcher_test_matcher(tb, backend, opts)
 	patterns := tc.ordered_patterns(order)
-	return tc.actual_match_with_patterns(m, opts, source_index, patterns)
+	return tc.actual_match_with_patterns(tb, m, opts, source_index, patterns)
 }
 
 func (tc property_route_case) actual_match_with_patterns(
-	m *Matcher,
-	opts *Options,
+	tb testing.TB,
+	m *matcher_test_matcher,
+	opts *matcher.Options,
 	source_index string,
 	patterns []string,
-) (*BestMatch, bool) {
+) (*matcher_test_best_match, bool) {
+	tb.Helper()
 	patterns = rewrite_patterns(
 		patterns,
 		source_index,
 		option_shape_for_rewrites(opts),
 	)
 	for _, pattern := range patterns {
-		m.RegisterPattern(pattern)
+		if _, err := m.RegisterPattern(pattern); err != nil {
+			return nil, false
+		}
 	}
 	return m.FindBestMatch(tc.path())
 }
 
 func (tc property_route_case) best_match_observation_with_order(
-	opts *Options,
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	order property_registration_order,
 ) property_best_match_observation {
-	m := New(opts)
+	m := new_matcher_test_matcher(tb, backend, opts)
 	patterns := tc.ordered_patterns(order)
-	return tc.best_match_observation_with_patterns(m, opts, "", patterns)
+	return tc.best_match_observation_with_patterns(tb, m, opts, "", patterns)
 }
 
 func (tc property_route_case) best_match_observation_with_extra_patterns(
+	tb testing.TB,
+	backend matcher_test_backend,
 	extra_patterns []string,
 ) property_best_match_observation {
-	m := New(&Options{Quiet: true})
+	opts := &matcher.Options{Quiet: true}
+	m := new_matcher_test_matcher(tb, backend, opts)
 	patterns := tc.ordered_patterns(property_original_order)
 	patterns = append(patterns, extra_patterns...)
 	return tc.best_match_observation_with_patterns(
+		tb,
 		m,
-		&Options{Quiet: true},
+		opts,
 		"",
 		patterns,
 	)
 }
 
 func (tc property_route_case) best_match_observation_with_patterns(
-	m *Matcher,
-	opts *Options,
+	tb testing.TB,
+	m *matcher_test_matcher,
+	opts *matcher.Options,
 	source_index string,
 	patterns []string,
 ) property_best_match_observation {
-	match, found := tc.actual_match_with_patterns(m, opts, source_index, patterns)
+	match, found := tc.actual_match_with_patterns(
+		tb,
+		m,
+		opts,
+		source_index,
+		patterns,
+	)
 	observation := property_best_match_observation{found: found}
 	if !found || match == nil {
 		return observation
@@ -1198,16 +1293,16 @@ func (tc property_route_case) best_match_observation_with_patterns(
 }
 
 func (tc property_collision_case) pattern_pair() (string, string) {
-	return tc.pattern_pair_with_options(&Options{})
+	return tc.pattern_pair_with_options(&matcher.Options{})
 }
 
 func (tc property_collision_case) pattern_pair_with_options(
-	opts *Options,
+	opts *matcher.Options,
 ) (string, string) {
 	left_segments := make([]string, len(tc.segments))
 	right_segments := make([]string, len(tc.segments))
-	dynamic_prefix := byte(or_default(opts.DynamicParamPrefix, ':'))
-	splat_segment := string(or_default(opts.SplatSegmentIdentifier, '*'))
+	dynamic_prefix := byte(property_or_default(opts.DynamicParamPrefix, ':'))
+	splat_segment := string(property_or_default(opts.SplatSegmentIdentifier, '*'))
 	for i, segment := range tc.segments {
 		switch segment.kind {
 		case property_generated_static_kind:
@@ -1226,87 +1321,87 @@ func (tc property_collision_case) pattern_pair_with_options(
 }
 
 func (tc property_collision_case) register_collision_message(
+	tb testing.TB,
+	backend matcher_test_backend,
 	first string,
 	second string,
-) (panic_message string) {
+) string {
 	return tc.register_collision_message_with_options(
-		&Options{Quiet: true},
+		tb,
+		backend,
+		&matcher.Options{Quiet: true},
 		first,
 		second,
 	)
 }
 
 func (tc property_collision_case) register_collision_message_with_options(
-	opts *Options,
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	first string,
 	second string,
-) (panic_message string) {
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			panic_message = ""
-			return
-		}
-		panic_message = fmt.Sprint(recovered)
-	}()
-
-	m := New(opts)
-	m.RegisterPattern(first)
-	m.RegisterPattern(second)
+) string {
+	m := new_matcher_test_matcher(tb, backend, opts)
+	if _, err := m.RegisterPattern(first); err != nil {
+		return err.Error()
+	}
+	if _, err := m.RegisterPattern(second); err != nil {
+		return err.Error()
+	}
 	return ""
 }
 
 func (tc property_normalized_collision_case) collision_inputs() (
 	string,
 	string,
-	*Options,
+	*matcher.Options,
 ) {
 	switch tc.kind {
 	case property_explicit_index_collision:
 		return "",
 			"/",
-			&Options{
+			&matcher.Options{
 				ExplicitIndexSegmentIdentifier: tc.explicit_index_id,
 				Quiet:                          true,
 			}
 	default:
 		return tc.prefix + "/$id",
 			tc.prefix + "/:id",
-			&Options{DynamicParamPrefix: '$', Quiet: true}
+			&matcher.Options{DynamicParamPrefix: '$', Quiet: true}
 	}
 }
 
 func (tc property_normalized_collision_case) register_collision_message_with_options(
-	opts *Options,
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	first string,
 	second string,
-) (panic_message string) {
-	return register_patterns_panic_message(opts, first, second)
+) string {
+	return register_patterns_error_message(tb, backend, opts, first, second)
 }
 
-func register_pattern_panic_message(
-	opts *Options,
+func register_pattern_error_message(
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	pattern string,
 ) string {
-	return register_patterns_panic_message(opts, pattern)
+	return register_patterns_error_message(tb, backend, opts, pattern)
 }
 
-func register_patterns_panic_message(
-	opts *Options,
+func register_patterns_error_message(
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	patterns ...string,
-) (panic_message string) {
-	defer func() {
-		recovered := recover()
-		if recovered == nil {
-			panic_message = ""
-			return
-		}
-		panic_message = fmt.Sprint(recovered)
-	}()
-
-	m := New(opts)
+) string {
+	m := new_matcher_test_matcher(tb, backend, opts)
 	for _, pattern := range patterns {
-		m.RegisterPattern(pattern)
+		if _, err := m.RegisterPattern(pattern); err != nil {
+			return err.Error()
+		}
 	}
 	return ""
 }
@@ -1325,49 +1420,69 @@ func (tc property_route_case) ordered_patterns(
 }
 
 func (tc property_route_case) nested_observation(
+	tb testing.TB,
+	backend matcher_test_backend,
 	order property_registration_order,
 ) property_nested_observation {
 	return tc.nested_observation_with_options(
-		&Options{Quiet: true},
+		tb,
+		backend,
+		&matcher.Options{Quiet: true},
 		"",
 		order,
 	)
 }
 
 func (tc property_route_case) nested_observation_with_options(
-	opts *Options,
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	source_index string,
 	order property_registration_order,
 ) property_nested_observation {
 	patterns := tc.ordered_patterns(order)
-	return tc.nested_observation_with_patterns(opts, source_index, patterns)
+	return tc.nested_observation_with_patterns(
+		tb,
+		backend,
+		opts,
+		source_index,
+		patterns,
+	)
 }
 
 func (tc property_route_case) nested_observation_with_extra_patterns(
+	tb testing.TB,
+	backend matcher_test_backend,
 	extra_patterns []string,
 ) property_nested_observation {
 	patterns := tc.ordered_patterns(property_original_order)
 	patterns = append(patterns, extra_patterns...)
 	return tc.nested_observation_with_patterns(
-		&Options{Quiet: true},
+		tb,
+		backend,
+		&matcher.Options{Quiet: true},
 		"",
 		patterns,
 	)
 }
 
 func (tc property_route_case) nested_observation_with_patterns(
-	opts *Options,
+	tb testing.TB,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	source_index string,
 	patterns []string,
 ) property_nested_observation {
-	m := New(opts)
+	m := new_matcher_test_matcher(tb, backend, opts)
 	patterns = rewrite_patterns(
 		patterns,
 		source_index,
 		option_shape_for_rewrites(opts),
 	)
 	for _, pattern := range patterns {
-		m.RegisterPattern(pattern)
+		if _, err := m.RegisterPattern(pattern); err != nil {
+			return property_nested_observation{}
+		}
 	}
 
 	results, found := m.FindNestedMatches(tc.path())
@@ -1378,7 +1493,7 @@ func (tc property_route_case) nested_observation_with_patterns(
 	observation.params = results.Params
 	observation.splat_values = results.SplatValues
 	observation.patterns = make([]string, len(results.Matches))
-	observation.match_params = make([]Params, len(results.Matches))
+	observation.match_params = make([]matcher.Params, len(results.Matches))
 	observation.match_splats = make([][]string, len(results.Matches))
 	for i, match := range results.Matches {
 		observation.patterns[i] = match.NormalizedPattern()
@@ -1388,30 +1503,41 @@ func (tc property_route_case) nested_observation_with_patterns(
 	return observation
 }
 
-func (tc property_route_case) assert_nested_registration_order_independent(ht *hegel.T) {
+func (tc property_route_case) assert_nested_registration_order_independent(
+	ht *hegel.T,
+	backend matcher_test_backend,
+) {
 	tc.assert_nested_registration_order_independent_with_options(
 		ht,
-		&Options{Quiet: true},
+		backend,
+		&matcher.Options{Quiet: true},
 		"",
 	)
 }
 
 func (tc property_route_case) assert_nested_registration_order_independent_with_options(
 	ht *hegel.T,
-	opts *Options,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	source_index string,
 ) {
 	forward := tc.nested_observation_with_options(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_original_order,
 	)
 	reversed := tc.nested_observation_with_options(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_reversed_order,
 	)
 	sorted := tc.nested_observation_with_options(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_sorted_order,
@@ -1429,21 +1555,28 @@ func (tc property_route_case) assert_nested_registration_order_independent_with_
 
 func (tc property_route_case) assert_nested_matches_model(
 	ht *hegel.T,
-	opts *Options,
+	backend matcher_test_backend,
+	opts *matcher.Options,
 	source_index string,
 ) {
 	expected := tc.nested_expectation_with_options(opts, source_index)
 	forward := tc.nested_observation_with_options(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_original_order,
 	)
 	reversed := tc.nested_observation_with_options(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_reversed_order,
 	)
 	sorted := tc.nested_observation_with_options(
+		ht,
+		backend,
 		opts,
 		source_index,
 		property_sorted_order,
@@ -1480,11 +1613,11 @@ func (o property_nested_observation) equal(other property_nested_observation) bo
 }
 
 func (tc property_route_case) expectation() (property_model_match, bool) {
-	return tc.expectation_with_options(&Options{}, "")
+	return tc.expectation_with_options(&matcher.Options{}, "")
 }
 
 func (tc property_route_case) expectation_with_options(
-	opts *Options,
+	opts *matcher.Options,
 	source_index string,
 ) (property_model_match, bool) {
 	path := property_model_path_string(tc.path())
@@ -1512,7 +1645,7 @@ func (tc property_route_case) expectation_with_options(
 }
 
 func (tc property_route_case) nested_expectation_with_options(
-	opts *Options,
+	opts *matcher.Options,
 	source_index string,
 ) property_nested_observation {
 	real_path := property_model_path_string(tc.path()).strip_trailing_slash()
@@ -1612,12 +1745,12 @@ func (tc property_route_case) nested_expectation_with_options(
 }
 
 func (p property_model_pattern_string) model(registration_order int) property_model_pattern {
-	return p.model_with_options(registration_order, &Options{}, "")
+	return p.model_with_options(registration_order, &matcher.Options{}, "")
 }
 
 func (p property_model_pattern_string) model_with_options(
 	registration_order int,
-	opts *Options,
+	opts *matcher.Options,
 	source_index string,
 ) property_model_pattern {
 	input := rewrite_single_pattern(
@@ -1652,7 +1785,7 @@ func (p property_model_pattern_string) model_with_options(
 	}
 }
 
-func (p property_model_pattern_string) normalized_with_options(opts *Options) string {
+func (p property_model_pattern_string) normalized_with_options(opts *matcher.Options) string {
 	if p == "" {
 		return ""
 	}
@@ -1660,8 +1793,8 @@ func (p property_model_pattern_string) normalized_with_options(opts *Options) st
 	splat_segment_identifier := '*'
 	explicit_index_segment_identifier := ""
 	if opts != nil {
-		dynamic_param_prefix = or_default(opts.DynamicParamPrefix, ':')
-		splat_segment_identifier = or_default(opts.SplatSegmentIdentifier, '*')
+		dynamic_param_prefix = property_or_default(opts.DynamicParamPrefix, ':')
+		splat_segment_identifier = property_or_default(opts.SplatSegmentIdentifier, '*')
 		explicit_index_segment_identifier = opts.ExplicitIndexSegmentIdentifier
 	}
 
@@ -1669,7 +1802,7 @@ func (p property_model_pattern_string) normalized_with_options(opts *Options) st
 	if explicit_index_segment_identifier != "" {
 		if strings.HasSuffix(normalized, "/") {
 			if normalized != "/" {
-				panic("test model got invalid trailing slash with explicit index")
+				return ""
 			}
 			normalized = strings.TrimRight(normalized, "/")
 		}
@@ -1721,6 +1854,13 @@ func (p property_model_pattern_string) normalized_with_options(opts *Options) st
 		final = strings.TrimRight(final, "/")
 	}
 	return final
+}
+
+func property_or_default[T comparable](val, fallback T) T {
+	if val == *new(T) {
+		return fallback
+	}
+	return val
 }
 
 func (p property_model_pattern) match(
@@ -1874,14 +2014,14 @@ func (s property_model_segment) matches(path_segment string) bool {
 	}
 }
 
-func (p property_model_pattern) params(path_segments []string) Params {
-	var params Params
+func (p property_model_pattern) params(path_segments []string) matcher.Params {
+	var params matcher.Params
 	for i, segment := range p.segments {
 		if segment.kind != property_dynamic_segment {
 			continue
 		}
 		if params == nil {
-			params = make(Params)
+			params = make(matcher.Params)
 		}
 		params[strings.TrimPrefix(segment.val, ":")] = path_segments[i]
 	}
@@ -1925,7 +2065,7 @@ func (p property_model_pattern) shape_key() string {
 }
 
 func (p property_model_pattern) base_match(
-	params Params,
+	params matcher.Params,
 	splat_values []string,
 ) property_model_match {
 	score := 0
@@ -1964,9 +2104,9 @@ func (p property_model_pattern) num_dynamic_params() uint8 {
 func (s property_model_segment) rank() int {
 	switch s.kind {
 	case property_static_segment, property_index_segment:
-		return score_static
+		return property_score_static
 	case property_dynamic_segment:
-		return score_dynamic
+		return property_score_dynamic
 	default:
 		return 0
 	}
@@ -2085,7 +2225,7 @@ func (p property_model_path_string) flatten_nested_matches(
 		params:       last.params,
 		splat_values: last.splat_values,
 		patterns:     make([]string, len(results)),
-		match_params: make([]Params, len(results)),
+		match_params: make([]matcher.Params, len(results)),
 		match_splats: make([][]string, len(results)),
 	}
 	for i, match := range results {

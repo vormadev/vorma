@@ -2,11 +2,11 @@
 
 import { jsonDeepEquals, parseSearchParams } from "vorma/kit/json";
 import { addOnWindowFocusListener } from "vorma/kit/listeners";
-import { findNestedMatches } from "vorma/kit/matcher/find-nested";
 import {
 	createPatternRegistry,
+	findNestedMatches,
 	registerPattern,
-} from "vorma/kit/matcher/register";
+} from "vorma/kit/matcher";
 import { R, type Result } from "vorma/kit/result";
 import {
 	BUILD_ID_HEADER,
@@ -470,6 +470,7 @@ export function create_client_core(
 	};
 
 	type PrefetchFetch = FetchBase & {
+		is_pending: boolean;
 		prepare_ready: Promise<void>;
 		intent: PrefetchFetchIntent;
 	};
@@ -2327,6 +2328,11 @@ export function create_client_core(
 				prefetch = null;
 				notify_work_update();
 			}
+		} finally {
+			if (f.is_pending) {
+				f.is_pending = false;
+				notify_work_update();
+			}
 		}
 	}
 
@@ -2355,7 +2361,10 @@ export function create_client_core(
 			resolve_prepare = r;
 		});
 
-		const f = start_fetch(url, { kind: "prefetch" }, false, prepare_ready);
+		const f: PrefetchFetch = {
+			...start_fetch(url, { kind: "prefetch" }, false, prepare_ready),
+			is_pending: true,
+		};
 		prefetch = f;
 		notify_work_update();
 		void prepare_prefetch(f).finally(() => resolve_prepare());
@@ -2697,7 +2706,7 @@ export function create_client_core(
 			});
 		}
 
-		if (prefetch) {
+		if (prefetch?.is_pending) {
 			work.push({
 				kind: "prefetch",
 			});
@@ -2743,7 +2752,7 @@ export function create_client_core(
 						}
 					: null,
 			revalidation,
-			prefetch: prefetch ? { href: prefetch.url.href } : null,
+			prefetch: prefetch?.is_pending ? { href: prefetch.url.href } : null,
 			apiRequests: Array.from(submissions.values(), (s) => {
 				return {
 					key: s.key,

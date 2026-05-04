@@ -75,21 +75,9 @@
 			"import": "./.dist/kit/listeners/listeners.js",
 			"types": "./.dist/kit/listeners/listeners.d.ts"
 		},
-		"./kit/matcher/register": {
-			"import": "./.dist/kit/matcher/register.js",
-			"types": "./.dist/kit/matcher/register.d.ts"
-		},
-		"./kit/matcher/find-best": {
-			"import": "./.dist/kit/matcher/find_best_match.js",
-			"types": "./.dist/kit/matcher/find_best_match.d.ts"
-		},
-		"./kit/matcher/find-nested": {
-			"import": "./.dist/kit/matcher/find_nested_matches.js",
-			"types": "./.dist/kit/matcher/find_nested_matches.d.ts"
-		},
-		"./kit/matcher/utils": {
-			"import": "./.dist/kit/matcher/utils.js",
-			"types": "./.dist/kit/matcher/utils.d.ts"
+		"./kit/matcher": {
+			"import": "./.dist/kit/matcher/matcher.js",
+			"types": "./.dist/kit/matcher/matcher.d.ts"
 		},
 		"./kit/result": {
 			"import": "./.dist/kit/result/result.js",

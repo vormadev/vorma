@@ -57,13 +57,15 @@ var lang_scope_vals = lang_scope_enum.Get()
 type target_scope string
 
 var target_scope_enum = enum.New[target_scope, string](struct {
-	All   target_scope
-	Fw    target_scope
-	Other target_scope
+	All     target_scope
+	Fw      target_scope
+	Matcher target_scope
+	Other   target_scope
 }{
-	All:   "all",
-	Fw:    "fw",
-	Other: "other",
+	All:     "all",
+	Fw:      "fw",
+	Matcher: "matcher",
+	Other:   "other",
 })
 
 var target_scope_vals = target_scope_enum.Get()
@@ -258,7 +260,7 @@ func (app enforcer_app) print_help() {
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --lang all|go|ts      language scope, default all")
-	fmt.Println("  --scope all|fw|other  target scope, default all")
+	fmt.Println("  --scope all|fw|matcher|other  target scope, default all")
 	fmt.Println("  --intensity N         positive repeat count for stress")
 	fmt.Println()
 	fmt.Println("Actions:")
@@ -275,5 +277,5 @@ func (app enforcer_app) print_help() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  go run ./internal/cmd/enforcer fmt lint --lang go --scope fw")
-	fmt.Println("  go run ./internal/cmd/enforcer gate --scope other")
+	fmt.Println("  go run ./internal/cmd/enforcer gate --scope matcher")
 }

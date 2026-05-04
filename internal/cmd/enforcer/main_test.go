@@ -22,11 +22,14 @@ func TestEnforcerDryRunActions(t *testing.T) {
 		{"typecheck", "--lang", "go"},
 		{"typecheck", "--scope", "fw"},
 		{"test"},
+		{"test", "--scope", "matcher"},
 		{"test", "--lang", "ts", "--scope", "fw"},
+		{"test", "--lang", "ts", "--scope", "matcher"},
 		{"build"},
 		{"stress", "--intensity", "2"},
 		{"gate"},
 		{"gate", "--scope", "fw"},
+		{"gate", "--scope", "matcher"},
 		{"gate", "--scope", "other"},
 		{"fmt", "lint", "typecheck", "--lang", "go", "--scope", "fw"},
 	}
@@ -63,6 +66,93 @@ func TestGateActionsIncludeFix(t *testing.T) {
 		if !got[action] {
 			t.Fatalf("gate_actions missing %s", action)
 		}
+	}
+}
+
+func TestEnforcerReusesSharedTasks(t *testing.T) {
+	for action, matrix := range action_matrices {
+		assert_matrix_has_all_tasks(t, action, matrix)
+	}
+	assert_matrix_has_all_tasks(t, action_vals.Stress, stress_action_matrix)
+
+	typecheck_matrix := action_matrices[action_vals.Typecheck]
+	build_matrix := action_matrices[action_vals.Build]
+	if typecheck_matrix.go_fw != build_matrix.go_fw {
+		t.Fatalf("Go fw compile check should be shared by typecheck and build")
+	}
+	if typecheck_matrix.go_matcher != build_matrix.go_matcher {
+		t.Fatalf("Go matcher compile check should be shared by typecheck and build")
+	}
+	if typecheck_matrix.go_other != build_matrix.go_other {
+		t.Fatalf("Go other compile check should be shared by typecheck and build")
+	}
+	if build_matrix.ts_fw != build_matrix.ts_matcher {
+		t.Fatalf("TypeScript build should be shared by fw and matcher")
+	}
+	if build_matrix.ts_fw != build_matrix.ts_other {
+		t.Fatalf("TypeScript build should be shared by fw and other")
+	}
+
+	test_matrix := action_matrices[action_vals.Test]
+	if test_matrix.go_matcher != test_matrix.ts_matcher {
+		t.Fatalf("matcher tests should be shared by Go and TypeScript test actions")
+	}
+
+	if stress_action_matrix.go_matcher != stress_action_matrix.ts_matcher {
+		t.Fatalf("matcher stress should be shared by Go and TypeScript stress actions")
+	}
+
+	low_stress_tasks, err := enforcer_app{}.action_tasks(action_vals.Stress, enforcer_request{
+		actions:   []action_name{action_vals.Stress},
+		lang:      lang_scope_vals.All,
+		scope:     target_scope_vals.All,
+		intensity: 1,
+	})
+	if err != nil {
+		t.Fatalf("low stress task resolution failed: %v", err)
+	}
+	high_stress_tasks, err := enforcer_app{}.action_tasks(action_vals.Stress, enforcer_request{
+		actions:   []action_name{action_vals.Stress},
+		lang:      lang_scope_vals.All,
+		scope:     target_scope_vals.All,
+		intensity: 2,
+	})
+	if err != nil {
+		t.Fatalf("high stress task resolution failed: %v", err)
+	}
+	if len(low_stress_tasks) != len(high_stress_tasks) {
+		t.Fatalf("stress task count should not depend on intensity")
+	}
+	for i := range low_stress_tasks {
+		if low_stress_tasks[i] != high_stress_tasks[i] {
+			t.Fatalf("stress task identity should not depend on intensity")
+		}
+	}
+}
+
+func assert_matrix_has_all_tasks(
+	t *testing.T,
+	action action_name,
+	matrix action_matrix,
+) {
+	t.Helper()
+	if matrix.go_fw == nil {
+		t.Fatalf("%s matrix missing Go fw task", action)
+	}
+	if matrix.go_matcher == nil {
+		t.Fatalf("%s matrix missing Go matcher task", action)
+	}
+	if matrix.go_other == nil {
+		t.Fatalf("%s matrix missing Go other task", action)
+	}
+	if matrix.ts_fw == nil {
+		t.Fatalf("%s matrix missing TypeScript fw task", action)
+	}
+	if matrix.ts_matcher == nil {
+		t.Fatalf("%s matrix missing TypeScript matcher task", action)
+	}
+	if matrix.ts_other == nil {
+		t.Fatalf("%s matrix missing TypeScript other task", action)
 	}
 }
 

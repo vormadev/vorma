@@ -1,0 +1,11 @@
+{
+	"extends": "../pkg/npm/tsconfig.base.json",
+	"compilerOptions": {
+		"paths": {
+			"vitest": ["../pkg/npm/node_modules/vitest/dist/index.d.ts"]
+		},
+		"types": ["node"],
+		"typeRoots": ["../pkg/npm/node_modules/@types"]
+	},
+	"include": ["*.ts"]
+}
