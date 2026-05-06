@@ -30,9 +30,9 @@ type Manifest struct {
 	VormaVersion string
 
 	// Dev-time
-	Dev_ViteServerPort int
-	Dev_MuxPort        int
-	Dev_RefreshToken   string
+	Dev_ViteServerPort int    `json:",omitempty"`
+	Dev_MuxPort        int    `json:",omitempty"`
+	Dev_RefreshToken   string `json:",omitempty"`
 
 	// Normalized config values needed at runtime
 	PublicStaticBasePath string
@@ -84,14 +84,14 @@ func (m Manifest) to_client_build_id() (string, error) {
 	return strings.ToLower(b32)[:24], nil
 }
 
-func (instance *Instance) PublicURL(src_path string) (string, error) {
+func (inst *Instance) PublicURL(src_path string) (string, error) {
 	if IsBuild() {
 		return "", nil
 	}
-	if err := instance.init(); err != nil {
+	if err := inst.init(); err != nil {
 		return "", fmt.Errorf("error initializing instance: %w", err)
 	}
-	pub_fm, err := instance.public_filemap()
+	pub_fm, err := inst.public_filemap()
 	if err != nil {
 		return "", fmt.Errorf("error getting public filemap: %w", err)
 	}
@@ -103,31 +103,31 @@ func (instance *Instance) PublicURL(src_path string) (string, error) {
 	return url, nil
 }
 
-func (instance *Instance) ClientBuildID() (string, error) {
+func (inst *Instance) ClientBuildID() (string, error) {
 	if IsBuild() {
 		return "", nil
 	}
-	if err := instance.init(); err != nil {
+	if err := inst.init(); err != nil {
 		return "", fmt.Errorf("error initializing instance: %w", err)
 	}
 	if IsDev() {
-		manifest, err := instance.manifest()
+		manifest, err := inst.manifest()
 		if err != nil {
 			return "", fmt.Errorf("error getting manifest: %w", err)
 		}
 		return manifest.to_client_build_id()
 	}
-	return instance.client_build_id_cache, nil
+	return inst.client_build_id_cache, nil
 }
 
-func (instance *Instance) CriticalCSSContentSha256() (string, error) {
+func (inst *Instance) CriticalCSSContentSha256() (string, error) {
 	if IsBuild() {
 		return "", nil
 	}
-	if err := instance.init(); err != nil {
+	if err := inst.init(); err != nil {
 		return "", fmt.Errorf("error initializing instance: %w", err)
 	}
-	el, err := instance.critical_css_el()
+	el, err := inst.critical_css_el()
 	if err != nil {
 		return "", fmt.Errorf("error getting critical CSS element: %w", err)
 	}
@@ -138,26 +138,26 @@ func (instance *Instance) CriticalCSSContentSha256() (string, error) {
 	return hash, nil
 }
 
-func (instance *Instance) PublicFS() (fs.FS, error) {
+func (inst *Instance) PublicFS() (fs.FS, error) {
 	if IsBuild() {
 		return nil, nil
 	}
-	if err := instance.init(); err != nil {
+	if err := inst.init(); err != nil {
 		return nil, fmt.Errorf("error initializing instance: %w", err)
 	}
-	return fs.Sub(instance.static_fs, "public")
+	return fs.Sub(inst.static_fs, "public")
 }
 
-func (instance *Instance) public_static_base_path() (string, error) {
-	manifest, err := instance.manifest()
+func (inst *Instance) public_static_base_path() (string, error) {
+	manifest, err := inst.manifest()
 	if err != nil {
 		return "", fmt.Errorf("error getting manifest: %w", err)
 	}
 	return manifest.PublicStaticBasePath, nil
 }
 
-func (instance *Instance) critical_css_el() (*htmlutil.Element, error) {
-	manifest, err := instance.manifest()
+func (inst *Instance) critical_css_el() (*htmlutil.Element, error) {
+	manifest, err := inst.manifest()
 	if err != nil {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
@@ -168,23 +168,23 @@ func (instance *Instance) critical_css_el() (*htmlutil.Element, error) {
 	}, nil
 }
 
-func (instance *Instance) public_filemap() (map[string]string, error) {
-	manifest, err := instance.manifest()
+func (inst *Instance) public_filemap() (map[string]string, error) {
+	manifest, err := inst.manifest()
 	if err != nil {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
 	return manifest.PublicFilemap, nil
 }
 
-func (instance *Instance) final_public_filepaths() (*set.Set[string], error) {
+func (inst *Instance) final_public_filepaths() (*set.Set[string], error) {
 	if IsDev() {
-		return instance.make_final_public_filepaths()
+		return inst.make_final_public_filepaths()
 	}
-	return instance.final_public_filepaths_cache, nil
+	return inst.final_public_filepaths_cache, nil
 }
 
-func (instance *Instance) make_final_public_filepaths() (*set.Set[string], error) {
-	manifest, err := instance.manifest()
+func (inst *Instance) make_final_public_filepaths() (*set.Set[string], error) {
+	manifest, err := inst.manifest()
 	if err != nil {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
@@ -209,11 +209,11 @@ func (instance *Instance) make_final_public_filepaths() (*set.Set[string], error
 	return filepaths, nil
 }
 
-func (instance *Instance) manifest() (*Manifest, error) {
+func (inst *Instance) manifest() (*Manifest, error) {
 	if IsDev() {
-		return read_manifest(instance.static_fs)
+		return read_manifest(inst.static_fs)
 	}
-	return instance.manifest_cache, nil
+	return inst.manifest_cache, nil
 }
 
 func read_manifest(static_fs fs.FS) (*Manifest, error) {

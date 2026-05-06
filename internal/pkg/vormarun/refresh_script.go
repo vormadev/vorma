@@ -15,25 +15,25 @@ var refresh_script_tmpl string
 // DevRefreshScriptContentSha256 returns the base64-encoded SHA-256 hash
 // of the refresh script content, suitable for Content-Security-Policy
 // script-src directives. Returns empty string if not in dev mode.
-func (instance *Instance) DevRefreshScriptContentSha256() (string, error) {
+func (inst *Instance) DevRefreshScriptContentSha256() (string, error) {
 	if !IsDev() {
 		return "", nil
 	}
-	if err := instance.init(); err != nil {
+	if err := inst.init(); err != nil {
 		return "", fmt.Errorf("error initializing instance: %w", err)
 	}
-	inner_html, error := instance.refresh_script_inner_html()
+	inner_html, error := inst.refresh_script_inner_html()
 	if error != nil {
 		return "", fmt.Errorf("error getting refresh script inner HTML for hashing: %w", error)
 	}
 	return bytesutil.ToBase64(cryptoutil.Sha256Hash([]byte(inner_html))), nil
 }
 
-func (instance *Instance) refresh_script_inner_html() (string, error) {
+func (inst *Instance) refresh_script_inner_html() (string, error) {
 	if !IsDev() {
 		return "", nil
 	}
-	manifest, err := instance.manifest()
+	manifest, err := inst.manifest()
 	if err != nil {
 		return "", fmt.Errorf("error getting manifest for refresh script: %w", err)
 	}

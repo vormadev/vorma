@@ -577,7 +577,7 @@ describe("navigate redirects", () => {
 	it("hard reloads navigation when route data reports build skew", async () => {
 		const on_build_skew = vi.fn();
 		const { core, hard_redirect } = await setup({
-			init: { onBuildSkewDetected: on_build_skew },
+			clientOptions: { onBuildSkewDetected: on_build_skew },
 		});
 		const { call, wait_for } = mock_fetch();
 
@@ -1555,7 +1555,7 @@ describe("status", () => {
 	it("emits work notifications when navigation target changes", async () => {
 		const work_updates: any[] = [];
 		const { core } = await setup({
-			init: {
+			clientOptions: {
 				onWorkUpdate: (work: any) => {
 					work_updates.push({ ...work });
 				},

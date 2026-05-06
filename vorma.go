@@ -22,7 +22,6 @@ type (
 	Instance       = vormarun.Instance
 	Router         = vormarun.Router
 	Config         = vormarun.Config
-	DistConfig     = vormarun.DistConfig
 	DevWatchConfig = vormarun.DevWatchConfig
 	FrontendConfig = vormarun.FrontendConfig
 	TSGenConfig    = vormarun.TSGenConfig
@@ -59,13 +58,7 @@ const (
 
 /////// CORE FUNCTIONS
 
-func New(config *Config) *Instance {
-	instance, err := vormarun.New(config)
-	if err != nil {
-		panic(err)
-	}
-	return instance
-}
+func New(config *Config) *Instance { return vormarun.New(config) }
 
 func IsDev() bool { return vormarun.IsDev() }
 

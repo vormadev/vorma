@@ -460,7 +460,7 @@ func TestHTTPMiddleware(t *testing.T) {
 	t.Run("Global_Middleware_Order", func(t *testing.T) {
 		r := NewRouter()
 		var order []string
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
 					order = append(order, "global1")
@@ -468,7 +468,7 @@ func TestHTTPMiddleware(t *testing.T) {
 				},
 			)
 		})
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
 					order = append(order, "global2")
@@ -498,7 +498,7 @@ func TestHTTPMiddleware(t *testing.T) {
 	t.Run("Method_Level_Middleware", func(t *testing.T) {
 		r := NewRouter()
 		var order []string
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
 					order = append(order, "global")
@@ -506,7 +506,7 @@ func TestHTTPMiddleware(t *testing.T) {
 				},
 			)
 		})
-		AddMethodLevelHTTPMiddleware(
+		UseMiddlewareByMethod(
 			r,
 			http.MethodGet,
 			func(next http.Handler) http.Handler {
@@ -548,7 +548,7 @@ func TestHTTPMiddleware(t *testing.T) {
 				order = append(order, "handler")
 			},
 		)
-		AddPatternLevelHTTPMiddleware(
+		UseMiddlewareByPattern(
 			route,
 			func(next http.Handler) http.Handler {
 				return http.HandlerFunc(
@@ -572,7 +572,7 @@ func TestHTTPMiddleware(t *testing.T) {
 	t.Run("Middleware_With_If", func(t *testing.T) {
 		r := NewRouter()
 		var mw_called bool
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
 					mw_called = true
@@ -617,7 +617,7 @@ func TestHTTPMiddleware(t *testing.T) {
 	t.Run("Middleware_Short_Circuit", func(t *testing.T) {
 		r := NewRouter()
 		var handler_called bool
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, req *http.Request) {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -650,7 +650,7 @@ func TestTaskMiddleware(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		r := NewRouter()
 		var mw_called bool
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			r,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (auth_info, error) {
 				mw_called = true
@@ -676,7 +676,7 @@ func TestTaskMiddleware(t *testing.T) {
 	t.Run("With_If", func(t *testing.T) {
 		r := NewRouter()
 		var mw_called bool
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			r,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				mw_called = true
@@ -887,7 +887,7 @@ func TestAllRoutes(t *testing.T) {
 func TestTasksCacheAvailability(t *testing.T) {
 	t.Run("InHTTPHandler_WithTaskMiddleware", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },
@@ -916,7 +916,7 @@ func TestTasksCacheAvailability(t *testing.T) {
 
 	t.Run("InTaskMiddleware", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				if rd.TasksCache() == nil {
@@ -976,8 +976,8 @@ func setup_api_router() *Router {
 			next.ServeHTTP(w, r)
 		})
 	}
-	AddGlobalHTTPMiddleware(r, logging)
-	AddGlobalHTTPMiddleware(r, auth)
+	UseMiddleware(r, logging)
+	UseMiddleware(r, auth)
 
 	ok := func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }
 	AddHTTPHandlerFunc(r, http.MethodGet, "/api/users", ok)
@@ -1056,7 +1056,7 @@ func BenchmarkRouter(b *testing.B) {
 
 	b.Run("WithMiddleware", func(b *testing.B) {
 		r := NewRouter()
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) { next.ServeHTTP(w, r) },
 			)

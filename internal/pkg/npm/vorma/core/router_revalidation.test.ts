@@ -84,7 +84,7 @@ describe("revalidate", () => {
 				MatchedPatterns: ["/"],
 				LoadersData: [{ fresh: false }],
 			},
-			init: {
+			clientOptions: {
 				onRouteUpdate: (
 					route: unknown,
 					previous_route: unknown,
@@ -270,7 +270,7 @@ describe("revalidate redirects", () => {
 	it("drops stale build skew responses by default", async () => {
 		const on_build_skew = vi.fn();
 		const { core, hard_redirect } = await setup({
-			init: { onBuildSkewDetected: on_build_skew },
+			clientOptions: { onBuildSkewDetected: on_build_skew },
 		});
 		const { call, wait_for } = mock_fetch();
 
@@ -433,7 +433,7 @@ describe("derived isRevalidating status", () => {
 	it("transitions from submitting to revalidating with no gap", async () => {
 		const work_updates: any[] = [];
 		const { core } = await setup({
-			init: {
+			clientOptions: {
 				onWorkUpdate: (work: any) => {
 					work_updates.push({ ...work });
 				},

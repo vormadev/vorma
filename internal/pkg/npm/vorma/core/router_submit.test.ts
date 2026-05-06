@@ -297,7 +297,7 @@ describe("submit", () => {
 	it("reports submission as the build skew revalidation reason", async () => {
 		const on_build_skew = vi.fn();
 		const { core } = await setup({
-			init: { onBuildSkewDetected: on_build_skew },
+			clientOptions: { onBuildSkewDetected: on_build_skew },
 		});
 		const { call, wait_for } = mock_fetch();
 
@@ -335,7 +335,7 @@ describe("submit", () => {
 	it("auto-revalidates after non-ok mutation response by default", async () => {
 		const on_build_skew = vi.fn();
 		const { core } = await setup({
-			init: { onBuildSkewDetected: on_build_skew },
+			clientOptions: { onBuildSkewDetected: on_build_skew },
 		});
 		const { calls, call, wait_for } = mock_fetch();
 
@@ -388,7 +388,7 @@ describe("submit", () => {
 	it("reports build skew from successful mutation responses", async () => {
 		const on_build_skew = vi.fn();
 		const { core } = await setup({
-			init: { onBuildSkewDetected: on_build_skew },
+			clientOptions: { onBuildSkewDetected: on_build_skew },
 		});
 		const { call, wait_for } = mock_fetch();
 
@@ -431,7 +431,7 @@ describe("submit", () => {
 	it("reports build skew from failed query responses", async () => {
 		const on_build_skew = vi.fn();
 		const { core } = await setup({
-			init: { onBuildSkewDetected: on_build_skew },
+			clientOptions: { onBuildSkewDetected: on_build_skew },
 		});
 		const { call, wait_for } = mock_fetch();
 

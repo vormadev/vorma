@@ -15,7 +15,9 @@ import {
 
 export const ui = {
 	variant: runtime.variant,
-	defineView,
+	defineView: (input: any): any => {
+		return defineView(runtime.prepare_view_definition(input));
+	},
 	Link,
 	navigate,
 	prefetch,

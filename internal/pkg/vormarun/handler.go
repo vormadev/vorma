@@ -31,12 +31,12 @@ func IsJSONRequest(r *http.Request) bool {
 
 func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		instance := router.instance
+		inst := router.instance
 		res := response.New(w)
 
-		expected_client_build_id, err := instance.ClientBuildID()
+		expected_client_build_id, err := inst.ClientBuildID()
 		if err != nil {
-			instance.log.Error("error getting client build id", "err", err)
+			inst.log.Error("error getting client build id", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -61,9 +61,9 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 		var root_template_data_wg sync.WaitGroup
 
 		if !is_json {
-			if instance.cfg.HTMLConfig.TemplateData != nil {
+			if inst.Config().HTMLConfig.TemplateData != nil {
 				root_template_data_wg.Go(func() {
-					root_template_data, root_template_data_err = instance.cfg.HTMLConfig.TemplateData(
+					root_template_data, root_template_data_err = inst.Config().HTMLConfig.TemplateData(
 						r,
 					)
 				})
@@ -76,10 +76,10 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 		var default_head_err error
 		var default_head_wg sync.WaitGroup
 
-		if instance.cfg.HTMLConfig.DefaultHead != nil {
+		if inst.Config().HTMLConfig.DefaultHead != nil {
 			default_head_wg.Go(func() {
 				h := head.NewBuilder()
-				default_head_err = instance.cfg.HTMLConfig.DefaultHead(r, instance, h)
+				default_head_err = inst.Config().HTMLConfig.DefaultHead(r, inst, h)
 				if default_head_err == nil {
 					default_head_els = h.Elements()
 				}
@@ -100,14 +100,14 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 
 		default_head_wg.Wait()
 		if default_head_err != nil {
-			instance.log.Error("error in DefaultHeadEls func", "err", default_head_err)
+			inst.log.Error("error in DefaultHeadEls func", "err", default_head_err)
 			res.InternalServerError()
 			return
 		}
 
-		manifest, err := instance.manifest()
+		manifest, err := inst.manifest()
 		if err != nil {
-			instance.log.Error("error getting manifest", "err", err)
+			inst.log.Error("error getting manifest", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -151,7 +151,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 			pattern := m.OriginalPattern()
 			route_mod, ok := manifest.ClientRoutes[pattern]
 			if !ok {
-				instance.log.Error("no route module found for matched pattern",
+				inst.log.Error("no route module found for matched pattern",
 					"pattern", pattern,
 				)
 				res.InternalServerError()
@@ -181,7 +181,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 				} else {
 					outermost_server_err = "An unexpected error occurred."
 				}
-				instance.log.Error("loader error",
+				inst.log.Error("loader error",
 					"pattern", pattern,
 					"path", r.URL.Path,
 					"err", loader_err,
@@ -191,7 +191,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 				data := result.Data()
 				loaders_data = append(loaders_data, data)
 				if reflectutil.IsNilLikeExceptNone(data) {
-					instance.log.Warn(
+					inst.log.Warn(
 						"Do not return nil values from loaders unless "+
 							"the referenced type is an empty struct "+
 							"or you are returning an error.",
@@ -217,7 +217,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 			}
 		}
 
-		prepared_head := instance.head_renderer.Prepare(raw_head_els)
+		prepared_head := inst.head_renderer.Prepare(raw_head_els)
 
 		payload := loader_payload{
 			MatchedPatterns: matched_patterns,
@@ -262,31 +262,31 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 
 		root_template_data_wg.Wait()
 		if root_template_data_err != nil {
-			instance.log.Error("error in RootHTMLTemplateData func", "err", root_template_data_err)
+			inst.log.Error("error in RootHTMLTemplateData func", "err", root_template_data_err)
 			res.InternalServerError()
 			return
 		}
 
 		vorma_head := &strings.Builder{}
 
-		user_head, err := instance.head_renderer.Render(prepared_head)
+		user_head, err := inst.head_renderer.Render(prepared_head)
 		if err != nil {
-			instance.log.Error("error rendering head elements", "err", err)
+			inst.log.Error("error rendering head elements", "err", err)
 			res.InternalServerError()
 			return
 		}
 		vorma_head.WriteString(string(user_head))
 		vorma_head.WriteString("\n")
 
-		critical_css_el, error := instance.critical_css_el()
+		critical_css_el, error := inst.critical_css_el()
 		if error != nil {
-			instance.log.Error("error generating critical CSS element", "err", error)
+			inst.log.Error("error generating critical CSS element", "err", error)
 			res.InternalServerError()
 			return
 		}
 		rendered_critical_css_el, err := htmlutil.RenderElement(critical_css_el)
 		if err != nil {
-			instance.log.Error("error rendering critical CSS element", "err", err)
+			inst.log.Error("error rendering critical CSS element", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -306,7 +306,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 				}
 				rendered_css_bundle_el, err := htmlutil.RenderElement(css_bundle_el)
 				if err != nil {
-					instance.log.Error("error rendering CSS bundle element", "err", err)
+					inst.log.Error("error rendering CSS bundle element", "err", err)
 					res.InternalServerError()
 					return
 				}
@@ -331,7 +331,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 		}
 		payload_json, err := jsonutil.Serialize(ssr_payload)
 		if err != nil {
-			instance.log.Error("error serializing loader payload to JSON", "err", err)
+			inst.log.Error("error serializing loader payload to JSON", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -345,7 +345,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 		}
 		rendered_data_json_el, err := htmlutil.RenderElement(data_json_el)
 		if err != nil {
-			instance.log.Error("error rendering data JSON element", "err", err)
+			inst.log.Error("error rendering data JSON element", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -366,15 +366,15 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 				manifest.UIVariant == "react",
 			)
 			if err != nil {
-				instance.log.Error("error generating dev scripts for client entry module", "err", err)
+				inst.log.Error("error generating dev scripts for client entry module", "err", err)
 				res.InternalServerError()
 				return
 			}
 			vorma_body.WriteString(string(dev_scripts))
 			vorma_body.WriteString("\n")
-			refresh_script_inner_html, err := instance.refresh_script_inner_html()
+			refresh_script_inner_html, err := inst.refresh_script_inner_html()
 			if err != nil {
-				instance.log.Error("error generating refresh script inner HTML", "err", err)
+				inst.log.Error("error generating refresh script inner HTML", "err", err)
 				res.InternalServerError()
 				return
 			}
@@ -384,8 +384,8 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 		root_template_data["VormaBody"] = template.HTML(vorma_body.String())
 
 		var buf bytes.Buffer
-		if err := instance.root_template.Execute(&buf, root_template_data); err != nil {
-			instance.log.Error("error executing template", "err", err)
+		if err := inst.root_template.Execute(&buf, root_template_data); err != nil {
+			inst.log.Error("error executing template", "err", err)
 			res.InternalServerError()
 			return
 		}
@@ -400,7 +400,7 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 
 func (router *Router) api_handler() mux.TasksCacheRequirerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		instance := router.instance
+		inst := router.instance
 		res := response.New(w)
 
 		if !router.api_http_methods.Has(r.Method) {
@@ -408,9 +408,9 @@ func (router *Router) api_handler() mux.TasksCacheRequirerFunc {
 			res.MethodNotAllowed()
 			return
 		}
-		client_build_id, err := instance.ClientBuildID()
+		client_build_id, err := inst.ClientBuildID()
 		if err != nil {
-			instance.log.Error("error getting client build id", "err", err)
+			inst.log.Error("error getting client build id", "err", err)
 			res.InternalServerError()
 			return
 		}

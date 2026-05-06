@@ -9,6 +9,7 @@ declare module "#variant-runtime" {
 	export function read_box(box: any): any;
 	export function read_text_state(value: any): any;
 	export function dynamic(read_value: () => any): any;
+	export function prepare_view_definition(input: any): any;
 	export function render_vorma(input: {
 		RootOutlet: any;
 		rootEl: HTMLElement;
@@ -20,5 +21,5 @@ declare module "#vorma-client" {
 }
 
 declare module "#vorma-gen" {
-	export const vormaAppConfig: any;
+	export const vormaClientSeed: any;
 }

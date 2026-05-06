@@ -129,10 +129,10 @@ describe("apply_scroll", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Init lifecycle
+/////// Boot lifecycle
 /////////////////////////////////////////////////////////////////////
 
-describe("init lifecycle", () => {
+describe("boot lifecycle", () => {
 	it("parses #vorma-data-json script element for initial payload", async () => {
 		seed_payload({
 			MatchedPatterns: ["/"],
@@ -151,7 +151,7 @@ describe("init lifecycle", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[0]![0];
@@ -190,7 +190,7 @@ describe("init lifecycle", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries[0].input).toEqual({
@@ -211,11 +211,11 @@ describe("init lifecycle", () => {
 		if (!core_res.ok) {
 			throw new Error("unexpected");
 		}
-		const init_res = await core_res.val.init({});
-		expect(init_res.ok).toBe(false);
+		const render_res = await core_res.val.boot({});
+		expect(render_res.ok).toBe(false);
 	});
 
-	it("calls render during init", async () => {
+	it("calls render callback during boot", async () => {
 		seed_payload();
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -231,7 +231,7 @@ describe("init lifecycle", () => {
 		const core = core_res.val;
 		const render = vi.fn();
 
-		await core.init({ render });
+		await core.boot({ render });
 
 		expect(render).toHaveBeenCalledTimes(1);
 	});
@@ -260,7 +260,7 @@ describe("init lifecycle", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		const scroll_intent = commit.mock.calls[0]![1];
 		expect(scroll_intent?.scroll).toEqual({ x: 55, y: 77 });
@@ -283,7 +283,7 @@ describe("init lifecycle", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		const scroll_intent = commit.mock.calls[0]![1];
 		expect(scroll_intent?.scroll).toEqual({ hash: "#section" });
@@ -292,10 +292,10 @@ describe("init lifecycle", () => {
 	it("allows initial client loaders to submit API actions", async () => {
 		let core: any;
 
-		vi.doMock("/mod-init-action.js", () => {
+		vi.doMock("/mod-boot-action.js", () => {
 			return {
 				default: {
-					pattern: "/init-action",
+					pattern: "/boot-action",
 					component: () => {
 						return null;
 					},
@@ -311,8 +311,8 @@ describe("init lifecycle", () => {
 		});
 
 		seed_payload({
-			MatchedPatterns: ["/init-action"],
-			ImportURLs: ["/mod-init-action.js"],
+			MatchedPatterns: ["/boot-action"],
+			ImportURLs: ["/mod-boot-action.js"],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -334,7 +334,7 @@ describe("init lifecycle", () => {
 			}),
 		);
 
-		await core.init({});
+		await core.boot({});
 
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries[0].client_loader_data.success).toBe(true);
@@ -344,10 +344,10 @@ describe("init lifecycle", () => {
 	it("does not deadlock initial client loaders awaiting submit revalidation", async () => {
 		let core: any;
 
-		vi.doMock("/mod-init-submit.js", () => {
+		vi.doMock("/mod-boot-submit.js", () => {
 			return {
 				default: {
-					pattern: "/init-submit",
+					pattern: "/boot-submit",
 					component: () => {
 						return null;
 					},
@@ -362,8 +362,8 @@ describe("init lifecycle", () => {
 		});
 
 		seed_payload({
-			MatchedPatterns: ["/init-submit"],
-			ImportURLs: ["/mod-init-submit.js"],
+			MatchedPatterns: ["/boot-submit"],
+			ImportURLs: ["/mod-boot-submit.js"],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -387,7 +387,7 @@ describe("init lifecycle", () => {
 			)
 			.mockResolvedValueOnce(route_response());
 
-		await core.init({});
+		await core.boot({});
 		await tick();
 
 		const state = commit.mock.calls[0]![0];
@@ -409,10 +409,10 @@ describe("init lifecycle", () => {
 			};
 		});
 
-		vi.doMock("/mod-init-router-data.js", () => {
+		vi.doMock("/mod-boot-router-data.js", () => {
 			return {
 				default: {
-					pattern: "/init-router-data",
+					pattern: "/boot-router-data",
 					component: () => {
 						return null;
 					},
@@ -424,9 +424,9 @@ describe("init lifecycle", () => {
 		});
 
 		seed_payload({
-			MatchedPatterns: ["/", "/init-router-data"],
+			MatchedPatterns: ["/", "/boot-router-data"],
 			LoadersData: [{ root: true }, { route: true }],
-			ImportURLs: ["/mod-root.js", "/mod-init-router-data.js"],
+			ImportURLs: ["/mod-root.js", "/mod-boot-router-data.js"],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core(
@@ -441,7 +441,7 @@ describe("init lifecycle", () => {
 		}
 		core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		const state = commit.mock.calls[0]![0];
 		expect(state.entries[1].client_loader_data).toEqual({
@@ -458,7 +458,7 @@ describe("init lifecycle", () => {
 					clientLoaderData: undefined,
 				},
 				{
-					pattern: "/init-router-data",
+					pattern: "/boot-router-data",
 					input: {},
 					loaderData: { route: true },
 					clientLoaderData: undefined,
@@ -483,7 +483,7 @@ describe("init lifecycle", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		expect(core.getClientBuildID()).toBe("initial-build");
 	});
@@ -494,7 +494,7 @@ describe("init lifecycle", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("title entity decoding", () => {
-	it("decodes HTML entities in title during init", async () => {
+	it("decodes HTML entities in title during boot", async () => {
 		seed_payload({
 			Title: { dangerousInnerHTML: "A &amp; B" },
 		});
@@ -511,7 +511,7 @@ describe("title entity decoding", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		expect(document.title).toBe("A & B");
 	});
@@ -535,7 +535,7 @@ describe("title entity decoding", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		expect(document.title).toBe('<Title> & "More"');
 	});
@@ -557,7 +557,7 @@ describe("title entity decoding", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		expect(document.title).toBe("");
 	});
@@ -583,7 +583,7 @@ describe("navigation flow", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -643,7 +643,7 @@ describe("navigation flow", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -672,7 +672,7 @@ describe("navigation flow", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({ useViewTransitions: true });
+		await core.boot({ useViewTransitions: true });
 		commit.mockClear();
 
 		let transition_called = false;
@@ -693,7 +693,7 @@ describe("navigation flow", () => {
 
 	it("clears active navigation after publish before view transition finishes", async () => {
 		const { core, commit } = await setup({
-			init: { useViewTransitions: true },
+			clientOptions: { useViewTransitions: true },
 		});
 
 		let finish_transition!: () => void;
@@ -728,7 +728,7 @@ describe("navigation flow", () => {
 
 	it("does not publish a superseded navigation from a delayed view transition callback", async () => {
 		const { core, commit } = await setup({
-			init: { useViewTransitions: true },
+			clientOptions: { useViewTransitions: true },
 		});
 
 		const transitions: Array<() => void> = [];
@@ -1142,7 +1142,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -1211,7 +1211,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -1288,7 +1288,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -1377,7 +1377,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		// First: navigate to /slow fully to register the client loader
 		vi.spyOn(globalThis, "fetch")
@@ -1457,7 +1457,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -1502,7 +1502,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -1553,7 +1553,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -1602,7 +1602,7 @@ describe("client loaders", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -1641,7 +1641,7 @@ describe("build ID", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({}, "build-2"),
@@ -1668,7 +1668,7 @@ describe("build ID", () => {
 		const core = core_res.val;
 
 		const on_build_skew = vi.fn();
-		await core.init({ onBuildSkewDetected: on_build_skew });
+		await core.boot({ onBuildSkewDetected: on_build_skew });
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({}, "build-2"),
@@ -1717,7 +1717,7 @@ describe("build ID", () => {
 		const core = core_res.val;
 
 		const on_build_skew = vi.fn();
-		await core.init({ onBuildSkewDetected: on_build_skew });
+		await core.boot({ onBuildSkewDetected: on_build_skew });
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({}, "build-1"),
@@ -1750,7 +1750,7 @@ describe("work integration", () => {
 		const core = core_res.val;
 
 		const work_updates: any[] = [];
-		await core.init({
+		await core.boot({
 			onWorkUpdate: (work) => {
 				return work_updates.push({ ...work });
 			},
@@ -1784,7 +1784,7 @@ describe("work integration", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		const idle = core.getWorkState();
 		expect(idle).toEqual({
@@ -1820,7 +1820,7 @@ describe("progress indicators", () => {
 				`create_client_core failed with error: ${core_res.err}`,
 			);
 		}
-		await core_res.val.init({ progressIndicator });
+		await core_res.val.boot({ progressIndicator });
 		return core_res.val;
 	}
 
@@ -2156,7 +2156,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 100 },
 		});
 
@@ -2186,7 +2186,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			onBuildSkewDetected: on_build_skew,
 			revalidateOnWindowFocus: { staleTimeMS: 100 },
 		});
@@ -2235,7 +2235,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 5000 },
 		});
 
@@ -2264,7 +2264,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({ revalidateOnWindowFocus: false });
+		await core.boot({ revalidateOnWindowFocus: false });
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValue(route_response());
 
@@ -2291,7 +2291,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 1000 },
 		});
 
@@ -2328,7 +2328,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 0 },
 		});
 
@@ -2368,7 +2368,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 0 },
 		});
 
@@ -2417,7 +2417,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 0 },
 		});
 
@@ -2457,7 +2457,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 100 },
 		});
 
@@ -2491,7 +2491,7 @@ describe("focus-triggered revalidation", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			revalidateOnWindowFocus: { staleTimeMS: 100 },
 		});
 
@@ -2540,7 +2540,7 @@ describe("HMR", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -2602,7 +2602,7 @@ describe("HMR", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		// defineView with runClientLoaderOnHMR: true
 		core.defineView({
@@ -2682,7 +2682,7 @@ describe("HMR", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -2741,7 +2741,7 @@ describe("HMR", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
@@ -2858,7 +2858,7 @@ describe("prefetch integration", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
 			return new Promise(() => {});
@@ -2887,7 +2887,7 @@ describe("prefetch integration", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		let signal: AbortSignal | undefined;
 		vi.spyOn(globalThis, "fetch").mockImplementation(
@@ -3171,7 +3171,7 @@ describe("client loader cancellation", () => {
 			};
 		});
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch")
 			.mockResolvedValueOnce(
@@ -3426,7 +3426,7 @@ describe("client loader prefetch isolation from unrelated work", () => {
 			};
 		});
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch")
 			.mockResolvedValueOnce(
@@ -3519,7 +3519,7 @@ describe("client loader prefetch partial matching", () => {
 			};
 		});
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch")
 			.mockResolvedValueOnce(
@@ -3578,7 +3578,7 @@ describe("view transition timing", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({ useViewTransitions: true });
+		await core.boot({ useViewTransitions: true });
 
 		let title_when_transition_started: string | null = null;
 		(document as any).startViewTransition = (cb: () => void) => {
@@ -3622,7 +3622,7 @@ describe("stale navigation side effects", () => {
 		const core = core_res.val;
 
 		const build_skews: string[] = [];
-		await core.init({
+		await core.boot({
 			onBuildSkewDetected: (event) => {
 				build_skews.push(event.serverBuildID);
 			},
@@ -3697,7 +3697,7 @@ describe("stale navigation side effects", () => {
 			}
 			const core = core_res.val;
 
-			await core.init({});
+			await core.boot({});
 			commit.mockClear();
 
 			let resolve_revalidation!: (r: Response) => void;
@@ -3784,7 +3784,7 @@ describe("route update coherence", () => {
 
 		let state_during_callback: unknown = null;
 		let route_update: unknown = null;
-		await core.init({
+		await core.boot({
 			onRouteUpdate: (route, previous_route, reason) => {
 				state_during_callback = core.getRouteState();
 				route_update = { route, previous_route, reason };
@@ -3834,7 +3834,7 @@ describe("route update coherence", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({
+		await core.boot({
 			onRouteUpdate: () => {
 				return order.push("onRouteUpdate");
 			},
@@ -3866,14 +3866,14 @@ describe("route update coherence", () => {
 		const core = core_res.val;
 
 		let route_update: unknown = null;
-		await core.init({
+		await core.boot({
 			onRouteUpdate: (route, previous_route, reason) => {
 				route_update = { route, previous_route, reason };
 			},
 		});
 
 		expect(route_update).toMatchObject({
-			reason: "init",
+			reason: "boot",
 			route: {
 				href: `${window.location.origin}/`,
 			},
@@ -3922,9 +3922,9 @@ describe("route update blocked by client loaders", () => {
 		const core = core_res.val;
 
 		let route_changed = false;
-		await core.init({
+		await core.boot({
 			onRouteUpdate: (_route, _previous_route, reason) => {
-				if (reason === "init") {
+				if (reason === "boot") {
 					return;
 				}
 				route_changed = true;
@@ -3980,8 +3980,8 @@ describe("CSS preload gating", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-		const init_commit_count = commit.mock.calls.length;
+		await core.boot({});
+		const boot_commit_count = commit.mock.calls.length;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({ CSSBundles: ["/blocking.css"] }),
@@ -4002,12 +4002,12 @@ describe("CSS preload gating", () => {
 		}
 
 		expect(preload).not.toBeNull();
-		expect(commit.mock.calls.length).toBe(init_commit_count);
+		expect(commit.mock.calls.length).toBe(boot_commit_count);
 
 		preload!.dispatchEvent(new Event("load"));
 		await nav;
 
-		expect(commit.mock.calls.length).toBe(init_commit_count + 1);
+		expect(commit.mock.calls.length).toBe(boot_commit_count + 1);
 	});
 
 	it("unblocks navigation when CSS preload errors", async () => {
@@ -4025,8 +4025,8 @@ describe("CSS preload gating", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
-		const init_commit_count = commit.mock.calls.length;
+		await core.boot({});
+		const boot_commit_count = commit.mock.calls.length;
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({ CSSBundles: ["/error.css"] }),
@@ -4049,7 +4049,7 @@ describe("CSS preload gating", () => {
 		preload!.dispatchEvent(new Event("error"));
 		await nav;
 
-		expect(commit.mock.calls.length).toBe(init_commit_count + 1);
+		expect(commit.mock.calls.length).toBe(boot_commit_count + 1);
 	});
 });
 
@@ -4091,7 +4091,7 @@ describe("client loader promise reuse on hash change", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		let resolve_fetch!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -4167,7 +4167,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -4196,7 +4196,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -4224,7 +4224,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		expect(commit).toHaveBeenCalled();
 		const state = commit.mock.calls[0]![0];
@@ -4247,7 +4247,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -4289,7 +4289,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({ MatchedPatterns: ["/detail"] }),
@@ -4318,7 +4318,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 
 		await core.navigate("/#section", {
 			state: { tab: "overview" },
@@ -4344,7 +4344,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		vi.spyOn(globalThis, "fetch")
@@ -4385,7 +4385,7 @@ describe("history state", () => {
 		}
 		const core = core_res.val;
 
-		await core.init({});
+		await core.boot({});
 		commit.mockClear();
 
 		const complex_state = {

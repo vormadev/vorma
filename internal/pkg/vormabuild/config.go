@@ -20,6 +20,13 @@ import (
 
 type vorma_cfg struct{ C *vorma.Config }
 
+const (
+	ui_variant_react  = "react"
+	ui_variant_preact = "preact"
+	ui_variant_remix  = "remix"
+	ui_variant_solid  = "solid"
+)
+
 /////////////////////////////////////////////////////////////////////
 /////// RUN STATE -- HIGH-LEVEL CONFIG GETTER
 /////////////////////////////////////////////////////////////////////
@@ -85,7 +92,7 @@ func to_cfg(c *vorma.Config) (*vorma_cfg, error) {
 /////////////////////////////////////////////////////////////////////
 
 func (cfg vorma_cfg) watch_root() string      { return fsutil.SysNorm(cfg.C.DevWatchConfig.WatchRoot) }
-func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.C.DistConfig.OutDir) }
+func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.C.DistDir) }
 func (cfg vorma_cfg) ts_gen_out_file() string { return fsutil.SysNorm(cfg.C.TSGenConfig.OutFile) }
 
 func (cfg vorma_cfg) global_watch_exclude_patterns() []string {
@@ -146,7 +153,7 @@ func (cfg vorma_cfg) public_static_src_dir() string {
 }
 
 func (cfg vorma_cfg) critical_css_entry() string {
-	return fsutil.SysNorm(cfg.C.FrontendConfig.CriticalCSSEntry)
+	return fsutil.SysNorm(cfg.C.FrontendConfig.CriticalCSSFile)
 }
 
 func (cfg vorma_cfg) public_static_base_path() string {
@@ -164,14 +171,17 @@ func (cfg vorma_cfg) ui_variant() string {
 }
 func (cfg vorma_cfg) __validate_ui_variant() (string, error) {
 	ui := strings.TrimSpace(cfg.C.FrontendConfig.UIVariant)
-	if ui != "react" && ui != "preact" && ui != "solid" {
+	if ui != ui_variant_react &&
+		ui != ui_variant_preact &&
+		ui != ui_variant_remix &&
+		ui != ui_variant_solid {
 		return "", fmt.Errorf("invalid UI variant: %s", ui)
 	}
 	return ui, nil
 }
 
 func (cfg vorma_cfg) ts_entry() string {
-	return filepath.ToSlash(fsutil.SysNorm(cfg.C.FrontendConfig.RenderEntry))
+	return filepath.ToSlash(fsutil.SysNorm(cfg.C.FrontendConfig.EntryFile))
 }
 func (cfg vorma_cfg) js_package_manager_cmd_base() []string {
 	return strings.Fields(strings.TrimSpace(cfg.C.FrontendConfig.JSPackageManagerBaseCmd))
@@ -353,12 +363,12 @@ func (cfg vorma_cfg) vite_ignored_patterns() []string {
 
 func (cfg vorma_cfg) vite_dedupe_list() []string {
 	switch cfg.ui_variant() {
-	case "react":
+	case ui_variant_react:
 		return []string{
 			"react",
 			"react-dom",
 		}
-	case "preact":
+	case ui_variant_preact:
 		return []string{
 			"preact",
 			"preact/hooks",
@@ -367,7 +377,13 @@ func (cfg vorma_cfg) vite_dedupe_list() []string {
 			"preact/compat",
 			"preact/test-utils",
 		}
-	case "solid":
+	case ui_variant_remix:
+		return []string{
+			"remix",
+			"remix/ui",
+			"@remix-run/ui",
+		}
+	case ui_variant_solid:
 		return []string{
 			"solid-js",
 			"solid-js/web",

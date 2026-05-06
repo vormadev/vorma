@@ -249,7 +249,7 @@ export function cleanup_listeners() {
 export async function setup(
 	opts: {
 		payload?: Record<string, unknown>;
-		init?: Record<string, any>;
+		clientOptions?: Record<string, any>;
 	} = {},
 ) {
 	seed_payload(opts.payload ?? {});
@@ -258,7 +258,7 @@ export async function setup(
 	const reload = vi.fn();
 	const scroll_to = vi.fn();
 
-	// Track listeners added during init so we can remove them after each test
+	// Track listeners added during boot so we can remove them after each test
 	const added_listeners: Array<[string, any]> = [];
 	const orig_add = window.addEventListener.bind(window);
 	const orig_remove = window.removeEventListener.bind(window);
@@ -276,7 +276,7 @@ export async function setup(
 		throw new Error(`create_client_core failed: ${core_res.err}`);
 	}
 	const core = core_res.val;
-	await core.init(opts.init ?? {});
+	await core.boot(opts.clientOptions ?? {});
 
 	window.addEventListener = orig_add as any;
 	_listener_cleanups.push(() => {

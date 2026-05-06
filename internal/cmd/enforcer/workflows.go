@@ -88,6 +88,7 @@ var typecheck_matcher_projects = ts_project_group{
 var typecheck_fw_source_projects = ts_project_group{
 	{label: "framework core", dir: npm_dir, project: "./vorma/core"},
 	{label: "framework Preact adapter", dir: npm_dir, project: "./vorma/tsx/preact"},
+	{label: "framework Remix adapter", dir: npm_dir, project: "./vorma/tsx/remix"},
 	{label: "framework React adapter", dir: npm_dir, project: "./vorma/tsx/react"},
 	{label: "framework Solid adapter", dir: npm_dir, project: "./vorma/tsx/solid"},
 	{label: "framework Vite integration", dir: npm_dir, project: "./vorma/vite"},

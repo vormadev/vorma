@@ -21,12 +21,22 @@
 // export default defineConfig({ plugins: [preact(), vorma(), tailwindcss()] });
 
 /////////////////////////////////////////////////////////////////////
-/////// SOLID
+/////// REMIX
 /////////////////////////////////////////////////////////////////////
 
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
-import solid from "vite-plugin-solid";
 import vorma from "vorma/vite";
 
-export default defineConfig({ plugins: [solid(), vorma(), tailwindcss()] });
+export default defineConfig({ plugins: [vorma(), tailwindcss()] });
+
+/////////////////////////////////////////////////////////////////////
+/////// SOLID
+/////////////////////////////////////////////////////////////////////
+
+// import tailwindcss from "@tailwindcss/vite";
+// import { defineConfig } from "vite";
+// import solid from "vite-plugin-solid";
+// import vorma from "vorma/vite";
+
+// export default defineConfig({ plugins: [solid(), vorma(), tailwindcss()] });

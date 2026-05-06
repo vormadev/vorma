@@ -1,156 +1,142 @@
 package app
 
 import (
-	"docs/app/md"
 	"fmt"
-	"io/fs"
 	"net/http"
-	"path/filepath"
+	"path"
 
 	"github.com/vormadev/vorma"
-	"github.com/vormadev/vorma/kit/lab/fsmarkdown"
+	"github.com/vormadev/vorma/kit/envutil"
 )
 
-const SiteTitle = "Vorma"
+const (
+	RootTitle       = "Vorma"
+	RootDescription = "Vorma seeks to be the world's most straightforward web framework. Here are its docs."
+)
 
-const SiteDescription = "Vorma seeks to be the world's most straightforward web framework. Here are its docs."
-
-/////// App Instance / Config
-
-func Config(static_fs fs.FS) *vorma.Config {
-	return &vorma.Config{
-		ServerEntry: "serve",
-
-		DistConfig: vorma.DistConfig{
-			OutDir:   "dist",
-			StaticFS: static_fs,
-		},
-
-		PathConfig: vorma.PathConfig{
-			PublicStaticBase: "/",
-			APIBase:          "/api/",
-		},
-
-		FrontendConfig: vorma.FrontendConfig{
-			UIVariant:               "solid",
-			JSPackageManagerBaseCmd: "pnpm",
-			JSPackageManagerDir:     ".",
-			ViteConfigFile:          "vite.config.ts",
-			RenderEntry:             "vorma.entry.ts",
-			PublicStaticSrcDir:      "public",
-			CriticalCSSEntry:        "styles/main.critical.css",
-		},
-
-		HTMLConfig: vorma.HTMLConfig{
-			Template:     "",
-			TemplateData: func(*http.Request) (map[string]any, error) { return nil, nil },
-			DefaultHead: func(r *http.Request, v *vorma.Instance, h *vorma.HeadBuilder) error {
-				h.MetaCharset("utf-8")
-				h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
-				h.Title("My App")
-				h.Description("Something about my app.")
-				return nil
-			},
-			HeadDedupeKeys: func(*vorma.HeadBuilder) {},
-		},
-
-		TSGenConfig: vorma.TSGenConfig{
-			OutFile:    "vorma.gen.ts",
-			ExtraTypes: []*vorma.GoTypeSrc{},
-			ExtraRawTS: func(d *vorma.TSDrafter) *vorma.TSDrafter {
-				d.ExportConst("highest_start_idx", 1)
-				return d
-			},
-		},
-
-		DevWatchConfig: vorma.DevWatchConfig{
-			WatchRoot:                ".",
-			GlobalIgnore:             []string{},
-			OnChangeRecompileGo:      []string{},
-			OnChangeClientRevalidate: []string{"app/md/content/**/*.md"},
-		},
+var Domain = func() string {
+	if envutil.GetStr("VERCEL_ENV", "") == "production" {
+		return envutil.GetStr("VERCEL_PROJECT_PRODUCTION_URL", "")
 	}
+	return envutil.GetStr(
+		"VERCEL_URL",
+		fmt.Sprintf("localhost:%d", envutil.GetInt("PORT", 0)),
+	)
+}()
+
+func Href(p string) string {
+	proto := "https://"
+	if vorma.IsDev() {
+		proto = "http://"
+	}
+	return proto + path.Join(Domain, p)
 }
 
-func Router(static_fs fs.FS) func() (*vorma.Router, error) {
-	instance := vorma.New(Config(static_fs))
-	return func() (*vorma.Router, error) {
-		r, err := instance.Router()
+var Vorma = vorma.New(&vorma.Config{
+	ServerEntry: "app/cmd/serve/main.go",
+	DistDir:     "app/",
+
+	PathConfig: vorma.PathConfig{
+		PublicStaticBase: "/",
+		APIBase:          "/api/",
+	},
+
+	FrontendConfig: vorma.FrontendConfig{
+		UIVariant:               "remix",
+		JSPackageManagerBaseCmd: "pnpm",
+		JSPackageManagerDir:     ".",
+		ViteConfigFile:          "vite.config.ts",
+		EntryFile:               "app/entry.ts",
+		PublicStaticSrcDir:      "app/public/",
+		CriticalCSSFile:         "app/styles/critical.css",
+	},
+
+	HTMLConfig: vorma.HTMLConfig{
+		DefaultHead:  defaultHTMLHead,
+		TemplateData: templateData,
+	},
+
+	TSGenConfig: vorma.TSGenConfig{
+		OutFile:    "app/types.ts",
+		ExtraTypes: extraTypesToEmit,
+		ExtraRawTS: extraRawTSToEmit,
+	},
+
+	DevWatchConfig: vorma.DevWatchConfig{
+		WatchRoot:                ".",
+		GlobalIgnore:             []string{},
+		OnChangeRecompileGo:      []string{},
+		OnChangeClientRevalidate: []string{"app/markdown/content/**/*.md"},
+	},
+})
+
+func defaultHTMLHead(r *http.Request, v *vorma.Instance, h *vorma.HeadBuilder) error {
+	h.MetaCharset("utf-8")
+	h.MetaNameContent("viewport", "width=device-width, initial-scale=1")
+
+	h.Title(RootTitle)
+	h.Description(RootDescription)
+
+	faviconURL, err := v.PublicURL("favicon.svg")
+	if err != nil {
+		return fmt.Errorf("failed to get favicon URL: %w", err)
+	}
+	h.Link(
+		h.Rel("icon"),
+		h.Href(faviconURL),
+		h.Type("image/svg+xml"),
+	)
+
+	ogImageURL, err := v.PublicURL("vorma-banner.webp")
+	if err != nil {
+		return fmt.Errorf("failed to get Open Graph image URL: %w", err)
+	}
+	ogImageFullURL := Href(ogImageURL)
+
+	h.MetaPropertyContent("og:title", RootTitle)
+	h.MetaPropertyContent("og:description", RootDescription)
+	h.MetaPropertyContent("og:type", "website")
+	h.MetaPropertyContent("og:url", Href(r.URL.Path))
+	h.MetaPropertyContent("og:image", ogImageFullURL)
+	h.MetaPropertyContent("og:site_name", RootTitle)
+
+	h.MetaNameContent("twitter:card", "summary_large_image")
+	h.MetaNameContent("twitter:title", RootTitle)
+	h.MetaNameContent("twitter:description", RootDescription)
+	h.MetaNameContent("twitter:image", ogImageFullURL)
+
+	variants := []int{100, 200, 300, 350, 400, 500, 600, 700, 800, 900}
+	fontFiles := make([]string, len(variants)*2)
+
+	for i, v := range variants {
+		base := "fonts/IoskeleyMono-%d"
+		fontFiles[i] = fmt.Sprintf(base+".woff2", v)
+		fontFiles[i+len(variants)] = fmt.Sprintf(base+"-i.woff2", v)
+	}
+
+	for _, fontFile := range fontFiles {
+		file, err := v.PublicURL(fontFile)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("failed to get font file URL for %s: %w", fontFile, err)
 		}
-		r.MustAddPublicFileServerMiddleware()
-		for _, view := range Views {
-			r.View(view)
-		}
-		for _, api_route := range APIRoutes {
-			r.APIRoute(api_route)
-		}
-		return r, nil
+		h.Link(
+			h.Rel("preload"),
+			h.As("font"),
+			h.Type("font/woff2"),
+			h.CrossOrigin("anonymous"),
+			h.Href(file),
+		)
 	}
+
+	return nil
 }
 
-/////// View and API Route Types
-
-type (
-	View[I, O any]     = vorma.View[I, O, *RequestCtx[I], RequestCtx[I]]
-	APIRoute[I, O any] = vorma.APIRoute[I, O, *RequestCtx[I], RequestCtx[I]]
-	RequestCtx[I any]  struct{ *vorma.RequestCtx[I] }
-)
-
-func (RequestCtx[I]) Wrap(c *vorma.RequestCtx[I]) *RequestCtx[I] {
-	return &RequestCtx[I]{RequestCtx: c}
+func templateData(*http.Request) (map[string]any, error) {
+	return nil, nil
 }
 
-func routes(p string) string {
-	return filepath.Join(filepath.FromSlash("./components/routes/"), p)
+var extraTypesToEmit = []*vorma.GoTypeSrc{}
+
+func extraRawTSToEmit(d *vorma.TSDrafter) *vorma.TSDrafter {
+	return d
 }
-
-/////// Views
-
-var Views = vorma.Views{
-	View[struct{}, struct{}]{
-		Pattern:      "/",
-		ClientModule: routes("root.tsx"),
-	},
-
-	View[struct{}, *fsmarkdown.Result]{
-		Pattern:      "/*",
-		ClientModule: routes("md.tsx"),
-		Loader: func(c *RequestCtx[struct{}]) (*fsmarkdown.Result, error) {
-			r := c.Request()
-			h := c.HeadBuilder()
-			rp := c.ResponseProxy()
-
-			data, found, err := md.MD.Lookup(r.URL.Path)
-			if !found {
-				rp.SetStatus(404)
-				return nil, &vorma.LoaderError{
-					ClientMsg: "Page not found.",
-				}
-			}
-			if err != nil {
-				rp.SetStatus(500)
-				return nil, &vorma.LoaderError{
-					ClientMsg: "Something went wrong.",
-					Err:       fmt.Errorf("failed to load markdown: %w", err),
-				}
-			}
-
-			if data.Page.Title != "" {
-				h.Title(fmt.Sprintf("%s | %s", data.Page.Title, SiteTitle))
-				h.MetaPropertyContent("og:title", data.Page.Title)
-			}
-			if data.Page.Description != "" {
-				h.Title(fmt.Sprintf("%s | %s", data.Page.Description, SiteDescription))
-				h.MetaPropertyContent("og:description", data.Page.Description)
-			}
-
-			return data, nil
-		},
-	},
-}
-
-/////// API Routes
-
-var APIRoutes = vorma.APIRoutes{}

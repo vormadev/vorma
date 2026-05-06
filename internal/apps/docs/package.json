@@ -4,9 +4,9 @@
 	"scripts": {
 		"pre-dev": "rm -rf node_modules && go mod tidy && pnpm i",
 		"pre-prod": "go mod tidy && pnpm i --frozen-lockfile",
-		"dev": "pnpm pre-dev && go run ./build --dev",
-		"build": "pnpm pre-prod && go run ./build && go build -o ./dist/.vorma/main -tags=prod ./serve",
-		"serve": "PORT=8080 ./main",
+		"dev": "pnpm pre-dev && go run ./app/cmd/build --dev",
+		"build": "pnpm pre-prod && go run ./app/cmd/build && go build -o ./app/.vorma/main -tags=prod ./app/cmd/serve",
+		"serve": "PORT=9090 ./app/.vorma/main",
 		"dl-go": "curl -L https://go.dev/dl/go1.26.0.linux-amd64.tar.gz | tar -C /tmp -xz",
 		"vercel-install": "pnpm pre-prod && pnpm dl-go",
 		"vercel-build": "export PATH=/tmp/go/bin:$PATH && pnpm build"
@@ -26,6 +26,7 @@
 		"preact": "^10.29.1",
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",
+		"remix": "3.0.0-beta.0",
 		"solid-js": "^1.9.12",
 		"tailwindcss": "^4.2.2",
 		"typescript": "^6.0.2",

@@ -49,13 +49,13 @@ export type RouteState = {
 };
 
 export type RouteUpdateReason =
-	| "init"
+	| "boot"
 	| "navigation"
 	| "popstate"
 	| "revalidation";
 
 export type BeforeRouteTransitionArgs = {
-	trigger: Exclude<RouteUpdateReason, "init">;
+	trigger: Exclude<RouteUpdateReason, "boot">;
 	signal: AbortSignal;
 	current: RouteState;
 	next: RouteState;
@@ -531,7 +531,7 @@ export type ToClientLoaderArgs<
 	A extends AppConfig,
 	P extends ToViewPattern<A>,
 > = {
-	trigger: "init" | "navigation" | "revalidation" | "prefetch";
+	trigger: "boot" | "navigation" | "revalidation" | "prefetch";
 	href: string;
 	historyState: unknown;
 	pattern: P;

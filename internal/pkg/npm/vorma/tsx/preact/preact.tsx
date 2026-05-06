@@ -23,16 +23,16 @@ import {
 	type AdapterClientOptions,
 	type AppConfig,
 	type DecomposedState,
-	type ViewDefinition,
 	type RouteState,
 	type ScrollIntent,
 	type ToAPIDecorator,
 	type ToDefineViewArgs,
 	type ToLinkProps,
 	type ToLoaderOutput,
-	type ToViewPattern,
 	type ToRouteComponentProps,
 	type ToRouteSyncArgs,
+	type ToViewPattern,
+	type ViewDefinition,
 	type VormaClient,
 	type WorkState,
 } from "vorma/__internal";
@@ -45,26 +45,14 @@ export type {
 	BeforeRouteTransitionArgs,
 	BeforeRouteYieldFn,
 	BuildSkewDetectedEvent,
+	MutationResult,
 	ProgressIndicatorConfig,
+	QueryResult,
 	RevalidationReason,
 	RevalidationResult,
 	RouteErrorState,
 	RouteState,
 	RouteUpdateReason,
-	MutationResult,
-	ToMutationArgs,
-	ToMutationError,
-	ToMutationInput,
-	ToMutationMethod,
-	ToMutationOutput,
-	ToMutationPattern,
-	ToQueryArgs,
-	ToQueryError,
-	ToQueryInput,
-	ToQueryMethod,
-	ToQueryOutput,
-	ToQueryPattern,
-	QueryResult,
 	ToAPIClient,
 	ToAPIDecorator,
 	ToAPIDecoratorContext,
@@ -72,13 +60,25 @@ export type {
 	ToLinkProps,
 	ToLoaderInput,
 	ToLoaderOutput,
-	ToViewPattern,
+	ToMutationArgs,
+	ToMutationError,
+	ToMutationInput,
+	ToMutationMethod,
+	ToMutationOutput,
+	ToMutationPattern,
 	ToNavigateArgs,
 	ToNavigationTarget,
+	ToQueryArgs,
+	ToQueryError,
+	ToQueryInput,
+	ToQueryMethod,
+	ToQueryOutput,
+	ToQueryPattern,
 	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
-	AppConfig as VormaAppConfig,
+	ToViewPattern,
+	AppConfig as VormaClientSeed,
 	WorkState,
 } from "vorma/__internal";
 
@@ -93,13 +93,7 @@ type CreateVormaClientOptions<A extends AppConfig> =
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,
-): VormaClient<
-	A,
-	JSX.Element,
-	HTMLAttributes<HTMLAnchorElement>,
-	"signal",
-	ComponentType
-> {
+): VormaClient<A, JSX.Element, HTMLAttributes<HTMLAnchorElement>, "signal"> {
 	const entries_signal = signal<DecomposedState["entries"]>([]);
 	const route_error_signal = signal<DecomposedState["error"]>(null);
 	const loaders_data_signal = signal<unknown[]>([]);
@@ -116,7 +110,7 @@ export function createVormaClient<A extends AppConfig>(
 	function get_route_snapshot(): RouteState {
 		const route = route_state_signal.value;
 		if (!route) {
-			throw new Error("Vorma not initialized");
+			throw new Error("Vorma not booted");
 		}
 		return route;
 	}
@@ -385,16 +379,16 @@ export function createVormaClient<A extends AppConfig>(
 		return h(RootOutlet, {});
 	};
 
-	function init(): ReturnType<typeof core.init> {
+	function boot(): ReturnType<typeof core.boot> {
 		const {
-			render,
+			render: render_root,
 			onRouteUpdate,
 			onWorkUpdate,
 			linkDefaultProps: _linkDefaultProps,
 			apiDecorator: _apiDecorator,
 			...core_options
 		} = options ?? {};
-		return core.init({
+		return core.boot({
 			...core_options,
 			onRouteUpdate: (route, previous_route, reason) => {
 				route_state_signal.value = route;
@@ -404,9 +398,9 @@ export function createVormaClient<A extends AppConfig>(
 				work_state_signal.value = work;
 				onWorkUpdate?.(work);
 			},
-			render: render
+			render: render_root
 				? () => {
-						return render({
+						return render_root({
 							RootOutlet: RootOutletApp,
 							rootEl: core.getRootEl(),
 						});
@@ -478,7 +472,7 @@ export function createVormaClient<A extends AppConfig>(
 
 	return {
 		...passthrough,
-		init,
+		boot,
 		defineView,
 		RootOutlet,
 		Link,

@@ -29,16 +29,18 @@ See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
 - `scenario/` owns the Go route topology, loaders, actions, and shared Vorma app
   config factory.
 - `components/routes/` owns the single client route tree used by every adapter.
-- `runtime/` owns the React, Preact, and Solid adapter shims.
+- `runtime/` owns the React, Preact, Remix, and Solid adapter shims.
 - `shared/` owns browser instrumentation and shared CSS.
 - `specs/vorma.spec.ts` contains the Bombadil properties and fixture-specific
   action generator.
 - `vite.*.config.ts` files select adapter-specific Vite configs while sharing
   the common config logic in `vite.shared.config.ts`.
 - `vorma.*.gen.ts` files are ignored generated type files.
-- `.dist.{react,preact,solid}.a/` and `.dist.{react,preact,solid}.b/` are
-  ignored production fixture deployment outputs.
-- `.dist.{react,preact,solid}.dev.a/` is ignored dev-server fixture output.
+- `.dist.{react,preact,remix,solid}.a/` and
+  `.dist.{react,preact,remix,solid}.b/` are ignored production fixture
+  deployment outputs.
+- `.dist.{react,preact,remix,solid}.dev.a/` is ignored dev-server fixture
+  output.
 - `.bombadil/` is ignored test output. Keep it when inspecting failures.
 
 ## Artifacts
@@ -107,7 +109,7 @@ go run ./cmd/bombadil serve-dev react
 go run ./cmd/bombadil inspect .bombadil/dev-react
 ```
 
-Supported variants are `react`, `preact`, and `solid`.
+Supported variants are `react`, `preact`, `remix`, and `solid`.
 
 ## Dev Scope
 

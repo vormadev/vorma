@@ -21,6 +21,7 @@
 		"vite",
 		"react",
 		"preact",
+		"remix",
 		"solid",
 		"framework",
 		"metaframework",
@@ -42,6 +43,10 @@
 		"./solid": {
 			"import": "./.dist/vorma/tsx/solid/solid.js",
 			"types": "./.dist/vorma/tsx/solid/solid.d.ts"
+		},
+		"./remix": {
+			"import": "./.dist/vorma/tsx/remix/remix.js",
+			"types": "./.dist/vorma/tsx/remix/remix.d.ts"
 		},
 		"./vite": {
 			"import": "./.dist/vorma/vite/vite.mjs",
@@ -70,6 +75,10 @@
 		"./kit/json": {
 			"import": "./.dist/kit/json/json.js",
 			"types": "./.dist/kit/json/json.d.ts"
+		},
+		"./kit/lab/design/core": {
+			"import": "./.dist/kit/lab/design/core/core.js",
+			"types": "./.dist/kit/lab/design/core/core.d.ts"
 		},
 		"./kit/listeners": {
 			"import": "./.dist/kit/listeners/listeners.js",
@@ -106,6 +115,7 @@
 		"preact": "^10.29.1",
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",
+		"remix": "3.0.0-beta.0",
 		"solid-js": "^1.9.12",
 		"tsdown": "^0.21.5",
 		"typescript": "^6.0.2",

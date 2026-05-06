@@ -6,18 +6,18 @@ import {
 	makeTypedUsePatternLoaderData,
 	makeTypedUseRouterData,
 } from "vorma/{{.UIVariant}}";
-import { vormaAppConfig } from "./vorma.gen/index.ts";
+import { vormaClientSeed } from "./vorma.gen/index.ts";
 
-export const Link = makeTypedLink(vormaAppConfig, { prefetch: "intent" });
-export const navigate = makeTypedNavigate(vormaAppConfig);
+export const Link = makeTypedLink(vormaClientSeed, { prefetch: "intent" });
+export const navigate = makeTypedNavigate(vormaClientSeed);
 
-export const useRouterData = makeTypedUseRouterData(vormaAppConfig);
-export const useLoaderData = makeTypedUseLoaderData(vormaAppConfig);
+export const useRouterData = makeTypedUseRouterData(vormaClientSeed);
+export const useLoaderData = makeTypedUseLoaderData(vormaClientSeed);
 export const usePatternLoaderData =
-	makeTypedUsePatternLoaderData(vormaAppConfig);
-export const addClientLoader = makeTypedAddClientLoader(vormaAppConfig);
+	makeTypedUsePatternLoaderData(vormaClientSeed);
+export const addClientLoader = makeTypedAddClientLoader(vormaClientSeed);
 
-export const api = makeTypedAPIClient(vormaAppConfig, (ctx) => {
+export const api = makeTypedAPIClient(vormaClientSeed, (ctx) => {
 	// Edit this function to decorate request init values globally.
 	// Return undefined when you do not want global decoration.
 	if (ctx.type === "mutation") {

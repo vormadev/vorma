@@ -176,9 +176,14 @@ func Run(
 	watcher_ctx, watcher_ctx_cancel := context.WithCancel(root_ctx)
 
 	rs := &run_state{
-		log:                colorlog.New("vorma"),
-		__c:                _v.Instance().Config(),
-		is_dev:             is_dev,
+		log:    colorlog.New("vorma"),
+		__c:    _v.Instance().Config(),
+		is_dev: is_dev,
+		// The purpose of doing this rather than having it as a config item
+		// is so that we aren't pretending that it can be updated live (as
+		// changing the build entry requires a manual restart). If we had it
+		// as a config item, users would reasonably expect that changing it
+		// would trigger a rebuild with the new entry, which is not the case.
 		build_entry:        filepath.Dir(caller_file),
 		root_ctx:           root_ctx,
 		root_ctx_cancel:    root_ctx_cancel,

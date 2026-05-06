@@ -16,9 +16,7 @@ import (
 
 // TSDrafter is a builder for producing TypeScript const, type,
 // and enum declarations. It implements fmt.Stringer.
-type TSDrafter struct {
-	entries []string
-}
+type TSDrafter struct{ entries []string }
 
 /////////////////////////////////////////////////////////////////////
 /////// Const methods

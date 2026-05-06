@@ -55,7 +55,7 @@ type (
 	None                      = genericsutil.None
 	TaskHandler[I, O any]     = tasks.Task[*RequestCtx[I], O]
 	Params                    = matcher.Params
-	HTTPMiddleware            = func(http.Handler) http.Handler
+	Middleware                = func(http.Handler) http.Handler
 	TaskMiddlewareFunc[O any] func(*RequestCtx[None]) (O, error)
 	TaskMiddleware[O any]     = tasks.Task[*RequestCtx[None], O]
 	TaskHandlerFunc[I, O any] func(*RequestCtx[I]) (O, error)
@@ -360,9 +360,9 @@ func TaskMiddlewareFromFunc[O any](
 /////// MIDDLEWARE REGISTRATION
 /////////////////////////////////////////////////////////////////////
 
-func AddGlobalHTTPMiddleware(
+func UseMiddleware(
 	rt *Router,
-	mw HTTPMiddleware,
+	mw Middleware,
 	opts ...*MiddlewareOptions,
 ) {
 	rt.http_mws = append(
@@ -372,7 +372,7 @@ func AddGlobalHTTPMiddleware(
 	rt.http_ver.Add(1)
 }
 
-func AddGlobalTaskMiddleware[O any](
+func UseTaskMiddleware[O any](
 	rt *Router,
 	mw *TaskMiddleware[O],
 	opts ...*MiddlewareOptions,
@@ -384,17 +384,17 @@ func AddGlobalTaskMiddleware[O any](
 	rt.task_ver.Add(1)
 }
 
-func (rt *Router) AddGlobalHTTPMiddleware(
-	mw HTTPMiddleware,
+func (rt *Router) UseMiddleware(
+	mw Middleware,
 	opts ...*MiddlewareOptions,
 ) {
-	AddGlobalHTTPMiddleware(rt, mw, opts...)
+	UseMiddleware(rt, mw, opts...)
 }
 
-func AddMethodLevelHTTPMiddleware(
+func UseMiddlewareByMethod(
 	rt *Router,
 	method string,
-	mw HTTPMiddleware,
+	mw Middleware,
 	opts ...*MiddlewareOptions,
 ) {
 	mm := rt.get_or_create_mm(method)
@@ -405,7 +405,7 @@ func AddMethodLevelHTTPMiddleware(
 	mm.http_ver.Add(1)
 }
 
-func AddMethodLevelTaskMiddleware[O any](
+func UseTaskMiddlewareByMethod[O any](
 	rt *Router,
 	method string,
 	mw *TaskMiddleware[O],
@@ -419,17 +419,17 @@ func AddMethodLevelTaskMiddleware[O any](
 	mm.task_ver.Add(1)
 }
 
-func (rt *Router) AddMethodLevelHTTPMiddleware(
+func (rt *Router) UseMiddlewareByMethod(
 	method string,
-	mw HTTPMiddleware,
+	mw Middleware,
 	opts ...*MiddlewareOptions,
 ) {
-	AddMethodLevelHTTPMiddleware(rt, method, mw, opts...)
+	UseMiddlewareByMethod(rt, method, mw, opts...)
 }
 
-func AddPatternLevelHTTPMiddleware[I, O any](
+func UseMiddlewareByPattern[I, O any](
 	route *Route[I, O],
-	mw HTTPMiddleware,
+	mw Middleware,
 	opts ...*MiddlewareOptions,
 ) {
 	route.http_mws = append(
@@ -439,7 +439,7 @@ func AddPatternLevelHTTPMiddleware[I, O any](
 	route.http_ver.Add(1)
 }
 
-func AddPatternLevelTaskMiddleware[PI, PO, MWO any](
+func UseTaskMiddlewareByPattern[PI, PO, MWO any](
 	route *Route[PI, PO],
 	mw *TaskMiddleware[MWO],
 	opts ...*MiddlewareOptions,
@@ -451,11 +451,11 @@ func AddPatternLevelTaskMiddleware[PI, PO, MWO any](
 	route.task_ver.Add(1)
 }
 
-func (route *Route[I, O]) AddPatternLevelHTTPMiddleware(
-	mw HTTPMiddleware,
+func (route *Route[I, O]) UseMiddlewareByPattern(
+	mw Middleware,
 	opts ...*MiddlewareOptions,
 ) {
-	AddPatternLevelHTTPMiddleware(route, mw, opts...)
+	UseMiddlewareByPattern(route, mw, opts...)
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -1056,7 +1056,7 @@ type mw_versions struct {
 }
 
 type http_mw_with_opts struct {
-	mw   HTTPMiddleware
+	mw   Middleware
 	opts *MiddlewareOptions
 }
 

@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/vormadev/vorma/kit/envutil"
+	"github.com/vormadev/vorma/kit/fsutil"
 	"github.com/vormadev/vorma/kit/head"
 	"github.com/vormadev/vorma/kit/mux"
 	"github.com/vormadev/vorma/kit/set"
@@ -62,7 +63,7 @@ type DevWatchConfig struct {
 type FrontendConfig struct {
 	// Required.
 	//
-	// Must be one of: "react", "preact", "solid"
+	// Must be one of: "react", "preact", "remix", "solid"
 	UIVariant string
 
 	// Required.
@@ -84,8 +85,8 @@ type FrontendConfig struct {
 
 	// Required.
 	//
-	// Point this to the TypeScript file where you mechanically render your application root.
-	RenderEntry string
+	// Point this to the file where you call `await vorma.boot()`.
+	EntryFile string
 
 	// Required.
 	//
@@ -102,7 +103,7 @@ type FrontendConfig struct {
 	//
 	// Point this to the file where you define your critical global application stylesheet.
 	// That file's CSS bundle will be inlined into the HTML document head inside style tags.
-	CriticalCSSEntry string
+	CriticalCSSFile string
 }
 
 type TSDrafter = tsgen.TSDrafter
@@ -163,19 +164,15 @@ type PathConfig struct {
 	APIBase string
 }
 
-type DistConfig struct {
+type Config struct {
+	// Required.
+	//
+	// Your application server entry point (e.g., "./cmd/serve/main.go").
+	ServerEntry string
 	// Required.
 	//
 	// The directory where the Vorma-owned `.vorma/` sub-directory will be emitted.
-	OutDir string
-	// In prod, StaticFS is required and must be rooted at `<OutDir>/.vorma/static/`.
-	// In dev, StaticFS is ignored and as such may be left nil.
-	StaticFS fs.FS
-}
-
-type Config struct {
-	ServerEntry    string
-	DistConfig     DistConfig
+	DistDir        string
 	PathConfig     PathConfig
 	FrontendConfig FrontendConfig
 	HTMLConfig     HTMLConfig
@@ -198,7 +195,16 @@ type Instance struct {
 	final_public_filepaths_cache *set.Set[string]
 }
 
-func (instance *Instance) Config() *Config { return instance.cfg }
+func (inst *Instance) Config() *Config { return inst.cfg }
+
+func (inst *Instance) MustSetStaticFS(fsys fs.FS, dirElems ...string) any {
+	if len(dirElems) > 0 {
+		inst.static_fs = fsutil.MustSub(fsys, dirElems...)
+	} else {
+		inst.static_fs = fsys
+	}
+	return nil
+}
 
 type RequestCtx[I any] = mux.RequestCtx[I]
 
@@ -206,7 +212,7 @@ type AnyView interface {
 	IType() *tsgen.GoTypeSrc
 	OType() *tsgen.GoTypeSrc
 	GetPattern() string
-	GetClientModule() string
+	GetClientFile() string
 	register_to_mux(*mux.NestedRouter)
 }
 type AnyAPIRoute interface {
@@ -224,9 +230,9 @@ type APIRoutes []AnyAPIRoute
 type RequestCtxWrapper[I, RP any] interface{ Wrap(*RequestCtx[I]) RP }
 
 type View[I, O any, RP ~*R, R RequestCtxWrapper[I, RP]] struct {
-	Pattern      string
-	Loader       func(RP) (O, error)
-	ClientModule string
+	Pattern    string
+	Loader     func(RP) (O, error)
+	ClientFile string
 }
 
 func (view View[I, O, RP, R]) IType() *tsgen.GoTypeSrc {
@@ -239,7 +245,7 @@ func (view View[I, O, RP, R]) OType() *tsgen.GoTypeSrc {
 
 func (view View[I, O, RP, R]) GetPattern() string { return view.Pattern }
 
-func (view View[I, O, RP, R]) GetClientModule() string { return view.ClientModule }
+func (view View[I, O, RP, R]) GetClientFile() string { return view.ClientFile }
 
 func (view View[I, O, RP, R]) register_to_mux(r *mux.NestedRouter) {
 	if view.Loader == nil {

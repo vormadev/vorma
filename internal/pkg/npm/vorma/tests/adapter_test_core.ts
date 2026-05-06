@@ -8,7 +8,7 @@ import {
 	LINK_ACTIVE_EXACT_ATTR,
 	LINK_PENDING_ANCESTOR_ATTR,
 	LINK_PENDING_EXACT_ATTR,
-	type InitOptions,
+	type ClientOptions,
 	type RevalidationResult,
 } from "vorma/__internal";
 
@@ -20,7 +20,7 @@ type TestRouteProps = {
 };
 
 type TestClientLoaderProps = {
-	trigger: "init" | "navigation" | "revalidation" | "prefetch";
+	trigger: "boot" | "navigation" | "revalidation" | "prefetch";
 	href: string;
 	historyState: unknown;
 	pattern: string;
@@ -52,7 +52,7 @@ type TestRouteTarget =
 	| ({ pattern: string } & Record<string, unknown>);
 
 type TestVormaClient = {
-	init: () => Promise<void>;
+	boot: () => Promise<void>;
 
 	navigate: (props: TestRouteTarget) => Promise<{ didNavigate: boolean }>;
 
@@ -102,7 +102,7 @@ type TestVormaClient = {
 
 type TestCreateClientOptions = {
 	linkDefaultProps?: Record<string, unknown>;
-} & Omit<Partial<InitOptions>, "render"> & {
+} & Omit<Partial<ClientOptions>, "render"> & {
 		render?: (args: {
 			RootOutlet: unknown;
 			rootEl: HTMLElement;
@@ -121,6 +121,12 @@ export type AdapterTestHarness = {
 		...children: unknown[]
 	) => unknown;
 
+	create_define_view_component: <P extends object>(
+		render: (props: P) => unknown,
+	) => unknown;
+
+	dynamic: (read_value: () => unknown) => unknown;
+
 	mount: () => {
 		container: HTMLElement;
 		render: (element: unknown) => void;
@@ -136,8 +142,6 @@ export type AdapterTestHarness = {
 	};
 
 	unwrap: <T>(value: T | (() => T)) => T;
-
-	skip_rerender_test?: boolean;
 };
 
 /////// Helpers
@@ -220,10 +224,10 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 	});
 
 	///////////////////////////////////////////////////////////////////
-	/////// Init render
+	/////// Render
 	///////////////////////////////////////////////////////////////////
 
-	describe("init render", () => {
+	describe("render", () => {
 		it("passes RootOutlet and rootEl to render callback", async () => {
 			seed_payload();
 			let received_root_outlet: unknown;
@@ -235,7 +239,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				},
 			});
 
-			await client.init();
+			await client.boot();
 
 			expect(typeof received_root_outlet).toBe("function");
 			expect(received_root_el).toBeInstanceOf(HTMLElement);
@@ -266,7 +270,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -300,7 +304,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -335,7 +339,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -350,7 +354,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -380,7 +384,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -419,7 +423,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -459,7 +463,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				defaultErrorBoundary: default_boundary,
 			});
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -517,7 +521,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -549,7 +553,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const scroll_spy = vi.spyOn(window, "scrollTo");
 			// rAF used by some adapters (Solid) — mock to fire synchronously
@@ -630,7 +634,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -707,7 +711,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -760,7 +764,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -793,7 +797,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -828,7 +832,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -863,7 +867,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -884,7 +888,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 				route_response({ MatchedPatterns: ["/canonical"] }),
@@ -927,7 +931,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const fetch_spy = vi.spyOn(globalThis, "fetch");
 
@@ -978,7 +982,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -1013,7 +1017,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { render, cleanup } = harness.mount();
 			try {
@@ -1024,65 +1028,67 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		const rerender_it = harness.skip_rerender_test ? it.skip : it;
-		rerender_it(
-			"hooks re-render when state changes via navigation",
-			async () => {
-				const rendered_values: unknown[] = [];
+		it("hooks re-render when state changes via navigation", async () => {
+			let read_current_value = (): unknown => {
+				return undefined;
+			};
 
-				vi.doMock("/hook-rerender.js", () => {
-					return {
-						default: {
-							pattern: "/",
-							component: () => {
-								const data = client.useLoaderData({
-									idx: 0,
-								} as any);
-								rendered_values.push(harness.unwrap(data));
-								return harness.h(
-									"div",
-									{ "data-value": "true" },
-									JSON.stringify(harness.unwrap(data)),
-								);
-							},
+			vi.doMock("/hook-rerender.js", () => {
+				return {
+					default: {
+						pattern: "/",
+						component: () => {
+							const data = client.useLoaderData({
+								idx: 0,
+							} as any);
+							read_current_value = () => {
+								return harness.unwrap(data);
+							};
+							return harness.h(
+								"div",
+								{ "data-value": "true" },
+								harness.dynamic(() => {
+									return JSON.stringify(read_current_value());
+								}),
+							);
 						},
-					};
+					},
+				};
+			});
+
+			seed_payload({
+				MatchedPatterns: ["/"],
+				LoadersData: [{ v: "initial" }],
+				ImportURLs: ["/hook-rerender.js"],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(harness.h(client.RootOutlet, { idx: 0 }));
+				expect(read_current_value()).toEqual({ v: "initial" });
+
+				vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+					route_response({
+						MatchedPatterns: ["/"],
+						LoadersData: [{ v: "updated" }],
+						ImportURLs: ["/hook-rerender.js"],
+					}),
+				);
+				await client.revalidate();
+
+				await wait_for_dom(() => {
+					expect(
+						container.querySelector("[data-value]")?.textContent,
+					).toBe('{"v":"updated"}');
 				});
-
-				seed_payload({
-					MatchedPatterns: ["/"],
-					LoadersData: [{ v: "initial" }],
-					ImportURLs: ["/hook-rerender.js"],
-				});
-				const client = harness.create_client(TEST_CONFIG);
-
-				await client.init();
-
-				const { container, render, cleanup } = harness.mount();
-				try {
-					render(harness.h(client.RootOutlet, { idx: 0 }));
-					expect(rendered_values[0]).toEqual({ v: "initial" });
-
-					vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-						route_response({
-							MatchedPatterns: ["/"],
-							LoadersData: [{ v: "updated" }],
-							ImportURLs: ["/hook-rerender.js"],
-						}),
-					);
-					await client.revalidate();
-
-					await wait_for_dom(() => {
-						expect(
-							container.querySelector("[data-value]")
-								?.textContent,
-						).toBe('{"v":"updated"}');
-					});
-				} finally {
-					cleanup();
-				}
-			},
-		);
+				expect(read_current_value()).toEqual({ v: "updated" });
+			} finally {
+				cleanup();
+			}
+		});
 	});
 
 	///////////////////////////////////////////////////////////////////
@@ -1094,7 +1100,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1118,7 +1124,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1147,7 +1153,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				linkDefaultProps: { className: "default-class" },
 			});
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1186,7 +1192,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1229,7 +1235,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1287,7 +1293,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			let resolve_response!: (response: Response) => void;
 			const response_promise = new Promise<Response>((resolve) => {
@@ -1345,7 +1351,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 				route_response({ MatchedPatterns: ["/clicked"] }),
@@ -1380,7 +1386,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const fetch_spy = vi.spyOn(globalThis, "fetch");
 
@@ -1424,7 +1430,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			await client.init();
+			await client.boot();
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1460,12 +1466,24 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
 
-			const comp = () => {
+			let component_props: TestRouteProps | undefined;
+			let boundary_props: { error: unknown } | undefined;
+			const comp = harness.create_define_view_component<TestRouteProps>(
+				(props) => {
+					component_props = props;
+					return harness.h(
+						"div",
+						{ "data-define-view": "component" },
+						"test",
+					);
+				},
+			);
+			const boundary = harness.create_define_view_component<{
+				error: unknown;
+			}>((props) => {
+				boundary_props = props;
 				return harness.h("div", {}, "test");
-			};
-			const boundary = (props: { error: unknown }) => {
-				return harness.h("div", {}, String(props.error));
-			};
+			});
 			const loader = async () => {
 				return { data: true };
 			};
@@ -1478,9 +1496,35 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			} as any);
 
 			expect(def.pattern).toBe("/test");
-			expect(def.component).toBe(comp);
-			expect(def.error_boundary).toBe(boundary);
 			expect(def.client_loader).toBe(loader);
+
+			const route_props = {
+				idx: 7,
+				Outlet: () => {
+					return harness.h("div", {}, "outlet");
+				},
+			};
+			const boundary_error = new Error("test");
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(def.component(route_props));
+				await wait_for_dom(() => {
+					expect(
+						container.querySelector("[data-define-view]")
+							?.textContent,
+					).toBe("test");
+				});
+				expect(component_props?.idx).toBe(route_props.idx);
+				expect(component_props?.Outlet).toBe(route_props.Outlet);
+
+				render(def.error_boundary!({ error: boundary_error }));
+				await wait_for_dom(() => {
+					expect(container.textContent).toBe("test");
+				});
+				expect(boundary_props?.error).toBe(boundary_error);
+			} finally {
+				cleanup();
+			}
 		});
 	});
 }

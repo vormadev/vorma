@@ -167,25 +167,18 @@ func (h handler_test_harness) init_router(manifest Manifest) *Router {
 		h.t.Fatalf("error marshaling manifest: %v", err)
 	}
 
-	static_fs := fstest.MapFS{
+	v := New(&Config{})
+	v.MustSetStaticFS(fstest.MapFS{
 		ManifestStaticOutProd: &fstest.MapFile{Data: manifest_json},
-	}
-	v, err := New(&Config{
-		DistConfig: DistConfig{
-			StaticFS: static_fs,
-		},
 	})
-	if err != nil {
-		h.t.Fatalf("error initializing Vorma: %v", err)
-	}
 
 	router, err := v.Router()
 	if err != nil {
 		h.t.Fatalf("error getting router: %v", err)
 	}
 	router.View(handler_test_view[struct{}, struct{}]{
-		Pattern:      "/",
-		ClientModule: "root.tsx",
+		Pattern:    "/",
+		ClientFile: "root.tsx",
 	})
 	return router
 }

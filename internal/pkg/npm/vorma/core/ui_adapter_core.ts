@@ -9,7 +9,7 @@ import { R, type Result } from "vorma/kit/result";
 import { create_typed_api_client } from "./api_client.ts";
 import type {
 	ClientCore,
-	InitOptions as CoreInitOptions,
+	ClientOptions as CoreClientOptions,
 	ViewDefinition,
 } from "./create_client_core";
 import {
@@ -75,12 +75,13 @@ type LinkAttributeCandidate = {
 	matched_patterns: string[];
 };
 
+// __TODO why is this generic called "App"? Shouldn't it be "Component" or something?
 export type AdapterRenderArgs<App> = {
 	RootOutlet: App;
 	rootEl: HTMLElement;
 };
 
-export type AdapterClientOptions<App> = Omit<CoreInitOptions, "render"> & {
+export type AdapterClientOptions<App> = Omit<CoreClientOptions, "render"> & {
 	render?: (args: AdapterRenderArgs<App>) => void | Promise<void>;
 };
 
@@ -360,9 +361,8 @@ export type VormaClient<
 	Element,
 	AnchorProps extends object,
 	HookReturnMode extends "value" | "accessor" | "signal" = "value",
-	App = unknown,
 > = AdapterBase<A>["passthrough"] & {
-	init: () => Promise<Result<void>>;
+	boot: () => Promise<Result<void>>;
 
 	defineView: <P extends ToViewPattern<A>, T = any>(
 		input: ToDefineViewArgs<A, P, T, Element>,

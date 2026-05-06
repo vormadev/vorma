@@ -7,7 +7,7 @@ import (
 	"github.com/vormadev/vorma"
 )
 
-var App = vorma.NewVormaApp(vorma.VormaAppConfig{
+var App = vorma.NewVormaApp(vorma.VormaClientSeed{
 	Wave: backend.Wave,
 	HeadDedupeKeysFunc: func(h *vorma.HeadBuilder) {
 		h.Meta(h.Property("og:title"))

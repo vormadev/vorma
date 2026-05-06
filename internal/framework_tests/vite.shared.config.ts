@@ -6,23 +6,26 @@ import vorma from "vorma/vite";
 
 declare const process: { env: Record<string, string | undefined> };
 
-type BombadilVariant = "react" | "preact" | "solid";
+type BombadilVariant = "react" | "preact" | "remix" | "solid";
 
 const deployment_env_key = "VORMA_BOMBADIL_DEPLOYMENT";
 const mode_env_key = "VORMA_BOMBADIL_MODE";
 
-function from_root(path: string) {
+function from_root(path: string): string {
 	return new URL(path, import.meta.url).pathname;
 }
 
-function variant_plugin(variant: BombadilVariant): PluginOption {
+function variant_plugins(variant: BombadilVariant): PluginOption[] {
 	if (variant === "react") {
-		return react() as PluginOption;
+		return [react() as PluginOption];
 	}
 	if (variant === "preact") {
-		return preact() as PluginOption;
+		return [preact() as PluginOption];
 	}
-	return solid() as PluginOption;
+	if (variant === "remix") {
+		return [];
+	}
+	return [solid() as PluginOption];
 }
 
 export function define_bombadil_vite_config(
@@ -42,7 +45,7 @@ export function define_bombadil_vite_config(
 				`client-${deployment}`,
 			),
 		},
-		plugins: [variant_plugin(variant), vorma() as PluginOption],
+		plugins: [...variant_plugins(variant), vorma() as PluginOption],
 		resolve: {
 			alias: {
 				"#variant-runtime": from_root(`./runtime/${variant}.ts`),

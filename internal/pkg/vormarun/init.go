@@ -18,73 +18,69 @@ import (
 	"github.com/vormadev/vorma/kit/set"
 )
 
-func (instance *Instance) init() error {
-	instance.init_once.Do(func() {
+func (inst *Instance) init() error {
+	inst.init_once.Do(func() {
 		if IsBuild() {
 			return
 		}
 
-		instance.log = colorlog.New("vorma")
+		inst.log = colorlog.New("vorma")
 
 		if IsDev() {
-			dist_dir := fsutil.SysNorm(instance.cfg.DistConfig.OutDir)
+			dist_dir := fsutil.SysNorm(inst.Config().DistDir)
 			sfs_to_use := os.DirFS(
 				filepath.ToSlash(filepath.Join(dist_dir, ".vorma", "static")),
 			)
 			if _, err := fs.Stat(sfs_to_use, "."); err != nil {
-				instance.init_err = fmt.Errorf("error accessing static FS at %s: %w", dist_dir, err)
+				inst.init_err = fmt.Errorf("error accessing static FS at %s: %w", dist_dir, err)
 				return
 			}
-			instance.static_fs = sfs_to_use
-		} else {
-			instance.static_fs = instance.cfg.DistConfig.StaticFS
+			inst.static_fs = sfs_to_use
 		}
 
-		manifest, err := read_manifest(instance.static_fs)
+		manifest, err := read_manifest(inst.static_fs)
 		if err != nil {
-			instance.init_err = fmt.Errorf("error reading manifest: %w", err)
+			inst.init_err = fmt.Errorf("error reading manifest: %w", err)
 			return
 		}
-		instance.manifest_cache = manifest
+		inst.manifest_cache = manifest
 
-		instance.client_build_id_cache, err = manifest.to_client_build_id()
+		inst.client_build_id_cache, err = manifest.to_client_build_id()
 		if err != nil {
-			instance.init_err = fmt.Errorf("error hashing manifest into client build id: %w", err)
+			inst.init_err = fmt.Errorf("error hashing manifest into client build id: %w", err)
 			return
 		}
 
-		root_html_template := instance.cfg.HTMLConfig.Template
+		root_html_template := inst.Config().HTMLConfig.Template
 		if strings.TrimSpace(root_html_template) == "" {
 			root_html_template = default_root_html_template
 		}
 		tmpl, err := template.New("root").Parse(root_html_template)
 		if err != nil {
-			instance.init_err = fmt.Errorf("error parsing RootHTMLTemplate: %w", err)
+			inst.init_err = fmt.Errorf("error parsing RootHTMLTemplate: %w", err)
 			return
 		}
-		instance.root_template = tmpl
+		inst.root_template = tmpl
 
-		instance.head_renderer = head.NewRenderer("vorma")
-		if instance.cfg.HTMLConfig.HeadDedupeKeys != nil {
+		inst.head_renderer = head.NewRenderer("vorma")
+		if inst.Config().HTMLConfig.HeadDedupeKeys != nil {
 			h := head.NewBuilder()
-			instance.cfg.HTMLConfig.HeadDedupeKeys(h)
-			instance.head_renderer.InitDedupeRules(h)
+			inst.Config().HTMLConfig.HeadDedupeKeys(h)
+			inst.head_renderer.InitDedupeRules(h)
 		}
 
-		fpf, err := instance.make_final_public_filepaths()
+		fpf, err := inst.make_final_public_filepaths()
 		if err != nil {
-			instance.init_err = fmt.Errorf("error making final public filepaths: %w", err)
+			inst.init_err = fmt.Errorf("error making final public filepaths: %w", err)
 			return
 		}
-		instance.final_public_filepaths_cache = fpf
+		inst.final_public_filepaths_cache = fpf
 	})
 
-	return instance.init_err
+	return inst.init_err
 }
 
-func New(config *Config) (*Instance, error) {
-	return &Instance{cfg: config}, nil
-}
+func New(config *Config) *Instance { return &Instance{cfg: config} }
 
 type Router struct {
 	instance *Instance
@@ -106,20 +102,20 @@ func (router *Router) APIRoute(api_route AnyAPIRoute) {
 	router.api_routes = append(router.api_routes, api_route)
 }
 
-func (instance *Instance) Router() (*Router, error) {
-	if err := instance.init(); err != nil {
+func (inst *Instance) Router() (*Router, error) {
+	if err := inst.init(); err != nil {
 		return nil, fmt.Errorf("error initializing instance: %w", err)
 	}
 
-	instance.router_once.Do(func() {
+	inst.router_once.Do(func() {
 		router := &Router{
-			instance: instance,
+			instance: inst,
 			Router: mux.NewRouter(mux.Options{
 				DynamicParamPrefix:     Dynamic_Param_Prefix,
 				SplatSegmentIdentifier: Splat_Segment_Identifier,
 			}),
 		}
-		instance.router = router
+		inst.router = router
 
 		if IsBuild() {
 			return
@@ -144,14 +140,14 @@ func (instance *Instance) Router() (*Router, error) {
 		})
 
 		router.api_mux = mux.NewRouter(mux.Options{
-			MountRoot:              instance.manifest_cache.APIMountRoot,
+			MountRoot:              inst.manifest_cache.APIMountRoot,
 			DynamicParamPrefix:     Dynamic_Param_Prefix,
 			SplatSegmentIdentifier: Splat_Segment_Identifier,
 			ParseInput:             parse_api_input,
 		})
 	})
 
-	return instance.router, nil
+	return inst.router, nil
 }
 
 func (router *Router) Views() []AnyView         { return router.views }
@@ -161,7 +157,7 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if IsBuild() {
 			return
 		}
-		instance := router.instance
+		inst := router.instance
 
 		for _, view := range router.views {
 			view.register_to_mux(router.loaders_mux)
@@ -176,7 +172,7 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		allow_val_slice := router.api_http_methods.Slice()
 		slices.Sort(allow_val_slice)
 		router.api_allow_header = strings.Join(allow_val_slice, ", ")
-		api_mount_root := instance.manifest_cache.APIMountRoot
+		api_mount_root := inst.manifest_cache.APIMountRoot
 		for m := range router.api_http_methods.Range() {
 			_ = router.AddHTTPHandler(
 				m,

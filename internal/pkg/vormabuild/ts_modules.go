@@ -20,7 +20,7 @@ func (cfg vorma_cfg) get_dev_ts_modules(r *vorma.Router) (map[string]ts_route, e
 
 	for _, view := range views {
 		pattern := view.GetPattern()
-		mod := view.GetClientModule()
+		mod := view.GetClientFile()
 		if pattern == "" || mod == "" {
 			continue
 		}

@@ -11,8 +11,8 @@
 		"noUncheckedIndexedAccess": true,
 		"verbatimModuleSyntax": true,
 		"allowImportingTsExtensions": true,
-		"jsx": "preserve",
-		"jsxImportSource": "solid-js"
+		"jsx": "react-jsx",
+		"jsxImportSource": "remix/ui"
 	},
 	"exclude": ["node_modules"],
 	"----------------------------------------": "",
@@ -26,5 +26,9 @@
 	"__solid": {
 		"jsx": "preserve",
 		"jsxImportSource": "solid-js"
+	},
+	"__remix": {
+		"jsx": "react-jsx",
+		"jsxImportSource": "remix/ui"
 	}
 }

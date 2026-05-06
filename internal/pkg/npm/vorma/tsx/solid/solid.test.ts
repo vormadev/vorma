@@ -15,10 +15,15 @@ define_adapter_tests({
 	},
 
 	h: h as AdapterTestHarness["h"],
+	create_define_view_component: ((render: (props: object) => unknown) => {
+		return render;
+	}) as AdapterTestHarness["create_define_view_component"],
+	dynamic: ((read_value: () => unknown) => {
+		return read_value;
+	}) as AdapterTestHarness["dynamic"],
 	unwrap: ((v: unknown) => {
 		return typeof v === "function" ? v() : v;
 	}) as AdapterTestHarness["unwrap"],
-	skip_rerender_test: true,
 
 	mount: () => {
 		const container = document.createElement("div");

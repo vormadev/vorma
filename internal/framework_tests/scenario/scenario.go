@@ -34,6 +34,10 @@ const deployment_env_key = "VORMA_BOMBADIL_DEPLOYMENT"
 const mode_env_key = "VORMA_BOMBADIL_MODE"
 const panic_route_env_key = "VORMA_BOMBADIL_ENABLE_PANIC_ROUTE"
 const exit_route_env_key = "VORMA_BOMBADIL_ENABLE_EXIT_ROUTE"
+const variant_react = "react"
+const variant_preact = "preact"
+const variant_remix = "remix"
+const variant_solid = "solid"
 const deployment_a = "A"
 const deployment_b = "B"
 const mode_dev = "dev"
@@ -163,7 +167,7 @@ var deployment_b_variant = deployment_variant{
 }
 
 var React = Variant{
-	UIVariant:       "react",
+	UIVariant:       variant_react,
 	DistDir:         ".dist.react",
 	TSGenOutFile:    "vorma.react.gen.ts",
 	DevTSGenOutFile: "vorma.react.dev.gen.ts",
@@ -171,15 +175,23 @@ var React = Variant{
 }
 
 var Preact = Variant{
-	UIVariant:       "preact",
+	UIVariant:       variant_preact,
 	DistDir:         ".dist.preact",
 	TSGenOutFile:    "vorma.preact.gen.ts",
 	DevTSGenOutFile: "vorma.preact.dev.gen.ts",
 	ViteConfigFile:  "vite.preact.config.ts",
 }
 
+var Remix = Variant{
+	UIVariant:       variant_remix,
+	DistDir:         ".dist.remix",
+	TSGenOutFile:    "vorma.remix.gen.ts",
+	DevTSGenOutFile: "vorma.remix.dev.gen.ts",
+	ViteConfigFile:  "vite.remix.config.ts",
+}
+
 var Solid = Variant{
-	UIVariant:       "solid",
+	UIVariant:       variant_solid,
 	DistDir:         ".dist.solid",
 	TSGenOutFile:    "vorma.solid.gen.ts",
 	DevTSGenOutFile: "vorma.solid.dev.gen.ts",
@@ -282,14 +294,25 @@ func (v Variant) serve_board(board *switchboard) {
 
 func SelectedVariant() Variant {
 	switch os.Getenv(variant_env_key) {
-	case "react":
+	case variant_react:
 		return React
-	case "preact":
+	case variant_preact:
 		return Preact
-	case "solid":
+	case variant_remix:
+		return Remix
+	case variant_solid:
 		return Solid
 	default:
-		panic(fmt.Sprintf("%s must be one of: react, preact, solid", variant_env_key))
+		panic(
+			fmt.Sprintf(
+				"%s must be one of: %s, %s, %s, %s",
+				variant_env_key,
+				variant_react,
+				variant_preact,
+				variant_remix,
+				variant_solid,
+			),
+		)
 	}
 }
 
@@ -337,11 +360,7 @@ func (v Variant) Config(static_fs fs.FS, d deployment_variant) *vorma.Config {
 
 	return &vorma.Config{
 		ServerEntry: server_entry,
-
-		DistConfig: vorma.DistConfig{
-			OutDir:   v.deployment_dist_dir(d),
-			StaticFS: static_fs,
-		},
+		DistDir:     v.deployment_dist_dir(d),
 
 		PathConfig: vorma.PathConfig{
 			PublicStaticBase: "/",
@@ -353,9 +372,9 @@ func (v Variant) Config(static_fs fs.FS, d deployment_variant) *vorma.Config {
 			JSPackageManagerBaseCmd: "pnpm",
 			JSPackageManagerDir:     ".",
 			ViteConfigFile:          v.ViteConfigFile,
-			RenderEntry:             render_entry,
+			EntryFile:               render_entry,
 			PublicStaticSrcDir:      "public",
-			CriticalCSSEntry:        "shared/styles/main.critical.css",
+			CriticalCSSFile:         "shared/styles/main.critical.css",
 		},
 
 		HTMLConfig: vorma.HTMLConfig{
@@ -383,13 +402,16 @@ func (v Variant) Config(static_fs fs.FS, d deployment_variant) *vorma.Config {
 }
 
 func (v Variant) Router(static_fs fs.FS, d deployment_variant) func() (*vorma.Router, error) {
-	instance := vorma.New(v.Config(static_fs, d))
+	inst := vorma.New(v.Config(static_fs, d))
+	if static_fs != nil {
+		inst.MustSetStaticFS(static_fs)
+	}
 	return func() (*vorma.Router, error) {
-		r, err := instance.Router()
+		r, err := inst.Router()
 		if err != nil {
 			return nil, err
 		}
-		r.MustAddPublicFileServerMiddleware()
+		r.MustUsePublicFileServerMiddleware()
 		for _, view := range v.views(d) {
 			r.View(view)
 		}
@@ -410,8 +432,8 @@ func (v Variant) deployment_dist_dir(d deployment_variant) string {
 func (v Variant) views(d deployment_variant) vorma.Views {
 	return vorma.Views{
 		View[struct{}, RootData]{
-			Pattern:      route_root_pattern,
-			ClientModule: v.route_module("root.ts"),
+			Pattern:    route_root_pattern,
+			ClientFile: v.route_module("root.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (RootData, error) {
 				c.HeadBuilder().Title("Vorma Framework Test App")
 				return RootData{Name: "root", Deployment: d.data_suffix}, nil
@@ -419,8 +441,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[CounterInput, CounterData]{
-			Pattern:      route_counter_pattern,
-			ClientModule: v.route_module("counter.ts"),
+			Pattern:    route_counter_pattern,
+			ClientFile: v.route_module("counter.ts"),
 			Loader: func(c *RequestCtx[CounterInput]) (CounterData, error) {
 				value := min(max(c.Input().N, -5), 5)
 				c.HeadBuilder().Title(fmt.Sprintf("Counter %d", value))
@@ -432,8 +454,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[SlowInput, SlowData]{
-			Pattern:      route_slow_pattern,
-			ClientModule: v.route_module("slow.ts"),
+			Pattern:    route_slow_pattern,
+			ClientFile: v.route_module("slow.ts"),
 			Loader: func(c *RequestCtx[SlowInput]) (SlowData, error) {
 				delay_ms := min(max(c.Input().DelayMS, 0), 250)
 				time.Sleep(time.Duration(delay_ms) * time.Millisecond)
@@ -447,8 +469,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[struct{}, EchoData]{
-			Pattern:      route_echo_pattern,
-			ClientModule: v.route_module("echo.ts"),
+			Pattern:    route_echo_pattern,
+			ClientFile: v.route_module("echo.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (EchoData, error) {
 				c.HeadBuilder().Title("Echo")
 				return EchoData{
@@ -459,8 +481,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[struct{}, ItemData]{
-			Pattern:      route_item_pattern,
-			ClientModule: v.route_module("item.ts"),
+			Pattern:    route_item_pattern,
+			ClientFile: v.route_module("item.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (ItemData, error) {
 				id := c.Param("id")
 				c.HeadBuilder().Title("Item " + id)
@@ -469,8 +491,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[struct{}, ClientData]{
-			Pattern:      route_client_pattern,
-			ClientModule: v.route_module("client.ts"),
+			Pattern:    route_client_pattern,
+			ClientFile: v.route_module("client.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (ClientData, error) {
 				id := c.Param("id")
 				c.HeadBuilder().Title("Client " + id)
@@ -483,8 +505,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[struct{}, NestedData]{
-			Pattern:      route_nested_pattern,
-			ClientModule: v.route_module("nested.ts"),
+			Pattern:    route_nested_pattern,
+			ClientFile: v.route_module("nested.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (NestedData, error) {
 				c.HeadBuilder().Title("Nested")
 				return NestedData{
@@ -495,8 +517,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[struct{}, NestedDetailData]{
-			Pattern:      route_nested_detail_pattern,
-			ClientModule: v.route_module("nested_detail.ts"),
+			Pattern:    route_nested_detail_pattern,
+			ClientFile: v.route_module("nested_detail.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (NestedDetailData, error) {
 				id := c.Param("id")
 				c.HeadBuilder().Title("Nested " + id)
@@ -509,8 +531,8 @@ func (v Variant) views(d deployment_variant) vorma.Views {
 		},
 
 		View[struct{}, struct{}]{
-			Pattern:      route_fail_pattern,
-			ClientModule: v.route_module("fail.ts"),
+			Pattern:    route_fail_pattern,
+			ClientFile: v.route_module("fail.ts"),
 			Loader: func(c *RequestCtx[struct{}]) (struct{}, error) {
 				c.SetResponseStatus(500)
 				return struct{}{}, &vorma.LoaderError{

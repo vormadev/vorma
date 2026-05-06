@@ -38,7 +38,7 @@ func TestVormaOutWatchIgnorePatternMatchesWatchRootRelativePaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := vorma_cfg{C: &vorma.Config{
-				DistConfig: vorma.DistConfig{OutDir: tt.out_dir},
+				DistDir: tt.out_dir,
 				DevWatchConfig: vorma.DevWatchConfig{
 					WatchRoot: tt.watch_root,
 				},
@@ -59,5 +59,21 @@ func TestVormaOutWatchIgnorePatternMatchesWatchRootRelativePaths(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestUIVariantAcceptsRemix(t *testing.T) {
+	cfg := vorma_cfg{C: &vorma.Config{
+		FrontendConfig: vorma.FrontendConfig{
+			UIVariant: ui_variant_remix,
+		},
+	}}
+
+	got, err := cfg.__validate_ui_variant()
+	if err != nil {
+		t.Fatalf("error validating UI variant: %v", err)
+	}
+	if got != ui_variant_remix {
+		t.Fatalf("expected %q, got %q", ui_variant_remix, got)
 	}
 }

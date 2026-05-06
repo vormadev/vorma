@@ -22,12 +22,12 @@ func testLogger() (*slog.Logger, *bytes.Buffer) {
 	return logger, &buf
 }
 
-func TestOrchestrate_Defaults(t *testing.T) {
+func TestRun_Defaults(t *testing.T) {
 	logger, _ := testLogger()
 	finished := make(chan struct{})
 
 	go func() {
-		opts := OrchestrateOptions{
+		lifecycle := Lifecycle{
 			Logger: logger,
 		}
 		go func() {
@@ -35,7 +35,7 @@ func TestOrchestrate_Defaults(t *testing.T) {
 			p, _ := os.FindProcess(os.Getpid())
 			p.Signal(syscall.SIGTERM)
 		}()
-		Orchestrate(opts)
+		Run(lifecycle)
 		close(finished)
 	}()
 
@@ -43,27 +43,27 @@ func TestOrchestrate_Defaults(t *testing.T) {
 	case <-finished:
 		// Success
 	case <-time.After(2 * time.Second):
-		t.Fatal("Orchestrate did not shut down within expected timeframe")
+		t.Fatal("Run did not shut down within expected timeframe")
 	}
 }
 
-func TestOrchestrate_CustomOptions(t *testing.T) {
+func TestRun_CustomOptions(t *testing.T) {
 	logger, _ := testLogger()
 	startupCalled := false
 	cleanupCalled := false
 
-	options := OrchestrateOptions{
+	lifecycle := Lifecycle{
 		ShutdownTimeout: 2 * time.Second,
 		Signals:         []os.Signal{syscall.SIGTERM},
 		Logger:          logger,
-		StartupCallback: func() error {
+		Startup: func() error {
 			startupCalled = true
 			// Trigger shutdown after startup completes
 			p, _ := os.FindProcess(os.Getpid())
 			p.Signal(syscall.SIGTERM)
 			return nil
 		},
-		ShutdownCallback: func(ctx context.Context) error {
+		Shutdown: func(ctx context.Context) error {
 			cleanupCalled = true
 			return nil
 		},
@@ -71,7 +71,7 @@ func TestOrchestrate_CustomOptions(t *testing.T) {
 
 	finished := make(chan struct{})
 	go func() {
-		Orchestrate(options)
+		Run(lifecycle)
 		close(finished)
 	}()
 
@@ -84,22 +84,22 @@ func TestOrchestrate_CustomOptions(t *testing.T) {
 			t.Error("Cleanup callback was not called")
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("Orchestrate did not shut down within expected timeframe")
+		t.Fatal("Run did not shut down within expected timeframe")
 	}
 }
 
-func TestOrchestrate_StartupError(t *testing.T) {
+func TestRun_StartupError(t *testing.T) {
 	logger, _ := testLogger()
 	cleanupCalled := false
 	expectedErr := errors.New("startup failure")
 
-	options := OrchestrateOptions{
+	lifecycle := Lifecycle{
 		Logger:          logger,
 		ShutdownTimeout: time.Second,
-		StartupCallback: func() error {
+		Startup: func() error {
 			return expectedErr
 		},
-		ShutdownCallback: func(ctx context.Context) error {
+		Shutdown: func(ctx context.Context) error {
 			cleanupCalled = true
 			return nil
 		},
@@ -107,7 +107,7 @@ func TestOrchestrate_StartupError(t *testing.T) {
 
 	finished := make(chan struct{})
 	go func() {
-		Orchestrate(options)
+		Run(lifecycle)
 		close(finished)
 	}()
 
@@ -117,23 +117,23 @@ func TestOrchestrate_StartupError(t *testing.T) {
 			t.Error("Cleanup callback should be called even when startup fails")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Orchestrate did not shut down after startup error")
+		t.Fatal("Run did not shut down after startup error")
 	}
 }
 
-func TestOrchestrate_CleanupTimeout(t *testing.T) {
+func TestRun_CleanupTimeout(t *testing.T) {
 	logger, logBuf := testLogger()
 	cleanupStarted := make(chan struct{})
 
-	options := OrchestrateOptions{
+	lifecycle := Lifecycle{
 		Logger:          logger,
 		ShutdownTimeout: 100 * time.Millisecond,
-		StartupCallback: func() error {
+		Startup: func() error {
 			p, _ := os.FindProcess(os.Getpid())
 			p.Signal(syscall.SIGTERM)
 			return nil
 		},
-		ShutdownCallback: func(ctx context.Context) error {
+		Shutdown: func(ctx context.Context) error {
 			close(cleanupStarted)
 			// Simulate slow cleanup
 			time.Sleep(200 * time.Millisecond)
@@ -143,7 +143,7 @@ func TestOrchestrate_CleanupTimeout(t *testing.T) {
 
 	finished := make(chan struct{})
 	go func() {
-		Orchestrate(options)
+		Run(lifecycle)
 		close(finished)
 	}()
 
@@ -160,24 +160,24 @@ func TestOrchestrate_CleanupTimeout(t *testing.T) {
 			t.Error("Expected timeout warning in logs")
 		}
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Orchestrate did not shut down after cleanup timeout")
+		t.Fatal("Run did not shut down after cleanup timeout")
 	}
 }
 
-func TestOrchestrate_CleanupTimeout_NonCooperativeCallback(t *testing.T) {
+func TestRun_CleanupTimeout_NonCooperativeCallback(t *testing.T) {
 	logger, logBuf := testLogger()
 	cleanupStarted := make(chan struct{})
 	blockForever := make(chan struct{})
 
-	options := OrchestrateOptions{
+	lifecycle := Lifecycle{
 		Logger:          logger,
 		ShutdownTimeout: 100 * time.Millisecond,
-		StartupCallback: func() error {
+		Startup: func() error {
 			p, _ := os.FindProcess(os.Getpid())
 			p.Signal(syscall.SIGTERM)
 			return nil
 		},
-		ShutdownCallback: func(ctx context.Context) error {
+		Shutdown: func(ctx context.Context) error {
 			close(cleanupStarted)
 			<-blockForever
 			return nil
@@ -186,7 +186,7 @@ func TestOrchestrate_CleanupTimeout_NonCooperativeCallback(t *testing.T) {
 
 	finished := make(chan struct{})
 	go func() {
-		Orchestrate(options)
+		Run(lifecycle)
 		close(finished)
 	}()
 
@@ -202,7 +202,7 @@ func TestOrchestrate_CleanupTimeout_NonCooperativeCallback(t *testing.T) {
 			t.Error("Expected timeout warning in logs")
 		}
 	case <-time.After(500 * time.Millisecond):
-		t.Fatal("Orchestrate did not return after timeout for non-cooperative callback")
+		t.Fatal("Run did not return after timeout for non-cooperative callback")
 	}
 }
 
@@ -237,7 +237,7 @@ func TestTerminateProcess(t *testing.T) {
 				t.Fatalf("Failed to start test process: %v", err)
 			}
 
-			err := TerminateProcess(cmd.Process, tt.timeout, logger)
+			err := Terminate(cmd.Process, tt.timeout, logger)
 			if (err != nil) != tt.wantError {
 				t.Errorf("TerminateProcess() error = %v, wantError = %v", err, tt.wantError)
 			}
@@ -256,7 +256,7 @@ func TestTerminateProcess_InvalidProcess(t *testing.T) {
 	// Try to terminate a non-existent process
 	nonExistentPID := 99999999
 	process, _ := os.FindProcess(nonExistentPID)
-	err := TerminateProcess(process, time.Second, logger)
+	err := Terminate(process, time.Second, logger)
 	if err == nil {
 		t.Error("Expected error when terminating non-existent process")
 	}
@@ -266,7 +266,7 @@ func TestTerminateProcess_NilProcessReturnsError(
 	t *testing.T,
 ) {
 	logger, _ := testLogger()
-	err := TerminateProcess(nil, time.Second, logger)
+	err := Terminate(nil, time.Second, logger)
 	if !errors.Is(err, errProcessIsNil) {
 		t.Fatalf("expected errProcessIsNil, got %v", err)
 	}

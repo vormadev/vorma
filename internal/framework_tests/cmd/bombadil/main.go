@@ -33,6 +33,10 @@ const bombadil_deployment_env_key = "VORMA_BOMBADIL_DEPLOYMENT"
 const bombadil_mode_env_key = "VORMA_BOMBADIL_MODE"
 const vorma_dev_app_server_preferred_port_env_key = "__VORMA_DEV_APP_SERVER_PREFERRED_PORT"
 const vorma_dev_vite_server_preferred_port_env_key = "__VORMA_DEV_VITE_SERVER_PREFERRED_PORT"
+const variant_react = "react"
+const variant_preact = "preact"
+const variant_remix = "remix"
+const variant_solid = "solid"
 const bombadil_mode_dev = "dev"
 const bombadil_mode_prod = "prod"
 
@@ -66,9 +70,10 @@ type dev_client_module struct {
 func main() {
 	config := run_config{
 		variants: []variant_config{
-			{name: "react", port: 18080, dev_app_port: 19080, dev_vite_port: 19173},
-			{name: "preact", port: 18081, dev_app_port: 19090, dev_vite_port: 19183},
-			{name: "solid", port: 18082, dev_app_port: 19100, dev_vite_port: 19193},
+			{name: variant_react, port: 18080, dev_app_port: 19080, dev_vite_port: 19173},
+			{name: variant_preact, port: 18081, dev_app_port: 19090, dev_vite_port: 19183},
+			{name: variant_solid, port: 18082, dev_app_port: 19100, dev_vite_port: 19193},
+			{name: variant_remix, port: 18083, dev_app_port: 19110, dev_vite_port: 19203},
 		},
 	}
 
@@ -97,7 +102,7 @@ func (config run_config) run_command(args []string) error {
 		return config.test_prod(*variant_name)
 	case "serve-dev":
 		if len(args) != 2 {
-			return errors.New("usage: bombadil serve-dev <react|preact|solid>")
+			return errors.New("usage: bombadil serve-dev <react|preact|remix|solid>")
 		}
 		return config.serve_dev(args[1])
 	case "test-dev":

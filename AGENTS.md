@@ -27,6 +27,15 @@ anything that doesn't fit on one line.
 
 ## Universal rules (applicable to both Go and TypeScript)
 
+Never ever perform or attempt to perform git actions other than purely read-only
+activities. You are not allowed to stage, unstage, commit, push, revert, stash,
+or take any other potentially destructive git actions. Never ever hand-edit a
+gitignored file. Running normal build, test, format, or tooling commands that
+write ignored generated outputs or caches is allowed when those commands are
+part of the requested workflow.
+
+---
+
 Before writing tests or running commands, make sure to read both
 `TEST_README.md` and `Makefile` in the repo root.
 

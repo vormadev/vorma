@@ -33,6 +33,7 @@ var known_ts_projects = []string{
 	"internal/pkg/npm/vorma/create/tsconfig.json",
 	"internal/pkg/npm/vorma/tests/tsconfig.json",
 	"internal/pkg/npm/vorma/tsx/preact/tsconfig.json",
+	"internal/pkg/npm/vorma/tsx/remix/tsconfig.json",
 	"internal/pkg/npm/vorma/tsx/react/tsconfig.json",
 	"internal/pkg/npm/vorma/tsx/solid/tsconfig.json",
 	"internal/pkg/npm/vorma/vite/tsconfig.json",

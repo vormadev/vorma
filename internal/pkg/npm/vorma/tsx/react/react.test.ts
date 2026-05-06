@@ -15,6 +15,12 @@ define_adapter_tests({
 	},
 
 	h: React.createElement as AdapterTestHarness["h"],
+	create_define_view_component: ((render: (props: object) => unknown) => {
+		return render;
+	}) as AdapterTestHarness["create_define_view_component"],
+	dynamic: ((read_value: () => unknown) => {
+		return read_value();
+	}) as AdapterTestHarness["dynamic"],
 	unwrap: ((v: unknown) => {
 		return v;
 	}) as AdapterTestHarness["unwrap"],

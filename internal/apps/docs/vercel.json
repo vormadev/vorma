@@ -2,10 +2,10 @@
 	"$schema": "https://openapi.vercel.sh/vercel.json",
 	"installCommand": "pnpm vercel-install",
 	"buildCommand": "pnpm vercel-build",
-	"outputDirectory": "dist/.vorma/static/public",
+	"outputDirectory": "app/.vorma/static/public",
 	"functions": {
 		"api/proxy.rs": {
-			"includeFiles": "dist/.vorma/main"
+			"includeFiles": "app/.vorma/main"
 		}
 	},
 	"rewrites": [

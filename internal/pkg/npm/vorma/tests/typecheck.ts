@@ -3,6 +3,7 @@
 import type { ReadonlySignal } from "@preact/signals";
 import type { ComponentType as PreactComponentType } from "preact";
 import type { ComponentType as ReactComponentType } from "react";
+import type { Handle as RemixHandle, RemixNode } from "remix/ui";
 import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
 	AppConfig,
@@ -51,6 +52,10 @@ import { MutationError, QueryError } from "vorma/__internal";
 import { type Result } from "vorma/kit/result";
 import { createVormaClient as Preact__createVormaClient } from "vorma/preact";
 import { createVormaClient as React__createVormaClient } from "vorma/react";
+import {
+	createVormaClient as Remix__createVormaClient,
+	type RemixComponent,
+} from "vorma/remix";
 import { createVormaClient as Solid__createVormaClient } from "vorma/solid";
 
 type Assert<Condition extends true> = Condition;
@@ -165,6 +170,7 @@ const react = React__createVormaClient(vorma_app_config, {
 	},
 });
 const preact = Preact__createVormaClient(vorma_app_config);
+const remix = Remix__createVormaClient(vorma_app_config);
 const solid = Solid__createVormaClient(vorma_app_config);
 
 /////// Exported Type Assertions
@@ -686,7 +692,7 @@ function assert_exported_type_contracts(): void {
 	expect_type<RouteState["error"]>(route_state.error);
 
 	const route_update_reason: RouteUpdateReason = "navigation";
-	expect_type<"init" | "navigation" | "popstate" | "revalidation">(
+	expect_type<"boot" | "navigation" | "popstate" | "revalidation">(
 		route_update_reason,
 	);
 
@@ -1261,7 +1267,7 @@ function assert_react_adapter_contracts(): void {
 			void params.bogus;
 			expect_type<string[]>(splatValues);
 			expect_type<AbortSignal>(signal);
-			expect_type<"init" | "navigation" | "revalidation" | "prefetch">(
+			expect_type<"boot" | "navigation" | "revalidation" | "prefetch">(
 				trigger,
 			);
 			expect_type<string>(href);
@@ -1285,13 +1291,13 @@ function assert_react_adapter_contracts(): void {
 			return server_data.loaderData.userName.length;
 		},
 		beforeRouteCommit: async ({ current, next, signal, trigger }) => {
-			expect_type<Exclude<RouteUpdateReason, "init">>(trigger);
+			expect_type<Exclude<RouteUpdateReason, "boot">>(trigger);
 			expect_type<AbortSignal>(signal);
 			expect_type<string>(current.href);
 			expect_type<string>(next.href);
 		},
 		beforeRouteYield: async ({ current, next, signal, trigger }) => {
-			expect_type<Exclude<RouteUpdateReason, "init">>(trigger);
+			expect_type<Exclude<RouteUpdateReason, "boot">>(trigger);
 			expect_type<AbortSignal>(signal);
 			expect_type<string>(current.href);
 			expect_type<string>(next.href);
@@ -1422,64 +1428,75 @@ void assert_react_adapter_contracts;
 /////// Public Runtime Contracts
 
 function assert_public_runtime_contracts(): void {
-	// client init options
-	const react_with_init_options = React__createVormaClient(vorma_app_config, {
-		render: async ({ RootOutlet, rootEl }) => {
-			expect_type<ReactComponentType>(RootOutlet);
-			expect_type<HTMLElement>(rootEl);
-		},
-		useViewTransitions: true,
-		onRouteUpdate: (route, previous_route, reason) => {
-			expect_type<RouteState>(route);
-			expect_type<RouteState | null>(previous_route);
-			expect_type<RouteUpdateReason>(reason);
-		},
-		onWorkUpdate: (work) => {
-			expect_type<WorkState>(work);
-		},
-		onBuildSkewDetected: (event) => {
-			expect_type<BuildSkewDetectedEvent>(event);
-			expect_type<string>(event.activeClientBuildID);
-			expect_type<string>(event.serverBuildID);
-			expect_type<RouteState>(event.currentRouteState);
-			expect_type<WorkState>(event.currentWorkState);
-			expect_type<"dropResponse" | "hardReload" | "notifyOnly">(
-				event.defaultBehavior,
-			);
-			if (event.triggeringResponse.kind === "route") {
-				expect_type<
-					"navigation" | "popstate" | "revalidation" | "prefetch"
-				>(event.triggeringResponse.trigger);
-				if (event.triggeringResponse.trigger === "revalidation") {
-					expect_type<RevalidationReason>(
-						event.triggeringResponse.revalidationReason,
+	// client options
+	const react_with_client_options = React__createVormaClient(
+		vorma_app_config,
+		{
+			render: async ({ RootOutlet, rootEl }) => {
+				expect_type<ReactComponentType>(RootOutlet);
+				expect_type<HTMLElement>(rootEl);
+			},
+			useViewTransitions: true,
+			onRouteUpdate: (route, previous_route, reason) => {
+				expect_type<RouteState>(route);
+				expect_type<RouteState | null>(previous_route);
+				expect_type<RouteUpdateReason>(reason);
+			},
+			onWorkUpdate: (work) => {
+				expect_type<WorkState>(work);
+			},
+			onBuildSkewDetected: (event) => {
+				expect_type<BuildSkewDetectedEvent>(event);
+				expect_type<string>(event.activeClientBuildID);
+				expect_type<string>(event.serverBuildID);
+				expect_type<RouteState>(event.currentRouteState);
+				expect_type<WorkState>(event.currentWorkState);
+				expect_type<"dropResponse" | "hardReload" | "notifyOnly">(
+					event.defaultBehavior,
+				);
+				if (event.triggeringResponse.kind === "route") {
+					expect_type<
+						"navigation" | "popstate" | "revalidation" | "prefetch"
+					>(event.triggeringResponse.trigger);
+					if (event.triggeringResponse.trigger === "revalidation") {
+						expect_type<RevalidationReason>(
+							event.triggeringResponse.revalidationReason,
+						);
+					}
+				} else {
+					expect_type<"query" | "mutation">(
+						event.triggeringResponse.apiRouteKind,
 					);
 				}
-			} else {
-				expect_type<"query" | "mutation">(
-					event.triggeringResponse.apiRouteKind,
-				);
-			}
+			},
 		},
-	});
-	const init_promise = react_with_init_options.init();
-	expect_type<Promise<Result<void>>>(init_promise);
+	);
+	const boot_promise = react_with_client_options.boot();
+	expect_type<Promise<Result<void>>>(boot_promise);
 
-	const preact_init_promise = Preact__createVormaClient(vorma_app_config, {
+	const preact_boot_promise = Preact__createVormaClient(vorma_app_config, {
 		render: async ({ RootOutlet, rootEl }) => {
 			expect_type<PreactComponentType>(RootOutlet);
 			expect_type<HTMLElement>(rootEl);
 		},
-	}).init();
-	expect_type<Promise<Result<void>>>(preact_init_promise);
+	}).boot();
+	expect_type<Promise<Result<void>>>(preact_boot_promise);
 
-	const solid_init_promise = Solid__createVormaClient(vorma_app_config, {
+	const remix_boot_promise = Remix__createVormaClient(vorma_app_config, {
+		render: async ({ RootOutlet, rootEl }) => {
+			expect_type<RemixComponent>(RootOutlet);
+			expect_type<HTMLElement>(rootEl);
+		},
+	}).boot();
+	expect_type<Promise<Result<void>>>(remix_boot_promise);
+
+	const solid_boot_promise = Solid__createVormaClient(vorma_app_config, {
 		render: async ({ RootOutlet, rootEl }) => {
 			expect_type<SolidComponent>(RootOutlet);
 			expect_type<HTMLElement>(rootEl);
 		},
-	}).init();
-	expect_type<Promise<Result<void>>>(solid_init_promise);
+	}).boot();
+	expect_type<Promise<Result<void>>>(solid_boot_promise);
 
 	// navigate
 	const navigate_result = react.navigate({
@@ -1517,16 +1534,16 @@ function assert_public_runtime_contracts(): void {
 	// revalidateOnWindowFocus
 	void React__createVormaClient(vorma_app_config, {
 		revalidateOnWindowFocus: true,
-	}).init();
+	}).boot();
 	void React__createVormaClient(vorma_app_config, {
 		revalidateOnWindowFocus: false,
-	}).init();
+	}).boot();
 	void React__createVormaClient(vorma_app_config, {
 		revalidateOnWindowFocus: { staleTimeMS: 3000 },
-	}).init();
+	}).boot();
 
 	// progressIndicator (all categories)
-	const init_with_progress = React__createVormaClient(vorma_app_config, {
+	const boot_with_progress = React__createVormaClient(vorma_app_config, {
 		progressIndicator: {
 			start: () => {},
 			stop: () => {},
@@ -1537,8 +1554,8 @@ function assert_public_runtime_contracts(): void {
 			startDelayMS: 30,
 			stopDelayMS: 40,
 		},
-	}).init();
-	expect_type<Promise<Result<void>>>(init_with_progress);
+	}).boot();
+	expect_type<Promise<Result<void>>>(boot_with_progress);
 
 	// progressIndicator (include "all")
 	void React__createVormaClient(vorma_app_config, {
@@ -1550,7 +1567,7 @@ function assert_public_runtime_contracts(): void {
 			},
 			include: "all",
 		},
-	}).init();
+	}).boot();
 
 	// progressIndicator (subset)
 	void React__createVormaClient(vorma_app_config, {
@@ -1562,7 +1579,7 @@ function assert_public_runtime_contracts(): void {
 			},
 			include: ["navigations"],
 		},
-	}).init();
+	}).boot();
 }
 void assert_public_runtime_contracts;
 
@@ -1663,6 +1680,108 @@ function assert_preact_adapter_contracts(): void {
 	void preact.Link({ pattern: "/users/:userID" });
 }
 void assert_preact_adapter_contracts;
+
+/////// Remix Adapter Type Safety
+
+function assert_remix_adapter_contracts(): void {
+	const route_props = null as unknown as ToRouteComponentProps<
+		App,
+		"/users/:userID"
+	>;
+
+	// useLoaderData returns the selected value.
+	const loader_data = remix.useLoaderData(route_props);
+	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data);
+
+	// usePatternLoaderData
+	const maybe_pattern_data = remix.usePatternLoaderData("/docs/*");
+	expect_type<ToLoaderOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
+
+	// useRouteState
+	const route_state = remix.useRouteState();
+	expect_type<RouteState>(route_state);
+	expect_type<Record<string, string>>(route_state.params);
+	expect_type<unknown>(route_state.historyState);
+
+	const selected_params = remix.useRouteState((route) => {
+		return route.params;
+	});
+	expect_type<Record<string, string>>(selected_params);
+
+	// useWorkState
+	const work_state = remix.useWorkState();
+	expect_type<WorkState>(work_state);
+
+	const selected_submission_count = remix.useWorkState((work) => {
+		return work.apiRequests.length;
+	});
+	expect_type<number>(selected_submission_count);
+
+	// useRouteSync
+	remix.useRouteSync({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		search: { page: 2, tab: "posts" },
+		enabled: true,
+		debounceMs: 250,
+		replace: true,
+		scrollToTop: false,
+	});
+
+	// useClientLoaderData returns the selected value.
+	const cl_route_props = null as unknown as ToRouteComponentProps<
+		App,
+		"/users/:userID",
+		number
+	>;
+	const client_loader_data = remix.useClientLoaderData(cl_route_props);
+	expect_type<number>(client_loader_data);
+
+	// usePatternClientLoaderData
+	const maybe_client_loader_data =
+		remix.usePatternClientLoaderData<number>("/users/:userID");
+	expect_type<number | undefined>(maybe_client_loader_data);
+
+	// defineView accepts Remix UI component factories.
+	void remix.defineView({
+		pattern: "/users/:userID",
+		component: (
+			_handle: RemixHandle<ToRouteComponentProps<App, "/users/:userID">>,
+		) => {
+			return (props) => {
+				const data = remix.useLoaderData(props);
+				expect_type<ToLoaderOutput<App, "/users/:userID">>(data);
+				return props.Outlet() as RemixNode;
+			};
+		},
+		errorBoundary: (_handle: RemixHandle<{ error: unknown }>) => {
+			return (props) => {
+				expect_type<unknown>(props.error);
+				return null;
+			};
+		},
+	});
+
+	void remix.defineView({
+		// @ts-expect-error defineView rejects unknown patterns.
+		pattern: "/not-a-route",
+		component: () => {
+			return () => {
+				return null;
+			};
+		},
+	});
+
+	// Link
+	void remix.Link({
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+	});
+
+	// @ts-expect-error typed links require params for dynamic routes.
+	void remix.Link({ pattern: "/users/:userID" });
+}
+void assert_remix_adapter_contracts;
 
 /////// Solid Adapter Type Safety
 

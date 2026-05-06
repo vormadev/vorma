@@ -1,10 +1,10 @@
 import { createRoot } from "react-dom/client";
 import { getRootEl, initClient } from "vorma/client";
 import { VormaRootOutlet } from "vorma/{{.UIVariant}}";
-import { vormaAppConfig } from "./vorma.gen/index.ts";
+import { vormaClientSeed } from "./vorma.gen/index.ts";
 import "./styles/main.css";
 await initClient({
-	vormaAppConfig,
+	vormaClientSeed,
 	renderFn: () => {
 		createRoot(getRootEl()).render(<VormaRootOutlet />);
 	},

@@ -1,10 +1,10 @@
 import { render } from "preact";
 import { getRootEl, initClient } from "vorma/client";
 import { VormaRootOutlet } from "vorma/{{.UIVariant}}";
-import { vormaAppConfig } from "./vorma.gen/index.ts";
+import { vormaClientSeed } from "./vorma.gen/index.ts";
 import "./styles/main.css";
 await initClient({
-	vormaAppConfig,
+	vormaClientSeed,
 	renderFn: () => {
 		render(<VormaRootOutlet />, getRootEl());
 	},

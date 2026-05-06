@@ -103,10 +103,7 @@ func (rs *run_state) write_manifest() error {
 	}
 
 	m := vormarun.Manifest{
-		VormaVersion:       vorma_version,
-		Dev_ViteServerPort: vite_server_port,
-		Dev_MuxPort:        rs.dev_mux_port,
-		Dev_RefreshToken:   rs.dev_refresh_token,
+		VormaVersion: vorma_version,
 
 		PublicStaticBasePath: cfg.public_static_base_path(),
 		APIMountRoot:         cfg.actions_mount_root(),
@@ -119,6 +116,12 @@ func (rs *run_state) write_manifest() error {
 
 		ClientEntry:  ts_entry_cm,
 		ClientRoutes: ts_routes,
+	}
+
+	if rs.is_dev {
+		m.Dev_ViteServerPort = vite_server_port
+		m.Dev_MuxPort = rs.dev_mux_port
+		m.Dev_RefreshToken = rs.dev_refresh_token
 	}
 
 	if err := write_json_to_file(m, cfg.manifest_json_out(rs.is_dev)); err != nil {

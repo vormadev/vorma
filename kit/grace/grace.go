@@ -23,35 +23,40 @@ func defaultSignals() []os.Signal {
 	return []os.Signal{syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT}
 }
 
-type OrchestrateOptions struct {
+type Lifecycle struct {
 	ShutdownTimeout time.Duration // Default: 30 seconds
 	Signals         []os.Signal   // Default: SIGHUP, SIGINT, SIGTERM, SIGQUIT
 	Logger          *slog.Logger  // Default: os.Stdout
 
-	// StartupCallback runs your main application logic (e.g., server.ListenAndServe).
+	// Startup runs your main application logic (e.g., server.ListenAndServe).
 	// This callback should block until the application is ready to shut down.
 	// Do not call os.Exit or log.Fatal here; return an error instead.
-	StartupCallback func() error
+	Startup func() error
 
-	// ShutdownCallback runs cleanup logic (e.g., server.Shutdown, closing DB connections).
+	// Shutdown runs cleanup logic (e.g., server.Shutdown, closing DB connections).
 	// The context has a timeout based on ShutdownTimeout.
 	// Do not call os.Exit or log.Fatal here; return an error instead.
-	ShutdownCallback func(context.Context) error
+	Shutdown func(context.Context) error
 }
 
-// Orchestrate manages the core lifecycle of an application, including startup, shutdown, and os signal handling.
-// StartupCallback is expected to block (e.g., http.Server.ListenAndServe). If it returns immediately,
-// Orchestrate will wait for a shutdown signal before exiting.
-func Orchestrate(options OrchestrateOptions) {
+// Run manages the core lifecycle of an application, including startup, shutdown, and os signal handling.
+// Lifecycle.Startup is expected to block (e.g., http.Server.ListenAndServe). If it returns immediately,
+// Run will wait for a shutdown signal before exiting.
+func (l Lifecycle) Run() { Run(l) }
+
+// Run manages the core lifecycle of an application, including startup, shutdown, and os signal handling.
+// Lifecycle.Startup is expected to block (e.g., http.Server.ListenAndServe). If it returns immediately,
+// Run will wait for a shutdown signal before exiting.
+func Run(l Lifecycle) {
 	// Set defaults
-	if options.Logger == nil {
-		options.Logger = newDefaultLogger()
+	if l.Logger == nil {
+		l.Logger = newDefaultLogger()
 	}
-	if options.ShutdownTimeout == 0 {
-		options.ShutdownTimeout = 30 * time.Second
+	if l.ShutdownTimeout == 0 {
+		l.ShutdownTimeout = 30 * time.Second
 	}
-	if len(options.Signals) == 0 {
-		options.Signals = defaultSignals()
+	if len(l.Signals) == 0 {
+		l.Signals = defaultSignals()
 	}
 
 	// Context for orchestrating shutdown
@@ -60,7 +65,7 @@ func Orchestrate(options OrchestrateOptions) {
 
 	// Signal handling
 	sig := make(chan os.Signal, 2)
-	signal.Notify(sig, options.Signals...)
+	signal.Notify(sig, l.Signals...)
 	defer signal.Stop(sig)
 
 	// Create a channel to coordinate cleanup
@@ -70,49 +75,49 @@ func Orchestrate(options OrchestrateOptions) {
 	go func() {
 		select {
 		case receivedSignal := <-sig:
-			options.Logger.Info(
+			l.Logger.Info(
 				"[shutdown] Signal received, initiating graceful shutdown",
 				"signal",
 				receivedSignal,
 			)
 		case <-ctx.Done():
-			options.Logger.Info("[shutdown] Initiating graceful shutdown due to startup failure")
+			l.Logger.Info("[shutdown] Initiating graceful shutdown due to startup failure")
 		}
 
-		shutdownCtx, cancelCtx := context.WithTimeout(context.Background(), options.ShutdownTimeout)
+		shutdownCtx, cancelCtx := context.WithTimeout(context.Background(), l.ShutdownTimeout)
 		defer cancelCtx()
 
 		// Execute shutdown logic (cleanup tasks)
 		timedOut := false
-		if options.ShutdownCallback != nil {
+		if l.Shutdown != nil {
 			done := make(chan error, 1)
 			go func() {
-				done <- options.ShutdownCallback(shutdownCtx)
+				done <- l.Shutdown(shutdownCtx)
 			}()
 
 			select {
 			case err := <-done:
 				if err != nil {
-					options.Logger.Error("[shutdown] Cleanup error", "error", err)
+					l.Logger.Error("[shutdown] Cleanup error", "error", err)
 				}
 			case <-shutdownCtx.Done():
 				// Allow Orchestrate to continue even if callback ignores context.
-				options.Logger.Warn("[shutdown] Graceful shutdown timed out, forcing exit")
+				l.Logger.Warn("[shutdown] Graceful shutdown timed out, forcing exit")
 				timedOut = true
 			}
 		}
 
 		if !timedOut && shutdownCtx.Err() == context.DeadlineExceeded {
-			options.Logger.Warn("[shutdown] Graceful shutdown timed out, forcing exit")
+			l.Logger.Warn("[shutdown] Graceful shutdown timed out, forcing exit")
 		}
 
 		close(cleanup)
 	}()
 
 	// Execute startup logic
-	if options.StartupCallback != nil {
-		if err := options.StartupCallback(); err != nil {
-			options.Logger.Error("[startup] Error", "error", err)
+	if l.Startup != nil {
+		if err := l.Startup(); err != nil {
+			l.Logger.Error("[startup] Error", "error", err)
 			stopCtx() // This will trigger cleanup via ctx.Done()
 			<-cleanup
 			return
@@ -123,9 +128,9 @@ func Orchestrate(options OrchestrateOptions) {
 	<-cleanup
 }
 
-// TerminateProcess attempts to gracefully terminate a process, falling back to force kill after timeout.
+// Terminate attempts to gracefully terminate a process, falling back to force kill after timeout.
 // If logger is nil, defaults to stdout.
-func TerminateProcess(process *os.Process, timeToWait time.Duration, logger *slog.Logger) error {
+func Terminate(process *os.Process, waitFor time.Duration, logger *slog.Logger) error {
 	if process == nil {
 		return errProcessIsNil
 	}
@@ -157,11 +162,11 @@ func TerminateProcess(process *os.Process, timeToWait time.Duration, logger *slo
 			return fmt.Errorf("process exited with error: %w", err)
 		}
 		return nil
-	case <-time.After(timeToWait):
+	case <-time.After(waitFor):
 		if err := process.Kill(); err != nil {
 			return fmt.Errorf("failed to kill process after timeout: %w", err)
 		}
-		logger.Warn("Process killed after timeout", "pid", process.Pid, "timeout", timeToWait)
+		logger.Warn("Process killed after timeout", "pid", process.Pid, "timeout", waitFor)
 		return nil
 	}
 }

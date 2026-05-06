@@ -51,7 +51,7 @@ type Probe = {
 	revalidate: () => Promise<unknown>;
 };
 
-type InitResult =
+type BootResult =
 	| {
 			ok: true;
 	  }
@@ -163,7 +163,7 @@ export async function install_vorma_probe(input: {
 	app: unknown;
 }): Promise<void> {
 	const app = input.app as {
-		init: () => Promise<InitResult>;
+		boot: () => Promise<BootResult>;
 		revalidate: () => Promise<unknown>;
 		getRouteState: () => RouteLike;
 		getWorkState: () => WorkLike;
@@ -189,7 +189,7 @@ export async function install_vorma_probe(input: {
 	current_probe = probe;
 	window.__vorma_bombadil = probe;
 
-	const result = await app.init();
+	const result = await app.boot();
 	if (!result.ok) {
 		throw new Error(result.err);
 	}

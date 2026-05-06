@@ -6,6 +6,7 @@ replace github.com/vormadev/vorma => ../../../
 
 require (
 	github.com/adrg/frontmatter v0.2.0
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/vormadev/vorma v0.84.0
 	github.com/yuin/goldmark v1.8.2
 )

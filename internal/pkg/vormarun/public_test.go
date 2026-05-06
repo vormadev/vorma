@@ -47,8 +47,8 @@ func TestPublicRouterServesHTMLLoaderPayload(t *testing.T) {
 				*test_request_ctx[struct{}],
 				test_request_ctx[struct{}],
 			]{
-				Pattern:      "/items/:id",
-				ClientModule: "items.tsx",
+				Pattern:    "/items/:id",
+				ClientFile: "items.tsx",
 				Loader: func(ctx *test_request_ctx[struct{}]) (page_output, error) {
 					return page_output{
 						ID:     ctx.Param("id"),
@@ -121,8 +121,8 @@ func TestPublicRouterServesJSONAndReportsBuildSkew(t *testing.T) {
 				*test_request_ctx[struct{}],
 				test_request_ctx[struct{}],
 			]{
-				Pattern:      "/items/:id",
-				ClientModule: "items.tsx",
+				Pattern:    "/items/:id",
+				ClientFile: "items.tsx",
 				Loader: func(ctx *test_request_ctx[struct{}]) (page_output, error) {
 					return page_output{ID: ctx.Param("id")}, nil
 				},
@@ -187,8 +187,8 @@ func TestPublicRouterServesAPIRoutesFromConfiguredAPIMount(t *testing.T) {
 				*test_request_ctx[struct{}],
 				test_request_ctx[struct{}],
 			]{
-				Pattern:      "/",
-				ClientModule: "root.tsx",
+				Pattern:    "/",
+				ClientFile: "root.tsx",
 			},
 		},
 		vormarun.APIRoutes{
@@ -233,19 +233,13 @@ func TestPublicRouterServesAPIRoutesFromConfiguredAPIMount(t *testing.T) {
 
 func TestPublicStaticMiddlewareServesManifestAssetsOnly(t *testing.T) {
 	h := public_test_harness{t: t}
-	v, err := vormarun.New(&vormarun.Config{
-		DistConfig: vormarun.DistConfig{
-			StaticFS: h.static_fs(h.default_manifest()),
-		},
-	})
-	if err != nil {
-		t.Fatalf("error initializing Vorma: %v", err)
-	}
+	v := vormarun.New(&vormarun.Config{})
+	v.MustSetStaticFS(h.static_fs(h.default_manifest()))
 	router, err := v.Router()
 	if err != nil {
 		t.Fatalf("error getting router: %v", err)
 	}
-	err = router.AddPublicFileServerMiddleware()
+	err = router.UsePublicFileServerMiddleware()
 	if err != nil {
 		t.Fatalf("error adding public file server middleware: %v", err)
 	}
@@ -313,14 +307,8 @@ func (h public_test_harness) init_router(
 ) *vormarun.Router {
 	h.t.Helper()
 
-	v, err := vormarun.New(&vormarun.Config{
-		DistConfig: vormarun.DistConfig{
-			StaticFS: h.static_fs(manifest),
-		},
-	})
-	if err != nil {
-		h.t.Fatalf("error initializing Vorma: %v", err)
-	}
+	v := vormarun.New(&vormarun.Config{})
+	v.MustSetStaticFS(h.static_fs(manifest))
 	router, err := v.Router()
 	if err != nil {
 		h.t.Fatalf("error getting router: %v", err)

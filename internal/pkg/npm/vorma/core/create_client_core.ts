@@ -133,7 +133,7 @@ export type ProgressIndicatorConfig = {
 	stopDelayMS?: number;
 };
 
-export type InitOptions = {
+export type ClientOptions = {
 	render?: () => void | Promise<void>;
 	progressIndicator?: ProgressIndicatorConfig;
 	revalidateOnWindowFocus?: boolean | { staleTimeMS: number };
@@ -163,7 +163,7 @@ export type ViewDefinition = {
 };
 
 type ClientLoaderFn = (args: {
-	trigger: "init" | "navigation" | "revalidation" | "prefetch";
+	trigger: "boot" | "navigation" | "revalidation" | "prefetch";
 	href: string;
 	historyState: unknown;
 	pattern: string;
@@ -209,7 +209,7 @@ type APIResult<T> =
 	  };
 
 export type ClientCore = {
-	init: (options: InitOptions) => Promise<Result<void>>;
+	boot: (options: ClientOptions) => Promise<Result<void>>;
 	navigate: (
 		href: string | URL,
 		options?: {
@@ -561,7 +561,7 @@ export function create_client_core(
 	 5. prefetch: the at-most-one in-flight prefetch
 	 6. refresh: outstanding route data demand and its retry timing
 	 7. apiRequests: concurrent action requests (independent of routes)
-	 8. deferred_submit_redirect: submit redirect waiting for init completion
+	 8. deferred_submit_redirect: submit redirect waiting for boot completion
 	 9. seq: monotonic counter; refresh is ordered by seq, never wall clock
 
 	Aborting a fetch and publishing a route are each single operations.
@@ -948,7 +948,7 @@ export function create_client_core(
 		routes: DecodedRoute[],
 		payload: DecodedPayload,
 		cl_prefetches: ClientLoaderPrefetch[],
-		trigger: "init" | "navigation" | "revalidation",
+		trigger: "boot" | "navigation" | "revalidation",
 		href: string,
 		history_state: unknown,
 		signal: AbortSignal,
@@ -1523,7 +1523,7 @@ export function create_client_core(
 		f: ActiveFetch,
 		prepared: PreparedRoute,
 	): Promise<boolean> {
-		const commit_reason: Exclude<RouteUpdateReason, "init"> =
+		const commit_reason: Exclude<RouteUpdateReason, "boot"> =
 			f.intent.kind === "reval"
 				? "revalidation"
 				: f.intent.options.is_popstate
@@ -1731,7 +1731,7 @@ export function create_client_core(
 		reason: RouteRenderCommitReason,
 	): RouteUpdateReason {
 		if (reason === "initial") {
-			return "init";
+			return "boot";
 		}
 		if (reason === "hmr") {
 			return "revalidation";
@@ -2390,7 +2390,7 @@ export function create_client_core(
 		},
 	): Promise<APIResult<T>> {
 		if (!route_snapshot) {
-			throw new Error("Vorma not initialized");
+			throw new Error("Vorma not booted");
 		}
 		const resolved = new URL(String(url), window.location.href);
 
@@ -2445,7 +2445,7 @@ export function create_client_core(
 				require_refresh("apiRequest", waiter);
 				maybe_revalidate();
 			} else {
-				// During boot, register refresh demand so post-init
+				// During boot, register refresh demand so post-boot
 				// maybe_revalidate will fire. Do not attach a waiter;
 				// the returned revalidationPromise stays resolved so initial
 				// client loaders awaiting it do not deadlock.
@@ -2942,9 +2942,9 @@ export function create_client_core(
 		sync();
 	}
 
-	/////// Init
+	/////// Boot
 
-	async function init(options: InitOptions): Promise<Result<void>> {
+	async function boot(options: ClientOptions): Promise<Result<void>> {
 		const payload_el = document.getElementById(DATA_SCRIPT_ID);
 		if (!payload_el) {
 			return R.err(`Missing element: #${DATA_SCRIPT_ID}`);
@@ -3012,7 +3012,7 @@ export function create_client_core(
 			payload.routes,
 			payload,
 			[],
-			"init",
+			"boot",
 			browser.href,
 			browser.state,
 			initial_ac.signal,
@@ -3155,7 +3155,7 @@ export function create_client_core(
 		},
 	): Promise<NavResult> {
 		if (phase !== "ready") {
-			throw new Error("Vorma not initialized");
+			throw new Error("Vorma not booted");
 		}
 		const url = new URL(String(href), window.location.href);
 		if (!is_same_origin(url)) {
@@ -3176,7 +3176,7 @@ export function create_client_core(
 
 	async function revalidate(): Promise<RevalidationResult> {
 		if (phase !== "ready") {
-			throw new Error("Vorma not initialized");
+			throw new Error("Vorma not booted");
 		}
 		const waiter = make_deferred<RevalidationResult>();
 		require_refresh("manual", waiter, true);
@@ -3187,14 +3187,14 @@ export function create_client_core(
 	function getRouteState(): RouteState {
 		const snapshot = route_snapshot;
 		if (!snapshot) {
-			throw new Error("Vorma not initialized");
+			throw new Error("Vorma not booted");
 		}
 		return route_snapshot_to_state(snapshot);
 	}
 
 	function getWorkState(): WorkState {
 		if (!route_snapshot) {
-			throw new Error("Vorma not initialized");
+			throw new Error("Vorma not booted");
 		}
 		return derive_work_state();
 	}
@@ -3239,7 +3239,7 @@ export function create_client_core(
 	(window as any)[Symbol.for("vorma-data-revalidate-fn")] = revalidate;
 
 	return R.ok({
-		init,
+		boot,
 		navigate,
 		revalidate,
 		submit_inner,

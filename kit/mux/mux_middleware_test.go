@@ -25,7 +25,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 				return None{}, errors.New("task middleware intentional error")
 			},
 		)
-		AddGlobalTaskMiddleware(r, task_mw)
+		UseTaskMiddleware(r, task_mw)
 
 		AddHTTPHandlerFunc(
 			r,
@@ -74,7 +74,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 				return None{}, nil
 			},
 		)
-		AddGlobalTaskMiddleware(r, task_mw)
+		UseTaskMiddleware(r, task_mw)
 
 		main_handler_ran := false
 		AddHTTPHandlerFunc(
@@ -140,8 +140,8 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 			},
 		)
 
-		AddGlobalTaskMiddleware(r, tmw1)
-		AddMethodLevelTaskMiddleware(r, http.MethodGet, tmw2)
+		UseTaskMiddleware(r, tmw1)
+		UseTaskMiddlewareByMethod(r, http.MethodGet, tmw2)
 		route := AddHTTPHandlerFunc(
 			r,
 			http.MethodGet,
@@ -150,7 +150,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 				main_handler_ran = true
 			},
 		)
-		AddPatternLevelTaskMiddleware(route, tmw3)
+		UseTaskMiddlewareByPattern(route, tmw3)
 
 		req := httptest.NewRequest(http.MethodGet, "/multi", nil)
 		w := httptest.NewRecorder()
@@ -198,7 +198,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 				),
 			)
 
-			AddGlobalTaskMiddleware(
+			UseTaskMiddleware(
 				r,
 				TaskMiddlewareFromFunc(
 					func(rd *RequestCtx[None]) (None, error) {
@@ -227,7 +227,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 				t.Fatalf("first request X-Task-MW = %v, want [global-1]", got)
 			}
 
-			AddGlobalTaskMiddleware(
+			UseTaskMiddleware(
 				r,
 				TaskMiddlewareFromFunc(
 					func(rd *RequestCtx[None]) (None, error) {
@@ -236,7 +236,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 					},
 				),
 			)
-			AddMethodLevelTaskMiddleware(
+			UseTaskMiddlewareByMethod(
 				r,
 				http.MethodGet,
 				TaskMiddlewareFromFunc(
@@ -246,7 +246,7 @@ func TestTaskMiddleware_Interactions(t *testing.T) {
 					},
 				),
 			)
-			AddPatternLevelTaskMiddleware(
+			UseTaskMiddlewareByPattern(
 				route,
 				TaskMiddlewareFromFunc(
 					func(rd *RequestCtx[None]) (None, error) {
@@ -308,7 +308,7 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 			execution_order = append(execution_order, id)
 		}
 
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					append_order("GlobalHTTP-Pre")
@@ -317,7 +317,7 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 				},
 			)
 		})
-		AddMethodLevelHTTPMiddleware(
+		UseMiddlewareByMethod(
 			r,
 			http.MethodGet,
 			func(next http.Handler) http.Handler {
@@ -335,7 +335,7 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(3)
 
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			r,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				defer wg.Done()
@@ -345,7 +345,7 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 				return None{}, nil
 			}),
 		)
-		AddMethodLevelTaskMiddleware(
+		UseTaskMiddlewareByMethod(
 			r,
 			http.MethodGet,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
@@ -367,7 +367,7 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 				return "handler_done", nil
 			}),
 		)
-		AddPatternLevelHTTPMiddleware(
+		UseMiddlewareByPattern(
 			route,
 			func(next http.Handler) http.Handler {
 				return http.HandlerFunc(
@@ -379,7 +379,7 @@ func TestComplexMiddlewareScenarios(t *testing.T) {
 				)
 			},
 		)
-		AddPatternLevelTaskMiddleware(
+		UseTaskMiddlewareByPattern(
 			route,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				defer wg.Done()
@@ -507,7 +507,7 @@ func TestRequestCtxAccess(t *testing.T) {
 	t.Run("InHTTPHandler_StandardPath", func(t *testing.T) {
 		r := NewRouter()
 		var params_ok, splat_ok bool
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			r,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },
@@ -650,7 +650,7 @@ func TestRoutingEdgeCases(t *testing.T) {
 func TestServeHTTP_ErrorHandling(t *testing.T) {
 	t.Run("PanicRecoveryMiddleware", func(t *testing.T) {
 		r := NewRouter()
-		AddGlobalHTTPMiddleware(r, func(next http.Handler) http.Handler {
+		UseMiddleware(r, func(next http.Handler) http.Handler {
 			return http.HandlerFunc(
 				func(w http.ResponseWriter, r *http.Request) {
 					defer func() {
@@ -797,7 +797,7 @@ func TestParseInputSkipsHTTPRoutes(t *testing.T) {
 				)
 			},
 		})
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				return None{}, nil
@@ -933,7 +933,7 @@ func (h custom_handler) NeedsTasksCache() {}
 func TestResponseProxy(t *testing.T) {
 	t.Run("Task_Middleware_Sets_Response", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				rd.ResponseProxy().
@@ -982,7 +982,7 @@ func TestTaskHandlerErrors(t *testing.T) {
 func TestTaskMiddlewareErrors(t *testing.T) {
 	t.Run("Error_Returns_500", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				return None{}, errors.New("database connection failed")
@@ -1014,7 +1014,7 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 
 	t.Run("Sets_Error_Status_Returns_Nil", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				if rd.Request().Header.Get("Authorization") == "" {
@@ -1056,7 +1056,7 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 
 	t.Run("Sets_Redirect_Returns_Nil", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				if rd.Request().Header.Get("Authorization") == "" {
@@ -1095,19 +1095,19 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 
 	t.Run("Multiple_Any_Error_Returns_500", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },
 			),
 		)
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				return None{}, errors.New("service unavailable")
 			}),
 		)
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },
@@ -1140,20 +1140,20 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 
 	t.Run("First_Error_Status_Wins", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },
 			),
 		)
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				rd.ResponseProxy().SetStatus(403, "Forbidden")
 				return None{}, nil
 			}),
 		)
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(func(rd *RequestCtx[None]) (None, error) {
 				rd.ResponseProxy().SetStatus(401, "Unauthorized")
@@ -1190,13 +1190,13 @@ func TestTaskMiddlewareErrors(t *testing.T) {
 
 	t.Run("Success_Allows_Handler", func(t *testing.T) {
 		router := NewRouter()
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },
 			),
 		)
-		AddGlobalTaskMiddleware(
+		UseTaskMiddleware(
 			router,
 			TaskMiddlewareFromFunc(
 				func(rd *RequestCtx[None]) (None, error) { return None{}, nil },

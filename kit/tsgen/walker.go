@@ -541,17 +541,17 @@ func is_duration_like_type(t reflect.Type) bool {
 	return t.ConvertibleTo(reflect.TypeFor[time.Duration]())
 }
 
-func check_ts_typer_raw(instance any) (string, bool) {
-	if instance == nil {
+func check_ts_typer_raw(inst any) (string, bool) {
+	if inst == nil {
 		return "", false
 	}
 
 	// Direct check (value or pointer that already satisfies).
-	if r, ok := instance.(TSTyperRaw); ok {
+	if r, ok := inst.(TSTyperRaw); ok {
 		return r.TSType(), true
 	}
 
-	t, _ := reflectutil.DerefType(reflect.TypeOf(instance))
+	t, _ := reflectutil.DerefType(reflect.TypeOf(inst))
 	return check_ts_typer_raw_type(t)
 }
 
