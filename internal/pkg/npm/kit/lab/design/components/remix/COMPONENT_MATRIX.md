@@ -1,118 +1,133 @@
 # Vorma Remix Component Matrix
 
-Living roadmap for `kit/lab/design/components/remix`.
+Living component inventory for `kit/lab/design/components/remix`.
 
-Survey basis: Base UI, Open UI, and Shoelace/Web Awesome component inventories.
-Rows are component families, not every internal part.
+Status cells are intentionally blank until they are re-audited. Do not add
+ambiguous status values or extra matrix columns.
 
-Status values:
+An empty status cell means the work has not started.
 
-- `yes`: complete for the current contract.
-- `partial`: started, but incomplete. See `<component-name>.notes.md`.
-- `no`: not started.
+`WIP` means the work has started. See the component's individual notes file for
+detailed status. Every `WIP` row must have a matching
+`<component-name>.notes.md` file using the component name in kebab-case.
 
-## P0
+`yes` means the column's criterion has been satisfied.
 
-| Component  | Built | Fully tested |
-| ---------- | ----- | ------------ |
-| Button     | yes   | partial      |
-| Field      | yes   | partial      |
-| Input      | yes   | partial      |
-| Textarea   | yes   | partial      |
-| Checkbox   | yes   | partial      |
-| RadioGroup | yes   | partial      |
-| Switch     | yes   | partial      |
-| Select     | yes   | partial      |
-| Slider     | yes   | partial      |
-| Dialog     | yes   | partial      |
-| Popover    | yes   | partial      |
+`Fully built` means the component is fully built out with WAI-ARIA compliant
+behavior, all long-term intended public APIs, and semantics based on thorough
+research of existing mature component libraries, Open UI, and relevant
+accessibility guidelines.
 
-## P1
+`Fully tested` means the component has enough automated coverage to prove the
+public API, accessibility behavior, keyboard and pointer behavior, controlled
+and uncontrolled state, styling escape hatches, and relevant edge cases.
 
-| Component     | Built | Fully tested |
-| ------------- | ----- | ------------ |
-| Tooltip       | no    | no           |
-| Menu          | no    | no           |
-| Tabs          | no    | no           |
-| Accordion     | no    | no           |
-| Collapsible   | no    | no           |
-| Toast         | no    | no           |
-| Alert         | no    | no           |
-| AlertDialog   | no    | no           |
-| CheckboxGroup | no    | no           |
-| Fieldset      | no    | no           |
-| Form          | no    | no           |
-| Progress      | yes   | partial      |
-| Spinner       | yes   | partial      |
-| Table         | yes   | partial      |
-| Badge         | yes   | partial      |
-| Chip          | yes   | partial      |
-| Separator     | yes   | partial      |
-| Stack         | yes   | partial      |
-| Text          | yes   | partial      |
-| Icon          | yes   | partial      |
-
-## P2
-
-| Component       | Built | Fully tested |
-| --------------- | ----- | ------------ |
-| Toggle          | no    | no           |
-| ToggleGroup     | no    | no           |
-| Combobox        | no    | no           |
-| Autocomplete    | no    | no           |
-| NumberField     | no    | no           |
-| Meter           | no    | no           |
-| Avatar          | no    | no           |
-| Card            | no    | no           |
-| Breadcrumbs     | no    | no           |
-| Pagination      | no    | no           |
-| ScrollArea      | no    | no           |
-| Toolbar         | no    | no           |
-| Menubar         | no    | no           |
-| ContextMenu     | no    | no           |
-| NavigationMenu  | no    | no           |
-| Drawer          | no    | no           |
-| HoverCard       | no    | no           |
-| Skeleton        | no    | no           |
-| FileInput       | no    | no           |
-| Image           | no    | no           |
-| Tag             | no    | no           |
-| AspectRatio     | yes   | partial      |
-| Box             | yes   | partial      |
-| Grid            | yes   | partial      |
-| Surface         | yes   | partial      |
-| CodeBlock       | yes   | partial      |
-| Callout         | yes   | partial      |
-| DescriptionList | yes   | partial      |
-| EmptyState      | yes   | partial      |
-| List            | yes   | partial      |
-| Stat            | yes   | partial      |
-
-## Later
-
-| Component      | Built | Fully tested |
-| -------------- | ----- | ------------ |
-| Calendar       | no    | no           |
-| DatePicker     | no    | no           |
-| Command        | no    | no           |
-| OTPField       | no    | no           |
-| ButtonGroup    | no    | no           |
-| IconButton     | no    | no           |
-| CopyButton     | no    | no           |
-| Carousel       | no    | no           |
-| ColorPicker    | no    | no           |
-| Rating         | no    | no           |
-| SplitPanel     | no    | no           |
-| Tree           | no    | no           |
-| ProgressRing   | no    | no           |
-| QRCode         | no    | no           |
-| RelativeTime   | no    | no           |
-| ImageComparer  | no    | no           |
-| VisuallyHidden | no    | no           |
-| AnimatedImage  | no    | no           |
-| Animation      | no    | no           |
-| Include        | no    | no           |
-| ResizeObserver | no    | no           |
-| FormatBytes    | no    | no           |
-| FormatDate     | no    | no           |
-| FormatNumber   | no    | no           |
+| Component        | Fully built | Fully tested |
+| ---------------- | ----------- | ------------ |
+| Accordion        |             |              |
+| Alert            |             |              |
+| AlertDialog      |             |              |
+| AnimatedImage    |             |              |
+| Animation        |             |              |
+| AspectRatio      |             |              |
+| Autocomplete     |             |              |
+| Avatar           |             |              |
+| Badge            |             |              |
+| Box              |             |              |
+| Blockquote       |             |              |
+| Breadcrumbs      |             |              |
+| Button           |             |              |
+| ButtonGroup      |             |              |
+| Calendar         |             |              |
+| Callout          |             |              |
+| Card             |             |              |
+| Carousel         |             |              |
+| Checkbox         |             |              |
+| CheckboxGroup    |             |              |
+| Chip             |             |              |
+| CloseButton      |             |              |
+| Code             |             |              |
+| CodeBlock        |             |              |
+| ColorPicker      |             |              |
+| Combobox         |             |              |
+| Command          |             |              |
+| Container        |             |              |
+| ContextMenu      |             |              |
+| CopyButton       |             |              |
+| DatePicker       |             |              |
+| DescriptionList  |             |              |
+| Dialog           |             |              |
+| Drawer           |             |              |
+| Editable         |             |              |
+| EmptyState       |             |              |
+| Field            |             |              |
+| Fieldset         |             |              |
+| FileInput        |             |              |
+| Flex             |             |              |
+| Form             |             |              |
+| FormatBytes      |             |              |
+| FormatDate       |             |              |
+| FormatNumber     |             |              |
+| Grid             |             |              |
+| Heading          |             |              |
+| HoverCard        |             |              |
+| Icon             |             |              |
+| IconButton       |             |              |
+| Image            |             |              |
+| ImageComparer    |             |              |
+| Include          |             |              |
+| Input            |             |              |
+| Kbd              | yes         | WIP          |
+| Label            |             |              |
+| Link             |             |              |
+| List             |             |              |
+| Listbox          | yes         | WIP          |
+| LiveRegion       |             |              |
+| Menu             | WIP         | WIP          |
+| Menubar          |             |              |
+| Meter            |             |              |
+| NavigationMenu   |             |              |
+| NativeSelect     |             |              |
+| NumberField      |             |              |
+| OTPField         |             |              |
+| Pagination       |             |              |
+| PasswordField    |             |              |
+| Popover          |             |              |
+| Portal           |             |              |
+| Presence         |             |              |
+| Progress         |             |              |
+| ProgressRing     |             |              |
+| QRCode           |             |              |
+| RadioGroup       |             |              |
+| Rating           |             |              |
+| RelativeTime     |             |              |
+| ResizeObserver   |             |              |
+| ScrollArea       |             |              |
+| SearchField      |             |              |
+| Select           | yes         | WIP          |
+| SegmentedControl |             |              |
+| Separator        | yes         | WIP          |
+| Skeleton         |             |              |
+| SkipNav          |             |              |
+| Slider           |             |              |
+| Spinner          |             |              |
+| SplitPanel       |             |              |
+| Stack            |             |              |
+| Stat             |             |              |
+| Stepper          |             |              |
+| Surface          |             |              |
+| Switch           |             |              |
+| Table            |             |              |
+| Tabs             |             |              |
+| Tag              |             |              |
+| TagsInput        |             |              |
+| Text             |             |              |
+| Textarea         |             |              |
+| Timeline         |             |              |
+| Toast            |             |              |
+| Toggle           |             |              |
+| ToggleGroup      |             |              |
+| Toolbar          |             |              |
+| Tooltip          |             |              |
+| Tree             |             |              |
+| VisuallyHidden   | yes         | WIP          |

@@ -62,6 +62,9 @@ behavior utilities when the same primitive behavior repeats, such as
 controlled/uncontrolled state, ID relationships, outside interaction, focus
 management, list navigation, roving focus, or scroll locking.
 
+Before extracting or redesigning shared interactive behavior, read
+`INTERACTION_PRIMITIVES_PLAN.md` and update its checklist as work moves.
+
 Do not import from component subpaths such as `remix/ui/select`,
 `remix/ui/popover`, `remix/ui/menu`, `remix/ui/combobox`, `remix/ui/listbox`,
 `remix/ui/accordion`, `remix/ui/button`, `remix/ui/separator`,
@@ -83,12 +86,6 @@ for this package.
 The matrix is for component families only. Shared factories and helpers, such as
 root-component utilities or style coordinators, do not belong in the matrix
 unless they are themselves a public component family.
-
-Use only `yes`, `partial`, and `no` status values in `COMPONENT_MATRIX.md`.
-`yes` means complete for the current contract, `partial` means started but
-incomplete, and `no` means not started. Every `partial` row must have a matching
-`<component-name>.notes.md` file using the component name in kebab-case. Do not
-add ambiguous status values or extra matrix columns.
 
 Use Open UI research as the tie-breaker when mature component libraries disagree
 with web platform vocabulary. This matters especially for native-ish control

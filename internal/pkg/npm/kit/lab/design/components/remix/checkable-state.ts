@@ -1,6 +1,7 @@
 import { createMixin, type ElementProps } from "remix/ui";
+import { componentStateAttribute } from "./component-state.ts";
 
-export const checkableStateAttribute = "data-state";
+export const checkableStateAttribute = componentStateAttribute;
 export const checkableState = {
 	checked: "checked",
 	indeterminate: "indeterminate",
