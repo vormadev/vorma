@@ -30,21 +30,12 @@ export type BadgeStyleSystem<
 	TMetadata extends AnyGeneratedSystemMetadata = AnyGeneratedSystemMetadata,
 > = RootStyleSystem<TMode, TRecipe, TMetadata, "badge">;
 
-export type BadgeOptions<TTone extends string, TSize extends string> = {
-	defaultSize?: NoInfer<TSize>;
-	defaultTone?: NoInfer<TTone>;
-};
-
 export function createBadge<
 	TMode extends string,
 	TRecipe extends BadgeRecipeInput,
 	TMetadata extends AnyGeneratedSystemMetadata,
 >(
 	style_system: BadgeStyleSystem<TMode, TRecipe, TMetadata>,
-	options: BadgeOptions<
-		BadgeRecipeTone<TRecipe>,
-		BadgeRecipeSize<TRecipe>
-	> = {},
 ): RootComponent<
 	"size" | "tone",
 	TRecipe,
@@ -52,10 +43,6 @@ export function createBadge<
 > {
 	return createRootComponent(style_system, {
 		defaultElement: "span",
-		defaultProps: {
-			size: options.defaultSize,
-			tone: options.defaultTone,
-		},
 		recipeName: "badge",
 		resolveProps: (props) => {
 			return {

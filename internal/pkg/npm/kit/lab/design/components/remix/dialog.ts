@@ -70,14 +70,35 @@ export type DialogStyleSystem<
 	TMetadata extends AnyGeneratedSystemMetadata = AnyGeneratedSystemMetadata,
 > = ComponentStyleSystem<TMode, { recipe: { dialog: TRecipe } }, TMetadata>;
 
+const dialog_open_change_reason = {
+	close: "close",
+	escape: "escape",
+	interactOutside: "interactOutside",
+	trigger: "trigger",
+} as const;
+
+export type DialogOpenChangeReason =
+	(typeof dialog_open_change_reason)[keyof typeof dialog_open_change_reason];
+
+export type DialogOpenChangeDetails = {
+	event?: Event;
+	reason: DialogOpenChangeReason;
+};
+
+export type DialogOpenChangeHandler = (
+	open: boolean,
+	details?: DialogOpenChangeDetails,
+) => void;
+
 export type DialogProps = {
 	children?: RemixNode;
-	closeOnOutsideClick?: boolean;
+	closeOnInteractOutside?: boolean;
 	defaultOpen?: boolean;
 	modal?: boolean;
-	onOpenChange?: (open: boolean) => void;
-	onOpenChangeComplete?: (open: boolean) => void;
+	onOpenChange?: DialogOpenChangeHandler;
+	onOpenChangeComplete?: DialogOpenChangeHandler;
 	open?: boolean;
+	shouldCloseOnInteractOutside?: (element: Element) => boolean;
 };
 
 export type DialogTriggerProps = Omit<Props<"button">, "style"> & {
@@ -97,6 +118,10 @@ export type DialogPopupProps<
 		style?: never;
 	};
 
+export type DialogOverlayProps = Omit<Props<"div">, "style"> & {
+	style?: never;
+};
+
 export type DialogTitleProps = Omit<Props<"h2">, "style"> & {
 	style?: never;
 };
@@ -112,6 +137,7 @@ export type DialogCloseProps = Omit<Props<"button">, "style"> & {
 export type DialogComponents<TPopupLayout extends string = string> = {
 	Close: RemixComponent<DialogCloseProps>;
 	Description: RemixComponent<DialogDescriptionProps>;
+	Overlay: RemixComponent<DialogOverlayProps>;
 	Popup: RemixComponent<DialogPopupProps<TPopupLayout>>;
 	Root: RemixComponent<DialogProps, DialogRuntimeContext>;
 	Title: RemixComponent<DialogTitleProps>;
@@ -119,10 +145,13 @@ export type DialogComponents<TPopupLayout extends string = string> = {
 };
 
 type DialogRuntimeContext = {
-	closeOnOutsideClick: () => boolean;
+	closeOnInteractOutside: () => boolean;
 	isModal: () => boolean;
 	isOpen: () => boolean;
-	setOpen: (open: boolean) => void;
+	shouldCloseOnInteractOutside: () =>
+		| ((element: Element) => boolean)
+		| undefined;
+	setOpen: (open: boolean, details?: DialogOpenChangeDetails) => void;
 };
 
 const action_conditions = {
@@ -155,7 +184,6 @@ const native_dialog = createMixin<
 	[
 		options: {
 			modal: boolean;
-			onOpenChange: (open: boolean) => void;
 			open: boolean;
 		},
 	],
@@ -164,11 +192,9 @@ const native_dialog = createMixin<
 	let dialog: HTMLDialogElement | undefined;
 	let options: {
 		modal: boolean;
-		onOpenChange: (open: boolean) => void;
 		open: boolean;
 	} = {
 		modal: true,
-		onOpenChange: () => {},
 		open: false,
 	};
 
@@ -239,9 +265,11 @@ export function createDialog<
 	): (props: DialogProps) => RemixNode {
 		let uncontrolled_open = handle.props.defaultOpen ?? false;
 		let requested_open = handle.props.open ?? uncontrolled_open;
+		let last_completed_open = requested_open;
+		let last_open_details: DialogOpenChangeDetails | undefined;
 		const context = {
-			closeOnOutsideClick: (): boolean => {
-				return handle.props.closeOnOutsideClick ?? true;
+			closeOnInteractOutside: (): boolean => {
+				return handle.props.closeOnInteractOutside ?? true;
 			},
 			isModal: (): boolean => {
 				return handle.props.modal ?? true;
@@ -249,23 +277,43 @@ export function createDialog<
 			isOpen: (): boolean => {
 				return handle.props.open ?? uncontrolled_open;
 			},
-			setOpen: (open: boolean): void => {
+			setOpen: (
+				open: boolean,
+				details?: DialogOpenChangeDetails,
+			): void => {
 				if (requested_open === open) {
 					return;
 				}
 				requested_open = open;
+				last_open_details = details;
 				if (handle.props.open === undefined) {
 					uncontrolled_open = open;
 				}
-				handle.props.onOpenChange?.(open);
-				handle.props.onOpenChangeComplete?.(open);
+				handle.props.onOpenChange?.(open, details);
 				void handle.update();
+			},
+			shouldCloseOnInteractOutside: () => {
+				return handle.props.shouldCloseOnInteractOutside;
 			},
 		};
 		handle.context.set(context);
 
 		return (props: DialogProps): RemixNode => {
 			requested_open = props.open ?? uncontrolled_open;
+			if (requested_open !== last_completed_open) {
+				const completed_open = requested_open;
+				const completed_details = last_open_details;
+				last_completed_open = requested_open;
+				handle.queueTask((signal) => {
+					if (signal.aborted) {
+						return;
+					}
+					props.onOpenChangeComplete?.(
+						completed_open,
+						completed_details,
+					);
+				});
+			}
 			return props.children;
 		};
 	}
@@ -303,8 +351,11 @@ export function createDialog<
 					mix: [
 						on<HTMLButtonElement, typeof click_event>(
 							click_event,
-							() => {
-								context.setOpen(true);
+							(event) => {
+								context.setOpen(true, {
+									event,
+									reason: dialog_open_change_reason.trigger,
+								});
 							},
 						),
 						parts.hosts.trigger.mix,
@@ -380,29 +431,46 @@ export function createDialog<
 					mix: [
 						native_dialog({
 							modal: context.isModal(),
-							onOpenChange: context.setOpen,
 							open: context.isOpen(),
 						}),
 						on<HTMLDialogElement, typeof close_event>(
 							close_event,
-							() => {
-								context.setOpen(false);
+							(event) => {
+								context.setOpen(false, {
+									event,
+									reason: dialog_open_change_reason.close,
+								});
 							},
 						),
 						on<HTMLDialogElement, typeof cancel_event>(
 							cancel_event,
-							() => {
-								context.setOpen(false);
+							(event) => {
+								context.setOpen(false, {
+									event,
+									reason: dialog_open_change_reason.escape,
+								});
 							},
 						),
 						on<HTMLDialogElement, typeof click_event>(
 							click_event,
 							(event) => {
 								if (
-									context.closeOnOutsideClick() &&
+									context.closeOnInteractOutside() &&
 									is_dialog_outside_click(event)
 								) {
-									context.setOpen(false);
+									const should_close =
+										event.target instanceof Element
+											? context.shouldCloseOnInteractOutside()?.(
+													event.target,
+												)
+											: undefined;
+									if (should_close === false) {
+										return;
+									}
+									context.setOpen(false, {
+										event,
+										reason: dialog_open_change_reason.interactOutside,
+									});
 								}
 							},
 						),
@@ -411,6 +479,75 @@ export function createDialog<
 					props: {
 						...popup_props,
 						"data-modal": context.isModal() ? "true" : undefined,
+						mix,
+					},
+				}),
+				children,
+			);
+		};
+	}
+
+	function Overlay(
+		handle: Handle<DialogOverlayProps>,
+	): (props: DialogOverlayProps) => RemixNode {
+		const context = handle.context.get(Root);
+
+		return (props: DialogOverlayProps): RemixNode => {
+			const { children, mix, ...overlay_props } = props;
+			const resolved = dialog_recipe.resolve();
+			const slots = resolved.slots as Partial<
+				Record<
+					DialogRecipeSlot,
+					ResolvedRecipeSlot<DialogRecipeCondition, ComponentStyle>
+				>
+			>;
+			const parts = createComponentStyleTargets({
+				targets: {
+					overlay: {
+						host: "overlay",
+						conditions: popup_conditions,
+						resolveSlot: () => {
+							return slots.overlay ?? empty_dialog_overlay_slot;
+						},
+					},
+				},
+				props: {},
+				styleSystem: style_system,
+			});
+
+			return createElement(
+				"div",
+				createComponentSlotProps({
+					attrs: createComponentAnatomyAttrs(dialog_scope, "overlay"),
+					mix: [
+						on<HTMLElement, typeof click_event>(
+							click_event,
+							(event) => {
+								if (!context.closeOnInteractOutside()) {
+									return;
+								}
+								const should_close =
+									event.target instanceof Element
+										? context.shouldCloseOnInteractOutside()?.(
+												event.target,
+											)
+										: undefined;
+								if (should_close === false) {
+									return;
+								}
+								context.setOpen(false, {
+									event,
+									reason: dialog_open_change_reason.interactOutside,
+								});
+							},
+						),
+						parts.hosts.overlay.mix,
+					],
+					props: {
+						...overlay_props,
+						"aria-hidden": "true",
+						"data-open": context.isOpen() ? "" : undefined,
+						hidden: !context.isOpen(),
 						mix,
 					},
 				}),
@@ -517,8 +654,11 @@ export function createDialog<
 					mix: [
 						on<HTMLButtonElement, typeof click_event>(
 							click_event,
-							() => {
-								context.setOpen(false);
+							(event) => {
+								context.setOpen(false, {
+									event,
+									reason: dialog_open_change_reason.close,
+								});
 							},
 						),
 						parts.hosts.close.mix,
@@ -537,6 +677,7 @@ export function createDialog<
 	return {
 		Close,
 		Description,
+		Overlay,
 		Popup,
 		Root,
 		Title,

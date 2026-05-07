@@ -1,6 +1,9 @@
 import {
 	createElement,
+	createMixin,
+	type ElementProps,
 	type Handle,
+	type MixInput,
 	type Props,
 	type RemixNode,
 } from "remix/ui";
@@ -52,6 +55,7 @@ export type FieldStyleSystem<
 >;
 
 export type FieldProps = Omit<Props<"div">, "style"> & {
+	controlID?: string;
 	disabled?: boolean;
 	invalid?: boolean;
 	style?: never;
@@ -71,11 +75,20 @@ export type FieldErrorProps = Omit<Props<"p">, "style"> & {
 };
 
 type FieldContext = {
+	controlID: () => string;
+	descriptionID: () => string;
+	describedBy: () => string;
 	disabled: () => boolean;
+	errorID: () => string;
 	invalid: () => boolean;
 };
 
+export type FieldControlMixin = <
+	TElement extends HTMLElement = HTMLElement,
+>() => MixInput<TElement>;
+
 export type FieldComponents = {
+	controlMixin: FieldControlMixin;
 	Description: RemixComponent<FieldDescriptionProps>;
 	Error: RemixComponent<FieldErrorProps>;
 	Label: RemixComponent<FieldLabelProps>;
@@ -84,6 +97,24 @@ export type FieldComponents = {
 
 const field_parts_by_system = new WeakMap<object, FieldComponents>();
 const field_scope = "field";
+
+function merge_id_refs(
+	own_id_refs: unknown,
+	context_id_refs: string,
+): string | undefined {
+	if (typeof own_id_refs !== "string" || !own_id_refs.trim()) {
+		return context_id_refs || undefined;
+	}
+	if (!context_id_refs) {
+		return own_id_refs;
+	}
+
+	const ids = new Set([
+		...own_id_refs.split(/\s+/).filter(Boolean),
+		...context_id_refs.split(/\s+/).filter(Boolean),
+	]);
+	return Array.from(ids).join(" ");
+}
 
 function create_field_parts_for_system<
 	TMode extends string,
@@ -136,8 +167,22 @@ function create_field_parts_for_system<
 
 	function Field(handle: Handle<FieldProps, FieldContext>) {
 		const context = {
+			controlID: (): string => {
+				return handle.props.controlID ?? `${handle.id}-control`;
+			},
+			descriptionID: (): string => {
+				return `${handle.id}-description`;
+			},
+			describedBy: (): string => {
+				return context.invalid()
+					? `${context.descriptionID()} ${context.errorID()}`
+					: context.descriptionID();
+			},
 			disabled: (): boolean => {
 				return Boolean(handle.props.disabled);
+			},
+			errorID: (): string => {
+				return `${handle.id}-error`;
 			},
 			invalid: (): boolean => {
 				return Boolean(handle.props.invalid);
@@ -146,7 +191,14 @@ function create_field_parts_for_system<
 		handle.context.set(context);
 
 		return (props: FieldProps): RemixNode => {
-			const { children, disabled, invalid, mix, ...host_props } = props;
+			const {
+				children,
+				controlID: _control_id,
+				disabled,
+				invalid,
+				mix,
+				...host_props
+			} = props;
 			const parts = create_parts();
 
 			return createElement(
@@ -169,6 +221,33 @@ function create_field_parts_for_system<
 		};
 	}
 
+	const field_control_mixin = createMixin<HTMLElement, [], ElementProps>(
+		(handle) => {
+			const context = handle.context.get(Field);
+
+			return (props) => {
+				return createElement(handle.element, {
+					...props,
+					"aria-describedby": merge_id_refs(
+						props["aria-describedby"],
+						context.describedBy(),
+					),
+					"aria-invalid":
+						props["aria-invalid"] ??
+						(context.invalid() ? true : undefined),
+					disabled: context.disabled() ? true : props.disabled,
+					id: props.id ?? context.controlID(),
+				});
+			};
+		},
+	);
+
+	function control_mixin<
+		TElement extends HTMLElement = HTMLElement,
+	>(): MixInput<TElement> {
+		return field_control_mixin() as MixInput<TElement>;
+	}
+
 	function FieldLabel(handle: Handle<FieldLabelProps>) {
 		const context = handle.context.get(Field);
 
@@ -188,6 +267,7 @@ function create_field_parts_for_system<
 						...host_props,
 						"aria-disabled": context.disabled() || undefined,
 						"data-invalid": context.invalid() || undefined,
+						htmlFor: host_props.htmlFor ?? context.controlID(),
 						mix,
 					},
 				}),
@@ -214,6 +294,7 @@ function create_field_parts_for_system<
 					props: {
 						...host_props,
 						"aria-disabled": context.disabled() || undefined,
+						id: host_props.id ?? context.descriptionID(),
 						mix,
 					},
 				}),
@@ -244,6 +325,7 @@ function create_field_parts_for_system<
 					props: {
 						...host_props,
 						"aria-disabled": context.disabled() || undefined,
+						id: host_props.id ?? context.errorID(),
 						mix,
 					},
 				}),
@@ -253,6 +335,7 @@ function create_field_parts_for_system<
 	}
 
 	return {
+		controlMixin: control_mixin,
 		Description: FieldDescription,
 		Error: FieldError,
 		Label: FieldLabel,
@@ -311,4 +394,14 @@ export function createFieldError<
 	style_system: FieldStyleSystem<TMode, TRecipe, TMetadata>,
 ): RemixComponent<FieldErrorProps> {
 	return createFieldParts(style_system).Error;
+}
+
+export function createFieldControlMixin<
+	TMode extends string,
+	TRecipe extends FieldRecipeInput,
+	TMetadata extends AnyGeneratedSystemMetadata,
+>(
+	style_system: FieldStyleSystem<TMode, TRecipe, TMetadata>,
+): FieldControlMixin {
+	return createFieldParts(style_system).controlMixin;
 }

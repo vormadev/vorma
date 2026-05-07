@@ -1,6 +1,6 @@
 import { createRoot, ref, type RemixNode } from "remix/ui";
 import { getHrefDetails } from "vorma/kit/url";
-import { defineView, Link, useLoaderData } from "../../app.tsx";
+import { defineView, Link } from "../../app.tsx";
 import { highlight } from "../../setup.ts";
 
 const content_class_name = "content";
@@ -184,7 +184,7 @@ const heading_selector = "h2, h3, h4, h5, h6";
 
 export default defineView({
 	pattern: content_route_pattern,
-	component: (handle) => {
+	component: (handle, v) => {
 		let container: HTMLElement | undefined;
 		let link_roots: LinkRoot[] = [];
 		let markdown = "";
@@ -223,7 +223,7 @@ export default defineView({
 		handle.signal.addEventListener("abort", dispose_link_roots);
 
 		return (props): RemixNode => {
-			const ld = useLoaderData(props);
+			const ld = v.loaderData(props);
 			const next_markdown = ld.Page?.HTML || "";
 			if (next_markdown !== markdown) {
 				markdown = next_markdown;

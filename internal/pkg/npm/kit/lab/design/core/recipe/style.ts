@@ -13,6 +13,34 @@ function has_recipe_style_entries(style: object): boolean {
 	return Object.keys(style).length > 0;
 }
 
+function is_mergeable_recipe_style(value: unknown): value is RecipeStyle {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+
+	return Object.getOwnPropertySymbols(value).length === 0;
+}
+
+function merge_recipe_style_value(current: unknown, value: unknown): unknown {
+	if (
+		is_mergeable_recipe_style(current) &&
+		is_mergeable_recipe_style(value)
+	) {
+		return mergeRecipeStyles(current, value);
+	}
+
+	return value;
+}
+
+function merge_recipe_style_into(
+	merged: Record<string, unknown>,
+	style: RecipeStyle,
+): void {
+	for (const [key, value] of Object.entries(style)) {
+		merged[key] = merge_recipe_style_value(merged[key], value);
+	}
+}
+
 export function mergeRecipeStyles<TStyle extends RecipeStyle>(
 	...styles: ReadonlyArray<TStyle | undefined>
 ): TStyle {
@@ -28,5 +56,10 @@ export function mergeRecipeStyles<TStyle extends RecipeStyle>(
 		return non_empty_styles[0]!;
 	}
 
-	return Object.assign({}, ...non_empty_styles) as TStyle;
+	const merged: Record<string, unknown> = {};
+	for (const style of non_empty_styles) {
+		merge_recipe_style_into(merged, style);
+	}
+
+	return merged as TStyle;
 }

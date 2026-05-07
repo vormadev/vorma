@@ -17,7 +17,7 @@ import type {
 } from "./types.ts";
 
 export type CodeBlockRecipeInput = RecipeWithVariantGroups<
-	"caption" | "code" | "pre" | "root" | "summary",
+	"caption" | "code" | "header" | "pre" | "root",
 	never,
 	ComponentStyle,
 	Record<string, never>
@@ -33,10 +33,10 @@ export type CodeBlockProps = Omit<Props<"figure">, "style"> & {
 	caption?: RemixNode;
 	captionProps?: ComponentSlotProps<"figcaption">;
 	codeProps?: ComponentSlotProps<"code">;
+	header?: RemixNode;
+	headerProps?: ComponentSlotProps<"div">;
 	preProps?: ComponentSlotProps<"pre">;
 	style?: never;
-	summary?: RemixNode;
-	summaryProps?: ComponentSlotProps<"figcaption">;
 };
 
 const code_block_scope = "codeBlock";
@@ -57,9 +57,9 @@ export function createCodeBlock<
 				captionProps: caption_props_input,
 				children,
 				codeProps: code_props,
+				header,
+				headerProps: header_props,
 				preProps: pre_props,
-				summary,
-				summaryProps: summary_props,
 				...figure_props
 			} = props;
 			const resolved = code_block_recipe.resolve();
@@ -73,8 +73,8 @@ export function createCodeBlock<
 				mix: pre_mix,
 				...pre_host_props
 			} = pre_props ?? {};
-			const { children: _summary_children, ...summary_host_props } =
-				summary_props ?? {};
+			const { children: _header_children, ...header_host_props } =
+				header_props ?? {};
 			const { children: _caption_children, ...caption_host_props } =
 				caption_props_input ?? {};
 			const parts = createComponentStyleTargets({
@@ -91,6 +91,12 @@ export function createCodeBlock<
 							return resolved.slots.code;
 						},
 					},
+					header: {
+						host: "header",
+						resolveSlot: () => {
+							return resolved.slots.header;
+						},
+					},
 					pre: {
 						host: "pre",
 						resolveSlot: () => {
@@ -103,12 +109,13 @@ export function createCodeBlock<
 							return resolved.slots.root;
 						},
 					},
-					summary: {
-						host: "summary",
-						resolveSlot: () => {
-							return resolved.slots.summary;
-						},
-					},
+				},
+				hostElements: {
+					caption: "figcaption",
+					code: "code",
+					header: "div",
+					pre: "pre",
+					root: "figure",
 				},
 				props: {},
 				styleSystem: style_system,
@@ -124,19 +131,19 @@ export function createCodeBlock<
 					mix: parts.hosts.root.mix,
 					props: figure_props,
 				}),
-				summary === undefined
+				header === undefined
 					? null
 					: createElement(
-							"figcaption",
+							"div",
 							createComponentSlotProps({
 								attrs: createComponentAnatomyAttrs(
 									code_block_scope,
-									"summary",
+									"header",
 								),
-								mix: parts.hosts.summary.mix,
-								props: summary_host_props,
+								mix: parts.hosts.header.mix,
+								props: header_host_props,
 							}),
-							summary,
+							header,
 						),
 				createElement(
 					"pre",

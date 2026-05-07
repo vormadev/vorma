@@ -71,11 +71,6 @@ export type InputProps<
 		style?: never;
 	};
 
-export type InputOptions<TVariant extends string, TSize extends string> = {
-	defaultSize?: NoInfer<TSize>;
-	defaultVariant?: NoInfer<TVariant>;
-};
-
 const input_scope = "input";
 
 export function createInput<
@@ -84,10 +79,6 @@ export function createInput<
 	TMetadata extends AnyGeneratedSystemMetadata,
 >(
 	style_system: InputStyleSystem<TMode, TRecipe, TMetadata>,
-	options: InputOptions<
-		InputRecipeVariant<TRecipe>,
-		InputRecipeSize<TRecipe>
-	> = {},
 ): RemixComponent<
 	InputProps<
 		InputRecipeVariant<TRecipe>,
@@ -113,13 +104,7 @@ export function createInput<
 				TBreakpoint
 			>,
 		): RemixNode => {
-			const {
-				at,
-				mix,
-				size = options.defaultSize,
-				variant = options.defaultVariant,
-				...host_props
-			} = props;
+			const { at, mix, size, variant, ...host_props } = props;
 			const selection = {
 				size,
 				variant,

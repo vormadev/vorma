@@ -53,6 +53,13 @@ always be `PascalCase`, regardless of public exposure.
 
 ---
 
+For repo-wide consistency, when naming a `camelCase` or `PascalCase` variable
+containing an acronym-ish component, always use Go-style where the acronym-ish
+component is all caps, like `getID` or `formatOKLCH` (rather than `getId` or
+`formatOklch`), even in TypeScript or other non-Go files.
+
+---
+
 Never duplicate contract strings. Define constants for values that are reused or
 that form part of an external/internal contract: environment keys, route paths,
 storage keys, generated field names, file names, protocol markers, event names,

@@ -6,7 +6,6 @@ export {
 } from "./aspect-ratio.ts";
 export {
 	createBadge,
-	type BadgeOptions,
 	type BadgeRecipeInput,
 	type BadgeRecipeSize,
 	type BadgeRecipeTone,
@@ -41,8 +40,18 @@ export {
 	type CalloutStyleSystem,
 } from "./callout.ts";
 export {
+	createCheckbox,
+	type CheckboxChecked,
+	type CheckboxProps,
+	type CheckboxRecipeCondition,
+	type CheckboxRecipeInput,
+	type CheckboxRecipeSelection,
+	type CheckboxRecipeSize,
+	type CheckboxRecipeVariant,
+	type CheckboxStyleSystem,
+} from "./checkbox.ts";
+export {
 	createChip,
-	type ChipOptions,
 	type ChipProps,
 	type ChipRecipeInput,
 	type ChipRecipeSelection,
@@ -64,6 +73,7 @@ export {
 	createComponentStyleTargets,
 	type ComponentAnatomyAttrs,
 	type ComponentSlotProps,
+	type ComponentStyleHostElementMap,
 	type ComponentStyleTargetInput,
 	type ComponentStyleTargetOutput,
 	type ComponentStyleTargetRecipeInput,
@@ -89,6 +99,10 @@ export {
 	type DialogCloseProps,
 	type DialogComponents,
 	type DialogDescriptionProps,
+	type DialogOpenChangeDetails,
+	type DialogOpenChangeHandler,
+	type DialogOpenChangeReason,
+	type DialogOverlayProps,
 	type DialogPopupProps,
 	type DialogPopupStyleProps,
 	type DialogProps,
@@ -110,11 +124,13 @@ export {
 } from "./empty-state.ts";
 export {
 	createField,
+	createFieldControlMixin,
 	createFieldDescription,
 	createFieldError,
 	createFieldLabel,
 	createFieldParts,
 	type FieldComponents,
+	type FieldControlMixin,
 	type FieldDescriptionProps,
 	type FieldErrorProps,
 	type FieldLabelProps,
@@ -151,7 +167,6 @@ export {
 } from "./icon.ts";
 export {
 	createInput,
-	type InputOptions,
 	type InputProps,
 	type InputRecipeInput,
 	type InputRecipeSelection,
@@ -171,14 +186,25 @@ export {
 export {
 	createPopover,
 	popoverAnatomy,
+	type PopoverAlign,
+	type PopoverArrowProps,
+	type PopoverCloseProps,
 	type PopoverComponents,
-	type PopoverContentProps,
+	type PopoverDescriptionProps,
+	type PopoverOpenChangeDetails,
+	type PopoverOpenChangeHandler,
+	type PopoverOpenChangeReason,
+	type PopoverOptions,
+	type PopoverPopupProps,
+	type PopoverPopupStyleProps,
 	type PopoverRecipeCondition,
 	type PopoverRecipeInput,
+	type PopoverRecipeSize,
 	type PopoverRecipeSlot,
 	type PopoverRootProps,
+	type PopoverSide,
 	type PopoverStyleSystem,
-	type PopoverSurfaceProps,
+	type PopoverTitleProps,
 	type PopoverTriggerProps,
 } from "./popover.ts";
 export {
@@ -191,17 +217,22 @@ export {
 	type ProgressStyleSystem,
 } from "./progress.ts";
 export {
-	createRangeField,
-	type RangeFieldOptions,
-	type RangeFieldProps,
-	type RangeFieldRecipeCondition,
-	type RangeFieldRecipeInput,
-	type RangeFieldRecipeLayout,
-	type RangeFieldRecipeSelection,
-	type RangeFieldRecipeSlot,
-	type RangeFieldStyleProps,
-	type RangeFieldStyleSystem,
-} from "./range-field.ts";
+	createRadioGroup,
+	type RadioGroupComponents,
+	type RadioGroupItemProps,
+	type RadioGroupItemStyleProps,
+	type RadioGroupRecipeCondition,
+	type RadioGroupRecipeInput,
+	type RadioGroupRecipeLayout,
+	type RadioGroupRecipeSelection,
+	type RadioGroupRecipeSize,
+	type RadioGroupRecipeVariant,
+	type RadioGroupRootProps,
+	type RadioGroupRootStyleProps,
+	type RadioGroupStyleSystem,
+	type RadioGroupValueChangeDetails,
+	type RadioGroupValueChangeHandler,
+} from "./radio-group.ts";
 export {
 	createRecipeMix,
 	createRecipeStyle,
@@ -218,8 +249,17 @@ export {
 export {
 	createSelect,
 	type SelectComponents,
+	type SelectGroupLabelProps,
+	type SelectGroupProps,
+	type SelectIconProps,
+	type SelectListProps,
+	type SelectOpenChangeDetails,
+	type SelectOpenChangeHandler,
+	type SelectOpenChangeReason,
+	type SelectOptionIndicatorProps,
 	type SelectOptionProps,
 	type SelectOptions,
+	type SelectOptionTextProps,
 	type SelectPopupProps,
 	type SelectPopupStyleProps,
 	type SelectProps,
@@ -230,22 +270,14 @@ export {
 	type SelectRecipeSize,
 	type SelectRecipeSlot,
 	type SelectRecipeVariant,
+	type SelectSeparatorProps,
 	type SelectStyleSystem,
 	type SelectTriggerProps,
 	type SelectTriggerStyleProps,
+	type SelectValueChangeDetails,
+	type SelectValueChangeHandler,
+	type SelectValueProps,
 } from "./select.ts";
-export {
-	createSelectableTile,
-	type SelectableTileOptions,
-	type SelectableTileProps,
-	type SelectableTileRecipeCondition,
-	type SelectableTileRecipeDensity,
-	type SelectableTileRecipeInput,
-	type SelectableTileRecipeSelection,
-	type SelectableTileRecipeVariant,
-	type SelectableTileStyleProps,
-	type SelectableTileStyleSystem,
-} from "./selectable-tile.ts";
 export {
 	createSeparator,
 	type SeparatorProps,
@@ -253,8 +285,22 @@ export {
 	type SeparatorStyleSystem,
 } from "./separator.ts";
 export {
+	createSlider,
+	sliderProgressVariable,
+	type SliderOptions,
+	type SliderProps,
+	type SliderRecipeCondition,
+	type SliderRecipeInput,
+	type SliderRecipeLayout,
+	type SliderRecipeSelection,
+	type SliderRecipeSlot,
+	type SliderStyleProps,
+	type SliderStyleSystem,
+	type SliderStyleTarget,
+	type SliderTargetStyles,
+} from "./slider.ts";
+export {
 	createSpinner,
-	type SpinnerOptions,
 	type SpinnerProps,
 	type SpinnerRecipeInput,
 	type SpinnerRecipeSelection,
@@ -286,13 +332,22 @@ export {
 } from "./stat.ts";
 export {
 	createSurface,
-	type SurfaceOptions,
 	type SurfaceRecipeDensity,
 	type SurfaceRecipeInput,
 	type SurfaceRecipeLayout,
 	type SurfaceRecipeVariant,
 	type SurfaceStyleSystem,
 } from "./surface.ts";
+export {
+	createSwitch,
+	type SwitchProps,
+	type SwitchRecipeCondition,
+	type SwitchRecipeInput,
+	type SwitchRecipeSelection,
+	type SwitchRecipeSize,
+	type SwitchRecipeVariant,
+	type SwitchStyleSystem,
+} from "./switch.ts";
 export {
 	createTable,
 	createTableBody,
@@ -326,6 +381,15 @@ export {
 	type TextRecipeVariant,
 	type TextStyleSystem,
 } from "./text.ts";
+export {
+	createTextarea,
+	type TextareaProps,
+	type TextareaRecipeInput,
+	type TextareaRecipeSelection,
+	type TextareaRecipeSize,
+	type TextareaRecipeVariant,
+	type TextareaStyleSystem,
+} from "./textarea.ts";
 export type {
 	ComponentStyle,
 	ComponentStyleSystem,

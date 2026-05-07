@@ -78,11 +78,6 @@ export type ChipProps<
 		style?: never;
 	};
 
-export type ChipOptions<TVariant extends string, TSize extends string> = {
-	defaultSize?: NoInfer<TSize>;
-	defaultVariant?: NoInfer<TVariant>;
-};
-
 const button_type_default = "button";
 const chip_scope = "chip";
 
@@ -92,10 +87,6 @@ export function createChip<
 	TMetadata extends AnyGeneratedSystemMetadata,
 >(
 	style_system: ChipStyleSystem<TMode, TRecipe, TMetadata>,
-	options: ChipOptions<
-		ChipRecipeVariant<TRecipe>,
-		ChipRecipeSize<TRecipe>
-	> = {},
 ): RemixComponent<
 	ChipProps<
 		ChipRecipeVariant<TRecipe>,
@@ -115,8 +106,8 @@ export function createChip<
 	): TSelection {
 		return {
 			selected: input.selected ? "true" : "false",
-			size: input.size ?? options.defaultSize,
-			variant: input.variant ?? options.defaultVariant,
+			size: input.size,
+			variant: input.variant,
 		} satisfies TSelection;
 	}
 
@@ -142,9 +133,9 @@ export function createChip<
 				children,
 				mix,
 				selected = false,
-				size = options.defaultSize,
+				size,
 				type = button_type_default,
-				variant = options.defaultVariant,
+				variant,
 				...host_props
 			} = props;
 			const style_props = { selected, size, variant };

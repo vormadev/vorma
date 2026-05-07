@@ -53,10 +53,6 @@ export type RootHostProps<TElement extends keyof HTMLElementTagNameMap> = Omit<
 	style?: never;
 };
 
-export type RootComponentOptions<TProps extends object> = {
-	defaultProps?: Partial<TProps>;
-};
-
 export type RootComponentProps<
 	TGroups extends string,
 	TRecipe extends RootRecipeInput<Record<TGroups, string>>,
@@ -83,7 +79,6 @@ export function createRootComponent<
 	input: {
 		conditions?: RecipeConditionSelectorMap;
 		defaultElement: TDefaultElement;
-		defaultProps?: Partial<RecipeVariantPropsFor<TRecipe, TGroups>>;
 		recipeName: TRecipeName;
 		resolveProps: (
 			props: Partial<RecipeVariantPropsFor<TRecipe, TGroups>>,
@@ -121,10 +116,9 @@ export function createRootComponent<
 			for (const variant_prop of input.variantProps) {
 				delete (element_props as Record<string, unknown>)[variant_prop];
 			}
-			const selected_props = input.resolveProps({
-				...input.defaultProps,
-				...(host_props as Partial<TProps>),
-			});
+			const selected_props = input.resolveProps(
+				host_props as Partial<TProps>,
+			);
 			const parts = createComponentStyleTargets({
 				at,
 				targets: {

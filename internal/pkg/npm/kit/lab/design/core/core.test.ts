@@ -17,6 +17,8 @@ import {
 import { primitive_token_keys, token_groups } from "./types.ts";
 
 const hover_condition = "&:hover";
+const last_child_selector = "&:last-child";
+const nested_media_query = "@media (min-width: 48rem)";
 
 type ButtonRecipeForTest<
 	TVariant extends string = string,
@@ -367,6 +369,108 @@ describe("design core", () => {
 				"1",
 			])};`,
 		);
+	});
+
+	it("resolves nested recipe style blocks as opaque style data", () => {
+		const input = defineSystem({
+			css: {
+				variablePrefix: "acme",
+			},
+			modes: ["light"],
+			primitive: {},
+			semantic: () => {
+				return {
+					light: {
+						color: {
+							border: "#d1d5db",
+							text: "#111827",
+						},
+					},
+				};
+			},
+		});
+		const system = createSystem(input);
+		const recipes = defineRecipeStyles(input, ({ ref }) => {
+			return {
+				descriptionList: {
+					defaultVariants: {
+						tone: "default",
+					},
+					slots: {
+						item: {
+							base: {
+								borderBlockEndColor: ref.semantic.color.border,
+								[last_child_selector]: {
+									borderBlockEndWidth: 0,
+									color: ref.semantic.color.text,
+								},
+								[nested_media_query]: {
+									[last_child_selector]: {
+										borderBlockEndWidth: 0,
+									},
+								},
+							},
+						},
+					},
+					variants: {
+						tone: {
+							default: {
+								item: {
+									base: {
+										[last_child_selector]: {
+											paddingBlockEnd: "0",
+										},
+										[nested_media_query]: {
+											[last_child_selector]: {
+												marginBlockEnd: "0",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			};
+		});
+		const recipe_system = createRecipeStyleSystem(system, recipes);
+		const item_base =
+			recipe_system.token.recipe.descriptionList.slots.item.base;
+		const resolved_item = createRecipe(
+			recipe_system.token.recipe.descriptionList,
+		).resolve().slots.item.base;
+		const expected_border = createCSSVariableReference("acme", [
+			token_groups.semantic,
+			"color",
+			"border",
+		]);
+		const expected_text = createCSSVariableReference("acme", [
+			token_groups.semantic,
+			"color",
+			"text",
+		]);
+
+		expect(item_base?.borderBlockEndColor).toBe(expected_border);
+		expect(item_base?.[last_child_selector]).toEqual({
+			borderBlockEndWidth: 0,
+			color: expected_text,
+		});
+		expect(item_base?.[nested_media_query]).toEqual({
+			[last_child_selector]: {
+				borderBlockEndWidth: 0,
+			},
+		});
+		expect(resolved_item[last_child_selector]).toEqual({
+			borderBlockEndWidth: 0,
+			color: expected_text,
+			paddingBlockEnd: "0",
+		});
+		expect(resolved_item[nested_media_query]).toEqual({
+			[last_child_selector]: {
+				borderBlockEndWidth: 0,
+				marginBlockEnd: "0",
+			},
+		});
 	});
 
 	it("requires CSS variable safe prefix and token path segments", () => {

@@ -1,4 +1,4 @@
-import { type MixInput, type Props } from "remix/ui";
+import { css, type MixInput, type Props } from "remix/ui";
 import {
 	mergeRecipeStyles,
 	type RecipeStyle,
@@ -9,7 +9,6 @@ import {
 	type RecipeConditionSelectorMap,
 } from "./recipe.ts";
 import { createResponsiveRecipeStyle } from "./responsive.ts";
-import { create_component_style_mix } from "./style.ts";
 import type { ComponentStyleSystem } from "./types.ts";
 
 const component_scope_attribute = "data-vorma-scope";
@@ -18,6 +17,22 @@ const component_part_attribute = "data-vorma-part";
 type ComponentRecipeStyleMetadata = {
 	breakpoint?: Record<string, string | number>;
 };
+
+type ComponentStyleHostElementName = keyof HTMLElementTagNameMap;
+
+export type ComponentStyleHostElementMap<THost extends string> = Partial<
+	Readonly<Record<THost, ComponentStyleHostElementName>>
+>;
+
+type ComponentStyleHostElement<
+	THost extends string,
+	THostElements extends ComponentStyleHostElementMap<THost>,
+	TKey extends THost,
+> = TKey extends keyof THostElements
+	? THostElements[TKey] extends ComponentStyleHostElementName
+		? HTMLElementTagNameMap[THostElements[TKey]]
+		: Element
+	: Element;
 
 export const componentAnatomyAttrs = {
 	part: component_part_attribute,
@@ -88,8 +103,10 @@ export type ComponentStyleTargetsInput<
 	TMode extends string,
 	TToken,
 	TMetadata extends ComponentRecipeStyleMetadata,
+	THostElements extends ComponentStyleHostElementMap<THost> = {},
 > = {
 	at?: Partial<Record<string, Partial<TProps>>>;
+	hostElements?: THostElements;
 	props: Partial<TProps>;
 	styleSystem: ComponentStyleSystem<TMode, TToken, TMetadata>;
 	targets: Record<
@@ -98,17 +115,20 @@ export type ComponentStyleTargetsInput<
 	>;
 };
 
-export type ComponentStyleTargetOutput = {
-	mix: MixInput<Element>;
+export type ComponentStyleTargetOutput<TElement extends Element = Element> = {
+	mix: MixInput<TElement>;
 	style: RecipeStyle;
 };
 
 export type ComponentStyleTargetsOutput<
 	THost extends string,
 	TTarget extends string,
+	THostElements extends ComponentStyleHostElementMap<THost> = {},
 > = {
 	readonly hosts: {
-		readonly [K in THost]: ComponentStyleTargetOutput;
+		readonly [K in THost]: ComponentStyleTargetOutput<
+			ComponentStyleHostElement<THost, THostElements, K>
+		>;
 	};
 	readonly targets: {
 		readonly [K in TTarget]: ComponentStyleTargetOutput;
@@ -136,10 +156,25 @@ function merge_style_value(
 ): void {
 	const current = style[key];
 	if (is_recipe_style(current) && is_recipe_style(value)) {
-		style[key] = mergeRecipeStyles(current, value);
+		style[key] = merge_component_styles(current, value);
 		return;
 	}
 	style[key] = value;
+}
+
+function merge_component_styles(
+	...styles: ReadonlyArray<RecipeStyle | undefined>
+): RecipeStyle {
+	const merged: Record<string, unknown> = {};
+	for (const style of styles) {
+		if (style === undefined) {
+			continue;
+		}
+		for (const [key, value] of Object.entries(style)) {
+			merge_style_value(merged, key, value);
+		}
+	}
+	return merged;
 }
 
 function is_style_at_rule(key: string): boolean {
@@ -248,11 +283,11 @@ function create_component_style_target_recipe_style<
 	});
 }
 
-function create_component_style_output(
+function create_component_style_output<TElement extends Element = Element>(
 	style: RecipeStyle,
-): ComponentStyleTargetOutput {
+): ComponentStyleTargetOutput<TElement> {
 	return {
-		mix: create_component_style_mix(style),
+		mix: css<TElement>(style as Parameters<typeof css>[0]),
 		style,
 	};
 }
@@ -265,6 +300,7 @@ function create_component_style_target_style<
 	TMode extends string,
 	TToken,
 	TMetadata extends ComponentRecipeStyleMetadata,
+	THostElements extends ComponentStyleHostElementMap<THost>,
 >(
 	input: ComponentStyleTargetsInput<
 		TProps,
@@ -273,7 +309,8 @@ function create_component_style_target_style<
 		TCondition,
 		TMode,
 		TToken,
-		TMetadata
+		TMetadata,
+		THostElements
 	>,
 	target: ComponentStyleTargetInput<TProps, THost, TCondition>,
 ): RecipeStyle {
@@ -292,6 +329,7 @@ export function createComponentStyleTargets<
 	TMode extends string,
 	TToken,
 	TMetadata extends ComponentRecipeStyleMetadata,
+	THostElements extends ComponentStyleHostElementMap<THost> = {},
 >(
 	input: ComponentStyleTargetsInput<
 		TProps,
@@ -300,9 +338,10 @@ export function createComponentStyleTargets<
 		TCondition,
 		TMode,
 		TToken,
-		TMetadata
+		TMetadata,
+		THostElements
 	>,
-): ComponentStyleTargetsOutput<THost, TTarget> {
+): ComponentStyleTargetsOutput<THost, TTarget, THostElements> {
 	const host_styles: Partial<Record<THost, RecipeStyle>> = {};
 	const target_outputs: Partial<Record<TTarget, ComponentStyleTargetOutput>> =
 		{};
@@ -314,7 +353,7 @@ export function createComponentStyleTargets<
 		const target_style = create_component_style_target_style(input, target);
 		target_outputs[target_name] =
 			create_component_style_output(target_style);
-		host_styles[target.host] = mergeRecipeStyles(
+		host_styles[target.host] = merge_component_styles(
 			host_styles[target.host],
 			target_style,
 		);
@@ -328,10 +367,15 @@ export function createComponentStyleTargets<
 					create_component_style_output(style as RecipeStyle),
 				];
 			}),
-		) as ComponentStyleTargetsOutput<THost, TTarget>["hosts"],
+		) as unknown as ComponentStyleTargetsOutput<
+			THost,
+			TTarget,
+			THostElements
+		>["hosts"],
 		targets: target_outputs as ComponentStyleTargetsOutput<
 			THost,
-			TTarget
+			TTarget,
+			THostElements
 		>["targets"],
 	};
 }

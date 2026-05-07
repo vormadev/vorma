@@ -34,4 +34,4 @@ export const vorma = createVormaClient(vormaClientSeed, {
 	},
 });
 
-export const { defineView, Link, useLoaderData, useClientLoaderData } = vorma;
+export const { defineView, Link } = vorma;

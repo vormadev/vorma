@@ -292,7 +292,12 @@ export type SemanticInput = {
 	readonly [category: string]: TokenGroupInput | undefined;
 };
 
-export type RecipeStyleDeclarationInput = TokenDeclarationBlock;
+export type RecipeStyleDeclarationValue =
+	| RecipeStyleDeclarationInput
+	| TokenDeclarationValue;
+export type RecipeStyleDeclarationInput = {
+	readonly [property: string]: RecipeStyleDeclarationValue;
+};
 export type RecipeStyleDefinition = RecipeInput<
 	string,
 	string,

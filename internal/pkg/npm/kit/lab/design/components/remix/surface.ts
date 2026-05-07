@@ -39,21 +39,12 @@ export type SurfaceStyleSystem<
 export type SurfaceRecipeSelection<TRecipe extends SurfaceRecipeInput> =
 	RecipeVariantPropsFor<TRecipe, "density" | "layout" | "variant">;
 
-export type SurfaceOptions<TVariant extends string, TDensity extends string> = {
-	defaultDensity?: NoInfer<TDensity>;
-	defaultVariant?: NoInfer<TVariant>;
-};
-
 export function createSurface<
 	TMode extends string,
 	TRecipe extends SurfaceRecipeInput,
 	TMetadata extends AnyGeneratedSystemMetadata,
 >(
 	style_system: SurfaceStyleSystem<TMode, TRecipe, TMetadata>,
-	options: SurfaceOptions<
-		SurfaceRecipeVariant<TRecipe>,
-		SurfaceRecipeDensity<TRecipe>
-	> = {},
 ): RootComponent<
 	"density" | "layout" | "variant",
 	TRecipe,
@@ -61,10 +52,6 @@ export function createSurface<
 > {
 	return createRootComponent(style_system, {
 		defaultElement: "div",
-		defaultProps: {
-			density: options.defaultDensity,
-			variant: options.defaultVariant,
-		},
 		recipeName: "surface",
 		resolveProps: (props: Partial<SurfaceRecipeSelection<TRecipe>>) => {
 			return {

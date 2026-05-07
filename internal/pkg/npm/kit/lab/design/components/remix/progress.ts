@@ -52,19 +52,34 @@ export type ProgressProps<TTone extends string = string> = Omit<
 	Props<"div">,
 	"style"
 > & {
-	segments: readonly ProgressSegment<TTone>[];
+	max?: number;
+	segments?: readonly ProgressSegment<TTone>[];
 	style?: never;
+	tone?: TTone;
+	value?: number;
 };
 
 const progress_scope = "progress";
 const progress_min = 0;
-const progress_max = 100;
+const progress_max_default = 100;
 
-function normalize_progress_value(value: number): number {
+function normalize_progress_max(value: number | undefined): number {
+	if (value === undefined || !Number.isFinite(value) || value <= 0) {
+		return progress_max_default;
+	}
+	return value;
+}
+
+function normalize_progress_value(value: number, max: number): number {
 	if (!Number.isFinite(value)) {
 		return progress_min;
 	}
-	return Math.min(progress_max, Math.max(progress_min, value));
+	return Math.min(max, Math.max(progress_min, value));
+}
+
+function progress_value_width(value: number, max: number): string {
+	const normalized_value = normalize_progress_value(value, max);
+	return `${(normalized_value / max) * 100}%`;
 }
 
 export function createProgress<
@@ -79,12 +94,30 @@ export function createProgress<
 
 	return () => {
 		return (props: ProgressProps<TTone>): RemixNode => {
-			const { children, segments, ...progress_props } = props;
-			const value_now = normalize_progress_value(
-				segments.reduce((total, segment) => {
-					return total + normalize_progress_value(segment.value);
-				}, 0),
-			);
+			const {
+				children,
+				max: max_input,
+				segments: segments_input,
+				tone,
+				value,
+				...progress_props
+			} = props;
+			const max = normalize_progress_max(max_input);
+			const segments =
+				segments_input ??
+				(value === undefined ? [] : [{ tone, value }]);
+			const value_now =
+				value === undefined && segments_input === undefined
+					? undefined
+					: normalize_progress_value(
+							segments.reduce((total, segment) => {
+								return (
+									total +
+									normalize_progress_value(segment.value, max)
+								);
+							}, 0),
+							max,
+						);
 			const root = progress_recipe.resolve();
 			const root_parts = createComponentStyleTargets({
 				targets: {
@@ -106,8 +139,7 @@ export function createProgress<
 					mix: root_parts.hosts.root.mix,
 					props: {
 						...progress_props,
-						"aria-valuemax":
-							progress_props["aria-valuemax"] ?? progress_max,
+						"aria-valuemax": progress_props["aria-valuemax"] ?? max,
 						"aria-valuemin":
 							progress_props["aria-valuemin"] ?? progress_min,
 						"aria-valuenow":
@@ -130,9 +162,10 @@ export function createProgress<
 								},
 								resolveStyle: (): RecipeStyle => {
 									return {
-										width: `${normalize_progress_value(
+										width: progress_value_width(
 											segment.value,
-										)}%`,
+											max,
+										),
 									};
 								},
 							},

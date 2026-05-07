@@ -113,12 +113,10 @@ export type ButtonProps<
 		style?: never;
 	};
 
-export type ButtonOptions<TVariant extends string, TSize extends string> = {
+export type ButtonOptions = {
 	conditions?: Partial<
 		Readonly<Record<ButtonRecipeSlot, RecipeConditionSelectorMap<string>>>
 	>;
-	defaultSize?: NoInfer<TSize>;
-	defaultVariant?: NoInfer<TVariant>;
 };
 
 const button_conditions = {
@@ -143,10 +141,7 @@ export function createButton<
 	TMetadata extends AnyGeneratedSystemMetadata,
 >(
 	style_system: ButtonStyleSystem<TMode, TRecipe, TMetadata>,
-	options: ButtonOptions<
-		ButtonRecipeVariant<TRecipe>,
-		ButtonRecipeSize<TRecipe>
-	> = {},
+	options: ButtonOptions = {},
 ): RemixComponent<
 	ButtonProps<
 		ButtonRecipeVariant<TRecipe>,
@@ -192,9 +187,9 @@ export function createButton<
 				loading = false,
 				loadingLabel: loading_label = loading_label_default,
 				mix,
-				size = options.defaultSize,
+				size,
 				type = button_type_default,
-				variant = options.defaultVariant,
+				variant,
 				...button_props
 			} = props;
 			const style_props = {

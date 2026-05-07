@@ -63,11 +63,6 @@ export type SpinnerProps<
 		style?: never;
 	};
 
-export type SpinnerOptions<TTone extends string, TSize extends string> = {
-	defaultSize?: NoInfer<TSize>;
-	defaultTone?: NoInfer<TTone>;
-};
-
 const spinner_scope = "spinner";
 
 export function createSpinner<
@@ -76,10 +71,6 @@ export function createSpinner<
 	TMetadata extends AnyGeneratedSystemMetadata,
 >(
 	style_system: SpinnerStyleSystem<TMode, TRecipe, TMetadata>,
-	options: SpinnerOptions<
-		SpinnerRecipeTone<TRecipe>,
-		SpinnerRecipeSize<TRecipe>
-	> = {},
 ): RemixComponent<
 	SpinnerProps<SpinnerRecipeTone<TRecipe>, SpinnerRecipeSize<TRecipe>>
 > {
@@ -92,13 +83,7 @@ export function createSpinner<
 				SpinnerRecipeSize<TRecipe>
 			>,
 		): RemixNode => {
-			const {
-				idle = false,
-				mix,
-				size = options.defaultSize,
-				tone = options.defaultTone,
-				...host_props
-			} = props;
+			const { idle = false, mix, size, tone, ...host_props } = props;
 			const resolved = recipe.resolve({
 				size,
 				tone,
