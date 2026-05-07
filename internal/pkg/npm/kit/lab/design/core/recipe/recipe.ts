@@ -7,11 +7,12 @@ export {
 export type {
 	CreatedRecipe,
 	RecipeCompoundVariantInput,
+	RecipeConditionMap,
+	RecipeConditionName,
 	RecipeInput,
 	RecipeSlotInput,
 	RecipeSlotMapInput,
 	RecipeSlotName,
-	RecipeStateMap,
 	RecipeVariantGroupInput,
 	RecipeVariantGroupName,
 	RecipeVariantGroupsFor,

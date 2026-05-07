@@ -51,6 +51,12 @@ type FixtureState = {
 	revalidation_status: string;
 	prefetch_href: string;
 	submission_count: number;
+	last_navigation_timing_href: string | null;
+	last_navigation_pending_to_route_ms: number | null;
+	last_navigation_pending_to_dom_ms: number | null;
+	last_navigation_route_to_dom_ms: number | null;
+	last_navigation_pending_to_clear_ms: number | null;
+	last_navigation_route_to_clear_ms: number | null;
 	build_skew_detections: number;
 	api_build_skew_detections: number;
 	query_build_skew_detections: number;
@@ -232,6 +238,17 @@ const fixture_state = extract((state): FixtureState => {
 		revalidation_status: probe?.work?.revalidation_status ?? "",
 		prefetch_href: probe?.work?.prefetch_href ?? "",
 		submission_count: probe?.work?.submission_count ?? 0,
+		last_navigation_timing_href: probe?.navigation_timing.href ?? null,
+		last_navigation_pending_to_route_ms:
+			probe?.navigation_timing.pending_to_route_ms ?? null,
+		last_navigation_pending_to_dom_ms:
+			probe?.navigation_timing.pending_to_dom_ms ?? null,
+		last_navigation_route_to_dom_ms:
+			probe?.navigation_timing.route_to_dom_ms ?? null,
+		last_navigation_pending_to_clear_ms:
+			probe?.navigation_timing.pending_to_clear_ms ?? null,
+		last_navigation_route_to_clear_ms:
+			probe?.navigation_timing.route_to_clear_ms ?? null,
 		build_skew_detections: probe?.build_skew_detections ?? 0,
 		api_build_skew_detections: probe?.api_build_skew_detections ?? 0,
 		query_build_skew_detections: probe?.query_build_skew_detections ?? 0,
@@ -399,6 +416,40 @@ export const vorma_rendered_route_matches_probe = always(() => {
 		return false;
 	}
 	return fixture_state.current.current_href_text === probe_href;
+});
+
+export const vorma_rendered_route_never_matches_pending_navigation = always(
+	() => {
+		if (
+			!fixture_state.current.probe_ready ||
+			fixture_state.current.pending_href === ""
+		) {
+			return true;
+		}
+		return (
+			fixture_state.current.current_href_text !==
+			fixture_state.current.pending_href
+		);
+	},
+);
+
+export const vorma_navigation_timing_is_ordered = always(() => {
+	const pending_to_route =
+		fixture_state.current.last_navigation_pending_to_route_ms;
+	const pending_to_clear =
+		fixture_state.current.last_navigation_pending_to_clear_ms;
+	const pending_to_dom =
+		fixture_state.current.last_navigation_pending_to_dom_ms;
+	const route_to_dom = fixture_state.current.last_navigation_route_to_dom_ms;
+	const route_to_clear =
+		fixture_state.current.last_navigation_route_to_clear_ms;
+	return (
+		(pending_to_route === null || pending_to_route >= 0) &&
+		(pending_to_dom === null || pending_to_dom >= 0) &&
+		(pending_to_clear === null || pending_to_clear >= 0) &&
+		(route_to_dom === null || route_to_dom >= 0) &&
+		(route_to_clear === null || route_to_clear >= 0)
+	);
 });
 
 export const vorma_has_no_duplicate_css_links = always(() => {

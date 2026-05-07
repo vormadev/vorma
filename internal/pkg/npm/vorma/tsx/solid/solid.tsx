@@ -24,6 +24,7 @@ import {
 	select_link_work_state,
 	type AdapterClientOptions,
 	type AppConfig,
+	type DecomposedCommit,
 	type DecomposedState,
 	type RouteState,
 	type ScrollIntent,
@@ -135,21 +136,30 @@ export function createVormaClient<A extends AppConfig>(
 
 	const adapter_base_res = create_adapter_base(
 		app_config,
-		(decomposed: DecomposedState, scroll_intent?: ScrollIntent) => {
-			if (scroll_intent) {
-				pending_scroll_intent = scroll_intent;
+		(adapter_commit: DecomposedCommit) => {
+			if (adapter_commit.scroll_intent) {
+				pending_scroll_intent = adapter_commit.scroll_intent;
 			}
 
 			batch(() => {
-				set_entries(decomposed.entries);
-				set_route_error(decomposed.error);
-				set_loaders_data(decomposed.loaders_data);
-				set_client_loaders_data(decomposed.client_loaders_data);
-				set_matched_patterns(decomposed.matched_patterns);
-				set_import_urls(decomposed.import_urls);
-				set_entry_keys(decomposed.entry_keys);
-
-				if (scroll_intent) {
+				if (adapter_commit.state) {
+					set_entries(adapter_commit.state.entries);
+					set_route_error(adapter_commit.state.error);
+					set_loaders_data(adapter_commit.state.loaders_data);
+					set_client_loaders_data(
+						adapter_commit.state.client_loaders_data,
+					);
+					set_matched_patterns(adapter_commit.state.matched_patterns);
+					set_import_urls(adapter_commit.state.import_urls);
+					set_entry_keys(adapter_commit.state.entry_keys);
+				}
+				if (adapter_commit.route) {
+					set_route_state(adapter_commit.route);
+				}
+				if (adapter_commit.work) {
+					set_work_state(adapter_commit.work);
+				}
+				if (adapter_commit.scroll_intent) {
 					set_nav_counter((c) => {
 						return c + 1;
 					});
@@ -416,22 +426,12 @@ export function createVormaClient<A extends AppConfig>(
 	function boot(): ReturnType<typeof core.boot> {
 		const {
 			render: render_root,
-			onRouteUpdate,
-			onWorkUpdate,
 			linkDefaultProps: _linkDefaultProps,
 			apiDecorator: _apiDecorator,
 			...core_options
 		} = options ?? {};
 		return core.boot({
 			...core_options,
-			onRouteUpdate: (route, previous_route, reason) => {
-				set_route_state(route);
-				onRouteUpdate?.(route, previous_route, reason);
-			},
-			onWorkUpdate: (work) => {
-				set_work_state(work);
-				onWorkUpdate?.(work);
-			},
 			render: render_root
 				? () => {
 						return render_root({

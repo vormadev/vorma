@@ -1,66 +1,66 @@
 import type { RecipeStyle } from "./style.ts";
 
-export type RecipeStateMap<
-	TState extends string = string,
+export type RecipeConditionMap<
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-> = Partial<Record<TState, TStyle>>;
+> = Partial<Record<TCondition, TStyle>>;
 
 export type RecipeSlotInput<
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
 > = {
 	base?: TStyle;
-	states?: RecipeStateMap<TState, TStyle>;
+	conditions?: RecipeConditionMap<TCondition, TStyle>;
 };
 
 export type RecipeSlotMapInput<
 	TSlot extends string = string,
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-> = Record<TSlot, RecipeSlotInput<TState, TStyle>>;
+> = Record<TSlot, RecipeSlotInput<TCondition, TStyle>>;
 
 export type RecipeVariantSlotMapInput<
 	TSlot extends string = string,
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-> = Partial<Record<TSlot, RecipeSlotInput<TState, TStyle>>>;
+> = Partial<Record<TSlot, RecipeSlotInput<TCondition, TStyle>>>;
 
 export type RecipeVariantGroupInput<
 	TSlot extends string = string,
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-> = Record<string, RecipeVariantSlotMapInput<TSlot, TState, TStyle>>;
+> = Record<string, RecipeVariantSlotMapInput<TSlot, TCondition, TStyle>>;
 
 export type RecipeVariantsInput<
 	TSlot extends string = string,
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-> = Record<string, RecipeVariantGroupInput<TSlot, TState, TStyle>>;
+> = Record<string, RecipeVariantGroupInput<TSlot, TCondition, TStyle>>;
 
 export type RecipeVariantValueMap = Record<string, string>;
 
 export type RecipeVariantGroupsFor<
 	TSlot extends string,
-	TState extends string,
+	TCondition extends string,
 	TStyle extends RecipeStyle,
 	TVariantValues extends RecipeVariantValueMap,
 > = {
 	readonly [K in keyof TVariantValues & string]: Record<
 		TVariantValues[K],
-		RecipeVariantSlotMapInput<TSlot, TState, TStyle>
+		RecipeVariantSlotMapInput<TSlot, TCondition, TStyle>
 	>;
 };
 
 export type RecipeWithVariantGroups<
 	TSlot extends string,
-	TState extends string,
+	TCondition extends string,
 	TStyle extends RecipeStyle,
 	TVariantValues extends RecipeVariantValueMap,
 > = RecipeInput<
 	TSlot,
-	TState,
+	TCondition,
 	TStyle,
-	RecipeVariantGroupsFor<TSlot, TState, TStyle, TVariantValues>
+	RecipeVariantGroupsFor<TSlot, TCondition, TStyle, TVariantValues>
 >;
 
 export type RecipeVariantSelection<
@@ -71,32 +71,37 @@ export type RecipeVariantSelection<
 
 export type RecipeCompoundVariantInput<
 	TSlot extends string = string,
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-	TVariants extends RecipeVariantsInput<TSlot, TState, TStyle> =
-		RecipeVariantsInput<TSlot, TState, TStyle>,
+	TVariants extends RecipeVariantsInput<TSlot, TCondition, TStyle> =
+		RecipeVariantsInput<TSlot, TCondition, TStyle>,
 > = {
-	slots: RecipeVariantSlotMapInput<TSlot, TState, TStyle>;
+	slots: RecipeVariantSlotMapInput<TSlot, TCondition, TStyle>;
 	variants: RecipeVariantSelection<TVariants>;
 };
 
 export type RecipeInput<
 	TSlot extends string = string,
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
-	TVariants extends RecipeVariantsInput<TSlot, TState, TStyle> =
-		RecipeVariantsInput<TSlot, TState, TStyle>,
+	TVariants extends RecipeVariantsInput<TSlot, TCondition, TStyle> =
+		RecipeVariantsInput<TSlot, TCondition, TStyle>,
 > = {
 	compoundVariants?: readonly RecipeCompoundVariantInput<
 		TSlot,
-		TState,
+		TCondition,
 		TStyle,
 		TVariants
 	>[];
 	defaultVariants?: RecipeVariantSelection<TVariants>;
-	slots: RecipeSlotMapInput<TSlot, TState, TStyle>;
+	slots: RecipeSlotMapInput<TSlot, TCondition, TStyle>;
 	variants?: TVariants;
 };
+
+export type RecipeConditionName<TRecipe extends RecipeInput> =
+	TRecipe extends RecipeInput<string, infer TCondition, RecipeStyle>
+		? TCondition
+		: never;
 
 export type RecipeSlotName<TRecipe extends RecipeInput> =
 	keyof TRecipe["slots"] & string;
@@ -135,21 +140,21 @@ export type RecipeVariantPropsFor<
 > = Pick<RecipeVariantProps<TRecipe>, TGroups>;
 
 export type ResolvedRecipeSlot<
-	TState extends string = string,
+	TCondition extends string = string,
 	TStyle extends RecipeStyle = RecipeStyle,
 > = {
 	base: TStyle;
-	states: RecipeStateMap<TState, TStyle>;
+	conditions: RecipeConditionMap<TCondition, TStyle>;
 };
 
 export type ResolvedRecipe<
 	TRecipe extends RecipeInput = RecipeInput,
-	TState extends string = string,
+	TCondition extends string = RecipeConditionName<TRecipe>,
 	TStyle extends RecipeStyle = RecipeStyle,
 > = {
 	slots: {
 		readonly [K in RecipeSlotName<TRecipe>]: ResolvedRecipeSlot<
-			TState,
+			TCondition,
 			TStyle
 		>;
 	};
@@ -159,5 +164,5 @@ export type CreatedRecipe<TRecipe extends RecipeInput> = {
 	input: TRecipe;
 	resolve<const TGroups extends RecipeVariantGroupName<TRecipe>>(
 		variants?: RecipeVariantPropsFor<TRecipe, TGroups>,
-	): ResolvedRecipe<TRecipe, string, RecipeStyle>;
+	): ResolvedRecipe<TRecipe, RecipeConditionName<TRecipe>, RecipeStyle>;
 };

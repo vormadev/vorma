@@ -14,6 +14,7 @@ import type {
 } from "./create_client_core";
 import {
 	create_client_core,
+	type ClientCommit,
 	type RouteRenderEntry,
 	type RouteRenderState,
 	type ScrollIntent,
@@ -30,6 +31,7 @@ import type {
 	LinkPropsBase,
 	RouteErrorState,
 	RouteState,
+	RouteUpdateReason,
 	ToAPIClient,
 	ToAPIDecorator,
 	ToDefineViewArgs,
@@ -65,10 +67,15 @@ export type DecomposedState = {
 	history_state: unknown;
 };
 
-export type DecomposedCommitFn = (
-	state: DecomposedState,
-	scroll_intent?: ScrollIntent,
-) => void;
+export type DecomposedCommit = {
+	route?: RouteState;
+	route_reason?: RouteUpdateReason;
+	scroll_intent?: ScrollIntent;
+	state?: DecomposedState;
+	work?: WorkState;
+};
+
+export type DecomposedCommitFn = (commit: DecomposedCommit) => void;
 
 type LinkAttributeCandidate = {
 	url: URL;
@@ -145,10 +152,28 @@ export function create_adapter_base<A extends AppConfig>(
 		history_state: undefined,
 	};
 
-	function decomposed_commit(
+	function decomposed_commit(client_commit: ClientCommit): void {
+		const adapter_commit: DecomposedCommit = {};
+		const route_render = client_commit.route_render;
+		if (route_render) {
+			adapter_commit.state = decompose_route_render_state(
+				route_render.state,
+			);
+			adapter_commit.scroll_intent = route_render.scroll_intent;
+		}
+		if (client_commit.route_update) {
+			adapter_commit.route = client_commit.route_update.route;
+			adapter_commit.route_reason = client_commit.route_update.reason;
+		}
+		if (client_commit.work) {
+			adapter_commit.work = client_commit.work;
+		}
+		on_commit(adapter_commit);
+	}
+
+	function decompose_route_render_state(
 		route_state: RouteRenderState,
-		scroll_intent?: ScrollIntent,
-	): void {
+	): DecomposedState {
 		for (const entry of route_state.entries) {
 			register_link_pattern(entry.pattern);
 		}
@@ -199,7 +224,7 @@ export function create_adapter_base<A extends AppConfig>(
 		};
 
 		prev = next;
-		on_commit(next, scroll_intent);
+		return next;
 	}
 
 	const core_res = create_client_core(app_config, decomposed_commit);

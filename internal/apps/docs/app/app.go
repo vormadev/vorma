@@ -63,8 +63,7 @@ var Vorma = vorma.New(&vorma.Config{
 	},
 
 	DevWatchConfig: vorma.DevWatchConfig{
-		WatchRoot:                ".",
-		GlobalIgnore:             []string{},
+		WatchPatterns:            []string{"."},
 		OnChangeRecompileGo:      []string{},
 		OnChangeClientRevalidate: []string{"app/markdown/content/**/*.md"},
 	},

@@ -29,18 +29,13 @@ type GoTypeSrc = tsgen.GoTypeSrc
 type DevWatchConfig struct {
 	// Optional.
 	//
-	// The outermost directory to watch for changes in dev mode.
+	// Glob patterns defining the filesystem surface to watch in dev mode.
+	// Supports ordered globset semantics, including `!` exclusions.
 	//
-	// Defaults to the current working directory.
-	WatchRoot string
-
-	// Optional.
+	// If empty, Vorma watches "." after applying built-in exclusions.
 	//
-	// Glob patterns you want the dev watcher to completely ignore.
-	// Supports ordered globset semantics, including `!` exceptions.
-	//
-	// Always ignored: "**/.git" and "**/node_modules".
-	GlobalIgnore []string
+	// Always ignored: "**/.git", "**/node_modules", and Vorma's output directory.
+	WatchPatterns []string
 
 	// Optional.
 	//
@@ -48,7 +43,7 @@ type DevWatchConfig struct {
 	// as embedded templates) that should trigger a Go refresh when changed.
 	// Supports ordered globset semantics, including `!` exceptions.
 	//
-	// If empty, defaults to watching all .go files in DevWatchConfig.Root.
+	// If empty, defaults to watching all .go files in the watched surface.
 	OnChangeRecompileGo []string
 
 	// Optional.

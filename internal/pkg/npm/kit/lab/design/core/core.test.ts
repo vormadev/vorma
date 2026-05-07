@@ -183,7 +183,7 @@ describe("design core", () => {
 											ref.primitive.typography.weight
 												.regular,
 									},
-									states: {
+									conditions: {
 										[hover_condition]: {
 											borderColor:
 												ref.semantic.color.surface,
@@ -205,7 +205,7 @@ describe("design core", () => {
 								transform: style.template`translateY(${ref.primitive.motion.distance.press})`,
 								...style.focusRing("default"),
 							},
-							states: {
+							conditions: {
 								[hover_condition]: {
 									color: ref.semantic.color.text,
 								},
@@ -227,7 +227,7 @@ describe("design core", () => {
 							primary: {
 								root: {
 									base: {},
-									states: {
+									conditions: {
 										[hover_condition]: {
 											background:
 												ref.semantic.color.surface,
@@ -333,7 +333,7 @@ describe("design core", () => {
 				"press",
 			])})`,
 		});
-		expect(resolved_button_root.states).toEqual({
+		expect(resolved_button_root.conditions).toEqual({
 			[hover_condition]: {
 				background: createCSSVariableReference("acme", [
 					token_groups.semantic,
@@ -637,7 +637,7 @@ describe("design core", () => {
 		}).toThrow(/Invalid CSS variable path segment "dataVisualization"/);
 	});
 
-	it("resolves renderer-neutral recipe slots, variants, and states", () => {
+	it("resolves renderer-neutral recipe slots, variants, and conditions", () => {
 		const recipe = createRecipe({
 			compoundVariants: [
 				{
@@ -646,7 +646,7 @@ describe("design core", () => {
 							base: {
 								fontWeight: 700,
 							},
-							states: {
+							conditions: {
 								[hover_condition]: {
 									borderColor: "crimson",
 								},
@@ -674,7 +674,7 @@ describe("design core", () => {
 						display: "inline-flex",
 						gap: "0.5rem",
 					},
-					states: {
+					conditions: {
 						[hover_condition]: {
 							background: "white",
 						},
@@ -704,7 +704,7 @@ describe("design core", () => {
 							base: {
 								background: "red",
 							},
-							states: {
+							conditions: {
 								[hover_condition]: {
 									background: "darkred",
 								},
@@ -719,7 +719,7 @@ describe("design core", () => {
 							base: {
 								background: "blue",
 							},
-							states: {
+							conditions: {
 								[hover_condition]: {
 									background: "navy",
 								},
@@ -742,7 +742,7 @@ describe("design core", () => {
 			gap: "0.5rem",
 			minHeight: "2rem",
 		});
-		expect(resolved.slots.root.states).toEqual({
+		expect(resolved.slots.root.conditions).toEqual({
 			[hover_condition]: {
 				background: "darkred",
 				borderColor: "crimson",
@@ -753,6 +753,93 @@ describe("design core", () => {
 		});
 		expect(resolved.slots.icon.base).toEqual({
 			inlineSize: "1rem",
+		});
+	});
+
+	it("resolves variant groups by recipe definition order", () => {
+		const recipe = createRecipe({
+			compoundVariants: [
+				{
+					slots: {
+						root: {
+							base: {
+								borderColor: "selected-neutral",
+							},
+						},
+					},
+					variants: {
+						selected: "true",
+						variant: "neutral",
+					},
+				},
+			],
+			slots: {
+				root: {
+					base: {
+						background: "transparent",
+						color: "black",
+					},
+				},
+			},
+			variants: {
+				size: {
+					sm: {
+						root: {
+							base: {
+								padding: "0.25rem",
+							},
+						},
+					},
+				},
+				variant: {
+					neutral: {
+						root: {
+							base: {
+								background: "gray",
+								color: "black",
+							},
+							conditions: {
+								[hover_condition]: {
+									background: "darkgray",
+								},
+							},
+						},
+					},
+				},
+				selected: {
+					true: {
+						root: {
+							base: {
+								background: "blue",
+								color: "white",
+							},
+							conditions: {
+								[hover_condition]: {
+									background: "darkblue",
+								},
+							},
+						},
+					},
+				},
+			},
+		});
+
+		const resolved = recipe.resolve({
+			selected: "true",
+			size: "sm",
+			variant: "neutral",
+		});
+
+		expect(resolved.slots.root.base).toEqual({
+			background: "blue",
+			borderColor: "selected-neutral",
+			color: "white",
+			padding: "0.25rem",
+		});
+		expect(resolved.slots.root.conditions).toEqual({
+			[hover_condition]: {
+				background: "darkblue",
+			},
 		});
 	});
 
@@ -813,7 +900,7 @@ describe("design core", () => {
 							base: {
 								background: "blue",
 							},
-							states: {
+							conditions: {
 								hover: {
 									background: "navy",
 								},

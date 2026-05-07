@@ -86,6 +86,11 @@ export default defineConfig([
 	},
 	{
 		...base,
+		entry: ["./kit/lab/design/components/remix/remix.ts"],
+		outDir: "./.dist/kit/lab/design/components/remix/",
+	},
+	{
+		...base,
 		entry: ["./kit/listeners/listeners.ts"],
 		outDir: "./.dist/kit/listeners/",
 	},

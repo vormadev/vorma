@@ -3,9 +3,10 @@ import { mergeRecipeStyles } from "./style.ts";
 import type {
 	CreatedRecipe,
 	RecipeCompoundVariantInput,
+	RecipeConditionMap,
+	RecipeConditionName,
 	RecipeInput,
 	RecipeSlotInput,
-	RecipeStateMap,
 	RecipeVariantGroupName,
 	RecipeVariantPropsFor,
 	RecipeVariantSelection,
@@ -15,7 +16,7 @@ import type {
 
 type AnyRecipeInput = RecipeInput<string, string, RecipeStyle>;
 type AnyRecipeSlotInput = RecipeSlotInput<string, RecipeStyle>;
-type AnyRecipeStateMap = RecipeStateMap<string, RecipeStyle>;
+type AnyRecipeConditionMap = RecipeConditionMap<string, RecipeStyle>;
 type AnyRecipeVariantSelection = Record<string, string>;
 type AnyRecipeCompoundVariantInput = RecipeCompoundVariantInput<
 	string,
@@ -57,24 +58,24 @@ function matches_compound_variant(
 	});
 }
 
-function merge_recipe_state_maps(
-	state_maps: readonly (AnyRecipeStateMap | undefined)[],
-): AnyRecipeStateMap {
-	const state_names = new Set<string>();
+function merge_recipe_condition_maps(
+	condition_maps: readonly (AnyRecipeConditionMap | undefined)[],
+): AnyRecipeConditionMap {
+	const condition_names = new Set<string>();
 
-	for (const states of state_maps) {
-		for (const state_name of Object.keys(states ?? {})) {
-			state_names.add(state_name);
+	for (const conditions of condition_maps) {
+		for (const condition_name of Object.keys(conditions ?? {})) {
+			condition_names.add(condition_name);
 		}
 	}
 
 	return Object.fromEntries(
-		Array.from(state_names).map((state_name) => {
-			const state_styles = state_maps.map((states) => {
-				return states?.[state_name];
+		Array.from(condition_names).map((condition_name) => {
+			const condition_styles = condition_maps.map((conditions) => {
+				return conditions?.[condition_name];
 			});
 
-			return [state_name, mergeRecipeStyles(...state_styles)];
+			return [condition_name, mergeRecipeStyles(...condition_styles)];
 		}),
 	);
 }
@@ -85,13 +86,13 @@ function merge_recipe_slot_inputs(
 	const base_styles = slot_inputs.map((slot_input) => {
 		return slot_input?.base;
 	});
-	const state_maps = slot_inputs.map((slot_input) => {
-		return slot_input?.states;
+	const condition_maps = slot_inputs.map((slot_input) => {
+		return slot_input?.conditions;
 	});
 
 	return {
 		base: mergeRecipeStyles(...base_styles),
-		states: merge_recipe_state_maps(state_maps),
+		conditions: merge_recipe_condition_maps(condition_maps),
 	};
 }
 
@@ -100,10 +101,14 @@ function read_variant_slot_inputs(input: {
 	selection: AnyRecipeVariantSelection;
 	slot: string;
 }): AnyRecipeSlotInput[] {
-	return Object.entries(input.selection).flatMap(
-		([variant_name, variant_value]) => {
-			const variant_group = input.recipe.variants?.[variant_name];
-			const variant_slot = variant_group?.[variant_value]?.[input.slot];
+	return Object.entries(input.recipe.variants ?? {}).flatMap(
+		([variant_name, variant_group]) => {
+			const variant_value = input.selection[variant_name];
+			if (variant_value === undefined) {
+				return [];
+			}
+
+			const variant_slot = variant_group[variant_value]?.[input.slot];
 
 			return variant_slot ? [variant_slot] : [];
 		},
@@ -144,7 +149,7 @@ export function resolveRecipe<
 >(
 	recipe: TRecipe,
 	variants?: RecipeVariantPropsFor<TRecipe, TGroups>,
-): ResolvedRecipe<TRecipe, string, RecipeStyle> {
+): ResolvedRecipe<TRecipe, RecipeConditionName<TRecipe>, RecipeStyle> {
 	const selection = merge_variant_selection(
 		recipe.defaultVariants,
 		variants as AnyRecipeVariantSelection | undefined,
@@ -163,7 +168,7 @@ export function resolveRecipe<
 				];
 			}),
 		),
-	} as ResolvedRecipe<TRecipe, string, RecipeStyle>;
+	} as ResolvedRecipe<TRecipe, RecipeConditionName<TRecipe>, RecipeStyle>;
 }
 
 export function createRecipe<const TRecipe extends AnyRecipeInput>(
@@ -173,7 +178,7 @@ export function createRecipe<const TRecipe extends AnyRecipeInput>(
 		input: recipe,
 		resolve<const TGroups extends RecipeVariantGroupName<TRecipe>>(
 			variants?: RecipeVariantPropsFor<TRecipe, TGroups>,
-		): ResolvedRecipe<TRecipe, string, RecipeStyle> {
+		): ResolvedRecipe<TRecipe, RecipeConditionName<TRecipe>, RecipeStyle> {
 			return resolveRecipe(recipe, variants);
 		},
 	} as CreatedRecipe<TRecipe>;

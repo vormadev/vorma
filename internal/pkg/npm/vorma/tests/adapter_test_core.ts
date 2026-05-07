@@ -54,6 +54,13 @@ type TestRouteTarget =
 type TestVormaClient = {
 	boot: () => Promise<void>;
 
+	getRouteState: () => unknown;
+
+	getWorkState: () => {
+		navigation: null | { href: string };
+		prefetch: null | { href: string };
+	};
+
 	navigate: (props: TestRouteTarget) => Promise<{ didNavigate: boolean }>;
 
 	prefetch: (target: TestRouteTarget) => void;
@@ -72,13 +79,11 @@ type TestVormaClient = {
 
 	usePatternLoaderData: (pattern: string) => unknown;
 
-	useRouteState: (selector?: (route: any) => unknown) => unknown;
+	useRouteState: (...args: any[]) => unknown;
 
-	useWorkState: (selector?: (work: any) => unknown) => unknown;
+	useWorkState: (...args: any[]) => unknown;
 
-	useRouteSync: (
-		props: { pattern: string } & Record<string, unknown>,
-	) => void;
+	useRouteSync: (...args: any[]) => void;
 
 	useClientLoaderData: (
 		props: { idx: number } & Record<string, unknown>,
@@ -98,6 +103,24 @@ type TestVormaClient = {
 		error_boundary?: (props: { error: unknown }) => unknown;
 		client_loader?: (props: TestClientLoaderProps) => Promise<unknown>;
 	};
+};
+
+type TestViewScope = {
+	loaderData: (props: { idx: number } & Record<string, unknown>) => unknown;
+	patternLoaderData: (pattern: string) => unknown;
+	routeState: {
+		(): unknown;
+		<T>(selector: (state: any) => T): T;
+	};
+	workState: {
+		(): unknown;
+		<T>(selector: (state: any) => T): T;
+	};
+	routeSync: (target: TestRouteTarget) => void;
+	clientLoaderData: (
+		props: { idx: number } & Record<string, unknown>,
+	) => unknown;
+	patternClientLoaderData: (pattern: string) => unknown;
 };
 
 type TestCreateClientOptions = {
@@ -125,6 +148,18 @@ export type AdapterTestHarness = {
 		render: (props: P) => unknown,
 	) => unknown;
 
+	create_view: (input: {
+		client: TestVormaClient;
+		pattern: string;
+		render: (args: { props: TestRouteProps; v: TestViewScope }) => unknown;
+		clientLoader?: (props: TestClientLoaderProps) => Promise<unknown>;
+	}) => {
+		pattern: string;
+		component: (props: TestRouteProps) => unknown;
+		error_boundary?: (props: { error: unknown }) => unknown;
+		client_loader?: (props: TestClientLoaderProps) => Promise<unknown>;
+	};
+
 	dynamic: (read_value: () => unknown) => unknown;
 
 	mount: () => {
@@ -146,9 +181,9 @@ export type AdapterTestHarness = {
 
 /////// Helpers
 
-const TEST_CONFIG = { apiMountRoot: "/api/" } as any;
+export const TEST_CONFIG = { apiMountRoot: "/api/" } as any;
 
-function seed_payload(overrides: Record<string, unknown> = {}) {
+export function seed_payload(overrides: Record<string, unknown> = {}) {
 	const data = {
 		ClientBuildID: "build-1",
 		DeploymentID: "",
@@ -171,7 +206,7 @@ function seed_payload(overrides: Record<string, unknown> = {}) {
 	document.head.appendChild(script);
 }
 
-function route_response(
+export function route_response(
 	overrides: Record<string, unknown> = {},
 	build_id = "build-1",
 ): Response {
@@ -197,7 +232,7 @@ function route_response(
 	});
 }
 
-async function wait_for_dom(assertion: () => void, max = 50) {
+export async function wait_for_dom(assertion: () => void, max = 50) {
 	for (let i = 0; i < max; i++) {
 		try {
 			assertion();
@@ -209,6 +244,17 @@ async function wait_for_dom(assertion: () => void, max = 50) {
 		}
 	}
 	assertion();
+}
+
+function deferred_response(): {
+	promise: Promise<Response>;
+	resolve: (response: Response) => void;
+} {
+	let resolve!: (response: Response) => void;
+	const promise = new Promise<Response>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
 }
 
 /////// Test definitions
@@ -744,16 +790,18 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 	describe("hooks", () => {
 		it("useLoaderData returns data at props.idx", async () => {
 			let captured: unknown;
+			let client!: TestVormaClient;
 
 			vi.doMock("/hook-loader.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/",
-						component: (props: any) => {
-							captured = client.useLoaderData(props);
+						render: ({ props, v }) => {
+							captured = v.loaderData(props);
 							return harness.h("div", {}, "hook-test");
 						},
-					},
+					}),
 				};
 			});
 
@@ -762,7 +810,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{ name: "Ada" }],
 				ImportURLs: ["/hook-loader.js"],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
@@ -777,16 +825,18 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 		it("usePatternLoaderData returns data for matching pattern", async () => {
 			let captured: unknown;
+			let client!: TestVormaClient;
 
 			vi.doMock("/hook-pattern.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/",
-						component: () => {
-							captured = client.usePatternLoaderData("/");
+						render: ({ v }) => {
+							captured = v.patternLoaderData("/");
 							return harness.h("div", {}, "pattern-test");
 						},
-					},
+					}),
 				};
 			});
 
@@ -795,7 +845,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{ session: "abc" }],
 				ImportURLs: ["/hook-pattern.js"],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
@@ -810,18 +860,20 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 		it("usePatternLoaderData returns undefined for non-matching pattern", async () => {
 			let captured: unknown = "sentinel";
+			let client!: TestVormaClient;
 
 			vi.doMock("/hook-no-match.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/",
-						component: () => {
-							captured = client.usePatternLoaderData(
+						render: ({ v }) => {
+							captured = v.patternLoaderData(
 								"/does-not-exist" as any,
 							);
 							return harness.h("div", {}, "no-match-test");
 						},
-					},
+					}),
 				};
 			});
 
@@ -830,7 +882,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{}],
 				ImportURLs: ["/hook-no-match.js"],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
@@ -845,16 +897,18 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 		it("useRouteState returns route state", async () => {
 			let captured: unknown;
+			let client!: TestVormaClient;
 
 			vi.doMock("/hook-router.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/users/:id",
-						component: () => {
-							captured = client.useRouteState();
+						render: ({ v }) => {
+							captured = v.routeState();
 							return harness.h("div", {}, "router-test");
 						},
-					},
+					}),
 				};
 			});
 
@@ -865,7 +919,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				Params: { id: "42" },
 				SplatValues: [],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
@@ -884,6 +938,343 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
+		it("does not expose a committed route with matching pending navigation", async () => {
+			const parent_pattern = "/atomic";
+			const initial_child_path = "/atomic/a";
+			const next_child_path = "/atomic/b";
+			let client!: TestVormaClient;
+			const observations: Array<{
+				pending_path: string | null;
+				route_path: string;
+			}> = [];
+
+			vi.doMock("/atomic-parent.js", () => {
+				return {
+					default: harness.create_view({
+						client,
+						pattern: parent_pattern,
+						render: ({ props, v }) => {
+							const read_observation = () => {
+								const route_href = harness.unwrap(
+									v.routeState((route) => {
+										return route.href;
+									}),
+								) as string;
+								const pending_href = harness.unwrap(
+									v.workState((work) => {
+										return work.navigation?.href ?? null;
+									}),
+								) as string | null;
+								const route_path = new URL(
+									route_href,
+									window.location.href,
+								).pathname;
+								const pending_path = pending_href
+									? new URL(
+											pending_href,
+											window.location.href,
+										).pathname
+									: null;
+								observations.push({
+									pending_path,
+									route_path,
+								});
+								return `${route_path}|${pending_path ?? ""}`;
+							};
+							return harness.h(
+								"section",
+								{
+									"data-atomic-state":
+										harness.dynamic(read_observation),
+								},
+								harness.h(props.Outlet, {}),
+							);
+						},
+					}),
+				};
+			});
+			vi.doMock("/atomic-child-a.js", () => {
+				return {
+					default: {
+						pattern: initial_child_path,
+						component: () => {
+							return harness.h(
+								"div",
+								{ "data-atomic-child": "a" },
+								"child-a",
+							);
+						},
+					},
+				};
+			});
+			vi.doMock("/atomic-child-b.js", () => {
+				return {
+					default: {
+						pattern: next_child_path,
+						component: () => {
+							return harness.h(
+								"div",
+								{ "data-atomic-child": "b" },
+								"child-b",
+							);
+						},
+					},
+				};
+			});
+
+			window.history.replaceState({}, "", initial_child_path);
+			seed_payload({
+				MatchedPatterns: [parent_pattern, initial_child_path],
+				LoadersData: [{}, {}],
+				ImportURLs: ["/atomic-parent.js", "/atomic-child-a.js"],
+			});
+			client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			let resolve_response!: (response: Response) => void;
+			let response_resolved = false;
+			const response_promise = new Promise<Response>((resolve) => {
+				resolve_response = resolve;
+			});
+			const resolve_navigation_response = () => {
+				if (response_resolved) {
+					return;
+				}
+				response_resolved = true;
+				resolve_response(
+					route_response({
+						MatchedPatterns: [parent_pattern, next_child_path],
+						LoadersData: [{}, {}],
+						ImportURLs: ["/atomic-parent.js", "/atomic-child-b.js"],
+					}),
+				);
+			};
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response_promise);
+
+			const { container, render, cleanup } = harness.mount();
+			let nav_promise: Promise<{ didNavigate: boolean }> | undefined;
+			try {
+				render(harness.h(client.RootOutlet, { idx: 0 }));
+				expect(container.textContent).toContain("child-a");
+
+				nav_promise = client.navigate({ href: next_child_path });
+				await wait_for_dom(() => {
+					expect(
+						observations.some((observation) => {
+							return (
+								observation.route_path === initial_child_path &&
+								observation.pending_path === next_child_path
+							);
+						}),
+					).toBe(true);
+				});
+
+				resolve_navigation_response();
+				await nav_promise;
+				await wait_for_dom(() => {
+					expect(container.textContent).toContain("child-b");
+				});
+
+				expect(
+					observations.filter((observation) => {
+						return (
+							observation.route_path === next_child_path &&
+							observation.pending_path === next_child_path
+						);
+					}),
+				).toEqual([]);
+			} finally {
+				resolve_navigation_response();
+				await nav_promise?.catch(() => {});
+				cleanup();
+			}
+		});
+
+		it("does not rerender the route tree for prefetch work changes", async () => {
+			const root_pattern = "/";
+			const prefetch_target_path = "/prefetch-granularity-target";
+			const page_module_url = "/prefetch-granularity-page.js";
+			let route_render_count = 0;
+
+			vi.doMock(page_module_url, () => {
+				return {
+					default: {
+						pattern: root_pattern,
+						component: () => {
+							route_render_count++;
+							return harness.h(
+								"main",
+								{ "data-granularity-route": "true" },
+								"prefetch route",
+							);
+						},
+					},
+				};
+			});
+
+			seed_payload({
+				MatchedPatterns: [root_pattern],
+				LoadersData: [{}],
+				ImportURLs: [page_module_url],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			const response = deferred_response();
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response.promise);
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(harness.h(client.RootOutlet, { idx: 0 }));
+				expect(container.textContent).toBe("prefetch route");
+				expect(route_render_count).toBe(1);
+
+				client.prefetch({ href: prefetch_target_path });
+
+				await wait_for_dom(() => {
+					expect(client.getWorkState().prefetch?.href).toContain(
+						prefetch_target_path,
+					);
+				});
+				await new Promise((resolve) => {
+					return setTimeout(resolve, 0);
+				});
+
+				expect(route_render_count).toBe(1);
+			} finally {
+				response.resolve(
+					route_response({
+						MatchedPatterns: [prefetch_target_path],
+						LoadersData: [{}],
+					}),
+				);
+				cleanup();
+			}
+		});
+
+		it("rerenders only work subscribers whose selected value changes", async () => {
+			const root_pattern = "/";
+			const prefetch_target_path =
+				"/prefetch-selector-granularity-target";
+			const page_module_url = "/prefetch-selector-granularity-page.js";
+			let client!: TestVormaClient;
+			let route_render_count = 0;
+			let prefetch_render_count = 0;
+			let navigation_render_count = 0;
+			let prefetch_read_count = 0;
+			let navigation_read_count = 0;
+
+			vi.doMock(page_module_url, () => {
+				const prefetch_subscriber = harness.create_view({
+					client,
+					pattern: root_pattern,
+					render: ({ v }) => {
+						prefetch_render_count++;
+						const href = v.workState((work) => {
+							return work.prefetch?.href ?? "none";
+						});
+						return harness.h(
+							"output",
+							{ "data-prefetch-work": "true" },
+							harness.dynamic(() => {
+								prefetch_read_count++;
+								return String(harness.unwrap(href));
+							}),
+						);
+					},
+				});
+				const navigation_subscriber = harness.create_view({
+					client,
+					pattern: root_pattern,
+					render: ({ v }) => {
+						navigation_render_count++;
+						const href = v.workState((work) => {
+							return work.navigation?.href ?? "none";
+						});
+						return harness.h(
+							"output",
+							{ "data-navigation-work": "true" },
+							harness.dynamic(() => {
+								navigation_read_count++;
+								return String(harness.unwrap(href));
+							}),
+						);
+					},
+				});
+
+				return {
+					default: {
+						pattern: root_pattern,
+						component: () => {
+							route_render_count++;
+							return harness.h(
+								"main",
+								{},
+								harness.h(prefetch_subscriber.component, {
+									idx: 0,
+									Outlet: () => {
+										return null;
+									},
+								}),
+								harness.h(navigation_subscriber.component, {
+									idx: 0,
+									Outlet: () => {
+										return null;
+									},
+								}),
+							);
+						},
+					},
+				};
+			});
+
+			seed_payload({
+				MatchedPatterns: [root_pattern],
+				LoadersData: [{}],
+				ImportURLs: [page_module_url],
+			});
+			client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			const response = deferred_response();
+			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response.promise);
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(harness.h(client.RootOutlet, { idx: 0 }));
+				expect(route_render_count).toBe(1);
+				expect(prefetch_render_count).toBe(1);
+				expect(navigation_render_count).toBe(1);
+				expect(prefetch_read_count).toBe(1);
+				expect(navigation_read_count).toBe(1);
+
+				client.prefetch({ href: prefetch_target_path });
+
+				await wait_for_dom(() => {
+					expect(
+						container.querySelector("[data-prefetch-work]")
+							?.textContent,
+					).toContain(prefetch_target_path);
+				});
+
+				expect(route_render_count).toBe(1);
+				expect(prefetch_read_count).toBeGreaterThan(1);
+				expect(navigation_read_count).toBe(1);
+				expect(navigation_render_count).toBe(1);
+			} finally {
+				response.resolve(
+					route_response({
+						MatchedPatterns: [prefetch_target_path],
+						LoadersData: [{}],
+					}),
+				);
+				cleanup();
+			}
+		});
+
 		it("useRouteSync navigates when route href differs", async () => {
 			seed_payload();
 			const client = harness.create_client(TEST_CONFIG);
@@ -894,16 +1285,27 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				route_response({ MatchedPatterns: ["/canonical"] }),
 			);
 
-			const Canonical = () => {
-				client.useRouteSync({
-					pattern: "/canonical",
-				} as any);
-				return harness.h("div", {}, "canonical");
-			};
+			const Canonical = harness.create_view({
+				client,
+				pattern: "/",
+				render: ({ v }) => {
+					v.routeSync({
+						pattern: "/canonical",
+					});
+					return harness.h("div", {}, "canonical");
+				},
+			});
 
 			const { render, cleanup } = harness.mount();
 			try {
-				render(harness.h(Canonical, {}));
+				render(
+					harness.h(Canonical.component, {
+						idx: 0,
+						Outlet: () => {
+							return null;
+						},
+					}),
+				);
 				await wait_for_dom(() => {
 					expect(window.location.pathname).toBe("/canonical");
 				});
@@ -935,16 +1337,27 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			const fetch_spy = vi.spyOn(globalThis, "fetch");
 
-			const Canonical = () => {
-				client.useRouteSync({
-					pattern: "/canonical",
-				} as any);
-				return harness.h("div", {}, "canonical");
-			};
+			const Canonical = harness.create_view({
+				client,
+				pattern: "/canonical",
+				render: ({ v }) => {
+					v.routeSync({
+						pattern: "/canonical",
+					});
+					return harness.h("div", {}, "canonical");
+				},
+			});
 
 			const { render, cleanup } = harness.mount();
 			try {
-				render(harness.h(Canonical, {}));
+				render(
+					harness.h(Canonical.component, {
+						idx: 0,
+						Outlet: () => {
+							return null;
+						},
+					}),
+				);
 				for (let i = 0; i < 5; i++) {
 					await new Promise((r) => {
 						return setTimeout(r, 0);
@@ -958,20 +1371,22 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 		it("useClientLoaderData returns client loader data at props.idx", async () => {
 			let captured: unknown = "sentinel";
+			let client!: TestVormaClient;
 
 			vi.doMock("/hook-cl.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/cl-test",
-						component: (props: any) => {
-							captured = client.useClientLoaderData(props);
+						render: ({ props, v }) => {
+							captured = v.clientLoaderData(props);
 							return harness.h("div", {}, "cl-test");
 						},
-						client_loader: async ({ serverPromise }: any) => {
+						clientLoader: async ({ serverPromise }: any) => {
 							await serverPromise;
 							return { enhanced: true };
 						},
-					},
+					}),
 				};
 			});
 
@@ -980,7 +1395,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{ raw: "data" }],
 				ImportURLs: ["/hook-cl.js"],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
@@ -995,18 +1410,20 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 		it("usePatternClientLoaderData returns undefined when no match", async () => {
 			let captured: unknown = "sentinel";
+			let client!: TestVormaClient;
 
 			vi.doMock("/hook-pcl.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/",
-						component: () => {
-							captured = client.usePatternClientLoaderData(
+						render: ({ v }) => {
+							captured = v.patternClientLoaderData(
 								"/nonexistent" as any,
 							);
 							return harness.h("div", {}, "pcl-test");
 						},
-					},
+					}),
 				};
 			});
 
@@ -1015,7 +1432,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{}],
 				ImportURLs: ["/hook-pcl.js"],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
@@ -1029,16 +1446,18 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 		});
 
 		it("hooks re-render when state changes via navigation", async () => {
+			let client!: TestVormaClient;
 			let read_current_value = (): unknown => {
 				return undefined;
 			};
 
 			vi.doMock("/hook-rerender.js", () => {
 				return {
-					default: {
+					default: harness.create_view({
+						client,
 						pattern: "/",
-						component: () => {
-							const data = client.useLoaderData({
+						render: ({ v }) => {
+							const data = v.loaderData({
 								idx: 0,
 							} as any);
 							read_current_value = () => {
@@ -1052,7 +1471,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 								}),
 							);
 						},
-					},
+					}),
 				};
 			});
 
@@ -1061,7 +1480,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{ v: "initial" }],
 				ImportURLs: ["/hook-rerender.js"],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 

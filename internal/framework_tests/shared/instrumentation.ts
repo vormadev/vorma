@@ -32,10 +32,24 @@ type ProbeBuildSkew = {
 	current_work_submission_count: number;
 };
 
+type ProbeNavigationTiming = {
+	href: string | null;
+	pending_started_at_ms: number | null;
+	route_committed_at_ms: number | null;
+	dom_settled_at_ms: number | null;
+	work_cleared_at_ms: number | null;
+	pending_to_route_ms: number | null;
+	pending_to_dom_ms: number | null;
+	route_to_dom_ms: number | null;
+	pending_to_clear_ms: number | null;
+	route_to_clear_ms: number | null;
+};
+
 type Probe = {
 	variant: string;
 	route: ProbeRoute | null;
 	work: ProbeWork | null;
+	navigation_timing: ProbeNavigationTiming;
 	route_updates: number;
 	work_updates: number;
 	build_skew_detections: number;
@@ -115,6 +129,7 @@ export function on_vorma_route_update(
 	if (current_probe == null) {
 		return;
 	}
+	record_route_timing(route);
 	current_probe.route = serialize_route(route);
 	current_probe.route_updates += 1;
 	current_probe.last_reason = reason;
@@ -124,7 +139,10 @@ export function on_vorma_work_update(work: WorkLike): void {
 	if (current_probe == null) {
 		return;
 	}
-	current_probe.work = serialize_work(work);
+	const previous_work = current_probe.work;
+	const next_work = serialize_work(work);
+	record_work_timing(previous_work, next_work);
+	current_probe.work = next_work;
 	current_probe.work_updates += 1;
 }
 
@@ -172,6 +190,7 @@ export async function install_vorma_probe(input: {
 		variant: input.variant,
 		route: null,
 		work: null,
+		navigation_timing: empty_navigation_timing(),
 		route_updates: 0,
 		work_updates: 0,
 		build_skew_detections: 0,
@@ -195,6 +214,111 @@ export async function install_vorma_probe(input: {
 	}
 	probe.route = serialize_route(app.getRouteState());
 	probe.work = serialize_work(app.getWorkState());
+}
+
+function empty_navigation_timing(): ProbeNavigationTiming {
+	return {
+		href: null,
+		pending_started_at_ms: null,
+		route_committed_at_ms: null,
+		dom_settled_at_ms: null,
+		work_cleared_at_ms: null,
+		pending_to_route_ms: null,
+		pending_to_dom_ms: null,
+		route_to_dom_ms: null,
+		pending_to_clear_ms: null,
+		route_to_clear_ms: null,
+	};
+}
+
+function record_route_timing(route: RouteLike): void {
+	const probe = current_probe;
+	if (probe == null) {
+		return;
+	}
+	const timing = probe.navigation_timing;
+	if (timing.href == null || route.href !== timing.href) {
+		return;
+	}
+	const now = performance.now();
+	timing.route_committed_at_ms = now;
+	if (timing.pending_started_at_ms != null) {
+		timing.pending_to_route_ms = now - timing.pending_started_at_ms;
+	}
+	schedule_dom_settle_timing(route.href);
+}
+
+function schedule_dom_settle_timing(href: string): void {
+	const probe = current_probe;
+	if (probe == null || probe.navigation_timing.href !== href) {
+		return;
+	}
+	requestAnimationFrame(() => {
+		const current_probe_after_frame = current_probe;
+		if (
+			current_probe_after_frame == null ||
+			current_probe_after_frame.navigation_timing.href !== href
+		) {
+			return;
+		}
+
+		const current_href_text =
+			document.querySelector("[data-bmb-current-href]")?.textContent ??
+			"";
+		if (window.location.href !== href || current_href_text !== href) {
+			return;
+		}
+
+		const timing = current_probe_after_frame.navigation_timing;
+		const now = performance.now();
+		timing.dom_settled_at_ms = now;
+		if (timing.pending_started_at_ms != null) {
+			timing.pending_to_dom_ms = now - timing.pending_started_at_ms;
+		}
+		if (timing.route_committed_at_ms != null) {
+			timing.route_to_dom_ms = now - timing.route_committed_at_ms;
+		}
+	});
+}
+
+function record_work_timing(
+	previous_work: ProbeWork | null,
+	next_work: ProbeWork,
+): void {
+	const probe = current_probe;
+	if (probe == null) {
+		return;
+	}
+	const previous_navigation_href = previous_work?.navigation_href ?? null;
+	const next_navigation_href = next_work.navigation_href;
+	if (previous_navigation_href === next_navigation_href) {
+		return;
+	}
+
+	const now = performance.now();
+	if (next_navigation_href != null) {
+		probe.navigation_timing = {
+			...empty_navigation_timing(),
+			href: next_navigation_href,
+			pending_started_at_ms: now,
+		};
+		return;
+	}
+	if (
+		previous_navigation_href == null ||
+		probe.navigation_timing.href !== previous_navigation_href
+	) {
+		return;
+	}
+
+	const timing = probe.navigation_timing;
+	timing.work_cleared_at_ms = now;
+	if (timing.pending_started_at_ms != null) {
+		timing.pending_to_clear_ms = now - timing.pending_started_at_ms;
+	}
+	if (timing.route_committed_at_ms != null) {
+		timing.route_to_clear_ms = now - timing.route_committed_at_ms;
+	}
 }
 
 function serialize_route(route: RouteLike): ProbeRoute {

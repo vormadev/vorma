@@ -80,6 +80,10 @@
 			"import": "./.dist/kit/lab/design/core/core.js",
 			"types": "./.dist/kit/lab/design/core/core.d.ts"
 		},
+		"./kit/lab/design/components/remix": {
+			"import": "./.dist/kit/lab/design/components/remix/remix.js",
+			"types": "./.dist/kit/lab/design/components/remix/remix.d.ts"
+		},
 		"./kit/listeners": {
 			"import": "./.dist/kit/listeners/listeners.js",
 			"types": "./.dist/kit/listeners/listeners.d.ts"

@@ -22,6 +22,7 @@ import {
 	select_link_work_state,
 	type AdapterClientOptions,
 	type AppConfig,
+	type DecomposedCommit,
 	type DecomposedState,
 	type RouteState,
 	type ScrollIntent,
@@ -147,18 +148,28 @@ export function createVormaClient<A extends AppConfig>(
 
 	const adapter_base_res = create_adapter_base(
 		app_config,
-		(decomposed: DecomposedState, scroll_intent?: ScrollIntent) => {
-			if (scroll_intent) {
-				pending_scroll_intent = scroll_intent;
+		(adapter_commit: DecomposedCommit) => {
+			if (adapter_commit.scroll_intent) {
+				pending_scroll_intent = adapter_commit.scroll_intent;
 			}
 
 			batch(() => {
-				entries_signal.value = decomposed.entries;
-				route_error_signal.value = decomposed.error;
-				loaders_data_signal.value = decomposed.loaders_data;
-				client_loaders_data_signal.value =
-					decomposed.client_loaders_data;
-				matched_patterns_signal.value = decomposed.matched_patterns;
+				if (adapter_commit.state) {
+					entries_signal.value = adapter_commit.state.entries;
+					route_error_signal.value = adapter_commit.state.error;
+					loaders_data_signal.value =
+						adapter_commit.state.loaders_data;
+					client_loaders_data_signal.value =
+						adapter_commit.state.client_loaders_data;
+					matched_patterns_signal.value =
+						adapter_commit.state.matched_patterns;
+				}
+				if (adapter_commit.route) {
+					route_state_signal.value = adapter_commit.route;
+				}
+				if (adapter_commit.work) {
+					work_state_signal.value = adapter_commit.work;
+				}
 			});
 		},
 		options?.apiDecorator,
@@ -382,22 +393,12 @@ export function createVormaClient<A extends AppConfig>(
 	function boot(): ReturnType<typeof core.boot> {
 		const {
 			render: render_root,
-			onRouteUpdate,
-			onWorkUpdate,
 			linkDefaultProps: _linkDefaultProps,
 			apiDecorator: _apiDecorator,
 			...core_options
 		} = options ?? {};
 		return core.boot({
 			...core_options,
-			onRouteUpdate: (route, previous_route, reason) => {
-				route_state_signal.value = route;
-				onRouteUpdate?.(route, previous_route, reason);
-			},
-			onWorkUpdate: (work) => {
-				work_state_signal.value = work;
-				onWorkUpdate?.(work);
-			},
 			render: render_root
 				? () => {
 						return render_root({

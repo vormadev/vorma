@@ -148,10 +148,20 @@ export type ClientOptions = {
 	onBuildSkewDetected?: (event: BuildSkewDetectedEvent) => void;
 };
 
-export type CommitFn = (
-	state: RouteRenderState,
-	scroll_intent?: ScrollIntent,
-) => void;
+export type ClientCommit = {
+	route_render?: {
+		state: RouteRenderState;
+		scroll_intent?: ScrollIntent;
+	};
+	route_update?: {
+		previous_route: RouteState | null;
+		reason: RouteUpdateReason;
+		route: RouteState;
+	};
+	work?: WorkState;
+};
+
+export type CommitFn = (commit: ClientCommit) => void;
 
 export type ViewDefinition = {
 	pattern: string;
@@ -1645,13 +1655,14 @@ export function create_client_core(
 				}
 			}
 
+			active = null;
 			commit_route_snapshot(
 				commit_reason,
 				prev,
 				route_snapshot,
 				scroll_intent,
+				take_work_update(),
 			);
-			active = null;
 			did_publish = true;
 		};
 
@@ -1744,25 +1755,25 @@ export function create_client_core(
 		prev: RouteSnapshot | null,
 		next: RouteSnapshot,
 		scroll_intent?: ScrollIntent,
+		work?: WorkState,
 	): void {
-		commit(
-			route_to_render_state(next.route, next.position.state),
-			scroll_intent,
-		);
-		if (!user_on_route_update) {
-			return;
-		}
-
 		const previous_route = prev ? route_snapshot_to_state(prev) : null;
 		const route = route_snapshot_to_state(next);
-		if (previous_route && jsonDeepEquals(previous_route, route)) {
-			return;
+		const client_commit: ClientCommit = {
+			route_render: {
+				state: route_to_render_state(next.route, next.position.state),
+				scroll_intent,
+			},
+			work,
+		};
+		if (!previous_route || !jsonDeepEquals(previous_route, route)) {
+			client_commit.route_update = {
+				previous_route,
+				reason: to_route_update_reason(reason),
+				route,
+			};
 		}
-		user_on_route_update(
-			route,
-			previous_route,
-			to_route_update_reason(reason),
-		);
+		emit_client_commit(client_commit);
 	}
 
 	function handle_redirect(
@@ -2616,11 +2627,11 @@ export function create_client_core(
 	async function handle_popstate(): Promise<void> {
 		const prev = browser;
 		const next = read_browser_position();
-		if (next.key === prev.key) {
+		if (next.key === prev.key && next.href === prev.href) {
 			return;
 		}
 
-		if (prev.key) {
+		if (prev.key && prev.key !== next.key) {
 			save_scroll_for_key(prev.key, get_scroll_pos());
 		}
 		browser = next;
@@ -2763,16 +2774,38 @@ export function create_client_core(
 		};
 	}
 
-	function notify_work_update(): void {
+	function take_work_update(): WorkState | undefined {
 		const next = derive_work_state();
 		if (jsonDeepEquals(last_work_state, next)) {
-			return;
+			return undefined;
 		}
 		last_work_state = next;
-		for (const fn of work_update_listeners) {
-			fn(next);
+		return next;
+	}
+
+	function emit_client_commit(client_commit: ClientCommit): void {
+		commit(client_commit);
+		if (client_commit.route_update && user_on_route_update) {
+			user_on_route_update(
+				client_commit.route_update.route,
+				client_commit.route_update.previous_route,
+				client_commit.route_update.reason,
+			);
 		}
-		user_on_work_update?.(next);
+		if (client_commit.work) {
+			for (const fn of work_update_listeners) {
+				fn(client_commit.work);
+			}
+			user_on_work_update?.(client_commit.work);
+		}
+	}
+
+	function notify_work_update(): void {
+		const work = take_work_update();
+		if (!work) {
+			return;
+		}
+		emit_client_commit({ work });
 	}
 
 	/////// HMR

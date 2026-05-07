@@ -8,10 +8,9 @@ import { compact_object, merge_token_shapes } from "./object.ts";
 import type { RecipeStyle } from "./recipe/style.ts";
 import type {
 	RecipeCompoundVariantInput,
-	RecipeInput,
+	RecipeConditionMap,
 	RecipeSlotInput,
 	RecipeSlotMapInput,
-	RecipeStateMap,
 	RecipeVariantSlotMapInput,
 	RecipeVariantsInput,
 } from "./recipe/types.ts";
@@ -24,7 +23,9 @@ import {
 	type ModeName,
 	type NonEmptyReadonlyArray,
 	type RecipeStyleDeclarationInput,
+	type RecipeStyleDefinition,
 	type RecipeStyleDefinitions,
+	type ResolvedRecipeStyleDefinition,
 	type ResolvedRecipeStyleDefinitions,
 	type SystemInput,
 	type SystemMetadataForInput,
@@ -156,19 +157,24 @@ function resolve_recipe_style(
 		: undefined;
 }
 
-function resolve_recipe_state_map(
-	states: RecipeStateMap<string, RecipeStyleDeclarationInput> | undefined,
+function resolve_recipe_condition_map(
+	conditions:
+		| RecipeConditionMap<string, RecipeStyleDeclarationInput>
+		| undefined,
 	variable_prefix: string,
-): RecipeStateMap<string, RecipeStyle> | undefined {
-	if (!states) {
+): RecipeConditionMap<string, RecipeStyle> | undefined {
+	if (!conditions) {
 		return undefined;
 	}
 
 	return Object.fromEntries(
-		Object.entries(states).map(([state_name, style]) => {
-			return [state_name, resolve_recipe_style(style, variable_prefix)];
+		Object.entries(conditions).map(([condition_name, style]) => {
+			return [
+				condition_name,
+				resolve_recipe_style(style, variable_prefix),
+			];
 		}),
-	) as RecipeStateMap<string, RecipeStyle>;
+	) as RecipeConditionMap<string, RecipeStyle>;
 }
 
 function resolve_recipe_slot_input(
@@ -177,7 +183,10 @@ function resolve_recipe_slot_input(
 ): RecipeSlotInput<string, RecipeStyle> {
 	return compact_object({
 		base: resolve_recipe_style(slot.base, variable_prefix),
-		states: resolve_recipe_state_map(slot.states, variable_prefix),
+		conditions: resolve_recipe_condition_map(
+			slot.conditions,
+			variable_prefix,
+		),
 	});
 }
 
@@ -256,10 +265,10 @@ function resolve_recipe_compound_variants(
 	});
 }
 
-function resolve_recipe_definition(
-	definition: RecipeInput<string, string, RecipeStyleDeclarationInput>,
+function resolve_recipe_definition<TDefinition extends RecipeStyleDefinition>(
+	definition: TDefinition,
 	variable_prefix: string,
-): RecipeInput<string, string, RecipeStyle> {
+): ResolvedRecipeStyleDefinition<TDefinition> {
 	return compact_object({
 		compoundVariants: resolve_recipe_compound_variants(
 			definition.compoundVariants,
@@ -268,7 +277,7 @@ function resolve_recipe_definition(
 		defaultVariants: definition.defaultVariants,
 		slots: resolve_recipe_slot_map(definition.slots, variable_prefix),
 		variants: resolve_recipe_variants(definition.variants, variable_prefix),
-	}) as RecipeInput<string, string, RecipeStyle>;
+	}) as unknown as ResolvedRecipeStyleDefinition<TDefinition>;
 }
 
 function resolve_recipe_definitions<TRecipes extends RecipeStyleDefinitions>(

@@ -21,6 +21,7 @@ import {
 	select_link_work_state,
 	type AdapterClientOptions,
 	type AppConfig,
+	type DecomposedCommit,
 	type DecomposedState,
 	type RouteState,
 	type ScrollIntent,
@@ -213,12 +214,34 @@ export function createVormaClient<A extends AppConfig>(
 
 	const adapter_base_res = create_adapter_base(
 		app_config,
-		(decomposed: DecomposedState, scroll_intent?: ScrollIntent) => {
-			if (scroll_intent) {
-				pending_scroll_intent = scroll_intent;
+		(adapter_commit: DecomposedCommit) => {
+			let should_notify = false;
+			let should_notify_route = false;
+			let should_notify_work = false;
+			if (adapter_commit.scroll_intent) {
+				pending_scroll_intent = adapter_commit.scroll_intent;
 			}
-			store = decomposed;
-			notify();
+			if (adapter_commit.state) {
+				store = adapter_commit.state;
+				should_notify = true;
+			}
+			if (adapter_commit.route) {
+				route_store = adapter_commit.route;
+				should_notify_route = true;
+			}
+			if (adapter_commit.work) {
+				work_store = adapter_commit.work;
+				should_notify_work = true;
+			}
+			if (should_notify) {
+				notify();
+			}
+			if (should_notify_route) {
+				notify_route();
+			}
+			if (should_notify_work) {
+				notify_work();
+			}
 		},
 		options?.apiDecorator,
 	);
@@ -450,24 +473,12 @@ export function createVormaClient<A extends AppConfig>(
 	function boot(): ReturnType<typeof core.boot> {
 		const {
 			render: render_root,
-			onRouteUpdate,
-			onWorkUpdate,
 			linkDefaultProps: _linkDefaultProps,
 			apiDecorator: _apiDecorator,
 			...core_options
 		} = options ?? {};
 		return core.boot({
 			...core_options,
-			onRouteUpdate: (route, previous_route, reason) => {
-				route_store = route;
-				notify_route();
-				onRouteUpdate?.(route, previous_route, reason);
-			},
-			onWorkUpdate: (work) => {
-				work_store = work;
-				notify_work();
-				onWorkUpdate?.(work);
-			},
 			render: render_root
 				? () => {
 						return render_root({

@@ -18,6 +18,44 @@ define_adapter_tests({
 	create_define_view_component: ((render: (props: object) => unknown) => {
 		return render;
 	}) as AdapterTestHarness["create_define_view_component"],
+	create_view: (({ client, pattern, render, clientLoader }) => {
+		const v = {
+			loaderData: (props: any) => {
+				return client.useLoaderData(props);
+			},
+			patternLoaderData: (view_pattern: string) => {
+				return client.usePatternLoaderData(view_pattern);
+			},
+			routeState: ((selector?: any) => {
+				if (selector) {
+					return client.useRouteState(selector);
+				}
+				return client.useRouteState();
+			}) as any,
+			workState: ((selector?: any) => {
+				if (selector) {
+					return client.useWorkState(selector);
+				}
+				return client.useWorkState();
+			}) as any,
+			routeSync: (target: any) => {
+				return client.useRouteSync(target);
+			},
+			clientLoaderData: (props: any) => {
+				return client.useClientLoaderData(props);
+			},
+			patternClientLoaderData: (view_pattern: string) => {
+				return client.usePatternClientLoaderData(view_pattern);
+			},
+		};
+		return client.defineView({
+			pattern,
+			component: (props: any) => {
+				return render({ props, v });
+			},
+			clientLoader: clientLoader as any,
+		});
+	}) as AdapterTestHarness["create_view"],
 	dynamic: ((read_value: () => unknown) => {
 		return read_value;
 	}) as AdapterTestHarness["dynamic"],

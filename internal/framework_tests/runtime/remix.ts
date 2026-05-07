@@ -10,6 +10,13 @@ type TextBox = {
 	value: string;
 };
 
+type ViewScope = {
+	clientLoaderData: (props: any) => any;
+	loaderData: (props: any) => any;
+	routeState: () => any;
+	workState: () => any;
+};
+
 const on_click_prop = "onClick";
 const on_change_prop = "onChange";
 const on_input_prop = "onInput";
@@ -26,6 +33,7 @@ const event_mappings = [
 const state_slots_by_handle = new WeakMap<Handle<any>, TextBox[]>();
 
 let current_handle: Handle<any> | undefined;
+let current_view_scope: ViewScope | undefined;
 let current_state_index = 0;
 
 export const variant = "remix";
@@ -74,20 +82,36 @@ export function dynamic(read_value: () => any): any {
 	return read_value();
 }
 
+export function use_loader_data(props: any): any {
+	return require_current_view_scope().loaderData(props);
+}
+
+export function use_client_loader_data(props: any): any {
+	return require_current_view_scope().clientLoaderData(props);
+}
+
+export function use_route_state(): any {
+	return require_current_view_scope().routeState();
+}
+
+export function use_work_state(): any {
+	return require_current_view_scope().workState();
+}
+
 export function prepare_view_definition(input: any): any {
 	return {
 		...input,
-		component: (handle: Handle<any>) => {
+		component: (handle: Handle<any>, v: ViewScope) => {
 			return (props: any) => {
-				return render_with_handle(handle, () => {
+				return render_with_handle(handle, v, () => {
 					return input.component(props);
 				});
 			};
 		},
 		errorBoundary: input.errorBoundary
-			? (handle: Handle<any>) => {
+			? (handle: Handle<any>, v: ViewScope) => {
 					return (props: any) => {
-						return render_with_handle(handle, () => {
+						return render_with_handle(handle, v, () => {
 							return input.errorBoundary(props);
 						});
 					};
@@ -144,18 +168,29 @@ function require_current_handle(): Handle<any> {
 	return current_handle;
 }
 
+function require_current_view_scope(): ViewScope {
+	if (!current_view_scope) {
+		throw new Error("Remix framework test data must render inside a view");
+	}
+	return current_view_scope;
+}
+
 function render_with_handle(
 	handle: Handle<any>,
+	view_scope: ViewScope,
 	render: () => RemixNode,
 ): RemixNode {
 	const previous_handle = current_handle;
+	const previous_view_scope = current_view_scope;
 	const previous_state_index = current_state_index;
 	current_handle = handle;
+	current_view_scope = view_scope;
 	current_state_index = 0;
 	try {
 		return render();
 	} finally {
 		current_handle = previous_handle;
+		current_view_scope = previous_view_scope;
 		current_state_index = previous_state_index;
 	}
 }

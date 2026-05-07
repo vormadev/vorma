@@ -59,8 +59,8 @@ func to_cfg(c *vorma.Config) (*vorma_cfg, error) {
 	if _, err := cfg.__validate_pub_src_pattern(); err != nil {
 		return nil, fmt.Errorf("error with public static source pattern: %w", err)
 	}
-	if _, err := cfg.__validate_global_watch_patterns(); err != nil {
-		return nil, fmt.Errorf("error with global ignore patterns: %w", err)
+	if _, err := cfg.__validate_watch_patterns(); err != nil {
+		return nil, fmt.Errorf("error with watch patterns: %w", err)
 	}
 	if _, err := cfg.__validate_server_watch_patterns(); err != nil {
 		return nil, fmt.Errorf("error with server watch patterns: %w", err)
@@ -70,9 +70,6 @@ func to_cfg(c *vorma.Config) (*vorma_cfg, error) {
 	}
 	if _, err := cfg.__validate_vorma_out_abs_slash_pattern(); err != nil {
 		return nil, fmt.Errorf("__validate_vorma_out_abs_slash_pattern err: %w", err)
-	}
-	if _, err := cfg.__validate_vorma_out_watch_ignore_pattern(); err != nil {
-		return nil, fmt.Errorf("error with Vorma output watch ignore pattern: %w", err)
 	}
 	if _, err := cfg.__validate_ts_gen_out_file_abs_slash(); err != nil {
 		return nil, fmt.Errorf("__validate_gen_out_file_abs_slash err: %w", err)
@@ -91,19 +88,24 @@ func to_cfg(c *vorma.Config) (*vorma_cfg, error) {
 /////// CONFIG -- CORE FIELD GETTERS
 /////////////////////////////////////////////////////////////////////
 
-func (cfg vorma_cfg) watch_root() string      { return fsutil.SysNorm(cfg.C.DevWatchConfig.WatchRoot) }
 func (cfg vorma_cfg) dist_dir() string        { return fsutil.SysNorm(cfg.C.DistDir) }
 func (cfg vorma_cfg) ts_gen_out_file() string { return fsutil.SysNorm(cfg.C.TSGenConfig.OutFile) }
 
-func (cfg vorma_cfg) global_watch_exclude_patterns() []string {
-	x, _ := cfg.__validate_global_watch_patterns()
+func (cfg vorma_cfg) watch_patterns() []string {
+	x, _ := cfg.__validate_watch_patterns()
 	return x
 }
-func (cfg vorma_cfg) __validate_global_watch_patterns() ([]string, error) {
-	patterns := make([]string, len(cfg.C.DevWatchConfig.GlobalIgnore))
-	for i, p := range cfg.C.DevWatchConfig.GlobalIgnore {
+
+func (cfg vorma_cfg) __validate_watch_patterns() ([]string, error) {
+	patterns := make([]string, len(cfg.C.DevWatchConfig.WatchPatterns))
+	for i, p := range cfg.C.DevWatchConfig.WatchPatterns {
 		patterns[i] = strings.TrimSpace(p)
 	}
+	if len(patterns) == 0 {
+		patterns = []string{"."}
+	}
+	patterns = append(patterns, base_watch_patterns...)
+	patterns = append(patterns, "!./"+cfg.watch_relative_path(cfg.vorma_out()))
 	if _, err := globset.Compile(patterns); err != nil {
 		return nil, err
 	}
@@ -230,23 +232,11 @@ func (cfg vorma_cfg) matches_pub_src(p string) bool {
 }
 
 func (cfg vorma_cfg) watch_relative_path(p string) string {
-	rel_path, err := filepath.Rel(cfg.watch_root(), p)
+	rel_path, err := filepath.Rel(".", p)
 	if err != nil {
 		return p
 	}
 	return rel_path
-}
-
-func (cfg vorma_cfg) vorma_out_watch_ignore_pattern() string {
-	x, _ := cfg.__validate_vorma_out_watch_ignore_pattern()
-	return x
-}
-func (cfg vorma_cfg) __validate_vorma_out_watch_ignore_pattern() (string, error) {
-	pattern := fsutil.ToCatchDirPattern(cfg.watch_relative_path(cfg.vorma_out()))
-	if _, err := globset.Compile([]string{pattern}); err != nil {
-		return "", err
-	}
-	return pattern, nil
 }
 
 /////////////////////////////////////////////////////////////////////

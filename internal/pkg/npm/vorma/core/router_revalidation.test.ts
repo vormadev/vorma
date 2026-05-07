@@ -3,10 +3,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	get_history_key,
+	has_route_render_commit,
 	json_response,
+	last_route_render_commit,
 	mock_fetch,
 	redirect_response,
 	register_ccc_lifecycle,
+	route_render_commit_count,
 	route_response,
 	setup,
 	simulate_popstate,
@@ -54,7 +57,7 @@ describe("revalidate", () => {
 		);
 		await expect(rev).resolves.toEqual({ ok: true });
 
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 		expect(core.getWorkState().revalidation !== null).toBe(false);
 	});
 
@@ -161,7 +164,7 @@ describe("revalidate", () => {
 		call(1).resolve(route_response());
 		await vi.advanceTimersByTimeAsync(0);
 
-		expect(commit.mock.calls.length).toBeGreaterThanOrEqual(2);
+		expect(route_render_commit_count(commit)).toBeGreaterThanOrEqual(2);
 	});
 
 	it("fires a new revalidation when called again after first is in flight", async () => {
@@ -258,13 +261,13 @@ describe("revalidate redirects", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
 	it("drops stale build skew responses by default", async () => {
@@ -748,7 +751,7 @@ describe("revalidation stale-ownership", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		// Stale result should not commit
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("applies revalidation result when only hash changed during flight", async () => {
@@ -778,14 +781,14 @@ describe("revalidation stale-ownership", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ still_valid: true });
 	});
 });
@@ -825,13 +828,13 @@ describe("revalidation and popstate", () => {
 		);
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await vi.advanceTimersByTimeAsync(0);
 		}
 
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 		expect(core.getWorkState().revalidation !== null).toBe(false);
 		expect(core.getWorkState().navigation !== null).toBe(false);
 	});

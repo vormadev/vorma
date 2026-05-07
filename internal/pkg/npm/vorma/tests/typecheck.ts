@@ -3,7 +3,7 @@
 import type { ReadonlySignal } from "@preact/signals";
 import type { ComponentType as PreactComponentType } from "preact";
 import type { ComponentType as ReactComponentType } from "react";
-import type { Handle as RemixHandle, RemixNode } from "remix/ui";
+import type { RemixNode } from "remix/ui";
 import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
 	AppConfig,
@@ -49,6 +49,18 @@ import type {
 	WorkState,
 } from "vorma/__internal";
 import { MutationError, QueryError } from "vorma/__internal";
+import {
+	createButton,
+	createCodeBlock,
+} from "vorma/kit/lab/design/components/remix";
+import {
+	createRecipe,
+	createRecipeStyleSystem,
+	type GeneratedSystem,
+	type RecipeStyle,
+	type RecipeStyleDefinitions,
+	type SingleRecipeStyleInput,
+} from "vorma/kit/lab/design/core";
 import { type Result } from "vorma/kit/result";
 import { createVormaClient as Preact__createVormaClient } from "vorma/preact";
 import { createVormaClient as React__createVormaClient } from "vorma/react";
@@ -1689,35 +1701,20 @@ function assert_remix_adapter_contracts(): void {
 		"/users/:userID"
 	>;
 
-	// useLoaderData returns the selected value.
-	const loader_data = remix.useLoaderData(route_props);
-	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data);
-
-	// usePatternLoaderData
-	const maybe_pattern_data = remix.usePatternLoaderData("/docs/*");
-	expect_type<ToLoaderOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
-
-	// useRouteState
-	const route_state = remix.useRouteState();
-	expect_type<RouteState>(route_state);
-	expect_type<Record<string, string>>(route_state.params);
-	expect_type<unknown>(route_state.historyState);
-
-	const selected_params = remix.useRouteState((route) => {
-		return route.params;
-	});
-	expect_type<Record<string, string>>(selected_params);
-
-	// useWorkState
-	const work_state = remix.useWorkState();
-	expect_type<WorkState>(work_state);
-
-	const selected_submission_count = remix.useWorkState((work) => {
-		return work.apiRequests.length;
-	});
-	expect_type<number>(selected_submission_count);
-
-	// useRouteSync
+	// Remix data/state/sync APIs are view-scoped.
+	// @ts-expect-error Remix loader data is view-scoped.
+	remix.useLoaderData(route_props);
+	// @ts-expect-error Remix pattern loader data is view-scoped.
+	remix.usePatternLoaderData("/docs/*");
+	// @ts-expect-error Remix route state is view-scoped.
+	remix.useRouteState();
+	// @ts-expect-error Remix route state selectors are view-scoped.
+	remix.useRouteState((route: RouteState) => route.params);
+	// @ts-expect-error Remix work state is view-scoped.
+	remix.useWorkState();
+	// @ts-expect-error Remix work state selectors are view-scoped.
+	remix.useWorkState((work: WorkState) => work.apiRequests.length);
+	// @ts-expect-error Remix route sync is view-scoped.
 	remix.useRouteSync({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
@@ -1728,37 +1725,73 @@ function assert_remix_adapter_contracts(): void {
 		scrollToTop: false,
 	});
 
-	// useClientLoaderData returns the selected value.
 	const cl_route_props = null as unknown as ToRouteComponentProps<
 		App,
 		"/users/:userID",
 		number
 	>;
-	const client_loader_data = remix.useClientLoaderData(cl_route_props);
-	expect_type<number>(client_loader_data);
+	// @ts-expect-error Remix client loader data is view-scoped.
+	remix.useClientLoaderData(cl_route_props);
+	// @ts-expect-error Remix pattern client loader data is view-scoped.
+	remix.usePatternClientLoaderData<number>("/users/:userID");
 
-	// usePatternClientLoaderData
-	const maybe_client_loader_data =
-		remix.usePatternClientLoaderData<number>("/users/:userID");
-	expect_type<number | undefined>(maybe_client_loader_data);
-
-	// defineView accepts Remix UI component factories.
+	// defineView accepts route-bound Remix UI component factories.
 	void remix.defineView({
 		pattern: "/users/:userID",
-		component: (
-			_handle: RemixHandle<ToRouteComponentProps<App, "/users/:userID">>,
-		) => {
+		component: (_handle, v) => {
+			const handle_route_state = v.routeState();
+			expect_type<RouteState>(handle_route_state);
+
+			const handle_params = v.routeState((route) => {
+				return route.params;
+			});
+			expect_type<Record<string, string>>(handle_params);
+
+			const handle_work_state = v.workState();
+			expect_type<WorkState>(handle_work_state);
+
+			const handle_submission_count = v.workState((work) => {
+				return work.apiRequests.length;
+			});
+			expect_type<number>(handle_submission_count);
+
+			v.routeSync({
+				pattern: "/users/:userID",
+				params: { userID: "u-1" },
+				search: { page: 2, tab: "posts" },
+			});
+
+			const maybe_pattern_data = v.patternLoaderData("/docs/*");
+			expect_type<ToLoaderOutput<App, "/docs/*"> | undefined>(
+				maybe_pattern_data,
+			);
+
+			const maybe_client_loader_data =
+				v.patternClientLoaderData<number>("/users/:userID");
+			expect_type<number | undefined>(maybe_client_loader_data);
+
 			return (props) => {
-				const data = remix.useLoaderData(props);
+				const data = v.loaderData(props);
 				expect_type<ToLoaderOutput<App, "/users/:userID">>(data);
+
+				const client_loader_data = v.clientLoaderData(props);
+				expect_type<number>(client_loader_data);
+
 				return props.Outlet() as RemixNode;
 			};
 		},
-		errorBoundary: (_handle: RemixHandle<{ error: unknown }>) => {
+		errorBoundary: (_handle, v) => {
+			const work_state = v.workState();
+			expect_type<WorkState>(work_state);
+
 			return (props) => {
 				expect_type<unknown>(props.error);
 				return null;
 			};
+		},
+		clientLoader: async ({ serverPromise }) => {
+			const server_data = await serverPromise;
+			return server_data.loaderData.userName.length;
 		},
 	});
 
@@ -1877,3 +1910,126 @@ function assert_solid_adapter_contracts(): void {
 	void solid.Link({ pattern: "/users/:userID" });
 }
 void assert_solid_adapter_contracts;
+
+/////// Design Component Type Safety
+
+function assert_design_component_contracts(): void {
+	const recipe_system = {
+		metadata: {
+			breakpoint: {
+				md: "48rem",
+			},
+		},
+		modes: {
+			light: {
+				variables: {},
+			},
+		},
+		token: {},
+		variablePrefix: "typecheck",
+	} satisfies GeneratedSystem<"light", {}, { breakpoint: { md: string } }>;
+
+	function create_component_style_system<
+		const TRecipes extends RecipeStyleDefinitions,
+	>(recipes: TRecipes & SingleRecipeStyleInput<TRecipes>) {
+		return createRecipeStyleSystem<typeof recipe_system, TRecipes>(
+			recipe_system,
+			recipes,
+		);
+	}
+
+	const button_recipe = {
+		defaultVariants: {
+			layout: "control",
+			size: "md",
+			variant: "primary",
+		},
+		slots: {
+			content: {},
+			loadingIndicator: {},
+			loadingIndicatorFrame: {},
+			root: {
+				base: {
+					display: "inline-flex",
+				},
+			},
+		},
+		variants: {
+			fluid: {
+				true: {
+					root: {
+						base: {
+							inlineSize: "100%",
+						},
+					},
+				},
+			},
+			layout: {
+				control: {
+					root: {
+						base: {
+							justifyContent: "center",
+						},
+					},
+				},
+			},
+			loading: {
+				true: {
+					content: {
+						base: {
+							opacity: 0,
+						},
+					},
+				},
+			},
+			size: {
+				md: {
+					root: {
+						base: {
+							minHeight: "2rem",
+						},
+					},
+				},
+			},
+			variant: {
+				primary: {
+					root: {
+						base: {
+							color: "white",
+						},
+					},
+				},
+			},
+		},
+	} as const;
+	const code_block_recipe = {
+		slots: {
+			caption: {},
+			code: {},
+			pre: {},
+			root: {},
+			summary: {
+				base: {
+					fontWeight: 600,
+				},
+			},
+		},
+	} as const;
+
+	const Button = createButton(
+		create_component_style_system({ button: button_recipe }),
+	);
+	expect_type<RemixComponent>(Button);
+
+	const code_block_style_system = create_component_style_system({
+		codeBlock: code_block_recipe,
+	});
+	const CodeBlock = createCodeBlock(code_block_style_system);
+	expect_type<RemixComponent>(CodeBlock);
+
+	const resolved = createRecipe(
+		code_block_style_system.token.recipe.codeBlock,
+	).resolve();
+	expect_type<RecipeStyle>(resolved.slots.summary.base);
+}
+void assert_design_component_contracts;

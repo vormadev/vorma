@@ -5,7 +5,12 @@ import {
 	HISTORY_KEY_FIELD,
 	SCROLL_STORAGE_KEY,
 } from "./constants.ts";
-import { create_client_core } from "./create_client_core.ts";
+import {
+	create_client_core,
+	type ClientCommit,
+	type RouteRenderState,
+	type ScrollIntent,
+} from "./create_client_core.ts";
 
 /////////////////////////////////////////////////////////////////////
 /////// Payload helpers
@@ -114,6 +119,80 @@ export function deferred<T>() {
 		reject = rej;
 	});
 	return { promise, resolve, reject };
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Commit helpers
+/////////////////////////////////////////////////////////////////////
+
+type CommitMock = {
+	mock: {
+		calls: unknown[][];
+	};
+};
+
+type TestRouteRenderState = Omit<RouteRenderState, "entries" | "error"> & {
+	entries: any[];
+	error: any;
+};
+
+export function route_render_commit_count(commit: CommitMock): number {
+	return commit.mock.calls.filter((call) => {
+		const client_commit = call[0] as ClientCommit | undefined;
+		return client_commit?.route_render !== undefined;
+	}).length;
+}
+
+export function has_route_render_commit(commit: CommitMock): boolean {
+	return route_render_commit_count(commit) > 0;
+}
+
+export function route_render_commit_at(
+	commit: CommitMock,
+	index: number,
+): TestRouteRenderState {
+	let seen = 0;
+	for (const call of commit.mock.calls) {
+		const client_commit = call[0] as ClientCommit | undefined;
+		const state = client_commit?.route_render?.state;
+		if (!state) {
+			continue;
+		}
+		if (seen === index) {
+			return state as TestRouteRenderState;
+		}
+		seen++;
+	}
+	throw new Error(`Expected route render commit at index ${index}`);
+}
+
+export function last_route_render_commit(
+	commit: CommitMock,
+): TestRouteRenderState {
+	const count = route_render_commit_count(commit);
+	if (count === 0) {
+		throw new Error("Expected at least one route render commit");
+	}
+	return route_render_commit_at(commit, count - 1);
+}
+
+export function route_render_scroll_intent_at(
+	commit: CommitMock,
+	index: number,
+): ScrollIntent | undefined {
+	let seen = 0;
+	for (const call of commit.mock.calls) {
+		const client_commit = call[0] as ClientCommit | undefined;
+		const route_render = client_commit?.route_render;
+		if (!route_render) {
+			continue;
+		}
+		if (seen === index) {
+			return route_render.scroll_intent;
+		}
+		seen++;
+	}
+	throw new Error(`Expected route render commit at index ${index}`);
 }
 
 /////////////////////////////////////////////////////////////////////

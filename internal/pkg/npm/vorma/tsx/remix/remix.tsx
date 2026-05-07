@@ -18,6 +18,7 @@ import {
 	select_link_work_state,
 	type AdapterClientOptions,
 	type AppConfig,
+	type DecomposedCommit,
 	type DecomposedState,
 	type LinkPropsResult,
 	type RouteState,
@@ -33,6 +34,7 @@ import {
 	type VormaClient,
 	type WorkState,
 } from "vorma/__internal";
+import { jsonDeepEquals } from "vorma/kit/json";
 import type { LinkPropsBase } from "../../core/types.ts";
 
 export { MutationError, QueryError } from "vorma/__internal";
@@ -85,6 +87,10 @@ const FOCUS_EVENT = "focus";
 const POINTER_LEAVE_EVENT = "pointerleave";
 const BLUR_EVENT = "blur";
 const TOUCH_CANCEL_EVENT = "touchcancel";
+const route_state_subscription_key = "route-state";
+const work_state_subscription_key = "work-state";
+const route_sync_route_subscription_key = "route-sync-route";
+const route_sync_work_subscription_key = "route-sync-work";
 
 type RootOutletProps = { idx?: number } & Record<string, unknown>;
 
@@ -118,19 +124,88 @@ type RemixDefineViewArgs<
 	ToDefineViewArgs<A, P, T, RemixNode>,
 	"component" | "errorBoundary"
 > & {
-	component: RemixComponent<ToRouteComponentProps<A, P, T>>;
-	errorBoundary?: RemixComponent<{ error: unknown }>;
+	component: RemixViewComponent<A, P, T>;
+	errorBoundary?: RemixErrorBoundaryComponent<A>;
 };
+
+type RemixStateSelector<TState, TSelected> = (state: TState) => TSelected;
+
+export type RemixViewScope<A extends AppConfig> = {
+	routeState: {
+		(): RouteState;
+		<T>(selector: (state: RouteState) => T): T;
+	};
+	workState: {
+		(): WorkState;
+		<T>(selector: (state: WorkState) => T): T;
+	};
+	routeSync: <P extends ToViewPattern<A>>(
+		args: ToRouteSyncArgs<A, P>,
+	) => void;
+	loaderData: <P extends ToViewPattern<A>, T = any>(
+		props: ToRouteComponentProps<A, P, T>,
+	) => ToLoaderOutput<A, P>;
+	patternLoaderData: <P extends ToViewPattern<A>>(
+		pattern: P,
+	) => ToLoaderOutput<A, P> | undefined;
+	clientLoaderData: <P extends ToViewPattern<A>, T>(
+		props: ToRouteComponentProps<A, P, T>,
+	) => T;
+	patternClientLoaderData: <T>(pattern: ToViewPattern<A>) => T | undefined;
+};
+
+export type RemixViewComponent<
+	A extends AppConfig,
+	P extends ToViewPattern<A>,
+	T = any,
+> = (
+	handle: Handle<ToRouteComponentProps<A, P, T>>,
+	v: RemixViewScope<A>,
+) => (props: ToRouteComponentProps<A, P, T>) => RemixNode;
+
+type RemixErrorBoundaryComponent<A extends AppConfig> = (
+	handle: Handle<{ error: unknown }>,
+	v: RemixViewScope<A>,
+) => (props: { error: unknown }) => RemixNode;
 
 export type RemixVormaClient<A extends AppConfig> = Omit<
 	VormaClient<A, RemixNode, RemixAnchorProps, "value">,
-	"RootOutlet" | "Link" | "defineView"
+	| "RootOutlet"
+	| "Link"
+	| "defineView"
+	| "useRouteState"
+	| "useRouteSync"
+	| "useWorkState"
+	| "useLoaderData"
+	| "usePatternLoaderData"
+	| "useClientLoaderData"
+	| "usePatternClientLoaderData"
 > & {
 	RootOutlet: RemixHybridComponent<RootOutletProps>;
 	Link: RemixLink<A>;
 	defineView: <P extends ToViewPattern<A>, T = any>(
 		input: RemixDefineViewArgs<A, P, T>,
 	) => ViewDefinition;
+};
+
+type StateSubscription<TState, TSelected> = {
+	selected: TSelected;
+	selector: RemixStateSelector<TState, TSelected>;
+};
+
+type StateSubscriptions<TState> = Map<
+	string,
+	StateSubscription<TState, unknown>
+>;
+
+type StateSubscriptionMap<TState> = Map<
+	Handle<any>,
+	StateSubscriptions<TState>
+>;
+
+type RouteSyncState = {
+	pending_href?: string;
+	timeout_id?: number;
 };
 
 type CreateVormaClientOptions<A extends AppConfig> = AdapterClientOptions<
@@ -164,20 +239,63 @@ export function createVormaClient<A extends AppConfig>(
 		prefetch: null,
 		apiRequests: [],
 	};
-	const handles = new Set<Handle<any>>();
+	const route_render_handles = new Set<Handle<any>>();
+	const link_handles = new Set<Handle<any>>();
+	const route_state_subscriptions: StateSubscriptionMap<RouteState> =
+		new Map();
+	const work_state_subscriptions: StateSubscriptionMap<WorkState> = new Map();
+	const route_sync_states = new Map<Handle<any>, RouteSyncState>();
 
 	let pending_scroll_intent: ScrollIntent | undefined;
-	let route_sync_timeout_id: number | undefined;
-	let route_sync_pending_href: string | undefined;
 
 	const adapter_base_res = create_adapter_base(
 		app_config,
-		(decomposed: DecomposedState, scroll_intent?: ScrollIntent) => {
-			if (scroll_intent) {
-				pending_scroll_intent = scroll_intent;
+		(adapter_commit: DecomposedCommit) => {
+			const previous_link_work_state = select_link_work_state(work_store);
+			let should_notify_route_render = false;
+			let should_notify_route = false;
+			let should_notify_work = false;
+			let should_notify_links = false;
+			if (adapter_commit.scroll_intent) {
+				pending_scroll_intent = adapter_commit.scroll_intent;
 			}
-			store = decomposed;
-			notify_handles();
+			if (adapter_commit.state) {
+				store = adapter_commit.state;
+				should_notify_route_render = true;
+			}
+			if (adapter_commit.route) {
+				route_store = adapter_commit.route;
+				should_notify_route = true;
+				should_notify_links = true;
+			}
+			if (adapter_commit.work) {
+				work_store = adapter_commit.work;
+				should_notify_work = true;
+			}
+			const next_link_work_state = select_link_work_state(work_store);
+			if (
+				!jsonDeepEquals(previous_link_work_state, next_link_work_state)
+			) {
+				should_notify_links = true;
+			}
+			if (should_notify_route_render) {
+				notify_handle_set(route_render_handles);
+			}
+			if (should_notify_route && route_store) {
+				notify_state_subscriptions(
+					route_state_subscriptions,
+					route_store,
+				);
+			}
+			if (should_notify_work) {
+				notify_state_subscriptions(
+					work_state_subscriptions,
+					work_store,
+				);
+			}
+			if (should_notify_links) {
+				notify_handle_set(link_handles);
+			}
 		},
 		options?.apiDecorator,
 	);
@@ -189,7 +307,14 @@ export function createVormaClient<A extends AppConfig>(
 
 	const { core, nav_fns, passthrough } = adapter_base_res.val;
 
-	function track_handle(handle: Handle<any>): void {
+	function default_selector<TState>(state: TState): TState {
+		return state;
+	}
+
+	function track_handle_set(
+		handles: Set<Handle<any>>,
+		handle: Handle<any>,
+	): void {
 		if (handles.has(handle)) {
 			return;
 		}
@@ -203,10 +328,97 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	function notify_handles(): void {
+	function track_handle_map<TValue>(
+		handles: Map<Handle<any>, TValue>,
+		handle: Handle<any>,
+	): void {
+		if (handles.has(handle)) {
+			return;
+		}
+		handle.signal.addEventListener(
+			"abort",
+			() => {
+				handles.delete(handle);
+			},
+			{ once: true },
+		);
+	}
+
+	function notify_handle_set(handles: Set<Handle<any>>): void {
 		handles.forEach((handle) => {
 			void handle.update();
 		});
+	}
+
+	function track_state_subscription<TState, TSelected>(
+		subscriptions: StateSubscriptionMap<TState>,
+		subscription_key: string,
+		handle: Handle<any>,
+		state: TState,
+		selector?: RemixStateSelector<TState, TSelected>,
+	): TSelected {
+		track_handle_map(subscriptions, handle);
+		const state_selector =
+			selector ??
+			(default_selector as RemixStateSelector<TState, TSelected>);
+		const selected = state_selector(state);
+		let handle_subscriptions = subscriptions.get(handle);
+		if (!handle_subscriptions) {
+			handle_subscriptions = new Map();
+			subscriptions.set(handle, handle_subscriptions);
+		}
+		handle_subscriptions.set(subscription_key, {
+			selected,
+			selector: state_selector as RemixStateSelector<TState, unknown>,
+		});
+		return selected;
+	}
+
+	function notify_state_subscriptions<TState>(
+		subscriptions: StateSubscriptionMap<TState>,
+		state: TState,
+	): void {
+		subscriptions.forEach((handle_subscriptions, handle) => {
+			let should_update = false;
+			handle_subscriptions.forEach((subscription) => {
+				const selected = subscription.selector(state);
+				if (jsonDeepEquals(subscription.selected, selected)) {
+					return;
+				}
+				subscription.selected = selected;
+				should_update = true;
+			});
+			if (should_update) {
+				void handle.update();
+			}
+		});
+	}
+
+	function clear_route_sync_state(state: RouteSyncState): void {
+		if (state.timeout_id !== undefined) {
+			window.clearTimeout(state.timeout_id);
+		}
+		state.timeout_id = undefined;
+		state.pending_href = undefined;
+	}
+
+	function get_route_sync_state(handle: Handle<any>): RouteSyncState {
+		const existing = route_sync_states.get(handle);
+		if (existing) {
+			return existing;
+		}
+
+		const state: RouteSyncState = {};
+		route_sync_states.set(handle, state);
+		handle.signal.addEventListener(
+			"abort",
+			() => {
+				clear_route_sync_state(state);
+				route_sync_states.delete(handle);
+			},
+			{ once: true },
+		);
+		return state;
 	}
 
 	function is_remix_handle<P extends object>(
@@ -257,39 +469,73 @@ export function createVormaClient<A extends AppConfig>(
 		return work_store;
 	}
 
-	function useRouteState(): RouteState;
-	function useRouteState<T>(selector: (route: RouteState) => T): T;
-	function useRouteState<T>(
+	function route_state(handle: Handle<any>): RouteState;
+	function route_state<T>(
+		handle: Handle<any>,
+		selector: (route: RouteState) => T,
+	): T;
+	function route_state<T>(
+		handle: Handle<any>,
 		selector?: (route: RouteState) => T,
 	): RouteState | T {
 		const route = get_route_snapshot();
-		if (selector) {
-			return selector(route);
-		}
-		return route;
+		return track_state_subscription(
+			route_state_subscriptions,
+			route_state_subscription_key,
+			handle,
+			route,
+			selector,
+		);
 	}
 
-	function useWorkState(): WorkState;
-	function useWorkState<T>(selector: (work: WorkState) => T): T;
-	function useWorkState<T>(selector?: (work: WorkState) => T): WorkState | T {
+	function work_state(handle: Handle<any>): WorkState;
+	function work_state<T>(
+		handle: Handle<any>,
+		selector: (work: WorkState) => T,
+	): T;
+	function work_state<T>(
+		handle: Handle<any>,
+		selector?: (work: WorkState) => T,
+	): WorkState | T {
 		const work = get_work_snapshot();
-		if (selector) {
-			return selector(work);
-		}
-		return work;
+		return track_state_subscription(
+			work_state_subscriptions,
+			work_state_subscription_key,
+			handle,
+			work,
+			selector,
+		);
 	}
 
-	function clear_route_sync_timeout(): void {
-		if (route_sync_timeout_id !== undefined) {
-			window.clearTimeout(route_sync_timeout_id);
-		}
-		route_sync_timeout_id = undefined;
-		route_sync_pending_href = undefined;
-	}
-
-	function useRouteSync<P extends ToViewPattern<A>>(
+	function route_sync<P extends ToViewPattern<A>>(
+		handle: Handle<any>,
+		args: ToRouteSyncArgs<A, P>,
+	): void;
+	function route_sync<P extends ToViewPattern<A>>(
+		handle: Handle<any>,
 		args: ToRouteSyncArgs<A, P>,
 	): void {
+		const route_sync_state = get_route_sync_state(handle);
+
+		track_state_subscription(
+			route_state_subscriptions,
+			route_sync_route_subscription_key,
+			handle,
+			get_route_snapshot(),
+			(route) => {
+				return route.href;
+			},
+		);
+		track_state_subscription(
+			work_state_subscriptions,
+			route_sync_work_subscription_key,
+			handle,
+			work_store,
+			(work) => {
+				return work.navigation?.href ?? null;
+			},
+		);
+
 		const {
 			debounceMs = 0,
 			enabled = true,
@@ -298,7 +544,7 @@ export function createVormaClient<A extends AppConfig>(
 			...target
 		} = args;
 		if (!enabled) {
-			clear_route_sync_timeout();
+			clear_route_sync_state(route_sync_state);
 			return;
 		}
 
@@ -308,16 +554,16 @@ export function createVormaClient<A extends AppConfig>(
 		if (
 			canonical_href === route_href ||
 			canonical_href === pending_href ||
-			canonical_href === route_sync_pending_href
+			canonical_href === route_sync_state.pending_href
 		) {
 			return;
 		}
 
-		clear_route_sync_timeout();
-		route_sync_pending_href = canonical_href;
-		route_sync_timeout_id = window.setTimeout(() => {
-			route_sync_timeout_id = undefined;
-			route_sync_pending_href = undefined;
+		clear_route_sync_state(route_sync_state);
+		route_sync_state.pending_href = canonical_href;
+		route_sync_state.timeout_id = window.setTimeout(() => {
+			route_sync_state.timeout_id = undefined;
+			route_sync_state.pending_href = undefined;
 			if (
 				canonical_href === route_store?.href ||
 				canonical_href === work_store.navigation?.href
@@ -332,13 +578,13 @@ export function createVormaClient<A extends AppConfig>(
 		}, debounceMs);
 	}
 
-	function useLoaderData<P extends ToViewPattern<A>>(
-		args: ToRouteComponentProps<A, P>,
+	function loader_data<P extends ToViewPattern<A>, T = any>(
+		args: ToRouteComponentProps<A, P, T>,
 	): ToLoaderOutput<A, P> {
 		return store.loaders_data[args.idx] as ToLoaderOutput<A, P>;
 	}
 
-	function usePatternLoaderData<P extends ToViewPattern<A>>(
+	function pattern_loader_data<P extends ToViewPattern<A>>(
 		pattern: P,
 	): ToLoaderOutput<A, P> | undefined {
 		const idx = store.matched_patterns.indexOf(pattern);
@@ -348,13 +594,13 @@ export function createVormaClient<A extends AppConfig>(
 		return store.loaders_data[idx] as ToLoaderOutput<A, P>;
 	}
 
-	function useClientLoaderData<P extends ToViewPattern<A>, T>(
+	function client_loader_data<P extends ToViewPattern<A>, T>(
 		args: ToRouteComponentProps<A, P, T>,
 	): T {
 		return store.client_loaders_data[args.idx] as T;
 	}
 
-	function usePatternClientLoaderData<T>(
+	function pattern_client_loader_data<T>(
 		pattern: ToViewPattern<A>,
 	): T | undefined {
 		const idx = store.matched_patterns.indexOf(pattern);
@@ -362,6 +608,55 @@ export function createVormaClient<A extends AppConfig>(
 			return undefined;
 		}
 		return store.client_loaders_data[idx] as T;
+	}
+
+	function create_view_scope(handle: Handle<any>): RemixViewScope<A> {
+		const route_state_fn = (<T,>(
+			selector?: RemixStateSelector<RouteState, T>,
+		): RouteState | T => {
+			if (selector) {
+				return route_state(handle, selector);
+			}
+			return route_state(handle);
+		}) as RemixViewScope<A>["routeState"];
+		const work_state_fn = (<T,>(
+			selector?: RemixStateSelector<WorkState, T>,
+		): WorkState | T => {
+			if (selector) {
+				return work_state(handle, selector);
+			}
+			return work_state(handle);
+		}) as RemixViewScope<A>["workState"];
+
+		return {
+			routeState: route_state_fn,
+			workState: work_state_fn,
+			routeSync: <P extends ToViewPattern<A>>(
+				args: ToRouteSyncArgs<A, P>,
+			): void => {
+				return route_sync(handle, args);
+			},
+			loaderData: <P extends ToViewPattern<A>, T = any>(
+				props: ToRouteComponentProps<A, P, T>,
+			): ToLoaderOutput<A, P> => {
+				return loader_data(props);
+			},
+			patternLoaderData: <P extends ToViewPattern<A>>(
+				pattern: P,
+			): ToLoaderOutput<A, P> | undefined => {
+				return pattern_loader_data(pattern);
+			},
+			clientLoaderData: <P extends ToViewPattern<A>, T>(
+				props: ToRouteComponentProps<A, P, T>,
+			): T => {
+				return client_loader_data(props);
+			},
+			patternClientLoaderData: <T,>(
+				pattern: ToViewPattern<A>,
+			): T | undefined => {
+				return pattern_client_loader_data(pattern);
+			},
+		};
 	}
 
 	function defineView<P extends ToViewPattern<A>, T = any>(
@@ -372,14 +667,31 @@ export function createVormaClient<A extends AppConfig>(
 			errorBoundary: error_boundary,
 			...core_input
 		} = input;
+		const remix_component: RemixComponent<
+			ToRouteComponentProps<A, P, T>
+		> = (handle) => {
+			return component(handle, create_view_scope(handle));
+		};
+		const remix_error_boundary:
+			| RemixComponent<{
+					error: unknown;
+			  }>
+			| undefined = error_boundary
+			? (handle) => {
+					return error_boundary(handle, create_view_scope(handle));
+				}
+			: undefined;
 		return core.defineView({
 			...core_input,
 			component: (props: ToRouteComponentProps<A, P, T>) => {
-				return create_remix_element(component, props);
+				return create_remix_element(remix_component, props);
 			},
-			errorBoundary: error_boundary
+			errorBoundary: remix_error_boundary
 				? (props: { error: unknown }) => {
-						return create_remix_element(error_boundary, props);
+						return create_remix_element(
+							remix_error_boundary,
+							props,
+						);
 					}
 				: undefined,
 		});
@@ -388,7 +700,7 @@ export function createVormaClient<A extends AppConfig>(
 	function root_outlet_component(
 		handle: Handle<RootOutletProps>,
 	): (props: RootOutletProps) => RemixNode {
-		track_handle(handle);
+		track_handle_set(route_render_handles, handle);
 		return (props: RootOutletProps) => {
 			return render_root_outlet(handle, props);
 		};
@@ -457,7 +769,7 @@ export function createVormaClient<A extends AppConfig>(
 		idx: number,
 	): RemixHybridComponent<Record<string, unknown>> {
 		return make_hybrid_component((handle) => {
-			track_handle(handle);
+			track_handle_set(route_render_handles, handle);
 			return (local: Record<string, unknown> = {}) => {
 				return create_remix_element(RootOutlet, {
 					...parent_props,
@@ -471,24 +783,12 @@ export function createVormaClient<A extends AppConfig>(
 	function boot(): ReturnType<typeof core.boot> {
 		const {
 			render: render_root,
-			onRouteUpdate: on_route_update,
-			onWorkUpdate: on_work_update,
 			linkDefaultProps: _link_default_props,
 			apiDecorator: _api_decorator,
 			...core_options
 		} = options ?? {};
 		return core.boot({
 			...core_options,
-			onRouteUpdate: (route, previous_route, reason) => {
-				route_store = route;
-				notify_handles();
-				on_route_update?.(route, previous_route, reason);
-			},
-			onWorkUpdate: (work) => {
-				work_store = work;
-				notify_handles();
-				on_work_update?.(work);
-			},
 			render: render_root
 				? () => {
 						return render_root({
@@ -592,7 +892,7 @@ export function createVormaClient<A extends AppConfig>(
 		LinkPropsBase & { pattern?: string };
 
 	const BaseLink = make_hybrid_component<BaseLinkProps>((handle) => {
-		track_handle(handle);
+		track_handle_set(link_handles, handle);
 		return (props: BaseLinkProps) => {
 			const route_state = route_store
 				? select_link_route_state(route_store)
@@ -652,8 +952,6 @@ export function createVormaClient<A extends AppConfig>(
 
 	const Link = ((input: unknown) => {
 		if (is_remix_handle(input as any)) {
-			const handle = input as Handle<RemixLinkProps<A, ToViewPattern<A>>>;
-			track_handle(handle);
 			return <P extends ToViewPattern<A>>(
 				props: RemixLinkProps<A, P>,
 			) => {
@@ -669,12 +967,5 @@ export function createVormaClient<A extends AppConfig>(
 		defineView,
 		RootOutlet,
 		Link,
-		useRouteSync,
-		useRouteState,
-		useWorkState,
-		useLoaderData,
-		usePatternLoaderData,
-		useClientLoaderData,
-		usePatternClientLoaderData,
 	};
 }

@@ -393,8 +393,7 @@ func (v Variant) Config(static_fs fs.FS, d deployment_variant) *vorma.Config {
 		},
 
 		DevWatchConfig: vorma.DevWatchConfig{
-			WatchRoot:                ".",
-			GlobalIgnore:             []string{".bombadil/**"},
+			WatchPatterns:            []string{".", "!.bombadil/**"},
 			OnChangeRecompileGo:      []string{"scenario/**/*.go"},
 			OnChangeClientRevalidate: []string{},
 		},

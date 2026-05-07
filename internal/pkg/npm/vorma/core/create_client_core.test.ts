@@ -8,8 +8,12 @@ import {
 } from "../../kit/json/search_param_parser.ts";
 import {
 	deferred,
+	has_route_render_commit,
 	mock_fetch,
 	register_ccc_lifecycle,
+	route_render_commit_at,
+	route_render_commit_count,
+	route_render_scroll_intent_at,
 	route_response,
 	seed_payload,
 	setup,
@@ -20,6 +24,7 @@ import {
 	REVALIDATION_DEBOUNCE_MS,
 	apply_scroll,
 	create_client_core,
+	type ClientCommit,
 	type ClientCore,
 	type ProgressIndicatorConfig,
 } from "./create_client_core.ts";
@@ -153,8 +158,8 @@ describe("boot lifecycle", () => {
 
 		await core.boot({});
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/");
 		expect(state.entries[0].loader_data).toEqual({ root: true });
@@ -192,7 +197,7 @@ describe("boot lifecycle", () => {
 
 		await core.boot({});
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].input).toEqual({
 			active: true,
 			page: 2,
@@ -262,7 +267,7 @@ describe("boot lifecycle", () => {
 
 		await core.boot({});
 
-		const scroll_intent = commit.mock.calls[0]![1];
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent?.scroll).toEqual({ x: 55, y: 77 });
 		sessionStorage.removeItem("vorma-scroll-state-reload");
 	});
@@ -285,7 +290,7 @@ describe("boot lifecycle", () => {
 
 		await core.boot({});
 
-		const scroll_intent = commit.mock.calls[0]![1];
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent?.scroll).toEqual({ hash: "#section" });
 	});
 
@@ -336,7 +341,7 @@ describe("boot lifecycle", () => {
 
 		await core.boot({});
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].client_loader_data.success).toBe(true);
 		expect(state.entries[0].client_loader_data.data).toEqual({ ok: true });
 	});
@@ -390,7 +395,7 @@ describe("boot lifecycle", () => {
 		await core.boot({});
 		await tick();
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].client_loader_data).toEqual({ ok: true });
 		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 	});
@@ -443,7 +448,7 @@ describe("boot lifecycle", () => {
 
 		await core.boot({});
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[1].client_loader_data).toEqual({
 			href: window.location.href,
 			historyState: undefined,
@@ -595,8 +600,8 @@ describe("navigation flow", () => {
 
 		await core.navigate("/about");
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/about");
 		expect(state.entries[0].loader_data).toEqual({ page: "about" });
@@ -620,7 +625,7 @@ describe("navigation flow", () => {
 
 		await core.navigate("/users?page=3&active=false&tags=c&tags=d");
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].input).toEqual({
 			active: false,
 			page: 3,
@@ -652,8 +657,8 @@ describe("navigation flow", () => {
 
 		await core.navigate("/page");
 
-		expect(commit).toHaveBeenCalled();
-		const scroll_intent = commit.mock.calls[0]![1];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent?.scroll).toEqual({ x: 0, y: 0 });
 	});
 
@@ -713,7 +718,7 @@ describe("navigation flow", () => {
 		call(0).resolve(route_response({ MatchedPatterns: ["/page"] }));
 
 		await wait_until(() => {
-			return commit.mock.calls.length > 0;
+			return route_render_commit_count(commit) > 0;
 		}, "route did not publish during view transition");
 
 		const second = await core.navigate("/page#two");
@@ -775,14 +780,14 @@ describe("navigation flow", () => {
 		transitions[0]!();
 		await tick();
 
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 		await expect(first).resolves.toEqual({ didNavigate: false });
 
 		transitions[1]!();
 		await expect(second).resolves.toEqual({ didNavigate: true });
 
-		expect(commit).toHaveBeenCalledTimes(1);
-		const state = commit.mock.calls[0]![0];
+		expect(route_render_commit_count(commit)).toBe(1);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].loader_data).toEqual({ page: "second" });
 	});
 });
@@ -864,7 +869,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		}, "beforeRouteYield hooks did not start");
 
 		expect(calls).toEqual(["root_start", "current_start"]);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 		expect(hook_args).toHaveLength(2);
 		expect(hook_args[0].trigger).toBe("navigation");
 		expect(hook_args[0].current.href).toBe(window.location.origin + "/");
@@ -873,7 +878,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 
 		root_gate.resolve();
 		await tick();
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 
 		current_gate.resolve();
 		await expect(nav).resolves.toEqual({ didNavigate: true });
@@ -883,8 +888,10 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 			"root_end",
 			"current_end",
 		]);
-		expect(commit).toHaveBeenCalledTimes(1);
-		expect(commit.mock.calls[0]![0].entries[1].loader_data).toEqual({
+		expect(route_render_commit_count(commit)).toBe(1);
+		expect(
+			route_render_commit_at(commit, 0).entries[1].loader_data,
+		).toEqual({
 			page: "next",
 		});
 	});
@@ -948,11 +955,11 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		}, "beforeRouteYield / beforeRouteCommit hooks did not start");
 
 		expect(calls).toEqual(["yield_start", "commit_start"]);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 
 		yield_gate.resolve();
 		await tick();
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 
 		commit_gate.resolve();
 		await expect(nav).resolves.toEqual({ didNavigate: true });
@@ -962,7 +969,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 			"yield_end",
 			"commit_end",
 		]);
-		expect(commit).toHaveBeenCalledTimes(1);
+		expect(route_render_commit_count(commit)).toBe(1);
 	});
 
 	it("does not run yield hooks from successor-only routes or commit hooks from current-only routes", async () => {
@@ -1016,7 +1023,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		expect(current_commit_hook).not.toHaveBeenCalled();
 		expect(successor_yield_hook).not.toHaveBeenCalled();
 		expect(successor_commit_hook).toHaveBeenCalledTimes(1);
-		expect(commit).toHaveBeenCalledTimes(1);
+		expect(route_render_commit_count(commit)).toBe(1);
 	});
 
 	it("aborts superseded yield hooks and does not publish stale route", async () => {
@@ -1079,8 +1086,10 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		await expect(second).resolves.toEqual({ didNavigate: true });
 
 		expect(aborted).toBe(true);
-		expect(commit).toHaveBeenCalledTimes(1);
-		expect(commit.mock.calls[0]![0].entries[0].loader_data).toEqual({
+		expect(route_render_commit_count(commit)).toBe(1);
+		expect(
+			route_render_commit_at(commit, 0).entries[0].loader_data,
+		).toEqual({
 			page: "second",
 		});
 	});
@@ -1515,7 +1524,7 @@ describe("client loaders", () => {
 
 		await core.navigate("/err-route");
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.error).toEqual({
 			idx: 0,
 			error: "client loader boom",
@@ -1566,7 +1575,7 @@ describe("client loaders", () => {
 
 		await core.navigate("/cl-route");
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].client_loader_data).toEqual({
 			enhanced: true,
 			original: { raw: "data" },
@@ -1615,7 +1624,7 @@ describe("client loaders", () => {
 
 		await core.navigate("/abort-route");
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.error).toBeNull();
 		expect(state.entries[0].client_loader_data).toBeUndefined();
 	});
@@ -2564,8 +2573,8 @@ describe("HMR", () => {
 
 		await window.__vorma_hmr_route_update?.("/hmr-mod.js", new_mod);
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].module).toBe(new_mod);
 	});
 
@@ -2763,7 +2772,7 @@ describe("HMR", () => {
 			},
 		});
 
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 });
 
@@ -3021,7 +3030,7 @@ describe("prefetch integration", () => {
 			return seen_server_data !== undefined;
 		}, "expected first-time prefetch client loader to run");
 
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 		expect(loader_call_count).toBe(1);
 		expect(seen_server_data).toEqual({
 			clientBuildID: "build-1",
@@ -3041,9 +3050,9 @@ describe("prefetch integration", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(calls).toHaveLength(1);
 		expect(loader_call_count).toBe(1);
-		expect(commit).toHaveBeenCalledTimes(1);
+		expect(route_render_commit_count(commit)).toBe(1);
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].client_loader_data).toEqual({
 			from_client: true,
 		});
@@ -3085,7 +3094,7 @@ describe("prefetch integration", () => {
 
 		expect(result.didNavigate).toBe(true);
 		expect(calls).toHaveLength(1);
-		expect(commit).toHaveBeenCalledTimes(1);
+		expect(route_render_commit_count(commit)).toBe(1);
 	});
 
 	it("aborts first-time route client loader when prefetch is stopped", async () => {
@@ -3379,7 +3388,7 @@ describe("client loader cancellation", () => {
 				server_data_rejected.child
 			);
 		}, "expected server-error navigation client loaders to abort");
-		expect(commit.mock.calls[0]![0].error).toEqual({
+		expect(route_render_commit_at(commit, 0).error).toEqual({
 			idx: 0,
 			error: "server boom",
 			source: "server",
@@ -3740,7 +3749,7 @@ describe("stale navigation side effects", () => {
 
 			expect(document.title).toBe("Winner");
 			expect(core.getClientBuildID()).toBe("build-1");
-			expect(commit).toHaveBeenCalledTimes(1);
+			expect(route_render_commit_count(commit)).toBe(1);
 
 			resolve_revalidation(
 				route_response(
@@ -3755,7 +3764,7 @@ describe("stale navigation side effects", () => {
 
 			expect(document.title).toBe("Winner");
 			expect(core.getClientBuildID()).toBe("build-1");
-			expect(commit).toHaveBeenCalledTimes(1);
+			expect(route_render_commit_count(commit)).toBe(1);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -3819,8 +3828,10 @@ describe("route update coherence", () => {
 	it("commit is called before onRouteUpdate fires", async () => {
 		seed_payload();
 		const order: string[] = [];
-		const commit = vi.fn(() => {
-			return order.push("commit");
+		const commit = vi.fn((client_commit: ClientCommit): void => {
+			if (client_commit.route_render) {
+				order.push("commit");
+			}
 		});
 		const core_res = create_client_core(
 			{ apiMountRoot: "/api/" },
@@ -3981,7 +3992,7 @@ describe("CSS preload gating", () => {
 		const core = core_res.val;
 
 		await core.boot({});
-		const boot_commit_count = commit.mock.calls.length;
+		const boot_commit_count = route_render_commit_count(commit);
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({ CSSBundles: ["/blocking.css"] }),
@@ -4002,12 +4013,12 @@ describe("CSS preload gating", () => {
 		}
 
 		expect(preload).not.toBeNull();
-		expect(commit.mock.calls.length).toBe(boot_commit_count);
+		expect(route_render_commit_count(commit)).toBe(boot_commit_count);
 
 		preload!.dispatchEvent(new Event("load"));
 		await nav;
 
-		expect(commit.mock.calls.length).toBe(boot_commit_count + 1);
+		expect(route_render_commit_count(commit)).toBe(boot_commit_count + 1);
 	});
 
 	it("unblocks navigation when CSS preload errors", async () => {
@@ -4026,7 +4037,7 @@ describe("CSS preload gating", () => {
 		const core = core_res.val;
 
 		await core.boot({});
-		const boot_commit_count = commit.mock.calls.length;
+		const boot_commit_count = route_render_commit_count(commit);
 
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({ CSSBundles: ["/error.css"] }),
@@ -4049,7 +4060,7 @@ describe("CSS preload gating", () => {
 		preload!.dispatchEvent(new Event("error"));
 		await nav;
 
-		expect(commit.mock.calls.length).toBe(boot_commit_count + 1);
+		expect(route_render_commit_count(commit)).toBe(boot_commit_count + 1);
 	});
 });
 
@@ -4176,8 +4187,8 @@ describe("history state", () => {
 
 		await core.navigate("/about", { state: { from: "search" } });
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.history_state).toEqual({ from: "search" });
 	});
 
@@ -4205,7 +4216,7 @@ describe("history state", () => {
 
 		await core.navigate("/page");
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.history_state).toBeUndefined();
 	});
 
@@ -4226,8 +4237,8 @@ describe("history state", () => {
 
 		await core.boot({});
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.history_state).toBeUndefined();
 	});
 
@@ -4258,7 +4269,7 @@ describe("history state", () => {
 			state: { modal: "confirm" },
 		});
 
-		const nav_state = commit.mock.calls[0]![0];
+		const nav_state = route_render_commit_at(commit, 0);
 		expect(nav_state.history_state).toEqual({ modal: "confirm" });
 		commit.mockClear();
 
@@ -4269,8 +4280,8 @@ describe("history state", () => {
 		await core.revalidate();
 		await tick();
 
-		expect(commit).toHaveBeenCalled();
-		const reval_state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const reval_state = route_render_commit_at(commit, 0);
 		expect(reval_state.history_state).toEqual({ modal: "confirm" });
 	});
 
@@ -4357,7 +4368,7 @@ describe("history state", () => {
 
 		await core.navigate("/page", { state: { v: 1 } });
 
-		const first_state = commit.mock.calls[0]![0];
+		const first_state = route_render_commit_at(commit, 0);
 		expect(first_state.history_state).toEqual({ v: 1 });
 		commit.mockClear();
 
@@ -4366,7 +4377,7 @@ describe("history state", () => {
 			state: { v: 2 },
 		});
 
-		const second_state = commit.mock.calls[0]![0];
+		const second_state = route_render_commit_at(commit, 0);
 		expect(second_state.history_state).toEqual({ v: 2 });
 	});
 
@@ -4400,7 +4411,7 @@ describe("history state", () => {
 
 		await core.navigate("/compose", { state: complex_state });
 
-		const state = commit.mock.calls[0]![0];
+		const state = route_render_commit_at(commit, 0);
 		expect(state.history_state).toEqual(complex_state);
 	});
 });

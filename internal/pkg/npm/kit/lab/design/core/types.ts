@@ -2,10 +2,10 @@ import type { OKLCH, Palette, PaletteCurve } from "./color.ts";
 import type { CSSVariableMap, TokenReferences } from "./css.ts";
 import type {
 	RecipeCompoundVariantInput,
+	RecipeConditionMap,
 	RecipeInput,
 	RecipeSlotInput,
 	RecipeSlotMapInput,
-	RecipeStateMap,
 	RecipeVariantSlotMapInput,
 	RecipeVariantsInput,
 } from "./recipe/types.ts";
@@ -300,23 +300,45 @@ export type RecipeStyleDefinition = RecipeInput<
 >;
 export type RecipeStyleDefinitions = Record<string, RecipeStyleDefinition>;
 
-type ResolvedRecipeStyleStateMap<TStates> =
-	TStates extends RecipeStateMap<string, RecipeStyleDeclarationInput>
+type ResolvedRecipeStyleConditionMap<TConditions> =
+	TConditions extends RecipeConditionMap<string, RecipeStyleDeclarationInput>
 		? {
-				readonly [K in keyof TStates]: ResolvedTokenTree<
-					Exclude<TStates[K], undefined>
+				readonly [K in keyof TConditions]: ResolvedTokenTree<
+					Exclude<TConditions[K], undefined>
 				>;
 			}
 		: never;
 
+type ResolvedRecipeStyleSlotBase<
+	TSlot extends RecipeSlotInput<string, RecipeStyleDeclarationInput>,
+> = "base" extends keyof TSlot
+	? TSlot extends {
+			readonly base?: infer TBase;
+		}
+		? {
+				readonly base?: ResolvedTokenTree<Exclude<TBase, undefined>>;
+			}
+		: never
+	: {};
+
+type ResolvedRecipeStyleSlotConditions<
+	TSlot extends RecipeSlotInput<string, RecipeStyleDeclarationInput>,
+> = "conditions" extends keyof TSlot
+	? TSlot extends {
+			readonly conditions?: infer TConditions;
+		}
+		? {
+				readonly conditions?: ResolvedRecipeStyleConditionMap<
+					Exclude<TConditions, undefined>
+				>;
+			}
+		: never
+	: {};
+
 type ResolvedRecipeStyleSlotInput<
 	TSlot extends RecipeSlotInput<string, RecipeStyleDeclarationInput>,
-> = {
-	readonly base?: ResolvedTokenTree<Exclude<TSlot["base"], undefined>>;
-	readonly states?: ResolvedRecipeStyleStateMap<
-		Exclude<TSlot["states"], undefined>
-	>;
-};
+> = ResolvedRecipeStyleSlotBase<TSlot> &
+	ResolvedRecipeStyleSlotConditions<TSlot>;
 
 type ResolvedRecipeStyleSlotMapInput<
 	TSlots extends
@@ -394,16 +416,36 @@ type ResolvedRecipeStyleCompoundVariantsInput<TCompoundVariants> =
 
 export type ResolvedRecipeStyleDefinition<
 	TDefinition extends RecipeStyleDefinition,
-> = {
-	readonly compoundVariants?: ResolvedRecipeStyleCompoundVariantsInput<
-		Exclude<TDefinition["compoundVariants"], undefined>
-	>;
-	readonly defaultVariants?: TDefinition["defaultVariants"];
-	readonly slots: ResolvedRecipeStyleSlotMapInput<TDefinition["slots"]>;
-	readonly variants?: ResolvedRecipeStyleOptionalVariants<
-		TDefinition["variants"]
-	>;
-};
+> = ("compoundVariants" extends keyof TDefinition
+	? TDefinition extends {
+			readonly compoundVariants?: infer TCompoundVariants;
+		}
+		? {
+				readonly compoundVariants?: ResolvedRecipeStyleCompoundVariantsInput<
+					Exclude<TCompoundVariants, undefined>
+				>;
+			}
+		: never
+	: {}) &
+	("defaultVariants" extends keyof TDefinition
+		? TDefinition extends {
+				readonly defaultVariants?: infer TDefaultVariants;
+			}
+			? {
+					readonly defaultVariants?: TDefaultVariants;
+				}
+			: never
+		: {}) & {
+		readonly slots: ResolvedRecipeStyleSlotMapInput<TDefinition["slots"]>;
+	} & ("variants" extends keyof TDefinition
+		? TDefinition extends {
+				readonly variants?: infer TVariants;
+			}
+			? {
+					readonly variants?: ResolvedRecipeStyleOptionalVariants<TVariants>;
+				}
+			: never
+		: {});
 
 export type ResolvedRecipeStyleDefinitions<
 	TDefinitions extends RecipeStyleDefinitions,

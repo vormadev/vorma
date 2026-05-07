@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	has_route_render_commit,
 	json_response,
 	mock_fetch,
 	native_redirect_response,
@@ -9,6 +10,7 @@ import {
 	non_ok_redirect_response,
 	redirect_response,
 	register_ccc_lifecycle,
+	route_render_commit_count,
 	route_response,
 	setup,
 	text_response,
@@ -209,7 +211,7 @@ describe("submit", () => {
 		call(1).resolve(route_response({ MatchedPatterns: ["/target"] }));
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -217,7 +219,7 @@ describe("submit", () => {
 			});
 		}
 
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
 	it("dedup aborts previous with same key", async () => {
@@ -706,7 +708,7 @@ describe("submit", () => {
 		call(1).resolve(route_response({ MatchedPatterns: ["/target"] }));
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -714,7 +716,7 @@ describe("submit", () => {
 			});
 		}
 
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
 	it("hard redirects cross-origin submit redirects", async () => {
@@ -791,7 +793,7 @@ describe("submit", () => {
 		call(1).resolve(route_response());
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -799,7 +801,7 @@ describe("submit", () => {
 			});
 		}
 
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
 	it("does not fetch for submit redirect to hash-only change", async () => {

@@ -5,11 +5,16 @@ import {
 	deferred,
 	get_history_key,
 	get_stored_scroll,
+	has_route_render_commit,
+	last_route_render_commit,
 	mock_fetch,
 	native_redirect_response,
 	non_ok_redirect_response,
 	redirect_response,
 	register_ccc_lifecycle,
+	route_render_commit_at,
+	route_render_commit_count,
+	route_render_scroll_intent_at,
 	route_response,
 	set_scroll_position,
 	setup,
@@ -50,8 +55,8 @@ describe("navigate", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/about");
 		expect(state.entries[0].loader_data).toEqual({ page: "about" });
@@ -79,8 +84,8 @@ describe("navigate", () => {
 
 		expect(r1.didNavigate).toBe(false);
 		expect(r2.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ page: "second" });
 	});
 
@@ -133,8 +138,8 @@ describe("navigate", () => {
 		);
 		await tick();
 
-		expect(commit).toHaveBeenCalledTimes(1);
-		const state = commit.mock.calls[0]![0];
+		expect(route_render_commit_count(commit)).toBe(1);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].loader_data).toEqual({ page: "second" });
 	});
 
@@ -204,7 +209,7 @@ describe("navigate", () => {
 
 		expect(r1.didNavigate).toBe(false);
 		expect(r2.didNavigate).toBe(true);
-		const scroll_intent = commit.mock.calls[0]![1];
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent?.scroll).toEqual({ hash: "#two" });
 		expect(window.location.hash).toBe("#two");
 	});
@@ -235,7 +240,7 @@ describe("navigate", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(false);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("does not commit on 304 response", async () => {
@@ -250,7 +255,7 @@ describe("navigate", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(false);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("does not commit on network failure", async () => {
@@ -263,7 +268,7 @@ describe("navigate", () => {
 		const result = await core.navigate("/fail");
 
 		expect(result.didNavigate).toBe(false);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("returns failure on JSON parse error", async () => {
@@ -281,7 +286,7 @@ describe("navigate", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(false);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("does not fetch for same-document no-op navigation", async () => {
@@ -334,8 +339,8 @@ describe("navigate", () => {
 		);
 		await Promise.all([n1, n2]);
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ winner: true });
 	});
 
@@ -360,8 +365,8 @@ describe("navigate", () => {
 		const r2 = await nav;
 
 		expect(r2.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ recovered: true });
 	});
 });
@@ -382,7 +387,7 @@ describe("prefetch", () => {
 		call(0).resolve(route_response());
 		await tick();
 
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("promotes to navigate on matching URL without refetching", async () => {
@@ -403,8 +408,8 @@ describe("prefetch", () => {
 
 		expect(calls).toHaveLength(1);
 		expect(result.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].loader_data).toEqual({ prefetched: true });
 	});
 
@@ -552,8 +557,8 @@ describe("navigate redirects", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].loader_data).toEqual({ redirected: true });
 	});
 
@@ -571,7 +576,7 @@ describe("navigate redirects", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
 	it("hard reloads navigation when route data reports build skew", async () => {
@@ -647,7 +652,7 @@ describe("navigate redirects", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
 	it("hard redirects for cross-origin soft redirect", async () => {
@@ -687,8 +692,8 @@ describe("navigate redirects", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(true);
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[0]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].loader_data).toEqual({ final: true });
 	});
 
@@ -728,7 +733,7 @@ describe("navigate redirects", () => {
 		const result = await nav;
 
 		expect(result.didNavigate).toBe(false);
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 	});
 
 	it("does not follow stale redirect from superseded navigation", async () => {
@@ -752,8 +757,8 @@ describe("navigate redirects", () => {
 		);
 		await Promise.all([n1, n2]);
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ winner: true });
 	});
 
@@ -1091,8 +1096,8 @@ describe("scroll state", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(commit).toHaveBeenCalled();
-		const scroll_intent = commit.mock.calls[0]![1];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent?.scroll).toEqual({ x: 0, y: 0 });
 	});
 
@@ -1105,8 +1110,8 @@ describe("scroll state", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(commit).toHaveBeenCalled();
-		const scroll_intent = commit.mock.calls[0]![1];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent?.scroll).toEqual({ hash: "#section" });
 	});
 
@@ -1119,8 +1124,8 @@ describe("scroll state", () => {
 		call(0).resolve(route_response());
 		await nav;
 
-		expect(commit).toHaveBeenCalled();
-		const scroll_intent = commit.mock.calls[0]![1];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent).toBeUndefined();
 	});
 
@@ -1150,7 +1155,7 @@ describe("scroll state", () => {
 		call(1).resolve(route_response());
 		await nav;
 
-		const scroll_intent = commit.mock.calls[0]![1];
+		const scroll_intent = route_render_scroll_intent_at(commit, 0);
 		expect(scroll_intent).toBeUndefined();
 	});
 });
@@ -1247,7 +1252,7 @@ describe("popstate", () => {
 		);
 
 		for (let i = 0; i < 50; i++) {
-			if (commit.mock.calls.length > 0) {
+			if (route_render_commit_count(commit) > 0) {
 				break;
 			}
 			await new Promise((r) => {
@@ -1255,8 +1260,8 @@ describe("popstate", () => {
 			});
 		}
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ home: true });
 	});
 
@@ -1284,7 +1289,7 @@ describe("popstate", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(reload).not.toHaveBeenCalled();
 		expect(window.location.hash).toBe("#two");
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ target: true });
 	});
 
@@ -1349,6 +1354,42 @@ describe("popstate", () => {
 		expect(el.scrollIntoView).toHaveBeenCalled();
 	});
 
+	it("handles hash-only popstate when entries reuse the same history key", async () => {
+		const { scroll_to } = await setup();
+		const seed_key = get_history_key();
+		const one = document.createElement("div");
+		one.id = "one";
+		one.scrollIntoView = vi.fn();
+		document.body.appendChild(one);
+		const two = document.createElement("div");
+		two.id = "two";
+		two.scrollIntoView = vi.fn();
+		document.body.appendChild(two);
+		const shared_state = window.history.state;
+
+		window.history.pushState(shared_state, "", "/#one");
+		window.history.pushState(shared_state, "", "/#two");
+
+		simulate_popstate(seed_key, "/#one");
+
+		// oxlint-disable-next-line unbound-method
+		expect(one.scrollIntoView).toHaveBeenCalledTimes(1);
+		// oxlint-disable-next-line unbound-method
+		expect(two.scrollIntoView).not.toHaveBeenCalled();
+
+		simulate_popstate(seed_key, "/");
+
+		expect(scroll_to).toHaveBeenCalledWith(0, 0);
+
+		simulate_popstate(seed_key, "/#one");
+		simulate_popstate(seed_key, "/#two");
+
+		// oxlint-disable-next-line unbound-method
+		expect(one.scrollIntoView).toHaveBeenCalledTimes(2);
+		// oxlint-disable-next-line unbound-method
+		expect(two.scrollIntoView).toHaveBeenCalledTimes(1);
+	});
+
 	it("ignores popstate when history key has not changed", async () => {
 		const { commit } = await setup();
 		const { calls } = mock_fetch();
@@ -1361,7 +1402,7 @@ describe("popstate", () => {
 			});
 		}
 
-		expect(commit).not.toHaveBeenCalled();
+		expect(has_route_render_commit(commit)).toBe(false);
 		expect(calls).toHaveLength(0);
 	});
 
@@ -1393,8 +1434,8 @@ describe("popstate", () => {
 			});
 		}
 
-		expect(commit).toHaveBeenCalled();
-		const state = commit.mock.calls[commit.mock.calls.length - 1]![0];
+		expect(has_route_render_commit(commit)).toBe(true);
+		const state = last_route_render_commit(commit);
 		expect(state.entries[0].loader_data).toEqual({ previous: true });
 		expect(core.getWorkState().navigation !== null).toBe(false);
 	});

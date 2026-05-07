@@ -38,7 +38,7 @@ func (rs *run_state) log_build_start(is_initial bool) {
 // Stops running app server.
 // Rebuilds app server.
 // Reads live gen state in gen mode (and updates rs.cfg and rs.type_gen_result).
-// Restarts fswatcher with new watch root and ignore patterns.
+// Restarts fswatcher with new watch patterns.
 // Ensures static output dirs exist.
 // Writes boilerplate files.
 // Writes vorma config.
@@ -166,17 +166,8 @@ func (rs *run_state) refresh_go() error {
 		if rs.watcher != nil {
 			rs.watcher_ctx_cancel()
 		}
-		ignore_patterns := append(
-			base_watch_ignore_patterns,
-			rs.cfg.global_watch_exclude_patterns()...,
-		)
-		ignore_patterns = append(
-			ignore_patterns,
-			rs.cfg.vorma_out_watch_ignore_pattern(),
-		)
 		rs.watcher = fswatcher.NewWatcher(fswatcher.WatcherOptions{
-			WatchRoot:      rs.cfg.watch_root(),
-			IgnorePatterns: ignore_patterns,
+			WatchPatterns: rs.cfg.watch_patterns(),
 		})
 		rs.watcher_ctx, rs.watcher_ctx_cancel = context.WithCancel(rs.root_ctx)
 		rs.go_safely(func() {

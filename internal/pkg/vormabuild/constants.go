@@ -8,7 +8,13 @@ const vite_plugin_go_port_env_key = "__VORMA_VITE_PLUGIN_GO_PORT"
 const supervisor_shutdown_grace_period = 2 * time.Second
 const supervisor_ready_timeout = 10 * time.Second
 
-var base_watch_ignore_patterns = []string{"**/.git", "**/node_modules"}
+const git_dir_watch_exclude_pattern = "!**/.git"
+const node_modules_watch_exclude_pattern = "!**/node_modules"
+
+var base_watch_patterns = []string{
+	git_dir_watch_exclude_pattern,
+	node_modules_watch_exclude_pattern,
+}
 
 const mailbox_key_go = "go"
 const mailbox_key_static = "static"
