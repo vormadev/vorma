@@ -1,10 +1,11 @@
 import { Effect, Ref } from "effect";
-import {
-	SCROLL_STORAGE_KEY,
-	SCROLL_STORAGE_RELOAD_KEY,
-} from "../constants.ts";
+import { SCROLL_STORAGE_KEY, SCROLL_STORAGE_RELOAD_KEY } from "../constants.ts";
 import type { ScrollState } from "./client_contract.ts";
 import type { HistoryPosition } from "./route_publisher.ts";
+import {
+	type RuntimeLifecycle,
+	WINDOW_EVENT_BEFOREUNLOAD,
+} from "./runtime_lifecycle.ts";
 
 export const REFRESH_SCROLL_MAX_AGE_MS = 3333;
 export const SCROLL_ENTRY_LIMIT = 50;
@@ -18,6 +19,9 @@ export type ScrollRestoration = {
 	set_manual_restoration: Effect.Effect<void>;
 	save_current: (position: HistoryPosition) => Effect.Effect<void>;
 	save_reload_scroll: Effect.Effect<void>;
+	install_reload_scroll_saver: (
+		lifecycle: RuntimeLifecycle,
+	) => Effect.Effect<void>;
 	boot_scroll: (
 		position: HistoryPosition,
 	) => Effect.Effect<ScrollState | undefined>;
@@ -41,6 +45,22 @@ export function make_scroll_restoration(): Effect.Effect<
 > {
 	return Effect.gen(function* () {
 		const entries_ref = yield* Ref.make(new Map(read_scroll_entries()));
+		const save_reload_scroll = Effect.gen(function* () {
+			const scroll = yield* current_scroll;
+			yield* Effect.sync(() => {
+				try {
+					const entry: ReloadScrollEntry = {
+						...scroll,
+						unix: Date.now(),
+						href: window.location.href,
+					};
+					sessionStorage.setItem(
+						SCROLL_STORAGE_RELOAD_KEY,
+						JSON.stringify(entry),
+					);
+				} catch {}
+			});
+		});
 
 		return {
 			set_manual_restoration: Effect.sync(() => {
@@ -63,22 +83,15 @@ export function make_scroll_restoration(): Effect.Effect<
 					yield* write_scroll_entries(entries);
 				});
 			},
-			save_reload_scroll: Effect.gen(function* () {
-				const scroll = yield* current_scroll;
-				yield* Effect.sync(() => {
-					try {
-						const entry: ReloadScrollEntry = {
-							...scroll,
-							unix: Date.now(),
-							href: window.location.href,
-						};
-						sessionStorage.setItem(
-							SCROLL_STORAGE_RELOAD_KEY,
-							JSON.stringify(entry),
-						);
-					} catch {}
-				});
-			}),
+			save_reload_scroll,
+			install_reload_scroll_saver: (lifecycle) => {
+				return lifecycle.listen_window(
+					WINDOW_EVENT_BEFOREUNLOAD,
+					() => {
+						Effect.runSync(save_reload_scroll);
+					},
+				);
+			},
 			boot_scroll: (position) => {
 				return Effect.gen(function* () {
 					const reload_scroll = yield* read_reload_scroll();
@@ -86,7 +99,10 @@ export function make_scroll_restoration(): Effect.Effect<
 						reload_scroll &&
 						Date.now() - reload_scroll.unix <=
 							REFRESH_SCROLL_MAX_AGE_MS &&
-						same_route_without_hash(reload_scroll.href, position.href)
+						same_route_without_hash(
+							reload_scroll.href,
+							position.href,
+						)
 					) {
 						return {
 							x: reload_scroll.x,
@@ -207,8 +223,7 @@ function is_reload_scroll_entry(value: unknown): value is ReloadScrollEntry {
 	}
 	const candidate = value as Record<string, unknown>;
 	return (
-		typeof candidate.href === "string" &&
-		typeof candidate.unix === "number"
+		typeof candidate.href === "string" && typeof candidate.unix === "number"
 	);
 }
 

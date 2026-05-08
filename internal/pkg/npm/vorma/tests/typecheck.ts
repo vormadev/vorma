@@ -413,7 +413,7 @@ function assert_exported_type_contracts(): void {
 				replace?: boolean;
 				scrollToTop?: boolean;
 				state?: unknown;
-				skipworkIndicator?: boolean;
+				skipWorkIndicator?: boolean;
 			}
 		>
 	>;
@@ -762,7 +762,7 @@ function assert_navigate_contracts(): void {
 		params: { userID: "u-1" },
 		replace: true,
 		scrollToTop: false,
-		skipworkIndicator: true,
+		skipWorkIndicator: true,
 	});
 
 	// Valid: with search and hash

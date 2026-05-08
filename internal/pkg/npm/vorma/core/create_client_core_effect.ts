@@ -1,5 +1,7 @@
 import { Effect } from "effect";
 import { R, type Result } from "vorma/kit/result";
+import { make_boot_revalidation_gate } from "./effect_runtime/boot_revalidation_gate.ts";
+import { make_boot_route_state } from "./effect_runtime/boot_route_state.ts";
 import type {
 	APIResult,
 	ClientCore,
@@ -9,21 +11,15 @@ import type {
 	ViewDefinition,
 } from "./effect_runtime/client_contract.ts";
 import { type EffectClientKernel } from "./effect_runtime/client_kernel.ts";
-import { make_effect_client_kernel } from "./effect_runtime/client_kernel_assembly.ts";
+import {
+	acquire_effect_client_kernel,
+	type EffectClientKernelHandle,
+} from "./effect_runtime/client_kernel_assembly.ts";
 import {
 	client_runtime_services_to_layer,
 	make_client_runtime_services,
 } from "./effect_runtime/client_runtime_services.ts";
-import {
-	type FocusRevalidator,
-	make_focus_revalidator,
-} from "./effect_runtime/focus_revalidator.ts";
-import { route_record_to_state } from "./effect_runtime/route_publisher.ts";
-import {
-	WINDOW_EVENT_BEFOREUNLOAD,
-	WINDOW_EVENT_FOCUS,
-	WINDOW_EVENT_POPSTATE,
-} from "./effect_runtime/runtime_lifecycle.ts";
+import { type FocusRevalidator } from "./effect_runtime/focus_revalidator.ts";
 import type { SubmitResult } from "./effect_runtime/submit_manager.ts";
 import type { WorkIndicatorActivity } from "./effect_runtime/work_state_actor.ts";
 import type { APIRouteKind, AppConfig, RevalidationResult } from "./types.ts";
@@ -41,11 +37,6 @@ export function create_client_core_effect(
 	void app_config;
 
 	let kernel: EffectClientKernel | null = null;
-	let boot_phase: "idle" | "booting" | "ready" = "idle";
-	let boot_provisional_route_state: ReturnType<
-		typeof route_record_to_state
-	> | null = null;
-	let boot_revalidation_requested = false;
 	let client_options: ClientOptions = {};
 	let focus_revalidator: FocusRevalidator | null = null;
 	const runtime_services = Effect.runSync(
@@ -60,7 +51,10 @@ export function create_client_core_effect(
 		module_runtime,
 		work_indicator_runtime,
 	} = runtime_services;
-	const revalidation_ok: RevalidationResult = { ok: true };
+	const boot_revalidation_gate = Effect.runSync(
+		make_boot_revalidation_gate(),
+	);
+	const boot_route_state = Effect.runSync(make_boot_route_state());
 	let default_error_boundary:
 		| ((props: { error: unknown }) => any)
 		| undefined;
@@ -140,9 +134,9 @@ export function create_client_core_effect(
 	function assemble_kernel(
 		client_build_id: string,
 		deployment_id: string,
-	): EffectClientKernel {
+	): EffectClientKernelHandle {
 		return Effect.runSync(
-			make_effect_client_kernel({
+			acquire_effect_client_kernel({
 				client_build_id,
 				commit: emit_client_commit,
 				deployment_id,
@@ -164,23 +158,12 @@ export function create_client_core_effect(
 					);
 				},
 				on_provisional_route: (input) => {
-					return Effect.sync(() => {
-						if (input.prepare_input.trigger !== "boot") {
-							return;
-						}
-						boot_provisional_route_state = route_record_to_state(
-							input.route,
-							input.prepare_input.href,
-							input.prepare_input.history_state,
-						);
-					});
+					return boot_route_state.capture(input);
 				},
 				revalidate_api_request: (route_revalidator) => {
-					if (boot_phase === "booting") {
-						boot_revalidation_requested = true;
-						return Effect.succeed(revalidation_ok);
-					}
-					return route_revalidator.request("apiRequest");
+					return boot_revalidation_gate.request_or_defer(
+						route_revalidator.request("apiRequest"),
+					);
 				},
 				use_view_transitions: Effect.sync(() => {
 					return client_options.useViewTransitions === true;
@@ -224,135 +207,69 @@ export function create_client_core_effect(
 			payload,
 			EFFECT_DEPLOYMENT_ID_FIELD,
 		);
-		const next_kernel = assemble_kernel(client_build_id, deployment_id);
-		Effect.runSync(next_kernel.scroll_restoration.set_manual_restoration);
-		const position = Effect.runSync(
-			next_kernel.browser_history.ensure_current,
+		const next_kernel_handle = assemble_kernel(
+			client_build_id,
+			deployment_id,
 		);
-		boot_phase = "booting";
-		boot_provisional_route_state = null;
-		boot_revalidation_requested = false;
+		const next_kernel = next_kernel_handle.kernel;
+		Effect.runSync(boot_route_state.clear);
+		Effect.runSync(boot_revalidation_gate.start_boot);
 		kernel = next_kernel;
 		focus_revalidator = null;
 		const boot_result = await run_effect(
-			Effect.either(
-				Effect.gen(function* () {
-					const prepared =
-						yield* next_kernel.route_preparer.prepare_route({
-							raw_payload: payload,
-							url: new URL(position.href),
-							trigger: "boot",
-							href: position.href,
-							history_state: position.state,
-						});
-					yield* next_kernel.route_publisher.publish({
-						reason: "initial",
-						prepared,
-						position,
-						scroll: yield* next_kernel.scroll_restoration.boot_scroll(
-							position,
-						),
-					});
-				}),
-			),
+			Effect.either(next_kernel.boot_initial_route(payload)),
 		);
 		if (boot_result._tag === "Left") {
 			if (kernel === next_kernel) {
 				kernel = existing_kernel;
 			}
-			boot_phase = existing_kernel ? "ready" : "idle";
-			boot_provisional_route_state = null;
-			boot_revalidation_requested = false;
-			await run_effect(next_kernel.lifecycle.shutdown);
+			Effect.runSync(boot_route_state.clear);
+			Effect.runSync(boot_revalidation_gate.cancel_boot);
+			await run_effect(next_kernel_handle.shutdown);
 			return R.err(String(boot_result.left));
 		}
+		const should_revalidate_after_boot = Effect.runSync(
+			boot_revalidation_gate.finish_boot,
+		);
 		if (effect_active_kernel_shutdown) {
 			await effect_active_kernel_shutdown();
 			effect_active_kernel_shutdown = null;
 		}
 		kernel = next_kernel;
 		focus_revalidator = null;
-		boot_phase = "ready";
-		boot_provisional_route_state = null;
+		Effect.runSync(boot_route_state.clear);
 		Effect.runSync(
 			next_kernel.lifecycle.add_finalizer(
-				Effect.sync(() => {
-					if (kernel === next_kernel) {
-						kernel = null;
-						boot_phase = "idle";
-					}
-					focus_revalidator = null;
-					boot_provisional_route_state = null;
+				Effect.gen(function* () {
+					yield* Effect.sync(() => {
+						if (kernel === next_kernel) {
+							kernel = null;
+						}
+						focus_revalidator = null;
+					});
+					yield* boot_route_state.clear;
 				}),
 			),
 		);
 		effect_active_kernel_shutdown = () => {
-			return run_effect(next_kernel.lifecycle.shutdown);
+			return run_effect(next_kernel_handle.shutdown);
 		};
 		if (options.revalidateOnWindowFocus) {
 			const stale_ms =
 				typeof options.revalidateOnWindowFocus === "object"
 					? options.revalidateOnWindowFocus.staleTimeMS
 					: 5_000;
-			focus_revalidator = Effect.runSync(
-				make_focus_revalidator({
-					stale_ms,
-					get_work_state: next_kernel.work_actor.snapshot,
-					request_revalidation: next_kernel.route_revalidator.request,
-				}),
+			const next_focus_revalidator = Effect.runSync(
+				next_kernel.install_focus_revalidator(stale_ms),
 			);
-			const focus_listener = (): void => {
-				if (!focus_revalidator) {
-					return;
-				}
-				void run_effect(focus_revalidator.focus);
-			};
-			Effect.runSync(
-				next_kernel.lifecycle.listen_window(
-					WINDOW_EVENT_FOCUS,
-					focus_listener,
-				),
-			);
+			focus_revalidator = next_focus_revalidator;
 		}
-		if (boot_revalidation_requested) {
-			boot_revalidation_requested = false;
+		if (should_revalidate_after_boot) {
 			void run_effect(
 				next_kernel.route_revalidator.request("apiRequest"),
 			);
 		}
-		const popstate_listener = (): void => {
-			const active_kernel = kernel;
-			if (!active_kernel) {
-				return;
-			}
-			void run_effect(handle_popstate(active_kernel));
-		};
-		Effect.runSync(
-			next_kernel.lifecycle.listen_window(
-				WINDOW_EVENT_POPSTATE,
-				popstate_listener,
-			),
-		);
-		const beforeunload_listener = (): void => {
-			const active_kernel = kernel;
-			if (!active_kernel) {
-				return;
-			}
-			Effect.runSync(active_kernel.scroll_restoration.save_reload_scroll);
-		};
-		Effect.runSync(
-			next_kernel.lifecycle.listen_window(
-				WINDOW_EVENT_BEFOREUNLOAD,
-				beforeunload_listener,
-			),
-		);
-		Effect.runSync(
-			module_runtime.install_hmr_handler({
-				route_preparer: next_kernel.route_preparer,
-				route_publisher: next_kernel.route_publisher,
-				work_actor: next_kernel.work_actor,
-			}),
-		);
+		Effect.runSync(next_kernel.install_browser_handlers);
 		const render_result = await run_effect(
 			Effect.either(
 				Effect.tryPromise({
@@ -375,126 +292,13 @@ export function create_client_core_effect(
 		return R.ok(undefined);
 	}
 
-	function handle_popstate(
-		active_kernel: EffectClientKernel,
-	): Effect.Effect<void> {
-		return Effect.gen(function* () {
-			const previous = yield* active_kernel.browser_history.current;
-			const position = yield* active_kernel.browser_history.adopt_current;
-			if (
-				position.key === previous.key &&
-				position.href === previous.href
-			) {
-				return;
-			}
-			if (previous.key.length > 0 && previous.key !== position.key) {
-				yield* active_kernel.scroll_restoration.save_current(previous);
-			}
-			if (
-				browser_location.route_key(position.href) ===
-				browser_location.route_key(previous.href)
-			) {
-				const scroll =
-					yield* active_kernel.scroll_restoration.popstate_scroll(
-						position,
-					);
-				const work = yield* active_kernel.work_actor.snapshot;
-				yield* active_kernel.route_publisher.move_position({
-					reason: "popstate",
-					position,
-					scroll,
-					work,
-				});
-				return;
-			}
-			yield* active_kernel.route_revalidator.cancel;
-			yield* active_kernel.navigation_actor.navigate(position.href, {
-				source: "popstate",
-				state: position.state,
-				scrollToTop: false,
-				skipworkIndicator: true,
-			});
-		}).pipe(
-			Effect.catchAll(() => {
-				return Effect.void;
-			}),
-		);
-	}
-
-	function move_within_current_route(
-		active_kernel: EffectClientKernel,
-		target_href: string,
-		options:
-			| {
-					replace?: boolean;
-					scrollToTop?: boolean;
-					state?: unknown;
-			  }
-			| undefined,
-	) {
-		return Effect.gen(function* () {
-			const snapshot = yield* active_kernel.route_publisher.snapshot;
-			if (!snapshot) {
-				return null;
-			}
-			if (
-				browser_location.route_key(snapshot.position.href) !==
-				browser_location.route_key(target_href)
-			) {
-				return null;
-			}
-			const current_hash = browser_location.hash_fragment(
-				snapshot.position.href,
-			);
-			const target_hash = browser_location.hash_fragment(target_href);
-			const did_change_hash = current_hash !== target_hash;
-			const should_commit_history =
-				did_change_hash || options?.replace === true;
-			const scroll =
-				yield* active_kernel.scroll_restoration.navigation_scroll(
-					target_href,
-					options?.scrollToTop,
-				);
-			if (!should_commit_history) {
-				if (scroll) {
-					const work = yield* active_kernel.work_actor.snapshot;
-					yield* active_kernel.route_publisher.move_position({
-						reason: "navigation",
-						position: snapshot.position,
-						scroll,
-						work,
-					});
-				}
-				return { didNavigate: false };
-			}
-			const previous_position =
-				yield* active_kernel.browser_history.current;
-			yield* active_kernel.scroll_restoration.save_current(
-				previous_position,
-			);
-			const position = yield* active_kernel.browser_history.commit(
-				target_href,
-				options?.replace === true,
-				options?.state,
-			);
-			const work = yield* active_kernel.work_actor.snapshot;
-			yield* active_kernel.route_publisher.move_position({
-				reason: "navigation",
-				position,
-				scroll,
-				work,
-			});
-			return { didNavigate: did_change_hash };
-		});
-	}
-
 	function navigate(
 		href: string | URL,
 		options?: {
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	): Promise<{ didNavigate: boolean }> {
 		const active_kernel = require_kernel();
@@ -533,11 +337,11 @@ export function create_client_core_effect(
 		}
 		return run_effect(
 			Effect.gen(function* () {
-				const route_movement = yield* move_within_current_route(
-					active_kernel,
-					target_href,
-					options,
-				);
+				const route_movement =
+					yield* active_kernel.move_within_current_route(
+						target_href,
+						options,
+					);
 				if (route_movement) {
 					return route_movement;
 				}
@@ -547,7 +351,7 @@ export function create_client_core_effect(
 						replace: options?.replace,
 						state: options?.state,
 						scrollToTop: options?.scrollToTop,
-						skipworkIndicator: options?.skipworkIndicator,
+						skipWorkIndicator: options?.skipWorkIndicator,
 					},
 				);
 				return { didNavigate: result.didNavigate };
@@ -583,8 +387,11 @@ export function create_client_core_effect(
 			active_kernel.route_publisher.route_state,
 		);
 		if (!route_state) {
-			if (boot_provisional_route_state) {
-				return boot_provisional_route_state;
+			const provisional_route_state = Effect.runSync(
+				boot_route_state.snapshot,
+			);
+			if (provisional_route_state) {
+				return provisional_route_state;
 			}
 			throw new Error("Vorma not booted");
 		}
@@ -633,7 +440,7 @@ export function create_client_core_effect(
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	): Promise<APIResult<T>> {
 		const active_kernel = require_kernel();

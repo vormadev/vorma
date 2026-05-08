@@ -28,10 +28,10 @@ export type WorkIndicatorActivity = {
 	apiRequests: boolean;
 };
 export type WorkNavigationInput = WorkNavigation & {
-	skipworkIndicator?: boolean;
+	skipWorkIndicator?: boolean;
 };
 export type WorkAPIRequestInput = WorkAPIRequest & {
-	skipworkIndicator?: boolean;
+	skipWorkIndicator?: boolean;
 };
 
 export type WorkStateActor = {
@@ -278,7 +278,7 @@ export function make_work_state_actor(
 							: null,
 					},
 					navigation_skip_work_indicator:
-						navigation?.skipworkIndicator === true,
+						navigation?.skipWorkIndicator === true,
 				};
 			});
 		};
@@ -325,7 +325,7 @@ export function make_work_state_actor(
 						requests.map((request) => {
 							return [
 								request.key,
-								request.skipworkIndicator === true,
+								request.skipWorkIndicator === true,
 							];
 						}),
 					),
@@ -342,7 +342,7 @@ export function make_work_state_actor(
 				);
 				api_request_skip_work_indicators.set(
 					request.key,
-					request.skipworkIndicator === true,
+					request.skipWorkIndicator === true,
 				);
 				return {
 					...current,

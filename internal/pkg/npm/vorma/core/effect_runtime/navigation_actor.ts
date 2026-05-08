@@ -14,7 +14,7 @@ export type NavigationAttempt = {
 	client_loader_prestarts: ClientLoaderPrestart[];
 	state?: unknown;
 	scrollToTop?: boolean;
-	skipworkIndicator?: boolean;
+	skipWorkIndicator?: boolean;
 };
 
 export type LoadedRoute = {
@@ -74,7 +74,7 @@ export type NavigationActor = {
 			source?: NavigationSource;
 			state?: unknown;
 			scrollToTop?: boolean;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Effect.Effect<NavigationResult>;
 	abort_active_signal: Effect.Effect<void>;
@@ -96,7 +96,7 @@ type Active = {
 	readonly redirectCount: number;
 	readonly state: unknown;
 	readonly scrollToTop: boolean | undefined;
-	readonly skipworkIndicator: boolean | undefined;
+	readonly skipWorkIndicator: boolean | undefined;
 	readonly waiters: ReadonlyArray<Waiter>;
 	readonly fiber: Fiber.RuntimeFiber<void, never> | null;
 	readonly controller: AbortController;
@@ -116,7 +116,7 @@ type StartInput = {
 	readonly redirectCount: number;
 	readonly state: unknown;
 	readonly scrollToTop: boolean | undefined;
-	readonly skipworkIndicator: boolean | undefined;
+	readonly skipWorkIndicator: boolean | undefined;
 	readonly waiters: ReadonlyArray<Waiter>;
 };
 
@@ -128,7 +128,7 @@ type Command =
 			readonly source: NavigationSource;
 			readonly state: unknown;
 			readonly scrollToTop: boolean | undefined;
-			readonly skipworkIndicator: boolean | undefined;
+			readonly skipWorkIndicator: boolean | undefined;
 			readonly waiter: Waiter;
 	  }
 	| {
@@ -240,7 +240,7 @@ export function make_navigation_actor(
 				active.source === command.source &&
 				active.state === command.state &&
 				active.scrollToTop === command.scrollToTop &&
-				active.skipworkIndicator === command.skipworkIndicator
+				active.skipWorkIndicator === command.skipWorkIndicator
 			);
 		};
 
@@ -307,7 +307,7 @@ export function make_navigation_actor(
 					client_loader_prestarts: [],
 					state: input.state,
 					scrollToTop: input.scrollToTop,
-					skipworkIndicator: input.skipworkIndicator,
+					skipWorkIndicator: input.skipWorkIndicator,
 				};
 				const client_loader_prestarts = options.prestart
 					? yield* options.prestart(base_attempt)
@@ -328,7 +328,7 @@ export function make_navigation_actor(
 						redirectCount: input.redirectCount,
 						state: input.state,
 						scrollToTop: input.scrollToTop,
-						skipworkIndicator: input.skipworkIndicator,
+						skipWorkIndicator: input.skipWorkIndicator,
 						waiters: input.waiters,
 						fiber: null,
 						controller,
@@ -383,7 +383,7 @@ export function make_navigation_actor(
 								source: command.source,
 								state: command.state,
 								scrollToTop: command.scrollToTop,
-								skipworkIndicator: command.skipworkIndicator,
+								skipWorkIndicator: command.skipWorkIndicator,
 								waiters: [command.waiter],
 							},
 						});
@@ -416,7 +416,7 @@ export function make_navigation_actor(
 					redirectCount: 0,
 					state: command.state,
 					scrollToTop: command.scrollToTop,
-					skipworkIndicator: command.skipworkIndicator,
+					skipWorkIndicator: command.skipWorkIndicator,
 					waiters: [command.waiter],
 				});
 			});
@@ -443,7 +443,7 @@ export function make_navigation_actor(
 					redirectCount: active.redirectCount,
 					state: active.state,
 					scrollToTop: active.scrollToTop,
-					skipworkIndicator: active.skipworkIndicator,
+					skipWorkIndicator: active.skipWorkIndicator,
 				};
 				const publish_fiber = yield* Effect.fork(
 					options.publish(loaded, attempt).pipe(
@@ -576,7 +576,7 @@ export function make_navigation_actor(
 					redirectCount: active.redirectCount + 1,
 					state: active.state,
 					scrollToTop: active.scrollToTop,
-					skipworkIndicator: active.skipworkIndicator,
+					skipWorkIndicator: active.skipWorkIndicator,
 					waiters: active.waiters,
 				});
 			});
@@ -651,7 +651,7 @@ export function make_navigation_actor(
 						source: nav_options?.source ?? "navigate",
 						state: nav_options?.state,
 						scrollToTop: nav_options?.scrollToTop,
-						skipworkIndicator: nav_options?.skipworkIndicator,
+						skipWorkIndicator: nav_options?.skipWorkIndicator,
 						waiter: { deferred: waiter },
 					});
 					return yield* Deferred.await(waiter);

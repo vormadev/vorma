@@ -104,7 +104,7 @@ describe("ccc Effect work state actor experiment", () => {
 				yield* actor.set_navigation({
 					href: FIRST_HREF,
 					replace: false,
-					skipworkIndicator: true,
+					skipWorkIndicator: true,
 					source: WORK_NAVIGATION_SOURCE_NAVIGATE,
 				});
 				const skipped_navigation = yield* actor.indicator_activity;
@@ -119,7 +119,7 @@ describe("ccc Effect work state actor experiment", () => {
 						key: API_KEY_SAVE,
 						method: API_METHOD_POST,
 						href: `${FIRST_HREF}/api/save`,
-						skipworkIndicator: true,
+						skipWorkIndicator: true,
 					},
 				]);
 				const skipped_api = yield* actor.indicator_activity;

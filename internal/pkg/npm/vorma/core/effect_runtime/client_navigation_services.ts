@@ -222,8 +222,8 @@ export function make_client_navigation_services(
 						yield* work_actor.set_navigation({
 							href: url.href,
 							replace: attempt.replace,
-							skipworkIndicator:
-								attempt.skipworkIndicator === true,
+							skipWorkIndicator:
+								attempt.skipWorkIndicator === true,
 							source: navigation_source(attempt),
 						});
 						return {
@@ -234,7 +234,7 @@ export function make_client_navigation_services(
 					yield* work_actor.set_navigation({
 						href: url.href,
 						replace: attempt.replace,
-						skipworkIndicator: attempt.skipworkIndicator === true,
+						skipWorkIndicator: attempt.skipWorkIndicator === true,
 						source: navigation_source(attempt),
 					});
 					const fetch_result = yield* route_fetcher
@@ -467,7 +467,7 @@ function api_requests_from_submit_snapshot(snapshot: SubmitSnapshot) {
 			key: item.key,
 			method: item.method,
 			href: item.href,
-			skipworkIndicator: item.skipworkIndicator,
+			skipWorkIndicator: item.skipWorkIndicator,
 		};
 	});
 }

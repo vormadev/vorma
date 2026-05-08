@@ -202,7 +202,7 @@ export type ClientCore = {
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Promise<{ didNavigate: boolean }>;
 	revalidate: () => Promise<RevalidationResult>;
@@ -213,7 +213,7 @@ export type ClientCore = {
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Promise<APIResult<T>>;
 	getRouteState: () => RouteState;

@@ -1,6 +1,10 @@
 import { Effect, Ref } from "effect";
 import type { RevalidationResult } from "../types.ts";
 import type { RevalidationReason, WorkState } from "./client_contract.ts";
+import {
+	type RuntimeLifecycle,
+	WINDOW_EVENT_FOCUS,
+} from "./runtime_lifecycle.ts";
 
 export type FocusRevalidator = {
 	focus: Effect.Effect<void>;
@@ -15,6 +19,10 @@ export type FocusRevalidatorOptions = {
 		options?: { debounce?: boolean },
 	) => Effect.Effect<RevalidationResult>;
 	now?: () => number;
+};
+
+export type WindowFocusRevalidatorOptions = FocusRevalidatorOptions & {
+	lifecycle: RuntimeLifecycle;
 };
 
 export function make_focus_revalidator(
@@ -52,5 +60,17 @@ export function make_focus_revalidator(
 		);
 
 		return { focus, mark_activity };
+	});
+}
+
+export function install_window_focus_revalidator(
+	options: WindowFocusRevalidatorOptions,
+): Effect.Effect<FocusRevalidator, never> {
+	return Effect.gen(function* () {
+		const focus_revalidator = yield* make_focus_revalidator(options);
+		yield* options.lifecycle.listen_window(WINDOW_EVENT_FOCUS, () => {
+			void Effect.runPromise(focus_revalidator.focus);
+		});
+		return focus_revalidator;
 	});
 }

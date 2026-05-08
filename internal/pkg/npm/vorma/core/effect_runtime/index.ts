@@ -1,4 +1,6 @@
 export * from "./abort_signal.ts";
+export * from "./boot_revalidation_gate.ts";
+export * from "./boot_route_state.ts";
 export * from "./browser_fetch_runtime.ts";
 export * from "./browser_history.ts";
 export * from "./browser_location.ts";

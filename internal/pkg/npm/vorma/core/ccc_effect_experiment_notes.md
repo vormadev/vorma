@@ -168,6 +168,51 @@ main app API into an Effect doctrine test.
   `client_kernel_assembly`. The compatibility shell passes callbacks for public
   API behavior and runs one Effect that acquires resources, route services,
   navigation services, and lifecycle finalizers before returning the kernel.
+- Kernel acquisition now returns a scoped handle. The shell still lowers the
+  acquisition through today's synchronous client factory, but failed boot and
+  kernel replacement now close a `Scope` instead of treating lifecycle shutdown
+  as a loose callback. That gives future scoped services a real ownership root
+  without changing the public API.
+- Runtime lifecycle is now backed by Effect `Scope` instead of a hand-rolled
+  `Ref` plus finalizer array. Window listeners and actor shutdown finalizers
+  still expose the same small compatibility surface, but the lifetime semantics
+  are Effect's LIFO close semantics now.
+- The Vite HMR route-update bridge is now lifecycle-owned. Installing the global
+  browser callback registers a scoped finalizer that clears it when the kernel
+  shuts down, while preserving replacement safety if a newer kernel has already
+  installed its own handler.
+- Browser event listeners now capture the kernel resources owned by their own
+  lifecycle instead of looking up the mutable outer current-kernel slot. The
+  outer slot remains for the public API methods, but browser callbacks are
+  closer to resource-local behavior now.
+- Window-focus revalidation now installs its own browser listener through the
+  focus service. The compatibility shell still decides whether the feature is
+  enabled for this boot, but listener ownership and cleanup live with the Effect
+  revalidator.
+- Initial route boot is now kernel behavior. The kernel owns setting manual
+  scroll restoration, reading the current history position, preparing the boot
+  route, and publishing the initial render as one Effect transaction. The shell
+  keeps public boot bookkeeping, but it no longer scripts the route pipeline
+  step-by-step.
+- Popstate handling is now kernel behavior too. The kernel owns adopting the
+  browser history position, saving the previous scroll slot, handling hash-only
+  movement, cancelling stale revalidation, and dispatching popstate navigation.
+  The shell now only attaches the browser event to that kernel effect.
+- Reload-scroll persistence is now owned by the scroll restoration service. The
+  service installs the `beforeunload` listener through lifecycle shutdown, so
+  the shell no longer knows how reload scroll is captured.
+- Browser handler installation is now a kernel operation. The compatibility
+  shell asks the kernel to install persistent browser handlers instead of
+  sequencing popstate, reload-scroll, and HMR wiring itself.
+- Boot-time API revalidation is now a small Effect gate backed by `Ref`. API
+  requests during boot return the immediate compatibility result while recording
+  one post-boot revalidation, and cancelled boots clear that request.
+- Provisional boot route state is now an Effect-owned cell. The route preparer
+  can publish the boot state for `getRouteState()` without the shell carrying a
+  bespoke mutable slot.
+- Current-route movement is now kernel behavior. Hash-only movement, optional
+  history replacement, scroll intent, history commits, and route-position
+  publication moved out of the shell and into the Effect kernel.
 - The compatibility pressure test has expanded beyond `create_client_core` into
   split runners for `router.test.ts`, `router_revalidation.test.ts`, and
   `router_submit.test.ts`. Keeping those runners split matters because the
@@ -203,8 +248,8 @@ main app API into an Effect doctrine test.
 - Revalidation retry/backoff should be revisited with `Schedule`.
 - Browser APIs now have first-pass Effect ownership for fetch, location,
   history, scroll, browser view, module import, Vite HMR, route DOM side
-  effects, and work-indicator timing. They still need a later `Context` /
-  `Layer` cleanup.
+  effects, and work-indicator timing. Vite HMR now has lifecycle cleanup too.
+  These services still need a later `Context` / `Layer` cleanup.
 - Work-state emission should be owned by a service instead of being derived
   opportunistically from mutable outer variables.
 - Work indicator parity now covers category-level skips, per-operation skips for
@@ -220,25 +265,27 @@ main app API into an Effect doctrine test.
   signal abortion for already-started loaders and transition hooks, while fetch
   dispatch and work-state visibility should be decided as public compatibility
   behavior rather than smuggled into the Effect services.
-- Browser listeners need explicit lifecycle ownership before switch-over. The
-  experiment now removes the previous kernel's focus, popstate, and beforeunload
-  listeners through a lifecycle service. Popstate runs through the Effect
-  navigation actor, scroll restoration is now an Effect service, and hash-only
-  movement is now represented as route publication rather than fetch work.
-- The final client assembly should be scoped. Starting the client should acquire
-  fibers/listeners/resources, and shutdown should release them.
+- Browser listeners now have explicit lifecycle ownership. The experiment
+  removes the previous kernel's focus, popstate, and beforeunload listeners
+  through lifecycle services, and the shell asks the kernel to install its
+  persistent browser handlers. Popstate runs through the Effect navigation
+  actor, scroll restoration is now an Effect service, and hash-only movement is
+  represented as route publication rather than fetch work.
+- The final client assembly is partly scoped now. Starting the client acquires a
+  kernel handle, and shutdown closes that handle. The remaining cleanup is to
+  keep moving resources into that acquisition path until lifecycle shutdown is
+  just one finalizer among many.
 - The new `client_runtime_services`, `client_kernel_resources`,
   `client_route_services`, and `client_navigation_services` Layers should keep
-  expanding inward. The next cleanup target is scoped runtime ownership. Kernel
-  construction is now one Effect, but `create_client_core_effect` still lowers
-  that Effect with `runSync` instead of acquiring the whole kernel under an
-  explicit Scope and lowering the scoped kernel into the public API.
+  expanding inward. The next cleanup target is the shell/runtime boundary:
+  `create_client_core_effect` should keep shrinking toward adapter logic while
+  the Effect acquisition owns more browser resources directly.
 - Actors created inside the compatibility shell need daemon or explicit runtime
   ownership. Otherwise fibers created by `Effect.runSync` can be scoped away
   before browser callbacks get to use them.
-- Lifecycle finalizers need cause-level containment. Actor shutdown can die with
-  interruption causes, so finalizer handling must use cause-aware recovery
-  rather than only catching typed errors.
+- Lifecycle finalizers now have cause-level containment. The remaining work is
+  to move more browser and actor resources into scoped acquisition instead of
+  registering them later from the shell.
 - The existing-suite runners are green with prompt-start tests rather than
   same-stack timing tests. The next work should be about making the service
   graph cleaner, not chasing broad parity gaps.

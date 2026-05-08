@@ -1991,7 +1991,7 @@ describe("work indicators", () => {
 			{ method: "POST" },
 			{
 				revalidate: false,
-				skipworkIndicator: true,
+				skipWorkIndicator: true,
 			},
 		);
 		await vi.advanceTimersByTimeAsync(10);
@@ -2017,7 +2017,7 @@ describe("work indicators", () => {
 		});
 
 		void core.navigate("/quiet-page", {
-			skipworkIndicator: true,
+			skipWorkIndicator: true,
 		});
 		await vi.advanceTimersByTimeAsync(10);
 
@@ -2245,7 +2245,7 @@ describe("work indicators", () => {
 		});
 
 		void core.navigate("/quiet-page", {
-			skipworkIndicator: true,
+			skipWorkIndicator: true,
 		});
 		await vi.advanceTimersByTimeAsync(1);
 		resolve_fetch(route_response());

@@ -146,7 +146,7 @@ export function create_typed_navigate<A extends AppConfig>(
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Promise<{ didNavigate: boolean }>,
 ) {
@@ -159,7 +159,7 @@ export function create_typed_navigate<A extends AppConfig>(
 			replace: args.replace,
 			scrollToTop: args.scrollToTop,
 			state: args.state,
-			skipworkIndicator: args.skipworkIndicator,
+			skipWorkIndicator: args.skipWorkIndicator,
 		});
 	};
 }

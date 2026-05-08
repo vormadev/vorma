@@ -2,10 +2,11 @@
 
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
+import { SCROLL_STORAGE_KEY, SCROLL_STORAGE_RELOAD_KEY } from "./constants.ts";
 import {
-	SCROLL_STORAGE_KEY,
-	SCROLL_STORAGE_RELOAD_KEY,
-} from "./constants.ts";
+	WINDOW_EVENT_BEFOREUNLOAD,
+	make_runtime_lifecycle,
+} from "./effect_runtime/runtime_lifecycle.ts";
 import {
 	REFRESH_SCROLL_MAX_AGE_MS,
 	SCROLL_ENTRY_LIMIT,
@@ -60,9 +61,7 @@ describe("ccc Effect scroll restoration experiment", () => {
 		);
 
 		expect(result).toEqual({ x: 12, y: 34 });
-		expect(sessionStorage.getItem(SCROLL_STORAGE_KEY)).toContain(
-			FIRST_KEY,
-		);
+		expect(sessionStorage.getItem(SCROLL_STORAGE_KEY)).toContain(FIRST_KEY);
 	});
 
 	it("keeps only the latest bounded scroll entries", async () => {
@@ -164,5 +163,25 @@ describe("ccc Effect scroll restoration experiment", () => {
 		);
 
 		expect(result).toBeUndefined();
+	});
+
+	it("owns the reload scroll saver listener through lifecycle shutdown", async () => {
+		const lifecycle = Effect.runSync(make_runtime_lifecycle());
+		const scroll_restoration = Effect.runSync(make_scroll_restoration());
+
+		await run_effect(
+			scroll_restoration.install_reload_scroll_saver(lifecycle),
+		);
+		set_scroll_position(13, 17);
+		window.dispatchEvent(new Event(WINDOW_EVENT_BEFOREUNLOAD));
+		expect(sessionStorage.getItem(SCROLL_STORAGE_RELOAD_KEY)).toContain(
+			"13",
+		);
+
+		sessionStorage.removeItem(SCROLL_STORAGE_RELOAD_KEY);
+		await run_effect(lifecycle.shutdown);
+		set_scroll_position(19, 23);
+		window.dispatchEvent(new Event(WINDOW_EVENT_BEFOREUNLOAD));
+		expect(sessionStorage.getItem(SCROLL_STORAGE_RELOAD_KEY)).toBeNull();
 	});
 });

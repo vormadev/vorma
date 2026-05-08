@@ -233,7 +233,7 @@ export type ClientCore = {
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Promise<{ didNavigate: boolean }>;
 	revalidate: () => Promise<RevalidationResult>;
@@ -244,7 +244,7 @@ export type ClientCore = {
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Promise<APIResult<T>>;
 	getRouteState: () => RouteState;
@@ -2535,7 +2535,7 @@ export function create_client_core(
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	): Promise<APIResult<T>> {
 		if (!route_snapshot) {
@@ -2575,7 +2575,7 @@ export function create_client_core(
 			key: dedupe_key,
 			method,
 			href: resolved.href,
-			skip_work_indicator: options?.skipworkIndicator,
+			skip_work_indicator: options?.skipWorkIndicator,
 		};
 		submissions.set(dedupe_key, sub);
 		notify_work_update();
@@ -3289,7 +3289,7 @@ export function create_client_core(
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipworkIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	): Promise<NavResult> {
 		if (phase !== "ready") {
@@ -3306,7 +3306,7 @@ export function create_client_core(
 				replace: options?.replace,
 				scroll_to_top: options?.scrollToTop,
 				state: options?.state,
-				skip_work_indicator: options?.skipworkIndicator,
+				skip_work_indicator: options?.skipWorkIndicator,
 			},
 			0,
 		);

@@ -10,6 +10,7 @@ import {
 	type RouteRecord,
 } from "./route_preparer.ts";
 import type { RoutePublisher } from "./route_publisher.ts";
+import type { RuntimeLifecycle } from "./runtime_lifecycle.ts";
 import type { WorkStateActor } from "./work_state_actor.ts";
 
 const hmr_client_loader_error_message =
@@ -24,6 +25,7 @@ export type ModuleRuntime = {
 };
 
 export type ModuleRuntimeHMRDeps = {
+	lifecycle: RuntimeLifecycle;
 	route_preparer: RoutePreparer;
 	route_publisher: RoutePublisher;
 	work_actor: WorkStateActor;
@@ -98,11 +100,14 @@ export function make_module_runtime(
 		const install_hmr_handler = (
 			deps: ModuleRuntimeHMRDeps,
 		): Effect.Effect<void> => {
-			return Effect.sync(() => {
+			return Effect.gen(function* () {
 				if (!dev) {
 					return;
 				}
-				window.__vorma_hmr_route_update = async (raw_url, mod) => {
+				const handler: Window["__vorma_hmr_route_update"] = async (
+					raw_url,
+					mod,
+				) => {
 					await Effect.runPromise(
 						handle_hmr_route_update(
 							deps,
@@ -121,6 +126,16 @@ export function make_module_runtime(
 						),
 					);
 				};
+				yield* Effect.sync(() => {
+					window.__vorma_hmr_route_update = handler;
+				});
+				yield* deps.lifecycle.add_finalizer(
+					Effect.sync(() => {
+						if (window.__vorma_hmr_route_update === handler) {
+							window.__vorma_hmr_route_update = undefined;
+						}
+					}),
+				);
 			});
 		};
 

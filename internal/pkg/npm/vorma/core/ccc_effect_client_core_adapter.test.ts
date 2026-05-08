@@ -685,7 +685,7 @@ describe("ccc Effect client core adapter experiment", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const navigation = core_result.val.navigate("/about", {
-			skipworkIndicator: true,
+			skipWorkIndicator: true,
 		});
 		await wait_for(1);
 		await vi.advanceTimersByTimeAsync(10);
@@ -722,7 +722,7 @@ describe("ccc Effect client core adapter experiment", () => {
 			{ method: "POST" },
 			{
 				revalidate: false,
-				skipworkIndicator: true,
+				skipWorkIndicator: true,
 			},
 		);
 		await wait_for(1);

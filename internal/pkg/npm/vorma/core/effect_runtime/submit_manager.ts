@@ -28,7 +28,7 @@ export type SubmitRequest = {
 		apiRouteKind?: APIRouteKind;
 		dedupeKey?: string;
 		revalidate?: boolean;
-		skipworkIndicator?: boolean;
+		skipWorkIndicator?: boolean;
 	};
 };
 
@@ -48,7 +48,7 @@ export type SubmitSnapshot = {
 		method: string;
 		href: string;
 		apiRouteKind: APIRouteKind;
-		skipworkIndicator: boolean;
+		skipWorkIndicator: boolean;
 	}>;
 	nextID: number;
 };
@@ -96,7 +96,7 @@ type ActiveSubmission = {
 	readonly href: string;
 	readonly method: string;
 	readonly apiRouteKind: APIRouteKind;
-	readonly skipworkIndicator: boolean;
+	readonly skipWorkIndicator: boolean;
 	readonly shouldRevalidate: boolean;
 	readonly waiter: Waiter;
 	readonly fiber: Fiber.RuntimeFiber<void, never>;
@@ -183,7 +183,7 @@ export function make_submit_manager(
 						method: submission.method,
 						href: submission.href,
 						apiRouteKind: submission.apiRouteKind,
-						skipworkIndicator: submission.skipworkIndicator,
+						skipWorkIndicator: submission.skipWorkIndicator,
 					};
 				}),
 			};
@@ -574,8 +574,8 @@ export function make_submit_manager(
 					href: prepared.dispatch.url.href,
 					method: prepared.dispatch.method,
 					apiRouteKind: prepared.dispatch.apiRouteKind,
-					skipworkIndicator:
-						command.request.options?.skipworkIndicator === true,
+					skipWorkIndicator:
+						command.request.options?.skipWorkIndicator === true,
 					shouldRevalidate: prepared.shouldRevalidate,
 					waiter: command.waiter,
 					fiber,

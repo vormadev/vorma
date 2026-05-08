@@ -14,6 +14,7 @@ import {
 	make_route_preparer,
 } from "./effect_runtime/route_preparer.ts";
 import { make_route_publisher } from "./effect_runtime/route_publisher.ts";
+import { make_runtime_lifecycle } from "./effect_runtime/runtime_lifecycle.ts";
 import type { WorkStateActor } from "./effect_runtime/work_state_actor.ts";
 
 const client_build_id = "build-1";
@@ -107,6 +108,7 @@ describe("ccc Effect module runtime experiment", () => {
 			},
 		});
 		const runtime = Effect.runSync(make_module_runtime({ dev: true }));
+		const lifecycle = Effect.runSync(make_runtime_lifecycle());
 		const route_preparer = Effect.runSync(
 			make_route_preparer({
 				client_build_id,
@@ -169,6 +171,7 @@ describe("ccc Effect module runtime experiment", () => {
 		await run_effect(runtime.set_hmr_rerun(hmr_pattern, true));
 		await run_effect(
 			runtime.install_hmr_handler({
+				lifecycle,
 				route_preparer,
 				route_publisher,
 				work_actor,
@@ -183,5 +186,7 @@ describe("ccc Effect module runtime experiment", () => {
 			loaderData: { from_server: true },
 			ran: true,
 		});
+		await run_effect(lifecycle.shutdown);
+		expect(window.__vorma_hmr_route_update).toBeUndefined();
 	});
 });

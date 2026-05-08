@@ -1,4 +1,4 @@
-import { Effect, Ref } from "effect";
+import { Effect, Exit, Scope } from "effect";
 
 export const WINDOW_EVENT_BEFOREUNLOAD = "beforeunload";
 export const WINDOW_EVENT_FOCUS = "focus";
@@ -13,41 +13,17 @@ export type RuntimeLifecycle = {
 	shutdown: Effect.Effect<void>;
 };
 
-type LifecycleState = {
-	closed: boolean;
-	finalizers: ReadonlyArray<Effect.Effect<void>>;
-};
-
 export function make_runtime_lifecycle(): Effect.Effect<
 	RuntimeLifecycle,
 	never
 > {
 	return Effect.gen(function* () {
-		const state_ref = yield* Ref.make<LifecycleState>({
-			closed: false,
-			finalizers: [],
-		});
+		const scope = yield* Scope.make();
 
 		const add_finalizer: RuntimeLifecycle["add_finalizer"] = (
 			finalizer,
 		) => {
-			return Effect.gen(function* () {
-				const immediate = yield* Ref.modify(state_ref, (state) => {
-					if (state.closed) {
-						return [finalizer, state];
-					}
-					return [
-						null,
-						{
-							closed: false,
-							finalizers: [finalizer, ...state.finalizers],
-						},
-					];
-				});
-				if (immediate) {
-					yield* run_finalizer(immediate);
-				}
-			});
+			return Scope.addFinalizer(scope, run_finalizer(finalizer));
 		};
 
 		const listen_window: RuntimeLifecycle["listen_window"] = (
@@ -67,33 +43,11 @@ export function make_runtime_lifecycle(): Effect.Effect<
 			});
 		};
 
-		const shutdown = Effect.gen(function* () {
-			const finalizers = yield* Ref.modify(state_ref, (state) => {
-				if (state.closed) {
-					return [
-						[],
-						{
-							closed: true,
-							finalizers: [],
-						},
-					];
-				}
-				return [
-					state.finalizers,
-					{
-						closed: true,
-						finalizers: [],
-					},
-				];
-			});
-			yield* Effect.forEach(
-				finalizers,
-				(finalizer) => {
-					return run_finalizer(finalizer);
-				},
-				{ discard: true },
-			);
-		});
+		const shutdown = Scope.close(scope, Exit.void).pipe(
+			Effect.catchAllCause(() => {
+				return Effect.void;
+			}),
+		);
 
 		return {
 			add_finalizer,
