@@ -19,10 +19,12 @@ import {
 	createComponentStyleTargets,
 } from "./component-style.ts";
 import { commonConditions } from "./conditions.ts";
+import { popoverScrollLockGuard } from "./popover-scroll-lock.ts";
 import {
-	popoverScrollLockGuard,
-	releasePopoverScrollLock,
-} from "./popover-scroll-lock.ts";
+	createPopupRefMix,
+	createPopupRelationship,
+	type PopupRelationship,
+} from "./popup-behavior.ts";
 import {
 	mergeRecipeConditionSelectors,
 	type RecipeConditionSelectorMap,
@@ -166,11 +168,11 @@ export type PopoverOptions = {
 
 type PopoverRuntimeContext = {
 	close: (details: PopoverOpenChangeDetails) => void;
-	contains_target: (target: EventTarget | null) => boolean;
 	get_close_on_escape: () => boolean;
 	get_close_on_interact_outside: () => boolean;
 	get_description_id: () => string;
 	get_open: () => boolean;
+	get_popup_relationship: () => PopupRelationship;
 	get_popup_id: () => string;
 	get_should_close_on_interact_outside: () =>
 		| ((element: Element) => boolean)
@@ -178,7 +180,6 @@ type PopoverRuntimeContext = {
 	get_title_id: () => string;
 	get_trigger_id: () => string;
 	open: (details: PopoverOpenChangeDetails) => void;
-	register_popup: (node: HTMLElement | null) => void;
 	register_trigger: (node: HTMLElement | null) => void;
 	sync_popup: () => void;
 	toggle: (details: PopoverOpenChangeDetails) => void;
@@ -204,29 +205,6 @@ const button_type_default = "button";
 const popover_align_default = "start" satisfies PopoverAlign;
 const popover_side_default = "bottom" satisfies PopoverSide;
 
-function sync_native_popover(node: HTMLElement, open: boolean): void {
-	if (open) {
-		node.hidden = false;
-		if ("showPopover" in node && !node.matches(":popover-open")) {
-			node.showPopover();
-		}
-		return;
-	}
-
-	if ("hidePopover" in node && node.matches(":popover-open")) {
-		node.hidePopover();
-	}
-	node.hidden = true;
-	releasePopoverScrollLock(node.ownerDocument);
-}
-
-function contains_event_target(
-	node: HTMLElement | null,
-	target: EventTarget | null,
-): boolean {
-	return target instanceof Node && node?.contains(target) === true;
-}
-
 export function createPopover<
 	TMode extends string,
 	TRecipe extends PopoverRecipeInput,
@@ -247,8 +225,7 @@ export function createPopover<
 		let last_open_details: PopoverOpenChangeDetails = {
 			reason: "trigger",
 		};
-		let popup_node: HTMLElement | null = null;
-		let trigger_node: HTMLElement | null = null;
+		const popup_relationship = createPopupRelationship();
 
 		function get_open(): boolean {
 			return handle.props.open ?? local_open;
@@ -274,12 +251,6 @@ export function createPopover<
 			close: (details) => {
 				request_open(false, details);
 			},
-			contains_target: (target) => {
-				return (
-					contains_event_target(trigger_node, target) ||
-					contains_event_target(popup_node, target)
-				);
-			},
 			get_close_on_escape: () => {
 				return handle.props.closeOnEscape !== false;
 			},
@@ -290,6 +261,9 @@ export function createPopover<
 				return `${handle.id}-description`;
 			},
 			get_open,
+			get_popup_relationship: () => {
+				return popup_relationship;
+			},
 			get_popup_id: () => {
 				return `${handle.id}-popup`;
 			},
@@ -305,18 +279,13 @@ export function createPopover<
 			open: (details) => {
 				request_open(true, details);
 			},
-			register_popup: (node) => {
-				popup_node = node;
-			},
 			register_trigger: (node) => {
-				trigger_node = node;
+				popup_relationship.registerTrigger(node);
 			},
 			sync_popup: () => {
-				if (popup_node) {
-					sync_native_popover(popup_node, get_open());
-				}
+				popup_relationship.syncPopup(get_open());
 				if (!get_open()) {
-					trigger_node?.focus();
+					popup_relationship.focusTrigger();
 				}
 			},
 			toggle: (details) => {
@@ -472,16 +441,9 @@ export function createPopover<
 				props: { size },
 				styleSystem: style_system,
 			});
-			const popup_ref_mix = ref<HTMLElement>((node, signal) => {
-				context.register_popup(node);
-				sync_native_popover(node, context.get_open());
-				const on_pointer_down = (event: PointerEvent): void => {
-					if (
-						!context.get_open() ||
-						context.contains_target(event.target)
-					) {
-						return;
-					}
+			const popup_ref_mix = createPopupRefMix({
+				getOpen: context.get_open,
+				onInteractOutside: (event) => {
 					if (!context.get_close_on_interact_outside()) {
 						return;
 					}
@@ -495,20 +457,8 @@ export function createPopover<
 						return;
 					}
 					context.close({ event, reason: "interactOutside" });
-				};
-				node.ownerDocument.addEventListener(
-					"pointerdown",
-					on_pointer_down,
-					true,
-				);
-				signal.addEventListener("abort", () => {
-					context.register_popup(null);
-					node.ownerDocument.removeEventListener(
-						"pointerdown",
-						on_pointer_down,
-						true,
-					);
-				});
+				},
+				relationship: context.get_popup_relationship(),
 			});
 			const popup_keydown_mix = on<HTMLElement, "keydown">(
 				"keydown",

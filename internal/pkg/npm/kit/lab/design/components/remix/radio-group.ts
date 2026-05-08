@@ -20,11 +20,17 @@ import {
 	checkableStateMixin,
 } from "./checkable-state.ts";
 import {
+	ariaTrue,
+	componentDataAttribute,
+	dataFlag,
+} from "./component-state.ts";
+import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
 	createComponentStyleTargets,
 } from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
+import { create_controllable_state } from "./controllable-state.ts";
 import {
 	mergeRecipeConditionSelectors,
 	type RecipeConditionSelectorMap,
@@ -115,6 +121,7 @@ export type RadioGroupRootProps<
 	ResponsiveProps<RadioGroupRootStyleProps<TLayout>, TBreakpoint> & {
 		defaultValue?: TValue | null;
 		disabled?: boolean;
+		form?: string;
 		name?: string;
 		onValueChange?: RadioGroupValueChangeHandler<TValue>;
 		required?: boolean;
@@ -148,6 +155,7 @@ export type RadioGroupComponents<
 
 type RadioGroupContext = {
 	get_disabled: () => boolean;
+	get_form: () => string | undefined;
 	get_name: () => string;
 	get_required: () => boolean;
 	get_value: () => string | null;
@@ -207,14 +215,42 @@ export function createRadioGroup<
 		>,
 	): (props: RadioGroupRootProps<TLayout, TBreakpoint>) => RemixNode {
 		let local_value = handle.props.defaultValue ?? null;
-
-		function get_value(): string | null {
-			return handle.props.value ?? local_value;
-		}
+		const value_state = create_controllable_state<
+			string | null,
+			RadioGroupValueChangeDetails
+		>({
+			getControlled: () => {
+				if (handle.props.value === undefined) {
+					return undefined;
+				}
+				return handle.props.value;
+			},
+			getLocal: () => {
+				return local_value;
+			},
+			getOnChange: () => {
+				const on_value_change = handle.props.onValueChange;
+				if (!on_value_change) {
+					return undefined;
+				}
+				return (value, details) => {
+					if (value === null) {
+						return;
+					}
+					on_value_change(value, details);
+				};
+			},
+			setLocal: (value) => {
+				local_value = value;
+			},
+		});
 
 		const context: RadioGroupContext = {
 			get_disabled: () => {
 				return handle.props.disabled === true;
+			},
+			get_form: () => {
+				return handle.props.form;
 			},
 			get_name: () => {
 				return handle.props.name ?? handle.id;
@@ -222,16 +258,14 @@ export function createRadioGroup<
 			get_required: () => {
 				return handle.props.required === true;
 			},
-			get_value,
+			get_value: () => {
+				return value_state.get();
+			},
 			set_value: (value, details) => {
-				if (get_value() === value) {
-					return;
+				const changed = value_state.set(value, details ?? {});
+				if (changed) {
+					void handle.update();
 				}
-				if (handle.props.value === undefined) {
-					local_value = value;
-				}
-				handle.props.onValueChange?.(value, details);
-				void handle.update();
 			},
 		};
 		handle.context.set(context);
@@ -244,6 +278,7 @@ export function createRadioGroup<
 				children,
 				defaultValue: _default_value,
 				disabled,
+				form: _form,
 				layout,
 				mix,
 				name: _name,
@@ -275,7 +310,14 @@ export function createRadioGroup<
 					mix: parts.hosts.root.mix,
 					props: {
 						...root_props,
-						"aria-disabled": disabled || undefined,
+						"aria-disabled": ariaTrue(disabled === true),
+						"aria-required": ariaTrue(_required === true),
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.required]: dataFlag(
+							_required === true,
+						),
 						mix,
 						role: root_props.role ?? radio_group_role,
 					},
@@ -344,6 +386,7 @@ export function createRadioGroup<
 						),
 						checked: checkableInitialChecked(checked),
 						disabled: is_disabled || undefined,
+						form: item_props.form ?? context.get_form(),
 						mix,
 						name: context.get_name(),
 						required: context.get_required() || undefined,

@@ -13,15 +13,15 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	componentStateAttribute,
 	openState,
 	openStateFromBoolean,
 } from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import {
 	mergeRecipeConditionSelectors,
@@ -37,10 +37,7 @@ import type {
 	RemixComponent,
 } from "./types.ts";
 
-export type ToastRecipeCondition =
-	| CommonRecipeCondition
-	| "closed"
-	| "open";
+export type ToastRecipeCondition = CommonRecipeCondition | "closed" | "open";
 
 export type ToastRecipeInput<
 	TTone extends string = string,
@@ -169,7 +166,10 @@ export function createToast<
 	}
 
 	function Root(
-		handle: Handle<ToastRootProps<TTone, TVariant, TBreakpoint>, ToastContext>,
+		handle: Handle<
+			ToastRootProps<TTone, TVariant, TBreakpoint>,
+			ToastContext
+		>,
 	): (props: ToastRootProps<TTone, TVariant, TBreakpoint>) => RemixNode {
 		let local_open = handle.props.defaultOpen ?? true;
 

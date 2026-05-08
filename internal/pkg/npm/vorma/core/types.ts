@@ -388,7 +388,7 @@ export type ToNavigateArgs<
 	replace?: boolean;
 	scrollToTop?: boolean;
 	state?: unknown;
-	skipProgressIndicator?: boolean;
+	skipworkIndicator?: boolean;
 };
 
 export type ToRouteSyncArgs<
@@ -414,7 +414,7 @@ type __APIClientArgsForAPIRoute<A extends AppConfig, Act> = Act extends {
 					dedupeKey?: string;
 					pattern: P;
 					revalidate?: boolean;
-					skipProgressIndicator?: boolean;
+					skipworkIndicator?: boolean;
 				} & __APIRouteMethodField<A, P, M> &
 					__ConditionalAPIRouteParams<Act> &
 					__ConditionalSplat<P> &

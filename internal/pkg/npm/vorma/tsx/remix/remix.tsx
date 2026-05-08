@@ -44,7 +44,6 @@ export type {
 	BeforeRouteYieldFn,
 	BuildSkewDetectedEvent,
 	MutationResult,
-	ProgressIndicatorConfig,
 	QueryResult,
 	RevalidationReason,
 	RevalidationResult,
@@ -77,6 +76,8 @@ export type {
 	ToRouteSyncArgs,
 	ToViewPattern,
 	AppConfig as VormaClientSeed,
+	WorkIndicator,
+	WorkIndicatorOptions,
 	WorkState,
 } from "vorma/__internal";
 
@@ -551,11 +552,11 @@ export function createVormaClient<A extends AppConfig>(
 		const canonical_href = passthrough.toHref(target as any);
 		const route_href = route_store?.href;
 		const pending_href = work_store.navigation?.href;
-		if (
-			canonical_href === route_href ||
-			canonical_href === pending_href ||
-			canonical_href === route_sync_state.pending_href
-		) {
+		if (canonical_href === route_href || canonical_href === pending_href) {
+			clear_route_sync_state(route_sync_state);
+			return;
+		}
+		if (canonical_href === route_sync_state.pending_href) {
 			return;
 		}
 

@@ -13,18 +13,24 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	checkableInitialChecked,
 	checkableState,
 	checkableStateAttribute,
 	checkableStateFromValue,
 	checkableStateMixin,
 } from "./checkable-state.ts";
+import {
+	ariaTrue,
+	componentDataAttribute,
+	dataFlag,
+} from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
+import { create_controllable_state } from "./controllable-state.ts";
 import {
 	mergeRecipeConditionSelectors,
 	type RecipeConditionSelectorMap,
@@ -67,9 +73,8 @@ export type CheckboxGroupRecipeVariant<
 	TRecipe extends CheckboxGroupRecipeInput,
 > = RecipeVariantValue<TRecipe, "variant">;
 
-export type CheckboxGroupRecipeSize<
-	TRecipe extends CheckboxGroupRecipeInput,
-> = RecipeVariantValue<TRecipe, "size">;
+export type CheckboxGroupRecipeSize<TRecipe extends CheckboxGroupRecipeInput> =
+	RecipeVariantValue<TRecipe, "size">;
 
 export type CheckboxGroupRecipeSelection<
 	TRecipe extends CheckboxGroupRecipeInput,
@@ -93,9 +98,7 @@ export type CheckboxGroupValueChangeDetails = {
 	event?: Event;
 };
 
-export type CheckboxGroupValueChangeHandler<
-	TValue extends string = string,
-> = (
+export type CheckboxGroupValueChangeHandler<TValue extends string = string> = (
 	value: readonly TValue[],
 	details?: CheckboxGroupValueChangeDetails,
 ) => void;
@@ -121,6 +124,7 @@ export type CheckboxGroupRootProps<
 	ResponsiveProps<CheckboxGroupRootStyleProps<TLayout>, TBreakpoint> & {
 		defaultValue?: readonly TValue[];
 		disabled?: boolean;
+		form?: string;
 		name?: string;
 		onValueChange?: CheckboxGroupValueChangeHandler<TValue>;
 		required?: boolean;
@@ -152,14 +156,12 @@ export type CheckboxGroupComponents<
 	TSize extends string = string,
 > = {
 	Item: RemixComponent<CheckboxGroupItemProps<TVariant, TSize>>;
-	Root: RemixComponent<
-		CheckboxGroupRootProps<TLayout>,
-		CheckboxGroupContext
-	>;
+	Root: RemixComponent<CheckboxGroupRootProps<TLayout>, CheckboxGroupContext>;
 };
 
 type CheckboxGroupContext = {
 	get_disabled: () => boolean;
+	get_form: () => string | undefined;
 	get_name: () => string | undefined;
 	get_required: () => boolean;
 	get_values: () => readonly string[];
@@ -184,7 +186,10 @@ const item_conditions =
 		} satisfies RecipeConditionSelectorMap<CheckboxGroupRecipeCondition>,
 	);
 
-function add_value(values: readonly string[], value: string): readonly string[] {
+function add_value(
+	values: readonly string[],
+	value: string,
+): readonly string[] {
 	if (values.includes(value)) {
 		return values;
 	}
@@ -254,14 +259,31 @@ export function createCheckboxGroup<
 		>,
 	): (props: CheckboxGroupRootProps<TLayout, TBreakpoint>) => RemixNode {
 		let local_values = [...(handle.props.defaultValue ?? [])];
-
-		function get_values(): readonly string[] {
-			return handle.props.value ?? local_values;
-		}
+		const values_state = create_controllable_state<
+			readonly string[],
+			CheckboxGroupValueChangeDetails
+		>({
+			equals: is_same_values,
+			getControlled: () => {
+				return handle.props.value;
+			},
+			getLocal: () => {
+				return local_values;
+			},
+			getOnChange: () => {
+				return handle.props.onValueChange;
+			},
+			setLocal: (values) => {
+				local_values = [...values];
+			},
+		});
 
 		const context: CheckboxGroupContext = {
 			get_disabled: () => {
 				return handle.props.disabled === true;
+			},
+			get_form: () => {
+				return handle.props.form;
 			},
 			get_name: () => {
 				return handle.props.name;
@@ -269,20 +291,18 @@ export function createCheckboxGroup<
 			get_required: () => {
 				return handle.props.required === true;
 			},
-			get_values,
+			get_values: () => {
+				return values_state.get();
+			},
 			set_item_checked: (value, checked, details) => {
-				const current_values = get_values();
+				const current_values = values_state.get();
 				const next_values = checked
 					? add_value(current_values, value)
 					: remove_value(current_values, value);
-				if (is_same_values(next_values, current_values)) {
-					return;
+				const changed = values_state.set(next_values, details ?? {});
+				if (changed) {
+					void handle.update();
 				}
-				if (handle.props.value === undefined) {
-					local_values = [...next_values];
-				}
-				handle.props.onValueChange?.(next_values, details);
-				void handle.update();
 			},
 		};
 		handle.context.set(context);
@@ -295,6 +315,7 @@ export function createCheckboxGroup<
 				children,
 				defaultValue: _default_value,
 				disabled,
+				form: _form,
 				layout,
 				mix,
 				name: _name,
@@ -326,7 +347,13 @@ export function createCheckboxGroup<
 					mix: parts.hosts.root.mix,
 					props: {
 						...root_props,
-						"aria-disabled": disabled || undefined,
+						"aria-disabled": ariaTrue(disabled === true),
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.required]: dataFlag(
+							_required === true,
+						),
 						mix,
 						role: root_props.role ?? checkbox_group_role,
 					},
@@ -346,15 +373,8 @@ export function createCheckboxGroup<
 		return (
 			props: CheckboxGroupItemProps<TVariant, TSize, TBreakpoint>,
 		): RemixNode => {
-			const {
-				at,
-				disabled,
-				mix,
-				size,
-				value,
-				variant,
-				...item_props
-			} = props;
+			const { at, disabled, mix, size, value, variant, ...item_props } =
+				props;
 			const checked = context.get_values().includes(value);
 			const is_disabled = context.get_disabled() || disabled === true;
 			const parts = createComponentStyleTargets({
@@ -406,6 +426,7 @@ export function createCheckboxGroup<
 						),
 						checked: checkableInitialChecked(checked),
 						disabled: is_disabled || undefined,
+						form: item_props.form ?? context.get_form(),
 						mix,
 						name: context.get_name(),
 						required: context.get_required() || undefined,

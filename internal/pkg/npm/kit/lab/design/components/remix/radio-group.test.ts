@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { checkableStateAttribute } from "./checkable-state.ts";
 import {
 	componentAnatomyAttrs,
+	componentDataAttribute,
 	createRadioGroup,
 	type RadioGroupStyleSystem,
 } from "./remix.ts";
@@ -97,10 +98,12 @@ describe("Remix RadioGroup", () => {
 				RadioGroup.Root,
 				{
 					defaultValue: "email",
+					form: "settings",
 					name: "contact",
 					onValueChange: (value: string) => {
 						value_changes.push(value);
 					},
+					required: true,
 				},
 				createElement(RadioGroup.Item, {
 					"data-testid": "email",
@@ -123,6 +126,10 @@ describe("Remix RadioGroup", () => {
 			"radioGroup",
 		);
 		expect(email.type).toBe("radio");
+		expect(root?.getAttribute("aria-required")).toBe("true");
+		expect(root?.getAttribute(componentDataAttribute.required)).toBe("");
+		expect(email.getAttribute("form")).toBe("settings");
+		expect(email.required).toBe(true);
 		expect(email.name).toBe("contact");
 		expect(sms.name).toBe("contact");
 		expect(email.checked).toBe(true);
@@ -141,6 +148,56 @@ describe("Remix RadioGroup", () => {
 		expect(email.getAttribute(checkableStateAttribute)).toBe("unchecked");
 		expect(sms.checked).toBe(true);
 		expect(sms.getAttribute(checkableStateAttribute)).toBe("checked");
+
+		result.cleanup();
+	});
+
+	it("keeps controlled value state external until the owner updates it", async () => {
+		const RadioGroup = createRadioGroup(create_test_style_system());
+		let value: "email" | "sms" = "email";
+		const value_changes: string[] = [];
+
+		function view(): ReturnType<typeof createElement> {
+			return createElement(
+				RadioGroup.Root,
+				{
+					name: "contact",
+					onValueChange: (next_value: string) => {
+						value_changes.push(next_value);
+					},
+					value,
+				},
+				createElement(RadioGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(RadioGroup.Item, {
+					"data-testid": "sms",
+					value: "sms",
+				}),
+			);
+		}
+
+		const result = render(view());
+		const email = result.$("[data-testid='email']") as HTMLInputElement;
+		const sms = result.$("[data-testid='sms']") as HTMLInputElement;
+
+		await result.act(() => {
+			sms.checked = true;
+			sms.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+
+		expect(value_changes).toEqual(["sms"]);
+		expect(email.checked).toBe(true);
+		expect(sms.checked).toBe(false);
+
+		value = "sms";
+		await result.act(() => {
+			result.root.render(view());
+		});
+
+		expect(email.checked).toBe(false);
+		expect(sms.checked).toBe(true);
 
 		result.cleanup();
 	});

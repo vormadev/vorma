@@ -1,7 +1,7 @@
 # AlertDialog Notes
 
-Needs fuller coverage for focus trapping, initial focus, Escape behavior,
-action versus cancel semantics, outside interaction policy, title/description
+Needs fuller coverage for focus trapping, initial focus, Escape behavior, action
+versus cancel semantics, outside interaction policy, title/description
 requirements, overlay styling, and consumer `mix` precedence on each slot.
 
 ## Semantic/API Audit

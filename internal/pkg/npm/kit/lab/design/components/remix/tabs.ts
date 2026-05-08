@@ -13,15 +13,15 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	componentStateAttribute,
 	selectionState,
 	selectionStateFromBoolean,
 } from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import {
 	mergeRecipeConditionSelectors,

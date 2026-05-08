@@ -61,9 +61,9 @@ describe("Remix Fieldset", () => {
 			"fieldset",
 		);
 		expect(fieldset?.getAttribute(componentAnatomyAttrs.part)).toBe("root");
-		expect(result.$("legend")?.getAttribute(componentAnatomyAttrs.part)).toBe(
-			"legend",
-		);
+		expect(
+			result.$("legend")?.getAttribute(componentAnatomyAttrs.part),
+		).toBe("legend");
 
 		result.cleanup();
 	});

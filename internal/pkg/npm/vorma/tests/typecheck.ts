@@ -9,7 +9,6 @@ import type {
 	AppConfig,
 	BuildSkewDetectedEvent,
 	MutationResult,
-	ProgressIndicatorConfig,
 	QueryResult,
 	RevalidationReason,
 	RevalidationResult,
@@ -46,6 +45,8 @@ import type {
 	ToRouteSyncArgs,
 	ToViewPattern,
 	ViewDefinition,
+	WorkIndicator,
+	WorkIndicatorOptions,
 	WorkState,
 } from "vorma/__internal";
 import { MutationError, QueryError } from "vorma/__internal";
@@ -412,7 +413,7 @@ function assert_exported_type_contracts(): void {
 				replace?: boolean;
 				scrollToTop?: boolean;
 				state?: unknown;
-				skipProgressIndicator?: boolean;
+				skipworkIndicator?: boolean;
 			}
 		>
 	>;
@@ -625,14 +626,20 @@ function assert_exported_type_contracts(): void {
 	);
 	void mutation_error;
 
-	const progress_indicator_config: ProgressIndicatorConfig = {
-		start: () => {},
-		stop: () => {},
-		isRunning: () => {
+	const work_indicator_options: WorkIndicatorOptions = {
+		show: () => {},
+		hide: () => {},
+	};
+	void work_indicator_options;
+	const work_indicator: WorkIndicator = {
+		track: (promise) => {
+			return Promise.resolve(promise);
+		},
+		isActive: () => {
 			return false;
 		},
 	};
-	void progress_indicator_config;
+	void work_indicator;
 
 	const route_error_state: RouteErrorState = {
 		idx: 0,
@@ -755,7 +762,7 @@ function assert_navigate_contracts(): void {
 		params: { userID: "u-1" },
 		replace: true,
 		scrollToTop: false,
-		skipProgressIndicator: true,
+		skipworkIndicator: true,
 	});
 
 	// Valid: with search and hash
@@ -1543,6 +1550,11 @@ function assert_public_runtime_contracts(): void {
 	expect_type<WorkState>(work);
 	expect_type<WorkState["apiRequests"]>(work.apiRequests);
 
+	// workIndicator
+	expect_type<WorkIndicator>(react.workIndicator);
+	expect_type<boolean>(react.workIndicator.isActive());
+	expect_type<Promise<number>>(react.workIndicator.track(Promise.resolve(1)));
+
 	// revalidateOnWindowFocus
 	void React__createVormaClient(vorma_app_config, {
 		revalidateOnWindowFocus: true,
@@ -1554,42 +1566,37 @@ function assert_public_runtime_contracts(): void {
 		revalidateOnWindowFocus: { staleTimeMS: 3000 },
 	}).boot();
 
-	// progressIndicator (all categories)
-	const boot_with_progress = React__createVormaClient(vorma_app_config, {
-		progressIndicator: {
-			start: () => {},
-			stop: () => {},
-			isRunning: () => {
-				return false;
+	// workIndicator
+	const boot_with_work_indicator = React__createVormaClient(
+		vorma_app_config,
+		{
+			workIndicator: {
+				show: () => {},
+				hide: () => {},
+				skipNavigations: true,
+				skipAPIRequests: true,
+				skipRevalidations: true,
+				showDelayMS: 30,
+				hideDelayMS: 40,
 			},
-			include: ["navigations", "apiRequests", "revalidations"],
-			startDelayMS: 30,
-			stopDelayMS: 40,
 		},
-	}).boot();
-	expect_type<Promise<Result<void>>>(boot_with_progress);
+	).boot();
+	expect_type<Promise<Result<void>>>(boot_with_work_indicator);
 
-	// progressIndicator (include "all")
+	// workIndicator (defaults)
 	void React__createVormaClient(vorma_app_config, {
-		progressIndicator: {
-			start: () => {},
-			stop: () => {},
-			isRunning: () => {
-				return false;
-			},
-			include: "all",
+		workIndicator: {
+			show: () => {},
+			hide: () => {},
 		},
 	}).boot();
 
-	// progressIndicator (subset)
+	// workIndicator (single category skip)
 	void React__createVormaClient(vorma_app_config, {
-		progressIndicator: {
-			start: () => {},
-			stop: () => {},
-			isRunning: () => {
-				return false;
-			},
-			include: ["navigations"],
+		workIndicator: {
+			show: () => {},
+			hide: () => {},
+			skipAPIRequests: true,
 		},
 	}).boot();
 }
@@ -2006,6 +2013,7 @@ function assert_design_component_contracts(): void {
 		slots: {
 			caption: {},
 			code: {},
+			header: {},
 			pre: {},
 			root: {},
 			summary: {

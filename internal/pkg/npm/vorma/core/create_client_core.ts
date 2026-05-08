@@ -124,18 +124,24 @@ export type BuildSkewDetectedEvent = {
 	defaultBehavior: "dropResponse" | "hardReload" | "notifyOnly";
 };
 
-export type ProgressIndicatorConfig = {
-	start: () => void;
-	stop: () => void;
-	isRunning: () => boolean;
-	include?: "all" | Array<"navigations" | "apiRequests" | "revalidations">;
-	startDelayMS?: number;
-	stopDelayMS?: number;
+export type WorkIndicator = {
+	track: <T>(promise: PromiseLike<T>) => Promise<T>;
+	isActive: () => boolean;
+};
+
+export type WorkIndicatorOptions = {
+	show: () => void;
+	hide: () => void;
+	showDelayMS?: number;
+	hideDelayMS?: number;
+	skipNavigations?: boolean;
+	skipAPIRequests?: boolean;
+	skipRevalidations?: boolean;
 };
 
 export type ClientOptions = {
 	render?: () => void | Promise<void>;
-	progressIndicator?: ProgressIndicatorConfig;
+	workIndicator?: WorkIndicatorOptions;
 	revalidateOnWindowFocus?: boolean | { staleTimeMS: number };
 	defaultErrorBoundary?: (props: { error: unknown }) => any;
 	useViewTransitions?: boolean;
@@ -220,13 +226,14 @@ type APIResult<T> =
 
 export type ClientCore = {
 	boot: (options: ClientOptions) => Promise<Result<void>>;
+	workIndicator: WorkIndicator;
 	navigate: (
 		href: string | URL,
 		options?: {
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipProgressIndicator?: boolean;
+			skipworkIndicator?: boolean;
 		},
 	) => Promise<{ didNavigate: boolean }>;
 	revalidate: () => Promise<RevalidationResult>;
@@ -237,7 +244,7 @@ export type ClientCore = {
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipProgressIndicator?: boolean;
+			skipworkIndicator?: boolean;
 		},
 	) => Promise<APIResult<T>>;
 	getRouteState: () => RouteState;
@@ -355,6 +362,135 @@ function make_deferred<T>(): Deferred<T> {
 	return { promise, resolve };
 }
 
+type WorkIndicatorController = {
+	indicator: WorkIndicator;
+	configure: (options: WorkIndicatorOptions | undefined) => void;
+	set_vorma_active: (active: boolean) => void;
+};
+
+function create_work_indicator(): WorkIndicatorController {
+	let options: WorkIndicatorOptions | undefined;
+	let visible = false;
+	let show_timer: number | undefined;
+	let hide_timer: number | undefined;
+	const active_tokens = new Set<symbol>();
+	let release_vorma_work: (() => void) | undefined;
+
+	function clear_show_timer(): void {
+		if (show_timer === undefined) {
+			return;
+		}
+		clearTimeout(show_timer);
+		show_timer = undefined;
+	}
+
+	function clear_hide_timer(): void {
+		if (hide_timer === undefined) {
+			return;
+		}
+		clearTimeout(hide_timer);
+		hide_timer = undefined;
+	}
+
+	function sync(): void {
+		const current_options = options;
+		if (!current_options) {
+			clear_show_timer();
+			clear_hide_timer();
+			return;
+		}
+
+		if (active_tokens.size > 0) {
+			clear_hide_timer();
+			if (visible || show_timer !== undefined) {
+				return;
+			}
+			show_timer = window.setTimeout(() => {
+				show_timer = undefined;
+				const latest_options = options;
+				if (!latest_options || active_tokens.size === 0 || visible) {
+					return;
+				}
+				latest_options.show();
+				visible = true;
+			}, current_options.showDelayMS ?? 12);
+			return;
+		}
+
+		clear_show_timer();
+		if (hide_timer !== undefined) {
+			return;
+		}
+		hide_timer = window.setTimeout(() => {
+			hide_timer = undefined;
+			const latest_options = options;
+			if (!latest_options || active_tokens.size > 0) {
+				return;
+			}
+			latest_options.hide();
+			visible = false;
+		}, current_options.hideDelayMS ?? 12);
+	}
+
+	function begin(): () => void {
+		const token = Symbol("v-work-indicator");
+		let released = false;
+		active_tokens.add(token);
+		sync();
+		return () => {
+			if (released) {
+				return;
+			}
+			released = true;
+			active_tokens.delete(token);
+			sync();
+		};
+	}
+
+	function configure(next_options: WorkIndicatorOptions | undefined): void {
+		const previous_options = options;
+		clear_show_timer();
+		clear_hide_timer();
+		if (visible && previous_options && previous_options !== next_options) {
+			previous_options.hide();
+			visible = false;
+		}
+		options = next_options;
+		sync();
+	}
+
+	function set_vorma_active(active: boolean): void {
+		if (active) {
+			if (!release_vorma_work) {
+				release_vorma_work = begin();
+			}
+			return;
+		}
+		if (!release_vorma_work) {
+			sync();
+			return;
+		}
+		release_vorma_work();
+		release_vorma_work = undefined;
+	}
+
+	return {
+		indicator: {
+			track: <T>(promise: PromiseLike<T>): Promise<T> => {
+				const release = begin();
+				return Promise.resolve(promise).finally(() => {
+					release();
+				});
+			},
+			isActive: (): boolean => {
+				return active_tokens.size > 0;
+			},
+		},
+		configure,
+		set_vorma_active,
+	};
+}
+
 /////////////////////////////////////////////////////////////////////
 /////// Client Core
 /////////////////////////////////////////////////////////////////////
@@ -415,14 +551,14 @@ export function create_client_core(
 	type WorkProjection =
 		| {
 				kind: "navigation";
-				skip_progress_indicator?: boolean;
+				skip_work_indicator?: boolean;
 		  }
 		| {
 				kind: "revalidation";
 		  }
 		| {
 				kind: "apiRequest";
-				skip_progress_indicator?: boolean;
+				skip_work_indicator?: boolean;
 		  }
 		| {
 				kind: "prefetch";
@@ -434,7 +570,7 @@ export function create_client_core(
 		state?: unknown;
 		is_popstate?: boolean;
 		popstate_scroll?: ScrollState;
-		skip_progress_indicator?: boolean;
+		skip_work_indicator?: boolean;
 	};
 
 	type NavResult = { didNavigate: boolean };
@@ -532,7 +668,7 @@ export function create_client_core(
 		key: string;
 		method: string;
 		href: string;
-		skip_progress_indicator?: boolean;
+		skip_work_indicator?: boolean;
 	};
 
 	type RefreshWaiter = Deferred<RevalidationResult>;
@@ -614,6 +750,9 @@ export function create_client_core(
 	let last_activity_ts = Date.now();
 	let last_work_state: WorkState = empty_work_state();
 
+	const work_indicator = create_work_indicator();
+	let work_indicator_options: WorkIndicatorOptions | undefined;
+	let work_indicator_sync_registered = false;
 	const work_update_listeners = new Set<(work: WorkState) => void>();
 	const module_map: Record<string, ClientLoaderFn> = {};
 	const search_schema_map: Record<string, unknown> = {};
@@ -1870,8 +2009,7 @@ export function create_client_core(
 			cur.options.state === options.state &&
 			cur.options.is_popstate === options.is_popstate &&
 			cur.options.popstate_scroll === options.popstate_scroll &&
-			cur.options.skip_progress_indicator ===
-				options.skip_progress_indicator &&
+			cur.options.skip_work_indicator === options.skip_work_indicator &&
 			cur.source === source
 		) {
 			cur.deferred.promise.then(deferred.resolve, () =>
@@ -2397,7 +2535,7 @@ export function create_client_core(
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipProgressIndicator?: boolean;
+			skipworkIndicator?: boolean;
 		},
 	): Promise<APIResult<T>> {
 		if (!route_snapshot) {
@@ -2437,7 +2575,7 @@ export function create_client_core(
 			key: dedupe_key,
 			method,
 			href: resolved.href,
-			skip_progress_indicator: options?.skipProgressIndicator,
+			skip_work_indicator: options?.skipworkIndicator,
 		};
 		submissions.set(dedupe_key, sub);
 		notify_work_update();
@@ -2694,8 +2832,8 @@ export function create_client_core(
 		if (active_fetch?.intent.kind === "nav") {
 			work.push({
 				kind: "navigation",
-				skip_progress_indicator:
-					active_fetch.intent.options.skip_progress_indicator,
+				skip_work_indicator:
+					active_fetch.intent.options.skip_work_indicator,
 			});
 		}
 
@@ -2713,7 +2851,7 @@ export function create_client_core(
 		for (const s of submissions.values()) {
 			work.push({
 				kind: "apiRequest",
-				skip_progress_indicator: s.skip_progress_indicator,
+				skip_work_indicator: s.skip_work_indicator,
 			});
 		}
 
@@ -2803,6 +2941,7 @@ export function create_client_core(
 	function notify_work_update(): void {
 		const work = take_work_update();
 		if (!work) {
+			sync_work_indicator();
 			return;
 		}
 		emit_client_commit({ work });
@@ -2893,86 +3032,54 @@ export function create_client_core(
 		};
 	}
 
-	/////// Progress Indicator
+	/////// Work Indicator
 
-	function setup_progress_indicator(config: ProgressIndicatorConfig): void {
-		const inc_all = !config.include || config.include === "all";
-		const inc_nav =
-			inc_all ||
-			(Array.isArray(config.include) &&
-				config.include.includes("navigations"));
-		const inc_sub =
-			inc_all ||
-			(Array.isArray(config.include) &&
-				config.include.includes("apiRequests"));
-		const inc_rev =
-			inc_all ||
-			(Array.isArray(config.include) &&
-				config.include.includes("revalidations"));
-		const start_delay = config.startDelayMS ?? 12;
-		const stop_delay = config.stopDelayMS ?? 12;
-		let start_timer: number | null = null;
-		let stop_timer: number | null = null;
+	function setup_work_indicator(
+		options: WorkIndicatorOptions | undefined,
+	): void {
+		work_indicator_options = options;
+		work_indicator.configure(options);
+		if (!work_indicator_sync_registered) {
+			work_update_listeners.add(sync_work_indicator);
+			work_indicator_sync_registered = true;
+		}
+		sync_work_indicator();
+	}
 
-		const should_run = () => {
-			for (const w of derive_work_projection()) {
-				if (
-					w.kind === "navigation" &&
-					inc_nav &&
-					!w.skip_progress_indicator
-				) {
-					return true;
-				}
-				if (w.kind === "revalidation" && inc_rev) {
-					return true;
-				}
-				if (
-					w.kind === "apiRequest" &&
-					inc_sub &&
-					!w.skip_progress_indicator
-				) {
-					return true;
-				}
+	function sync_work_indicator(_work?: WorkState): void {
+		const options = work_indicator_options;
+		if (!options) {
+			work_indicator.set_vorma_active(false);
+			return;
+		}
+
+		let active_for_vorma = false;
+		for (const work of derive_work_projection()) {
+			if (
+				work.kind === "navigation" &&
+				options.skipNavigations !== true &&
+				!work.skip_work_indicator
+			) {
+				active_for_vorma = true;
+				break;
 			}
-			return false;
-		};
-
-		const sync = () => {
-			if (should_run()) {
-				if (stop_timer !== null) {
-					clearTimeout(stop_timer);
-					stop_timer = null;
-				}
-				if (config.isRunning() || start_timer !== null) {
-					return;
-				}
-				start_timer = window.setTimeout(() => {
-					start_timer = null;
-					if (!should_run() || config.isRunning()) {
-						return;
-					}
-					config.start();
-				}, start_delay);
-			} else {
-				if (start_timer !== null) {
-					clearTimeout(start_timer);
-					start_timer = null;
-				}
-				if (!config.isRunning() || stop_timer !== null) {
-					return;
-				}
-				stop_timer = window.setTimeout(() => {
-					stop_timer = null;
-					if (should_run() || !config.isRunning()) {
-						return;
-					}
-					config.stop();
-				}, stop_delay);
+			if (
+				work.kind === "revalidation" &&
+				options.skipRevalidations !== true
+			) {
+				active_for_vorma = true;
+				break;
 			}
-		};
-
-		work_update_listeners.add(sync);
-		sync();
+			if (
+				work.kind === "apiRequest" &&
+				options.skipAPIRequests !== true &&
+				!work.skip_work_indicator
+			) {
+				active_for_vorma = true;
+				break;
+			}
+		}
+		work_indicator.set_vorma_active(active_for_vorma);
 	}
 
 	/////// Boot
@@ -3116,9 +3223,7 @@ export function create_client_core(
 		}
 		commit_route_snapshot("initial", null, route_snapshot, scroll_intent);
 
-		if (options.progressIndicator) {
-			setup_progress_indicator(options.progressIndicator);
-		}
+		setup_work_indicator(options.workIndicator);
 		if (focus_revalidation_cleanup) {
 			focus_revalidation_cleanup();
 			focus_revalidation_cleanup = null;
@@ -3184,7 +3289,7 @@ export function create_client_core(
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipProgressIndicator?: boolean;
+			skipworkIndicator?: boolean;
 		},
 	): Promise<NavResult> {
 		if (phase !== "ready") {
@@ -3201,7 +3306,7 @@ export function create_client_core(
 				replace: options?.replace,
 				scroll_to_top: options?.scrollToTop,
 				state: options?.state,
-				skip_progress_indicator: options?.skipProgressIndicator,
+				skip_work_indicator: options?.skipworkIndicator,
 			},
 			0,
 		);
@@ -3273,6 +3378,7 @@ export function create_client_core(
 
 	return R.ok({
 		boot,
+		workIndicator: work_indicator.indicator,
 		navigate,
 		revalidate,
 		submit_inner,

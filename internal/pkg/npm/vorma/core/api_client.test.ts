@@ -131,14 +131,14 @@ describe("query and mutate", () => {
 			input: { name: "Ada" },
 			dedupeKey: "save",
 			revalidate: false,
-			skipProgressIndicator: true,
+			skipworkIndicator: true,
 		});
 
 		expect(calls[0]!.options).toEqual({
 			apiRouteKind: "mutation",
 			dedupeKey: "save",
 			revalidate: false,
-			skipProgressIndicator: true,
+			skipworkIndicator: true,
 		});
 	});
 

@@ -1,8 +1,8 @@
 # Alert Notes
 
-Needs fuller coverage for live-region semantics, title/description
-relationships if any are added, responsive recipe props, and consumer `mix`
-precedence on each slot.
+Needs fuller coverage for live-region semantics, title/description relationships
+if any are added, responsive recipe props, and consumer `mix` precedence on each
+slot.
 
 ## Semantic/API Audit
 

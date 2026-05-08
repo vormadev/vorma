@@ -13,15 +13,15 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	componentStateAttribute,
 	openState,
 	openStateFromBoolean,
 } from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import {
 	mergeRecipeConditionSelectors,
@@ -37,10 +37,7 @@ import type {
 	RemixComponent,
 } from "./types.ts";
 
-export type TooltipRecipeCondition =
-	| CommonRecipeCondition
-	| "closed"
-	| "open";
+export type TooltipRecipeCondition = CommonRecipeCondition | "closed" | "open";
 
 export type TooltipRecipeInput<
 	TSize extends string = string,
@@ -138,13 +135,11 @@ const focus_event = "focus";
 const mouse_enter_event = "mouseenter";
 const mouse_leave_event = "mouseleave";
 
-const tooltip_conditions = mergeRecipeConditionSelectors<TooltipRecipeCondition>(
-	commonConditions,
-	{
+const tooltip_conditions =
+	mergeRecipeConditionSelectors<TooltipRecipeCondition>(commonConditions, {
 		closed: `&[${componentStateAttribute}='${openState.closed}']`,
 		open: `&[${componentStateAttribute}='${openState.open}']`,
-	} satisfies RecipeConditionSelectorMap<TooltipRecipeCondition>,
-);
+	} satisfies RecipeConditionSelectorMap<TooltipRecipeCondition>);
 
 export function createTooltip<
 	TMode extends string,

@@ -137,15 +137,19 @@ Expected consumers:
 
 ### Popup Behavior
 
-- [ ] Add a small popup/open primitive now for non-modal popup behavior.
-- [ ] Support trigger/content refs, outside pointer interaction, Escape close,
-      native popover sync where appropriate, and close-complete callbacks.
+- [x] Extract shared native popover sync and target-containment helpers.
+- [x] Add a small popup relationship primitive for non-modal popup behavior.
+- [x] Support trigger/content refs, outside pointer interaction, and native
+      popover sync where appropriate.
+- [x] Keep Escape close and open-complete callbacks component-specific because
+      their reason semantics differ by component.
 - [ ] Keep modality, scroll lock, overlay, and focus trapping separate from
       generic popup behavior.
 - [ ] Do not make select/listbox/menu/dialog semantics share one public API just
       because all can open and close.
-- [ ] Move the non-modal `Select` popup behavior onto it.
-- [ ] Validate and adjust it while building `Menu`, `Popover`, and `Combobox`.
+- [x] Move the non-modal `Select` popup behavior onto it.
+- [x] Validate and adjust it while building `Menu` and `Popover`.
+- [ ] Validate and adjust it while building `Combobox`.
 
 Expected consumers:
 
@@ -158,16 +162,17 @@ Expected consumers:
 
 ### Form Mirror
 
-- [ ] Add an internal form-mirror primitive now for custom form controls.
-- [ ] Support visually hidden native `select` for select-like controls.
+- [x] Add an internal form-mirror primitive now for custom form controls.
+- [x] Support visually hidden native `select` for select-like controls.
 - [ ] Support hidden inputs for non-select controls where native mirrors are not
       possible.
 - [ ] Support `name`, `form`, `required`, `disabled`, `autoComplete`, and
       current value.
 - [ ] Keep native validation behavior in mind before marking this settled.
-- [ ] Move `Select` hidden native select rendering onto it.
+- [x] Move `Select` hidden native select rendering onto it.
 - [ ] Validate and adjust it with `RadioGroup`, `CheckboxGroup`, `Slider`, and
-      `Switch`.
+      `Switch`. `RadioGroup` and `CheckboxGroup` are native-input backed and do
+      not need a hidden mirror.
 
 Expected consumers:
 
@@ -185,7 +190,9 @@ Expected consumers:
 - [x] Avoid requiring group labels when an unlabelled group is valid for the
       pattern.
 - [x] Move `Select`, `Listbox`, and `Menu` group labelling onto it.
-- [ ] Validate and adjust it with grouped form controls.
+- [ ] Validate and adjust it with grouped form controls. `RadioGroup` and
+      `CheckboxGroup` preserve native input form participation; explicit group
+      labelling remains a separate `Fieldset`/composition concern.
 
 Expected consumers:
 
@@ -197,14 +204,14 @@ Expected consumers:
 
 ### State And Data Attributes
 
-- [ ] Consolidate common state/data attribute helpers now where the vocabulary
+- [x] Consolidate common state/data attribute helpers now where the vocabulary
       is already clear.
-- [ ] Keep public data attributes unsurprising: `data-state`, `data-disabled`,
+- [x] Keep public data attributes unsurprising: `data-state`, `data-disabled`,
       `data-selected`, `data-highlighted`, `data-invalid`, `data-readonly`, and
       `data-required`.
-- [ ] Keep ARIA and data attributes aligned but not conflated.
-- [ ] Move `Select` common state/data attribute construction onto it where that
-      improves clarity.
+- [x] Keep ARIA and data attributes aligned but not conflated.
+- [x] Move `Select`, `Listbox`, and `Menu` common state/data attribute
+      construction onto it where that improves clarity.
 
 Expected consumers:
 
@@ -237,7 +244,7 @@ Do not mark this complete until:
 
 - [x] `Select`, `Listbox`, and `Menu` use the shared collection/navigation
       primitives where appropriate.
-- [ ] Popup/open behavior has either been extracted or deliberately kept local
+- [x] Popup/open behavior has either been extracted or deliberately kept local
       with a written reason.
 - [ ] Form mirroring has either been extracted or deliberately kept local with a
       written reason.

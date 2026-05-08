@@ -15,15 +15,15 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	componentStateAttribute,
 	openState,
 	openStateFromBoolean,
 } from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import {
 	mergeRecipeConditionSelectors,
@@ -63,9 +63,8 @@ export type AlertDialogRecipeInput<TLayout extends string = string> =
 export type AlertDialogRecipeLayout<TRecipe extends AlertDialogRecipeInput> =
 	RecipeVariantValue<TRecipe, "layout">;
 
-export type AlertDialogRecipeSelection<
-	TRecipe extends AlertDialogRecipeInput,
-> = RecipeVariantPropsFor<TRecipe, "layout">;
+export type AlertDialogRecipeSelection<TRecipe extends AlertDialogRecipeInput> =
+	RecipeVariantPropsFor<TRecipe, "layout">;
 
 export type AlertDialogStyleSystem<
 	TMode extends string = string,
@@ -148,10 +147,7 @@ type AlertDialogContext = {
 	get_description_id: () => string;
 	get_open: () => boolean;
 	get_title_id: () => string;
-	set_open: (
-		open: boolean,
-		details?: AlertDialogOpenChangeDetails,
-	) => void;
+	set_open: (open: boolean, details?: AlertDialogOpenChangeDetails) => void;
 };
 
 const alert_dialog_scope = "alertDialog";

@@ -1,8 +1,13 @@
 # RadioGroup Notes
 
-Needs fuller coverage for controlled state, form reset behavior, keyboard
-behavior across browsers, disabled and required semantics, item-level disabled
-state, responsive recipe props, and consumer `mix` precedence.
+Controlled and uncontrolled value state are covered at a basic DOM level.
+
+Needs fuller coverage for form reset behavior, keyboard behavior across
+browsers, disabled and required semantics, item-level disabled state, responsive
+recipe props, and consumer `mix` precedence.
+
+Root-level `form` is propagated to native radio items unless an item provides
+its own form owner.
 
 ## Semantic/API Audit
 

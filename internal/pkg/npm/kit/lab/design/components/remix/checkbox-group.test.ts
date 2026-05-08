@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { checkableStateAttribute } from "./checkable-state.ts";
 import {
 	componentAnatomyAttrs,
+	componentDataAttribute,
 	createCheckboxGroup,
 	type CheckboxGroupStyleSystem,
 } from "./remix.ts";
@@ -72,10 +73,12 @@ describe("Remix CheckboxGroup", () => {
 				CheckboxGroup.Root,
 				{
 					defaultValue: ["email"],
+					form: "settings",
 					name: "channels",
 					onValueChange: (value: readonly string[]) => {
 						value_changes.push([...value]);
 					},
+					required: true,
 				},
 				createElement(CheckboxGroup.Item, {
 					"data-testid": "email",
@@ -83,13 +86,9 @@ describe("Remix CheckboxGroup", () => {
 				}),
 				createElement(CheckboxGroup.Item, {
 					"data-testid": "sms",
-					mix: on<HTMLInputElement, "change">(
-						"change",
-						(event) => {
-							item_mix_target_tag =
-								event.currentTarget.tagName;
-						},
-					),
+					mix: on<HTMLInputElement, "change">("change", (event) => {
+						item_mix_target_tag = event.currentTarget.tagName;
+					}),
 					value: "sms",
 				}),
 			),
@@ -101,7 +100,10 @@ describe("Remix CheckboxGroup", () => {
 		expect(root?.getAttribute(componentAnatomyAttrs.scope)).toBe(
 			"checkboxGroup",
 		);
+		expect(root?.getAttribute(componentDataAttribute.required)).toBe("");
 		expect(email.type).toBe("checkbox");
+		expect(email.getAttribute("form")).toBe("settings");
+		expect(email.required).toBe(true);
 		expect(email.name).toBe("channels");
 		expect(sms.name).toBe("channels");
 		expect(email.checked).toBe(true);
@@ -118,6 +120,56 @@ describe("Remix CheckboxGroup", () => {
 		expect(item_mix_target_tag).toBe("INPUT");
 		expect(sms.checked).toBe(true);
 		expect(sms.getAttribute(checkableStateAttribute)).toBe("checked");
+
+		result.cleanup();
+	});
+
+	it("keeps controlled values external until the owner updates them", async () => {
+		const CheckboxGroup = createCheckboxGroup(create_test_style_system());
+		let values: readonly ("email" | "sms")[] = ["email"];
+		const value_changes: string[][] = [];
+
+		function view(): ReturnType<typeof createElement> {
+			return createElement(
+				CheckboxGroup.Root,
+				{
+					name: "channels",
+					onValueChange: (next_values: readonly string[]) => {
+						value_changes.push([...next_values]);
+					},
+					value: values,
+				},
+				createElement(CheckboxGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(CheckboxGroup.Item, {
+					"data-testid": "sms",
+					value: "sms",
+				}),
+			);
+		}
+
+		const result = render(view());
+		const email = result.$("[data-testid='email']") as HTMLInputElement;
+		const sms = result.$("[data-testid='sms']") as HTMLInputElement;
+
+		await result.act(() => {
+			sms.checked = true;
+			sms.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+
+		expect(value_changes).toEqual([["email", "sms"]]);
+		expect(email.checked).toBe(true);
+		expect(sms.checked).toBe(false);
+
+		values = ["email", "sms"];
+		await result.act(() => {
+			result.root.render(view());
+		});
+
+		expect(email.checked).toBe(true);
+		expect(sms.checked).toBe(true);
 
 		result.cleanup();
 	});

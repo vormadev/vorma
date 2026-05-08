@@ -99,7 +99,7 @@ type AdapterBase<A extends AppConfig> = {
 
 	passthrough: Pick<
 		ClientCore,
-		"revalidate" | "getRouteState" | "getWorkState"
+		"revalidate" | "getRouteState" | "getWorkState" | "workIndicator"
 	> & {
 		navigate: <P extends ToViewPattern<A>>(
 			args: ToNavigateArgs<A, P>,
@@ -270,6 +270,7 @@ export function create_adapter_base<A extends AppConfig>(
 			revalidate: core.revalidate,
 			getRouteState: core.getRouteState,
 			getWorkState: core.getWorkState,
+			workIndicator: core.workIndicator,
 			apiClient: api_client,
 		},
 	});
