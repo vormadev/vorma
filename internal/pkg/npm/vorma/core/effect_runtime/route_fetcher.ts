@@ -6,6 +6,7 @@ import {
 	X_CLIENT_REDIRECT,
 	X_VORMA_BUILD_SKEW,
 } from "../constants.ts";
+import type { BrowserFetchRuntime } from "./browser_fetch_runtime.ts";
 
 export type RouteFetchInput = {
 	url: URL;
@@ -44,7 +45,7 @@ export type RouteFetchResult =
 export type RouteFetcherOptions = {
 	client_build_id: string;
 	deployment_id?: string;
-	fetch?: (input: URL, init: RequestInit) => Promise<Response>;
+	fetch: BrowserFetchRuntime["fetch"];
 };
 
 export type RouteFetcher = {
@@ -59,32 +60,28 @@ export class RouteFetchFailed extends Data.TaggedError("RouteFetchFailed")<{
 }> {}
 
 export function make_route_fetcher(options: RouteFetcherOptions): RouteFetcher {
-	const fetch_impl =
-		options.fetch ??
-		((input: URL, init: RequestInit): Promise<Response> => {
-			return fetch(input, init);
-		});
-
 	return {
 		fetch_route: (input) => {
 			return Effect.gen(function* () {
 				const requested_url = route_request_url(input, options);
-				const response = yield* Effect.tryPromise({
-					try: (signal) => {
-						return fetch_impl(requested_url, {
-							signal: merge_abort_signals([signal, input.signal]),
+				const response = yield* options
+					.fetch({
+						url: requested_url,
+						init: {
 							headers: {
 								[X_ACCEPTS_CLIENT_REDIRECT]: "1",
 							},
-						});
-					},
-					catch: (error) => {
-						return new RouteFetchFailed({
-							requested_url: requested_url.href,
-							error,
-						});
-					},
-				});
+						},
+						signals: [input.signal],
+					})
+					.pipe(
+						Effect.mapError((error) => {
+							return new RouteFetchFailed({
+								requested_url: requested_url.href,
+								error,
+							});
+						}),
+					);
 				return yield* classify_route_response(requested_url, response);
 			});
 		},
@@ -178,30 +175,4 @@ function detect_redirect(
 		return { href: new URL(response.url, base).href, hard: false };
 	}
 	return null;
-}
-
-function merge_abort_signals(
-	signals: Array<AbortSignal | undefined>,
-): AbortSignal {
-	const live_signals = signals.filter((signal): signal is AbortSignal => {
-		return signal !== undefined;
-	});
-	if (live_signals.length === 1) {
-		return live_signals[0]!;
-	}
-	const controller = new AbortController();
-	for (const signal of live_signals) {
-		if (signal.aborted) {
-			controller.abort();
-			break;
-		}
-		signal.addEventListener(
-			"abort",
-			() => {
-				controller.abort();
-			},
-			{ once: true },
-		);
-	}
-	return controller.signal;
 }

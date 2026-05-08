@@ -8,6 +8,11 @@ import {
 	type PatternRegistry,
 } from "vorma/kit/matcher";
 import type { RouteErrorState } from "../types.ts";
+import {
+	is_abort_error,
+	merge_abort_signals,
+	new_abort_error,
+} from "./abort_signal.ts";
 import type {
 	ClientLoaderFn,
 	ClientLoaderKnownMatch,
@@ -29,8 +34,6 @@ const META_HEAD_ELEMENTS_FIELD = "MetaHeadEls";
 const REST_HEAD_ELEMENTS_FIELD = "RestHeadEls";
 const CSS_BUNDLES_FIELD = "CSSBundles";
 const DEPS_FIELD = "Deps";
-const abort_error_name = "AbortError";
-const abort_error_message = "Aborted";
 
 export const ROUTE_PAYLOAD_FIELDS = {
 	matched_patterns: MATCHED_PATTERNS_FIELD,
@@ -808,32 +811,6 @@ function run_client_loader(
 	});
 }
 
-function merge_abort_signals(
-	signals: Array<AbortSignal | undefined>,
-): AbortSignal {
-	const live_signals = signals.filter((signal): signal is AbortSignal => {
-		return signal !== undefined;
-	});
-	if (live_signals.length === 1) {
-		return live_signals[0]!;
-	}
-	const controller = new AbortController();
-	for (const signal of live_signals) {
-		if (signal.aborted) {
-			controller.abort();
-			break;
-		}
-		signal.addEventListener(
-			"abort",
-			() => {
-				controller.abort();
-			},
-			{ once: true },
-		);
-	}
-	return controller.signal;
-}
-
 function build_server_state(
 	routes: DecodedRoute[],
 	idx: number,
@@ -1022,12 +999,4 @@ function title_field(
 		return undefined;
 	}
 	return decode_title(raw_title);
-}
-
-function new_abort_error(): DOMException {
-	return new DOMException(abort_error_message, abort_error_name);
-}
-
-function is_abort_error(error: unknown): boolean {
-	return error instanceof DOMException && error.name === abort_error_name;
 }

@@ -1461,7 +1461,11 @@ describe("ccc Effect client core adapter experiment", () => {
 		expect(request_headers.get(VERCEL_X_DEPLOYMENT_ID)).toBe(DEPLOYMENT_ID);
 		expect(request_headers.get("Content-Type")).toBe("application/json");
 		expect(call(0).init?.method).toBe("POST");
-		expect(JSON.parse(String(call(0).init?.body))).toEqual({
+		const request_body = call(0).init?.body;
+		if (typeof request_body !== "string") {
+			throw new Error("expected JSON request body");
+		}
+		expect(JSON.parse(request_body)).toEqual({
 			name: "Ada",
 		});
 		expect(result).toMatchObject({

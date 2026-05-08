@@ -115,9 +115,11 @@ describe("navigate", () => {
 		);
 
 		const first = core.navigate("/first");
+		await tick();
 		expect(calls).toHaveLength(1);
 
 		const second = core.navigate("/second");
+		await tick();
 		expect(calls).toHaveLength(2);
 		expect(calls[0]!.signal.aborted).toBe(true);
 		await expect(first).resolves.toEqual({ didNavigate: false });
@@ -702,9 +704,9 @@ describe("navigate redirects", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const nav = core.navigate("/start");
+		await wait_for(1);
 		expect(core.getWorkState().navigation !== null).toBe(true);
 
-		await wait_for(1);
 		call(0).resolve(redirect_response({ [X_CLIENT_REDIRECT]: "/mid" }));
 		await wait_for(2);
 		expect(core.getWorkState().navigation !== null).toBe(true);
@@ -1607,6 +1609,7 @@ describe("status", () => {
 		void core.navigate("/first");
 		await wait_for(1);
 		void core.navigate("/second");
+		await wait_for(2);
 
 		expect(work_updates).toHaveLength(2);
 		expect(work_updates.map((work) => work.navigation?.href)).toEqual([
@@ -1614,7 +1617,6 @@ describe("status", () => {
 			`${window.location.origin}/second`,
 		]);
 
-		await wait_for(2);
 		call(1).resolve(route_response());
 		await tick();
 	});

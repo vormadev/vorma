@@ -1,4 +1,4 @@
-import { Effect, Ref } from "effect";
+import { Duration, Effect, Fiber, Ref } from "effect";
 import type { WorkIndicator, WorkIndicatorOptions } from "./client_contract.ts";
 
 export const WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS = 12;
@@ -15,14 +15,14 @@ export type WorkIndicatorRuntime = {
 	shutdown: Effect.Effect<void>;
 };
 
-type TimerHandle = ReturnType<typeof window.setTimeout>;
+type TimerFiber = Fiber.RuntimeFiber<void, never>;
 
 type WorkIndicatorState = {
 	active_count: number;
 	options: WorkIndicatorOptions | undefined;
 	visible: boolean;
-	show_timer: TimerHandle | null;
-	hide_timer: TimerHandle | null;
+	show_timer: TimerFiber | null;
+	hide_timer: TimerFiber | null;
 };
 
 export function make_work_indicator(): Effect.Effect<
@@ -86,8 +86,8 @@ export function make_work_indicator(): Effect.Effect<
 		const configure: WorkIndicatorRuntime["configure"] = (options) => {
 			return Effect.gen(function* () {
 				const previous = yield* Ref.get(state_ref);
-				clear_timer(previous.show_timer);
-				clear_timer(previous.hide_timer);
+				yield* cancel_timer(previous.show_timer);
+				yield* cancel_timer(previous.hide_timer);
 				if (
 					previous.visible &&
 					previous.options &&
@@ -108,8 +108,8 @@ export function make_work_indicator(): Effect.Effect<
 
 		const shutdown = Effect.gen(function* () {
 			const state = yield* Ref.get(state_ref);
-			clear_timer(state.show_timer);
-			clear_timer(state.hide_timer);
+			yield* cancel_timer(state.show_timer);
+			yield* cancel_timer(state.hide_timer);
 			if (state.visible && state.options) {
 				state.options.hide();
 			}
@@ -161,8 +161,8 @@ function sync_indicator(
 		const state = yield* Ref.get(state_ref);
 		const options = state.options;
 		if (!options) {
-			clear_timer(state.show_timer);
-			clear_timer(state.hide_timer);
+			yield* cancel_timer(state.show_timer);
+			yield* cancel_timer(state.hide_timer);
 			yield* Ref.set(state_ref, {
 				...state,
 				show_timer: null,
@@ -171,7 +171,7 @@ function sync_indicator(
 			return;
 		}
 		if (state.active_count > 0) {
-			clear_timer(state.hide_timer);
+			yield* cancel_timer(state.hide_timer);
 			if (state.visible || state.show_timer) {
 				yield* Ref.set(state_ref, {
 					...state,
@@ -179,9 +179,10 @@ function sync_indicator(
 				});
 				return;
 			}
-			const show_timer = window.setTimeout(() => {
-				Effect.runSync(show_indicator(state_ref));
-			}, options.showDelayMS ?? WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS);
+			const show_timer = yield* start_timer(
+				options.showDelayMS ?? WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS,
+				show_indicator(state_ref),
+			);
 			yield* Ref.set(state_ref, {
 				...state,
 				hide_timer: null,
@@ -189,7 +190,7 @@ function sync_indicator(
 			});
 			return;
 		}
-		clear_timer(state.show_timer);
+		yield* cancel_timer(state.show_timer);
 		if (state.hide_timer) {
 			yield* Ref.set(state_ref, {
 				...state,
@@ -197,9 +198,10 @@ function sync_indicator(
 			});
 			return;
 		}
-		const hide_timer = window.setTimeout(() => {
-			Effect.runSync(hide_indicator(state_ref));
-		}, options.hideDelayMS ?? WORK_INDICATOR_DEFAULT_HIDE_DELAY_MS);
+		const hide_timer = yield* start_timer(
+			options.hideDelayMS ?? WORK_INDICATOR_DEFAULT_HIDE_DELAY_MS,
+			hide_indicator(state_ref),
+		);
 		yield* Ref.set(state_ref, {
 			...state,
 			hide_timer,
@@ -250,8 +252,18 @@ function hide_indicator(
 	});
 }
 
-function clear_timer(timer: TimerHandle | null): void {
-	if (timer) {
-		window.clearTimeout(timer);
+function start_timer(
+	delay_ms: number,
+	action: Effect.Effect<void>,
+): Effect.Effect<TimerFiber> {
+	return Effect.forkDaemon(
+		Effect.sleep(Duration.millis(delay_ms)).pipe(Effect.andThen(action)),
+	);
+}
+
+function cancel_timer(timer: TimerFiber | null): Effect.Effect<void> {
+	if (!timer) {
+		return Effect.void;
 	}
+	return Fiber.interruptFork(timer).pipe(Effect.asVoid);
 }

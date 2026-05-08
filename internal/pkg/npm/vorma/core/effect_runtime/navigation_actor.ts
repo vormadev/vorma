@@ -187,7 +187,6 @@ export function make_navigation_actor(
 				return false;
 			});
 		const max_redirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
-
 		const resolve_waiters = (
 			waiters: ReadonlyArray<Waiter>,
 			result: NavigationResult,
@@ -336,9 +335,9 @@ export function make_navigation_actor(
 						client_loader_prestarts,
 					},
 				});
-				const fiber = yield* Effect.sync(() => {
-					return Effect.runFork(attempt_program(attempt));
-				});
+				const fiber = yield* Effect.forkDaemon(
+					attempt_program(attempt),
+				);
 				yield* Ref.update(model, (current_after_start) => {
 					if (current_after_start.active?.id !== id) {
 						return current_after_start;

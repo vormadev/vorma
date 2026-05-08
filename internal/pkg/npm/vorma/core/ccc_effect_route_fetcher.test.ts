@@ -8,6 +8,10 @@ import {
 	X_VORMA_BUILD_SKEW,
 } from "./constants.ts";
 import {
+	BrowserFetchFailed,
+	make_browser_fetch_runtime,
+} from "./effect_runtime/browser_fetch_runtime.ts";
+import {
 	RouteFetchFailed,
 	make_route_fetcher,
 } from "./effect_runtime/route_fetcher.ts";
@@ -28,14 +32,29 @@ function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
 }
 
 function json_response(data: unknown, init?: ResponseInit): Response {
+	const headers = new Headers({
+		"Content-Type": "application/json",
+	});
+	if (init?.headers) {
+		new Headers(init.headers).forEach((value, key) => {
+			headers.set(key, value);
+		});
+	}
 	return new Response(JSON.stringify(data), {
 		status: init?.status ?? 200,
 		statusText: init?.statusText,
-		headers: {
-			"Content-Type": "application/json",
-			...init?.headers,
-		},
+		headers,
 	});
+}
+
+function browser_fetch(
+	fetch_impl: (url: URL, init: RequestInit) => Promise<Response>,
+) {
+	return Effect.runSync(
+		make_browser_fetch_runtime({
+			fetch: fetch_impl,
+		}),
+	).fetch;
 }
 
 describe("ccc Effect route fetcher experiment", () => {
@@ -43,10 +62,10 @@ describe("ccc Effect route fetcher experiment", () => {
 		const calls: FetchCall[] = [];
 		const fetcher = make_route_fetcher({
 			client_build_id: CLIENT_BUILD_ID,
-			fetch: async (url, init) => {
+			fetch: browser_fetch(async (url, init) => {
 				calls.push({ url, init });
 				return json_response({ ok: true });
-			},
+			}),
 		});
 
 		const result = await run_effect(
@@ -75,10 +94,10 @@ describe("ccc Effect route fetcher experiment", () => {
 		const fetcher = make_route_fetcher({
 			client_build_id: CLIENT_BUILD_ID,
 			deployment_id: DEPLOYMENT_ID,
-			fetch: async (url, init) => {
+			fetch: browser_fetch(async (url, init) => {
 				calls.push({ url, init });
 				return json_response({ ok: true });
-			},
+			}),
 		});
 
 		await run_effect(
@@ -104,7 +123,7 @@ describe("ccc Effect route fetcher experiment", () => {
 	it("prioritizes build skew classification over redirects", async () => {
 		const fetcher = make_route_fetcher({
 			client_build_id: CLIENT_BUILD_ID,
-			fetch: async () => {
+			fetch: browser_fetch(async () => {
 				return json_response(
 					{ ignored: true },
 					{
@@ -114,7 +133,7 @@ describe("ccc Effect route fetcher experiment", () => {
 						},
 					},
 				);
-			},
+			}),
 		});
 
 		const result = await run_effect(
@@ -129,7 +148,7 @@ describe("ccc Effect route fetcher experiment", () => {
 	it("classifies X-Client-Redirect before HTTP errors", async () => {
 		const fetcher = make_route_fetcher({
 			client_build_id: CLIENT_BUILD_ID,
-			fetch: async () => {
+			fetch: browser_fetch(async () => {
 				return new Response("", {
 					status: 500,
 					statusText: "Server Error",
@@ -137,7 +156,7 @@ describe("ccc Effect route fetcher experiment", () => {
 						[X_CLIENT_REDIRECT]: "child/final",
 					},
 				});
-			},
+			}),
 		});
 
 		const result = await run_effect(
@@ -156,7 +175,7 @@ describe("ccc Effect route fetcher experiment", () => {
 	it("classifies non-OK and invalid JSON responses as route errors", async () => {
 		const fetcher = make_route_fetcher({
 			client_build_id: CLIENT_BUILD_ID,
-			fetch: async (url) => {
+			fetch: browser_fetch(async (url) => {
 				if (url.pathname === "/bad-json") {
 					return new Response("not-json", {
 						status: 200,
@@ -167,7 +186,7 @@ describe("ccc Effect route fetcher experiment", () => {
 					status: 503,
 					statusText: "Service Unavailable",
 				});
-			},
+			}),
 		});
 
 		const non_ok = await run_effect(
@@ -196,9 +215,9 @@ describe("ccc Effect route fetcher experiment", () => {
 	it("fails the Effect when the fetch operation itself fails", async () => {
 		const fetcher = make_route_fetcher({
 			client_build_id: CLIENT_BUILD_ID,
-			fetch: async () => {
+			fetch: browser_fetch(async () => {
 				throw new Error("network broke");
-			},
+			}),
 		});
 
 		const result = await run_effect(
@@ -214,7 +233,9 @@ describe("ccc Effect route fetcher experiment", () => {
 			throw new Error("expected route fetch failure");
 		}
 		expect(result.left).toBeInstanceOf(RouteFetchFailed);
-		expect(result.left.error).toBeInstanceOf(Error);
-		expect((result.left.error as Error).message).toBe("network broke");
+		expect(result.left.error).toBeInstanceOf(BrowserFetchFailed);
+		const transport_error = result.left.error as BrowserFetchFailed;
+		expect(transport_error.error).toBeInstanceOf(Error);
+		expect((transport_error.error as Error).message).toBe("network broke");
 	});
 });

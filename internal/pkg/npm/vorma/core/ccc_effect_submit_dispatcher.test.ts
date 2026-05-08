@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
+import { make_browser_fetch_runtime } from "./effect_runtime/browser_fetch_runtime.ts";
 import { make_submit_dispatcher } from "./effect_runtime/submit_dispatcher.ts";
 import type { SubmitDispatch } from "./effect_runtime/submit_manager.ts";
 import { SubmitAborted } from "./effect_runtime/submit_manager.ts";
@@ -21,17 +22,27 @@ function submit_dispatch(init: RequestInit = {}): SubmitDispatch {
 	};
 }
 
+function browser_fetch(
+	fetch_impl: (url: URL, init: RequestInit) => Promise<Response>,
+) {
+	return Effect.runSync(
+		make_browser_fetch_runtime({
+			fetch: fetch_impl,
+		}),
+	).fetch;
+}
+
 describe("ccc Effect submit dispatcher experiment", () => {
 	it("dispatches with a merged abort signal", async () => {
 		let seen_signal: AbortSignal | undefined;
 		const request_controller = new AbortController();
 		const dispatcher = Effect.runSync(
 			make_submit_dispatcher({
-				fetch: async (_url, init) => {
+				fetch: browser_fetch(async (_url, init) => {
 					seen_signal = init.signal ?? undefined;
 					request_controller.abort();
 					return new Response("ok");
-				},
+				}),
 			}),
 		);
 
@@ -48,9 +59,9 @@ describe("ccc Effect submit dispatcher experiment", () => {
 	it("maps DOM abort failures into SubmitAborted", async () => {
 		const dispatcher = Effect.runSync(
 			make_submit_dispatcher({
-				fetch: async () => {
+				fetch: browser_fetch(async () => {
 					throw new DOMException("Aborted", "AbortError");
-				},
+				}),
 			}),
 		);
 

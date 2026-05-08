@@ -11,7 +11,7 @@ export type BuildSkewReporterOptions = {
 	client_build_id: string;
 	current_route_state: Effect.Effect<RouteState | null>;
 	current_work_state: Effect.Effect<WorkState>;
-	on_detected?: (event: BuildSkewDetectedEvent) => void;
+	on_detected?: (event: BuildSkewDetectedEvent) => Effect.Effect<void>;
 };
 
 export type BuildSkewReportInput = {
@@ -39,8 +39,8 @@ export function make_build_skew_reporter(
 					return false;
 				}
 				const current_work_state = yield* options.current_work_state;
-				yield* Effect.sync(() => {
-					options.on_detected?.({
+				if (options.on_detected) {
+					yield* options.on_detected({
 						activeClientBuildID: options.client_build_id,
 						serverBuildID: server_build_id,
 						triggeringResponse: input.triggering_response,
@@ -48,7 +48,7 @@ export function make_build_skew_reporter(
 						currentWorkState: current_work_state,
 						defaultBehavior: input.default_behavior,
 					});
-				});
+				}
 				return true;
 			}).pipe(
 				Effect.catchAll(() => {

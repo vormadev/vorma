@@ -26,6 +26,10 @@ describe("ccc Effect browser location experiment", () => {
 			"https://app.example.test/next?y=2",
 		);
 		expect(location.hash_fragment("../next?y=2#new")).toBe("#new");
+		expect(location.is_http_href("https://app.example.test/next")).toBe(
+			true,
+		);
+		expect(location.is_http_href("mailto:hello@example.test")).toBe(false);
 		expect(
 			location.is_same_origin_href("https://app.example.test/next"),
 		).toBe(true);

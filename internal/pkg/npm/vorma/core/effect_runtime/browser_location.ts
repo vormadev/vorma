@@ -6,6 +6,7 @@ export type BrowserLocation = {
 	resolve_href: (href: string | URL) => string;
 	resolve_href_or_null: (href: string | URL) => string | null;
 	resolve_url: (href: string | URL) => URL;
+	is_http_href: (href: string) => boolean;
 	is_same_origin_href: (href: string) => boolean;
 	route_key: (href: string) => string;
 	hash_fragment: (href: string) => string;
@@ -64,6 +65,15 @@ export function make_browser_location(
 			}
 		};
 
+		const is_http_href = (href: string): boolean => {
+			try {
+				const protocol = resolve_url(href).protocol;
+				return protocol === "http:" || protocol === "https:";
+			} catch {
+				return false;
+			}
+		};
+
 		const route_key = (href: string): string => {
 			try {
 				const url = resolve_url(href);
@@ -88,6 +98,7 @@ export function make_browser_location(
 			resolve_href,
 			resolve_href_or_null,
 			resolve_url,
+			is_http_href,
 			is_same_origin_href,
 			route_key,
 			hash_fragment,

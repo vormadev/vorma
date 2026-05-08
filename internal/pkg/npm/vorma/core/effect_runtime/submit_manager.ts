@@ -173,7 +173,6 @@ export function make_submit_manager(
 			): Effect.Effect<boolean> => {
 				return Effect.succeed(false);
 			});
-
 		const model_snapshot = (current: Model): SubmitSnapshot => {
 			return {
 				nextID: current.nextID,
@@ -563,14 +562,12 @@ export function make_submit_manager(
 					next_active.delete(key);
 					yield* interrupt_submission(previous);
 				}
-				const fiber = yield* Effect.sync(() => {
-					return Effect.runFork(
-						run_submission(
-							prepared.dispatch,
-							prepared.shouldRevalidate,
-						),
-					);
-				});
+				const fiber = yield* Effect.forkDaemon(
+					run_submission(
+						prepared.dispatch,
+						prepared.shouldRevalidate,
+					),
+				);
 				next_active.set(key, {
 					id,
 					key,

@@ -83,6 +83,10 @@ main app API into an Effect doctrine test.
   promises and Vorma-owned work commits can share one token model, while
   renderer replacement remains a configuration transition instead of leaking
   timer state into the adapter.
+- Work indicator delays are now Effect-owned fibers rather than raw browser
+  timers. The runtime schedules show/hide through `Effect.sleep` and cancels
+  pending delays by interrupting fibers, so timer ownership participates in the
+  same execution model as the rest of the kernel.
 - Per-operation work-indicator skips belong in the work actor's internal
   projection, not in public `WorkState`. The public state remains clean, while
   navigation/API request metadata can still drive the indicator accurately.
@@ -118,21 +122,68 @@ main app API into an Effect doctrine test.
 - Browser location now has a dedicated `browser_location` service. Same-origin
   checks, absolute href resolution, route keys, hash extraction, current href
   reads, and hard redirects are no longer local adapter helpers.
+- Browser view concerns now have a dedicated `browser_view_runtime` service. The
+  adapter no longer owns boot payload script reads, root element creation,
+  hash/coordinate scroll application, or the `document.startViewTransition`
+  bridge. View transitions now resume the surrounding Effect with the original
+  typed publication failure when publication fails, and only map browser
+  transition failures back into route commit failure at the adapter edge.
+- Browser fetch now has a shared `browser_fetch_runtime` service. Route fetching
+  and submission no longer own ambient `fetch` lookup, abort-signal merging, or
+  transport-level abort classification; they consume typed browser transport
+  failures and map them into route/submission domain errors.
+- Abort semantics now have one shared `abort_signal` module. Browser fetch and
+  client-loader execution use the same abort-signal merge behavior and the same
+  DOM abort error contract, instead of duplicating `"AbortError"` handling in
+  separate services.
+- Runtime service construction now has a first assembly boundary. The
+  compatibility shell asks `client_runtime_services` for location, view, fetch,
+  DOM, module, submit-dispatch, and work-indicator services instead of creating
+  each one directly. Those services now have explicit Effect `Context` tags and
+  a Layer-shaped assembly, including submit dispatch depending on browser fetch.
+  The shell still receives a plain service record for compatibility, but the
+  ownership shape is now Effect-native enough to grow into the final graph.
+- The kernel shape and actor finalizer registration now live in `client_kernel`.
+  That is a small but important direction marker: lifecycle ownership belongs to
+  the Effect system, while `create_client_core_effect` should keep shrinking
+  toward public API adaptation and boot orchestration.
+- Per-boot kernel resources now have a matching service boundary in
+  `client_kernel_resources`: lifecycle, browser history, scroll restoration, and
+  work actor are constructed together and can be represented as Context
+  services. That makes the remaining shell body more obviously about composing
+  actors rather than allocating raw state objects.
+- Route service construction now has the same shape. `client_route_services`
+  builds route fetching, route preparation, route publication, and build-skew
+  reporting from the runtime service context, then lowers them into the
+  compatibility shell. Build-skew notification is now an Effect callback too, so
+  the reporter no longer hides a synchronous side effect inside its own program.
+- Navigation assembly is now out of the compatibility shell too.
+  `client_navigation_services` builds prefetch, navigation, revalidation, and
+  submission as one dependency-driven service bundle. The shell still owns the
+  public compatibility decisions: client redirects are lowered to `navigate`,
+  and API-triggered revalidation during boot records the boot revalidation flag.
+  The actual actors now compose through runtime, kernel-resource, and route
+  service contexts instead of being born directly inside `assemble_kernel`.
+- Kernel construction now has a single assembly program in
+  `client_kernel_assembly`. The compatibility shell passes callbacks for public
+  API behavior and runs one Effect that acquires resources, route services,
+  navigation services, and lifecycle finalizers before returning the kernel.
 - The compatibility pressure test has expanded beyond `create_client_core` into
   split runners for `router.test.ts`, `router_revalidation.test.ts`, and
   `router_submit.test.ts`. Keeping those runners split matters because the
   revalidation suite intentionally installs fake timers; importing all router
   suites into one file polluted unrelated tests.
-- The Effect adapter now passes the existing client-core, router, revalidation,
-  and submit suites through those swap runners. That is 284 existing tests
+- The Effect adapter passes the existing client-core, router, revalidation, and
+  submit suites through those swap runners. That is 284 existing tests
   exercising the Effect implementation behind the current public client
   contract.
-- The broader suites forced a useful architecture correction: browser-facing
-  APIs need synchronous entry edges for observable state, cancellation, and
-  fetch dispatch, while long-running work still belongs in owned Effect fibers.
-  Navigation, submission, work state, prefetch completion, and revalidation
-  cancellation now use direct Effect state transitions or explicitly owned
-  fibers where the public contract needs immediate visibility.
+- The broader suites exposed an important boundary question: navigation should
+  start promptly, but same-stack observability after `core.navigate(...)` is not
+  the public contract. The router tests now assert the real invariant by waiting
+  for prompt fetch/work events before resolving any response, instead of
+  requiring synchronous same-tick visibility. That let the navigation and
+  submission actors keep Effect-native `forkDaemon` scheduling without hidden
+  `Effect.runFork` port residue.
 - Navigation now has a first-class idle effect, which lets revalidation defer
   behind active navigation without polling or smuggling router state through the
   revalidation layer.
@@ -150,9 +201,10 @@ main app API into an Effect doctrine test.
 - Route payload decoding should move to a real decoder, likely Effect Schema or
   an equivalent local schema layer.
 - Revalidation retry/backoff should be revisited with `Schedule`.
-- Browser APIs need explicit services for fetch and timers. Location, history,
-  scroll, module import, Vite HMR, and route DOM side effects now have
-  first-pass services, but they still need a later `Context` / `Layer` cleanup.
+- Browser APIs now have first-pass Effect ownership for fetch, location,
+  history, scroll, browser view, module import, Vite HMR, route DOM side
+  effects, and work-indicator timing. They still need a later `Context` /
+  `Layer` cleanup.
 - Work-state emission should be owned by a service instead of being derived
   opportunistically from mutable outer variables.
 - Work indicator parity now covers category-level skips, per-operation skips for
@@ -162,10 +214,12 @@ main app API into an Effect doctrine test.
   Effect wants async acknowledgement, but public calls like `stop_prefetch`
   still need immediate observable cancellation, so the service needs explicit
   synchronous ownership of the abort controller.
-- Public promise APIs expose the same pressure in a milder form. Navigation can
-  remain promise-shaped, but supersession needs a synchronous signal-abort path
-  so already-started loaders and transition hooks observe cancellation at the
-  same moment the public call is made.
+- Public promise APIs expose a real boundary pressure. Navigation can remain
+  promise-shaped, but the desired timing guarantees need to be named instead of
+  inherited from the legacy closure. Supersession probably still needs immediate
+  signal abortion for already-started loaders and transition hooks, while fetch
+  dispatch and work-state visibility should be decided as public compatibility
+  behavior rather than smuggled into the Effect services.
 - Browser listeners need explicit lifecycle ownership before switch-over. The
   experiment now removes the previous kernel's focus, popstate, and beforeunload
   listeners through a lifecycle service. Popstate runs through the Effect
@@ -173,14 +227,21 @@ main app API into an Effect doctrine test.
   movement is now represented as route publication rather than fetch work.
 - The final client assembly should be scoped. Starting the client should acquire
   fibers/listeners/resources, and shutdown should release them.
+- The new `client_runtime_services`, `client_kernel_resources`,
+  `client_route_services`, and `client_navigation_services` Layers should keep
+  expanding inward. The next cleanup target is scoped runtime ownership. Kernel
+  construction is now one Effect, but `create_client_core_effect` still lowers
+  that Effect with `runSync` instead of acquiring the whole kernel under an
+  explicit Scope and lowering the scoped kernel into the public API.
 - Actors created inside the compatibility shell need daemon or explicit runtime
   ownership. Otherwise fibers created by `Effect.runSync` can be scoped away
   before browser callbacks get to use them.
 - Lifecycle finalizers need cause-level containment. Actor shutdown can die with
   interruption causes, so finalizer handling must use cause-aware recovery
   rather than only catching typed errors.
-- The existing-suite runners are now green. The next work should be about making
-  the service graph cleaner, not chasing broad parity gaps.
+- The existing-suite runners are green with prompt-start tests rather than
+  same-stack timing tests. The next work should be about making the service
+  graph cleaner, not chasing broad parity gaps.
 
 ## Switch-Over Bar
 
