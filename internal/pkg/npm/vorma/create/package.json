@@ -1,6 +1,6 @@
 {
 	"name": "create-vorma",
-	"version": "0.85.0-pre.11",
+	"version": "0.85.0-pre.12",
 	"description": "CLI for creating new Vorma applications.",
 	"type": "module",
 	"license": "BSD-3-Clause",

@@ -10,9 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	t "github.com/vormadev/vorma/kit/lab/cliutil"
 )
 
 const LocalOutputDir = "__.local"
+const step_result_banner = "#####################################################################"
 
 type App struct {
 	Root    string
@@ -22,13 +25,14 @@ type App struct {
 }
 
 type Step struct {
-	Name     string
-	Dir      string
-	Command  string
-	Args     []string
-	Env      []string
-	UnsetEnv []string
-	LogPath  string
+	Name            string
+	Dir             string
+	Command         string
+	Args            []string
+	Env             []string
+	UnsetEnv        []string
+	LogPath         string
+	HighlightResult bool
 }
 
 type Args []string
@@ -100,11 +104,7 @@ func (app App) RunStep(step Step) error {
 		fmt.Println("    log:", step.LogPath)
 	}
 	if app.DryRun {
-		fmt.Printf(
-			"<== %s passed (%s)\n",
-			step.Name,
-			time.Since(started_at).Round(time.Millisecond),
-		)
+		app.print_step_result(step, true, time.Since(started_at))
 		return nil
 	}
 
@@ -115,18 +115,44 @@ func (app App) RunStep(step Step) error {
 		err = app.ExecuteStep(step, step_dir)
 	}
 	if err != nil {
-		fmt.Printf(
-			"<== %s failed (%s)\n",
-			step.Name,
-			time.Since(started_at).Round(time.Millisecond),
-		)
+		app.print_step_result(step, false, time.Since(started_at))
 		if step.LogPath != "" {
 			return err
 		}
 		return app.CommandError(step.Name, err)
 	}
-	fmt.Printf("<== %s passed (%s)\n", step.Name, time.Since(started_at).Round(time.Millisecond))
+	app.print_step_result(step, true, time.Since(started_at))
 	return nil
+}
+
+func (app App) print_step_result(step Step, passed bool, elapsed time.Duration) {
+	result := "failed"
+	if passed {
+		result = "passed"
+	}
+	line := fmt.Sprintf("<== %s %s (%s)", step.Name, result, elapsed.Round(time.Millisecond))
+	if !step.HighlightResult {
+		fmt.Println(line)
+		return
+	}
+
+	t.NewLine()
+	if passed {
+		t.Green(step_result_banner)
+		t.NewLine()
+		t.Green(line)
+		t.NewLine()
+		t.Green(step_result_banner)
+		t.NewLine()
+	} else {
+		t.Red(step_result_banner)
+		t.NewLine()
+		t.Red(line)
+		t.NewLine()
+		t.Red(step_result_banner)
+		t.NewLine()
+	}
+	t.NewLine()
 }
 
 func (app App) ExecuteStep(step Step, step_dir string) error {

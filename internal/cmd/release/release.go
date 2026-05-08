@@ -10,6 +10,7 @@ import (
 
 	"github.com/vormadev/vorma/internal/cmd/internal/tooling"
 	"github.com/vormadev/vorma/kit/lab/bumper"
+	t "github.com/vormadev/vorma/kit/lab/cliutil"
 )
 
 const npm_package_json_path = "internal/pkg/npm/package.json"
@@ -47,7 +48,10 @@ func (app release_app) prepare_release(args []string) error {
 		return err
 	}
 
-	prompted, err := app.prompt_line("New release version")
+	t.Plain("current version: ")
+	t.Green(npm_content.version)
+	t.NewLine()
+	prompted, err := app.prompt_line("what is the new version?")
 	if err != nil {
 		return err
 	}
@@ -56,10 +60,29 @@ func (app release_app) prepare_release(args []string) error {
 		return fmt.Errorf("version is empty")
 	}
 
-	fmt.Printf("release version: %s -> %s\n", npm_content.version, next.npm_version())
-	fmt.Println("npm release tag:", next.npm_tag())
-	fmt.Println("go module tag:", next.go_tag())
-	if err := app.Confirm("Write release versions and run release verification?"); err != nil {
+	t.Plain("Result: ")
+	t.Red(npm_content.version)
+	t.Plain("  -->  ")
+	t.Green(next.npm_version())
+	t.NewLine()
+	t.Plain("npm release tag: ")
+	t.Green(next.npm_tag())
+	t.NewLine()
+	t.Plain("go module tag: ")
+	t.Green(next.go_tag())
+	t.NewLine()
+	if !app.Yes && !app.DryRun {
+		t.Blue("is this correct?")
+	}
+	if err := app.Confirm(""); err != nil {
+		return err
+	}
+	if !app.Yes && !app.DryRun {
+		t.Blue("write release version ")
+		t.Green(next.npm_version())
+		t.Blue(" to package files and run release verification?")
+	}
+	if err := app.Confirm(""); err != nil {
 		return err
 	}
 
@@ -119,16 +142,17 @@ func (app release_app) publish_go(args []string) error {
 
 func (app release_app) run_enforcer_gate() error {
 	return app.RunStep(tooling.Step{
-		Name:    "run enforcer gate",
-		Command: "go",
-		Args:    []string{"run", "./internal/cmd/enforcer", "gate"},
+		Name:            "run enforcer gate",
+		Command:         "go",
+		Args:            []string{"run", "./internal/cmd/enforcer", "gate"},
+		HighlightResult: true,
 	})
 }
 
 func (app release_app) prompt_line(prompt string) (string, error) {
-	fmt.Print(prompt + ": ")
-	var value string
-	if _, err := fmt.Scanln(&value); err != nil {
+	t.Blue(prompt + " ")
+	value, err := t.NewReader().ReadString('\n')
+	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(value), nil
@@ -309,6 +333,8 @@ func (version release_version) print_npm_publish_instructions(app release_app) {
 	for _, pkg := range app.release_packages() {
 		pkg.print_publish_command(app, version)
 	}
+	fmt.Println("cd " + app.Root)
+	fmt.Println()
 	fmt.Println("After npm publish succeeds, run:")
 	fmt.Println()
 	fmt.Println("make publish-go")

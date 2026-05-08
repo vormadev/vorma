@@ -1,8 +1,5 @@
 import { Effect, Ref } from "effect";
-import {
-	HISTORY_KEY_FIELD,
-	HISTORY_USER_STATE_FIELD,
-} from "../constants.ts";
+import { HISTORY_KEY_FIELD, HISTORY_USER_STATE_FIELD } from "../constants.ts";
 import type { HistoryPosition } from "./route_publisher.ts";
 
 export type BrowserHistory = {
@@ -25,9 +22,7 @@ export function make_browser_history(): Effect.Effect<BrowserHistory, never> {
 			return read_position(false);
 		}).pipe(
 			Effect.flatMap((position) => {
-				return Ref.set(current_ref, position).pipe(
-					Effect.as(position),
-				);
+				return Ref.set(current_ref, position).pipe(Effect.as(position));
 			}),
 		);
 
@@ -35,9 +30,7 @@ export function make_browser_history(): Effect.Effect<BrowserHistory, never> {
 			return read_position(true);
 		}).pipe(
 			Effect.flatMap((position) => {
-				return Ref.set(current_ref, position).pipe(
-					Effect.as(position),
-				);
+				return Ref.set(current_ref, position).pipe(Effect.as(position));
 			}),
 		);
 
