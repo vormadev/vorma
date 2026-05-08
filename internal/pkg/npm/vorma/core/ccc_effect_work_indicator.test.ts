@@ -4,8 +4,8 @@ import type { WorkIndicatorOptions } from "./effect_runtime/client_contract.ts";
 import { make_work_indicator } from "./effect_runtime/work_indicator.ts";
 
 type WorkIndicatorRenderer = WorkIndicatorOptions & {
-	hide: ReturnType<typeof vi.fn>;
-	show: ReturnType<typeof vi.fn>;
+	stop: ReturnType<typeof vi.fn>;
+	start: ReturnType<typeof vi.fn>;
 };
 
 function deferred<T>() {
@@ -24,14 +24,14 @@ function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
 
 function renderer(): WorkIndicatorRenderer {
 	return {
-		hide: vi.fn(() => {
+		stop: vi.fn(() => {
 			return;
 		}),
-		hideDelayMS: 1,
-		show: vi.fn(() => {
+		stopDelayMS: 1,
+		start: vi.fn(() => {
 			return;
 		}),
-		showDelayMS: 1,
+		startDelayMS: 1,
 	};
 }
 
@@ -40,7 +40,7 @@ describe("ccc Effect work indicator experiment", () => {
 		vi.useRealTimers();
 	});
 
-	it("tracks app-owned work and reconciles delayed show/hide", async () => {
+	it("tracks app-owned work and reconciles delayed start/stop", async () => {
 		vi.useFakeTimers();
 		const config = renderer();
 		const runtime = await run_effect(make_work_indicator());
@@ -51,13 +51,13 @@ describe("ccc Effect work indicator experiment", () => {
 
 		expect(runtime.indicator.isActive()).toBe(true);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		work.resolve(42);
 		await expect(tracked).resolves.toBe(42);
 		expect(runtime.indicator.isActive()).toBe(false);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(config.hide).toHaveBeenCalledTimes(1);
+		expect(config.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("moves visible work to replacement options", async () => {
@@ -69,16 +69,16 @@ describe("ccc Effect work indicator experiment", () => {
 		const work = deferred<void>();
 		const tracked = runtime.indicator.track(work.promise);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(first.show).toHaveBeenCalledTimes(1);
+		expect(first.start).toHaveBeenCalledTimes(1);
 
 		await run_effect(runtime.configure(second));
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(first.hide).toHaveBeenCalledTimes(1);
-		expect(second.show).toHaveBeenCalledTimes(1);
+		expect(first.stop).toHaveBeenCalledTimes(1);
+		expect(second.start).toHaveBeenCalledTimes(1);
 		work.resolve();
 		await tracked;
 		await vi.advanceTimersByTimeAsync(1);
-		expect(second.hide).toHaveBeenCalledTimes(1);
+		expect(second.stop).toHaveBeenCalledTimes(1);
 	});
 });

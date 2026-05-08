@@ -42,6 +42,7 @@ export type EffectClientKernelOptions = {
 	}) => Effect.Effect<void>;
 	revalidate_api_request: (
 		route_revalidator: RouteRevalidator,
+		options?: { skipWorkIndicator?: boolean },
 	) => Effect.Effect<RevalidationResult>;
 	use_view_transitions: Effect.Effect<boolean>;
 };

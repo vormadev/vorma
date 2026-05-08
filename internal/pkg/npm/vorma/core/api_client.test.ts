@@ -142,6 +142,26 @@ describe("query and mutate", () => {
 		});
 	});
 
+	it("passes skipWorkIndicator through for queries", async () => {
+		const { submit_fn, calls } = mock_submit();
+		const client = create_typed_api_client("/api/", submit_fn as any);
+
+		await (client as any).query({
+			dedupeKey: "users:42",
+			pattern: "/users/:id",
+			params: { id: "42" },
+			input: { include: "posts" },
+			skipWorkIndicator: true,
+		});
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.options).toEqual({
+			apiRouteKind: "query",
+			dedupeKey: "users:42",
+			skipWorkIndicator: true,
+		});
+	});
+
 	it("passes flattened RequestInit fields through", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);

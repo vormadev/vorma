@@ -417,10 +417,10 @@ describe("ccc Effect client core adapter experiment", () => {
 	it("tracks app-owned work through the Effect work indicator", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -439,21 +439,21 @@ describe("ccc Effect client core adapter experiment", () => {
 
 		expect(core_result.val.workIndicator.isActive()).toBe(true);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(work_indicator.start).toHaveBeenCalledTimes(1);
 		work.resolve(42);
 		await expect(tracked).resolves.toBe(42);
 		expect(core_result.val.workIndicator.isActive()).toBe(false);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.hide).toHaveBeenCalledTimes(1);
+		expect(work_indicator.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("drives the Effect work indicator from navigation work", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -471,21 +471,21 @@ describe("ccc Effect client core adapter experiment", () => {
 		const navigation = core_result.val.navigate("/about");
 		await wait_for(1);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(work_indicator.start).toHaveBeenCalledTimes(1);
 		call(0).resolve(route_response());
 		await navigation;
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(work_indicator.hide).toHaveBeenCalledTimes(1);
+		expect(work_indicator.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps app-owned Effect work active after navigation settles", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -505,31 +505,31 @@ describe("ccc Effect client core adapter experiment", () => {
 		const navigation = core_result.val.navigate("/about");
 		await wait_for(1);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(work_indicator.start).toHaveBeenCalledTimes(1);
 		call(0).resolve(route_response());
 		await navigation;
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.hide).not.toHaveBeenCalled();
+		expect(work_indicator.stop).not.toHaveBeenCalled();
 
 		app_work.resolve();
 		await tracked;
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.hide).toHaveBeenCalledTimes(1);
+		expect(work_indicator.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("moves visible app-owned Effect work across work indicator replacement", async () => {
 		vi.useFakeTimers();
 		const first_work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		const second_work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -547,28 +547,28 @@ describe("ccc Effect client core adapter experiment", () => {
 		const app_work = deferred<void>();
 		const tracked = core_result.val.workIndicator.track(app_work.promise);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(first_work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(first_work_indicator.start).toHaveBeenCalledTimes(1);
 
 		await core_result.val.boot({
 			workIndicator: second_work_indicator,
 		});
 		await vi.advanceTimersByTimeAsync(1);
-		expect(first_work_indicator.hide).toHaveBeenCalledTimes(1);
-		expect(second_work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(first_work_indicator.stop).toHaveBeenCalledTimes(1);
+		expect(second_work_indicator.start).toHaveBeenCalledTimes(1);
 
 		app_work.resolve();
 		await tracked;
 		await vi.advanceTimersByTimeAsync(1);
-		expect(second_work_indicator.hide).toHaveBeenCalledTimes(1);
+		expect(second_work_indicator.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("drives the Effect work indicator from revalidation work", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -585,23 +585,23 @@ describe("ccc Effect client core adapter experiment", () => {
 
 		const revalidation = core_result.val.revalidate();
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(work_indicator.start).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
 		await wait_for(1);
 		call(0).resolve(route_response());
 		await revalidation;
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(work_indicator.hide).toHaveBeenCalledTimes(1);
+		expect(work_indicator.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("drives the Effect work indicator from API request work", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -623,21 +623,21 @@ describe("ccc Effect client core adapter experiment", () => {
 		);
 		await wait_for(1);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(work_indicator.show).toHaveBeenCalledTimes(1);
+		expect(work_indicator.start).toHaveBeenCalledTimes(1);
 		call(0).resolve(json_response({ ok: true }));
 		await submission;
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(work_indicator.hide).toHaveBeenCalledTimes(1);
+		expect(work_indicator.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("respects Effect work indicator navigation category skips", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 			skipNavigations: true,
 		};
 		seed_payload({
@@ -660,16 +660,16 @@ describe("ccc Effect client core adapter experiment", () => {
 		await navigation;
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(work_indicator.show).not.toHaveBeenCalled();
+		expect(work_indicator.start).not.toHaveBeenCalled();
 	});
 
 	it("respects Effect work indicator per-navigation skips", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -693,16 +693,16 @@ describe("ccc Effect client core adapter experiment", () => {
 		await navigation;
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(work_indicator.show).not.toHaveBeenCalled();
+		expect(work_indicator.start).not.toHaveBeenCalled();
 	});
 
 	it("respects Effect work indicator per-submission skips", async () => {
 		vi.useFakeTimers();
 		const work_indicator = {
-			hide: vi.fn(),
-			hideDelayMS: 1,
-			show: vi.fn(),
-			showDelayMS: 1,
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
 		};
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -731,7 +731,7 @@ describe("ccc Effect client core adapter experiment", () => {
 		await submission;
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(work_indicator.show).not.toHaveBeenCalled();
+		expect(work_indicator.start).not.toHaveBeenCalled();
 	});
 
 	it("navigates through the Effect actor/fetcher/preparer/publisher path", async () => {

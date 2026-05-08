@@ -1815,17 +1815,17 @@ describe("work indicators", () => {
 	});
 
 	type WorkIndicatorRenderEvent = {
-		kind: "show" | "hide";
+		kind: "start" | "stop";
 		was_visible: boolean;
 	};
 
 	type WorkIndicatorRenderer = WorkIndicatorOptions & {
 		events: WorkIndicatorRenderEvent[];
 		force_visible: () => void;
-		hide: ReturnType<typeof vi.fn>;
 		is_visible: () => boolean;
 		reset_events: () => void;
-		show: ReturnType<typeof vi.fn>;
+		start: ReturnType<typeof vi.fn>;
+		stop: ReturnType<typeof vi.fn>;
 	};
 
 	function make_work_indicator_renderer(
@@ -1833,12 +1833,12 @@ describe("work indicators", () => {
 	): WorkIndicatorRenderer {
 		let visible = initial_visible;
 		const events: WorkIndicatorRenderEvent[] = [];
-		const show = vi.fn(() => {
-			events.push({ kind: "show", was_visible: visible });
+		const start = vi.fn(() => {
+			events.push({ kind: "start", was_visible: visible });
 			visible = true;
 		});
-		const hide = vi.fn(() => {
-			events.push({ kind: "hide", was_visible: visible });
+		const stop = vi.fn(() => {
+			events.push({ kind: "stop", was_visible: visible });
 			visible = false;
 		});
 		return {
@@ -1846,18 +1846,18 @@ describe("work indicators", () => {
 			force_visible: () => {
 				visible = true;
 			},
-			hide,
-			hideDelayMS: 1,
 			is_visible: () => {
 				return visible;
 			},
 			reset_events: () => {
 				events.length = 0;
-				show.mockClear();
-				hide.mockClear();
+				start.mockClear();
+				stop.mockClear();
 			},
-			show,
-			showDelayMS: 1,
+			start,
+			startDelayMS: 1,
+			stop,
+			stopDelayMS: 1,
 		};
 	}
 
@@ -1875,20 +1875,20 @@ describe("work indicators", () => {
 		expect(config.is_visible()).toBe(false);
 	}
 
-	function expect_hide_after_last_show(config: WorkIndicatorRenderer): void {
-		let last_show_index = -1;
-		let last_hide_index = -1;
+	function expect_stop_after_last_start(config: WorkIndicatorRenderer): void {
+		let last_start_index = -1;
+		let last_stop_index = -1;
 		for (let i = 0; i < config.events.length; i++) {
 			const event = config.events[i];
-			if (event?.kind === "show") {
-				last_show_index = i;
+			if (event?.kind === "start") {
+				last_start_index = i;
 			}
-			if (event?.kind === "hide") {
-				last_hide_index = i;
+			if (event?.kind === "stop") {
+				last_stop_index = i;
 			}
 		}
-		expect(last_show_index).toBeGreaterThanOrEqual(0);
-		expect(last_hide_index).toBeGreaterThan(last_show_index);
+		expect(last_start_index).toBeGreaterThanOrEqual(0);
+		expect(last_stop_index).toBeGreaterThan(last_start_index);
 	}
 
 	async function setup_core(
@@ -1910,13 +1910,13 @@ describe("work indicators", () => {
 		return core_res.val;
 	}
 
-	it("shows and hides around navigation with delays", async () => {
+	it("starts and stops around navigation with delays", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 10,
-			hideDelayMS: 10,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 10,
+			stopDelayMS: 10,
 		};
 		const core = await setup_core(config);
 
@@ -1930,23 +1930,23 @@ describe("work indicators", () => {
 		void core.navigate("/page");
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(config.show).toHaveBeenCalled();
+		expect(config.start).toHaveBeenCalled();
 
 		resolve_fetch(route_response());
 		await vi.advanceTimersByTimeAsync(10);
 		await tick();
 
-		expect(config.hide).toHaveBeenCalled();
+		expect(config.stop).toHaveBeenCalled();
 	});
 
 	it("respects category skips", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
+			start: vi.fn(),
+			stop: vi.fn(),
 			skipAPIRequests: true,
-			showDelayMS: 1,
-			hideDelayMS: 1,
+			startDelayMS: 1,
+			stopDelayMS: 1,
 		};
 		const core = await setup_core(config);
 
@@ -1966,16 +1966,16 @@ describe("work indicators", () => {
 		);
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(config.show).not.toHaveBeenCalled();
+		expect(config.start).not.toHaveBeenCalled();
 	});
 
 	it("skips work indicator for opted-out submissions", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 1,
-			hideDelayMS: 1,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
 		};
 		const core = await setup_core(config);
 
@@ -1996,16 +1996,100 @@ describe("work indicators", () => {
 		);
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(config.show).not.toHaveBeenCalled();
+		expect(config.start).not.toHaveBeenCalled();
+	});
+
+	it("skips work indicator for opted-out GET query submissions", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+
+		const submit = core.submit_inner("/api/search?q=ada", undefined, {
+			apiRouteKind: "query",
+			dedupeKey: "search:debug",
+			skipWorkIndicator: true,
+		});
+		await fetcher.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(core.getWorkState().apiRequests).toEqual([
+			{
+				key: "search:debug",
+				method: "GET",
+				href: "http://localhost:3000/api/search?q=ada",
+			},
+		]);
+		expect(config.start).not.toHaveBeenCalled();
+		expect(core.workIndicator.isActive()).toBe(false);
+
+		fetcher.call(0).resolve(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const result = await submit;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(result.success).toBe(true);
+		expect(fetcher.calls).toHaveLength(1);
+		expect(config.start).not.toHaveBeenCalled();
+		expect(config.stop).not.toHaveBeenCalled();
+		expect_work_indicator_idle(core, config);
+	});
+
+	it("skips work indicator for opted-out mutation revalidation", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+
+		const submit = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				skipWorkIndicator: true,
+			},
+		);
+		await fetcher.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
+
+		fetcher.call(0).resolve(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const result = await submit;
+		await fetcher.wait_for(2);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
+
+		fetcher.call(1).resolve(route_response());
+		await result.revalidationPromise;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
 	});
 
 	it("skips work indicator for opted-out navigations", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 1,
-			hideDelayMS: 1,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
 		};
 		const core = await setup_core(config);
 
@@ -2021,20 +2105,20 @@ describe("work indicators", () => {
 		});
 		await vi.advanceTimersByTimeAsync(10);
 
-		expect(config.show).not.toHaveBeenCalled();
+		expect(config.start).not.toHaveBeenCalled();
 
 		resolve_fetch(route_response());
 		await vi.advanceTimersByTimeAsync(10);
 		await tick();
 	});
 
-	it("overlapping work does not cause show-hide thrash", async () => {
+	it("overlapping work does not cause start-stop thrash", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 1,
-			hideDelayMS: 1,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
 		};
 		const core = await setup_core(config);
 
@@ -2065,7 +2149,7 @@ describe("work indicators", () => {
 		);
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		resolve_first(
 			new Response(JSON.stringify({}), {
@@ -2075,8 +2159,8 @@ describe("work indicators", () => {
 		);
 		await vi.advanceTimersByTimeAsync(0);
 
-		// Still one submit in flight, should not hide
-		expect(config.hide).not.toHaveBeenCalled();
+		// Still one submit in flight, should not stop
+		expect(config.stop).not.toHaveBeenCalled();
 
 		resolve_second(
 			new Response(JSON.stringify({}), {
@@ -2087,16 +2171,16 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 		await tick();
 
-		expect(config.hide).toHaveBeenCalledTimes(1);
+		expect(config.stop).toHaveBeenCalledTimes(1);
 	});
 
-	it("clears pending show timer when work finishes before delay", async () => {
+	it("clears pending start timer when work finishes before delay", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 100,
-			hideDelayMS: 10,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 100,
+			stopDelayMS: 10,
 		};
 		const core = await setup_core(config);
 
@@ -2105,17 +2189,17 @@ describe("work indicators", () => {
 		await core.navigate("/fast-page");
 		await vi.advanceTimersByTimeAsync(200);
 
-		expect(config.show).not.toHaveBeenCalled();
-		expect(config.hide).toHaveBeenCalledTimes(1);
+		expect(config.start).not.toHaveBeenCalled();
+		expect(config.stop).not.toHaveBeenCalled();
 	});
 
-	it("cancels pending hide timer when new work begins", async () => {
+	it("cancels pending stop timer when new work begins", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 1,
-			hideDelayMS: 100,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 100,
 		};
 		const core = await setup_core(config);
 
@@ -2136,7 +2220,7 @@ describe("work indicators", () => {
 
 		void core.navigate("/first");
 		await vi.advanceTimersByTimeAsync(1);
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		resolve_first(route_response());
 		await vi.advanceTimersByTimeAsync(0);
@@ -2145,23 +2229,23 @@ describe("work indicators", () => {
 		void core.navigate("/second");
 		await vi.advanceTimersByTimeAsync(100);
 
-		expect(config.hide).not.toHaveBeenCalled();
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.stop).not.toHaveBeenCalled();
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		resolve_second(route_response());
 		await vi.advanceTimersByTimeAsync(100);
 		await tick();
 
-		expect(config.hide).toHaveBeenCalledTimes(1);
+		expect(config.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("tracks app-owned promise work", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 1,
-			hideDelayMS: 1,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
 		};
 		const core = await setup_core(config);
 		const external_work = deferred<number>();
@@ -2170,30 +2254,30 @@ describe("work indicators", () => {
 
 		expect(core.workIndicator.isActive()).toBe(true);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		external_work.resolve(42);
 		await expect(tracked).resolves.toBe(42);
 
 		expect(core.workIndicator.isActive()).toBe(false);
 		await vi.advanceTimersByTimeAsync(1);
-		expect(config.hide).toHaveBeenCalledTimes(1);
+		expect(config.stop).toHaveBeenCalledTimes(1);
 	});
 
 	it("keeps app-owned work active after Vorma work settles", async () => {
 		vi.useFakeTimers();
 		const config = {
-			show: vi.fn(),
-			hide: vi.fn(),
-			showDelayMS: 1,
-			hideDelayMS: 1,
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
 		};
 		const core = await setup_core(config);
 		const external_work = deferred<void>();
 		const tracked = core.workIndicator.track(external_work.promise);
 
 		await vi.advanceTimersByTimeAsync(1);
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		let resolve_fetch!: (r: Response) => void;
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
@@ -2209,27 +2293,27 @@ describe("work indicators", () => {
 		await tick();
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.hide).not.toHaveBeenCalled();
+		expect(config.stop).not.toHaveBeenCalled();
 
 		external_work.resolve();
 		await tracked;
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.hide).toHaveBeenCalledTimes(1);
+		expect(config.stop).toHaveBeenCalledTimes(1);
 	});
 
-	it("reconciles a visible renderer when boot starts idle", async () => {
+	it("does not stop a visible renderer when boot starts idle", async () => {
 		vi.useFakeTimers();
 		const config = make_work_indicator_renderer(true);
 
 		await setup_core(config);
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.hide).toHaveBeenCalledTimes(1);
-		expect(config.is_visible()).toBe(false);
+		expect(config.stop).not.toHaveBeenCalled();
+		expect(config.is_visible()).toBe(true);
 	});
 
-	it("reconciles a visible renderer after skipped Vorma work settles", async () => {
+	it("does not stop a visible renderer after skipped Vorma work settles", async () => {
 		vi.useFakeTimers();
 		const config = make_work_indicator_renderer();
 		const core = await setup_core(config);
@@ -2252,11 +2336,11 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 		await tick();
 
-		expect(config.hide).toHaveBeenCalled();
-		expect(config.is_visible()).toBe(false);
+		expect(config.stop).not.toHaveBeenCalled();
+		expect(config.is_visible()).toBe(true);
 	});
 
-	it("hides after Vorma-owned navigation aborts", async () => {
+	it("stops after Vorma-owned navigation aborts", async () => {
 		vi.useFakeTimers();
 		const config = make_work_indicator_renderer();
 		const core = await setup_core(config);
@@ -2268,7 +2352,7 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 		await tick();
 
-		expect(config.show).not.toHaveBeenCalled();
+		expect(config.start).not.toHaveBeenCalled();
 		expect_work_indicator_idle(core, config);
 
 		const slow_fetch = mock_fetch();
@@ -2276,17 +2360,17 @@ describe("work indicators", () => {
 		await slow_fetch.wait_for(1);
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 		slow_fetch.call(0).reject(new DOMException("Aborted", "AbortError"));
 		await nav;
 		await tick();
 		await vi.advanceTimersByTimeAsync(1);
 
 		expect_work_indicator_idle(core, config);
-		expect_hide_after_last_show(config);
+		expect_stop_after_last_start(config);
 	});
 
-	it("hides after Vorma-owned API request rejects", async () => {
+	it("stops after Vorma-owned API request rejects", async () => {
 		vi.useFakeTimers();
 		const config = make_work_indicator_renderer();
 		const core = await setup_core(config);
@@ -2300,7 +2384,7 @@ describe("work indicators", () => {
 		await fetcher.wait_for(1);
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 		fetcher.call(0).reject(new Error("network down"));
 		const result = await submit;
 		await tick();
@@ -2308,10 +2392,10 @@ describe("work indicators", () => {
 
 		expect(result.success).toBe(false);
 		expect_work_indicator_idle(core, config);
-		expect_hide_after_last_show(config);
+		expect_stop_after_last_start(config);
 	});
 
-	it("hides after revalidation debounce and fetch settle", async () => {
+	it("stops after revalidation debounce and fetch settle", async () => {
 		vi.useFakeTimers();
 		const config = make_work_indicator_renderer();
 		const core = await setup_core(config);
@@ -2320,7 +2404,7 @@ describe("work indicators", () => {
 		const revalidation = core.revalidate();
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
 		await fetcher.wait_for(1);
 		fetcher.call(0).resolve(route_response());
@@ -2329,7 +2413,7 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 
 		expect_work_indicator_idle(core, config);
-		expect_hide_after_last_show(config);
+		expect_stop_after_last_start(config);
 	});
 
 	it("moves a visible Vorma-owned indicator across option replacement", async () => {
@@ -2341,7 +2425,7 @@ describe("work indicators", () => {
 
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(first_config.show).toHaveBeenCalledTimes(1);
+		expect(first_config.start).toHaveBeenCalledTimes(1);
 		expect(first_config.is_visible()).toBe(true);
 
 		const second_config = make_work_indicator_renderer();
@@ -2349,8 +2433,8 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 
 		expect(first_config.is_visible()).toBe(false);
-		expect(first_config.hide).toHaveBeenCalledTimes(1);
-		expect(second_config.show).toHaveBeenCalledTimes(1);
+		expect(first_config.stop).toHaveBeenCalledTimes(1);
+		expect(second_config.start).toHaveBeenCalledTimes(1);
 		expect(second_config.is_visible()).toBe(true);
 
 		external_work.resolve();
@@ -2358,8 +2442,8 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 
 		expect_work_indicator_idle(core, second_config);
-		expect_hide_after_last_show(first_config);
-		expect_hide_after_last_show(second_config);
+		expect_stop_after_last_start(first_config);
+		expect_stop_after_last_start(second_config);
 	});
 
 	it("keeps the renderer reconciled after varied work ordering", async () => {
@@ -2426,7 +2510,7 @@ describe("work indicators", () => {
 		await tick();
 
 		expect_work_indicator_idle(core, config);
-		expect_hide_after_last_show(config);
+		expect_stop_after_last_start(config);
 	});
 
 	it("does not orphan after mixed Vorma and app work settle", async () => {
@@ -2441,7 +2525,7 @@ describe("work indicators", () => {
 		await fetcher.wait_for(1);
 		await vi.advanceTimersByTimeAsync(1);
 
-		expect(config.show).toHaveBeenCalledTimes(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
 
 		const submit = core.submit_inner(
 			"/api/chaos-action",
@@ -2478,7 +2562,7 @@ describe("work indicators", () => {
 		await vi.advanceTimersByTimeAsync(1);
 
 		expect_work_indicator_idle(core, config);
-		expect_hide_after_last_show(config);
+		expect_stop_after_last_start(config);
 	});
 });
 

@@ -19,6 +19,7 @@ import {
 	client_runtime_services_to_layer,
 	make_client_runtime_services,
 } from "./effect_runtime/client_runtime_services.ts";
+import { make_client_session } from "./effect_runtime/client_session.ts";
 import { type FocusRevalidator } from "./effect_runtime/focus_revalidator.ts";
 import type { SubmitResult } from "./effect_runtime/submit_manager.ts";
 import type { WorkIndicatorActivity } from "./effect_runtime/work_state_actor.ts";
@@ -27,7 +28,7 @@ import type { APIRouteKind, AppConfig, RevalidationResult } from "./types.ts";
 export const EFFECT_CLIENT_BUILD_ID_FIELD = "ClientBuildID";
 export const EFFECT_DEPLOYMENT_ID_FIELD = "DeploymentID";
 
-let effect_active_kernel_shutdown: (() => Promise<void>) | null = null;
+const effect_client_session = Effect.runSync(make_client_session());
 
 export function create_client_core_effect(
 	app_config: Omit<AppConfig, "__vormaViews" | "__vormaAPIRoutes">,
@@ -160,9 +161,15 @@ export function create_client_core_effect(
 				on_provisional_route: (input) => {
 					return boot_route_state.capture(input);
 				},
-				revalidate_api_request: (route_revalidator) => {
+				revalidate_api_request: (
+					route_revalidator,
+					revalidation_options,
+				) => {
 					return boot_revalidation_gate.request_or_defer(
-						route_revalidator.request("apiRequest"),
+						route_revalidator.request(
+							"apiRequest",
+							revalidation_options,
+						),
 					);
 				},
 				use_view_transitions: Effect.sync(() => {
@@ -231,10 +238,6 @@ export function create_client_core_effect(
 		const should_revalidate_after_boot = Effect.runSync(
 			boot_revalidation_gate.finish_boot,
 		);
-		if (effect_active_kernel_shutdown) {
-			await effect_active_kernel_shutdown();
-			effect_active_kernel_shutdown = null;
-		}
 		kernel = next_kernel;
 		focus_revalidator = null;
 		Effect.runSync(boot_route_state.clear);
@@ -251,9 +254,9 @@ export function create_client_core_effect(
 				}),
 			),
 		);
-		effect_active_kernel_shutdown = () => {
-			return run_effect(next_kernel_handle.shutdown);
-		};
+		await run_effect(
+			effect_client_session.replace_active(next_kernel_handle),
+		);
 		if (options.revalidateOnWindowFocus) {
 			const stale_ms =
 				typeof options.revalidateOnWindowFocus === "object"
@@ -283,10 +286,9 @@ export function create_client_core_effect(
 			),
 		);
 		if (render_result._tag === "Left") {
-			if (effect_active_kernel_shutdown) {
-				await effect_active_kernel_shutdown();
-				effect_active_kernel_shutdown = null;
-			}
+			await run_effect(
+				effect_client_session.shutdown_if_active(next_kernel_handle),
+			);
 			return R.err(String(render_result.left));
 		}
 		return R.ok(undefined);

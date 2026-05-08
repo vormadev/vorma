@@ -13,6 +13,7 @@ export * from "./client_kernel_resources.ts";
 export * from "./client_navigation_services.ts";
 export * from "./client_route_services.ts";
 export * from "./client_runtime_services.ts";
+export * from "./client_session.ts";
 export * from "./focus_revalidator.ts";
 export * from "./module_runtime.ts";
 export * from "./navigation_actor.ts";

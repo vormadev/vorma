@@ -93,7 +93,7 @@ export function make_work_indicator(): Effect.Effect<
 					previous.options &&
 					previous.options !== options
 				) {
-					previous.options.hide();
+					previous.options.stop();
 				}
 				yield* Ref.set(state_ref, {
 					...previous,
@@ -111,7 +111,7 @@ export function make_work_indicator(): Effect.Effect<
 			yield* cancel_timer(state.show_timer);
 			yield* cancel_timer(state.hide_timer);
 			if (state.visible && state.options) {
-				state.options.hide();
+				state.options.stop();
 			}
 			release_vorma_work = null;
 			yield* Ref.set(state_ref, {
@@ -180,7 +180,7 @@ function sync_indicator(
 				return;
 			}
 			const show_timer = yield* start_timer(
-				options.showDelayMS ?? WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS,
+				options.startDelayMS ?? WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS,
 				show_indicator(state_ref),
 			);
 			yield* Ref.set(state_ref, {
@@ -191,6 +191,13 @@ function sync_indicator(
 			return;
 		}
 		yield* cancel_timer(state.show_timer);
+		if (!state.visible) {
+			yield* Ref.set(state_ref, {
+				...state,
+				show_timer: null,
+			});
+			return;
+		}
 		if (state.hide_timer) {
 			yield* Ref.set(state_ref, {
 				...state,
@@ -199,7 +206,7 @@ function sync_indicator(
 			return;
 		}
 		const hide_timer = yield* start_timer(
-			options.hideDelayMS ?? WORK_INDICATOR_DEFAULT_HIDE_DELAY_MS,
+			options.stopDelayMS ?? WORK_INDICATOR_DEFAULT_HIDE_DELAY_MS,
 			hide_indicator(state_ref),
 		);
 		yield* Ref.set(state_ref, {
@@ -222,7 +229,7 @@ function show_indicator(
 			});
 			return;
 		}
-		state.options.show();
+		state.options.start();
 		yield* Ref.set(state_ref, {
 			...state,
 			visible: true,
@@ -243,7 +250,7 @@ function hide_indicator(
 			});
 			return;
 		}
-		state.options.hide();
+		state.options.stop();
 		yield* Ref.set(state_ref, {
 			...state,
 			hide_timer: null,

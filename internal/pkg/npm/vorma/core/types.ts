@@ -102,6 +102,7 @@ export type LinkPropsBase = {
 	visitOnPointerDown?: boolean;
 	replace?: boolean;
 	scrollToTop?: boolean;
+	skipWorkIndicator?: boolean;
 };
 
 /////// APP CONFIG

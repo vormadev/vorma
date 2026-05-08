@@ -99,10 +99,10 @@ export type WorkIndicator = {
 };
 
 export type WorkIndicatorOptions = {
-	show: () => void;
-	hide: () => void;
-	showDelayMS?: number;
-	hideDelayMS?: number;
+	start: () => void;
+	stop: () => void;
+	startDelayMS?: number;
+	stopDelayMS?: number;
 	skipNavigations?: boolean;
 	skipAPIRequests?: boolean;
 	skipRevalidations?: boolean;

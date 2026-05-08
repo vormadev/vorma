@@ -17,14 +17,14 @@ import {
 	WORK_REVALIDATION_STATUS_DEBOUNCING,
 	WORK_REVALIDATION_STATUS_RETRYING,
 	WORK_REVALIDATION_STATUS_RUNNING,
-	type WorkRevalidation,
+	type WorkRevalidationInput,
 	type WorkStateActor,
 } from "./work_state_actor.ts";
 
 export type RouteRevalidator = {
 	request: (
 		reason: Exclude<RevalidationReason, "retry">,
-		options?: { debounce?: boolean },
+		options?: { debounce?: boolean; skipWorkIndicator?: boolean },
 	) => Effect.Effect<RevalidationResult>;
 	cancel: Effect.Effect<void>;
 	snapshot: Effect.Effect<RevalidationCoordinatorSnapshot>;
@@ -139,7 +139,7 @@ function run_revalidation_attempt(
 
 function work_revalidation_from_snapshot(
 	snapshot: RevalidationCoordinatorSnapshot,
-): WorkRevalidation | null {
+): WorkRevalidationInput | null {
 	if (snapshot.phase === "idle") {
 		return null;
 	}
@@ -147,17 +147,20 @@ function work_revalidation_from_snapshot(
 		return {
 			status: WORK_REVALIDATION_STATUS_DEBOUNCING,
 			attempt: snapshot.attempt,
+			skipWorkIndicator: snapshot.skipWorkIndicator,
 		};
 	}
 	if (snapshot.phase === "retrying") {
 		return {
 			status: WORK_REVALIDATION_STATUS_RETRYING,
 			attempt: snapshot.attempt,
+			skipWorkIndicator: snapshot.skipWorkIndicator,
 		};
 	}
 	return {
 		status: WORK_REVALIDATION_STATUS_RUNNING,
 		attempt: snapshot.attempt,
+		skipWorkIndicator: snapshot.skipWorkIndicator,
 	};
 }
 

@@ -128,7 +128,7 @@ func (app release_app) publish_go(args []string) error {
 	if err := app.RequireCleanWorktree(); err != nil {
 		return err
 	}
-	return bumper.Config{
+	if err := (bumper.Config{
 		RootDir:    app.Root,
 		ModulePath: "github.com/vormadev/vorma",
 		Version:    version.go_tag(),
@@ -137,7 +137,10 @@ func (app release_app) publish_go(args []string) error {
 		Stdin:      os.Stdin,
 		Stdout:     os.Stdout,
 		Stderr:     os.Stderr,
-	}.Publish()
+	}).Publish(); err != nil {
+		return err
+	}
+	return app.run_enforcer_ts_install()
 }
 
 func (app release_app) run_enforcer_gate() error {
@@ -146,6 +149,14 @@ func (app release_app) run_enforcer_gate() error {
 		Command:         "go",
 		Args:            []string{"run", "./internal/cmd/enforcer", "gate"},
 		HighlightResult: true,
+	})
+}
+
+func (app release_app) run_enforcer_ts_install() error {
+	return app.RunStep(tooling.Step{
+		Name:    "restore TypeScript dependencies",
+		Command: "go",
+		Args:    []string{"run", "./internal/cmd/enforcer", "install", "--lang", "ts"},
 	})
 }
 
@@ -334,16 +345,12 @@ func (version release_version) print_npm_publish_instructions(app release_app) {
 		pkg.print_publish_command(app, version)
 	}
 	fmt.Println("cd " + app.Root)
-	fmt.Println()
-	fmt.Println("After npm publish succeeds, run:")
-	fmt.Println()
 	fmt.Println("make publish-go")
 }
 
 func (pkg release_package) print_publish_command(app release_app, version release_version) {
 	fmt.Println("cd " + filepath.Join(app.Root, filepath.Dir(pkg.Path)))
 	fmt.Println("npm publish --access public --tag " + version.npm_tag())
-	fmt.Println()
 }
 
 func (app release_app) release_packages() []release_package {

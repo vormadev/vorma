@@ -38,6 +38,7 @@ export type LinkNavFns = {
 		href: string;
 		replace?: boolean;
 		scrollToTop?: boolean;
+		skipWorkIndicator?: boolean;
 		state?: unknown;
 	}) => Promise<{ didNavigate: boolean }>;
 	start_prefetch: (href: string) => void;
@@ -57,6 +58,8 @@ export type LinkNavFns = {
 	};
 };
 
+export const skip_work_indicator_link_prop = "skipWorkIndicator";
+
 const VORMA_KEYS = new Set([
 	"attributeMatchRules",
 	"pattern",
@@ -64,6 +67,7 @@ const VORMA_KEYS = new Set([
 	"prefetchDelayMs",
 	"replace",
 	"scrollToTop",
+	skip_work_indicator_link_prop,
 	"state",
 	"visitOnPointerDown",
 ]);
@@ -196,6 +200,9 @@ export function make_link_props(
 	const prefetch_delay = (props.prefetchDelayMs as number | undefined) ?? 100;
 	const replace = props.replace as boolean | undefined;
 	const scroll_to_top = props.scrollToTop as boolean | undefined;
+	const skip_work_indicator = props[skip_work_indicator_link_prop] as
+		| boolean
+		| undefined;
 	const state = props.state as unknown;
 	const target_attr = props.target as string | undefined;
 	const visit_on_pointer_down = props.visitOnPointerDown as
@@ -265,6 +272,9 @@ export function make_link_props(
 					href,
 					replace,
 					scrollToTop: scroll_to_top,
+					...(skip_work_indicator === undefined
+						? {}
+						: { skipWorkIndicator: skip_work_indicator }),
 					state,
 				});
 			} catch (err) {
@@ -317,6 +327,12 @@ export function make_link_props(
 								href,
 								replace,
 								scrollToTop: scroll_to_top,
+								...(skip_work_indicator === undefined
+									? {}
+									: {
+											skipWorkIndicator:
+												skip_work_indicator,
+										}),
 							});
 						} catch (err) {
 							console.error(

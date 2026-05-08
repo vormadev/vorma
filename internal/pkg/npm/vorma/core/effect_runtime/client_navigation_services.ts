@@ -87,6 +87,7 @@ export type ClientNavigationServicesOptions = {
 	on_client_redirect: (href: string) => Effect.Effect<void>;
 	revalidate_api_request: (
 		route_revalidator: RouteRevalidator,
+		options?: { skipWorkIndicator?: boolean },
 	) => Effect.Effect<RevalidationResult>;
 };
 
@@ -419,8 +420,11 @@ export function make_client_navigation_services(
 				}
 				return options.on_client_redirect(href);
 			},
-			revalidate: () => {
-				return options.revalidate_api_request(route_revalidator);
+			revalidate: (_reason, revalidation_options) => {
+				return options.revalidate_api_request(
+					route_revalidator,
+					revalidation_options,
+				);
 			},
 			report_build_skew: (dispatch, response, default_behavior) => {
 				return build_skew_reporter.report({

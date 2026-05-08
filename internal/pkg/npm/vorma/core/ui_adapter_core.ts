@@ -238,6 +238,7 @@ export function create_adapter_base<A extends AppConfig>(
 			return core.navigate(args.href, {
 				replace: args.replace,
 				scrollToTop: args.scrollToTop,
+				skipWorkIndicator: args.skipWorkIndicator,
 				state: args.state,
 			});
 		},

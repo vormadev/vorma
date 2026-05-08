@@ -213,6 +213,10 @@ main app API into an Effect doctrine test.
 - Current-route movement is now kernel behavior. Hash-only movement, optional
   history replacement, scroll intent, history commits, and route-position
   publication moved out of the shell and into the Effect kernel.
+- Active kernel replacement now goes through `client_session` instead of a
+  module-level shutdown callback. The session owns the active kernel handle,
+  closes the previous handle during replacement, and can shut down a specific
+  handle only if it is still active.
 - The compatibility pressure test has expanded beyond `create_client_core` into
   split runners for `router.test.ts`, `router_revalidation.test.ts`, and
   `router_submit.test.ts`. Keeping those runners split matters because the

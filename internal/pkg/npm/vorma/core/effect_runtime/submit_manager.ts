@@ -73,7 +73,10 @@ export type SubmitManagerOptions = {
 	dispatch: (
 		request: SubmitDispatch,
 	) => Effect.Effect<Response, SubmitDispatchFailed | SubmitAborted>;
-	revalidate?: (reason: "apiRequest") => Effect.Effect<RevalidationResult>;
+	revalidate?: (
+		reason: "apiRequest",
+		options?: { skipWorkIndicator?: boolean },
+	) => Effect.Effect<RevalidationResult>;
 	redirect?: (href: string, kind: "client" | "hard") => Effect.Effect<void>;
 	report_build_skew?: (
 		dispatch: SubmitDispatch,
@@ -161,7 +164,12 @@ export function make_submit_manager(
 			});
 		const revalidate =
 			options.revalidate ??
-			((_reason: "apiRequest") => {
+			((
+				_reason: "apiRequest",
+				_options?: {
+					skipWorkIndicator?: boolean;
+				},
+			) => {
 				return Effect.succeed(REVALIDATION_OK);
 			});
 		const report_build_skew =
@@ -204,6 +212,7 @@ export function make_submit_manager(
 
 		const revalidation_now = (
 			should_revalidate: boolean,
+			skip_work_indicator?: boolean,
 		): Effect.Effect<Effect.Effect<RevalidationResult>> => {
 			if (!should_revalidate) {
 				return Effect.succeed(Effect.succeed(REVALIDATION_OK));
@@ -212,7 +221,9 @@ export function make_submit_manager(
 				const deferred_result =
 					yield* Deferred.make<RevalidationResult>();
 				yield* Effect.forkDaemon(
-					revalidate("apiRequest").pipe(
+					revalidate("apiRequest", {
+						skipWorkIndicator: skip_work_indicator,
+					}).pipe(
 						Effect.flatMap((result) => {
 							return Deferred.succeed(deferred_result, result);
 						}),
@@ -242,6 +253,7 @@ export function make_submit_manager(
 				yield* Fiber.interruptFork(submission.fiber);
 				const revalidation_effect = yield* revalidation_now(
 					submission.shouldRevalidate,
+					submission.skipWorkIndicator,
 				);
 				yield* resolve_waiter(submission.waiter, {
 					success: false,
@@ -398,6 +410,7 @@ export function make_submit_manager(
 			dispatch: SubmitDispatch,
 			response: Response,
 			should_revalidate: boolean,
+			skip_work_indicator: boolean,
 		): Effect.Effect<SubmitResult, never> => {
 			return Effect.catchAll(
 				Effect.gen(function* () {
@@ -439,8 +452,10 @@ export function make_submit_manager(
 						};
 					}
 					if (!response.ok) {
-						const revalidation_effect =
-							yield* revalidation_now(should_revalidate);
+						const revalidation_effect = yield* revalidation_now(
+							should_revalidate,
+							skip_work_indicator,
+						);
 						return {
 							success: false as const,
 							error: response.statusText,
@@ -449,8 +464,10 @@ export function make_submit_manager(
 						};
 					}
 					const data = yield* response_data(response);
-					const revalidation_effect =
-						yield* revalidation_now(should_revalidate);
+					const revalidation_effect = yield* revalidation_now(
+						should_revalidate,
+						skip_work_indicator,
+					);
 					return {
 						success: true as const,
 						data,
@@ -472,6 +489,7 @@ export function make_submit_manager(
 		const run_submission = (
 			dispatch: SubmitDispatch,
 			should_revalidate: boolean,
+			skip_work_indicator: boolean,
 		): Effect.Effect<void, never> => {
 			const normalize_defect = (error: unknown): Effect.Effect<void> => {
 				return Queue.offer(queue, {
@@ -491,6 +509,7 @@ export function make_submit_manager(
 						dispatch,
 						response,
 						should_revalidate,
+						skip_work_indicator,
 					);
 				}),
 				Effect.flatMap((result) => {
@@ -504,8 +523,10 @@ export function make_submit_manager(
 				Effect.catchAll((error) => {
 					if (error instanceof SubmitAborted) {
 						return Effect.gen(function* () {
-							const revalidation_effect =
-								yield* revalidation_now(should_revalidate);
+							const revalidation_effect = yield* revalidation_now(
+								should_revalidate,
+								skip_work_indicator,
+							);
 							yield* Queue.offer(queue, {
 								_tag: "Completed",
 								id: dispatch.id,
@@ -519,8 +540,10 @@ export function make_submit_manager(
 						});
 					}
 					return Effect.gen(function* () {
-						const revalidation_effect =
-							yield* revalidation_now(should_revalidate);
+						const revalidation_effect = yield* revalidation_now(
+							should_revalidate,
+							skip_work_indicator,
+						);
 						yield* Queue.offer(queue, {
 							_tag: "Completed",
 							id: dispatch.id,
@@ -566,6 +589,7 @@ export function make_submit_manager(
 					run_submission(
 						prepared.dispatch,
 						prepared.shouldRevalidate,
+						command.request.options?.skipWorkIndicator === true,
 					),
 				);
 				next_active.set(key, {

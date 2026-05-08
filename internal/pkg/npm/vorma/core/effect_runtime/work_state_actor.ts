@@ -30,6 +30,9 @@ export type WorkIndicatorActivity = {
 export type WorkNavigationInput = WorkNavigation & {
 	skipWorkIndicator?: boolean;
 };
+export type WorkRevalidationInput = WorkRevalidation & {
+	skipWorkIndicator?: boolean;
+};
 export type WorkAPIRequestInput = WorkAPIRequest & {
 	skipWorkIndicator?: boolean;
 };
@@ -39,7 +42,7 @@ export type WorkStateActor = {
 		navigation: WorkNavigationInput | null,
 	) => Effect.Effect<void>;
 	set_revalidation: (
-		revalidation: WorkRevalidation | null,
+		revalidation: WorkRevalidationInput | null,
 	) => Effect.Effect<void>;
 	set_prefetch: (prefetch: WorkPrefetch | null) => Effect.Effect<void>;
 	set_api_requests: (
@@ -65,6 +68,7 @@ type Model = {
 	readonly state: WorkState;
 	readonly last_emitted: WorkState;
 	readonly navigation_skip_work_indicator: boolean;
+	readonly revalidation_skip_work_indicator: boolean;
 	readonly api_request_skip_work_indicators: ReadonlyMap<string, boolean>;
 	readonly last_indicator_activity: WorkIndicatorActivity;
 };
@@ -77,7 +81,7 @@ type Command =
 	  }
 	| {
 			readonly _tag: typeof COMMAND_SET_REVALIDATION;
-			readonly revalidation: WorkRevalidation | null;
+			readonly revalidation: WorkRevalidationInput | null;
 			readonly ack: Deferred.Deferred<void>;
 	  }
 	| {
@@ -130,6 +134,7 @@ export function make_work_state_actor(
 			state: EMPTY_WORK_STATE,
 			last_emitted: EMPTY_WORK_STATE,
 			navigation_skip_work_indicator: false,
+			revalidation_skip_work_indicator: false,
 			api_request_skip_work_indicators: new Map(),
 			last_indicator_activity: EMPTY_WORK_INDICATOR_ACTIVITY,
 		});
@@ -283,16 +288,29 @@ export function make_work_state_actor(
 			});
 		};
 
+		const public_revalidation = (
+			revalidation: WorkRevalidationInput,
+		): WorkRevalidation => {
+			return {
+				status: revalidation.status,
+				attempt: revalidation.attempt,
+			};
+		};
+
 		const set_revalidation_now = (
-			revalidation: WorkRevalidation | null,
+			revalidation: WorkRevalidationInput | null,
 		): Effect.Effect<void> => {
 			return update_model((current) => {
 				return {
 					...current,
 					state: {
 						...current.state,
-						revalidation,
+						revalidation: revalidation
+							? public_revalidation(revalidation)
+							: null,
 					},
+					revalidation_skip_work_indicator:
+						revalidation?.skipWorkIndicator === true,
 				};
 			});
 		};
@@ -455,7 +473,9 @@ function indicator_activity_from_model(current: Model): WorkIndicatorActivity {
 		navigation:
 			current.state.navigation !== null &&
 			!current.navigation_skip_work_indicator,
-		revalidation: current.state.revalidation !== null,
+		revalidation:
+			current.state.revalidation !== null &&
+			!current.revalidation_skip_work_indicator,
 		apiRequests: current.state.apiRequests.some((request) => {
 			return (
 				current.api_request_skip_work_indicators.get(request.key) !==

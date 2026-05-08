@@ -130,10 +130,10 @@ export type WorkIndicator = {
 };
 
 export type WorkIndicatorOptions = {
-	show: () => void;
-	hide: () => void;
-	showDelayMS?: number;
-	hideDelayMS?: number;
+	start: () => void;
+	stop: () => void;
+	startDelayMS?: number;
+	stopDelayMS?: number;
 	skipNavigations?: boolean;
 	skipAPIRequests?: boolean;
 	skipRevalidations?: boolean;
@@ -411,13 +411,16 @@ function create_work_indicator(): WorkIndicatorController {
 				if (!latest_options || active_tokens.size === 0 || visible) {
 					return;
 				}
-				latest_options.show();
+				latest_options.start();
 				visible = true;
-			}, current_options.showDelayMS ?? 12);
+			}, current_options.startDelayMS ?? 12);
 			return;
 		}
 
 		clear_show_timer();
+		if (!visible) {
+			return;
+		}
 		if (hide_timer !== undefined) {
 			return;
 		}
@@ -427,9 +430,9 @@ function create_work_indicator(): WorkIndicatorController {
 			if (!latest_options || active_tokens.size > 0) {
 				return;
 			}
-			latest_options.hide();
+			latest_options.stop();
 			visible = false;
-		}, current_options.hideDelayMS ?? 12);
+		}, current_options.stopDelayMS ?? 12);
 	}
 
 	function begin(): () => void {
@@ -452,7 +455,7 @@ function create_work_indicator(): WorkIndicatorController {
 		clear_show_timer();
 		clear_hide_timer();
 		if (visible && previous_options && previous_options !== next_options) {
-			previous_options.hide();
+			previous_options.stop();
 			visible = false;
 		}
 		options = next_options;
@@ -555,6 +558,7 @@ export function create_client_core(
 		  }
 		| {
 				kind: "revalidation";
+				skip_work_indicator?: boolean;
 		  }
 		| {
 				kind: "apiRequest";
@@ -592,6 +596,7 @@ export function create_client_core(
 		kind: "reval";
 		attempt: number;
 		reason: RevalidationReason;
+		skip_work_indicator?: boolean;
 	};
 
 	type ActiveFetchIntent = NavFetchIntent | RevalidationFetchIntent;
@@ -677,6 +682,7 @@ export function create_client_core(
 		// A fetch with seq > this value satisfies the demand.
 		after_seq: number;
 		reason: RevalidationReason;
+		skip_work_indicator?: boolean;
 		waiters: RefreshWaiter[];
 	};
 
@@ -2192,8 +2198,10 @@ export function create_client_core(
 		reason: RevalidationReason,
 		waiter?: RefreshWaiter,
 		debounce?: boolean,
+		skip_work_indicator?: boolean,
 	): void {
-		const waiters = refresh_demand()?.waiters ?? [];
+		const previous_demand = refresh_demand();
+		const waiters = previous_demand?.waiters ?? [];
 		clear_refresh();
 		if (waiter) {
 			waiters.push(waiter);
@@ -2201,6 +2209,9 @@ export function create_client_core(
 		const demand: RefreshDemand = {
 			after_seq: next_seq(),
 			reason,
+			skip_work_indicator:
+				(previous_demand?.skip_work_indicator ?? true) &&
+				skip_work_indicator === true,
 			waiters,
 		};
 
@@ -2302,7 +2313,15 @@ export function create_client_core(
 		const attempt = refresh.kind === "pending" ? refresh.attempt : 0;
 		const reason =
 			refresh.kind === "pending" ? refresh.demand.reason : "manual";
-		const f = start_fetch(url, { kind: "reval", attempt, reason }, true);
+		const skip_work_indicator =
+			refresh.kind === "pending"
+				? refresh.demand.skip_work_indicator
+				: undefined;
+		const f = start_fetch(
+			url,
+			{ kind: "reval", attempt, reason, skip_work_indicator },
+			true,
+		);
 
 		// Guard: discard if URL path changes during flight (hash-only changes
 		// are OK; matches_without_hash on publish time handles it).
@@ -2591,14 +2610,24 @@ export function create_client_core(
 			if (phase === "ready") {
 				const waiter = make_deferred<RevalidationResult>();
 				revalidation_promise = waiter.promise;
-				require_refresh("apiRequest", waiter);
+				require_refresh(
+					"apiRequest",
+					waiter,
+					undefined,
+					options?.skipWorkIndicator,
+				);
 				maybe_revalidate();
 			} else {
 				// During boot, register refresh demand so post-boot
 				// maybe_revalidate will fire. Do not attach a waiter;
 				// the returned revalidationPromise stays resolved so initial
 				// client loaders awaiting it do not deadlock.
-				require_refresh("apiRequest");
+				require_refresh(
+					"apiRequest",
+					undefined,
+					undefined,
+					options?.skipWorkIndicator,
+				);
 			}
 		}
 
@@ -2843,8 +2872,13 @@ export function create_client_core(
 				refresh.kind === "retrying" ||
 				(!active_will_refresh() && !active));
 		if (active_fetch?.intent.kind === "reval" || pending_revalidation) {
+			const revalidation_demand = refresh_demand();
 			work.push({
 				kind: "revalidation",
+				skip_work_indicator:
+					active_fetch?.intent.kind === "reval"
+						? active_fetch.intent.skip_work_indicator
+						: revalidation_demand?.skip_work_indicator,
 			});
 		}
 
@@ -3065,7 +3099,8 @@ export function create_client_core(
 			}
 			if (
 				work.kind === "revalidation" &&
-				options.skipRevalidations !== true
+				options.skipRevalidations !== true &&
+				!work.skip_work_indicator
 			) {
 				active_for_vorma = true;
 				break;

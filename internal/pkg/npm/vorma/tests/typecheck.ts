@@ -627,8 +627,8 @@ function assert_exported_type_contracts(): void {
 	void mutation_error;
 
 	const work_indicator_options: WorkIndicatorOptions = {
-		show: () => {},
-		hide: () => {},
+		start: () => {},
+		stop: () => {},
 	};
 	void work_indicator_options;
 	const work_indicator: WorkIndicator = {
@@ -866,6 +866,7 @@ function assert_api_client_contracts(): void {
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { includePosts: true },
+		skipWorkIndicator: true,
 	});
 	expect_type<
 		Promise<QueryResult<ToQueryOutput<App, "GET", "/users/:userID">>>
@@ -1571,13 +1572,13 @@ function assert_public_runtime_contracts(): void {
 		vorma_app_config,
 		{
 			workIndicator: {
-				show: () => {},
-				hide: () => {},
+				start: () => {},
+				stop: () => {},
 				skipNavigations: true,
 				skipAPIRequests: true,
 				skipRevalidations: true,
-				showDelayMS: 30,
-				hideDelayMS: 40,
+				startDelayMS: 30,
+				stopDelayMS: 40,
 			},
 		},
 	).boot();
@@ -1586,16 +1587,16 @@ function assert_public_runtime_contracts(): void {
 	// workIndicator (defaults)
 	void React__createVormaClient(vorma_app_config, {
 		workIndicator: {
-			show: () => {},
-			hide: () => {},
+			start: () => {},
+			stop: () => {},
 		},
 	}).boot();
 
 	// workIndicator (single category skip)
 	void React__createVormaClient(vorma_app_config, {
 		workIndicator: {
-			show: () => {},
-			hide: () => {},
+			start: () => {},
+			stop: () => {},
 			skipAPIRequests: true,
 		},
 	}).boot();

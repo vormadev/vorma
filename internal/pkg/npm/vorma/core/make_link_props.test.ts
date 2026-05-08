@@ -9,6 +9,7 @@ import {
 } from "./constants.ts";
 import {
 	make_link_props,
+	skip_work_indicator_link_prop,
 	type LinkNavFns,
 	type LinkRouteState,
 	type LinkWorkState,
@@ -606,6 +607,7 @@ describe("prop stripping", () => {
 				prefetchDelayMs: 200,
 				replace: true,
 				scrollToTop: false,
+				skipWorkIndicator: true,
 				visitOnPointerDown: true,
 				id: "my-link",
 			},
@@ -618,6 +620,9 @@ describe("prop stripping", () => {
 		expect(result.anchor_props).not.toHaveProperty("prefetchDelayMs");
 		expect(result.anchor_props).not.toHaveProperty("replace");
 		expect(result.anchor_props).not.toHaveProperty("scrollToTop");
+		expect(result.anchor_props).not.toHaveProperty(
+			skip_work_indicator_link_prop,
+		);
 		expect(result.anchor_props).not.toHaveProperty("visitOnPointerDown");
 		expect(result.anchor_props).toHaveProperty("id", "my-link");
 		expect(result.anchor_props).toHaveProperty("href", "/page");
@@ -631,6 +636,7 @@ describe("prop stripping", () => {
 				prefetch: "intent",
 				replace: true,
 				scrollToTop: true,
+				skipWorkIndicator: true,
 				visitOnPointerDown: true,
 			},
 			nav,
@@ -639,6 +645,9 @@ describe("prop stripping", () => {
 		expect(result.anchor_props).not.toHaveProperty("prefetch");
 		expect(result.anchor_props).not.toHaveProperty("replace");
 		expect(result.anchor_props).not.toHaveProperty("scrollToTop");
+		expect(result.anchor_props).not.toHaveProperty(
+			skip_work_indicator_link_prop,
+		);
 		expect(result.anchor_props).not.toHaveProperty("visitOnPointerDown");
 	});
 
@@ -780,6 +789,24 @@ describe("navigate options", () => {
 			href: "/page",
 			replace: true,
 			scrollToTop: false,
+			state: undefined,
+		});
+	});
+
+	it("forwards skipWorkIndicator to navigate", async () => {
+		const nav = mock_nav();
+		const result = make_link_props(
+			{ href: "/page", skipWorkIndicator: true },
+			nav,
+		);
+
+		result.onClick!(primary_click());
+
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
+			replace: undefined,
+			scrollToTop: undefined,
+			skipWorkIndicator: true,
 			state: undefined,
 		});
 	});
@@ -985,6 +1012,27 @@ describe("visitOnPointerDown", () => {
 			href: "/page",
 			replace: true,
 			scrollToTop: false,
+		});
+	});
+
+	it("forwards skipWorkIndicator on pointerdown navigation", async () => {
+		const nav = mock_nav();
+		const result = make_link_props(
+			{
+				href: "/page",
+				visitOnPointerDown: true,
+				skipWorkIndicator: true,
+			},
+			nav,
+		);
+
+		result.onPointerDown!(pointer_down());
+
+		expect(nav.navigate).toHaveBeenCalledWith({
+			href: "/page",
+			replace: undefined,
+			scrollToTop: undefined,
+			skipWorkIndicator: true,
 		});
 	});
 
