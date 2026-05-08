@@ -1,5 +1,10 @@
-import { Duration, Effect, Fiber, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import type { WorkIndicator, WorkIndicatorOptions } from "./client_contract.ts";
+import {
+	browser_schedule_ms,
+	type ScheduleMS,
+	type TimerCancel,
+} from "./timer_runtime.ts";
 
 export const WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS = 12;
 export const WORK_INDICATOR_DEFAULT_HIDE_DELAY_MS = 12;
@@ -15,21 +20,23 @@ export type WorkIndicatorRuntime = {
 	shutdown: Effect.Effect<void>;
 };
 
-type TimerFiber = Fiber.RuntimeFiber<void, never>;
+export type WorkIndicatorRuntimeOptions = {
+	schedule_ms?: ScheduleMS;
+};
 
 type WorkIndicatorState = {
 	active_count: number;
 	options: WorkIndicatorOptions | undefined;
 	visible: boolean;
-	show_timer: TimerFiber | null;
-	hide_timer: TimerFiber | null;
+	show_timer: TimerCancel | null;
+	hide_timer: TimerCancel | null;
 };
 
-export function make_work_indicator(): Effect.Effect<
-	WorkIndicatorRuntime,
-	never
-> {
+export function make_work_indicator(
+	options: WorkIndicatorRuntimeOptions = {},
+): Effect.Effect<WorkIndicatorRuntime, never> {
 	return Effect.gen(function* () {
+		const schedule_ms = options.schedule_ms ?? browser_schedule_ms;
 		const state_ref = yield* Ref.make<WorkIndicatorState>({
 			active_count: 0,
 			options: undefined,
@@ -38,7 +45,7 @@ export function make_work_indicator(): Effect.Effect<
 			hide_timer: null,
 		});
 
-		const sync = sync_indicator(state_ref);
+		const sync = sync_indicator(state_ref, schedule_ms);
 		let release_vorma_work: Effect.Effect<void> | null = null;
 		const begin = Effect.gen(function* () {
 			let released = false;
@@ -156,6 +163,7 @@ export function make_work_indicator(): Effect.Effect<
 
 function sync_indicator(
 	state_ref: Ref.Ref<WorkIndicatorState>,
+	schedule_ms: ScheduleMS,
 ): Effect.Effect<void> {
 	return Effect.gen(function* () {
 		const state = yield* Ref.get(state_ref);
@@ -182,6 +190,7 @@ function sync_indicator(
 			const show_timer = yield* start_timer(
 				options.startDelayMS ?? WORK_INDICATOR_DEFAULT_SHOW_DELAY_MS,
 				show_indicator(state_ref),
+				schedule_ms,
 			);
 			yield* Ref.set(state_ref, {
 				...state,
@@ -208,6 +217,7 @@ function sync_indicator(
 		const hide_timer = yield* start_timer(
 			options.stopDelayMS ?? WORK_INDICATOR_DEFAULT_HIDE_DELAY_MS,
 			hide_indicator(state_ref),
+			schedule_ms,
 		);
 		yield* Ref.set(state_ref, {
 			...state,
@@ -262,15 +272,14 @@ function hide_indicator(
 function start_timer(
 	delay_ms: number,
 	action: Effect.Effect<void>,
-): Effect.Effect<TimerFiber> {
-	return Effect.forkDaemon(
-		Effect.sleep(Duration.millis(delay_ms)).pipe(Effect.andThen(action)),
-	);
+	schedule_ms: ScheduleMS,
+): Effect.Effect<TimerCancel> {
+	return schedule_ms(delay_ms, action);
 }
 
-function cancel_timer(timer: TimerFiber | null): Effect.Effect<void> {
+function cancel_timer(timer: TimerCancel | null): Effect.Effect<void> {
 	if (!timer) {
 		return Effect.void;
 	}
-	return Fiber.interruptFork(timer).pipe(Effect.asVoid);
+	return timer;
 }

@@ -1,4 +1,11 @@
-import { Data, Deferred, Effect, Fiber, Queue, Ref } from "effect";
+import {
+	Data,
+	Deferred,
+	Effect,
+	Result as EffectResult,
+	Fiber,
+	Ref,
+} from "effect";
 import type { ClientLoaderPrestart } from "./route_preparer.ts";
 
 export type NavigationSource = "navigate" | "redirect" | "popstate";
@@ -98,7 +105,7 @@ type Active = {
 	readonly scrollToTop: boolean | undefined;
 	readonly skipWorkIndicator: boolean | undefined;
 	readonly waiters: ReadonlyArray<Waiter>;
-	readonly fiber: Fiber.RuntimeFiber<void, never> | null;
+	readonly fiber: Fiber.Fiber<void, never> | null;
 	readonly controller: AbortController;
 	readonly client_loader_prestarts: ClientLoaderPrestart[];
 };
@@ -120,43 +127,34 @@ type StartInput = {
 	readonly waiters: ReadonlyArray<Waiter>;
 };
 
-type Command =
-	| {
-			readonly _tag: "Navigate";
-			readonly href: string;
-			readonly replace: boolean;
-			readonly source: NavigationSource;
-			readonly state: unknown;
-			readonly scrollToTop: boolean | undefined;
-			readonly skipWorkIndicator: boolean | undefined;
-			readonly waiter: Waiter;
-	  }
-	| {
-			readonly _tag: "Loaded";
-			readonly id: number;
-			readonly loaded: LoadedRoute;
-			readonly attempt: NavigationAttempt;
-	  }
-	| {
-			readonly _tag: "Published";
-			readonly id: number;
-			readonly href: string;
-			readonly redirectCount: number;
-			readonly result: "ok" | "failed";
-	  }
-	| {
-			readonly _tag: "Failed";
-			readonly id: number;
-	  }
-	| {
-			readonly _tag: "Redirected";
-			readonly id: number;
-			readonly href: string;
-			readonly hard: boolean;
-	  }
-	| {
-			readonly _tag: "Shutdown";
-	  };
+type NavigateInput = {
+	readonly href: string;
+	readonly replace: boolean;
+	readonly source: NavigationSource;
+	readonly state: unknown;
+	readonly scrollToTop: boolean | undefined;
+	readonly skipWorkIndicator: boolean | undefined;
+	readonly waiter: Waiter;
+};
+
+type LoadedInput = {
+	readonly id: number;
+	readonly loaded: LoadedRoute;
+	readonly attempt: NavigationAttempt;
+};
+
+type PublishedInput = {
+	readonly id: number;
+	readonly href: string;
+	readonly redirectCount: number;
+	readonly result: "ok" | "failed";
+};
+
+type RedirectedInput = {
+	readonly id: number;
+	readonly href: string;
+	readonly hard: boolean;
+};
 
 const DEFAULT_MAX_REDIRECTS = 10;
 
@@ -164,7 +162,6 @@ export function make_navigation_actor(
 	options: NavigationActorOptions,
 ): Effect.Effect<NavigationActor, never> {
 	return Effect.gen(function* () {
-		const queue = yield* Queue.unbounded<Command>();
 		const model = yield* Ref.make<Model>({
 			nextID: 0,
 			active: null,
@@ -225,22 +222,24 @@ export function make_navigation_actor(
 					{ discard: true },
 				);
 				if (active.fiber) {
-					yield* Fiber.interruptFork(active.fiber);
+					yield* Effect.forkDetach(Fiber.interrupt(active.fiber), {
+						startImmediately: true,
+					}).pipe(Effect.asVoid);
 				}
 			});
 		};
 
 		const same_navigation_intent = (
 			active: Active,
-			command: Extract<Command, { _tag: "Navigate" }>,
+			input: NavigateInput,
 		): boolean => {
 			return (
-				active.href === command.href &&
-				active.replace === command.replace &&
-				active.source === command.source &&
-				active.state === command.state &&
-				active.scrollToTop === command.scrollToTop &&
-				active.skipWorkIndicator === command.skipWorkIndicator
+				active.href === input.href &&
+				active.replace === input.replace &&
+				active.source === input.source &&
+				active.state === input.state &&
+				active.scrollToTop === input.scrollToTop &&
+				active.skipWorkIndicator === input.skipWorkIndicator
 			);
 		};
 
@@ -266,26 +265,21 @@ export function make_navigation_actor(
 		): Effect.Effect<void, never> => {
 			return options.load(attempt).pipe(
 				Effect.flatMap((loaded) => {
-					return Queue.offer(queue, {
-						_tag: "Loaded",
+					return on_loaded({
 						id: attempt.id,
 						loaded,
 						attempt,
 					});
 				}),
 				Effect.catchTag("NavigationRedirect", (redirect) => {
-					return Queue.offer(queue, {
-						_tag: "Redirected",
+					return on_redirected({
 						id: attempt.id,
 						href: redirect.href,
 						hard: redirect.hard === true,
 					});
 				}),
-				Effect.catchAll(() => {
-					return Queue.offer(queue, {
-						_tag: "Failed",
-						id: attempt.id,
-					});
+				Effect.catch(() => {
+					return on_failed(attempt.id);
 				}),
 			);
 		};
@@ -335,8 +329,9 @@ export function make_navigation_actor(
 						client_loader_prestarts,
 					},
 				});
-				const fiber = yield* Effect.forkDaemon(
+				const fiber = yield* Effect.forkDetach(
 					attempt_program(attempt),
+					{ startImmediately: true },
 				);
 				yield* Ref.update(model, (current_after_start) => {
 					if (current_after_start.active?.id !== id) {
@@ -353,14 +348,12 @@ export function make_navigation_actor(
 			});
 		};
 
-		const on_navigate = (
-			command: Extract<Command, { _tag: "Navigate" }>,
-		): Effect.Effect<void> => {
+		const on_navigate = (input: NavigateInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
-				const key = route_key(command.href);
-				if (is_external(command.href)) {
-					yield* Deferred.succeed(command.waiter.deferred, {
+				const key = route_key(input.href);
+				if (is_external(input.href)) {
+					yield* Deferred.succeed(input.waiter.deferred, {
 						didNavigate: false,
 						href: null,
 						redirectCount: 0,
@@ -368,7 +361,7 @@ export function make_navigation_actor(
 					return;
 				}
 				if (current.active?.key === key) {
-					if (!same_navigation_intent(current.active, command)) {
+					if (!same_navigation_intent(current.active, input)) {
 						yield* resolve_waiters(current.active.waiters, {
 							didNavigate: false,
 							href: null,
@@ -378,13 +371,13 @@ export function make_navigation_actor(
 							...current,
 							active: {
 								...current.active,
-								href: command.href,
-								replace: command.replace,
-								source: command.source,
-								state: command.state,
-								scrollToTop: command.scrollToTop,
-								skipWorkIndicator: command.skipWorkIndicator,
-								waiters: [command.waiter],
+								href: input.href,
+								replace: input.replace,
+								source: input.source,
+								state: input.state,
+								scrollToTop: input.scrollToTop,
+								skipWorkIndicator: input.skipWorkIndicator,
+								waiters: [input.waiter],
 							},
 						});
 						return;
@@ -393,10 +386,7 @@ export function make_navigation_actor(
 						...current,
 						active: {
 							...current.active,
-							waiters: [
-								...current.active.waiters,
-								command.waiter,
-							],
+							waiters: [...current.active.waiters, input.waiter],
 						},
 					});
 					return;
@@ -410,33 +400,31 @@ export function make_navigation_actor(
 					});
 				}
 				yield* start({
-					href: command.href,
-					replace: command.replace,
-					source: command.source,
+					href: input.href,
+					replace: input.replace,
+					source: input.source,
 					redirectCount: 0,
-					state: command.state,
-					scrollToTop: command.scrollToTop,
-					skipWorkIndicator: command.skipWorkIndicator,
-					waiters: [command.waiter],
+					state: input.state,
+					scrollToTop: input.scrollToTop,
+					skipWorkIndicator: input.skipWorkIndicator,
+					waiters: [input.waiter],
 				});
 			});
 		};
 
-		const on_loaded = (
-			command: Extract<Command, { _tag: "Loaded" }>,
-		): Effect.Effect<void> => {
+		const on_loaded = (input: LoadedInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
-				if (current.active?.id !== command.id) {
+				if (current.active?.id !== input.id) {
 					return;
 				}
 				const active = current.active;
 				const loaded: LoadedRoute = {
-					...command.loaded,
+					...input.loaded,
 					href: active.href,
 				};
 				const attempt: NavigationAttempt = {
-					...command.attempt,
+					...input.attempt,
 					href: active.href,
 					replace: active.replace,
 					source: active.source,
@@ -445,40 +433,24 @@ export function make_navigation_actor(
 					scrollToTop: active.scrollToTop,
 					skipWorkIndicator: active.skipWorkIndicator,
 				};
-				const publish_fiber = yield* Effect.fork(
-					options.publish(loaded, attempt).pipe(
-						Effect.either,
-						Effect.flatMap((publish_result) => {
-							return Queue.offer(queue, {
-								_tag: "Published" as const,
-								id: command.id,
-								href: loaded.href,
-								redirectCount: active.redirectCount,
-								result:
-									publish_result._tag === "Right"
-										? "ok"
-										: "failed",
-							});
-						}),
-						Effect.asVoid,
-					),
+				const publish_result = yield* Effect.result(
+					options.publish(loaded, attempt),
 				);
-				yield* Ref.set(model, {
-					...current,
-					active: {
-						...active,
-						fiber: publish_fiber,
-					},
+				yield* on_published({
+					id: input.id,
+					href: loaded.href,
+					redirectCount: active.redirectCount,
+					result: EffectResult.isSuccess(publish_result)
+						? "ok"
+						: "failed",
 				});
 			});
 		};
 
-		const on_published = (
-			command: Extract<Command, { _tag: "Published" }>,
-		): Effect.Effect<void> => {
+		const on_published = (input: PublishedInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
-				if (current.active?.id !== command.id) {
+				if (current.active?.id !== input.id) {
 					return;
 				}
 				const active = current.active;
@@ -487,33 +459,36 @@ export function make_navigation_actor(
 					active: null,
 					idle_waiters: [],
 				});
-				if (command.result === "failed") {
+				if (input.result === "failed") {
 					yield* resolve_waiters(active.waiters, {
 						didNavigate: false,
 						href: null,
-						redirectCount: command.redirectCount,
+						redirectCount: input.redirectCount,
 					});
 					yield* resolve_idle_waiters(current.idle_waiters);
 					return;
 				}
 				yield* resolve_waiters(active.waiters, {
 					didNavigate: true,
-					href: command.href,
-					redirectCount: command.redirectCount,
+					href: input.href,
+					redirectCount: input.redirectCount,
 				});
 				yield* resolve_idle_waiters(current.idle_waiters);
 			});
 		};
 
-		const on_failed = (
-			command: Extract<Command, { _tag: "Failed" }>,
-		): Effect.Effect<void> => {
+		const on_failed = (id: number): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
-				if (current.active?.id !== command.id) {
+				if (current.active?.id !== id) {
 					return;
 				}
 				const active = current.active;
+				yield* Ref.set(model, {
+					...current,
+					active: null,
+					idle_waiters: [],
+				});
 				yield* Effect.forEach(
 					active.client_loader_prestarts,
 					(prestart) => {
@@ -530,12 +505,10 @@ export function make_navigation_actor(
 			});
 		};
 
-		const on_redirected = (
-			command: Extract<Command, { _tag: "Redirected" }>,
-		): Effect.Effect<void> => {
+		const on_redirected = (input: RedirectedInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
-				if (current.active?.id !== command.id) {
+				if (current.active?.id !== input.id) {
 					return;
 				}
 				const active = current.active;
@@ -552,15 +525,10 @@ export function make_navigation_actor(
 					{ discard: true },
 				);
 				if (
-					command.hard ||
-					is_external(command.href) ||
+					input.hard ||
+					is_external(input.href) ||
 					active.redirectCount >= max_redirects
 				) {
-					yield* Ref.set(model, {
-						...current,
-						active: null,
-						idle_waiters: [],
-					});
 					yield* resolve_waiters(active.waiters, {
 						didNavigate: false,
 						href: null,
@@ -570,7 +538,7 @@ export function make_navigation_actor(
 					return;
 				}
 				yield* start({
-					href: command.href,
+					href: input.href,
 					replace: active.replace,
 					source: "redirect",
 					redirectCount: active.redirectCount + 1,
@@ -582,70 +550,11 @@ export function make_navigation_actor(
 			});
 		};
 
-		const command_program = (command: Command): Effect.Effect<void> => {
-			switch (command._tag) {
-				case "Navigate": {
-					return on_navigate(command);
-				}
-				case "Loaded": {
-					return on_loaded(command);
-				}
-				case "Published": {
-					return on_published(command);
-				}
-				case "Failed": {
-					return on_failed(command);
-				}
-				case "Redirected": {
-					return on_redirected(command);
-				}
-				case "Shutdown": {
-					return Effect.gen(function* () {
-						const current = yield* Ref.get(model);
-						if (current.active) {
-							yield* interrupt_active(current.active);
-							yield* resolve_waiters(current.active.waiters, {
-								didNavigate: false,
-								href: null,
-								redirectCount: current.active.redirectCount,
-							});
-						}
-						yield* resolve_idle_waiters(current.idle_waiters);
-						yield* Queue.shutdown(queue);
-					});
-				}
-			}
-		};
-
-		const actor = Queue.take(queue).pipe(
-			Effect.flatMap(command_program),
-			Effect.forever,
-			Effect.ensuring(
-				Effect.gen(function* () {
-					const current = yield* Ref.get(model);
-					if (current.active) {
-						yield* interrupt_active(current.active);
-						yield* resolve_waiters(current.active.waiters, {
-							didNavigate: false,
-							href: null,
-							redirectCount: current.active.redirectCount,
-						});
-					}
-					yield* resolve_idle_waiters(current.idle_waiters);
-				}),
-			),
-			Effect.catchAll(() => {
-				return Effect.void;
-			}),
-		);
-		const actor_fiber = yield* Effect.forkDaemon(actor);
-
 		return {
 			navigate: (href, nav_options) => {
 				return Effect.gen(function* () {
 					const waiter = yield* Deferred.make<NavigationResult>();
 					yield* on_navigate({
-						_tag: "Navigate",
 						href,
 						replace: nav_options?.replace === true,
 						source: nav_options?.source ?? "navigate",
@@ -686,10 +595,19 @@ export function make_navigation_actor(
 					};
 				}),
 			),
-			shutdown: Queue.offer(queue, { _tag: "Shutdown" }).pipe(
-				Effect.andThen(Fiber.join(actor_fiber)),
-				Effect.asVoid,
-				Effect.catchAll(() => {
+			shutdown: Effect.gen(function* () {
+				const current = yield* Ref.get(model);
+				if (current.active) {
+					yield* interrupt_active(current.active);
+					yield* resolve_waiters(current.active.waiters, {
+						didNavigate: false,
+						href: null,
+						redirectCount: current.active.redirectCount,
+					});
+				}
+				yield* resolve_idle_waiters(current.idle_waiters);
+			}).pipe(
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

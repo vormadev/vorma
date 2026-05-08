@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber, Queue, Ref } from "effect";
+import { Effect, Ref } from "effect";
 import { jsonDeepEquals } from "vorma/kit/json";
 import type { ClientCommit, CommitFn, WorkState } from "./client_contract.ts";
 
@@ -8,15 +8,6 @@ export const WORK_NAVIGATION_SOURCE_REDIRECT = "redirect";
 export const WORK_REVALIDATION_STATUS_DEBOUNCING = "debouncing";
 export const WORK_REVALIDATION_STATUS_RUNNING = "running";
 export const WORK_REVALIDATION_STATUS_RETRYING = "retrying";
-
-const COMMAND_SET_NAVIGATION = "SetNavigation";
-const COMMAND_SET_REVALIDATION = "SetRevalidation";
-const COMMAND_SET_PREFETCH = "SetPrefetch";
-const COMMAND_SET_API_REQUESTS = "SetAPIRequests";
-const COMMAND_BEGIN_API_REQUEST = "BeginAPIRequest";
-const COMMAND_END_API_REQUEST = "EndAPIRequest";
-const COMMAND_EMIT_CURRENT = "EmitCurrent";
-const COMMAND_SHUTDOWN = "Shutdown";
 
 export type WorkNavigation = NonNullable<WorkState["navigation"]>;
 export type WorkRevalidation = NonNullable<WorkState["revalidation"]>;
@@ -73,45 +64,6 @@ type Model = {
 	readonly last_indicator_activity: WorkIndicatorActivity;
 };
 
-type Command =
-	| {
-			readonly _tag: typeof COMMAND_SET_NAVIGATION;
-			readonly navigation: WorkNavigationInput | null;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_SET_REVALIDATION;
-			readonly revalidation: WorkRevalidationInput | null;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_SET_PREFETCH;
-			readonly prefetch: WorkPrefetch | null;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_SET_API_REQUESTS;
-			readonly requests: ReadonlyArray<WorkAPIRequestInput>;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_BEGIN_API_REQUEST;
-			readonly request: WorkAPIRequestInput;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_END_API_REQUEST;
-			readonly key: string;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_EMIT_CURRENT;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: typeof COMMAND_SHUTDOWN;
-	  };
-
 const EMPTY_WORK_STATE: WorkState = {
 	navigation: null,
 	revalidation: null,
@@ -129,7 +81,6 @@ export function make_work_state_actor(
 	options: WorkStateActorOptions = {},
 ): Effect.Effect<WorkStateActor, never> {
 	return Effect.gen(function* () {
-		const queue = yield* Queue.unbounded<Command>();
 		const model = yield* Ref.make<Model>({
 			state: EMPTY_WORK_STATE,
 			last_emitted: EMPTY_WORK_STATE,
@@ -242,12 +193,6 @@ export function make_work_state_actor(
 					return current.key !== key;
 				}),
 			};
-		};
-
-		const complete = (
-			ack: Deferred.Deferred<void>,
-		): Effect.Effect<void> => {
-			return Deferred.succeed(ack, undefined);
 		};
 
 		const public_navigation = (
@@ -387,58 +332,6 @@ export function make_work_state_actor(
 			});
 		};
 
-		const command_program = (command: Command): Effect.Effect<void> => {
-			switch (command._tag) {
-				case COMMAND_SET_NAVIGATION: {
-					return set_navigation_now(command.navigation).pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_SET_REVALIDATION: {
-					return set_revalidation_now(command.revalidation).pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_SET_PREFETCH: {
-					return set_prefetch_now(command.prefetch).pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_SET_API_REQUESTS: {
-					return set_api_requests_now(command.requests).pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_BEGIN_API_REQUEST: {
-					return begin_api_request_now(command.request).pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_END_API_REQUEST: {
-					return end_api_request_now(command.key).pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_EMIT_CURRENT: {
-					return emit_if_changed().pipe(
-						Effect.andThen(complete(command.ack)),
-					);
-				}
-				case COMMAND_SHUTDOWN: {
-					return Queue.shutdown(queue);
-				}
-			}
-		};
-
-		const actor = Queue.take(queue).pipe(
-			Effect.flatMap(command_program),
-			Effect.forever,
-			Effect.catchAll(() => {
-				return Effect.void;
-			}),
-		);
-		const actor_fiber = yield* Effect.forkDaemon(actor);
-
 		return {
 			set_navigation: set_navigation_now,
 			set_revalidation: set_revalidation_now,
@@ -457,13 +350,7 @@ export function make_work_state_actor(
 					return indicator_activity_from_model(current);
 				}),
 			),
-			shutdown: Queue.offer(queue, { _tag: COMMAND_SHUTDOWN }).pipe(
-				Effect.andThen(Fiber.join(actor_fiber)),
-				Effect.asVoid,
-				Effect.catchAll(() => {
-					return Effect.void;
-				}),
-			),
+			shutdown: Effect.void,
 		};
 	});
 }

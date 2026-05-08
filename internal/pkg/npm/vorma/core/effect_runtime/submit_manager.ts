@@ -1,4 +1,4 @@
-import { Data, Deferred, Effect, Fiber, Queue, Ref } from "effect";
+import { Data, Deferred, Effect, Fiber, Ref } from "effect";
 import {
 	VERCEL_X_DEPLOYMENT_ID,
 	X_ACCEPTS_CLIENT_REDIRECT,
@@ -102,7 +102,7 @@ type ActiveSubmission = {
 	readonly skipWorkIndicator: boolean;
 	readonly shouldRevalidate: boolean;
 	readonly waiter: Waiter;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never> | null;
 };
 
 type Model = {
@@ -110,21 +110,16 @@ type Model = {
 	readonly active: ReadonlyMap<string, ActiveSubmission>;
 };
 
-type Command =
-	| {
-			readonly _tag: "Submit";
-			readonly request: SubmitRequest;
-			readonly waiter: Waiter;
-	  }
-	| {
-			readonly _tag: "Completed";
-			readonly id: number;
-			readonly key: string;
-			readonly result: SubmitResult;
-	  }
-	| {
-			readonly _tag: "Shutdown";
-	  };
+type SubmitInput = {
+	readonly request: SubmitRequest;
+	readonly waiter: Waiter;
+};
+
+type CompletedInput = {
+	readonly id: number;
+	readonly key: string;
+	readonly result: SubmitResult;
+};
 
 const REVALIDATION_OK: RevalidationResult = { ok: true };
 const REVALIDATION_EXHAUSTED: RevalidationResult = {
@@ -146,7 +141,6 @@ export function make_submit_manager(
 	options: SubmitManagerOptions,
 ): Effect.Effect<SubmitManager, never> {
 	return Effect.gen(function* () {
-		const queue = yield* Queue.unbounded<Command>();
 		const model = yield* Ref.make<Model>({
 			nextID: 0,
 			active: new Map(),
@@ -220,20 +214,21 @@ export function make_submit_manager(
 			return Effect.gen(function* () {
 				const deferred_result =
 					yield* Deferred.make<RevalidationResult>();
-				yield* Effect.forkDaemon(
+				yield* Effect.forkDetach(
 					revalidate("apiRequest", {
 						skipWorkIndicator: skip_work_indicator,
 					}).pipe(
 						Effect.flatMap((result) => {
 							return Deferred.succeed(deferred_result, result);
 						}),
-						Effect.catchAll(() => {
+						Effect.catch(() => {
 							return Deferred.succeed(
 								deferred_result,
 								REVALIDATION_EXHAUSTED,
 							);
 						}),
 					),
+					{ startImmediately: true },
 				);
 				return Deferred.await(deferred_result);
 			});
@@ -250,7 +245,14 @@ export function make_submit_manager(
 			submission: ActiveSubmission,
 		): Effect.Effect<void> => {
 			return Effect.gen(function* () {
-				yield* Fiber.interruptFork(submission.fiber);
+				if (submission.fiber) {
+					yield* Effect.forkDetach(
+						Fiber.interrupt(submission.fiber),
+						{
+							startImmediately: true,
+						},
+					).pipe(Effect.asVoid);
+				}
 				const revalidation_effect = yield* revalidation_now(
 					submission.shouldRevalidate,
 					submission.skipWorkIndicator,
@@ -412,7 +414,7 @@ export function make_submit_manager(
 			should_revalidate: boolean,
 			skip_work_indicator: boolean,
 		): Effect.Effect<SubmitResult, never> => {
-			return Effect.catchAll(
+			return Effect.catch(
 				Effect.gen(function* () {
 					const redirect_info = redirect_from_response(
 						response,
@@ -492,8 +494,7 @@ export function make_submit_manager(
 			skip_work_indicator: boolean,
 		): Effect.Effect<void, never> => {
 			const normalize_defect = (error: unknown): Effect.Effect<void> => {
-				return Queue.offer(queue, {
-					_tag: "Completed",
+				return on_completed({
 					id: dispatch.id,
 					key: dispatch.key,
 					result: {
@@ -513,22 +514,20 @@ export function make_submit_manager(
 					);
 				}),
 				Effect.flatMap((result) => {
-					return Queue.offer(queue, {
-						_tag: "Completed",
+					return on_completed({
 						id: dispatch.id,
 						key: dispatch.key,
 						result,
 					});
 				}),
-				Effect.catchAll((error) => {
+				Effect.catch((error) => {
 					if (error instanceof SubmitAborted) {
 						return Effect.gen(function* () {
 							const revalidation_effect = yield* revalidation_now(
 								should_revalidate,
 								skip_work_indicator,
 							);
-							yield* Queue.offer(queue, {
-								_tag: "Completed",
+							yield* on_completed({
 								id: dispatch.id,
 								key: dispatch.key,
 								result: {
@@ -544,8 +543,7 @@ export function make_submit_manager(
 							should_revalidate,
 							skip_work_indicator,
 						);
-						yield* Queue.offer(queue, {
-							_tag: "Completed",
+						yield* on_completed({
 							id: dispatch.id,
 							key: dispatch.key,
 							result: {
@@ -556,25 +554,22 @@ export function make_submit_manager(
 						});
 					});
 				}),
-				Effect.catchAllDefect(normalize_defect),
+				Effect.catchDefect(normalize_defect),
 			);
 		};
 
-		const on_submit = (
-			command: Extract<Command, { _tag: "Submit" }>,
-		): Effect.Effect<void> => {
+		const on_submit = (input: SubmitInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
 				const id = current.nextID + 1;
-				const key =
-					command.request.options?.dedupeKey ?? `submit:${id}`;
+				const key = input.request.options?.dedupeKey ?? `submit:${id}`;
 				const prepared = yield* prepare_dispatch(
 					id,
 					key,
-					command.request,
+					input.request,
 				);
 				if (prepared._tag === "immediate") {
-					yield* resolve_waiter(command.waiter, prepared.result);
+					yield* resolve_waiter(input.waiter, prepared.result);
 					yield* Ref.set(model, { ...current, nextID: id });
 					return;
 				}
@@ -583,15 +578,7 @@ export function make_submit_manager(
 				const previous = next_active.get(key);
 				if (previous) {
 					next_active.delete(key);
-					yield* interrupt_submission(previous);
 				}
-				const fiber = yield* Effect.forkDaemon(
-					run_submission(
-						prepared.dispatch,
-						prepared.shouldRevalidate,
-						command.request.options?.skipWorkIndicator === true,
-					),
-				);
 				next_active.set(key, {
 					id,
 					key,
@@ -599,71 +586,54 @@ export function make_submit_manager(
 					method: prepared.dispatch.method,
 					apiRouteKind: prepared.dispatch.apiRouteKind,
 					skipWorkIndicator:
-						command.request.options?.skipWorkIndicator === true,
+						input.request.options?.skipWorkIndicator === true,
 					shouldRevalidate: prepared.shouldRevalidate,
-					waiter: command.waiter,
-					fiber,
+					waiter: input.waiter,
+					fiber: null,
 				});
 				yield* set_model({ nextID: id, active: next_active });
+				const fiber = yield* Effect.forkDetach(
+					run_submission(
+						prepared.dispatch,
+						prepared.shouldRevalidate,
+						input.request.options?.skipWorkIndicator === true,
+					),
+					{ startImmediately: true },
+				);
+				yield* Ref.update(model, (current_after_start) => {
+					const submission = current_after_start.active.get(key);
+					if (!submission || submission.id !== id) {
+						return current_after_start;
+					}
+					const active = new Map(current_after_start.active);
+					active.set(key, {
+						...submission,
+						fiber,
+					});
+					return {
+						...current_after_start,
+						active,
+					};
+				});
+				if (previous) {
+					yield* interrupt_submission(previous);
+				}
 			});
 		};
 
-		const on_completed = (
-			command: Extract<Command, { _tag: "Completed" }>,
-		): Effect.Effect<void> => {
+		const on_completed = (input: CompletedInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
-				const submission = current.active.get(command.key);
-				if (!submission || submission.id !== command.id) {
+				const submission = current.active.get(input.key);
+				if (!submission || submission.id !== input.id) {
 					return;
 				}
 				const next_active = new Map(current.active);
-				next_active.delete(command.key);
+				next_active.delete(input.key);
 				yield* set_model({ ...current, active: next_active });
-				yield* resolve_waiter(submission.waiter, command.result);
+				yield* resolve_waiter(submission.waiter, input.result);
 			});
 		};
-
-		const command_program = (command: Command): Effect.Effect<void> => {
-			switch (command._tag) {
-				case "Submit": {
-					return on_submit(command);
-				}
-				case "Completed": {
-					return on_completed(command);
-				}
-				case "Shutdown": {
-					return Effect.gen(function* () {
-						const current = yield* Ref.get(model);
-						for (const submission of current.active.values()) {
-							yield* interrupt_submission(submission);
-						}
-						yield* set_model({
-							...current,
-							active: new Map(),
-						});
-						yield* Queue.shutdown(queue);
-					});
-				}
-			}
-		};
-
-		const actor = Queue.take(queue).pipe(
-			Effect.flatMap(command_program),
-			Effect.forever,
-			Effect.ensuring(
-				Effect.gen(function* () {
-					const current = yield* Ref.get(model);
-					for (const submission of current.active.values()) {
-						yield* interrupt_submission(submission);
-					}
-				}),
-			),
-			Effect.catchAll(() => {
-				return Effect.void;
-			}),
-		);
-		const actor_fiber = yield* Effect.forkDaemon(actor);
 
 		return {
 			submit: <T = unknown>(request: SubmitRequest) => {
@@ -671,7 +641,6 @@ export function make_submit_manager(
 					const deferred_result =
 						yield* Deferred.make<SubmitResult>();
 					yield* on_submit({
-						_tag: "Submit",
 						request,
 						waiter: { deferred: deferred_result },
 					});
@@ -694,10 +663,8 @@ export function make_submit_manager(
 					...current,
 					active: new Map(),
 				});
-				yield* Queue.shutdown(queue);
-				yield* Fiber.interruptFork(actor_fiber);
 			}).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

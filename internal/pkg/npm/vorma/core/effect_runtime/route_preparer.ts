@@ -1,4 +1,4 @@
-import { Data, Effect, Fiber, Ref } from "effect";
+import { Data, Effect, Result as EffectResult, Fiber, Ref } from "effect";
 import { parseSearchParams } from "vorma/kit/json";
 import {
 	createPatternRegistry,
@@ -215,10 +215,7 @@ type ClientLoaderSlot =
 	  }
 	| {
 			readonly _tag: "Active";
-			readonly fiber: Fiber.RuntimeFiber<
-				unknown,
-				RouteClientLoaderFailed
-			>;
+			readonly fiber: Fiber.Fiber<unknown, RouteClientLoaderFailed>;
 			readonly abort: Effect.Effect<void>;
 	  };
 
@@ -677,7 +674,7 @@ function run_client_loaders(
 					build_server_state(payload.routes, idx, client_build_id),
 				);
 				retained_prestarts.add(prestart);
-				const fiber = yield* Effect.fork(
+				const fiber = yield* Effect.forkChild(
 					adopt_client_loader_prestart(prestart, idx, route.pattern),
 				);
 				slots.push({
@@ -697,7 +694,7 @@ function run_client_loaders(
 				idx,
 				client_build_id,
 			);
-			const fiber = yield* Effect.fork(
+			const fiber = yield* Effect.forkChild(
 				run_client_loader(loader, route, {
 					idx,
 					input,
@@ -726,12 +723,12 @@ function run_client_loaders(
 				results.push(undefined);
 				continue;
 			}
-			const result = yield* Fiber.join(slot.fiber).pipe(Effect.either);
-			if (result._tag === "Right") {
-				results.push({ data: result.right });
+			const result = yield* Fiber.join(slot.fiber).pipe(Effect.result);
+			if (EffectResult.isSuccess(result)) {
+				results.push({ data: result.success });
 				continue;
 			}
-			if (is_abort_error(result.left.error)) {
+			if (is_abort_error(result.failure.error)) {
 				results.push(undefined);
 				break;
 			}
@@ -748,7 +745,7 @@ function run_client_loaders(
 					);
 				}
 			}
-			results.push({ error: result.left.error });
+			results.push({ error: result.failure.error });
 			break;
 		}
 		return results;

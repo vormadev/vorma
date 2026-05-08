@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { Effect } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
 	ClientCommit,
@@ -154,7 +154,7 @@ describe("ccc Effect module runtime experiment", () => {
 			shutdown: Effect.void,
 		};
 		const publish_result = await run_effect(
-			Effect.either(
+			Effect.result(
 				route_publisher.publish({
 					reason: "initial",
 					prepared: prepared_route(initial_module),
@@ -166,7 +166,7 @@ describe("ccc Effect module runtime experiment", () => {
 				}),
 			),
 		);
-		expect(publish_result._tag).toBe("Right");
+		expect(EffectResult.isSuccess(publish_result)).toBe(true);
 		commit.mockClear();
 		await run_effect(runtime.set_hmr_rerun(hmr_pattern, true));
 		await run_effect(

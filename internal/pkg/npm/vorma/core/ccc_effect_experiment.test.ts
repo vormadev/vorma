@@ -1,11 +1,4 @@
-import {
-	Deferred,
-	Duration,
-	Effect,
-	Fiber,
-	TestClock,
-	TestContext,
-} from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	make_revalidation_coordinator,
@@ -15,19 +8,56 @@ import {
 	RevalidationBuildSkew,
 	type RevalidationAttemptInput,
 } from "./effect_runtime/revalidation_coordinator.ts";
+import type { ScheduleMS } from "./effect_runtime/timer_runtime.ts";
 
 function run_effect<A>(program: Effect.Effect<A, never, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program);
 }
 
 function drain(): Effect.Effect<void> {
 	return Effect.gen(function* () {
 		for (let i = 0; i < 10; i++) {
-			yield* Effect.yieldNow();
+			yield* Effect.yieldNow;
 		}
 	});
+}
+
+type TestScheduledTimer = {
+	delay_ms: number;
+	action: Effect.Effect<void>;
+	canceled: boolean;
+};
+
+function make_test_scheduler() {
+	const timers: TestScheduledTimer[] = [];
+	const schedule_ms: ScheduleMS = (delay_ms, action) => {
+		return Effect.sync(() => {
+			const timer = { delay_ms, action, canceled: false };
+			timers.push(timer);
+			return Effect.sync(() => {
+				timer.canceled = true;
+			});
+		});
+	};
+	const pending_delays = (): number[] => {
+		return timers
+			.filter((timer) => {
+				return !timer.canceled;
+			})
+			.map((timer) => {
+				return timer.delay_ms;
+			});
+	};
+	const run_next = Effect.gen(function* () {
+		while (timers.length > 0) {
+			const timer = timers.shift()!;
+			if (!timer.canceled) {
+				yield* timer.action;
+				return;
+			}
+		}
+	});
+	return { schedule_ms, pending_delays, run_next };
 }
 
 describe("ccc Effect revalidation experiment", () => {
@@ -37,7 +67,9 @@ describe("ccc Effect revalidation experiment", () => {
 		const result = await run_effect(
 			Effect.scoped(
 				Effect.gen(function* () {
+					const scheduler = make_test_scheduler();
 					const coordinator = yield* make_revalidation_coordinator({
+						schedule_ms: scheduler.schedule_ms,
 						run: (input) => {
 							return Effect.sync(() => {
 								calls.push(input);
@@ -45,24 +77,25 @@ describe("ccc Effect revalidation experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(
+					const first = yield* Effect.forkChild(
 						coordinator.request("manual", { debounce: true }),
 					);
-					const second = yield* Effect.fork(
+					const second = yield* Effect.forkChild(
 						coordinator.request("windowFocus", {
 							debounce: true,
 						}),
 					);
 
-					yield* Effect.yieldNow();
-					yield* TestClock.adjust(
-						Duration.millis(REVALIDATION_DEBOUNCE_MS - 1),
-					);
+					yield* Effect.yieldNow;
 					yield* Effect.sync(() => {
+						expect(scheduler.pending_delays()).toEqual([
+							REVALIDATION_DEBOUNCE_MS,
+						]);
 						expect(calls).toHaveLength(0);
 					});
 
-					yield* TestClock.adjust(Duration.millis(1));
+					yield* scheduler.run_next;
+					yield* drain();
 					const first_result = yield* Fiber.join(first);
 					const second_result = yield* Fiber.join(second);
 
@@ -80,13 +113,15 @@ describe("ccc Effect revalidation experiment", () => {
 		});
 	});
 
-	it("retries with Effect time and exponential backoff", async () => {
+	it("retries with scheduled exponential backoff", async () => {
 		const calls: RevalidationAttemptInput[] = [];
 
 		const result = await run_effect(
 			Effect.scoped(
 				Effect.gen(function* () {
+					const scheduler = make_test_scheduler();
 					const coordinator = yield* make_revalidation_coordinator({
+						schedule_ms: scheduler.schedule_ms,
 						run: (input) => {
 							return Effect.gen(function* () {
 								yield* Effect.sync(() => {
@@ -103,7 +138,7 @@ describe("ccc Effect revalidation experiment", () => {
 						},
 					});
 
-					const fiber = yield* Effect.fork(
+					const fiber = yield* Effect.forkChild(
 						coordinator.request("apiRequest"),
 					);
 
@@ -112,24 +147,28 @@ describe("ccc Effect revalidation experiment", () => {
 						expect(calls.map((call) => call.attempt)).toEqual([1]);
 					});
 
-					yield* TestClock.adjust(
-						Duration.millis(REVALIDATION_BACKOFF_BASE_MS - 1),
-					);
 					yield* Effect.sync(() => {
+						expect(scheduler.pending_delays()).toEqual([
+							REVALIDATION_BACKOFF_BASE_MS,
+						]);
 						expect(calls.map((call) => call.attempt)).toEqual([1]);
 					});
 
-					yield* TestClock.adjust(Duration.millis(1));
-					yield* Effect.yieldNow();
+					yield* scheduler.run_next;
+					yield* drain();
 					yield* Effect.sync(() => {
 						expect(calls.map((call) => call.attempt)).toEqual([
 							1, 2,
 						]);
 					});
 
-					yield* TestClock.adjust(
-						Duration.millis(REVALIDATION_BACKOFF_BASE_MS * 2),
-					);
+					yield* Effect.sync(() => {
+						expect(scheduler.pending_delays()).toEqual([
+							REVALIDATION_BACKOFF_BASE_MS * 2,
+						]);
+					});
+					yield* scheduler.run_next;
+					yield* drain();
 					return yield* Fiber.join(fiber);
 				}),
 			),
@@ -191,7 +230,7 @@ describe("ccc Effect revalidation experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(
+					const first = yield* Effect.forkChild(
 						coordinator.request("manual"),
 					);
 					yield* drain();
@@ -199,11 +238,12 @@ describe("ccc Effect revalidation experiment", () => {
 						expect(calls).toHaveLength(1);
 					});
 
-					const second = yield* Effect.fork(
+					const second = yield* Effect.forkChild(
 						coordinator.request("apiRequest"),
 					);
-					yield* Effect.yieldNow();
+					yield* Effect.yieldNow;
 					yield* Deferred.succeed(release_first, undefined);
+					yield* drain();
 
 					const first_result = yield* Fiber.join(first);
 					const second_result = yield* Fiber.join(second);

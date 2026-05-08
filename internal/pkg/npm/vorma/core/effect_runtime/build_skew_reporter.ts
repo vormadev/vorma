@@ -51,7 +51,7 @@ export function make_build_skew_reporter(
 				}
 				return true;
 			}).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.succeed(false);
 				}),
 			);

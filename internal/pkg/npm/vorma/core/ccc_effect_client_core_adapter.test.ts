@@ -891,9 +891,16 @@ describe("ccc Effect client core adapter experiment", () => {
 	});
 
 	it("navigates on popstate through the Effect navigation actor without pushing history", async () => {
+		vi.useFakeTimers();
 		seed_payload({
 			[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
 		});
+		const work_indicator = {
+			stop: vi.fn(),
+			stopDelayMS: 1,
+			start: vi.fn(),
+			startDelayMS: 1,
+		};
 		const commit = vi.fn<(client_commit: ClientCommit) => void>();
 		const core_result = create_client_core_effect(
 			{ apiMountRoot: API_MOUNT_ROOT },
@@ -902,20 +909,28 @@ describe("ccc Effect client core adapter experiment", () => {
 		if (!core_result.ok) {
 			throw new Error("expected core creation to succeed");
 		}
-		await core_result.val.boot({});
+		await core_result.val.boot({ workIndicator: work_indicator });
 		const initial_key = current_history_key();
 		const { call, wait_for } = mock_fetch();
 
 		set_scroll_position(40, 80);
 		const navigation = core_result.val.navigate("/about");
 		await wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
 		call(0).resolve(route_response());
 		await navigation;
+		await vi.advanceTimersByTimeAsync(1);
 		commit.mockClear();
+		work_indicator.start.mockClear();
+		work_indicator.stop.mockClear();
 		const push_spy = vi.spyOn(window.history, "pushState");
 
 		simulate_popstate(initial_key, "/");
 		await wait_for(2);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(work_indicator.start).toHaveBeenCalledTimes(1);
+
 		call(1).resolve(
 			route_response({
 				[ROUTE_PAYLOAD_FIELDS.matched_patterns]: [ROOT_PATTERN],
@@ -925,8 +940,10 @@ describe("ccc Effect client core adapter experiment", () => {
 		await wait_until(() => {
 			return route_render_commits(commit).length === 1;
 		}, "expected Effect popstate navigation to publish");
+		await vi.advanceTimersByTimeAsync(1);
 
 		expect(push_spy).not.toHaveBeenCalled();
+		expect(work_indicator.stop).toHaveBeenCalledTimes(1);
 		const route_render = route_render_commit_at(commit, 0);
 		expect(route_render.state.entries[0]?.loader_data).toEqual({
 			home: true,

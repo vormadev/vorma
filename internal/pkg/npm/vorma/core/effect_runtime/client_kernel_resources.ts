@@ -23,21 +23,25 @@ const runtime_lifecycle_service_tag = "vorma/RuntimeLifecycleService";
 const scroll_restoration_service_tag = "vorma/ScrollRestorationService";
 const work_state_actor_service_tag = "vorma/WorkStateActorService";
 
-export class BrowserHistoryService extends Context.Tag(
-	browser_history_service_tag,
-)<BrowserHistoryService, BrowserHistory>() {}
+export class BrowserHistoryService extends Context.Service<
+	BrowserHistoryService,
+	BrowserHistory
+>()(browser_history_service_tag) {}
 
-export class RuntimeLifecycleService extends Context.Tag(
-	runtime_lifecycle_service_tag,
-)<RuntimeLifecycleService, RuntimeLifecycle>() {}
+export class RuntimeLifecycleService extends Context.Service<
+	RuntimeLifecycleService,
+	RuntimeLifecycle
+>()(runtime_lifecycle_service_tag) {}
 
-export class ScrollRestorationService extends Context.Tag(
-	scroll_restoration_service_tag,
-)<ScrollRestorationService, ScrollRestoration>() {}
+export class ScrollRestorationService extends Context.Service<
+	ScrollRestorationService,
+	ScrollRestoration
+>()(scroll_restoration_service_tag) {}
 
-export class WorkStateActorService extends Context.Tag(
-	work_state_actor_service_tag,
-)<WorkStateActorService, WorkStateActor>() {}
+export class WorkStateActorService extends Context.Service<
+	WorkStateActorService,
+	WorkStateActor
+>()(work_state_actor_service_tag) {}
 
 export type ClientKernelResources = {
 	browser_history: BrowserHistory;

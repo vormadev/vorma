@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result as EffectResult, Fiber } from "effect";
 import { R, type Result } from "vorma/kit/result";
 import { make_boot_revalidation_gate } from "./effect_runtime/boot_revalidation_gate.ts";
 import { make_boot_route_state } from "./effect_runtime/boot_route_state.ts";
@@ -94,7 +94,8 @@ export function create_client_core_effect(
 	};
 
 	function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
-		return Effect.runPromise(program);
+		const fiber = Effect.runFork(program);
+		return Effect.runPromise(Fiber.join(fiber));
 	}
 
 	function require_kernel(): EffectClientKernel {
@@ -170,6 +171,7 @@ export function create_client_core_effect(
 							"apiRequest",
 							revalidation_options,
 						),
+						revalidation_options,
 					);
 				},
 				use_view_transitions: Effect.sync(() => {
@@ -200,12 +202,12 @@ export function create_client_core_effect(
 			);
 		}
 		const payload_result = Effect.runSync(
-			Effect.either(browser_view_runtime.read_initial_payload),
+			Effect.result(browser_view_runtime.read_initial_payload),
 		);
-		if (payload_result._tag === "Left") {
-			return R.err(payload_result.left.reason);
+		if (EffectResult.isFailure(payload_result)) {
+			return R.err(payload_result.failure.reason);
 		}
-		const payload = payload_result.right;
+		const payload = payload_result.success;
 		const client_build_id = string_payload_field(
 			payload,
 			EFFECT_CLIENT_BUILD_ID_FIELD,
@@ -224,18 +226,18 @@ export function create_client_core_effect(
 		kernel = next_kernel;
 		focus_revalidator = null;
 		const boot_result = await run_effect(
-			Effect.either(next_kernel.boot_initial_route(payload)),
+			Effect.result(next_kernel.boot_initial_route(payload)),
 		);
-		if (boot_result._tag === "Left") {
+		if (EffectResult.isFailure(boot_result)) {
 			if (kernel === next_kernel) {
 				kernel = existing_kernel;
 			}
 			Effect.runSync(boot_route_state.clear);
 			Effect.runSync(boot_revalidation_gate.cancel_boot);
 			await run_effect(next_kernel_handle.shutdown);
-			return R.err(String(boot_result.left));
+			return R.err(String(boot_result.failure));
 		}
-		const should_revalidate_after_boot = Effect.runSync(
+		const boot_revalidation_decision = Effect.runSync(
 			boot_revalidation_gate.finish_boot,
 		);
 		kernel = next_kernel;
@@ -267,14 +269,17 @@ export function create_client_core_effect(
 			);
 			focus_revalidator = next_focus_revalidator;
 		}
-		if (should_revalidate_after_boot) {
+		if (boot_revalidation_decision.requested) {
 			void run_effect(
-				next_kernel.route_revalidator.request("apiRequest"),
+				next_kernel.route_revalidator.request("apiRequest", {
+					skipWorkIndicator:
+						boot_revalidation_decision.skip_work_indicator,
+				}),
 			);
 		}
 		Effect.runSync(next_kernel.install_browser_handlers);
 		const render_result = await run_effect(
-			Effect.either(
+			Effect.result(
 				Effect.tryPromise({
 					try: async () => {
 						await options.render?.();
@@ -285,11 +290,11 @@ export function create_client_core_effect(
 				}),
 			),
 		);
-		if (render_result._tag === "Left") {
+		if (EffectResult.isFailure(render_result)) {
 			await run_effect(
 				effect_client_session.shutdown_if_active(next_kernel_handle),
 			);
-			return R.err(String(render_result.left));
+			return R.err(String(render_result.failure));
 		}
 		return R.ok(undefined);
 	}
@@ -457,11 +462,12 @@ export function create_client_core_effect(
 
 	function revalidate(): Promise<RevalidationResult> {
 		const active_kernel = require_kernel();
-		return run_effect(
-			active_kernel.route_revalidator.request("manual", {
+		const await_result = Effect.runSync(
+			active_kernel.route_revalidator.request_started("manual", {
 				debounce: true,
 			}),
-		).then((result) => {
+		);
+		return run_effect(await_result).then((result) => {
 			if (result.ok && focus_revalidator) {
 				void run_effect(focus_revalidator.mark_activity);
 			}
@@ -491,7 +497,7 @@ export function create_client_core_effect(
 					history_state: position.state,
 				});
 			}).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),
@@ -506,7 +512,7 @@ export function create_client_core_effect(
 		}
 		void run_effect(
 			active_kernel.prefetch_manager.stop(target_href).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

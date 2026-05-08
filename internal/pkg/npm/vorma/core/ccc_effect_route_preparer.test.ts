@@ -1,4 +1,5 @@
-import { Effect, Fiber, TestContext } from "effect";
+import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import type { ClientLoaderFn } from "./effect_runtime/client_contract.ts";
 import {
@@ -8,15 +9,13 @@ import {
 } from "./effect_runtime/route_preparer.ts";
 
 function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 }
 
 function drain(): Effect.Effect<void> {
 	return Effect.gen(function* () {
 		for (let i = 0; i < 10; i++) {
-			yield* Effect.yieldNow();
+			yield* Effect.yieldNow;
 		}
 	});
 }
@@ -265,7 +264,7 @@ describe("ccc Effect route preparer experiment", () => {
 						return Effect.succeed(modules[module_url]!);
 					},
 				});
-				const fiber = yield* Effect.fork(
+				const fiber = yield* Effect.forkChild(
 					preparer.prepare_route({
 						raw_payload: route_payload({
 							patterns: ["/first", "/second"],

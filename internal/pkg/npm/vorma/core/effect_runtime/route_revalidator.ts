@@ -13,6 +13,7 @@ import {
 import type { RouteFetcher, RouteFetchResult } from "./route_fetcher.ts";
 import type { RoutePreparer } from "./route_preparer.ts";
 import type { HistoryPosition, RoutePublisher } from "./route_publisher.ts";
+import type { ScheduleMS, SleepMS } from "./timer_runtime.ts";
 import {
 	WORK_REVALIDATION_STATUS_DEBOUNCING,
 	WORK_REVALIDATION_STATUS_RETRYING,
@@ -26,6 +27,10 @@ export type RouteRevalidator = {
 		reason: Exclude<RevalidationReason, "retry">,
 		options?: { debounce?: boolean; skipWorkIndicator?: boolean },
 	) => Effect.Effect<RevalidationResult>;
+	request_started: (
+		reason: Exclude<RevalidationReason, "retry">,
+		options?: { debounce?: boolean; skipWorkIndicator?: boolean },
+	) => Effect.Effect<Effect.Effect<RevalidationResult>>;
 	cancel: Effect.Effect<void>;
 	snapshot: Effect.Effect<RevalidationCoordinatorSnapshot>;
 	shutdown: Effect.Effect<void>;
@@ -39,6 +44,8 @@ export type RouteRevalidatorOptions = {
 	route_key: (href: string) => string;
 	route_preparer: RoutePreparer;
 	route_publisher: RoutePublisher;
+	schedule_ms?: ScheduleMS;
+	sleep_ms?: SleepMS;
 	work_actor: WorkStateActor;
 };
 
@@ -50,6 +57,8 @@ export function make_route_revalidator(
 			run: (input) => {
 				return run_revalidation_attempt(options, input);
 			},
+			schedule_ms: options.schedule_ms,
+			sleep_ms: options.sleep_ms,
 			on_snapshot_change: (snapshot) => {
 				return options.work_actor.set_revalidation(
 					work_revalidation_from_snapshot(snapshot),
@@ -58,6 +67,7 @@ export function make_route_revalidator(
 		});
 		return {
 			request: coordinator.request,
+			request_started: coordinator.request_started,
 			cancel: coordinator.cancel(),
 			snapshot: coordinator.snapshot,
 			shutdown: coordinator.shutdown,
@@ -189,7 +199,7 @@ function report_build_skew(
 		})
 		.pipe(
 			Effect.asVoid,
-			Effect.catchAll(() => {
+			Effect.catch(() => {
 				return Effect.void;
 			}),
 		);

@@ -76,13 +76,13 @@ type ActiveRun = {
 	readonly seq: number;
 	readonly attempt: number;
 	readonly reason: RevalidationReason;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never>;
 };
 
 type SleepRun = {
 	readonly attempt: number;
 	readonly reason: RevalidationReason;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never>;
 };
 
 type Model = {
@@ -182,7 +182,7 @@ export function make_revalidation_coordinator(
 			delayMS: number,
 		): Effect.Effect<SleepRun> => {
 			return Effect.gen(function* () {
-				const fiber = yield* Effect.fork(
+				const fiber = yield* Effect.forkChild(
 					Effect.sleep(Duration.millis(delayMS)).pipe(
 						Effect.andThen(
 							Queue.offer(queue, {
@@ -191,7 +191,7 @@ export function make_revalidation_coordinator(
 								reason,
 							}),
 						),
-						Effect.catchAll(() => {
+						Effect.catch(() => {
 							return Effect.void;
 						}),
 						Effect.asVoid,
@@ -229,7 +229,7 @@ export function make_revalidation_coordinator(
 				}
 				yield* cancel_sleep(current);
 				const seq = current.nextSeq + 1;
-				const fiber = yield* Effect.fork(
+				const fiber = yield* Effect.forkChild(
 					options.run({ seq, attempt, reason }).pipe(
 						Effect.andThen(
 							Queue.offer(queue, {
@@ -243,7 +243,7 @@ export function make_revalidation_coordinator(
 								seq,
 							});
 						}),
-						Effect.catchAll(() => {
+						Effect.catch(() => {
 							return Queue.offer(queue, {
 								_tag: "AttemptFailed",
 								seq,
@@ -414,11 +414,11 @@ export function make_revalidation_coordinator(
 					);
 				}),
 			),
-			Effect.catchAll(() => {
+			Effect.catch(() => {
 				return Effect.void;
 			}),
 		);
-		const actor_fiber = yield* Effect.fork(actor);
+		const actor_fiber = yield* Effect.forkChild(actor);
 
 		const snapshot = Ref.get(model).pipe(
 			Effect.map((current): RevalidationCoordinatorSnapshot => {
@@ -462,7 +462,7 @@ export function make_revalidation_coordinator(
 			shutdown: Queue.offer(queue, { _tag: "Shutdown" }).pipe(
 				Effect.andThen(Fiber.join(actor_fiber)),
 				Effect.asVoid,
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

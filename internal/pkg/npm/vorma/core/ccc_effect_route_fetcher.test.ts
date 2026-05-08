@@ -1,4 +1,5 @@
-import { Effect, TestContext } from "effect";
+import { Effect, Result as EffectResult } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import {
 	VERCEL_DPL_QUERY_PARAM_KEY,
@@ -26,9 +27,7 @@ type FetchCall = {
 };
 
 function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 }
 
 function json_response(data: unknown, init?: ResponseInit): Response {
@@ -221,20 +220,20 @@ describe("ccc Effect route fetcher experiment", () => {
 		});
 
 		const result = await run_effect(
-			Effect.either(
+			Effect.result(
 				fetcher.fetch_route({
 					url: new URL(ROUTE_HREF),
 				}),
 			),
 		);
 
-		expect(result._tag).toBe("Left");
-		if (result._tag !== "Left") {
+		expect(EffectResult.isFailure(result)).toBe(true);
+		if (!EffectResult.isFailure(result)) {
 			throw new Error("expected route fetch failure");
 		}
-		expect(result.left).toBeInstanceOf(RouteFetchFailed);
-		expect(result.left.error).toBeInstanceOf(BrowserFetchFailed);
-		const transport_error = result.left.error as BrowserFetchFailed;
+		expect(result.failure).toBeInstanceOf(RouteFetchFailed);
+		expect(result.failure.error).toBeInstanceOf(BrowserFetchFailed);
+		const transport_error = result.failure.error as BrowserFetchFailed;
 		expect(transport_error.error).toBeInstanceOf(Error);
 		expect((transport_error.error as Error).message).toBe("network broke");
 	});

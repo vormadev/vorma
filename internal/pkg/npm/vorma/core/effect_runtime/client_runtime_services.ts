@@ -21,49 +21,67 @@ import {
 	make_submit_dispatcher,
 } from "./submit_dispatcher.ts";
 import {
+	type BrowserTimerRuntime,
+	make_browser_timer_runtime,
+} from "./timer_runtime.ts";
+import {
 	type WorkIndicatorRuntime,
 	make_work_indicator,
 } from "./work_indicator.ts";
 
 const browser_fetch_runtime_service_tag = "vorma/BrowserFetchRuntimeService";
 const browser_location_service_tag = "vorma/BrowserLocationService";
+const browser_timer_runtime_service_tag = "vorma/BrowserTimerRuntimeService";
 const browser_view_runtime_service_tag = "vorma/BrowserViewRuntimeService";
 const module_runtime_service_tag = "vorma/ModuleRuntimeService";
 const route_dom_runtime_service_tag = "vorma/RouteDOMRuntimeService";
 const submit_dispatcher_service_tag = "vorma/SubmitDispatcherService";
 const work_indicator_runtime_service_tag = "vorma/WorkIndicatorRuntimeService";
 
-export class BrowserFetchRuntimeService extends Context.Tag(
-	browser_fetch_runtime_service_tag,
-)<BrowserFetchRuntimeService, BrowserFetchRuntime>() {}
+export class BrowserFetchRuntimeService extends Context.Service<
+	BrowserFetchRuntimeService,
+	BrowserFetchRuntime
+>()(browser_fetch_runtime_service_tag) {}
 
-export class BrowserLocationService extends Context.Tag(
-	browser_location_service_tag,
-)<BrowserLocationService, BrowserLocation>() {}
+export class BrowserLocationService extends Context.Service<
+	BrowserLocationService,
+	BrowserLocation
+>()(browser_location_service_tag) {}
 
-export class BrowserViewRuntimeService extends Context.Tag(
-	browser_view_runtime_service_tag,
-)<BrowserViewRuntimeService, BrowserViewRuntime>() {}
+export class BrowserTimerRuntimeService extends Context.Service<
+	BrowserTimerRuntimeService,
+	BrowserTimerRuntime
+>()(browser_timer_runtime_service_tag) {}
 
-export class ModuleRuntimeService extends Context.Tag(
-	module_runtime_service_tag,
-)<ModuleRuntimeService, ModuleRuntime>() {}
+export class BrowserViewRuntimeService extends Context.Service<
+	BrowserViewRuntimeService,
+	BrowserViewRuntime
+>()(browser_view_runtime_service_tag) {}
 
-export class RouteDOMRuntimeService extends Context.Tag(
-	route_dom_runtime_service_tag,
-)<RouteDOMRuntimeService, RouteDOMRuntime>() {}
+export class ModuleRuntimeService extends Context.Service<
+	ModuleRuntimeService,
+	ModuleRuntime
+>()(module_runtime_service_tag) {}
 
-export class SubmitDispatcherService extends Context.Tag(
-	submit_dispatcher_service_tag,
-)<SubmitDispatcherService, SubmitDispatcher>() {}
+export class RouteDOMRuntimeService extends Context.Service<
+	RouteDOMRuntimeService,
+	RouteDOMRuntime
+>()(route_dom_runtime_service_tag) {}
 
-export class WorkIndicatorRuntimeService extends Context.Tag(
-	work_indicator_runtime_service_tag,
-)<WorkIndicatorRuntimeService, WorkIndicatorRuntime>() {}
+export class SubmitDispatcherService extends Context.Service<
+	SubmitDispatcherService,
+	SubmitDispatcher
+>()(submit_dispatcher_service_tag) {}
+
+export class WorkIndicatorRuntimeService extends Context.Service<
+	WorkIndicatorRuntimeService,
+	WorkIndicatorRuntime
+>()(work_indicator_runtime_service_tag) {}
 
 export type ClientRuntimeServices = {
 	browser_fetch_runtime: BrowserFetchRuntime;
 	browser_location: BrowserLocation;
+	browser_timer_runtime: BrowserTimerRuntime;
 	browser_view_runtime: BrowserViewRuntime;
 	module_runtime: ModuleRuntime;
 	route_dom_runtime: RouteDOMRuntime;
@@ -79,6 +97,7 @@ export type ClientRuntimeServicesOptions = {
 export type ClientRuntimeServicesLayerContext =
 	| BrowserFetchRuntimeService
 	| BrowserLocationService
+	| BrowserTimerRuntimeService
 	| BrowserViewRuntimeService
 	| ModuleRuntimeService
 	| RouteDOMRuntimeService
@@ -96,6 +115,7 @@ export function make_client_runtime_services_layer(
 				hard_redirect: options.hard_redirect,
 			}),
 		),
+		Layer.effect(BrowserTimerRuntimeService, make_browser_timer_runtime()),
 		Layer.effect(
 			BrowserViewRuntimeService,
 			make_browser_view_runtime({
@@ -127,6 +147,10 @@ export function client_runtime_services_to_layer(
 			services.browser_fetch_runtime,
 		),
 		Layer.succeed(BrowserLocationService, services.browser_location),
+		Layer.succeed(
+			BrowserTimerRuntimeService,
+			services.browser_timer_runtime,
+		),
 		Layer.succeed(BrowserViewRuntimeService, services.browser_view_runtime),
 		Layer.succeed(ModuleRuntimeService, services.module_runtime),
 		Layer.succeed(RouteDOMRuntimeService, services.route_dom_runtime),
@@ -153,6 +177,7 @@ const collect_client_runtime_services: Effect.Effect<
 > = Effect.gen(function* () {
 	const browser_fetch_runtime = yield* BrowserFetchRuntimeService;
 	const browser_location = yield* BrowserLocationService;
+	const browser_timer_runtime = yield* BrowserTimerRuntimeService;
 	const browser_view_runtime = yield* BrowserViewRuntimeService;
 	const module_runtime = yield* ModuleRuntimeService;
 	const route_dom_runtime = yield* RouteDOMRuntimeService;
@@ -162,6 +187,7 @@ const collect_client_runtime_services: Effect.Effect<
 	return {
 		browser_fetch_runtime,
 		browser_location,
+		browser_timer_runtime,
 		browser_view_runtime,
 		module_runtime,
 		route_dom_runtime,

@@ -1,4 +1,5 @@
-import { Effect, TestContext } from "effect";
+import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import type {
 	ClientCommit,
@@ -25,9 +26,7 @@ const SECOND_HREF = "http://localhost/second#details";
 const BUILD_ID = "build-1";
 
 function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 }
 
 function route_record(input: {

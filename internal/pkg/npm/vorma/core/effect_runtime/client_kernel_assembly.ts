@@ -144,10 +144,9 @@ export function make_effect_client_kernel(
 					source: "popstate",
 					state: position.state,
 					scrollToTop: false,
-					skipWorkIndicator: true,
 				});
 			}).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			);
@@ -263,7 +262,7 @@ export function acquire_effect_client_kernel(
 	return Effect.gen(function* () {
 		const scope = yield* Scope.make();
 		const kernel = yield* make_effect_client_kernel(options).pipe(
-			Scope.extend(scope),
+			Scope.provide(scope),
 		);
 		yield* Scope.addFinalizer(scope, kernel.lifecycle.shutdown);
 		return {

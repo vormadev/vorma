@@ -1,4 +1,5 @@
-import { Effect, Fiber, TestContext } from "effect";
+import { Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import { X_CLIENT_REDIRECT } from "./constants.ts";
 import {
@@ -8,15 +9,13 @@ import {
 } from "./effect_runtime/submit_manager.ts";
 
 function run_effect<A>(program: Effect.Effect<A, never, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 }
 
 function drain(): Effect.Effect<void> {
 	return Effect.gen(function* () {
 		for (let i = 0; i < 10; i++) {
-			yield* Effect.yieldNow();
+			yield* Effect.yieldNow;
 		}
 	});
 }
@@ -57,7 +56,7 @@ describe("ccc Effect submit experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(
+					const first = yield* Effect.forkChild(
 						manager.submit({
 							href: "/slow",
 							init: { method: "POST" },
@@ -65,7 +64,7 @@ describe("ccc Effect submit experiment", () => {
 						}),
 					);
 					yield* drain();
-					const second = yield* Effect.fork(
+					const second = yield* Effect.forkChild(
 						manager.submit({
 							href: "/fast",
 							init: { method: "POST" },
@@ -107,14 +106,14 @@ describe("ccc Effect submit experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(
+					const first = yield* Effect.forkChild(
 						manager.submit({
 							href: "/a",
 							init: { method: "POST" },
 							options: { revalidate: false },
 						}),
 					);
-					const second = yield* Effect.fork(
+					const second = yield* Effect.forkChild(
 						manager.submit({
 							href: "/b",
 							init: { method: "GET" },
@@ -169,7 +168,7 @@ describe("ccc Effect submit experiment", () => {
 						},
 					});
 
-					const fiber = yield* Effect.fork(
+					const fiber = yield* Effect.forkChild(
 						manager.submit<{ ok: boolean }>({
 							href: "/save",
 							init: { method: "POST" },
@@ -216,7 +215,7 @@ describe("ccc Effect submit experiment", () => {
 						},
 					});
 
-					const fiber = yield* Effect.fork(
+					const fiber = yield* Effect.forkChild(
 						manager.submit({
 							href: "/action",
 							init: { method: "POST" },
@@ -247,7 +246,7 @@ describe("ccc Effect submit experiment", () => {
 						},
 					});
 
-					const fiber = yield* Effect.fork(
+					const fiber = yield* Effect.forkChild(
 						manager.submit({
 							href: "/action",
 							init: { method: "POST" },

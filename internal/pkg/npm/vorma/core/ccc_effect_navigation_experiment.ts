@@ -1,4 +1,12 @@
-import { Data, Deferred, Effect, Fiber, Queue, Ref } from "effect";
+import {
+	Data,
+	Deferred,
+	Effect,
+	Result as EffectResult,
+	Fiber,
+	Queue,
+	Ref,
+} from "effect";
 
 export type NavigationSource = "navigate" | "redirect" | "popstate";
 
@@ -81,7 +89,7 @@ type Active = {
 	readonly source: NavigationSource;
 	readonly redirectCount: number;
 	readonly waiters: ReadonlyArray<Waiter>;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never>;
 };
 
 type Model = {
@@ -168,7 +176,9 @@ export function make_navigation_actor(
 		};
 
 		const interrupt_active = (active: Active): Effect.Effect<void> => {
-			return Fiber.interruptFork(active.fiber);
+			return Effect.forkDetach(Fiber.interrupt(active.fiber), {
+				startImmediately: true,
+			}).pipe(Effect.asVoid);
 		};
 
 		const attempt_program = (
@@ -191,7 +201,7 @@ export function make_navigation_actor(
 						hard: redirect.hard === true,
 					});
 				}),
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Queue.offer(queue, {
 						_tag: "Failed",
 						id: attempt.id,
@@ -213,7 +223,7 @@ export function make_navigation_actor(
 					source: input.source,
 					redirectCount: input.redirectCount,
 				};
-				const fiber = yield* Effect.fork(attempt_program(attempt));
+				const fiber = yield* Effect.forkChild(attempt_program(attempt));
 				yield* Ref.set(model, {
 					nextID: id,
 					active: {
@@ -284,11 +294,11 @@ export function make_navigation_actor(
 					return;
 				}
 				const active = current.active;
-				const publish_result = yield* Effect.either(
+				const publish_result = yield* Effect.result(
 					options.publish(command.loaded, command.attempt),
 				);
 				yield* Ref.set(model, { ...current, active: null });
-				if (publish_result._tag === "Left") {
+				if (EffectResult.isFailure(publish_result)) {
 					yield* resolve_waiters(active.waiters, {
 						didNavigate: false,
 						href: null,
@@ -401,11 +411,11 @@ export function make_navigation_actor(
 					}
 				}),
 			),
-			Effect.catchAll(() => {
+			Effect.catch(() => {
 				return Effect.void;
 			}),
 		);
-		const actor_fiber = yield* Effect.fork(actor);
+		const actor_fiber = yield* Effect.forkChild(actor);
 
 		return {
 			navigate: (href, nav_options) => {
@@ -440,7 +450,7 @@ export function make_navigation_actor(
 			shutdown: Queue.offer(queue, { _tag: "Shutdown" }).pipe(
 				Effect.andThen(Fiber.join(actor_fiber)),
 				Effect.asVoid,
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

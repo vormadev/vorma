@@ -1,4 +1,4 @@
-import { Cause, Data, Effect, Runtime } from "effect";
+import { Cause, Data, Effect } from "effect";
 import { DATA_SCRIPT_ID, VORMA_ROOT_EL_ID } from "../constants.ts";
 import type { ScrollState } from "./client_contract.ts";
 
@@ -114,7 +114,10 @@ export function make_browser_view_runtime(
 			document.body.insertBefore(root, document.body.firstChild);
 			return root;
 		}),
-		run_view_transition: (input) => {
+		run_view_transition: <A, E>(input: {
+			enabled: boolean;
+			publish: Effect.Effect<A, E>;
+		}): Effect.Effect<A, E | BrowserViewTransitionFailed> => {
 			if (!input.enabled) {
 				return input.publish;
 			}
@@ -123,34 +126,14 @@ export function make_browser_view_runtime(
 			if (typeof start_view_transition !== "function") {
 				return input.publish;
 			}
-			return Effect.gen(function* () {
-				const runtime = yield* Effect.runtime<never>();
-				return yield* Effect.async<
-					typeof input.publish extends Effect.Effect<infer A, any>
-						? A
-						: never,
-					| (typeof input.publish extends Effect.Effect<any, infer E>
-							? E
-							: never)
-					| BrowserViewTransitionFailed
-				>((resume) => {
+			return Effect.callback<A, E | BrowserViewTransitionFailed>(
+				(resume) => {
 					let publish_started = false;
 					let resumed = false;
 					const resume_once = (
 						program: Effect.Effect<
-							typeof input.publish extends Effect.Effect<
-								infer A,
-								any
-							>
-								? A
-								: never,
-							| (typeof input.publish extends Effect.Effect<
-									any,
-									infer E
-							  >
-									? E
-									: never)
-							| BrowserViewTransitionFailed
+							A,
+							E | BrowserViewTransitionFailed
 						>,
 					): void => {
 						if (resumed) {
@@ -164,8 +147,7 @@ export function make_browser_view_runtime(
 							document,
 							() => {
 								publish_started = true;
-								const exit_promise = Runtime.runPromiseExit(
-									runtime,
+								const exit_promise = Effect.runPromiseExit(
 									input.publish,
 								);
 								void exit_promise.then(
@@ -235,8 +217,8 @@ export function make_browser_view_runtime(
 							),
 						);
 					}
-				});
-			});
+				},
+			);
 		},
 	});
 }

@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import type {
 	ClientLoaderServerState,
 	ViewDefinition,
@@ -117,10 +117,10 @@ export function make_module_runtime(
 							raw_url,
 							mod as RouteModule,
 						).pipe(
-							Effect.catchAll(() => {
+							Effect.catch(() => {
 								return Effect.void;
 							}),
-							Effect.catchAllDefect(() => {
+							Effect.catchDefect(() => {
 								return Effect.void;
 							}),
 						),
@@ -235,7 +235,7 @@ function run_hmr_client_loader(
 ): Effect.Effect<unknown> {
 	return Effect.gen(function* () {
 		const match = route.matches[idx]!;
-		const result = yield* Effect.either(
+		const result = yield* Effect.result(
 			Effect.tryPromise({
 				try: () => {
 					return client_loader({
@@ -258,11 +258,11 @@ function run_hmr_client_loader(
 				},
 			}),
 		);
-		if (result._tag === "Right") {
-			return result.right;
+		if (EffectResult.isSuccess(result)) {
+			return result.success;
 		}
 		yield* Effect.sync(() => {
-			console_error(hmr_client_loader_error_message, result.left);
+			console_error(hmr_client_loader_error_message, result.failure);
 		});
 		return match.client_loader_data;
 	});

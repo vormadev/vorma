@@ -37,14 +37,12 @@ export function make_client_session(): Effect.Effect<ClientSession, never> {
 			}).pipe(Effect.flatMap(shutdown_handle));
 		};
 		const replace_active: ClientSession["replace_active"] = (handle) => {
-			return Effect.gen(function* () {
-				const previous = yield* Ref.get(active_ref);
-				if (previous === handle) {
-					return;
+			return Ref.modify(active_ref, (active) => {
+				if (active === handle) {
+					return [null, active];
 				}
-				yield* shutdown_handle(previous);
-				yield* Ref.set(active_ref, handle);
-			});
+				return [active, handle];
+			}).pipe(Effect.flatMap(shutdown_handle));
 		};
 
 		return {

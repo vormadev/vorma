@@ -23,6 +23,7 @@ import {
 	X_CLIENT_REDIRECT,
 	X_VORMA_BUILD_SKEW,
 } from "./constants.ts";
+import { create_client_core_effect } from "./create_client_core_effect.ts";
 import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
 import { preload_modules } from "./modules.ts";
@@ -499,6 +500,16 @@ function create_work_indicator(): WorkIndicatorController {
 /////////////////////////////////////////////////////////////////////
 
 export function create_client_core(
+	app_config: Omit<AppConfig, "__vormaViews" | "__vormaAPIRoutes">,
+	commit: CommitFn,
+	test_options?: TestOptions,
+): Result<ClientCore> {
+	return create_client_core_effect(app_config, commit, test_options);
+}
+
+/////// Legacy Implementation
+
+function _legacy_create_client_core(
 	_: Omit<AppConfig, "__vormaViews" | "__vormaAPIRoutes">,
 	commit: CommitFn,
 	test_options?: TestOptions,

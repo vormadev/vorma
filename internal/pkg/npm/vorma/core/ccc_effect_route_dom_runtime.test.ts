@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { Effect } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import { describe, expect, it } from "vitest";
 import { make_route_dom_runtime } from "./effect_runtime/route_dom_runtime.ts";
 import type { DecodedPayload } from "./effect_runtime/route_preparer.ts";
@@ -106,12 +106,12 @@ describe("ccc Effect route DOM runtime experiment", () => {
 		);
 
 		const result = await run_effect(
-			Effect.either(runtime.wait_for_css(["/broken.css"])),
+			Effect.result(runtime.wait_for_css(["/broken.css"])),
 		);
 
-		expect(result._tag).toBe("Left");
-		if (result._tag === "Left") {
-			expect(result.left._tag).toBe("RouteCSSFailed");
+		expect(EffectResult.isFailure(result)).toBe(true);
+		if (EffectResult.isFailure(result)) {
+			expect(result.failure._tag).toBe("RouteCSSFailed");
 		}
 	});
 });

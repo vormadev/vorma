@@ -1,5 +1,6 @@
-import { Data, Deferred, Duration, Effect, Fiber, Queue, Ref } from "effect";
+import { Data, Deferred, Duration, Effect, Fiber, Ref } from "effect";
 import type { RevalidationResult } from "../types.ts";
+import type { ScheduleMS, SleepMS, TimerCancel } from "./timer_runtime.ts";
 
 export type RevalidationReason =
 	| "manual"
@@ -43,6 +44,8 @@ export type RevalidationCoordinatorOptions = {
 	run: (
 		input: RevalidationAttemptInput,
 	) => Effect.Effect<void, RevalidationAttemptFailed | RevalidationBuildSkew>;
+	schedule_ms?: ScheduleMS;
+	sleep_ms?: SleepMS;
 	debounceMS?: number;
 	maxRetries?: number;
 	backoffBaseMS?: number;
@@ -57,6 +60,10 @@ export type RevalidationCoordinator = {
 		reason: Exclude<RevalidationReason, "retry">,
 		options?: { debounce?: boolean; skipWorkIndicator?: boolean },
 	) => Effect.Effect<RevalidationResult>;
+	request_started: (
+		reason: Exclude<RevalidationReason, "retry">,
+		options?: { debounce?: boolean; skipWorkIndicator?: boolean },
+	) => Effect.Effect<Effect.Effect<RevalidationResult>>;
 	cancel: (result?: RevalidationResult) => Effect.Effect<void>;
 	snapshot: Effect.Effect<RevalidationCoordinatorSnapshot>;
 	shutdown: Effect.Effect<void>;
@@ -84,14 +91,14 @@ type ActiveRun = {
 	readonly attempt: number;
 	readonly reason: RevalidationReason;
 	readonly skipWorkIndicator: boolean;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never> | null;
 };
 
 type SleepRun = {
 	readonly attempt: number;
 	readonly reason: RevalidationReason;
 	readonly skipWorkIndicator: boolean;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly cancel: TimerCancel;
 };
 
 type Model = {
@@ -101,46 +108,10 @@ type Model = {
 	readonly sleeper: SleepRun | null;
 };
 
-type Command =
-	| {
-			readonly _tag: "Request";
-			readonly reason: Exclude<RevalidationReason, "retry">;
-			readonly debounce: boolean;
-			readonly skipWorkIndicator: boolean;
-			readonly deferred: Deferred.Deferred<RevalidationResult>;
-	  }
-	| {
-			readonly _tag: "RunNow";
-			readonly attempt: number;
-			readonly reason: RevalidationReason;
-	  }
-	| {
-			readonly _tag: "AttemptSucceeded";
-			readonly seq: number;
-	  }
-	| {
-			readonly _tag: "AttemptFailed";
-			readonly seq: number;
-			readonly attempt: number;
-			readonly reason: RevalidationReason;
-	  }
-	| {
-			readonly _tag: "AttemptBuildSkew";
-			readonly seq: number;
-	  }
-	| {
-			readonly _tag: "Cancel";
-			readonly result: RevalidationResult;
-	  }
-	| {
-			readonly _tag: "Shutdown";
-	  };
-
 export function make_revalidation_coordinator(
 	options: RevalidationCoordinatorOptions,
 ): Effect.Effect<RevalidationCoordinator, never> {
 	return Effect.gen(function* () {
-		const queue = yield* Queue.unbounded<Command>();
 		const model = yield* Ref.make<Model>({
 			nextSeq: 0,
 			waiters: [],
@@ -155,6 +126,22 @@ export function make_revalidation_coordinator(
 				options.backoffBaseMS ?? REVALIDATION_BACKOFF_BASE_MS,
 			backoffCapMS: options.backoffCapMS ?? REVALIDATION_BACKOFF_CAP_MS,
 		};
+		const sleep_ms =
+			options.sleep_ms ??
+			((delay_ms: number) => {
+				return Effect.sleep(Duration.millis(delay_ms));
+			});
+		const schedule_ms =
+			options.schedule_ms ??
+			((delay_ms: number, action: Effect.Effect<void>) => {
+				return Effect.gen(function* () {
+					const fiber = yield* Effect.forkChild(
+						sleep_ms(delay_ms).pipe(Effect.andThen(action)),
+						{ startImmediately: true },
+					);
+					return Fiber.interrupt(fiber).pipe(Effect.asVoid);
+				});
+			});
 
 		const backoff_ms = (attempt: number): number => {
 			return Math.min(
@@ -216,18 +203,14 @@ export function make_revalidation_coordinator(
 			if (!current.sleeper) {
 				return Effect.void;
 			}
-			return Fiber.interruptFork(current.sleeper.fiber).pipe(
-				Effect.asVoid,
-			);
+			return current.sleeper.cancel;
 		};
 
 		const cancel_active = (current: Model): Effect.Effect<void> => {
-			if (!current.active) {
+			if (!current.active?.fiber) {
 				return Effect.void;
 			}
-			return Fiber.interruptFork(current.active.fiber).pipe(
-				Effect.asVoid,
-			);
+			return Fiber.interrupt(current.active.fiber).pipe(Effect.asVoid);
 		};
 
 		const complete_waiters = (
@@ -248,24 +231,11 @@ export function make_revalidation_coordinator(
 			reason: RevalidationReason,
 			delayMS: number,
 			skipWorkIndicator: boolean,
+			wake: Effect.Effect<void>,
 		): Effect.Effect<SleepRun> => {
 			return Effect.gen(function* () {
-				const fiber = yield* Effect.forkDaemon(
-					Effect.sleep(Duration.millis(delayMS)).pipe(
-						Effect.andThen(
-							Queue.offer(queue, {
-								_tag: "RunNow",
-								attempt,
-								reason,
-							}),
-						),
-						Effect.catchAll(() => {
-							return Effect.void;
-						}),
-						Effect.asVoid,
-					),
-				);
-				return { attempt, reason, skipWorkIndicator, fiber };
+				const cancel = yield* schedule_ms(delayMS, wake);
+				return { attempt, reason, skipWorkIndicator, cancel };
 			});
 		};
 
@@ -280,6 +250,7 @@ export function make_revalidation_coordinator(
 					reason,
 					cfg.debounceMS,
 					skip_work_indicator_from_waiters(current.waiters),
+					start_attempt(1, reason),
 				);
 				yield* set_model({ ...current, sleeper });
 			});
@@ -299,38 +270,44 @@ export function make_revalidation_coordinator(
 				);
 				yield* cancel_sleep(current);
 				const seq = current.nextSeq + 1;
-				const fiber = yield* Effect.forkDaemon(
-					options
-						.run({ seq, attempt, reason, skipWorkIndicator })
-						.pipe(
-							Effect.andThen(
-								Queue.offer(queue, {
-									_tag: "AttemptSucceeded",
-									seq,
-								}),
-							),
-							Effect.catchTag("RevalidationBuildSkew", () => {
-								return Queue.offer(queue, {
-									_tag: "AttemptBuildSkew",
-									seq,
-								});
-							}),
-							Effect.catchAll(() => {
-								return Queue.offer(queue, {
-									_tag: "AttemptFailed",
-									seq,
-									attempt,
-									reason,
-								});
-							}),
-							Effect.asVoid,
-						),
-				);
+				const attempt_effect = options
+					.run({ seq, attempt, reason, skipWorkIndicator })
+					.pipe(
+						Effect.andThen(after_success(seq)),
+						Effect.catchTag("RevalidationBuildSkew", () => {
+							return after_build_skew(seq);
+						}),
+						Effect.catch(() => {
+							return after_failure(seq, attempt);
+						}),
+						Effect.asVoid,
+					);
 				yield* set_model({
 					...current,
 					nextSeq: seq,
 					sleeper: null,
-					active: { seq, attempt, reason, skipWorkIndicator, fiber },
+					active: {
+						seq,
+						attempt,
+						reason,
+						skipWorkIndicator,
+						fiber: null,
+					},
+				});
+				const fiber = yield* Effect.forkDetach(attempt_effect, {
+					startImmediately: true,
+				});
+				yield* Ref.update(model, (current_after_start) => {
+					if (current_after_start.active?.seq !== seq) {
+						return current_after_start;
+					}
+					return {
+						...current_after_start,
+						active: {
+							...current_after_start.active,
+							fiber,
+						},
+					};
 				});
 			});
 		};
@@ -406,6 +383,7 @@ export function make_revalidation_coordinator(
 					"retry",
 					backoff_ms(attempt + 1),
 					skip_work_indicator_from_waiters(current.waiters),
+					start_attempt(attempt + 1, "retry"),
 				);
 				yield* set_model({
 					...current,
@@ -415,9 +393,12 @@ export function make_revalidation_coordinator(
 			});
 		};
 
-		const on_request = (
-			command: Extract<Command, { _tag: "Request" }>,
-		): Effect.Effect<void> => {
+		const on_request = (command: {
+			readonly reason: Exclude<RevalidationReason, "retry">;
+			readonly debounce: boolean;
+			readonly skipWorkIndicator: boolean;
+			readonly deferred: Deferred.Deferred<RevalidationResult>;
+		}): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
 				const afterSeq = current.nextSeq + 1;
@@ -446,9 +427,9 @@ export function make_revalidation_coordinator(
 			});
 		};
 
-		const on_cancel = (
-			command: Extract<Command, { _tag: "Cancel" }>,
-		): Effect.Effect<void> => {
+		const on_cancel = (command: {
+			readonly result: RevalidationResult;
+		}): Effect.Effect<void> => {
 			return Effect.gen(function* () {
 				const current = yield* Ref.get(model);
 				yield* cancel_sleep(current);
@@ -463,89 +444,56 @@ export function make_revalidation_coordinator(
 			});
 		};
 
-		const command_effect = (command: Command): Effect.Effect<void> => {
-			switch (command._tag) {
-				case "Request": {
-					return on_request(command);
-				}
-				case "RunNow": {
-					return start_attempt(command.attempt, command.reason);
-				}
-				case "AttemptSucceeded": {
-					return after_success(command.seq);
-				}
-				case "AttemptFailed": {
-					return after_failure(command.seq, command.attempt);
-				}
-				case "AttemptBuildSkew": {
-					return after_build_skew(command.seq);
-				}
-				case "Cancel": {
-					return on_cancel(command);
-				}
-				case "Shutdown": {
-					return Effect.gen(function* () {
-						const current = yield* Ref.get(model);
-						yield* cancel_sleep(current);
-						yield* cancel_active(current);
-						yield* Queue.shutdown(queue);
-					});
-				}
-			}
-		};
-
-		const actor = Queue.take(queue).pipe(
-			Effect.flatMap(command_effect),
-			Effect.forever,
-			Effect.ensuring(
-				Effect.gen(function* () {
-					const current = yield* Ref.get(model);
-					yield* cancel_sleep(current);
-					yield* cancel_active(current);
-					yield* complete_waiters(
-						current.waiters,
-						REVALIDATION_EXHAUSTED,
-					);
-				}),
-			),
-			Effect.catchAll(() => {
-				return Effect.void;
-			}),
-		);
-		const actor_fiber = yield* Effect.forkDaemon(actor);
-
 		const snapshot = Ref.get(model).pipe(
 			Effect.map((current): RevalidationCoordinatorSnapshot => {
 				return model_snapshot(current);
 			}),
 		);
 
+		const request_started: RevalidationCoordinator["request_started"] = (
+			reason,
+			request_options,
+		) => {
+			return Effect.gen(function* () {
+				const waiter = yield* Deferred.make<RevalidationResult>();
+				yield* on_request({
+					reason,
+					debounce: request_options?.debounce === true,
+					skipWorkIndicator:
+						request_options?.skipWorkIndicator === true,
+					deferred: waiter,
+				});
+				return Deferred.await(waiter);
+			});
+		};
+
 		return {
 			request: (reason, request_options) => {
 				return Effect.gen(function* () {
-					const waiter = yield* Deferred.make<RevalidationResult>();
-					yield* on_request({
-						_tag: "Request",
+					const await_result = yield* request_started(
 						reason,
-						debounce: request_options?.debounce === true,
-						skipWorkIndicator:
-							request_options?.skipWorkIndicator === true,
-						deferred: waiter,
-					});
-					return yield* Deferred.await(waiter);
+						request_options,
+					);
+					return yield* await_result;
 				});
 			},
+			request_started,
 			cancel: (result) => {
 				return on_cancel({
-					_tag: "Cancel",
 					result: result ?? REVALIDATION_OK,
 				});
 			},
 			snapshot,
-			shutdown: Queue.offer(queue, { _tag: "Shutdown" }).pipe(
-				Effect.andThen(Fiber.join(actor_fiber)),
-				Effect.asVoid,
-				Effect.catchAll(() => {
+			shutdown: Effect.gen(function* () {
+				const current = yield* Ref.get(model);
+				yield* cancel_sleep(current);
+				yield* cancel_active(current);
+				yield* complete_waiters(
+					current.waiters,
+					REVALIDATION_EXHAUSTED,
+				);
+			}).pipe(
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

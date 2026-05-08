@@ -91,7 +91,7 @@ type ActiveSubmission = {
 	readonly apiRouteKind: APIRouteKind;
 	readonly skipWorkIndicator: boolean;
 	readonly waiter: Waiter;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never>;
 };
 
 type Model = {
@@ -156,18 +156,19 @@ export function make_submit_manager(
 			return Effect.gen(function* () {
 				const deferred_result =
 					yield* Deferred.make<RevalidationResult>();
-				yield* Effect.forkDaemon(
+				yield* Effect.forkDetach(
 					revalidate("apiRequest").pipe(
 						Effect.flatMap((result) => {
 							return Deferred.succeed(deferred_result, result);
 						}),
-						Effect.catchAll(() => {
+						Effect.catch(() => {
 							return Deferred.succeed(
 								deferred_result,
 								REVALIDATION_EXHAUSTED,
 							);
 						}),
 					),
+					{ startImmediately: true },
 				);
 				return Deferred.await(deferred_result);
 			});
@@ -183,7 +184,7 @@ export function make_submit_manager(
 		const interrupt_submission = (
 			submission: ActiveSubmission,
 		): Effect.Effect<void> => {
-			return Fiber.interruptFork(submission.fiber).pipe(
+			return Fiber.interrupt(submission.fiber).pipe(
 				Effect.andThen(
 					resolve_waiter(submission.waiter, {
 						success: false,
@@ -342,7 +343,7 @@ export function make_submit_manager(
 			response: Response,
 			should_revalidate: boolean,
 		): Effect.Effect<SubmitResult, never> => {
-			return Effect.catchAll(
+			return Effect.catch(
 				Effect.gen(function* () {
 					const redirect_info = redirect_from_response(
 						response,
@@ -437,7 +438,7 @@ export function make_submit_manager(
 						result,
 					});
 				}),
-				Effect.catchAll((error) => {
+				Effect.catch((error) => {
 					if (error instanceof SubmitAborted) {
 						return Queue.offer(queue, {
 							_tag: "Completed",
@@ -468,7 +469,7 @@ export function make_submit_manager(
 						});
 					});
 				}),
-				Effect.catchAllDefect(normalize_defect),
+				Effect.catchDefect(normalize_defect),
 			);
 		};
 
@@ -497,7 +498,7 @@ export function make_submit_manager(
 					next_active.delete(key);
 					yield* interrupt_submission(previous);
 				}
-				const fiber = yield* Effect.fork(
+				const fiber = yield* Effect.forkChild(
 					run_submission(
 						prepared.dispatch,
 						prepared.shouldRevalidate,
@@ -565,11 +566,11 @@ export function make_submit_manager(
 					}
 				}),
 			),
-			Effect.catchAll(() => {
+			Effect.catch(() => {
 				return Effect.void;
 			}),
 		);
-		const actor_fiber = yield* Effect.fork(actor);
+		const actor_fiber = yield* Effect.forkChild(actor);
 
 		return {
 			submit: <T = unknown>(request: SubmitRequest) => {
@@ -613,9 +614,9 @@ export function make_submit_manager(
 					yield* interrupt_submission(submission);
 				}
 				yield* Queue.shutdown(queue);
-				yield* Fiber.interruptFork(actor_fiber);
+				yield* Fiber.interrupt(actor_fiber);
 			}).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

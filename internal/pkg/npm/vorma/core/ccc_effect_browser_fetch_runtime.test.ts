@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import { describe, expect, it } from "vitest";
 import {
 	BrowserFetchAborted,
@@ -59,21 +59,21 @@ describe("ccc Effect browser fetch runtime experiment", () => {
 		);
 
 		const abort_result = await run_effect(
-			Effect.either(abort_runtime.fetch({ url: new URL(fetch_url) })),
+			Effect.result(abort_runtime.fetch({ url: new URL(fetch_url) })),
 		);
 		const failed_result = await run_effect(
-			Effect.either(failed_runtime.fetch({ url: new URL(fetch_url) })),
+			Effect.result(failed_runtime.fetch({ url: new URL(fetch_url) })),
 		);
 
-		expect(abort_result._tag).toBe("Left");
-		if (abort_result._tag === "Left") {
-			expect(abort_result.left).toBeInstanceOf(BrowserFetchAborted);
-			expect(abort_result.left.error).toBe(abort_error);
+		expect(EffectResult.isFailure(abort_result)).toBe(true);
+		if (EffectResult.isFailure(abort_result)) {
+			expect(abort_result.failure).toBeInstanceOf(BrowserFetchAborted);
+			expect(abort_result.failure.error).toBe(abort_error);
 		}
-		expect(failed_result._tag).toBe("Left");
-		if (failed_result._tag === "Left") {
-			expect(failed_result.left).toBeInstanceOf(BrowserFetchFailed);
-			expect(failed_result.left.error).toBeInstanceOf(Error);
+		expect(EffectResult.isFailure(failed_result)).toBe(true);
+		if (EffectResult.isFailure(failed_result)) {
+			expect(failed_result.failure).toBeInstanceOf(BrowserFetchFailed);
+			expect(failed_result.failure.error).toBeInstanceOf(Error);
 		}
 	});
 });

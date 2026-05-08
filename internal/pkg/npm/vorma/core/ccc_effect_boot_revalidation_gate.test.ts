@@ -24,16 +24,53 @@ describe("ccc Effect boot revalidation gate experiment", () => {
 		const before_boot = await run_effect(gate.request_or_defer(request));
 		await run_effect(gate.start_boot);
 		const during_boot = await run_effect(gate.request_or_defer(request));
-		const should_revalidate = await run_effect(gate.finish_boot);
+		const revalidation_decision = await run_effect(gate.finish_boot);
 		const second_finish = await run_effect(gate.finish_boot);
 		const after_boot = await run_effect(gate.request_or_defer(request));
 
 		expect(before_boot).toBe(REQUEST_REVALIDATION_OK);
 		expect(during_boot).toBe(BOOT_REVALIDATION_OK);
-		expect(should_revalidate).toBe(true);
-		expect(second_finish).toBe(false);
+		expect(revalidation_decision).toEqual({
+			requested: true,
+			skip_work_indicator: false,
+		});
+		expect(second_finish).toEqual({
+			requested: false,
+			skip_work_indicator: false,
+		});
 		expect(after_boot).toBe(REQUEST_REVALIDATION_OK);
 		expect(requests).toBe(2);
+	});
+
+	it("preserves skipped boot API revalidation only when every deferred request skips", async () => {
+		const gate = Effect.runSync(make_boot_revalidation_gate());
+
+		await run_effect(gate.start_boot);
+		await run_effect(
+			gate.request_or_defer(Effect.succeed(REQUEST_REVALIDATION_OK), {
+				skipWorkIndicator: true,
+			}),
+		);
+
+		expect(await run_effect(gate.finish_boot)).toEqual({
+			requested: true,
+			skip_work_indicator: true,
+		});
+
+		await run_effect(gate.start_boot);
+		await run_effect(
+			gate.request_or_defer(Effect.succeed(REQUEST_REVALIDATION_OK), {
+				skipWorkIndicator: true,
+			}),
+		);
+		await run_effect(
+			gate.request_or_defer(Effect.succeed(REQUEST_REVALIDATION_OK)),
+		);
+
+		expect(await run_effect(gate.finish_boot)).toEqual({
+			requested: true,
+			skip_work_indicator: false,
+		});
 	});
 
 	it("drops deferred API revalidation when boot is cancelled", async () => {
@@ -45,6 +82,9 @@ describe("ccc Effect boot revalidation gate experiment", () => {
 		);
 		await run_effect(gate.cancel_boot);
 
-		expect(await run_effect(gate.finish_boot)).toBe(false);
+		expect(await run_effect(gate.finish_boot)).toEqual({
+			requested: false,
+			skip_work_indicator: false,
+		});
 	});
 });

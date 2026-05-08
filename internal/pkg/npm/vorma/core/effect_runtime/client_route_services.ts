@@ -31,22 +31,25 @@ const route_preparer_service_tag = "vorma/RoutePreparerService";
 const route_publisher_service_tag = "vorma/RoutePublisherService";
 const build_skew_reporter_service_tag = "vorma/BuildSkewReporterService";
 
-export class RouteFetcherService extends Context.Tag(route_fetcher_service_tag)<
+export class RouteFetcherService extends Context.Service<
 	RouteFetcherService,
 	RouteFetcher
->() {}
+>()(route_fetcher_service_tag) {}
 
-export class RoutePreparerService extends Context.Tag(
-	route_preparer_service_tag,
-)<RoutePreparerService, RoutePreparer>() {}
+export class RoutePreparerService extends Context.Service<
+	RoutePreparerService,
+	RoutePreparer
+>()(route_preparer_service_tag) {}
 
-export class RoutePublisherService extends Context.Tag(
-	route_publisher_service_tag,
-)<RoutePublisherService, RoutePublisher>() {}
+export class RoutePublisherService extends Context.Service<
+	RoutePublisherService,
+	RoutePublisher
+>()(route_publisher_service_tag) {}
 
-export class BuildSkewReporterService extends Context.Tag(
-	build_skew_reporter_service_tag,
-)<BuildSkewReporterService, BuildSkewReporter>() {}
+export class BuildSkewReporterService extends Context.Service<
+	BuildSkewReporterService,
+	BuildSkewReporter
+>()(build_skew_reporter_service_tag) {}
 
 export type ClientRouteServices = {
 	build_skew_reporter: BuildSkewReporter;

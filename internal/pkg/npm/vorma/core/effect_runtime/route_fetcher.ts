@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Data, Effect, Result as EffectResult } from "effect";
 import {
 	VERCEL_DPL_QUERY_PARAM_KEY,
 	VORMA_JSON_KEY,
@@ -132,7 +132,7 @@ function classify_route_response(
 			status_text: response.statusText,
 		});
 	}
-	return Effect.either(
+	return Effect.result(
 		Effect.tryPromise({
 			try: () => {
 				return response.json();
@@ -143,21 +143,21 @@ function classify_route_response(
 		}),
 	).pipe(
 		Effect.map((result) => {
-			if (result._tag === "Left") {
+			if (EffectResult.isFailure(result)) {
 				return {
 					kind: "error" as const,
 					requested_url,
 					response,
 					status: response.status,
 					status_text: response.statusText,
-					error: result.left,
+					error: result.failure,
 				};
 			}
 			return {
 				kind: "data" as const,
 				requested_url,
 				response,
-				data: result.right,
+				data: result.success,
 			};
 		}),
 	);

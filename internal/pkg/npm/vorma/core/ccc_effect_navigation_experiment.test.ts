@@ -1,4 +1,5 @@
-import { Deferred, Effect, Fiber, TestContext } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import {
 	make_navigation_actor,
@@ -8,15 +9,13 @@ import {
 } from "./effect_runtime/navigation_actor.ts";
 
 function run_effect<A>(program: Effect.Effect<A, never, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 }
 
 function drain(): Effect.Effect<void> {
 	return Effect.gen(function* () {
 		for (let i = 0; i < 10; i++) {
-			yield* Effect.yieldNow();
+			yield* Effect.yieldNow;
 		}
 	});
 }
@@ -50,9 +49,13 @@ describe("ccc Effect navigation experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(actor.navigate("/same"));
+					const first = yield* Effect.forkChild(
+						actor.navigate("/same"),
+					);
 					yield* drain();
-					const second = yield* Effect.fork(actor.navigate("/same"));
+					const second = yield* Effect.forkChild(
+						actor.navigate("/same"),
+					);
 					yield* drain();
 					const snapshot = yield* actor.snapshot;
 
@@ -108,9 +111,11 @@ describe("ccc Effect navigation experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(actor.navigate("/first"));
+					const first = yield* Effect.forkChild(
+						actor.navigate("/first"),
+					);
 					yield* drain();
-					const second = yield* Effect.fork(
+					const second = yield* Effect.forkChild(
 						actor.navigate("/second"),
 					);
 					yield* drain();
@@ -224,9 +229,11 @@ describe("ccc Effect navigation experiment", () => {
 						},
 					});
 
-					const first = yield* Effect.fork(actor.navigate("/first"));
+					const first = yield* Effect.forkChild(
+						actor.navigate("/first"),
+					);
 					yield* drain();
-					const second = yield* Effect.fork(
+					const second = yield* Effect.forkChild(
 						actor.navigate("/second"),
 					);
 					yield* drain();

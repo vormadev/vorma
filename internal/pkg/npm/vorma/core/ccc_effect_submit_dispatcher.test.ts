@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import { describe, expect, it } from "vitest";
 import { make_browser_fetch_runtime } from "./effect_runtime/browser_fetch_runtime.ts";
 import { make_submit_dispatcher } from "./effect_runtime/submit_dispatcher.ts";
@@ -66,12 +66,12 @@ describe("ccc Effect submit dispatcher experiment", () => {
 		);
 
 		const result = await run_effect(
-			Effect.either(dispatcher.dispatch(submit_dispatch())),
+			Effect.result(dispatcher.dispatch(submit_dispatch())),
 		);
 
-		expect(result._tag).toBe("Left");
-		if (result._tag === "Left") {
-			expect(result.left).toBeInstanceOf(SubmitAborted);
+		expect(EffectResult.isFailure(result)).toBe(true);
+		if (EffectResult.isFailure(result)) {
+			expect(result.failure).toBeInstanceOf(SubmitAborted);
 		}
 	});
 });

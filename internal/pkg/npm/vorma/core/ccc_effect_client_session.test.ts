@@ -53,4 +53,25 @@ describe("ccc Effect client session experiment", () => {
 		expect(events).toEqual(["active"]);
 		expect(await run_effect(session.active_handle)).toBeNull();
 	});
+
+	it("publishes replacement before shutting down the previous handle", async () => {
+		let observed_active: EffectClientKernelHandle | null | undefined;
+		const session = Effect.runSync(make_client_session());
+		const second = kernel_handle("second", []);
+		const first: EffectClientKernelHandle = {
+			kernel: null as never,
+			shutdown: session.active_handle.pipe(
+				Effect.map((active) => {
+					observed_active = active;
+					return;
+				}),
+			),
+		};
+
+		await run_effect(session.replace_active(first));
+		await run_effect(session.replace_active(second));
+
+		expect(observed_active).toBe(second);
+		expect(await run_effect(session.active_handle)).toBe(second);
+	});
 });

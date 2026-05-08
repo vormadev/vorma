@@ -1,4 +1,5 @@
-import { Effect, TestContext } from "effect";
+import { Effect } from "effect";
+import { TestClock } from "effect/testing";
 import { describe, expect, it } from "vitest";
 import type {
 	ClientCommit,
@@ -22,9 +23,7 @@ const API_METHOD_GET = "GET";
 const API_METHOD_POST = "POST";
 
 function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
-	return Effect.runPromise(
-		program.pipe(Effect.provide(TestContext.TestContext)),
-	);
+	return Effect.runPromise(program.pipe(Effect.provide(TestClock.layer())));
 }
 
 function emitted_work(commits: ClientCommit[]): WorkState[] {
@@ -87,6 +86,26 @@ describe("ccc Effect work state actor experiment", () => {
 				apiRequests: [],
 			},
 		]);
+	});
+
+	it("supports synchronous mutation at the adapter boundary", () => {
+		const actor = Effect.runSync(make_work_state_actor());
+
+		Effect.runSync(
+			actor.set_navigation({
+				href: FIRST_HREF,
+				replace: false,
+				source: WORK_NAVIGATION_SOURCE_NAVIGATE,
+			}),
+		);
+
+		const snapshot = Effect.runSync(actor.snapshot);
+
+		expect(snapshot.navigation).toEqual({
+			href: FIRST_HREF,
+			replace: false,
+			source: WORK_NAVIGATION_SOURCE_NAVIGATE,
+		});
 	});
 
 	it("keeps skip metadata out of public work while updating indicator activity", async () => {

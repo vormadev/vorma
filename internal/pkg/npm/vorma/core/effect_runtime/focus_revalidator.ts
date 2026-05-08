@@ -54,7 +54,7 @@ export function make_focus_revalidator(
 				debounce: true,
 			});
 		}).pipe(
-			Effect.catchAll(() => {
+			Effect.catch(() => {
 				return Effect.void;
 			}),
 		);

@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber, Queue, Ref } from "effect";
+import { Deferred, Effect, Fiber, Ref } from "effect";
 import type { RouteFetcher } from "./route_fetcher.ts";
 import type {
 	ClientLoaderPrestart,
@@ -61,7 +61,7 @@ type ActivePrefetch = {
 	readonly key: string;
 	readonly history_state: unknown;
 	readonly controller: AbortController;
-	readonly fiber: Fiber.RuntimeFiber<void, never>;
+	readonly fiber: Fiber.Fiber<void, never> | null;
 	readonly client_loader_prestarts: ClientLoaderPrestart[];
 	readonly result: Deferred.Deferred<PrefetchedRoute | null>;
 };
@@ -72,43 +72,10 @@ type Model = {
 	readonly prepared: PrefetchedRoute | null;
 };
 
-type Command =
-	| {
-			readonly _tag: "Start";
-			readonly input: PrefetchStartInput;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: "Stop";
-			readonly href: string;
-			readonly ack: Deferred.Deferred<void>;
-	  }
-	| {
-			readonly _tag: "Take";
-			readonly href: string;
-			readonly ack: Deferred.Deferred<PrefetchedRoute | null>;
-	  }
-	| {
-			readonly _tag: "Completed";
-			readonly id: number;
-			readonly key: string;
-			readonly href: string;
-			readonly prepared: PreparedRoute;
-	  }
-	| {
-			readonly _tag: "Failed";
-			readonly id: number;
-			readonly key: string;
-	  }
-	| {
-			readonly _tag: "Shutdown";
-	  };
-
 export function make_prefetch_manager(
 	options: PrefetchManagerOptions,
 ): Effect.Effect<PrefetchManager, never> {
 	return Effect.gen(function* () {
-		const queue = yield* Queue.unbounded<Command>();
 		const model = yield* Ref.make<Model>({
 			nextID: 0,
 			active: null,
@@ -146,7 +113,11 @@ export function make_prefetch_manager(
 					},
 					{ discard: true },
 				);
-				yield* Fiber.interruptFork(active.fiber);
+				if (active.fiber) {
+					yield* Effect.forkDetach(Fiber.interrupt(active.fiber), {
+						startImmediately: true,
+					}).pipe(Effect.asVoid);
+				}
 				yield* Deferred.succeed(active.result, null);
 			});
 		};
@@ -242,7 +213,7 @@ export function make_prefetch_manager(
 				});
 				yield* complete_prefetch(id, key, href, prepared);
 			}).pipe(
-				Effect.catchAll(() => {
+				Effect.catch(() => {
 					return Effect.gen(function* () {
 						yield* Effect.forEach(
 							client_loader_prestarts,
@@ -254,7 +225,7 @@ export function make_prefetch_manager(
 						yield* fail_prefetch(id, key);
 					});
 				}),
-				Effect.catchAllDefect(() => {
+				Effect.catchDefect(() => {
 					return Effect.gen(function* () {
 						yield* Effect.forEach(
 							client_loader_prestarts,
@@ -286,21 +257,18 @@ export function make_prefetch_manager(
 			});
 		};
 
-		const on_start = (
-			command: Extract<Command, { _tag: "Start" }>,
-		): Effect.Effect<void> => {
+		const start_now = (input: PrefetchStartInput): Effect.Effect<void> => {
 			return Effect.gen(function* () {
-				const href = command.input.href;
+				const href = input.href;
 				const key = options.route_key(href);
 				const current = yield* Ref.get(model);
 				if (
 					options.is_external(href) ||
-					key === command.input.current_route_key ||
-					key === command.input.active_navigation_key ||
+					key === input.current_route_key ||
+					key === input.active_navigation_key ||
 					current.active?.key === key ||
 					current.prepared?.key === key
 				) {
-					yield* Deferred.succeed(command.ack, undefined);
 					return;
 				}
 				if (current.active) {
@@ -311,18 +279,8 @@ export function make_prefetch_manager(
 				const result = yield* Deferred.make<PrefetchedRoute | null>();
 				const client_loader_prestarts = yield* prestart_client_loaders(
 					href,
-					command.input.history_state,
+					input.history_state,
 					controller,
-				);
-				const fiber = yield* Effect.forkDaemon(
-					run_prefetch(
-						id,
-						href,
-						key,
-						command.input.history_state,
-						controller,
-						client_loader_prestarts,
-					),
 				);
 				yield* Ref.set(model, {
 					nextID: id,
@@ -330,25 +288,39 @@ export function make_prefetch_manager(
 						id,
 						href,
 						key,
-						history_state: command.input.history_state,
+						history_state: input.history_state,
 						controller,
-						fiber,
+						fiber: null,
 						client_loader_prestarts,
 						result,
 					},
 					prepared: current.prepared,
 				});
 				yield* set_active_work(href);
-				yield* Deferred.succeed(command.ack, undefined);
+				const fiber = yield* Effect.forkDetach(
+					run_prefetch(
+						id,
+						href,
+						key,
+						input.history_state,
+						controller,
+						client_loader_prestarts,
+					),
+					{ startImmediately: true },
+				);
+				yield* Ref.update(model, (current_after_start) => {
+					if (current_after_start.active?.id !== id) {
+						return current_after_start;
+					}
+					return {
+						...current_after_start,
+						active: {
+							...current_after_start.active,
+							fiber,
+						},
+					};
+				});
 			});
-		};
-
-		const on_stop = (
-			command: Extract<Command, { _tag: "Stop" }>,
-		): Effect.Effect<void> => {
-			return stop_now(command.href).pipe(
-				Effect.andThen(Deferred.succeed(command.ack, undefined)),
-			);
 		};
 
 		const stop_now = (href: string): Effect.Effect<void> => {
@@ -403,95 +375,9 @@ export function make_prefetch_manager(
 			});
 		};
 
-		const on_take = (
-			command: Extract<Command, { _tag: "Take" }>,
-		): Effect.Effect<void> => {
-			return Effect.gen(function* () {
-				const prepared = yield* take_now(command.href);
-				yield* Deferred.succeed(command.ack, prepared);
-			});
-		};
-
-		const on_completed = (
-			command: Extract<Command, { _tag: "Completed" }>,
-		): Effect.Effect<void> => {
-			return complete_prefetch(
-				command.id,
-				command.key,
-				command.href,
-				command.prepared,
-			);
-		};
-
-		const on_failed = (
-			command: Extract<Command, { _tag: "Failed" }>,
-		): Effect.Effect<void> => {
-			return fail_prefetch(command.id, command.key);
-		};
-
-		const command_program = (command: Command): Effect.Effect<void> => {
-			switch (command._tag) {
-				case "Start": {
-					return on_start(command);
-				}
-				case "Stop": {
-					return on_stop(command);
-				}
-				case "Take": {
-					return on_take(command);
-				}
-				case "Completed": {
-					return on_completed(command);
-				}
-				case "Failed": {
-					return on_failed(command);
-				}
-				case "Shutdown": {
-					return Effect.gen(function* () {
-						const current = yield* Ref.get(model);
-						if (current.active) {
-							yield* cancel_active(current.active);
-						}
-						yield* clear_work();
-						yield* Queue.shutdown(queue);
-					});
-				}
-			}
-		};
-
-		const actor = Queue.take(queue).pipe(
-			Effect.flatMap(command_program),
-			Effect.forever,
-			Effect.ensuring(
-				Effect.gen(function* () {
-					const current = yield* Ref.get(model);
-					if (current.active) {
-						yield* cancel_active(current.active);
-					}
-					yield* clear_work();
-				}),
-			),
-			Effect.catchAll(() => {
-				return Effect.void;
-			}),
-		);
-		const actor_fiber = yield* Effect.forkDaemon(actor);
-
-		const offer_void = (
-			command_from_ack: (ack: Deferred.Deferred<void>) => Command,
-		): Effect.Effect<void> => {
-			return Effect.gen(function* () {
-				const ack = yield* Deferred.make<void>();
-				yield* Queue.offer(queue, command_from_ack(ack));
-				yield* Deferred.await(ack);
-			});
-		};
-
 		return {
 			start: (input) => {
-				return offer_void((ack) => {
-					return { _tag: "Start", input, ack };
-				});
+				return start_now(input);
 			},
 			stop: stop_now,
 			take: take_now,
@@ -500,10 +386,14 @@ export function make_prefetch_manager(
 					return snapshot_from_model(current);
 				}),
 			),
-			shutdown: Queue.offer(queue, { _tag: "Shutdown" }).pipe(
-				Effect.andThen(Fiber.join(actor_fiber)),
-				Effect.asVoid,
-				Effect.catchAll(() => {
+			shutdown: Effect.gen(function* () {
+				const current = yield* Ref.get(model);
+				if (current.active) {
+					yield* cancel_active(current.active);
+				}
+				yield* clear_work();
+			}).pipe(
+				Effect.catch(() => {
 					return Effect.void;
 				}),
 			),

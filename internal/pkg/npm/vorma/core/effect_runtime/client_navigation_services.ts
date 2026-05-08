@@ -18,6 +18,7 @@ import {
 } from "./client_route_services.ts";
 import {
 	BrowserLocationService,
+	BrowserTimerRuntimeService,
 	type ClientRuntimeServicesLayerContext,
 	SubmitDispatcherService,
 } from "./client_runtime_services.ts";
@@ -59,21 +60,25 @@ const prefetch_manager_service_tag = "vorma/PrefetchManagerService";
 const route_revalidator_service_tag = "vorma/RouteRevalidatorService";
 const submit_manager_service_tag = "vorma/SubmitManagerService";
 
-export class NavigationActorService extends Context.Tag(
-	navigation_actor_service_tag,
-)<NavigationActorService, NavigationActor>() {}
+export class NavigationActorService extends Context.Service<
+	NavigationActorService,
+	NavigationActor
+>()(navigation_actor_service_tag) {}
 
-export class PrefetchManagerService extends Context.Tag(
-	prefetch_manager_service_tag,
-)<PrefetchManagerService, PrefetchManager>() {}
+export class PrefetchManagerService extends Context.Service<
+	PrefetchManagerService,
+	PrefetchManager
+>()(prefetch_manager_service_tag) {}
 
-export class RouteRevalidatorService extends Context.Tag(
-	route_revalidator_service_tag,
-)<RouteRevalidatorService, RouteRevalidator>() {}
+export class RouteRevalidatorService extends Context.Service<
+	RouteRevalidatorService,
+	RouteRevalidator
+>()(route_revalidator_service_tag) {}
 
-export class SubmitManagerService extends Context.Tag(
-	submit_manager_service_tag,
-)<SubmitManagerService, SubmitManager>() {}
+export class SubmitManagerService extends Context.Service<
+	SubmitManagerService,
+	SubmitManager
+>()(submit_manager_service_tag) {}
 
 export type ClientNavigationServices = {
 	navigation_actor: NavigationActor;
@@ -153,6 +158,7 @@ export function make_client_navigation_services(
 	return Effect.gen(function* () {
 		const browser_history = yield* BrowserHistoryService;
 		const browser_location = yield* BrowserLocationService;
+		const browser_timer_runtime = yield* BrowserTimerRuntimeService;
 		const build_skew_reporter = yield* BuildSkewReporterService;
 		const route_fetcher = yield* RouteFetcherService;
 		const route_preparer = yield* RoutePreparerService;
@@ -399,6 +405,8 @@ export function make_client_navigation_services(
 			route_key: browser_location.route_key,
 			route_preparer,
 			route_publisher,
+			schedule_ms: browser_timer_runtime.schedule_ms,
+			sleep_ms: browser_timer_runtime.sleep_ms,
 			work_actor,
 		});
 

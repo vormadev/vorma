@@ -198,6 +198,8 @@ main app API into an Effect doctrine test.
   browser history position, saving the previous scroll slot, handling hash-only
   movement, cancelling stale revalidation, and dispatching popstate navigation.
   The shell now only attaches the browser event to that kernel effect.
+- Route-changing popstate navigation is treated as ordinary navigation work for
+  the indicator. It is no longer hidden by default in the Effect path.
 - Reload-scroll persistence is now owned by the scroll restoration service. The
   service installs the `beforeunload` listener through lifecycle shutdown, so
   the shell no longer knows how reload scroll is captured.
@@ -207,6 +209,9 @@ main app API into an Effect doctrine test.
 - Boot-time API revalidation is now a small Effect gate backed by `Ref`. API
   requests during boot return the immediate compatibility result while recording
   one post-boot revalidation, and cancelled boots clear that request.
+- That boot gate now preserves work-indicator intent too: a deferred post-boot
+  API revalidation stays opted out only when every deferred requester opted out,
+  matching the first-principles behavior in the current non-Effect core.
 - Provisional boot route state is now an Effect-owned cell. The route preparer
   can publish the boot state for `getRouteState()` without the shell carrying a
   bespoke mutable slot.
@@ -217,6 +222,9 @@ main app API into an Effect doctrine test.
   module-level shutdown callback. The session owns the active kernel handle,
   closes the previous handle during replacement, and can shut down a specific
   handle only if it is still active.
+- Replacement now publishes the new handle atomically before closing the
+  previous one, so render-failure cleanup and overlapping boot cleanup observe
+  the current owner instead of a stale handle during teardown.
 - The compatibility pressure test has expanded beyond `create_client_core` into
   split runners for `router.test.ts`, `router_revalidation.test.ts`, and
   `router_submit.test.ts`. Keeping those runners split matters because the
@@ -242,6 +250,11 @@ main app API into an Effect doctrine test.
 - Submit redirects are best treated as handoffs. The submit actor classifies and
   reports the response, then starts client navigation without awaiting the route
   fetch so the submit result can resolve under the existing API contract.
+- Work-state mutation clarified an important boundary: this service needs
+  synchronous read-after-write behavior at the imperative adapter edge, so a
+  mailbox actor is the wrong abstraction for the setter path. It is cleaner as a
+  `Ref`-backed Effect state service with synchronous mutation effects and no
+  fake command queue.
 
 ## What Still Needs To Become More Effect-Native
 
@@ -254,8 +267,9 @@ main app API into an Effect doctrine test.
   history, scroll, browser view, module import, Vite HMR, route DOM side
   effects, and work-indicator timing. Vite HMR now has lifecycle cleanup too.
   These services still need a later `Context` / `Layer` cleanup.
-- Work-state emission should be owned by a service instead of being derived
-  opportunistically from mutable outer variables.
+- Work-state emission is now a synchronous Effect state-service boundary. The
+  commit and indicator callback boundaries may still want a dedicated layer once
+  the service graph settles.
 - Work indicator parity now covers category-level skips, per-operation skips for
   navigation and API requests, mixed app/Vorma work ordering, and renderer
   replacement while work is visible.

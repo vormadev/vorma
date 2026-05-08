@@ -44,7 +44,7 @@ export function make_runtime_lifecycle(): Effect.Effect<
 		};
 
 		const shutdown = Scope.close(scope, Exit.void).pipe(
-			Effect.catchAllCause(() => {
+			Effect.catchCause(() => {
 				return Effect.void;
 			}),
 		);
@@ -59,7 +59,7 @@ export function make_runtime_lifecycle(): Effect.Effect<
 
 function run_finalizer(finalizer: Effect.Effect<void>): Effect.Effect<void> {
 	return finalizer.pipe(
-		Effect.catchAllCause(() => {
+		Effect.catchCause(() => {
 			return Effect.void;
 		}),
 	);

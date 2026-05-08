@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { Effect } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DATA_SCRIPT_ID, VORMA_ROOT_EL_ID } from "./constants.ts";
 import {
@@ -48,15 +48,15 @@ describe("ccc Effect browser view runtime experiment", () => {
 
 		script.textContent = JSON.stringify(["not", "an", "object"]);
 		const invalid_result = await run_effect(
-			Effect.either(runtime.read_initial_payload),
+			Effect.result(runtime.read_initial_payload),
 		);
-		expect(invalid_result).toMatchObject({
-			_tag: "Left",
-			left: {
+		expect(EffectResult.isFailure(invalid_result)).toBe(true);
+		if (EffectResult.isFailure(invalid_result)) {
+			expect(invalid_result.failure).toMatchObject({
 				_tag: "InitialPayloadReadFailed",
 				reason: "Vorma data script must contain an object.",
-			},
-		});
+			});
+		}
 	});
 
 	it("applies decoded hash scroll and injected coordinate scroll", async () => {
@@ -139,7 +139,7 @@ describe("ccc Effect browser view runtime experiment", () => {
 		});
 
 		const result = await run_effect(
-			Effect.either(
+			Effect.result(
 				runtime.run_view_transition({
 					enabled: true,
 					publish: Effect.succeed("unreachable"),
@@ -147,9 +147,9 @@ describe("ccc Effect browser view runtime experiment", () => {
 			),
 		);
 
-		expect(result._tag).toBe("Left");
-		if (result._tag === "Left") {
-			expect(result.left).toBeInstanceOf(BrowserViewTransitionFailed);
+		expect(EffectResult.isFailure(result)).toBe(true);
+		if (EffectResult.isFailure(result)) {
+			expect(result.failure).toBeInstanceOf(BrowserViewTransitionFailed);
 		}
 	});
 });
