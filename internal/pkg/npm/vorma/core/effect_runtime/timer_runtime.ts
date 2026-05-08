@@ -34,7 +34,14 @@ export function browser_schedule_ms(
 ): Effect.Effect<TimerCancel> {
 	return Effect.sync(() => {
 		const timeout_id: ReturnType<typeof setTimeout> = setTimeout(() => {
-			Effect.runSync(action);
+			Effect.runFork(
+				action.pipe(
+					Effect.asVoid,
+					Effect.catchCause(() => {
+						return Effect.void;
+					}),
+				),
+			);
 		}, delay_ms);
 		return Effect.sync(() => {
 			clearTimeout(timeout_id);

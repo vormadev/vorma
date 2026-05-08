@@ -1,4 +1,5 @@
 export * from "./abort_signal.ts";
+export * from "./adapter_runtime.ts";
 export * from "./boot_revalidation_gate.ts";
 export * from "./boot_route_state.ts";
 export * from "./browser_fetch_runtime.ts";
@@ -7,6 +8,8 @@ export * from "./browser_location.ts";
 export * from "./browser_view_runtime.ts";
 export * from "./build_skew_reporter.ts";
 export * from "./client_contract.ts";
+export * from "./client_core_runtime.ts";
+export * from "./client_core_state.ts";
 export * from "./client_kernel.ts";
 export * from "./client_kernel_assembly.ts";
 export * from "./client_kernel_resources.ts";
@@ -15,8 +18,10 @@ export * from "./client_route_services.ts";
 export * from "./client_runtime_services.ts";
 export * from "./client_session.ts";
 export * from "./focus_revalidator.ts";
+export * from "./link_intent_runtime.ts";
 export * from "./module_runtime.ts";
 export * from "./navigation_actor.ts";
+export * from "./outlet_slot_runtime.ts";
 export * from "./prefetch_manager.ts";
 export {
 	make_revalidation_coordinator,

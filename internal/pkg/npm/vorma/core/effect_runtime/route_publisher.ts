@@ -309,8 +309,8 @@ function run_transition_hook(
 	},
 ): Effect.Effect<void, RouteTransitionHookFailed> {
 	return Effect.tryPromise({
-		try: () => {
-			return Promise.resolve(hook(args));
+		try: async () => {
+			await hook(args);
 		},
 		catch: (error) => {
 			return new RouteTransitionHookFailed({ error });

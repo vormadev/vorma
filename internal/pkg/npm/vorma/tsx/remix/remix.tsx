@@ -13,7 +13,6 @@ import {
 	get_entry_key,
 	make_link_props,
 	make_route_id,
-	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
 	type AdapterClientOptions,
@@ -306,7 +305,13 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	const { core, nav_fns, passthrough } = adapter_base_res.val;
+	const {
+		core,
+		link_intent_runtime,
+		nav_fns,
+		outlet_slot_runtime,
+		passthrough,
+	} = adapter_base_res.val;
 
 	function default_selector<TState>(state: TState): TState {
 		return state;
@@ -732,7 +737,7 @@ export function createVormaClient<A extends AppConfig>(
 		}
 
 		const Outlet = make_outlet(props, idx);
-		const slot = resolve_outlet_slot(
+		const slot = outlet_slot_runtime.resolve_outlet_slot(
 			store.entries,
 			store.error,
 			idx,
@@ -904,6 +909,7 @@ export function createVormaClient<A extends AppConfig>(
 				nav_fns,
 				route_state,
 				work_state,
+				link_intent_runtime,
 			);
 			const anchor_props = with_link_mixins(
 				result.anchor_props as RemixAnchorProps,

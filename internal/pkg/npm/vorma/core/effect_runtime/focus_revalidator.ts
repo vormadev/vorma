@@ -68,9 +68,12 @@ export function install_window_focus_revalidator(
 ): Effect.Effect<FocusRevalidator, never> {
 	return Effect.gen(function* () {
 		const focus_revalidator = yield* make_focus_revalidator(options);
-		yield* options.lifecycle.listen_window(WINDOW_EVENT_FOCUS, () => {
-			void Effect.runPromise(focus_revalidator.focus);
-		});
+		yield* options.lifecycle.listen_window_effect(
+			WINDOW_EVENT_FOCUS,
+			() => {
+				return focus_revalidator.focus;
+			},
+		);
 		return focus_revalidator;
 	});
 }

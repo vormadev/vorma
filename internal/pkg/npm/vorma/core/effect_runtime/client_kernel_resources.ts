@@ -43,13 +43,6 @@ export class WorkStateActorService extends Context.Service<
 	WorkStateActor
 >()(work_state_actor_service_tag) {}
 
-export type ClientKernelResources = {
-	browser_history: BrowserHistory;
-	lifecycle: RuntimeLifecycle;
-	scroll_restoration: ScrollRestoration;
-	work_actor: WorkStateActor;
-};
-
 export type ClientKernelResourcesOptions = {
 	commit: CommitFn;
 	on_indicator_update: (
@@ -66,54 +59,16 @@ export type ClientKernelResourcesLayerContext =
 export function make_client_kernel_resources_layer(
 	options: ClientKernelResourcesOptions,
 ): Layer.Layer<ClientKernelResourcesLayerContext, never> {
-	return Layer.effectContext(
-		make_client_kernel_resources(options).pipe(
-			Effect.map((resources) => {
-				return Context.mergeAll(
-					Context.make(
-						BrowserHistoryService,
-						resources.browser_history,
-					),
-					Context.make(RuntimeLifecycleService, resources.lifecycle),
-					Context.make(
-						ScrollRestorationService,
-						resources.scroll_restoration,
-					),
-					Context.make(WorkStateActorService, resources.work_actor),
-				);
+	return Layer.mergeAll(
+		Layer.effect(BrowserHistoryService, make_browser_history()),
+		Layer.effect(RuntimeLifecycleService, make_runtime_lifecycle()),
+		Layer.effect(ScrollRestorationService, make_scroll_restoration()),
+		Layer.effect(
+			WorkStateActorService,
+			make_work_state_actor({
+				commit: options.commit,
+				on_indicator_update: options.on_indicator_update,
 			}),
 		),
 	);
-}
-
-export function client_kernel_resources_to_layer(
-	resources: ClientKernelResources,
-): Layer.Layer<ClientKernelResourcesLayerContext, never> {
-	return Layer.mergeAll(
-		Layer.succeed(BrowserHistoryService, resources.browser_history),
-		Layer.succeed(RuntimeLifecycleService, resources.lifecycle),
-		Layer.succeed(ScrollRestorationService, resources.scroll_restoration),
-		Layer.succeed(WorkStateActorService, resources.work_actor),
-	);
-}
-
-export function make_client_kernel_resources(
-	options: ClientKernelResourcesOptions,
-): Effect.Effect<ClientKernelResources, never> {
-	return Effect.gen(function* () {
-		const lifecycle = yield* make_runtime_lifecycle();
-		const browser_history = yield* make_browser_history();
-		const scroll_restoration = yield* make_scroll_restoration();
-		const work_actor = yield* make_work_state_actor({
-			commit: options.commit,
-			on_indicator_update: options.on_indicator_update,
-		});
-
-		return {
-			browser_history,
-			lifecycle,
-			scroll_restoration,
-			work_actor,
-		};
-	});
 }

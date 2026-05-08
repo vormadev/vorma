@@ -1,10 +1,5 @@
 import type { ReadonlySignal } from "@preact/signals";
-import { jsonDeepEquals } from "vorma/kit/json";
-import {
-	createPatternRegistry,
-	findNestedMatches,
-	registerPattern,
-} from "vorma/kit/matcher";
+import { Effect, Result as EffectResult } from "effect";
 import { R, type Result } from "vorma/kit/result";
 import { create_typed_api_client } from "./api_client.ts";
 import type {
@@ -15,21 +10,25 @@ import type {
 import {
 	create_client_core,
 	type ClientCommit,
-	type RouteRenderEntry,
-	type RouteRenderState,
 	type ScrollIntent,
 	type WorkState,
 } from "./create_client_core.ts";
 import {
-	type LinkNavFns,
-	type LinkRouteState,
-	type LinkWorkState,
-} from "./make_link_props.ts";
-import { get_entry_key } from "./resolve_outlet_slot.ts";
+	make_adapter_runtime,
+	type DecomposedState as AdapterDecomposedState,
+	type AdapterRuntime,
+} from "./effect_runtime/adapter_runtime.ts";
+import {
+	make_link_intent_runtime,
+	type LinkIntentRuntime,
+} from "./effect_runtime/link_intent_runtime.ts";
+import {
+	make_outlet_slot_runtime,
+	type OutletSlotRuntime,
+} from "./effect_runtime/outlet_slot_runtime.ts";
+import { type LinkNavFns } from "./make_link_props.ts";
 import type {
 	AppConfig,
-	LinkPropsBase,
-	RouteErrorState,
 	RouteState,
 	RouteUpdateReason,
 	ToAPIClient,
@@ -50,22 +49,7 @@ import {
 	create_typed_to_href,
 } from "./url.ts";
 
-export type DecomposedState = {
-	// Always a new reference
-	entries: RouteRenderEntry[];
-	error: RouteErrorState | null;
-
-	// Stable per channel
-	loaders_data: unknown[];
-	client_loaders_data: unknown[];
-	matched_patterns: string[];
-	import_urls: string[];
-	entry_keys: string[];
-	params: Record<string, string>;
-	splat_values: string[];
-	client_build_id: string;
-	history_state: unknown;
-};
+export type DecomposedState = AdapterDecomposedState;
 
 export type DecomposedCommit = {
 	route?: RouteState;
@@ -76,11 +60,6 @@ export type DecomposedCommit = {
 };
 
 export type DecomposedCommitFn = (commit: DecomposedCommit) => void;
-
-type LinkAttributeCandidate = {
-	url: URL;
-	matched_patterns: string[];
-};
 
 // __TODO why is this generic called "App"? Shouldn't it be "Component" or something?
 export type AdapterRenderArgs<App> = {
@@ -93,9 +72,15 @@ export type AdapterClientOptions<App> = Omit<CoreClientOptions, "render"> & {
 };
 
 type AdapterBase<A extends AppConfig> = {
+	adapter_runtime: AdapterRuntime;
+
 	core: ClientCore;
 
+	link_intent_runtime: LinkIntentRuntime;
+
 	nav_fns: LinkNavFns;
+
+	outlet_slot_runtime: OutletSlotRuntime;
 
 	passthrough: Pick<
 		ClientCore,
@@ -126,37 +111,21 @@ export function create_adapter_base<A extends AppConfig>(
 	on_commit: DecomposedCommitFn,
 	api_decorator?: ToAPIDecorator<A>,
 ): Result<AdapterBase<A>> {
-	const attribute_registry_res = createPatternRegistry({
-		dynamicParamPrefixRune: ":",
-		splatSegmentRune: "*",
-		explicitIndexSegment: "_index",
-	});
-	if (!attribute_registry_res.ok) {
+	const adapter_runtime_result = Effect.runSync(
+		Effect.result(make_adapter_runtime()),
+	);
+	if (EffectResult.isFailure(adapter_runtime_result)) {
 		return R.err(
-			`Failed to create link attribute registry: ${attribute_registry_res.err}`,
+			`Failed to create adapter runtime: ${adapter_runtime_result.failure.reason}`,
 		);
 	}
-	const attribute_registry = attribute_registry_res.val;
-
-	let prev: DecomposedState = {
-		entries: [],
-		error: null,
-		loaders_data: [],
-		client_loaders_data: [],
-		matched_patterns: [],
-		import_urls: [],
-		entry_keys: [],
-		params: {},
-		splat_values: [],
-		client_build_id: "",
-		history_state: undefined,
-	};
+	const adapter_runtime = adapter_runtime_result.success;
 
 	function decomposed_commit(client_commit: ClientCommit): void {
 		const adapter_commit: DecomposedCommit = {};
 		const route_render = client_commit.route_render;
 		if (route_render) {
-			adapter_commit.state = decompose_route_render_state(
+			adapter_commit.state = adapter_runtime.decompose_route_render_state(
 				route_render.state,
 			);
 			adapter_commit.scroll_intent = route_render.scroll_intent;
@@ -171,67 +140,13 @@ export function create_adapter_base<A extends AppConfig>(
 		on_commit(adapter_commit);
 	}
 
-	function decompose_route_render_state(
-		route_state: RouteRenderState,
-	): DecomposedState {
-		for (const entry of route_state.entries) {
-			register_link_pattern(entry.pattern);
-		}
-
-		const next: DecomposedState = {
-			entries: route_state.entries,
-			error: route_state.error,
-			loaders_data: stable(
-				prev.loaders_data,
-				route_state.entries.map((e) => {
-					return e.loader_data;
-				}),
-			),
-			client_loaders_data: stable(
-				prev.client_loaders_data,
-				route_state.entries.map((e) => {
-					return e.client_loader_data;
-				}),
-			),
-			matched_patterns: stable(
-				prev.matched_patterns,
-				route_state.entries.map((e) => {
-					return e.pattern;
-				}),
-			),
-			import_urls: stable(
-				prev.import_urls,
-				route_state.entries.map((e) => {
-					return e.module_url;
-				}),
-			),
-			entry_keys: stable(
-				prev.entry_keys,
-				route_state.entries.map((e) => {
-					return get_entry_key(e);
-				}),
-			),
-			params: stable(prev.params, route_state.params),
-			splat_values: stable(prev.splat_values, route_state.splat_values),
-			client_build_id: stable(
-				prev.client_build_id,
-				route_state.client_build_id,
-			),
-			history_state: stable(
-				prev.history_state,
-				route_state.history_state,
-			),
-		};
-
-		prev = next;
-		return next;
-	}
-
 	const core_res = create_client_core(app_config, decomposed_commit);
 	if (!core_res.ok) {
 		return R.err(core_res.err);
 	}
 	const core = core_res.val;
+	const link_intent_runtime = Effect.runSync(make_link_intent_runtime());
+	const outlet_slot_runtime = Effect.runSync(make_outlet_slot_runtime());
 
 	const nav_fns: LinkNavFns = {
 		navigate: (args) => {
@@ -245,8 +160,8 @@ export function create_adapter_base<A extends AppConfig>(
 		start_prefetch: core.start_prefetch,
 		stop_prefetch: core.stop_prefetch,
 		save_current_scroll: core.save_current_scroll,
-		register_link_pattern,
-		get_link_attribute_state,
+		register_link_pattern: adapter_runtime.register_link_pattern,
+		get_link_attribute_state: adapter_runtime.get_link_attribute_state,
 	};
 
 	const navigate = create_typed_navigate<A>(core.navigate);
@@ -261,8 +176,11 @@ export function create_adapter_base<A extends AppConfig>(
 	);
 
 	return R.ok({
+		adapter_runtime,
 		core,
+		link_intent_runtime,
 		nav_fns,
+		outlet_slot_runtime,
 		passthrough: {
 			navigate,
 			prefetch,
@@ -275,101 +193,6 @@ export function create_adapter_base<A extends AppConfig>(
 			apiClient: api_client,
 		},
 	});
-
-	function register_link_pattern(pattern: string): void {
-		registerPattern(attribute_registry, pattern);
-	}
-
-	function href_to_link_candidate(href: string): LinkAttributeCandidate {
-		const url = new URL(href, window.location.href);
-		const match = findNestedMatches(attribute_registry, url.pathname);
-		return {
-			url,
-			matched_patterns:
-				match?.matches.map((m) => {
-					return m.registeredPattern.originalPattern;
-				}) ?? [],
-		};
-	}
-
-	function exact_link_match(
-		target: LinkAttributeCandidate,
-		candidate: LinkAttributeCandidate,
-		match_rules: LinkPropsBase["attributeMatchRules"],
-	): boolean {
-		return (
-			target.url.pathname === candidate.url.pathname &&
-			(target.matched_patterns.length === 0 ||
-				candidate.matched_patterns.length === 0 ||
-				jsonDeepEquals(
-					target.matched_patterns,
-					candidate.matched_patterns,
-				)) &&
-			(match_rules?.includeSearch !== true ||
-				target.url.search === candidate.url.search) &&
-			(match_rules?.includeHash !== true ||
-				target.url.hash === candidate.url.hash)
-		);
-	}
-
-	function ancestor_link_match(
-		target: LinkAttributeCandidate,
-		candidate: LinkAttributeCandidate,
-	): boolean {
-		const target_path =
-			target.url.pathname === "/" ? "/" : `${target.url.pathname}/`;
-		return (
-			target.matched_patterns.length > 0 &&
-			candidate.matched_patterns.length >
-				target.matched_patterns.length &&
-			(target_path === "/" ||
-				candidate.url.pathname.startsWith(target_path)) &&
-			target.matched_patterns.every((pattern, i) => {
-				return candidate.matched_patterns[i] === pattern;
-			})
-		);
-	}
-
-	function get_link_attribute_state(
-		href: string,
-		match_rules: LinkPropsBase["attributeMatchRules"],
-		route_state: LinkRouteState | null,
-		work_state: LinkWorkState,
-	) {
-		if (match_rules?.skip === true || !route_state) {
-			return {
-				active_exact: false,
-				active_ancestor: false,
-				pending_exact: false,
-				pending_ancestor: false,
-			};
-		}
-
-		const target = href_to_link_candidate(href);
-		const route_url = new URL(route_state.href, window.location.href);
-		const route = {
-			url: route_url,
-			matched_patterns: route_state.matchedPatterns,
-		};
-		const pending = work_state.navigationHref
-			? href_to_link_candidate(work_state.navigationHref)
-			: null;
-
-		return {
-			active_exact: exact_link_match(target, route, match_rules),
-			active_ancestor: ancestor_link_match(target, route),
-			pending_exact: pending
-				? exact_link_match(target, pending, match_rules)
-				: false,
-			pending_ancestor: pending
-				? ancestor_link_match(target, pending)
-				: false,
-		};
-	}
-}
-
-function stable<T>(prev: T, next: T): T {
-	return jsonDeepEquals(prev, next) ? prev : next;
 }
 
 type HookReturn<

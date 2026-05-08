@@ -104,11 +104,11 @@ export function make_module_runtime(
 				if (!dev) {
 					return;
 				}
-				const handler: Window["__vorma_hmr_route_update"] = async (
+				const handler: Window["__vorma_hmr_route_update"] = (
 					raw_url,
 					mod,
 				) => {
-					await Effect.runPromise(
+					return Effect.runPromise(
 						handle_hmr_route_update(
 							deps,
 							module_cache,

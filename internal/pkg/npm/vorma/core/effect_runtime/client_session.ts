@@ -1,6 +1,10 @@
 import { Effect, Ref } from "effect";
 import type { EffectClientKernelHandle } from "./client_kernel_assembly.ts";
 
+export type ClientSessionOptions = {
+	active_ref?: Ref.Ref<EffectClientKernelHandle | null>;
+};
+
 export type ClientSession = {
 	active_handle: Effect.Effect<EffectClientKernelHandle | null>;
 	replace_active: (handle: EffectClientKernelHandle) => Effect.Effect<void>;
@@ -10,11 +14,13 @@ export type ClientSession = {
 	) => Effect.Effect<void>;
 };
 
-export function make_client_session(): Effect.Effect<ClientSession, never> {
+export function make_client_session(
+	options: ClientSessionOptions = {},
+): Effect.Effect<ClientSession, never> {
 	return Effect.gen(function* () {
-		const active_ref = yield* Ref.make<EffectClientKernelHandle | null>(
-			null,
-		);
+		const active_ref =
+			options.active_ref ??
+			(yield* Ref.make<EffectClientKernelHandle | null>(null));
 		const shutdown_handle = (
 			handle: EffectClientKernelHandle | null,
 		): Effect.Effect<void> => {

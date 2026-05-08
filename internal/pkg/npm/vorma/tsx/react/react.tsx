@@ -16,7 +16,6 @@ import {
 	get_entry_key,
 	make_link_props,
 	make_route_id,
-	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
 	type AdapterClientOptions,
@@ -252,7 +251,13 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	const { core, nav_fns, passthrough } = adapter_base_res.val;
+	const {
+		core,
+		link_intent_runtime,
+		nav_fns,
+		outlet_slot_runtime,
+		passthrough,
+	} = adapter_base_res.val;
 
 	function useRouteState(): RouteState;
 	function useRouteState<T>(selector: (route: RouteState) => T): T;
@@ -438,7 +443,7 @@ export function createVormaClient<A extends AppConfig>(
 			};
 		}, [idx, next_import_url, next_entry_key]);
 
-		const slot = resolve_outlet_slot(
+		const slot = outlet_slot_runtime.resolve_outlet_slot(
 			entries,
 			route_error,
 			idx,
@@ -502,6 +507,7 @@ export function createVormaClient<A extends AppConfig>(
 				nav_fns,
 				route_state,
 				work_state,
+				link_intent_runtime,
 			);
 		}, [props, route_state, work_state]);
 		return (

@@ -142,73 +142,65 @@ export function make_browser_view_runtime(
 						resumed = true;
 						resume(program);
 					};
+					const run_publish = async (): Promise<void> => {
+						publish_started = true;
+						try {
+							const exit = await Effect.runPromiseExit(
+								input.publish,
+							);
+							if (exit._tag === "Success") {
+								resume_once(Effect.succeed(exit.value));
+								return;
+							}
+							resume_once(Effect.failCause(exit.cause));
+							throw Cause.squash(exit.cause);
+						} catch (error) {
+							resume_once(
+								Effect.fail(
+									new BrowserViewTransitionFailed({
+										error,
+									}),
+								),
+							);
+							throw error;
+						}
+					};
+					const watch_completion = async (
+						completion: PromiseLike<unknown>,
+					): Promise<void> => {
+						try {
+							await completion;
+							if (!publish_started) {
+								resume_once(
+									Effect.fail(
+										new BrowserViewTransitionFailed({
+											error: new Error(
+												"View transition did not publish.",
+											),
+										}),
+									),
+								);
+							}
+						} catch (error) {
+							resume_once(
+								Effect.fail(
+									new BrowserViewTransitionFailed({
+										error,
+									}),
+								),
+							);
+						}
+					};
 					try {
 						const transition = start_view_transition.call(
 							document,
-							() => {
-								publish_started = true;
-								const exit_promise = Effect.runPromiseExit(
-									input.publish,
-								);
-								void exit_promise.then(
-									(exit) => {
-										if (exit._tag === "Success") {
-											resume_once(
-												Effect.succeed(exit.value),
-											);
-											return;
-										}
-										resume_once(
-											Effect.failCause(exit.cause),
-										);
-									},
-									(error: unknown) => {
-										resume_once(
-											Effect.fail(
-												new BrowserViewTransitionFailed(
-													{ error },
-												),
-											),
-										);
-									},
-								);
-								return exit_promise.then((exit) => {
-									if (exit._tag === "Failure") {
-										throw Cause.squash(exit.cause);
-									}
-								});
-							},
+							run_publish,
 						);
 						const completion =
 							transition.updateCallbackDone ??
 							transition.finished;
 						if (completion) {
-							void Promise.resolve(completion).then(
-								() => {
-									if (!publish_started) {
-										resume_once(
-											Effect.fail(
-												new BrowserViewTransitionFailed(
-													{
-														error: new Error(
-															"View transition did not publish.",
-														),
-													},
-												),
-											),
-										);
-									}
-								},
-								(error: unknown) => {
-									resume_once(
-										Effect.fail(
-											new BrowserViewTransitionFailed({
-												error,
-											}),
-										),
-									);
-								},
-							);
+							void watch_completion(completion);
 						}
 					} catch (error) {
 						resume_once(

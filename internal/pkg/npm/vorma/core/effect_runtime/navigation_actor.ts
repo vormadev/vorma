@@ -64,6 +64,7 @@ export type NavigationActorOptions = {
 	publish: (
 		loaded: LoadedRoute,
 		attempt: NavigationAttempt,
+		is_current: Effect.Effect<boolean>,
 	) => Effect.Effect<void, NavigationLoadFailed>;
 	routeKey?: (href: string) => string;
 	isExternal?: (href: string) => boolean;
@@ -433,8 +434,13 @@ export function make_navigation_actor(
 					scrollToTop: active.scrollToTop,
 					skipWorkIndicator: active.skipWorkIndicator,
 				};
+				const is_current = Ref.get(model).pipe(
+					Effect.map((current) => {
+						return current.active?.id === input.id;
+					}),
+				);
 				const publish_result = yield* Effect.result(
-					options.publish(loaded, attempt),
+					options.publish(loaded, attempt, is_current),
 				);
 				yield* on_published({
 					id: input.id,

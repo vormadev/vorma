@@ -1,7 +1,5 @@
-import { Effect, Result as EffectResult, Fiber } from "effect";
+import { Effect, Result as EffectResult } from "effect";
 import { R, type Result } from "vorma/kit/result";
-import { make_boot_revalidation_gate } from "./effect_runtime/boot_revalidation_gate.ts";
-import { make_boot_route_state } from "./effect_runtime/boot_route_state.ts";
 import type {
 	APIResult,
 	ClientCore,
@@ -10,25 +8,18 @@ import type {
 	TestOptions,
 	ViewDefinition,
 } from "./effect_runtime/client_contract.ts";
+import { make_client_core_runtime } from "./effect_runtime/client_core_runtime.ts";
 import { type EffectClientKernel } from "./effect_runtime/client_kernel.ts";
 import {
 	acquire_effect_client_kernel,
 	type EffectClientKernelHandle,
 } from "./effect_runtime/client_kernel_assembly.ts";
-import {
-	client_runtime_services_to_layer,
-	make_client_runtime_services,
-} from "./effect_runtime/client_runtime_services.ts";
-import { make_client_session } from "./effect_runtime/client_session.ts";
-import { type FocusRevalidator } from "./effect_runtime/focus_revalidator.ts";
 import type { SubmitResult } from "./effect_runtime/submit_manager.ts";
 import type { WorkIndicatorActivity } from "./effect_runtime/work_state_actor.ts";
 import type { APIRouteKind, AppConfig, RevalidationResult } from "./types.ts";
 
 export const EFFECT_CLIENT_BUILD_ID_FIELD = "ClientBuildID";
 export const EFFECT_DEPLOYMENT_ID_FIELD = "DeploymentID";
-
-const effect_client_session = Effect.runSync(make_client_session());
 
 export function create_client_core_effect(
 	app_config: Omit<AppConfig, "__vormaViews" | "__vormaAPIRoutes">,
@@ -37,43 +28,51 @@ export function create_client_core_effect(
 ): Result<ClientCore> {
 	void app_config;
 
-	let kernel: EffectClientKernel | null = null;
-	let client_options: ClientOptions = {};
-	let focus_revalidator: FocusRevalidator | null = null;
-	const runtime_services = Effect.runSync(
-		make_client_runtime_services({
+	const client_core_runtime = Effect.runSync(
+		make_client_core_runtime({
 			hard_redirect: test_options?.hard_redirect,
 			scroll_to: test_options?.scroll_to,
 		}),
 	);
+	const {
+		boot_revalidation_gate,
+		boot_route_state,
+		client_core_state,
+		client_session,
+		runtime_services,
+		runtime_services_layer,
+	} = client_core_runtime;
 	const {
 		browser_location,
 		browser_view_runtime,
 		module_runtime,
 		work_indicator_runtime,
 	} = runtime_services;
-	const boot_revalidation_gate = Effect.runSync(
-		make_boot_revalidation_gate(),
-	);
-	const boot_route_state = Effect.runSync(make_boot_route_state());
-	let default_error_boundary:
-		| ((props: { error: unknown }) => any)
-		| undefined;
 
 	function work_indicator_active_for(
+		options: ClientOptions,
 		activity: WorkIndicatorActivity,
 	): boolean {
-		const options = client_options.workIndicator;
-		if (!options) {
+		const work_indicator_options = options.workIndicator;
+		if (!work_indicator_options) {
 			return false;
 		}
-		if (activity.navigation && options.skipNavigations !== true) {
+		if (
+			activity.navigation &&
+			work_indicator_options.skipNavigations !== true
+		) {
 			return true;
 		}
-		if (activity.revalidation && options.skipRevalidations !== true) {
+		if (
+			activity.revalidation &&
+			work_indicator_options.skipRevalidations !== true
+		) {
 			return true;
 		}
-		if (activity.apiRequests && options.skipAPIRequests !== true) {
+		if (
+			activity.apiRequests &&
+			work_indicator_options.skipAPIRequests !== true
+		) {
 			return true;
 		}
 		return false;
@@ -81,28 +80,25 @@ export function create_client_core_effect(
 
 	const emit_client_commit: CommitFn = (client_commit) => {
 		commit(client_commit);
+		const options = Effect.runSync(client_core_state.client_options);
 		if (client_commit.route_update) {
-			client_options.onRouteUpdate?.(
+			options.onRouteUpdate?.(
 				client_commit.route_update.route,
 				client_commit.route_update.previous_route,
 				client_commit.route_update.reason,
 			);
 		}
 		if (client_commit.work) {
-			client_options.onWorkUpdate?.(client_commit.work);
+			options.onWorkUpdate?.(client_commit.work);
 		}
 	};
 
-	function run_effect<A, E>(program: Effect.Effect<A, E, never>): Promise<A> {
-		const fiber = Effect.runFork(program);
-		return Effect.runPromise(Fiber.join(fiber));
-	}
-
 	function require_kernel(): EffectClientKernel {
-		if (!kernel) {
+		const active_kernel = Effect.runSync(client_core_state.active_kernel);
+		if (!active_kernel) {
 			throw new Error("Vorma not booted");
 		}
-		return kernel;
+		return active_kernel;
 	}
 
 	function string_payload_field(
@@ -116,7 +112,7 @@ export function create_client_core_effect(
 	function submit_result_to_api_result<T>(
 		result: SubmitResult<T>,
 	): APIResult<T> {
-		const revalidationPromise = run_effect(result.revalidation);
+		const revalidationPromise = Effect.runPromise(result.revalidation);
 		if (result.success) {
 			return {
 				success: true,
@@ -136,167 +132,171 @@ export function create_client_core_effect(
 	function assemble_kernel(
 		client_build_id: string,
 		deployment_id: string,
-	): EffectClientKernelHandle {
-		return Effect.runSync(
-			acquire_effect_client_kernel({
-				client_build_id,
-				commit: emit_client_commit,
-				deployment_id,
-				on_build_skew_detected: (event) => {
-					return Effect.sync(() => {
-						client_options.onBuildSkewDetected?.(event);
+	): Effect.Effect<EffectClientKernelHandle> {
+		return acquire_effect_client_kernel({
+			client_build_id,
+			commit: emit_client_commit,
+			deployment_id,
+			on_build_skew_detected: (event) => {
+				return Effect.gen(function* () {
+					const options = yield* client_core_state.client_options;
+					yield* Effect.sync(() => {
+						options.onBuildSkewDetected?.(event);
 					});
-				},
-				on_client_redirect: (href) => {
-					return Effect.sync(() => {
-						void navigate(href, {
-							replace: true,
-						});
+				});
+			},
+			on_client_redirect: (href) => {
+				return Effect.sync(() => {
+					void navigate(href, {
+						replace: true,
 					});
-				},
-				on_indicator_update: (activity) => {
-					return work_indicator_runtime.set_vorma_active(
-						work_indicator_active_for(activity),
+				});
+			},
+			on_indicator_update: (activity) => {
+				return Effect.gen(function* () {
+					const options = yield* client_core_state.client_options;
+					yield* work_indicator_runtime.set_vorma_active(
+						work_indicator_active_for(options, activity),
 					);
-				},
-				on_provisional_route: (input) => {
-					return boot_route_state.capture(input);
-				},
-				revalidate_api_request: (
-					route_revalidator,
-					revalidation_options,
-				) => {
-					return boot_revalidation_gate.request_or_defer(
-						route_revalidator.request(
-							"apiRequest",
-							revalidation_options,
-						),
+				});
+			},
+			on_provisional_route: (input) => {
+				return boot_route_state.capture(input);
+			},
+			revalidate_api_request: (
+				route_revalidator,
+				revalidation_options,
+			) => {
+				return boot_revalidation_gate.request_or_defer(
+					route_revalidator.request(
+						"apiRequest",
 						revalidation_options,
-					);
-				},
-				use_view_transitions: Effect.sync(() => {
-					return client_options.useViewTransitions === true;
+					),
+					revalidation_options,
+				);
+			},
+			use_view_transitions: client_core_state.client_options.pipe(
+				Effect.map((options) => {
+					return options.useViewTransitions === true;
 				}),
-			}).pipe(
-				Effect.provide(
-					client_runtime_services_to_layer(runtime_services),
-				),
 			),
-		);
+		}).pipe(Effect.provide(runtime_services_layer));
 	}
 
-	async function boot(options: ClientOptions): Promise<Result<void>> {
-		client_options = options;
-		default_error_boundary = options.defaultErrorBoundary;
-		Effect.runSync(work_indicator_runtime.configure(options.workIndicator));
-		const existing_kernel = kernel;
-		if (existing_kernel) {
-			Effect.runSync(
-				existing_kernel.work_actor.indicator_activity.pipe(
-					Effect.flatMap((activity) => {
-						return work_indicator_runtime.set_vorma_active(
-							work_indicator_active_for(activity),
-						);
-					}),
-				),
-			);
-		}
-		const payload_result = Effect.runSync(
-			Effect.result(browser_view_runtime.read_initial_payload),
-		);
-		if (EffectResult.isFailure(payload_result)) {
-			return R.err(payload_result.failure.reason);
-		}
-		const payload = payload_result.success;
-		const client_build_id = string_payload_field(
-			payload,
-			EFFECT_CLIENT_BUILD_ID_FIELD,
-		);
-		const deployment_id = string_payload_field(
-			payload,
-			EFFECT_DEPLOYMENT_ID_FIELD,
-		);
-		const next_kernel_handle = assemble_kernel(
-			client_build_id,
-			deployment_id,
-		);
-		const next_kernel = next_kernel_handle.kernel;
-		Effect.runSync(boot_route_state.clear);
-		Effect.runSync(boot_revalidation_gate.start_boot);
-		kernel = next_kernel;
-		focus_revalidator = null;
-		const boot_result = await run_effect(
-			Effect.result(next_kernel.boot_initial_route(payload)),
-		);
-		if (EffectResult.isFailure(boot_result)) {
-			if (kernel === next_kernel) {
-				kernel = existing_kernel;
-			}
-			Effect.runSync(boot_route_state.clear);
-			Effect.runSync(boot_revalidation_gate.cancel_boot);
-			await run_effect(next_kernel_handle.shutdown);
-			return R.err(String(boot_result.failure));
-		}
-		const boot_revalidation_decision = Effect.runSync(
-			boot_revalidation_gate.finish_boot,
-		);
-		kernel = next_kernel;
-		focus_revalidator = null;
-		Effect.runSync(boot_route_state.clear);
-		Effect.runSync(
-			next_kernel.lifecycle.add_finalizer(
-				Effect.gen(function* () {
-					yield* Effect.sync(() => {
-						if (kernel === next_kernel) {
-							kernel = null;
-						}
-						focus_revalidator = null;
-					});
+	function boot(options: ClientOptions): Promise<Result<void>> {
+		return Effect.runPromise(
+			Effect.gen(function* () {
+				yield* client_core_state.set_boot_options(options);
+				yield* work_indicator_runtime.configure(options.workIndicator);
+				const existing_kernel = yield* client_core_state.active_kernel;
+				if (existing_kernel) {
+					yield* existing_kernel.work_actor.indicator_activity.pipe(
+						Effect.flatMap((activity) => {
+							return client_core_state.client_options.pipe(
+								Effect.flatMap((options) => {
+									return work_indicator_runtime.set_vorma_active(
+										work_indicator_active_for(
+											options,
+											activity,
+										),
+									);
+								}),
+							);
+						}),
+					);
+				}
+				const payload_result = yield* Effect.result(
+					browser_view_runtime.read_initial_payload,
+				);
+				if (EffectResult.isFailure(payload_result)) {
+					return R.err(payload_result.failure.reason);
+				}
+				const payload = payload_result.success;
+				const client_build_id = string_payload_field(
+					payload,
+					EFFECT_CLIENT_BUILD_ID_FIELD,
+				);
+				const deployment_id = string_payload_field(
+					payload,
+					EFFECT_DEPLOYMENT_ID_FIELD,
+				);
+				const next_kernel_handle = yield* assemble_kernel(
+					client_build_id,
+					deployment_id,
+				);
+				const next_kernel = next_kernel_handle.kernel;
+				yield* boot_route_state.clear;
+				yield* boot_revalidation_gate.start_boot;
+				yield* client_core_state.set_active_kernel(next_kernel);
+				yield* client_core_state.clear_focus_revalidator;
+				const boot_result = yield* Effect.result(
+					next_kernel.boot_initial_route(payload),
+				);
+				if (EffectResult.isFailure(boot_result)) {
+					yield* client_core_state.restore_kernel_if_current(
+						next_kernel,
+						existing_kernel,
+					);
 					yield* boot_route_state.clear;
-				}),
-			),
+					yield* boot_revalidation_gate.cancel_boot;
+					yield* next_kernel_handle.shutdown;
+					return R.err(String(boot_result.failure));
+				}
+				const boot_revalidation_decision =
+					yield* boot_revalidation_gate.finish_boot;
+				yield* client_core_state.set_active_kernel(next_kernel);
+				yield* client_core_state.clear_focus_revalidator;
+				yield* boot_route_state.clear;
+				yield* next_kernel.lifecycle.add_finalizer(
+					Effect.gen(function* () {
+						yield* client_core_state.clear_kernel_if_current(
+							next_kernel,
+						);
+						yield* client_core_state.clear_focus_revalidator;
+						yield* boot_route_state.clear;
+					}),
+				);
+				yield* client_session.replace_active(next_kernel_handle);
+				if (options.revalidateOnWindowFocus) {
+					const stale_ms =
+						typeof options.revalidateOnWindowFocus === "object"
+							? options.revalidateOnWindowFocus.staleTimeMS
+							: 5_000;
+					const next_focus_revalidator =
+						yield* next_kernel.install_focus_revalidator(stale_ms);
+					yield* client_core_state.set_focus_revalidator(
+						next_focus_revalidator,
+					);
+				}
+				if (boot_revalidation_decision.requested) {
+					yield* Effect.forkDetach(
+						next_kernel.route_revalidator.request("apiRequest", {
+							skipWorkIndicator:
+								boot_revalidation_decision.skip_work_indicator,
+						}),
+						{ startImmediately: true },
+					);
+				}
+				yield* next_kernel.install_browser_handlers;
+				const render_result = yield* Effect.result(
+					Effect.tryPromise({
+						try: async () => {
+							await options.render?.();
+						},
+						catch: (error) => {
+							return error;
+						},
+					}),
+				);
+				if (EffectResult.isFailure(render_result)) {
+					yield* client_session.shutdown_if_active(
+						next_kernel_handle,
+					);
+					return R.err(String(render_result.failure));
+				}
+				return R.ok(undefined);
+			}),
 		);
-		await run_effect(
-			effect_client_session.replace_active(next_kernel_handle),
-		);
-		if (options.revalidateOnWindowFocus) {
-			const stale_ms =
-				typeof options.revalidateOnWindowFocus === "object"
-					? options.revalidateOnWindowFocus.staleTimeMS
-					: 5_000;
-			const next_focus_revalidator = Effect.runSync(
-				next_kernel.install_focus_revalidator(stale_ms),
-			);
-			focus_revalidator = next_focus_revalidator;
-		}
-		if (boot_revalidation_decision.requested) {
-			void run_effect(
-				next_kernel.route_revalidator.request("apiRequest", {
-					skipWorkIndicator:
-						boot_revalidation_decision.skip_work_indicator,
-				}),
-			);
-		}
-		Effect.runSync(next_kernel.install_browser_handlers);
-		const render_result = await run_effect(
-			Effect.result(
-				Effect.tryPromise({
-					try: async () => {
-						await options.render?.();
-					},
-					catch: (error) => {
-						return error;
-					},
-				}),
-			),
-		);
-		if (EffectResult.isFailure(render_result)) {
-			await run_effect(
-				effect_client_session.shutdown_if_active(next_kernel_handle),
-			);
-			return R.err(String(render_result.failure));
-		}
-		return R.ok(undefined);
 	}
 
 	function navigate(
@@ -310,40 +310,38 @@ export function create_client_core_effect(
 	): Promise<{ didNavigate: boolean }> {
 		const active_kernel = require_kernel();
 		const target_href = browser_location.resolve_href(href);
-		if (!browser_location.is_http_href(target_href)) {
-			return Promise.resolve({ didNavigate: false });
-		}
-		if (!browser_location.is_same_origin_href(target_href)) {
-			Effect.runSync(browser_location.hard_redirect(target_href));
-			return Promise.resolve({ didNavigate: false });
-		}
-		const target_key = browser_location.route_key(target_href);
-		const current_snapshot = Effect.runSync(
-			active_kernel.route_publisher.snapshot,
-		);
-		const previous_route_key = current_snapshot
-			? browser_location.route_key(current_snapshot.position.href)
-			: null;
-		const is_route_change =
-			!current_snapshot ||
-			browser_location.route_key(current_snapshot.position.href) !==
-				target_key;
-		if (is_route_change) {
-			const navigation_snapshot = Effect.runSync(
-				active_kernel.navigation_actor.snapshot,
-			);
-			if (
-				navigation_snapshot.active &&
-				navigation_snapshot.active.key !== target_key
-			) {
-				Effect.runSync(
-					active_kernel.navigation_actor.abort_active_signal,
-				);
-			}
-			Effect.runSync(active_kernel.route_revalidator.cancel);
-		}
-		return run_effect(
+		return Effect.runPromise(
 			Effect.gen(function* () {
+				if (!browser_location.is_http_href(target_href)) {
+					return { didNavigate: false };
+				}
+				if (!browser_location.is_same_origin_href(target_href)) {
+					yield* browser_location.hard_redirect(target_href);
+					return { didNavigate: false };
+				}
+				const target_key = browser_location.route_key(target_href);
+				const current_snapshot =
+					yield* active_kernel.route_publisher.snapshot;
+				const previous_route_key = current_snapshot
+					? browser_location.route_key(current_snapshot.position.href)
+					: null;
+				const is_route_change =
+					!current_snapshot ||
+					browser_location.route_key(
+						current_snapshot.position.href,
+					) !== target_key;
+				if (is_route_change) {
+					const navigation_snapshot =
+						yield* active_kernel.navigation_actor.snapshot;
+					if (
+						navigation_snapshot.active &&
+						navigation_snapshot.active.key !== target_key
+					) {
+						yield* active_kernel.navigation_actor
+							.abort_active_signal;
+					}
+					yield* active_kernel.route_revalidator.cancel;
+				}
 				const route_movement =
 					yield* active_kernel.move_within_current_route(
 						target_href,
@@ -361,31 +359,32 @@ export function create_client_core_effect(
 						skipWorkIndicator: options?.skipWorkIndicator,
 					},
 				);
-				return { didNavigate: result.didNavigate };
-			}),
-		).then((result) => {
-			const navigation_snapshot = Effect.runSync(
-				active_kernel.navigation_actor.snapshot,
-			);
-			if (!navigation_snapshot.active) {
-				Effect.runSync(active_kernel.work_actor.set_navigation(null));
-			}
-			if (result.didNavigate && focus_revalidator) {
-				const next_snapshot = Effect.runSync(
-					active_kernel.route_publisher.snapshot,
-				);
-				const next_route_key = next_snapshot
-					? browser_location.route_key(next_snapshot.position.href)
-					: null;
-				if (
-					next_route_key !== null &&
-					next_route_key !== previous_route_key
-				) {
-					void run_effect(focus_revalidator.mark_activity);
+				const public_result = { didNavigate: result.didNavigate };
+				const navigation_snapshot =
+					yield* active_kernel.navigation_actor.snapshot;
+				if (!navigation_snapshot.active) {
+					yield* active_kernel.work_actor.set_navigation(null);
 				}
-			}
-			return result;
-		});
+				const active_focus_revalidator =
+					yield* client_core_state.focus_revalidator;
+				if (public_result.didNavigate && active_focus_revalidator) {
+					const next_snapshot =
+						yield* active_kernel.route_publisher.snapshot;
+					const next_route_key = next_snapshot
+						? browser_location.route_key(
+								next_snapshot.position.href,
+							)
+						: null;
+					if (
+						next_route_key !== null &&
+						next_route_key !== previous_route_key
+					) {
+						yield* active_focus_revalidator.mark_activity;
+					}
+				}
+				return public_result;
+			}),
+		);
 	}
 
 	function getRouteState() {
@@ -451,37 +450,46 @@ export function create_client_core_effect(
 		},
 	): Promise<APIResult<T>> {
 		const active_kernel = require_kernel();
-		return run_effect(
-			active_kernel.submit_manager.submit<T>({
-				href: String(url),
-				init: request_init,
-				options,
-			}),
-		).then(submit_result_to_api_result);
+		return Effect.runPromise(
+			active_kernel.submit_manager
+				.submit<T>({
+					href: String(url),
+					init: request_init,
+					options,
+				})
+				.pipe(Effect.map(submit_result_to_api_result)),
+		);
 	}
 
 	function revalidate(): Promise<RevalidationResult> {
 		const active_kernel = require_kernel();
-		const await_result = Effect.runSync(
-			active_kernel.route_revalidator.request_started("manual", {
-				debounce: true,
+		return Effect.runPromise(
+			Effect.gen(function* () {
+				const await_result =
+					yield* active_kernel.route_revalidator.request_started(
+						"manual",
+						{
+							debounce: true,
+						},
+					);
+				const result = yield* await_result;
+				const active_focus_revalidator =
+					yield* client_core_state.focus_revalidator;
+				if (result.ok && active_focus_revalidator) {
+					yield* active_focus_revalidator.mark_activity;
+				}
+				return result;
 			}),
 		);
-		return run_effect(await_result).then((result) => {
-			if (result.ok && focus_revalidator) {
-				void run_effect(focus_revalidator.mark_activity);
-			}
-			return result;
-		});
 	}
 
 	function start_prefetch(href: string): void {
-		const active_kernel = kernel;
+		const active_kernel = Effect.runSync(client_core_state.active_kernel);
 		const target_href = browser_location.resolve_href_or_null(href);
 		if (!active_kernel || !target_href) {
 			return;
 		}
-		void run_effect(
+		Effect.runFork(
 			Effect.gen(function* () {
 				const navigation_snapshot =
 					yield* active_kernel.navigation_actor.snapshot;
@@ -497,7 +505,8 @@ export function create_client_core_effect(
 					history_state: position.state,
 				});
 			}).pipe(
-				Effect.catch(() => {
+				Effect.asVoid,
+				Effect.catchCause(() => {
 					return Effect.void;
 				}),
 			),
@@ -505,14 +514,15 @@ export function create_client_core_effect(
 	}
 
 	function stop_prefetch(href: string): void {
-		const active_kernel = kernel;
+		const active_kernel = Effect.runSync(client_core_state.active_kernel);
 		const target_href = browser_location.resolve_href_or_null(href);
 		if (!active_kernel || !target_href) {
 			return;
 		}
-		void run_effect(
+		Effect.runFork(
 			active_kernel.prefetch_manager.stop(target_href).pipe(
-				Effect.catch(() => {
+				Effect.asVoid,
+				Effect.catchCause(() => {
 					return Effect.void;
 				}),
 			),
@@ -528,14 +538,19 @@ export function create_client_core_effect(
 		getRouteState,
 		getWorkState,
 		getClientBuildID: () => {
-			return kernel?.client_build_id ?? "";
+			const active_kernel = Effect.runSync(
+				client_core_state.active_kernel,
+			);
+			return active_kernel?.client_build_id ?? "";
 		},
 		getRootEl,
 		defineView,
 		start_prefetch,
 		stop_prefetch,
 		save_current_scroll: () => {
-			const active_kernel = kernel;
+			const active_kernel = Effect.runSync(
+				client_core_state.active_kernel,
+			);
 			if (!active_kernel) {
 				return;
 			}
@@ -550,7 +565,7 @@ export function create_client_core_effect(
 			);
 		},
 		get_default_error_boundary: () => {
-			return default_error_boundary;
+			return Effect.runSync(client_core_state.default_error_boundary);
 		},
 	});
 }

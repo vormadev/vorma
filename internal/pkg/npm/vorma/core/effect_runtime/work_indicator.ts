@@ -46,9 +46,10 @@ export function make_work_indicator(
 		});
 
 		const sync = sync_indicator(state_ref, schedule_ms);
-		let release_vorma_work: Effect.Effect<void> | null = null;
+		const release_vorma_work_ref =
+			yield* Ref.make<Effect.Effect<void> | null>(null);
 		const begin = Effect.gen(function* () {
-			let released = false;
+			const released_ref = yield* Ref.make(false);
 			yield* Ref.update(state_ref, (state) => {
 				return {
 					...state,
@@ -57,10 +58,15 @@ export function make_work_indicator(
 			});
 			yield* sync;
 			return Effect.gen(function* () {
+				const released = yield* Ref.modify(
+					released_ref,
+					(was_released) => {
+						return [was_released, true];
+					},
+				);
 				if (released) {
 					return;
 				}
-				released = true;
 				yield* Ref.update(state_ref, (state) => {
 					return {
 						...state,
@@ -75,19 +81,27 @@ export function make_work_indicator(
 			active,
 		) => {
 			if (active) {
-				if (release_vorma_work) {
-					return Effect.void;
-				}
 				return Effect.gen(function* () {
-					release_vorma_work = yield* begin;
+					const release_vorma_work = yield* Ref.get(
+						release_vorma_work_ref,
+					);
+					if (release_vorma_work) {
+						return;
+					}
+					const release = yield* begin;
+					yield* Ref.set(release_vorma_work_ref, release);
 				});
 			}
-			if (!release_vorma_work) {
-				return sync;
-			}
-			const release = release_vorma_work;
-			release_vorma_work = null;
-			return release;
+			return Ref.modify(release_vorma_work_ref, (release) => {
+				return [release, null];
+			}).pipe(
+				Effect.flatMap((release) => {
+					if (!release) {
+						return sync;
+					}
+					return release;
+				}),
+			);
 		};
 
 		const configure: WorkIndicatorRuntime["configure"] = (options) => {
@@ -120,7 +134,7 @@ export function make_work_indicator(
 			if (state.visible && state.options) {
 				state.options.stop();
 			}
-			release_vorma_work = null;
+			yield* Ref.set(release_vorma_work_ref, null);
 			yield* Ref.set(state_ref, {
 				active_count: 0,
 				options: undefined,

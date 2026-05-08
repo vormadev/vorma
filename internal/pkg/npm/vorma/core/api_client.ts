@@ -1,3 +1,4 @@
+import { Data, Effect } from "effect";
 import { jsonStringifyStable } from "vorma/kit/json";
 import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 import type {
@@ -25,6 +26,40 @@ type SubmitFn = <T>(
 	},
 ) => Promise<QueryResult<T> | MutationResult<T>>;
 
+type APIClientSubmitOptions = {
+	apiRouteKind?: APIRouteKind;
+	dedupeKey?: string;
+	revalidate?: boolean;
+	skipWorkIndicator?: boolean;
+};
+
+type PreparedAPISubmit = {
+	url: URL;
+	init: RequestInit;
+	options: APIClientSubmitOptions;
+};
+
+class APIIdentityStringifyFailed extends Data.TaggedError(
+	"APIIdentityStringifyFailed",
+)<{
+	readonly reason: string;
+}> {}
+
+class APIRequestBuildFailed extends Data.TaggedError("APIRequestBuildFailed")<{
+	readonly error: unknown;
+	readonly reason: string;
+}> {}
+
+class APIDecoratorFailed extends Data.TaggedError("APIDecoratorFailed")<{
+	readonly error: unknown;
+	readonly reason: string;
+}> {}
+
+class APISubmitFailed extends Data.TaggedError("APISubmitFailed")<{
+	readonly error: unknown;
+	readonly reason: string;
+}> {}
+
 function normalize_api_method(raw_method: string | undefined): string {
 	return (raw_method ?? "GET").trim().toUpperCase();
 }
@@ -33,12 +68,25 @@ function normalize_api_pattern(pattern: string): string {
 	return pattern.trim();
 }
 
-function stringify_identity_value(value: unknown): string {
+function api_error_message(error: unknown): string {
+	if (error instanceof Error) {
+		return error.message;
+	}
+	return String(error);
+}
+
+function stringify_identity_value(
+	value: unknown,
+): Effect.Effect<string, APIIdentityStringifyFailed> {
 	const res = jsonStringifyStable(value);
 	if (!res.ok) {
-		throw new Error(res.err);
+		return Effect.fail(
+			new APIIdentityStringifyFailed({
+				reason: res.err,
+			}),
+		);
 	}
-	return res.val;
+	return Effect.succeed(res.val);
 }
 
 class APIErrorBase<T = never> extends Error {
@@ -67,18 +115,16 @@ export class MutationError<T = never> extends APIErrorBase<T> {
 	}
 }
 
-export function create_typed_api_client<A extends AppConfig>(
+function prepare_api_submit<A extends AppConfig>(
 	actions_mount_root: string,
-	submit_fn: SubmitFn,
-	decorator?: ToAPIDecorator<A>,
-): ToAPIClient<A> {
-	async function submit<Args extends ToQueryArgs<A> | ToMutationArgs<A>>(
-		args: Args,
-		api_route_kind: APIRouteKind,
-	): Promise<
-		| QueryResult<__APIClientOutput<A, Args>>
-		| MutationResult<__APIClientOutput<A, Args>>
-	> {
+	decorator: ToAPIDecorator<A> | undefined,
+	args: ToQueryArgs<A> | ToMutationArgs<A>,
+	api_route_kind: APIRouteKind,
+): Effect.Effect<
+	PreparedAPISubmit,
+	APIRequestBuildFailed | APIDecoratorFailed
+> {
+	return Effect.gen(function* () {
 		const {
 			dedupeKey,
 			input,
@@ -93,40 +139,73 @@ export function create_typed_api_client<A extends AppConfig>(
 		const method = normalize_api_method(raw_method);
 		const api_pattern = normalize_api_pattern(pattern);
 		const is_get = method === "GET" || method === "HEAD";
-		const url = build_action_url(
-			actions_mount_root,
-			api_pattern,
-			params,
-			splatValues,
-			is_get ? input : undefined,
-		);
+		const url = yield* Effect.try({
+			try: () => {
+				return build_action_url(
+					actions_mount_root,
+					api_pattern,
+					params,
+					splatValues,
+					is_get ? input : undefined,
+				);
+			},
+			catch: (error) => {
+				return new APIRequestBuildFailed({
+					error,
+					reason: api_error_message(error),
+				});
+			},
+		});
 		const ctx = {
 			input,
 			method,
 			pattern: api_pattern,
 			requestInit: request_init,
 		} as ToAPIDecoratorContext<A>;
-		const decorated = decorator
-			? ((await (decorator as any)(ctx)) ?? {})
-			: {};
-		const init: RequestInit = { ...decorated, ...request_init };
-		const headers = new Headers(decorated.headers ?? undefined);
-		new Headers(request_init.headers ?? undefined).forEach((v, k) => {
-			headers.set(k, v);
-		});
-		init.headers = headers;
-		init.method = method;
-		if (is_get) {
-			delete init.body;
-		} else {
-			init.body = resolve_body(input);
+		let decorated: Omit<RequestInit, "method" | "body"> = {};
+		if (decorator) {
+			decorated = yield* Effect.tryPromise({
+				try: async () => {
+					return ((await (decorator as any)(ctx)) ?? {}) as Omit<
+						RequestInit,
+						"method" | "body"
+					>;
+				},
+				catch: (error) => {
+					return new APIDecoratorFailed({
+						error,
+						reason: api_error_message(error),
+					});
+				},
+			});
 		}
-		const options: {
-			apiRouteKind?: APIRouteKind;
-			dedupeKey?: string;
-			revalidate?: boolean;
-			skipWorkIndicator?: boolean;
-		} = {
+
+		const init = yield* Effect.try({
+			try: () => {
+				const init: RequestInit = { ...decorated, ...request_init };
+				const headers = new Headers(decorated.headers ?? undefined);
+				new Headers(request_init.headers ?? undefined).forEach(
+					(v, k) => {
+						headers.set(k, v);
+					},
+				);
+				init.headers = headers;
+				init.method = method;
+				if (is_get) {
+					delete init.body;
+				} else {
+					init.body = resolve_body(input);
+				}
+				return init;
+			},
+			catch: (error) => {
+				return new APIRequestBuildFailed({
+					error,
+					reason: api_error_message(error),
+				});
+			},
+		});
+		const options: APIClientSubmitOptions = {
 			apiRouteKind: api_route_kind,
 		};
 		if (dedupeKey !== undefined) {
@@ -138,7 +217,51 @@ export function create_typed_api_client<A extends AppConfig>(
 		if (skipWorkIndicator !== undefined) {
 			options.skipWorkIndicator = skipWorkIndicator;
 		}
-		return submit_fn<__APIClientOutput<A, Args>>(url, init, options);
+		return { url, init, options };
+	});
+}
+
+export function create_typed_api_client<A extends AppConfig>(
+	actions_mount_root: string,
+	submit_fn: SubmitFn,
+	decorator?: ToAPIDecorator<A>,
+): ToAPIClient<A> {
+	function submit<Args extends ToQueryArgs<A> | ToMutationArgs<A>>(
+		args: Args,
+		api_route_kind: APIRouteKind,
+	): Promise<
+		| QueryResult<__APIClientOutput<A, Args>>
+		| MutationResult<__APIClientOutput<A, Args>>
+	> {
+		return Effect.runPromise(
+			Effect.gen(function* () {
+				const prepared = yield* prepare_api_submit(
+					actions_mount_root,
+					decorator,
+					args,
+					api_route_kind,
+				);
+				return yield* Effect.tryPromise({
+					try: () => {
+						return submit_fn<__APIClientOutput<A, Args>>(
+							prepared.url,
+							prepared.init,
+							prepared.options,
+						);
+					},
+					catch: (error) => {
+						return new APISubmitFailed({
+							error,
+							reason: api_error_message(error),
+						});
+					},
+				});
+			}).pipe(
+				Effect.mapError((error) => {
+					return error.error;
+				}),
+			),
+		);
 	}
 
 	return {
@@ -154,15 +277,23 @@ export function create_typed_api_client<A extends AppConfig>(
 			} = args as any;
 			const method = normalize_api_method(raw_method);
 			const api_pattern = normalize_api_pattern(pattern);
-			return [
-				API_IDENTITY_ARRAY_PREFIX,
-				actions_mount_root,
-				method,
-				api_pattern,
-				stringify_identity_value(params ?? null),
-				stringify_identity_value(splatValues ?? []),
-				stringify_identity_value(input ?? null),
-			];
+			return Effect.runSync(
+				Effect.gen(function* () {
+					return [
+						API_IDENTITY_ARRAY_PREFIX,
+						actions_mount_root,
+						method,
+						api_pattern,
+						yield* stringify_identity_value(params ?? null),
+						yield* stringify_identity_value(splatValues ?? []),
+						yield* stringify_identity_value(input ?? null),
+					];
+				}).pipe(
+					Effect.mapError((error) => {
+						return new Error(error.reason);
+					}),
+				),
+			);
 		},
 		mutate: <Args extends ToMutationArgs<A>>(
 			args: Args,
@@ -171,16 +302,27 @@ export function create_typed_api_client<A extends AppConfig>(
 				MutationResult<__APIClientOutput<A, Args>>
 			>;
 		},
-		mutateOrThrow: async <Args extends ToMutationArgs<A>>(
+		mutateOrThrow: <Args extends ToMutationArgs<A>>(
 			args: Args,
 		): Promise<__APIClientOutput<A, Args>> => {
-			const result = (await submit(args, "mutation")) as MutationResult<
-				__APIClientOutput<A, Args>
-			>;
-			if (!result.success) {
-				throw new MutationError(result);
-			}
-			return result.data;
+			return Effect.runPromise(
+				Effect.gen(function* () {
+					const result = yield* Effect.tryPromise({
+						try: () => {
+							return submit(args, "mutation") as Promise<
+								MutationResult<__APIClientOutput<A, Args>>
+							>;
+						},
+						catch: (error) => {
+							return error;
+						},
+					});
+					if (!result.success) {
+						return yield* Effect.fail(new MutationError(result));
+					}
+					return result.data;
+				}),
+			);
 		},
 		query: <Args extends ToQueryArgs<A>>(
 			args: Args,
@@ -189,16 +331,27 @@ export function create_typed_api_client<A extends AppConfig>(
 				QueryResult<__APIClientOutput<A, Args>>
 			>;
 		},
-		queryOrThrow: async <Args extends ToQueryArgs<A>>(
+		queryOrThrow: <Args extends ToQueryArgs<A>>(
 			args: Args,
 		): Promise<__APIClientOutput<A, Args>> => {
-			const result = (await submit(args, "query")) as QueryResult<
-				__APIClientOutput<A, Args>
-			>;
-			if (!result.success) {
-				throw new QueryError(result);
-			}
-			return result.data;
+			return Effect.runPromise(
+				Effect.gen(function* () {
+					const result = yield* Effect.tryPromise({
+						try: () => {
+							return submit(args, "query") as Promise<
+								QueryResult<__APIClientOutput<A, Args>>
+							>;
+						},
+						catch: (error) => {
+							return error;
+						},
+					});
+					if (!result.success) {
+						return yield* Effect.fail(new QueryError(result));
+					}
+					return result.data;
+				}),
+			);
 		},
 	};
 }

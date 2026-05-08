@@ -1,4 +1,4 @@
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Layer, Scope } from "effect";
 import type { RevalidationResult } from "../types.ts";
 import type { BuildSkewDetectedEvent, CommitFn } from "./client_contract.ts";
 import {
@@ -6,13 +6,23 @@ import {
 	type EffectClientKernel,
 } from "./client_kernel.ts";
 import {
-	client_kernel_resources_to_layer,
-	make_client_kernel_resources,
+	BrowserHistoryService,
+	make_client_kernel_resources_layer,
+	RuntimeLifecycleService,
+	ScrollRestorationService,
+	WorkStateActorService,
 } from "./client_kernel_resources.ts";
-import { make_client_navigation_services } from "./client_navigation_services.ts";
 import {
-	client_route_services_to_layer,
-	make_client_route_services,
+	make_client_navigation_services_layer,
+	NavigationActorService,
+	PrefetchManagerService,
+	RouteRevalidatorService,
+	SubmitManagerService,
+} from "./client_navigation_services.ts";
+import {
+	make_client_route_services_layer,
+	RoutePreparerService,
+	RoutePublisherService,
 } from "./client_route_services.ts";
 import {
 	BrowserLocationService,
@@ -55,41 +65,43 @@ export type EffectClientKernelHandle = {
 export function make_effect_client_kernel(
 	options: EffectClientKernelOptions,
 ): Effect.Effect<EffectClientKernel, never, ClientRuntimeServicesLayerContext> {
+	const kernel_resources_layer = make_client_kernel_resources_layer({
+		commit: options.commit,
+		on_indicator_update: options.on_indicator_update,
+	});
+	const route_services_layer = make_client_route_services_layer({
+		client_build_id: options.client_build_id,
+		commit: options.commit,
+		deployment_id: options.deployment_id,
+		on_build_skew_detected: options.on_build_skew_detected,
+		on_provisional_route: options.on_provisional_route,
+		use_view_transitions: options.use_view_transitions,
+	});
+	const navigation_services_layer = make_client_navigation_services_layer({
+		deployment_id: options.deployment_id,
+		on_client_redirect: options.on_client_redirect,
+		revalidate_api_request: options.revalidate_api_request,
+	});
+	const route_graph_layer = Layer.provideMerge(kernel_resources_layer)(
+		route_services_layer,
+	);
+	const navigation_graph_layer = Layer.provideMerge(route_graph_layer)(
+		navigation_services_layer,
+	);
+
 	return Effect.gen(function* () {
-		const kernel_resources = yield* make_client_kernel_resources({
-			commit: options.commit,
-			on_indicator_update: options.on_indicator_update,
-		});
 		const browser_location = yield* BrowserLocationService;
 		const module_runtime = yield* ModuleRuntimeService;
-		const { browser_history, lifecycle, scroll_restoration, work_actor } =
-			kernel_resources;
-		const route_services = yield* make_client_route_services({
-			client_build_id: options.client_build_id,
-			commit: options.commit,
-			deployment_id: options.deployment_id,
-			on_build_skew_detected: options.on_build_skew_detected,
-			on_provisional_route: options.on_provisional_route,
-			use_view_transitions: options.use_view_transitions,
-			work_actor,
-		});
-		const { route_preparer, route_publisher } = route_services;
-		const navigation_services = yield* make_client_navigation_services({
-			deployment_id: options.deployment_id,
-			on_client_redirect: options.on_client_redirect,
-			revalidate_api_request: options.revalidate_api_request,
-		}).pipe(
-			Effect.provide([
-				client_kernel_resources_to_layer(kernel_resources),
-				client_route_services_to_layer(route_services),
-			]),
-		);
-		const {
-			navigation_actor,
-			prefetch_manager,
-			route_revalidator,
-			submit_manager,
-		} = navigation_services;
+		const browser_history = yield* BrowserHistoryService;
+		const lifecycle = yield* RuntimeLifecycleService;
+		const scroll_restoration = yield* ScrollRestorationService;
+		const work_actor = yield* WorkStateActorService;
+		const route_preparer = yield* RoutePreparerService;
+		const route_publisher = yield* RoutePublisherService;
+		const navigation_actor = yield* NavigationActorService;
+		const prefetch_manager = yield* PrefetchManagerService;
+		const route_revalidator = yield* RouteRevalidatorService;
+		const submit_manager = yield* SubmitManagerService;
 		const boot_initial_route: EffectClientKernel["boot_initial_route"] = (
 			raw_payload,
 		) => {
@@ -152,9 +164,12 @@ export function make_effect_client_kernel(
 			);
 		const install_browser_handlers: EffectClientKernel["install_browser_handlers"] =
 			Effect.gen(function* () {
-				yield* lifecycle.listen_window(WINDOW_EVENT_POPSTATE, () => {
-					void Effect.runPromise(handle_popstate);
-				});
+				yield* lifecycle.listen_window_effect(
+					WINDOW_EVENT_POPSTATE,
+					() => {
+						return handle_popstate;
+					},
+				);
 				yield* scroll_restoration.install_reload_scroll_saver(
 					lifecycle,
 				);
@@ -249,7 +264,7 @@ export function make_effect_client_kernel(
 		};
 		yield* add_client_kernel_finalizers(kernel);
 		return kernel;
-	});
+	}).pipe(Effect.provide(navigation_graph_layer));
 }
 
 export function acquire_effect_client_kernel(

@@ -10,6 +10,10 @@ export type RuntimeLifecycle = {
 		event_name: K,
 		listener: (event: WindowEventMap[K]) => void,
 	) => Effect.Effect<void>;
+	listen_window_effect: <K extends keyof WindowEventMap>(
+		event_name: K,
+		listener: (event: WindowEventMap[K]) => Effect.Effect<void>,
+	) => Effect.Effect<void>;
 	shutdown: Effect.Effect<void>;
 };
 
@@ -23,7 +27,14 @@ export function make_runtime_lifecycle(): Effect.Effect<
 		const add_finalizer: RuntimeLifecycle["add_finalizer"] = (
 			finalizer,
 		) => {
-			return Scope.addFinalizer(scope, run_finalizer(finalizer));
+			return Scope.addFinalizer(
+				scope,
+				finalizer.pipe(
+					Effect.catchCause(() => {
+						return Effect.void;
+					}),
+				),
+			);
 		};
 
 		const listen_window: RuntimeLifecycle["listen_window"] = (
@@ -42,6 +53,21 @@ export function make_runtime_lifecycle(): Effect.Effect<
 				);
 			});
 		};
+		const listen_window_effect: RuntimeLifecycle["listen_window_effect"] = (
+			event_name,
+			listener,
+		) => {
+			return listen_window(event_name, (event) => {
+				Effect.runFork(
+					listener(event).pipe(
+						Effect.asVoid,
+						Effect.catchCause(() => {
+							return Effect.void;
+						}),
+					),
+				);
+			});
+		};
 
 		const shutdown = Scope.close(scope, Exit.void).pipe(
 			Effect.catchCause(() => {
@@ -52,15 +78,8 @@ export function make_runtime_lifecycle(): Effect.Effect<
 		return {
 			add_finalizer,
 			listen_window,
+			listen_window_effect,
 			shutdown,
 		};
 	});
-}
-
-function run_finalizer(finalizer: Effect.Effect<void>): Effect.Effect<void> {
-	return finalizer.pipe(
-		Effect.catchCause(() => {
-			return Effect.void;
-		}),
-	);
 }

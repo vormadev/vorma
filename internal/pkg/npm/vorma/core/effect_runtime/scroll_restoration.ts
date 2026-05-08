@@ -45,22 +45,7 @@ export function make_scroll_restoration(): Effect.Effect<
 > {
 	return Effect.gen(function* () {
 		const entries_ref = yield* Ref.make(new Map(read_scroll_entries()));
-		const save_reload_scroll = Effect.gen(function* () {
-			const scroll = yield* current_scroll;
-			yield* Effect.sync(() => {
-				try {
-					const entry: ReloadScrollEntry = {
-						...scroll,
-						unix: Date.now(),
-						href: window.location.href,
-					};
-					sessionStorage.setItem(
-						SCROLL_STORAGE_RELOAD_KEY,
-						JSON.stringify(entry),
-					);
-				} catch {}
-			});
-		});
+		const save_reload_scroll = Effect.sync(save_reload_scroll_now);
 
 		return {
 			set_manual_restoration: Effect.sync(() => {
@@ -85,10 +70,10 @@ export function make_scroll_restoration(): Effect.Effect<
 			},
 			save_reload_scroll,
 			install_reload_scroll_saver: (lifecycle) => {
-				return lifecycle.listen_window(
+				return lifecycle.listen_window_effect(
 					WINDOW_EVENT_BEFOREUNLOAD,
 					() => {
-						Effect.runSync(save_reload_scroll);
+						return save_reload_scroll;
 					},
 				);
 			},
@@ -143,11 +128,29 @@ export function make_scroll_restoration(): Effect.Effect<
 }
 
 const current_scroll = Effect.sync((): ScrollPosition => {
+	return current_scroll_now();
+});
+
+function current_scroll_now(): ScrollPosition {
 	return {
 		x: window.scrollX,
 		y: window.scrollY,
 	};
-});
+}
+
+function save_reload_scroll_now(): void {
+	try {
+		const entry: ReloadScrollEntry = {
+			...current_scroll_now(),
+			unix: Date.now(),
+			href: window.location.href,
+		};
+		sessionStorage.setItem(
+			SCROLL_STORAGE_RELOAD_KEY,
+			JSON.stringify(entry),
+		);
+	} catch {}
+}
 
 function read_scroll_entries(): StoredScrollEntry[] {
 	try {

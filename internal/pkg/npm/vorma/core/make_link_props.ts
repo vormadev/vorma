@@ -1,8 +1,5 @@
-import {
-	getHrefDetails,
-	getIsModifiedNavigationClick,
-	getIsPrimaryNavigationClick,
-} from "vorma/kit/url";
+import { Effect } from "effect";
+import { getHrefDetails } from "vorma/kit/url";
 import {
 	LINK_ACTIVE_ANCESTOR_ATTR,
 	LINK_ACTIVE_EXACT_ATTR,
@@ -10,6 +7,13 @@ import {
 	LINK_PENDING_EXACT_ATTR,
 } from "./constants.ts";
 import type { WorkState } from "./create_client_core.ts";
+import {
+	LINK_CLICK_FAILED_MESSAGE,
+	LINK_POINTER_DOWN_FAILED_MESSAGE,
+	type LinkIntentRuntime,
+	type LinkNavigationEvent,
+	make_link_intent_runtime,
+} from "./effect_runtime/link_intent_runtime.ts";
 import type { LinkPropsBase, RouteState } from "./types.ts";
 
 export type LinkRouteState = {
@@ -82,30 +86,15 @@ const COMPOSED_EVENT_KEYS = new Set([
 	"onTouchCancel",
 ]);
 
-let is_touch_active = false;
-let input_modality_registered = false;
+let default_link_intent_runtime: LinkIntentRuntime | undefined;
 
-function register_input_modality(): void {
-	if (input_modality_registered) {
-		return;
+function get_default_link_intent_runtime(): LinkIntentRuntime {
+	if (!default_link_intent_runtime) {
+		default_link_intent_runtime = Effect.runSync(
+			make_link_intent_runtime(),
+		);
 	}
-	input_modality_registered = true;
-
-	window.addEventListener("touchstart", () => {
-		is_touch_active = true;
-	});
-
-	const on_pointer = (e: PointerEvent) => {
-		const pt = e.pointerType;
-		if (pt === "touch") {
-			is_touch_active = true;
-		} else if (pt === "mouse" || pt === "pen") {
-			is_touch_active = false;
-		}
-	};
-
-	window.addEventListener("pointerdown", on_pointer);
-	window.addEventListener("pointermove", on_pointer);
+	return default_link_intent_runtime;
 }
 
 export function select_link_route_state(route: RouteState): LinkRouteState {
@@ -141,9 +130,8 @@ export function make_link_props(
 	nav: LinkNavFns,
 	route_state: LinkRouteState | null = null,
 	work_state?: LinkWorkState,
+	link_intent_runtime: LinkIntentRuntime = get_default_link_intent_runtime(),
 ): LinkPropsResult {
-	register_input_modality();
-
 	const href = (props.href as string) ?? "";
 	const pattern = props.pattern as string | undefined;
 	if (pattern) {
@@ -223,131 +211,81 @@ export function make_link_props(
 		| ((e: unknown) => void)
 		| undefined;
 
-	let prefetch_timer: number | undefined;
 	const wants_prefetch = prefetch_mode === "intent";
-
-	const start_pf = () => {
-		if (prefetch_timer !== undefined) {
-			clearTimeout(prefetch_timer);
-		}
-		prefetch_timer = window.setTimeout(() => {
-			prefetch_timer = undefined;
-			nav.start_prefetch(href);
-		}, prefetch_delay);
-	};
-
-	const stop_pf = () => {
-		if (prefetch_timer !== undefined) {
-			clearTimeout(prefetch_timer);
-			prefetch_timer = undefined;
-		}
-		nav.stop_prefetch(href);
-	};
+	const prefetch_intent = wants_prefetch
+		? Effect.runSync(
+				link_intent_runtime.make_prefetch_intent({
+					delay_ms: prefetch_delay,
+					href,
+					nav,
+				}),
+			)
+		: null;
 
 	return {
 		is_external: false,
 		anchor_props,
 
 		onClick: async (e: unknown) => {
-			const ev = e as any;
 			consumer_click?.(e);
-
-			if (ev.defaultPrevented) {
-				return;
-			}
-			if (getIsModifiedNavigationClick(ev)) {
-				return;
-			}
-			if (!getIsPrimaryNavigationClick(ev)) {
-				return;
-			}
-			if (target_attr && target_attr !== "" && target_attr !== "_self") {
-				return;
-			}
-
-			ev.preventDefault?.();
-
-			try {
-				await nav.navigate({
-					href,
-					replace,
-					scrollToTop: scroll_to_top,
-					...(skip_work_indicator === undefined
-						? {}
-						: { skipWorkIndicator: skip_work_indicator }),
-					state,
-				});
-			} catch (err) {
-				console.error("Vorma: Link click failed", err);
-			}
+			await Effect.runPromise(
+				link_intent_runtime
+					.click_navigation({
+						event: e as LinkNavigationEvent,
+						href,
+						nav,
+						replace,
+						scroll_to_top,
+						skip_work_indicator,
+						state,
+						target_attr,
+					})
+					.pipe(
+						Effect.catch((failure) => {
+							return link_intent_runtime.report_navigation_failure(
+								LINK_CLICK_FAILED_MESSAGE,
+								failure,
+							);
+						}),
+					),
+			);
 		},
 
 		onPointerDown:
 			visit_on_pointer_down || consumer_pointer_down
 				? async (e: unknown) => {
-						const ev = e as any;
 						consumer_pointer_down?.(e);
 						if (!visit_on_pointer_down) {
 							return;
 						}
-						if (ev.defaultPrevented) {
-							return;
-						}
-						const pt = ev.pointerType;
-						if (pt !== "mouse" && pt !== "pen") {
-							return;
-						}
-						if (getIsModifiedNavigationClick(ev)) {
-							return;
-						}
-						if (!getIsPrimaryNavigationClick(ev)) {
-							return;
-						}
-						if (
-							target_attr &&
-							target_attr !== "" &&
-							target_attr !== "_self"
-						) {
-							return;
-						}
-
-						ev.preventDefault?.();
-
-						const el = ev.currentTarget as HTMLElement;
-						el.addEventListener(
-							"click",
-							(ce: Event) => {
-								ce.preventDefault();
-							},
-							{ once: true },
+						await Effect.runPromise(
+							link_intent_runtime
+								.pointer_down_navigation({
+									event: e as LinkNavigationEvent,
+									href,
+									nav,
+									replace,
+									scroll_to_top,
+									skip_work_indicator,
+									target_attr,
+								})
+								.pipe(
+									Effect.catch((failure) => {
+										return link_intent_runtime.report_navigation_failure(
+											LINK_POINTER_DOWN_FAILED_MESSAGE,
+											failure,
+										);
+									}),
+								),
 						);
-
-						try {
-							await nav.navigate({
-								href,
-								replace,
-								scrollToTop: scroll_to_top,
-								...(skip_work_indicator === undefined
-									? {}
-									: {
-											skipWorkIndicator:
-												skip_work_indicator,
-										}),
-							});
-						} catch (err) {
-							console.error(
-								"Vorma: Link pointerdown navigation failed",
-								err,
-							);
-						}
 					}
 				: undefined,
 
 		onPointerEnter:
 			wants_prefetch || consumer_pointer_enter
 				? (e: unknown) => {
-						if (wants_prefetch) {
-							start_pf();
+						if (prefetch_intent) {
+							Effect.runSync(prefetch_intent.start);
 						}
 						consumer_pointer_enter?.(e);
 					}
@@ -356,8 +294,8 @@ export function make_link_props(
 		onFocus:
 			wants_prefetch || consumer_focus
 				? (e: unknown) => {
-						if (wants_prefetch) {
-							start_pf();
+						if (prefetch_intent) {
+							Effect.runSync(prefetch_intent.start);
 						}
 						consumer_focus?.(e);
 					}
@@ -366,8 +304,11 @@ export function make_link_props(
 		onPointerLeave:
 			wants_prefetch || consumer_pointer_leave
 				? (e: unknown) => {
-						if (wants_prefetch && !is_touch_active) {
-							stop_pf();
+						if (
+							prefetch_intent &&
+							!Effect.runSync(link_intent_runtime.is_touch_active)
+						) {
+							Effect.runSync(prefetch_intent.stop);
 						}
 						consumer_pointer_leave?.(e);
 					}
@@ -376,8 +317,8 @@ export function make_link_props(
 		onBlur:
 			wants_prefetch || consumer_blur
 				? (e: unknown) => {
-						if (wants_prefetch) {
-							stop_pf();
+						if (prefetch_intent) {
+							Effect.runSync(prefetch_intent.stop);
 						}
 						consumer_blur?.(e);
 					}
@@ -386,8 +327,8 @@ export function make_link_props(
 		onTouchCancel:
 			wants_prefetch || consumer_touch_cancel
 				? (e: unknown) => {
-						if (wants_prefetch) {
-							stop_pf();
+						if (prefetch_intent) {
+							Effect.runSync(prefetch_intent.stop);
 						}
 						consumer_touch_cancel?.(e);
 					}

@@ -150,7 +150,9 @@ export type RoutePreparerOptions = {
 		schema: unknown,
 		search_params: URLSearchParams,
 	) => unknown;
-	preload_css?: (css_bundles: string[]) => Effect.Effect<void>;
+	preload_css?: (
+		css_bundles: string[],
+	) => Effect.Effect<void, RouteCSSFailed>;
 	wait_for_css?: (
 		css_bundles: string[],
 	) => Effect.Effect<void, RouteCSSFailed>;
@@ -347,7 +349,7 @@ export function make_route_preparer(
 			options.parse_search_params ?? parseSearchParams;
 		const preload_css =
 			options.preload_css ??
-			((_css_bundles: string[]): Effect.Effect<void> => {
+			((_css_bundles: string[]): Effect.Effect<void, RouteCSSFailed> => {
 				return Effect.void;
 			});
 		const wait_for_css =
