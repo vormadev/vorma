@@ -112,7 +112,6 @@
 		"@types/react": "^19.2.14",
 		"@types/react-dom": "^19.2.3",
 		"@typescript/native-preview": "7.0.0-dev.20260326.1",
-		"effect": "4.0.0-beta.64",
 		"jsdom": "^29.0.1",
 		"oxfmt": "^0.44.0",
 		"oxlint": "^1.59.0",

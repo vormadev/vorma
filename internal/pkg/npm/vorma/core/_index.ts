@@ -40,9 +40,8 @@ export {
 } from "./make_link_props.ts";
 export {
 	get_entry_key,
-	make_outlet_slot_runtime,
+	resolve_outlet_slot,
 	type OutletSlot,
-	type OutletSlotRuntime,
 } from "./resolve_outlet_slot.ts";
 export type {
 	AppConfig,

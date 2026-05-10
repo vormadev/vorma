@@ -1,13 +1,13 @@
 /// <reference types="vite/client" />
 
 import { jsonDeepEquals, parseSearchParams } from "vorma/kit/json";
-import { addOnWindowFocusListener } from "vorma/kit/listeners";
 import {
 	createPatternRegistry,
 	findNestedMatches,
 	registerPattern,
 } from "vorma/kit/matcher";
 import { R, type Result } from "vorma/kit/result";
+import { create_client_core4 } from "../core4/core.ts";
 import {
 	BUILD_ID_HEADER,
 	DATA_SCRIPT_ID,
@@ -23,7 +23,6 @@ import {
 	X_CLIENT_REDIRECT,
 	X_VORMA_BUILD_SKEW,
 } from "./constants.ts";
-import { create_client_core_effect } from "./create_client_core_effect.ts";
 import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
 import { preload_modules } from "./modules.ts";
@@ -37,6 +36,8 @@ import type {
 	RouteState,
 	RouteUpdateReason,
 } from "./types.ts";
+
+const USE_CORE_4 = true;
 
 /////////////////////////////////////////////////////////////////////
 /////// Public Types
@@ -143,7 +144,9 @@ export type WorkIndicatorOptions = {
 export type ClientOptions = {
 	render?: () => void | Promise<void>;
 	workIndicator?: WorkIndicatorOptions;
-	revalidateOnWindowFocus?: boolean | { staleTimeMS: number };
+	revalidateOnWindowFocus?:
+		| boolean
+		| { staleTimeMS: number; skipWorkIndicator?: boolean };
 	defaultErrorBoundary?: (props: { error: unknown }) => any;
 	useViewTransitions?: boolean;
 	onRouteUpdate?: (
@@ -504,7 +507,15 @@ export function create_client_core(
 	commit: CommitFn,
 	test_options?: TestOptions,
 ): Result<ClientCore> {
-	return create_client_core_effect(app_config, commit, test_options);
+	if (USE_CORE_4) {
+		return create_client_core4(app_config, commit, {
+			hard_redirect: test_options?.hard_redirect,
+			reload: test_options?.reload,
+			scroll_to: test_options?.scroll_to,
+		});
+	}
+
+	return _legacy_create_client_core(app_config, commit, test_options);
 }
 
 /////// Legacy Implementation
@@ -3275,24 +3286,61 @@ function _legacy_create_client_core(
 			focus_revalidation_cleanup = null;
 		}
 		if (options.revalidateOnWindowFocus) {
-			const stale_ms =
+			const focus_revalidation_options =
 				typeof options.revalidateOnWindowFocus === "object"
-					? options.revalidateOnWindowFocus.staleTimeMS
-					: 5_000;
-			focus_revalidation_cleanup = addOnWindowFocusListener(() => {
-				const work = derive_work_state();
-				if (
-					work.navigation ||
-					work.revalidation ||
-					work.apiRequests.length > 0
-				) {
-					return;
+					? options.revalidateOnWindowFocus
+					: null;
+			const stale_ms = focus_revalidation_options?.staleTimeMS ?? 5_000;
+			const skip_work_indicator =
+				focus_revalidation_options?.skipWorkIndicator === true;
+			let focus_revalidation_timer: ReturnType<
+				typeof window.setTimeout
+			> | null = null;
+			const revalidate_after_focus = () => {
+				if (focus_revalidation_timer !== null) {
+					window.clearTimeout(focus_revalidation_timer);
 				}
-				if (Date.now() - last_activity_ts >= stale_ms) {
-					require_refresh("windowFocus", undefined, true);
-					notify_work_update();
+				focus_revalidation_timer = window.setTimeout(() => {
+					focus_revalidation_timer = null;
+					const work = derive_work_state();
+					if (
+						work.navigation ||
+						work.revalidation ||
+						work.apiRequests.length > 0
+					) {
+						return;
+					}
+					if (Date.now() - last_activity_ts >= stale_ms) {
+						require_refresh(
+							"windowFocus",
+							undefined,
+							skip_work_indicator,
+						);
+						notify_work_update();
+					}
+				}, 30);
+			};
+			const revalidate_after_visibility_change = () => {
+				if (document.visibilityState === "visible") {
+					revalidate_after_focus();
 				}
-			});
+			};
+			window.addEventListener("focus", revalidate_after_focus);
+			window.addEventListener(
+				"visibilitychange",
+				revalidate_after_visibility_change,
+			);
+			focus_revalidation_cleanup = () => {
+				if (focus_revalidation_timer !== null) {
+					window.clearTimeout(focus_revalidation_timer);
+					focus_revalidation_timer = null;
+				}
+				window.removeEventListener("focus", revalidate_after_focus);
+				window.removeEventListener(
+					"visibilitychange",
+					revalidate_after_visibility_change,
+				);
+			};
 		}
 		if (options.render) {
 			await options.render();

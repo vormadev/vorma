@@ -1,4 +1,3 @@
-import { Data, Effect, Result as EffectResult } from "effect";
 import { R, type Result } from "vorma/kit/result";
 
 export type HeadEl = {
@@ -10,225 +9,181 @@ export type HeadEl = {
 
 type HeadSection = "meta" | "rest";
 
-type HeadApplyOptions = {
-	allow_missing_empty_sections?: boolean;
-};
-
-export class HeadApplyFailed extends Data.TaggedError("HeadApplyFailed")<{
-	readonly error: unknown;
-	readonly reason: string;
-	readonly section: HeadSection | "title";
-}> {}
-
 export function apply_head_and_title(
 	title: string | undefined,
 	meta_els: HeadEl[],
 	rest_els: HeadEl[],
 ): Result<void> {
-	const result = Effect.runSync(
-		Effect.result(apply_head_and_title_effect(title, meta_els, rest_els)),
-	);
-	if (EffectResult.isFailure(result)) {
-		return R.err(result.failure.reason);
+	try {
+		if (title !== undefined) {
+			if (title !== "" || document.head.querySelector("title")) {
+				document.title = title;
+			}
+		}
+	} catch (error) {
+		return R.err(error instanceof Error ? error.message : String(error));
+	}
+
+	const meta_res = reconcile_section("meta", meta_els);
+	if (!meta_res.ok) {
+		return R.err(meta_res.err);
+	}
+	const res_res = reconcile_section("rest", rest_els);
+	if (!res_res.ok) {
+		return R.err(res_res.err);
 	}
 
 	return R.ok(undefined);
 }
 
-export function apply_head_and_title_effect(
-	title: string | undefined,
-	meta_els: HeadEl[],
-	rest_els: HeadEl[],
-	options: HeadApplyOptions = {},
-): Effect.Effect<void, HeadApplyFailed> {
-	return Effect.gen(function* () {
-		yield* Effect.try({
-			try: () => {
-				if (title !== undefined) {
-					if (title !== "" || document.head.querySelector("title")) {
-						document.title = title;
-					}
+function reconcile_section(section: HeadSection, els: HeadEl[]): Result<void> {
+	const boundary_res = find_boundary_comments(section);
+	if (!boundary_res.ok) {
+		return R.err(boundary_res.err);
+	}
+	const { start, end } = boundary_res.val;
+	if (!end.parentNode) {
+		return R.err(
+			`Invalid head section boundaries for section "${section}"`,
+		);
+	}
+	const parent = end.parentNode;
+	let first_error: string | undefined;
+
+	try {
+		const current_elements: Element[] = [];
+		let node: Node | null = start.nextSibling;
+		while (node && node !== end) {
+			if (node.nodeType === Node.ELEMENT_NODE) {
+				current_elements.push(node as Element);
+			}
+			node = node.nextSibling;
+		}
+
+		const new_elements: Element[] = [];
+		const new_element_fingerprints = new Map<string, Element>();
+
+		for (const block of els) {
+			if (!block.tag) {
+				first_error ??= `Invalid head element tag for section "${section}"`;
+				continue;
+			}
+			const el = document.createElement(block.tag);
+			if (block.attributesKnownSafe) {
+				for (const [key, value] of Object.entries(
+					block.attributesKnownSafe,
+				)) {
+					el.setAttribute(key, value);
 				}
-			},
-			catch: (error) => {
-				return make_head_apply_failed("title", error);
-			},
-		});
-		yield* reconcile_section("meta", meta_els, options);
-		yield* reconcile_section("rest", rest_els, options);
-	});
+			}
+			if (block.booleanAttributes) {
+				for (const key of block.booleanAttributes) {
+					el.setAttribute(key, "");
+				}
+			}
+			if (block.dangerousInnerHTML) {
+				el.innerHTML = block.dangerousInnerHTML;
+			}
+
+			const fp = fingerprint_element(el);
+
+			if (new_element_fingerprints.has(fp)) {
+				const prev = new_element_fingerprints.get(fp)!;
+				const idx = new_elements.indexOf(prev);
+				if (idx > -1) {
+					new_elements.splice(idx, 1);
+				}
+			}
+			new_elements.push(el);
+			new_element_fingerprints.set(fp, el);
+		}
+
+		const current_by_fp = new Map<string, Element[]>();
+		for (const el of current_elements) {
+			const fp = fingerprint_element(el);
+			const list = current_by_fp.get(fp);
+			if (list) {
+				list.push(el);
+			} else {
+				current_by_fp.set(fp, [el]);
+			}
+		}
+
+		const final_elements: Element[] = [];
+		const used = new Set<Element>();
+
+		for (const new_el of new_elements) {
+			const fp = fingerprint_element(new_el);
+			const candidates = current_by_fp.get(fp) ?? [];
+			const matched = candidates.find((el) => {
+				return !used.has(el);
+			});
+
+			if (matched) {
+				used.add(matched);
+				final_elements.push(matched);
+			} else {
+				final_elements.push(new_el);
+			}
+		}
+
+		const remaining = new Set(current_elements);
+		for (const el of current_elements) {
+			if (!used.has(el)) {
+				parent.removeChild(el);
+				remaining.delete(el);
+			}
+		}
+
+		node = start.nextSibling;
+		while (node && node !== end) {
+			const next = node.nextSibling;
+			if (node.nodeType !== Node.ELEMENT_NODE) {
+				parent.removeChild(node);
+			}
+			node = next;
+		}
+
+		let last_processed: Element | null = null;
+
+		for (const element of final_elements) {
+			const is_existing = used.has(element);
+
+			if (is_existing) {
+				const expected_next: Element | null = last_processed
+					? last_processed.nextElementSibling
+					: start.nextElementSibling;
+
+				if (expected_next !== element) {
+					parent.insertBefore(
+						element,
+						(expected_next as Node) ?? end,
+					);
+				}
+				remaining.delete(element);
+			} else {
+				const insert_before = last_processed
+					? last_processed.nextSibling
+					: start.nextSibling;
+				parent.insertBefore(element, insert_before ?? end);
+			}
+
+			last_processed = element;
+		}
+
+		if (first_error) {
+			return R.err(first_error);
+		}
+		return R.ok(undefined);
+	} catch (error) {
+		return R.err(error instanceof Error ? error.message : String(error));
+	}
 }
 
-function make_head_apply_failed(
-	section: HeadSection | "title",
-	error: unknown,
-): HeadApplyFailed {
-	const reason = error instanceof Error ? error.message : String(error);
-	return new HeadApplyFailed({ error, reason, section });
-}
-
-function reconcile_section(
-	section: HeadSection,
-	els: HeadEl[],
-	options: HeadApplyOptions,
-): Effect.Effect<void, HeadApplyFailed> {
-	return Effect.try({
-		try: () => {
-			let boundaries: { start: Comment; end: Comment };
-			try {
-				boundaries = find_boundary_comments(section);
-			} catch (error) {
-				if (options.allow_missing_empty_sections && els.length === 0) {
-					return;
-				}
-				throw error;
-			}
-			const { start, end } = boundaries;
-			if (!end.parentNode) {
-				throw new Error(
-					`Invalid head section boundaries for section "${section}"`,
-				);
-			}
-			const parent = end.parentNode;
-
-			// Collect current elements between markers
-			const current_elements: Element[] = [];
-			let node: Node | null = start.nextSibling;
-			while (node && node !== end) {
-				if (node.nodeType === Node.ELEMENT_NODE) {
-					current_elements.push(node as Element);
-				}
-				node = node.nextSibling;
-			}
-
-			// Build new elements from blocks
-			const new_elements: Element[] = [];
-			const new_element_fingerprints = new Map<string, Element>();
-
-			for (const block of els) {
-				if (!block.tag) {
-					continue;
-				}
-				const el = document.createElement(block.tag);
-				if (block.attributesKnownSafe) {
-					for (const [key, value] of Object.entries(
-						block.attributesKnownSafe,
-					)) {
-						el.setAttribute(key, value);
-					}
-				}
-				if (block.booleanAttributes) {
-					for (const key of block.booleanAttributes) {
-						el.setAttribute(key, "");
-					}
-				}
-				if (block.dangerousInnerHTML) {
-					el.innerHTML = block.dangerousInnerHTML;
-				}
-
-				const fp = fingerprint_element(el);
-
-				// Deduplicate: if a later block has the same fingerprint,
-				// it replaces the earlier one.
-				if (new_element_fingerprints.has(fp)) {
-					const prev = new_element_fingerprints.get(fp)!;
-					const idx = new_elements.indexOf(prev);
-					if (idx > -1) {
-						new_elements.splice(idx, 1);
-					}
-				}
-				new_elements.push(el);
-				new_element_fingerprints.set(fp, el);
-			}
-
-			// Build map of current elements by fingerprint
-			const current_by_fp = new Map<string, Element[]>();
-			for (const el of current_elements) {
-				const fp = fingerprint_element(el);
-				const list = current_by_fp.get(fp);
-				if (list) {
-					list.push(el);
-				} else {
-					current_by_fp.set(fp, [el]);
-				}
-			}
-
-			// Match new elements to existing DOM elements by exact fingerprint
-			const final_elements: Element[] = [];
-			const used = new Set<Element>();
-
-			for (const new_el of new_elements) {
-				const fp = fingerprint_element(new_el);
-				const candidates = current_by_fp.get(fp) ?? [];
-				const matched = candidates.find((el) => {
-					return !used.has(el);
-				});
-
-				if (matched) {
-					used.add(matched);
-					final_elements.push(matched);
-				} else {
-					final_elements.push(new_el);
-				}
-			}
-
-			// Remove elements that are no longer needed
-			const remaining = new Set(current_elements);
-			for (const el of current_elements) {
-				if (!used.has(el)) {
-					parent.removeChild(el);
-					remaining.delete(el);
-				}
-			}
-
-			// Remove stray text/comment nodes between markers
-			node = start.nextSibling;
-			while (node && node !== end) {
-				const next = node.nextSibling;
-				if (node.nodeType !== Node.ELEMENT_NODE) {
-					parent.removeChild(node);
-				}
-				node = next;
-			}
-
-			// Position elements in correct order with minimal DOM operations
-			let last_processed: Element | null = null;
-
-			for (const element of final_elements) {
-				const is_existing = used.has(element);
-
-				if (is_existing) {
-					const expected_next: Element | null = last_processed
-						? last_processed.nextElementSibling
-						: start.nextElementSibling;
-
-					if (expected_next !== element) {
-						parent.insertBefore(
-							element,
-							(expected_next as Node) ?? end,
-						);
-					}
-					remaining.delete(element);
-				} else {
-					const insert_before = last_processed
-						? last_processed.nextSibling
-						: start.nextSibling;
-					parent.insertBefore(element, insert_before ?? end);
-				}
-
-				last_processed = element;
-			}
-		},
-		catch: (error) => {
-			return make_head_apply_failed(section, error);
-		},
-	});
-}
-
-function find_boundary_comments(section: HeadSection): {
+function find_boundary_comments(section: HeadSection): Result<{
 	start: Comment;
 	end: Comment;
-} {
+}> {
 	const start_text = `vorma-${section}-start`;
 	const end_text = `vorma-${section}-end`;
 	let start: Comment | undefined;
@@ -240,10 +195,10 @@ function find_boundary_comments(section: HeadSection): {
 		if (val === start_text) {
 			start = node as Comment;
 		} else if (val === end_text && start) {
-			return { start, end: node as Comment };
+			return R.ok({ start, end: node as Comment });
 		}
 	}
-	throw new Error(
+	return R.err(
 		`Could not find head boundary comments for section "${section}"`,
 	);
 }

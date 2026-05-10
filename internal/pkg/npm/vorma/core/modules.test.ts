@@ -1,12 +1,7 @@
 // @vitest-environment jsdom
 
-import { Effect, Result as EffectResult } from "effect";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	ModulePreloadFailed,
-	preload_modules,
-	preload_modules_effect,
-} from "./modules.ts";
+import { preload_modules } from "./modules.ts";
 
 let original_dev: boolean;
 
@@ -75,18 +70,5 @@ describe("preload_modules", () => {
 			'link[rel="modulepreload"]',
 		);
 		expect(links).toHaveLength(0);
-	});
-
-	it("tags module preload DOM failures", () => {
-		import.meta.env.DEV = false;
-
-		const result = Effect.runSync(
-			Effect.result(preload_modules_effect(['/bad"quote.js'])),
-		);
-
-		expect(EffectResult.isFailure(result)).toBe(true);
-		if (EffectResult.isFailure(result)) {
-			expect(result.failure).toBeInstanceOf(ModulePreloadFailed);
-		}
 	});
 });

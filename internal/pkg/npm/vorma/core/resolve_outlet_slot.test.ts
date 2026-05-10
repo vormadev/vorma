@@ -1,18 +1,6 @@
-import { Effect } from "effect";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { RouteRenderEntry } from "./create_client_core.ts";
-import {
-	get_entry_key,
-	make_outlet_slot_runtime,
-	type OutletSlot,
-	type OutletSlotRuntime,
-} from "./resolve_outlet_slot.ts";
-
-let outlet_slot_runtime: OutletSlotRuntime;
-
-beforeEach(() => {
-	outlet_slot_runtime = Effect.runSync(make_outlet_slot_runtime());
-});
+import { get_entry_key, resolve_outlet_slot } from "./resolve_outlet_slot.ts";
 
 function make_entry(
 	overrides: Partial<RouteRenderEntry> = {},
@@ -63,22 +51,6 @@ function make_boundary_entry(
 			},
 		},
 	});
-}
-
-function resolve_outlet_slot(
-	entries: RouteRenderEntry[],
-	error: Parameters<OutletSlotRuntime["resolve_outlet_slot"]>[1],
-	idx: number,
-	default_error_boundary: Parameters<
-		OutletSlotRuntime["resolve_outlet_slot"]
-	>[3],
-): OutletSlot {
-	return outlet_slot_runtime.resolve_outlet_slot(
-		entries,
-		error,
-		idx,
-		default_error_boundary,
-	);
 }
 
 describe("resolve_outlet_slot", () => {

@@ -1566,6 +1566,12 @@ function assert_public_runtime_contracts(): void {
 	void React__createVormaClient(vorma_app_config, {
 		revalidateOnWindowFocus: { staleTimeMS: 3000 },
 	}).boot();
+	void React__createVormaClient(vorma_app_config, {
+		revalidateOnWindowFocus: {
+			skipWorkIndicator: true,
+			staleTimeMS: 3000,
+		},
+	}).boot();
 
 	// workIndicator
 	const boot_with_work_indicator = React__createVormaClient(

@@ -10,6 +10,7 @@ import {
 	deferred,
 	has_route_render_commit,
 	mock_fetch,
+	redirect_response,
 	register_ccc_lifecycle,
 	route_render_commit_at,
 	route_render_commit_count,
@@ -19,7 +20,11 @@ import {
 	setup,
 	tick,
 } from "./___ccc_test_helpers.ts";
-import { BUILD_ID_HEADER, X_VORMA_BUILD_SKEW } from "./constants.ts";
+import {
+	BUILD_ID_HEADER,
+	X_CLIENT_REDIRECT,
+	X_VORMA_BUILD_SKEW,
+} from "./constants.ts";
 import {
 	REVALIDATION_DEBOUNCE_MS,
 	apply_scroll,
@@ -53,6 +58,19 @@ async function wait_until(
 		});
 	}
 	throw new Error(message);
+}
+
+async function expect_revalidation_promise_resolves_ok(
+	promise: Promise<unknown>,
+): Promise<void> {
+	const pending = Symbol("pending");
+	const result = await Promise.race([
+		promise,
+		tick().then(() => {
+			return pending;
+		}),
+	]);
+	expect(result).toEqual({ ok: true });
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -1093,6 +1111,48 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 			page: "second",
 		});
 	});
+
+	it("settles navigation without publishing when a route hook rejects", async () => {
+		vi.doMock("/current.js", () => {
+			return {
+				default: {
+					pattern: "/current",
+					component: () => {
+						return null;
+					},
+					before_route_yield: async () => {
+						throw new Error("yield rejected");
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup({
+			payload: {
+				MatchedPatterns: ["/current"],
+				LoadersData: [{ page: "current" }],
+				ImportURLs: ["/current.js"],
+			},
+		});
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({
+				MatchedPatterns: ["/next"],
+				LoadersData: [{ page: "next" }],
+			}),
+		);
+
+		const pending = Symbol("pending");
+		let result: unknown = pending;
+		void core.navigate("/next").then((nav_result) => {
+			result = nav_result;
+		});
+		await wait_until(() => {
+			return result !== pending;
+		}, "navigation did not settle after route hook rejection");
+
+		expect(result).toEqual({ didNavigate: false });
+		expect(route_render_commit_count(commit)).toBe(0);
+	});
 });
 
 /////////////////////////////////////////////////////////////////////
@@ -1175,6 +1235,66 @@ describe("client loaders", () => {
 		expect(call_order.indexOf("b_start")).toBeLessThan(
 			call_order.indexOf("a_end"),
 		);
+	});
+
+	it("passes cached search-schema input to prestarted client loaders", async () => {
+		let captured_args: any = null;
+		const loader_started = deferred<void>();
+
+		vi.doMock("/users-module.js", () => {
+			return {
+				default: {
+					pattern: "/users",
+					component: () => {
+						return null;
+					},
+					client_loader: async (args: any) => {
+						if (args.trigger === "navigation") {
+							captured_args = args;
+							loader_started.resolve();
+							await args.serverPromise;
+						}
+						return { client: true };
+					},
+				},
+			};
+		});
+
+		const { core } = await setup({
+			payload: {
+				MatchedPatterns: ["/users"],
+				LoadersData: [{ users: "initial" }],
+				ImportURLs: ["/users-module.js"],
+				SearchSchemas: [
+					{
+						page: SEARCH_PARAM_SCHEMA_NUMBER,
+					},
+				],
+			},
+		});
+		const fetcher = mock_fetch();
+
+		const nav = core.navigate("/users?page=3");
+		await loader_started.promise;
+
+		expect(captured_args.input).toEqual({ page: 3 });
+		expect(captured_args.knownMatches).toEqual([
+			{ pattern: "/users", input: { page: 3 } },
+		]);
+
+		fetcher.call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/users"],
+				LoadersData: [{ users: "next" }],
+				ImportURLs: ["/users-module.js"],
+				SearchSchemas: [
+					{
+						page: SEARCH_PARAM_SCHEMA_NUMBER,
+					},
+				],
+			}),
+		);
+		await nav;
 	});
 
 	it("receives correct serverPromise content", async () => {
@@ -1736,6 +1856,49 @@ describe("build ID", () => {
 
 		expect(on_build_skew).not.toHaveBeenCalled();
 	});
+
+	it("reports hard reload behavior for route hard redirects with a newer build", async () => {
+		seed_payload({ ClientBuildID: "build-1" });
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		const on_build_skew = vi.fn();
+		await core.boot({ onBuildSkewDetected: on_build_skew });
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_CLIENT_REDIRECT]: "https://example.com/page",
+			}),
+		);
+
+		await core.navigate("/page");
+
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				defaultBehavior: "hardReload",
+				serverBuildID: "build-2",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					ok: true,
+					requestedHref: `${window.location.origin}/page`,
+					status: 200,
+					trigger: "navigation",
+				}),
+			}),
+		);
+	});
 });
 
 /////////////////////////////////////////////////////////////////////
@@ -1802,6 +1965,99 @@ describe("work integration", () => {
 			prefetch: null,
 			apiRequests: [],
 		});
+	});
+});
+
+/////////////////////////////////////////////////////////////////////
+/////// API submit revalidation settlement
+/////////////////////////////////////////////////////////////////////
+
+describe("API submit revalidation settlement", () => {
+	it("settles the revalidation promise for cross-origin mutation rejection", async () => {
+		const { core } = await setup();
+
+		const result = await core.submit_inner("https://example.com/api", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(false);
+		await expect_revalidation_promise_resolves_ok(
+			result.revalidationPromise,
+		);
+	});
+
+	it("settles the revalidation promise for invalid API redirects", async () => {
+		const { core } = await setup();
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[X_CLIENT_REDIRECT]: "mailto:not-http",
+			}),
+		);
+
+		const result = await core.submit_inner("/api/action", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(false);
+		await expect_revalidation_promise_resolves_ok(
+			result.revalidationPromise,
+		);
+	});
+
+	it("settles the revalidation promise for hard API redirects", async () => {
+		const { core, hard_redirect } = await setup();
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[X_CLIENT_REDIRECT]: "https://example.com/elsewhere",
+			}),
+		);
+
+		const result = await core.submit_inner("/api/action", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(true);
+		expect(hard_redirect).toHaveBeenCalledWith(
+			"https://example.com/elsewhere",
+		);
+		await expect_revalidation_promise_resolves_ok(
+			result.revalidationPromise,
+		);
+	});
+
+	it("reports build skew hard reload behavior for hard API redirects", async () => {
+		const on_build_skew = vi.fn();
+		const { core } = await setup({
+			clientOptions: { onBuildSkewDetected: on_build_skew },
+			payload: { ClientBuildID: "build-1" },
+		});
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_CLIENT_REDIRECT]: "https://example.com/elsewhere",
+			}),
+		);
+
+		const result = await core.submit_inner("/api/action", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(true);
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				defaultBehavior: "hardReload",
+				serverBuildID: "build-2",
+				triggeringResponse: expect.objectContaining({
+					apiRouteKind: "mutation",
+					kind: "apiRoute",
+					method: "POST",
+					ok: true,
+					requestedHref: `${window.location.origin}/api/action`,
+					status: 200,
+				}),
+			}),
+		);
 	});
 });
 
@@ -2079,6 +2335,95 @@ describe("work indicators", () => {
 		await result.revalidationPromise;
 		await tick();
 		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
+	});
+
+	it("shows work indicator for focus-triggered revalidation by default", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		seed_payload();
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+		const fetcher = mock_fetch();
+
+		await core.boot({
+			revalidateOnWindowFocus: { staleTimeMS: 100 },
+			workIndicator: config,
+		});
+
+		await vi.advanceTimersByTimeAsync(100);
+		window.dispatchEvent(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100);
+		await fetcher.wait_for(1);
+
+		expect(core.getWorkState().revalidation).not.toBeNull();
+		expect(config.start).toHaveBeenCalledTimes(1);
+
+		fetcher.call(0).resolve(route_response());
+		await vi.advanceTimersByTimeAsync(10);
+		await tick();
+
+		expect(config.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("skips work indicator for configured focus-triggered revalidation", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		seed_payload();
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+		const fetcher = mock_fetch();
+
+		await core.boot({
+			revalidateOnWindowFocus: {
+				skipWorkIndicator: true,
+				staleTimeMS: 100,
+			},
+			workIndicator: config,
+		});
+
+		await vi.advanceTimersByTimeAsync(100);
+		window.dispatchEvent(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100);
+		await fetcher.wait_for(1);
+
+		expect(core.getWorkState().revalidation).not.toBeNull();
+		expect(config.start).not.toHaveBeenCalled();
+
+		fetcher.call(0).resolve(route_response());
+		await vi.advanceTimersByTimeAsync(10);
+		await tick();
 
 		expect(config.start).not.toHaveBeenCalled();
 	});
@@ -2563,6 +2908,85 @@ describe("work indicators", () => {
 
 		expect_work_indicator_idle(core, config);
 		expect_stop_after_last_start(config);
+	});
+});
+
+/////////////////////////////////////////////////////////////////////
+/////// Revalidation timers
+/////////////////////////////////////////////////////////////////////
+
+describe("revalidation timers", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("clears replaced refresh debounce timers", async () => {
+		vi.useFakeTimers();
+		const { core } = await setup();
+		const clear_timeout = vi.spyOn(window, "clearTimeout");
+		const fetcher = mock_fetch();
+
+		const first = core.revalidate();
+		const second = core.revalidate();
+
+		expect(clear_timeout).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		fetcher.call(0).resolve(route_response());
+
+		await first;
+		await second;
+	});
+
+	it("keeps same-hash navigation a no-op while revalidation is running", async () => {
+		vi.useFakeTimers();
+		const { core, scroll_to } = await setup();
+		const fetcher = mock_fetch();
+
+		const revalidation = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		const push_state = vi.spyOn(window.history, "pushState");
+
+		await expect(core.navigate("/")).resolves.toEqual({
+			didNavigate: false,
+		});
+
+		expect(push_state).not.toHaveBeenCalled();
+		expect(scroll_to).toHaveBeenCalledWith(0, 0);
+
+		fetcher.call(0).resolve(route_response());
+		await revalidation;
+	});
+
+	it("keeps same-hash replace navigation non-navigating while revalidation is running", async () => {
+		vi.useFakeTimers();
+		const { core, scroll_to } = await setup();
+		const fetcher = mock_fetch();
+
+		const revalidation = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		const replace_state = vi.spyOn(window.history, "replaceState");
+
+		await expect(
+			core.navigate("/", {
+				replace: true,
+				state: { source: "replace" },
+			}),
+		).resolves.toEqual({
+			didNavigate: false,
+		});
+
+		expect(replace_state).toHaveBeenCalled();
+		expect(core.getRouteState().historyState).toEqual({
+			source: "replace",
+		});
+		expect(scroll_to).toHaveBeenCalledWith(0, 0);
+
+		fetcher.call(0).resolve(route_response());
+		await revalidation;
 	});
 });
 
@@ -3305,6 +3729,47 @@ describe("prefetch integration", () => {
 		expect(globalThis.fetch).toHaveBeenCalled();
 		const fetched_url = (globalThis.fetch as any).mock.calls[0][0];
 		expect(fetched_url.toString()).toContain("/prefetch-target");
+	});
+
+	it("reports build skew from a successful prefetch response", async () => {
+		seed_payload({ ClientBuildID: "build-1" });
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		const on_build_skew = vi.fn();
+		await core.boot({ onBuildSkewDetected: on_build_skew });
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({}, "build-2"),
+		);
+
+		core.start_prefetch("/prefetch-target");
+		await tick(10);
+
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				defaultBehavior: "notifyOnly",
+				serverBuildID: "build-2",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					ok: true,
+					requestedHref: `${window.location.origin}/prefetch-target`,
+					status: 200,
+					trigger: "prefetch",
+				}),
+			}),
+		);
 	});
 
 	it("stop_prefetch cancels in-flight prefetch", async () => {
@@ -4495,6 +4960,44 @@ describe("CSS preload gating", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("client loader promise reuse on hash change", () => {
+	it("retargets in-flight same-href navigation when options differ", async () => {
+		const { core } = await setup();
+		let resolve_fetch!: (r: Response) => void;
+		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+			return new Promise((resolve) => {
+				resolve_fetch = resolve;
+			});
+		});
+
+		const first = core.navigate("/reuse", {
+			state: { request: "first" },
+		});
+		await tick();
+
+		const second = core.navigate("/reuse", {
+			state: { request: "second" },
+		});
+		const pending = Symbol("pending");
+		let first_result: unknown = pending;
+		void first.then((result) => {
+			first_result = result;
+		});
+		await tick();
+		expect(first_result).toEqual({ didNavigate: false });
+
+		resolve_fetch(
+			route_response({
+				MatchedPatterns: ["/reuse"],
+				LoadersData: [{ v: 1 }],
+			}),
+		);
+
+		await expect(second).resolves.toEqual({ didNavigate: true });
+		expect(core.getRouteState().historyState).toEqual({
+			request: "second",
+		});
+	});
+
 	it("does not re-invoke client loader when only hash changes on in-flight navigation", async () => {
 		let invocation_count = 0;
 

@@ -4,6 +4,11 @@ export const BUILD_ID_HEADER = "X-Vorma-Client-Build-Id";
 export const X_VORMA_BUILD_SKEW = "X-Vorma-Build-Skew";
 export const X_CLIENT_REDIRECT = "X-Client-Redirect";
 export const X_ACCEPTS_CLIENT_REDIRECT = "X-Accepts-Client-Redirect";
+export const VORMA_PROTOCOL_ENABLED = "1";
+export const API_SUBMIT_CROSS_ORIGIN_ERROR =
+	"submit only supports same-origin targets. Received:";
+export const CONTENT_TYPE_HEADER = "Content-Type";
+export const JSON_CONTENT_TYPE = "application/json";
 
 export const VERCEL_X_DEPLOYMENT_ID = "x-deployment-id";
 export const VERCEL_DPL_QUERY_PARAM_KEY = "dpl";

@@ -1,19 +1,8 @@
 // @vitest-environment jsdom
 
-import { Effect, Result as EffectResult } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 import { CSS_BUNDLE_ATTR } from "./constants.ts";
-import {
-	CSSApplyFailed,
-	CSSPreloadFailed,
-	CSSWaitFailed,
-	apply_css_bundles,
-	apply_css_bundles_effect,
-	preload_css,
-	preload_css_effect,
-	wait_for_css,
-	wait_for_css_effect,
-} from "./css.ts";
+import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 
 beforeEach(() => {
 	document.head.innerHTML = "";
@@ -230,44 +219,5 @@ describe("apply_css_bundles", () => {
 			'link[data-vorma-css-bundle="/a.css"]',
 		);
 		expect(links).toHaveLength(1);
-	});
-});
-
-/////////////////////////////////////////////////////////////////////
-/////// Effect failures
-/////////////////////////////////////////////////////////////////////
-
-describe("css Effect failures", () => {
-	it("tags preload DOM failures", () => {
-		const result = Effect.runSync(
-			Effect.result(preload_css_effect(['/bad"quote.css'])),
-		);
-
-		expect(EffectResult.isFailure(result)).toBe(true);
-		if (EffectResult.isFailure(result)) {
-			expect(result.failure).toBeInstanceOf(CSSPreloadFailed);
-		}
-	});
-
-	it("tags wait DOM failures", async () => {
-		const result = await Effect.runPromise(
-			Effect.result(wait_for_css_effect(['/bad"quote.css'])),
-		);
-
-		expect(EffectResult.isFailure(result)).toBe(true);
-		if (EffectResult.isFailure(result)) {
-			expect(result.failure).toBeInstanceOf(CSSWaitFailed);
-		}
-	});
-
-	it("tags apply DOM failures", () => {
-		const result = Effect.runSync(
-			Effect.result(apply_css_bundles_effect(['/bad"quote.css'])),
-		);
-
-		expect(EffectResult.isFailure(result)).toBe(true);
-		if (EffectResult.isFailure(result)) {
-			expect(result.failure).toBeInstanceOf(CSSApplyFailed);
-		}
 	});
 });
