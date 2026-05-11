@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import { parseSearchParams } from "vorma/kit/json";
+import { jsonDeepEquals, parseSearchParams } from "vorma/kit/json";
 import {
 	createPatternRegistry,
 	findNestedMatches,
@@ -51,6 +51,7 @@ import type {
 	ActiveRouteSlot,
 	APIResponseClassificationInput,
 	APIRouteKind,
+	APISubmissionBuildSkewReport,
 	APISubmissionOutcome,
 	APISubmissionRequest,
 	APISubmissionResult,
@@ -64,6 +65,8 @@ import type {
 	BuildSkewTriggeringResponse,
 	ClientLoaderKnownMatch,
 	Core4APIResult,
+	Core4BootingInit,
+	Core4BootingModel,
 	Core4ClientLoader,
 	Core4ClientLoaderPrefetch,
 	Core4ClientLoaderServerState,
@@ -72,6 +75,8 @@ import type {
 	Core4Init,
 	Core4Model,
 	Core4PreparedRenderPayload,
+	Core4ReadyInit,
+	Core4ReadyModel,
 	Core4ResponseFacts,
 	Core4ScrollState,
 	Core4TestOptions,
@@ -81,14 +86,13 @@ import type {
 	Core4WorkProjection,
 	Deferred,
 	DeferredAPIRedirectRequest,
+	NavigationActiveRouteSlot,
 	NavigationRequest,
 	NavigationStartTransition,
 	PopstateRequest,
 	PrefetchRequest,
 	PrefetchSlot,
 	PreparedRoute,
-	PreparedRouteOutcome,
-	PreparedRouteTransition,
 	PublicationCommit,
 	PublicationHistoryAction,
 	PublicationHookPlan,
@@ -103,9 +107,13 @@ import type {
 	RevalidationRequest,
 	RevalidationResult,
 	RevalidationStartRequest,
+	RouteBuildSkewReport,
 	RoutePayload,
+	RoutePreparationOutcome,
+	RoutePreparationTransition,
 	RouteResponseClassificationInput,
 	RouteResponseOutcome,
+	RouteResponseOwner,
 	RouteResponseTransition,
 	RouteState,
 	RouteUpdateReason,
@@ -121,22 +129,37 @@ export const CORE4_REVALIDATION_MAX_RETRIES = 8;
 
 const api_invalid_redirect_error_prefix =
 	"Redirect target must use an HTTP(S) scheme. Received:";
+const api_aborted_error = "Aborted";
+const abort_error_name = "AbortError";
 const route_id_separator = ":";
 
+export function create_core4_model(input: Core4ReadyInit): Core4ReadyModel;
+export function create_core4_model(input: Core4BootingInit): Core4BootingModel;
 export function create_core4_model(input: Core4Init): Core4Model {
-	return {
+	const base = {
 		active_route: null,
-		browser: input.browser ?? null,
 		client_build_id: input.client_build_id,
-		current: input.current ?? null,
 		deferred_api_redirect: input.deferred_api_redirect ?? null,
-		phase: input.phase ?? "booting",
 		prefetch: null,
 		publication: null,
-		refresh: { kind: "idle" },
+		refresh: { kind: "idle" as const },
 		sequence: input.current?.sequence ?? 0,
 		submissions: {},
 		use_view_transitions: input.use_view_transitions ?? false,
+	};
+	if (input.phase === "ready") {
+		return {
+			...base,
+			browser: input.browser,
+			current: input.current,
+			phase: "ready",
+		};
+	}
+	return {
+		...base,
+		browser: input.browser ?? null,
+		current: input.current ?? null,
+		phase: "booting",
 	};
 }
 
@@ -197,13 +220,30 @@ export function accept_boot_provisional_route(
 export function classify_route_response(
 	input: RouteResponseClassificationInput,
 ): RouteResponseOutcome {
+	if (input.owner.kind === "stale") {
+		return {
+			kind: "ignored_stale",
+			owner_kind: "stale",
+			token: input.token,
+		};
+	}
+	const build_skew_report = route_response_build_skew_report(input);
 	if (
 		input.response.headers.get(X_VORMA_BUILD_SKEW) ===
 		VORMA_PROTOCOL_ENABLED
 	) {
+		const behavior =
+			input.owner.kind === "prefetch" ||
+			input.owner.active_route.kind === "revalidation"
+				? "drop"
+				: "reload";
 		return {
+			behavior,
+			default_behavior:
+				behavior === "drop" ? "dropResponse" : "hardReload",
 			href: input.requested_href,
 			kind: "build_skew",
+			owner_kind: input.owner.kind,
 			response: build_skew_response_facts(input.response),
 			token: input.token,
 		};
@@ -213,74 +253,181 @@ export function classify_route_response(
 		input.requested_href,
 	);
 	if (redirect_href) {
-		return {
-			href: redirect_href,
-			kind: "soft_redirect",
-			token: input.token,
-		};
+		return attach_route_build_skew_report(
+			{
+				href: redirect_href,
+				kind: "soft_redirect",
+				owner_kind: input.owner.kind,
+				token: input.token,
+			},
+			build_skew_report,
+		);
 	}
 	if (!input.response.ok || !input.payload) {
-		return {
-			kind: "failed",
-			retryable: true,
-			token: input.token,
-		};
+		return attach_route_build_skew_report(
+			{
+				kind: "failed",
+				owner_kind: input.owner.kind,
+				retryable:
+					input.owner.kind === "active_route" &&
+					input.owner.active_route.kind === "revalidation",
+				token: input.token,
+			},
+			build_skew_report,
+		);
 	}
-	return {
-		kind: "data",
-		payload: input.payload,
-		token: input.token,
-	};
+	return attach_route_build_skew_report(
+		{
+			kind: "data",
+			owner_kind: input.owner.kind,
+			payload: input.payload,
+			token: input.token,
+		},
+		build_skew_report,
+	);
 }
 
 export function classify_api_response(
 	input: APIResponseClassificationInput,
 ): APISubmissionOutcome {
+	if (!input.submission) {
+		return {
+			kind: "ignored_stale",
+			token: input.token,
+		};
+	}
+	const base = {
+		token: input.token,
+	};
+	const build_skew_report = api_response_build_skew_report(input);
 	const redirect_href = response_redirect_href(
 		input.response,
 		input.requested_href,
 	);
 	if (redirect_href) {
 		if (!is_http_href(redirect_href)) {
-			return {
-				error: `${api_invalid_redirect_error_prefix} "${redirect_href}".`,
-				kind: "invalid_redirect",
-				response: input.response.raw_response,
-				token: input.token,
-			};
+			return attach_api_build_skew_report(
+				{
+					error: `${api_invalid_redirect_error_prefix} "${redirect_href}".`,
+					kind: "invalid_redirect",
+					response: input.response.raw_response,
+					...base,
+				},
+				build_skew_report,
+			);
 		}
 		if (!same_origin(redirect_href, input.requested_href)) {
-			return {
-				href: redirect_href,
-				kind: "hard_redirect",
-				response: input.response.raw_response,
-				token: input.token,
-			};
+			return attach_api_build_skew_report(
+				{
+					href: redirect_href,
+					kind: "hard_redirect",
+					response: input.response.raw_response,
+					...base,
+				},
+				build_skew_report,
+			);
 		}
-		return {
-			browser_key: input.browser_key,
-			href: redirect_href,
-			kind: "soft_redirect",
-			navigation_token: input.navigation_token,
-			response: input.response.raw_response,
-			state: input.state,
-			token: input.token,
-		};
+		return attach_api_build_skew_report(
+			{
+				browser_key: input.browser_key,
+				href: redirect_href,
+				kind: "soft_redirect",
+				navigation_token: input.navigation_token,
+				response: input.response.raw_response,
+				state: input.state,
+				...base,
+			},
+			build_skew_report,
+		);
 	}
 	if (!input.response.ok) {
-		return {
-			error: input.response.status_text,
-			kind: "http_error",
+		return attach_api_build_skew_report(
+			{
+				error: input.response.status_text,
+				kind: "http_error",
+				response: input.response.raw_response,
+				...base,
+			},
+			build_skew_report,
+		);
+	}
+	return attach_api_build_skew_report(
+		{
+			data: input.data,
+			kind: "success",
 			response: input.response.raw_response,
+			...base,
+		},
+		build_skew_report,
+	);
+}
+
+function classify_route_failure(input: {
+	owner: RouteResponseOwner;
+	retryable: boolean;
+	token: Core4Token;
+}): RouteResponseOutcome {
+	if (input.owner.kind === "stale") {
+		return {
+			kind: "ignored_stale",
+			owner_kind: "stale",
 			token: input.token,
 		};
 	}
 	return {
-		data: input.data,
-		kind: "success",
-		response: input.response.raw_response,
+		kind: "failed",
+		owner_kind: input.owner.kind,
+		retryable: input.retryable,
 		token: input.token,
 	};
+}
+
+function classify_api_runtime_failure(input: {
+	dispatched: boolean;
+	error: string;
+	kind: "aborted" | "network_error";
+	submission: SubmissionSlot | null;
+	token: Core4Token;
+}): APISubmissionOutcome {
+	if (!input.submission) {
+		return {
+			kind: "ignored_stale",
+			token: input.token,
+		};
+	}
+	if (input.kind === "aborted") {
+		return {
+			dispatched: input.dispatched,
+			kind: "aborted",
+			token: input.token,
+		};
+	}
+	return {
+		dispatched: input.dispatched,
+		error: input.error,
+		kind: "network_error",
+		token: input.token,
+	};
+}
+
+function attach_route_build_skew_report(
+	outcome: RouteResponseOutcome,
+	build_skew_report: RouteBuildSkewReport | undefined,
+): RouteResponseOutcome {
+	if (build_skew_report) {
+		outcome.build_skew_report = build_skew_report;
+	}
+	return outcome;
+}
+
+function attach_api_build_skew_report(
+	outcome: APISubmissionOutcome,
+	build_skew_report: APISubmissionBuildSkewReport | undefined,
+): APISubmissionOutcome {
+	if (build_skew_report) {
+		outcome.build_skew_report = build_skew_report;
+	}
+	return outcome;
 }
 
 export function derive_core4_work_state(model: Core4Model): WorkState {
@@ -415,6 +562,7 @@ export function begin_api_submission(
 	}
 
 	const effects: Core4Effect[] = [];
+	let next_model = model;
 	let submissions = model.submissions;
 	const previous = request.dedupe_key
 		? find_running_submission_by_dedupe_key(model, request.dedupe_key)
@@ -426,11 +574,22 @@ export function begin_api_submission(
 		});
 		submissions = {
 			...submissions,
-			[previous.token]: {
-				...previous,
-				phase: "superseded",
-			},
+			[previous.token]: undefined,
 		};
+		next_model = schedule_api_revalidation(
+			{
+				...next_model,
+				submissions,
+			},
+			previous,
+			effects,
+		);
+		effects.push(
+			api_settlement_effect(previous.token, {
+				error: api_aborted_error,
+				success: false,
+			}),
+		);
 	}
 
 	const submission: SubmissionSlot = {
@@ -438,7 +597,6 @@ export function begin_api_submission(
 		href,
 		key: request.key,
 		method: request.method,
-		phase: "running",
 		refresh_waiter_id: request.refresh_waiter_id,
 		route_kind: request.route_kind,
 		should_revalidate: request.should_revalidate,
@@ -457,9 +615,9 @@ export function begin_api_submission(
 		effects,
 		kind: previous ? "replaced" : "started",
 		model: {
-			...model,
+			...next_model,
 			submissions: {
-				...submissions,
+				...next_model.submissions,
 				[request.token]: submission,
 			},
 		},
@@ -470,16 +628,55 @@ export function accept_api_submission_outcome(
 	model: Core4Model,
 	outcome: APISubmissionOutcome,
 ): APISubmissionTransition | undefined {
+	if (outcome.kind === "ignored_stale") {
+		return {
+			effects: [
+				{
+					token: outcome.token,
+					type: "release_api_submission",
+				},
+			],
+			kind: "ignored_stale",
+			model,
+		};
+	}
 	const submission = model.submissions[outcome.token];
 	if (!submission) {
 		return {
-			effects: [],
+			effects: [
+				{
+					token: outcome.token,
+					type: "release_api_submission",
+				},
+			],
 			kind: "ignored_stale",
 			model,
 		};
 	}
 
-	const effects: Core4Effect[] = [];
+	const effects: Core4Effect[] = [
+		{
+			token: outcome.token,
+			type: "release_api_submission",
+		},
+	];
+	const build_skew_report = outcome.build_skew_report;
+	if (build_skew_report) {
+		append_build_skew_notification(
+			effects,
+			model,
+			build_skew_report.response,
+			{
+				apiRouteKind: submission.route_kind,
+				kind: "apiRoute",
+				method: submission.method,
+				ok: build_skew_report.response.ok,
+				requestedHref: submission.href,
+				status: build_skew_report.response.status,
+			},
+			build_skew_report.default_behavior,
+		);
+	}
 	const settled_model = remove_submission(model, submission);
 	if (outcome.kind === "success") {
 		const next_model = schedule_api_revalidation(
@@ -525,7 +722,7 @@ export function accept_api_submission_outcome(
 			: settled_model;
 		effects.push(
 			api_settlement_effect(submission.token, {
-				error: "Aborted",
+				error: api_aborted_error,
 				success: false,
 			}),
 		);
@@ -667,6 +864,8 @@ export function begin_boot(
 	return {
 		effects: [
 			{
+				history_state: request.browser.state,
+				href: request.browser.href,
 				payload: request.payload,
 				target: "active_route",
 				token: request.token,
@@ -694,7 +893,7 @@ export function begin_boot(
 				token: request.token,
 			},
 			browser: request.browser,
-		},
+		} as Core4Model,
 	};
 }
 
@@ -713,8 +912,12 @@ export function begin_navigation(
 		!is_http_href(target_href) ||
 		!same_origin(target_href, model.browser.href)
 	) {
+		const effects: Core4Effect[] = [
+			{ href: target_href, type: "hard_redirect" },
+		];
+		append_navigation_settlement(effects, request.public_call_ids, false);
 		return {
-			effects: [{ href: target_href, type: "hard_redirect" }],
+			effects,
 			kind: "hard_redirect",
 			model,
 		};
@@ -748,7 +951,7 @@ export function begin_navigation(
 		scroll_to_top: request.scroll_to_top,
 		sequence: sequenced.sequence,
 		skip_work_indicator: request.skip_work_indicator,
-		source: request.source ?? "navigate",
+		source: navigation_active_route_source(request.source),
 		state: request.state,
 		token: request.token,
 	};
@@ -764,7 +967,7 @@ export function begin_navigation(
 		model: {
 			...sequenced.model,
 			active_route,
-		},
+		} as Core4Model,
 	};
 }
 
@@ -779,8 +982,10 @@ export function begin_popstate(
 		request.browser.key === model.browser.key &&
 		request.browser.href === model.browser.href
 	) {
+		const effects: Core4Effect[] = [];
+		append_navigation_settlement(effects, request.public_call_ids, false);
 		return {
-			effects: [],
+			effects,
 			kind: "ignored",
 			model,
 		};
@@ -834,7 +1039,7 @@ export function begin_popstate(
 				state: request.browser.state,
 				token: request.token,
 			},
-		},
+		} as Core4Model,
 	};
 }
 
@@ -924,11 +1129,22 @@ export function accept_route_response(
 	model: Core4Model,
 	outcome: RouteResponseOutcome,
 ): RouteResponseTransition | undefined {
-	if (model.active_route?.token === outcome.token) {
-		return accept_active_route_response(model, model.active_route, outcome);
+	if (outcome.kind === "ignored_stale") {
+		return {
+			effects: [],
+			kind: "ignored_stale",
+			model,
+		};
 	}
-	if (model.prefetch?.token === outcome.token) {
-		return accept_prefetch_response(model, model.prefetch, outcome);
+	const owner = route_response_owner(model, outcome.token);
+	if (
+		owner.kind === "active_route" &&
+		outcome.owner_kind === "active_route"
+	) {
+		return accept_active_route_response(model, owner.active_route, outcome);
+	}
+	if (owner.kind === "prefetch" && outcome.owner_kind === "prefetch") {
+		return accept_prefetch_response(model, owner.prefetch, outcome);
 	}
 	return {
 		effects: [],
@@ -937,18 +1153,44 @@ export function accept_route_response(
 	};
 }
 
-export function accept_prepared_route(
+export function accept_route_preparation(
 	model: Core4Model,
-	outcome: PreparedRouteOutcome,
-): PreparedRouteTransition | undefined {
-	if (model.prefetch?.token === outcome.token) {
+	outcome: RoutePreparationOutcome,
+): RoutePreparationTransition | undefined {
+	const owner = route_response_owner(model, outcome.token);
+	if (outcome.kind === "failed") {
+		return accept_route_response(
+			model,
+			classify_route_failure({
+				owner,
+				retryable: outcome.retryable,
+				token: outcome.token,
+			}),
+		);
+	}
+	if (owner.kind === "stale") {
 		return {
 			effects: [],
+			kind: "ignored_stale",
+			model,
+		};
+	}
+	if (outcome.kind === "aborted") {
+		return undefined;
+	}
+	if (owner.kind === "prefetch") {
+		return {
+			effects: [
+				{
+					token: outcome.token,
+					type: "release_route_work",
+				},
+			],
 			kind: "prefetch_prepared",
 			model: {
 				...model,
 				prefetch: {
-					href: model.prefetch.href,
+					href: owner.prefetch.href,
 					phase: "prepared",
 					prepared: outcome.prepared,
 					token: outcome.token,
@@ -956,17 +1198,14 @@ export function accept_prepared_route(
 			},
 		};
 	}
-	const active_route = model.active_route;
-	if (!active_route || active_route.token !== outcome.token) {
-		return undefined;
-	}
+	const active_route = owner.active_route;
 	if (active_route.phase !== "preparing") {
 		return undefined;
 	}
-	return publish_prepared_active_route(model, active_route, outcome.prepared);
+	return begin_route_publication(model, active_route, outcome.prepared);
 }
 
-function publish_prepared_active_route(
+function begin_route_publication(
 	model: Core4Model,
 	active_route: ActiveRouteSlot,
 	prepared: PreparedRoute,
@@ -987,43 +1226,36 @@ function publish_prepared_active_route(
 	const save_current_scroll =
 		overrides.save_current_scroll ??
 		publication_saves_current_scroll(active_route);
-	const publication: PublicationSlot = {
-		committed: false,
-		did_navigate:
-			overrides.did_navigate ?? active_route.kind !== "revalidation",
+	const plan: PublicationPlan = {
 		history,
 		hooks,
 		next,
 		position,
 		previous: active_route.kind === "boot" ? null : model.current,
-		public_call_ids: active_route.public_call_ids,
 		reason: publication_reason(active_route),
 		route_sequence: active_route.sequence,
 		save_current_scroll,
 		scroll,
 		token: active_route.token,
+		use_view_transition:
+			overrides.use_view_transition ??
+			publication_uses_view_transition(model, active_route),
 	};
+	const publication = {
+		did_navigate:
+			overrides.did_navigate ?? active_route.kind !== "revalidation",
+		phase: "publishing",
+		plan,
+		public_call_ids: active_route.public_call_ids,
+		token: plan.token,
+	} satisfies PublicationSlot;
+	const effects: Core4Effect[] = [];
+	effects.push({
+		plan,
+		type: "publish_route",
+	});
 	return {
-		effects: [
-			{
-				plan: {
-					history: publication.history,
-					hooks: publication.hooks,
-					next: publication.next,
-					position: publication.position,
-					previous: publication.previous,
-					reason: publication.reason,
-					route_sequence: publication.route_sequence,
-					save_current_scroll: publication.save_current_scroll,
-					scroll: publication.scroll,
-					token: publication.token,
-					use_view_transition:
-						overrides.use_view_transition ??
-						publication_uses_view_transition(model, active_route),
-				},
-				type: "publish_route",
-			},
-		],
+		effects,
 		kind: "publishing",
 		model: {
 			...model,
@@ -1032,7 +1264,7 @@ function publish_prepared_active_route(
 				phase: "publishing",
 			},
 			publication,
-		},
+		} as Core4Model,
 	};
 }
 
@@ -1040,10 +1272,22 @@ export function commit_publication(
 	model: Core4Model,
 	commit: PublicationCommit,
 ): Core4Transition<"committed"> | undefined {
-	const publication = model.publication;
-	if (!publication || publication.token !== commit.token) {
+	const publication = owned_by(model, commit.token, "publication");
+	if (!publication || publication.phase !== "publishing") {
 		return undefined;
 	}
+	const active_route = owned_by(model, commit.token, "active_route");
+	if (!active_route || active_route.phase !== "publishing") {
+		return undefined;
+	}
+	const plan = publication.plan;
+	const refresh =
+		active_route.kind === "revalidation" && model.refresh.kind === "running"
+			? {
+					demand: model.refresh.demand,
+					kind: "settling" as const,
+				}
+			: model.refresh;
 	return {
 		effects: [],
 		kind: "committed",
@@ -1053,18 +1297,19 @@ export function commit_publication(
 				model.active_route?.token === commit.token
 					? null
 					: model.active_route,
-			browser: publication.position,
+			browser: plan.position,
 			current: {
-				position: publication.position,
-				route: publication.next.route,
-				sequence: publication.route_sequence,
+				position: plan.position,
+				route: plan.next.route,
+				sequence: plan.route_sequence,
 			},
 			phase: model.phase === "booting" ? "ready" : model.phase,
 			publication: {
 				...publication,
-				committed: true,
+				phase: "committed",
 			},
-		},
+			refresh,
+		} as Core4Model,
 	};
 }
 
@@ -1072,8 +1317,8 @@ export function settle_publication(
 	model: Core4Model,
 	token: Core4Token,
 ): Core4Transition<"settled"> | undefined {
-	const publication = model.publication;
-	if (!publication || publication.token !== token || !publication.committed) {
+	const publication = owned_by(model, token, "publication");
+	if (!publication || publication.phase !== "committed") {
 		return undefined;
 	}
 	const effects: Core4Effect[] = [];
@@ -1082,13 +1327,16 @@ export function settle_publication(
 		publication.public_call_ids,
 		publication.did_navigate,
 	);
-	const next_model = settle_refresh_if_route_is_fresh(
+	effects.push({
+		token,
+		type: "release_route_work",
+	});
+	const next_model = settle_refresh_if_publication_is_fresh(
 		{
 			...model,
 			publication: null,
-		},
-		publication.route_sequence,
-		publication.next.route.href,
+		} as Core4Model,
+		publication,
 		effects,
 	);
 	return {
@@ -1102,13 +1350,11 @@ export function fail_publication(
 	model: Core4Model,
 	token: Core4Token,
 ): Core4Transition<"publication_failed"> | undefined {
-	const active_route = model.active_route;
-	if (
-		!model.publication ||
-		model.publication.token !== token ||
-		!active_route ||
-		active_route.token !== token
-	) {
+	if (!owned_by(model, token, "publication")) {
+		return undefined;
+	}
+	const active_route = owned_by(model, token, "active_route");
+	if (!active_route) {
 		return undefined;
 	}
 	const transition = fail_active_route(model, active_route, false);
@@ -1136,126 +1382,6 @@ export function accept_hmr_route_update(
 				route,
 			},
 		},
-	};
-}
-
-export function observe_route_response_build_id(
-	model: Core4Model,
-	input: {
-		requested_href: string;
-		response: Core4ResponseFacts;
-		token: Core4Token;
-	},
-): Core4Transition<"route_build_id_observed"> | undefined {
-	if (
-		input.response.headers.get(X_VORMA_BUILD_SKEW) ===
-		VORMA_PROTOCOL_ENABLED
-	) {
-		return undefined;
-	}
-	const effects: Core4Effect[] = [];
-	const response = build_skew_response_facts(input.response);
-	const active_route = model.active_route;
-	if (active_route?.token === input.token) {
-		let default_behavior: BuildSkewDefaultBehavior = "notifyOnly";
-		const redirect_href = response_redirect_href(
-			input.response,
-			input.requested_href,
-		);
-		if (
-			redirect_href &&
-			is_http_href(redirect_href) &&
-			!same_origin(redirect_href, input.requested_href)
-		) {
-			default_behavior =
-				active_route.kind === "revalidation"
-					? "dropResponse"
-					: "hardReload";
-		}
-		append_build_skew_notification(
-			effects,
-			model,
-			response,
-			route_build_skew_triggering_response(
-				model,
-				active_route,
-				input.requested_href,
-				response,
-			),
-			default_behavior,
-		);
-	} else if (model.prefetch?.token === input.token) {
-		append_build_skew_notification(
-			effects,
-			model,
-			response,
-			{
-				kind: "route",
-				ok: response.ok,
-				requestedHref: input.requested_href,
-				status: response.status,
-				trigger: "prefetch",
-			},
-			input.response.ok ? "notifyOnly" : "dropResponse",
-		);
-	} else {
-		return undefined;
-	}
-	if (effects.length === 0) {
-		return undefined;
-	}
-	return {
-		effects,
-		kind: "route_build_id_observed",
-		model,
-	};
-}
-
-export function observe_api_response_build_id(
-	model: Core4Model,
-	input: {
-		method: string;
-		requested_href: string;
-		response: Core4ResponseFacts;
-		route_kind: APIRouteKind;
-		token: Core4Token;
-	},
-): Core4Transition<"api_build_id_observed"> | undefined {
-	const submission = model.submissions[input.token];
-	if (!submission || submission.phase !== "running") {
-		return undefined;
-	}
-	const effects: Core4Effect[] = [];
-	const response = build_skew_response_facts(input.response);
-	const redirect_href = response_redirect_href(
-		input.response,
-		input.requested_href,
-	);
-	append_build_skew_notification(
-		effects,
-		model,
-		response,
-		{
-			apiRouteKind: input.route_kind,
-			kind: "apiRoute",
-			method: input.method,
-			ok: input.response.ok,
-			requestedHref: input.requested_href,
-			status: input.response.status,
-		},
-		redirect_href &&
-			is_http_href(redirect_href) &&
-			!same_origin(redirect_href, input.requested_href)
-			? "hardReload"
-			: "notifyOnly",
-	);
-	if (effects.length === 0) {
-		return undefined;
-	}
-	return {
-		effects,
-		kind: "api_build_id_observed",
-		model,
 	};
 }
 
@@ -1319,7 +1445,7 @@ function plan_refresh_request(
 					kind: "debouncing",
 					timer_id: request.timer_id,
 				},
-			},
+			} as Core4Model,
 		};
 	}
 	return {
@@ -1332,7 +1458,7 @@ function plan_refresh_request(
 				demand,
 				kind: "pending",
 			},
-		},
+		} as Core4Model,
 	};
 }
 
@@ -1370,7 +1496,7 @@ export function fire_refresh_timer(
 				demand: model.refresh.demand,
 				kind: "pending",
 			},
-		},
+		} as Core4Model,
 	};
 }
 
@@ -1425,9 +1551,8 @@ export function begin_pending_revalidation(
 				attempt: refresh.attempt,
 				demand: refresh.demand,
 				kind: "running",
-				token: request.token,
 			},
-		},
+		} as Core4Model,
 	};
 }
 
@@ -1446,7 +1571,7 @@ function find_running_submission_by_dedupe_key(
 function running_submissions(model: Core4Model): SubmissionSlot[] {
 	return Object.values(model.submissions).filter(
 		(submission): submission is SubmissionSlot => {
-			return submission?.phase === "running";
+			return !!submission;
 		},
 	);
 }
@@ -1455,10 +1580,53 @@ function running_revalidation_attempt(
 	model: Core4Model,
 	token: Core4Token,
 ): number {
-	if (model.refresh.kind !== "running" || model.refresh.token !== token) {
+	if (
+		model.refresh.kind !== "running" ||
+		model.active_route?.kind !== "revalidation" ||
+		model.active_route.token !== token
+	) {
 		return 0;
 	}
 	return model.refresh.attempt;
+}
+
+function owned_by<T extends "active_route" | "prefetch" | "publication">(
+	model: Core4Model,
+	token: Core4Token,
+	property: T,
+): Extract<Core4Model[T], { token: Core4Token }> | null {
+	const slot = model[property];
+	if (!slot || slot.token !== token) {
+		return null;
+	}
+	return slot as Extract<Core4Model[T], { token: Core4Token }>;
+}
+
+function route_response_owner(
+	model: Core4Model,
+	token: Core4Token,
+): RouteResponseOwner {
+	const active_route = owned_by(model, token, "active_route");
+	if (active_route) {
+		return {
+			active_route,
+			kind: "active_route",
+		};
+	}
+	const prefetch = owned_by(model, token, "prefetch");
+	if (prefetch) {
+		return { kind: "prefetch", prefetch };
+	}
+	return { kind: "stale" };
+}
+
+function navigation_active_route_source(
+	source: NavigationRequest["source"],
+): NavigationActiveRouteSlot["source"] {
+	if (source === "redirect") {
+		return "redirect";
+	}
+	return "navigate";
 }
 
 function remove_submission(
@@ -1471,7 +1639,7 @@ function remove_submission(
 			...model.submissions,
 			[submission.token]: undefined,
 		},
-	};
+	} as Core4Model;
 }
 
 function api_settlement_effect(
@@ -1547,42 +1715,31 @@ function accept_active_route_response(
 	active_route: ActiveRouteSlot,
 	outcome: RouteResponseOutcome,
 ): RouteResponseTransition | undefined {
-	if (outcome.kind === "hard_redirect") {
-		const effects: Core4Effect[] = [
-			{
-				href: outcome.href,
-				type: "hard_redirect",
-			},
-		];
-		settle_active_route_as_not_navigated(effects, active_route);
-		return {
-			effects,
-			kind: "redirecting",
-			model: finish_active_route(model, active_route),
-		};
-	}
-	if (outcome.kind === "build_skew") {
-		const effects: Core4Effect[] = [];
-		const default_behavior: BuildSkewDefaultBehavior =
-			active_route.kind === "revalidation"
-				? "dropResponse"
-				: "hardReload";
+	const effects: Core4Effect[] = [];
+	const build_skew_report = route_outcome_build_skew_report(outcome);
+	if (build_skew_report) {
 		append_build_skew_notification(
 			effects,
 			model,
-			outcome.response,
+			build_skew_report.response,
 			route_build_skew_triggering_response(
 				model,
 				active_route,
-				outcome.href,
-				outcome.response,
+				build_skew_report.requested_href,
+				build_skew_report.response,
 			),
-			default_behavior,
+			build_skew_report.default_behavior,
 		);
-		if (active_route.kind !== "revalidation") {
+	}
+	if (outcome.kind === "build_skew") {
+		if (outcome.behavior === "reload") {
 			effects.push({
 				href: outcome.href,
 				type: "hard_redirect",
+			});
+			effects.push({
+				token: active_route.token,
+				type: "release_route_work",
 			});
 			settle_active_route_as_not_navigated(effects, active_route);
 			return {
@@ -1596,6 +1753,10 @@ function accept_active_route_response(
 			{ ok: false, reason: "build_skew" },
 			effects,
 		);
+		effects.push({
+			token: active_route.token,
+			type: "release_route_work",
+		});
 		return {
 			effects,
 			kind: "build_skew",
@@ -1603,27 +1764,45 @@ function accept_active_route_response(
 		};
 	}
 	if (outcome.kind === "failed") {
-		return fail_active_route(model, active_route, outcome.retryable);
+		return fail_active_route(
+			model,
+			active_route,
+			outcome.retryable,
+			effects,
+		);
 	}
 	if (outcome.kind === "soft_redirect") {
 		if (active_route.redirect_count >= CORE4_MAX_REDIRECTS) {
-			return fail_active_route(model, active_route, false);
+			return fail_active_route(model, active_route, false, effects);
 		}
-		return redirect_active_route(model, active_route, outcome.href);
+		return redirect_active_route(
+			model,
+			active_route,
+			outcome.href,
+			effects,
+		);
 	}
+	if (outcome.kind === "ignored_stale") {
+		return {
+			effects,
+			kind: "ignored_stale",
+			model,
+		};
+	}
+	effects.push({
+		history_state: active_route.state,
+		href: active_route.href,
+		payload: outcome.payload,
+		target: "active_route",
+		token: active_route.token,
+		trigger:
+			active_route.kind === "revalidation"
+				? "revalidation"
+				: active_route.kind,
+		type: "prepare_route",
+	});
 	return {
-		effects: [
-			{
-				payload: outcome.payload,
-				target: "active_route",
-				token: active_route.token,
-				trigger:
-					active_route.kind === "revalidation"
-						? "revalidation"
-						: active_route.kind,
-				type: "prepare_route",
-			},
-		],
+		effects,
 		kind: "preparing_active_route",
 		model: {
 			...model,
@@ -1631,7 +1810,7 @@ function accept_active_route_response(
 				...active_route,
 				phase: "preparing",
 			},
-		},
+		} as Core4Model,
 	};
 }
 
@@ -1640,23 +1819,28 @@ function accept_prefetch_response(
 	prefetch: PrefetchSlot,
 	outcome: RouteResponseOutcome,
 ): RouteResponseTransition | undefined {
+	const effects: Core4Effect[] = [];
+	const build_skew_report = route_outcome_build_skew_report(outcome);
+	if (build_skew_report) {
+		append_build_skew_notification(
+			effects,
+			model,
+			build_skew_report.response,
+			{
+				kind: "route",
+				ok: build_skew_report.response.ok,
+				requestedHref: build_skew_report.requested_href,
+				status: build_skew_report.response.status,
+				trigger: "prefetch",
+			},
+			build_skew_report.default_behavior,
+		);
+	}
 	if (outcome.kind !== "data") {
-		const effects: Core4Effect[] = [];
-		if (outcome.kind === "build_skew") {
-			append_build_skew_notification(
-				effects,
-				model,
-				outcome.response,
-				{
-					kind: "route",
-					ok: outcome.response.ok,
-					requestedHref: prefetch.href,
-					status: outcome.response.status,
-					trigger: "prefetch",
-				},
-				"dropResponse",
-			);
-		}
+		effects.push({
+			token: prefetch.token,
+			type: "release_route_work",
+		});
 		return {
 			effects,
 			kind: outcome.kind === "build_skew" ? "build_skew" : "failed",
@@ -1666,16 +1850,17 @@ function accept_prefetch_response(
 			},
 		};
 	}
+	effects.push({
+		history_state: model.browser?.state,
+		href: prefetch.href,
+		payload: outcome.payload,
+		target: "prefetch",
+		token: prefetch.token,
+		trigger: "prefetch",
+		type: "prepare_route",
+	});
 	return {
-		effects: [
-			{
-				payload: outcome.payload,
-				target: "prefetch",
-				token: prefetch.token,
-				trigger: "prefetch",
-				type: "prepare_route",
-			},
-		],
+		effects,
 		kind: "preparing_prefetch",
 		model: {
 			...model,
@@ -1736,33 +1921,51 @@ function begin_same_document_navigation(
 		(source === "popstate"
 			? (request.restored_scroll ?? top_scroll_state())
 			: top_scroll_state());
-	const active_route: ActiveRouteSlot = {
-		browser_key: request.browser_key,
-		href: target_href,
-		kind: source === "popstate" ? "popstate" : "navigation",
-		phase: "publishing",
-		public_call_ids: request.public_call_ids,
-		redirect_count: 0,
-		restored_scroll: request.restored_scroll,
-		replace: request.replace,
-		scroll_to_top: true,
-		sequence: sequenced.sequence,
-		skip_work_indicator: request.skip_work_indicator,
-		source,
-		state: request.state,
-		token: request.token,
-	};
+	const active_route: ActiveRouteSlot =
+		source === "popstate"
+			? {
+					browser_key: request.browser_key,
+					href: target_href,
+					kind: "popstate",
+					phase: "publishing",
+					public_call_ids: request.public_call_ids,
+					redirect_count: 0,
+					restored_scroll: request.restored_scroll,
+					replace: true,
+					scroll_to_top: true,
+					sequence: sequenced.sequence,
+					skip_work_indicator: true,
+					source,
+					state: request.state,
+					token: request.token,
+				}
+			: {
+					browser_key: request.browser_key,
+					href: target_href,
+					kind: "navigation",
+					phase: "publishing",
+					public_call_ids: request.public_call_ids,
+					redirect_count: 0,
+					restored_scroll: request.restored_scroll,
+					replace: request.replace,
+					scroll_to_top: true,
+					sequence: sequenced.sequence,
+					skip_work_indicator: request.skip_work_indicator,
+					source: navigation_active_route_source(source),
+					state: request.state,
+					token: request.token,
+				};
 	const prepared: PreparedRoute = {
 		css_bundles: [],
 		deps: [],
 		render_payload: null,
 		route,
 	};
-	const published = publish_prepared_active_route(
+	const published = begin_route_publication(
 		{
 			...sequenced.model,
 			active_route,
-		},
+		} as Core4Model,
 		active_route,
 		prepared,
 		{
@@ -1804,7 +2007,6 @@ function retarget_browser_during_revalidation(
 		key: request.browser_key,
 		state: request.state,
 	};
-	const sequenced = take_sequence(model);
 	const target_hash = normalized_hash_from_href(target_href);
 	const current_hash = normalized_hash_from_href(current.position.href);
 	const did_navigate =
@@ -1843,12 +2045,12 @@ function retarget_browser_during_revalidation(
 		effects,
 		kind: "same_document",
 		model: {
-			...sequenced.model,
+			...model,
 			browser: position,
 			current: {
 				position,
 				route,
-				sequence: sequenced.sequence,
+				sequence: current.sequence,
 			},
 		},
 	};
@@ -1869,8 +2071,9 @@ function retarget_active_navigation(
 		return undefined;
 	}
 	const effects: Core4Effect[] = [];
-	const source = request.source ?? "navigate";
+	const source = navigation_active_route_source(request.source);
 	const same_intent =
+		active_route.kind === "navigation" &&
 		active_route.href === target_href &&
 		active_route.replace === request.replace &&
 		active_route.scroll_to_top === request.scroll_to_top &&
@@ -1892,29 +2095,32 @@ function retarget_active_navigation(
 						request.public_call_ids,
 					),
 				},
-			},
+			} as Core4Model,
 		};
 	}
+	const next_active_route: NavigationActiveRouteSlot = {
+		browser_key: request.browser_key,
+		href: target_href,
+		kind: "navigation",
+		phase: active_route.phase,
+		public_call_ids: request.public_call_ids,
+		redirect_count: active_route.redirect_count,
+		restored_scroll: active_route.restored_scroll,
+		replace: request.replace,
+		scroll_to_top: request.scroll_to_top,
+		sequence: active_route.sequence,
+		skip_work_indicator: request.skip_work_indicator,
+		source,
+		state: request.state,
+		token: active_route.token,
+	};
 	return {
 		effects,
 		kind: "started",
 		model: {
 			...model,
-			active_route: {
-				...active_route,
-				browser_key: request.browser_key,
-				href: target_href,
-				kind:
-					active_route.kind === "popstate"
-						? "navigation"
-						: active_route.kind,
-				public_call_ids: request.public_call_ids,
-				replace: request.replace,
-				scroll_to_top: request.scroll_to_top,
-				source,
-				state: request.state,
-			},
-		},
+			active_route: next_active_route,
+		} as Core4Model,
 	};
 }
 
@@ -1945,16 +2151,15 @@ function promote_prefetch(
 		scroll_to_top: request.scroll_to_top,
 		sequence: sequenced.sequence,
 		skip_work_indicator: request.skip_work_indicator,
-		source: request.source ?? "navigate",
+		source: navigation_active_route_source(request.source),
 		state: request.state,
 		token:
 			model.prefetch.phase === "prepared"
 				? request.token
 				: model.prefetch.token,
 	};
-	const effects: Core4Effect[] = [];
 	if (model.prefetch.phase === "prepared") {
-		const published = publish_prepared_active_route(
+		const published = begin_route_publication(
 			{
 				...sequenced.model,
 				active_route: {
@@ -1962,7 +2167,7 @@ function promote_prefetch(
 					phase: "publishing",
 				},
 				prefetch: null,
-			},
+			} as Core4Model,
 			{
 				...active_route,
 				phase: "publishing",
@@ -1982,7 +2187,7 @@ function promote_prefetch(
 			...sequenced.model,
 			active_route,
 			prefetch: null,
-		},
+		} as Core4Model,
 	};
 }
 
@@ -1990,16 +2195,16 @@ function redirect_active_route(
 	model: Core4Model,
 	active_route: ActiveRouteSlot,
 	href: string,
+	effects: Core4Effect[] = [],
 ): Core4Transition<"failed" | "redirecting"> | undefined {
 	const target_href = resolve_href(href, active_route.href);
 	if (!target_href) {
-		return fail_active_route(model, active_route, false);
+		return fail_active_route(model, active_route, false, effects);
 	}
 	if (
 		!is_http_href(target_href) ||
 		!same_origin(target_href, active_route.href)
 	) {
-		const effects: Core4Effect[] = [];
 		if (is_http_href(target_href)) {
 			effects.push({
 				href: target_href,
@@ -2007,6 +2212,10 @@ function redirect_active_route(
 			});
 		}
 		settle_active_route_as_not_navigated(effects, active_route);
+		effects.push({
+			token: active_route.token,
+			type: "release_route_work",
+		});
 		return {
 			effects,
 			kind: "redirecting",
@@ -2017,43 +2226,50 @@ function redirect_active_route(
 		model.current &&
 		same_document_href(target_href, model.current.route.href)
 	) {
-		const effects: Core4Effect[] = [];
 		settle_active_route_as_not_navigated(effects, active_route);
+		effects.push({
+			token: active_route.token,
+			type: "release_route_work",
+		});
 		return {
 			effects,
 			kind: "redirecting",
 			model: finish_active_route(model, active_route),
 		};
 	}
-	const redirected: ActiveRouteSlot = {
-		...active_route,
+	let redirected: ActiveRouteSlot;
+	if (active_route.kind === "boot") {
+		redirected = {
+			...active_route,
+			href: target_href,
+			phase: "fetching",
+			redirect_count: active_route.redirect_count + 1,
+			source: null,
+		};
+	} else {
+		redirected = {
+			...active_route,
+			href: target_href,
+			kind: "navigation",
+			phase: "fetching",
+			redirect_count: active_route.redirect_count + 1,
+			source: "redirect",
+		};
+	}
+	effects.push({
+		client_build_id: model.client_build_id,
 		href: target_href,
-		kind:
-			active_route.kind === "revalidation"
-				? "navigation"
-				: active_route.kind,
-		phase: "fetching",
-		redirect_count: active_route.redirect_count + 1,
-		source: "redirect",
-	};
+		token: active_route.token,
+		trigger: redirected.kind,
+		type: "fetch_route",
+	});
 	return {
-		effects: [
-			{
-				client_build_id: model.client_build_id,
-				href: target_href,
-				token: active_route.token,
-				trigger:
-					redirected.kind === "revalidation"
-						? "revalidation"
-						: redirected.kind,
-				type: "fetch_route",
-			},
-		],
+		effects,
 		kind: "redirecting",
 		model: {
 			...model,
 			active_route: redirected,
-		},
+		} as Core4Model,
 	};
 }
 
@@ -2061,9 +2277,13 @@ function fail_active_route(
 	model: Core4Model,
 	active_route: ActiveRouteSlot,
 	retryable: boolean,
+	effects: Core4Effect[] = [],
 ): Core4Transition<"failed"> {
-	const effects: Core4Effect[] = [];
 	settle_active_route_as_not_navigated(effects, active_route);
+	effects.push({
+		token: active_route.token,
+		type: "release_route_work",
+	});
 	const failed_model = finish_active_route(model, active_route);
 	let next_model = failed_model;
 	if (active_route.kind === "revalidation") {
@@ -2087,7 +2307,7 @@ function finish_active_route(
 	active_route: ActiveRouteSlot,
 ): Core4Model {
 	let refresh = model.refresh;
-	if (refresh.kind === "running" && refresh.token === active_route.token) {
+	if (refresh.kind === "running" && active_route.kind === "revalidation") {
 		refresh = {
 			attempt: refresh.attempt,
 			demand: refresh.demand,
@@ -2105,7 +2325,7 @@ function finish_active_route(
 				? null
 				: model.publication,
 		refresh,
-	};
+	} as Core4Model;
 }
 
 function supersede_active_route(model: Core4Model): Core4Transition<"cleared"> {
@@ -2161,7 +2381,7 @@ function schedule_refresh_retry(
 			effects,
 		);
 	}
-	const timer_id = `core4-refresh-${model.sequence + 1}`;
+	const timer_id = `core4-refresh-${model.sequence + 1}` as TimerID;
 	const attempt = model.refresh.attempt + 1;
 	effects.push({
 		id: timer_id,
@@ -2176,7 +2396,7 @@ function schedule_refresh_retry(
 			kind: "retrying",
 			timer_id,
 		},
-	};
+	} as Core4Model;
 }
 
 function finish_refresh_with_result(
@@ -2207,23 +2427,27 @@ function finish_refresh_with_result(
 	return {
 		...model,
 		refresh: { kind: "idle" },
-	};
+	} as Core4Model;
 }
 
-function settle_refresh_if_route_is_fresh(
+function settle_refresh_if_publication_is_fresh(
 	model: Core4Model,
-	route_sequence: number,
-	route_href: string,
+	publication: PublicationSlot,
 	effects: Core4Effect[],
 ): Core4Model {
 	const demand = refresh_demand(model.refresh);
 	if (!demand) {
 		return model;
 	}
-	if (route_sequence < demand.after_sequence) {
+	if (publication.plan.route_sequence < demand.after_sequence) {
 		return model;
 	}
-	if (!model.browser || !same_document_href(route_href, model.browser.href)) {
+	if (
+		!same_document_href(
+			publication.plan.next.route.href,
+			publication.plan.position.href,
+		)
+	) {
 		return model;
 	}
 	return finish_refresh_with_result(model, { ok: true }, effects);
@@ -2439,6 +2663,81 @@ function refresh_retry_delay_ms(attempt: number): number {
 	);
 }
 
+function route_response_build_skew_report(
+	input: RouteResponseClassificationInput,
+): RouteBuildSkewReport | undefined {
+	if (
+		input.owner.kind === "stale" ||
+		input.response.headers.get(X_VORMA_BUILD_SKEW) ===
+			VORMA_PROTOCOL_ENABLED
+	) {
+		return undefined;
+	}
+	const response = build_skew_response_facts(input.response);
+	if (!response.server_build_id) {
+		return undefined;
+	}
+	let default_behavior: BuildSkewDefaultBehavior = "notifyOnly";
+	if (input.owner.kind === "prefetch") {
+		default_behavior = input.response.ok ? "notifyOnly" : "dropResponse";
+	} else {
+		const redirect_href = response_redirect_href(
+			input.response,
+			input.requested_href,
+		);
+		if (
+			redirect_href &&
+			is_http_href(redirect_href) &&
+			!same_origin(redirect_href, input.requested_href)
+		) {
+			default_behavior =
+				input.owner.active_route.kind === "revalidation"
+					? "dropResponse"
+					: "hardReload";
+		}
+	}
+	return {
+		default_behavior,
+		requested_href: input.requested_href,
+		response,
+	};
+}
+
+function route_outcome_build_skew_report(
+	outcome: RouteResponseOutcome,
+): RouteBuildSkewReport | undefined {
+	if (outcome.kind === "build_skew") {
+		return {
+			default_behavior: outcome.default_behavior,
+			requested_href: outcome.href,
+			response: outcome.response,
+		};
+	}
+	return outcome.build_skew_report;
+}
+
+function api_response_build_skew_report(
+	input: APIResponseClassificationInput,
+): APISubmissionBuildSkewReport | undefined {
+	const response = build_skew_response_facts(input.response);
+	if (!response.server_build_id) {
+		return undefined;
+	}
+	const redirect_href = response_redirect_href(
+		input.response,
+		input.requested_href,
+	);
+	return {
+		default_behavior:
+			redirect_href &&
+			is_http_href(redirect_href) &&
+			!same_origin(redirect_href, input.requested_href)
+				? "hardReload"
+				: "notifyOnly",
+		response,
+	};
+}
+
 function build_skew_response_facts(
 	response: Core4ResponseFacts,
 ): BuildSkewResponseFacts {
@@ -2560,12 +2859,12 @@ function same_document_href(left_href: string, right_href: string): boolean {
 function is_abort_error(error: unknown): boolean {
 	return (
 		error instanceof DOMException &&
-		(error.name === "AbortError" || error.message === "Aborted")
+		(error.name === abort_error_name || error.message === api_aborted_error)
 	);
 }
 
 function new_abort_error(): DOMException {
-	return new DOMException("Aborted", "AbortError");
+	return new DOMException(api_aborted_error, abort_error_name);
 }
 
 function to_error_string(error: unknown): string {
@@ -2632,7 +2931,7 @@ class Core4Runtime {
 	readonly work_indicator = create_core4_work_indicator();
 	readonly hard_redirect: (url: string) => void;
 	readonly reload_page: () => void;
-	model = create_core4_model({ client_build_id: "" });
+	model: Core4Model = create_core4_model({ client_build_id: "" });
 	client_build_id = "";
 	deployment_id = "";
 	boot_waiter: Deferred<Result<void>> | null = null;
@@ -2746,29 +3045,39 @@ class Core4Runtime {
 
 	new_token(prefix: string): Core4Token {
 		this.next_id++;
-		return `core4-${prefix}-${this.next_id}`;
+		return `core4-${prefix}-${this.next_id}` as Core4Token;
 	}
 
 	new_public_call_id(prefix: string): PublicCallID {
 		this.next_id++;
-		return `core4-call-${prefix}-${this.next_id}`;
+		return `core4-call-${prefix}-${this.next_id}` as PublicCallID;
 	}
 
 	new_history_key(): BrowserKey {
 		this.next_id++;
-		return `core4-history-${this.next_id.toString(36)}`;
+		return `core4-history-${this.next_id.toString(36)}` as BrowserKey;
 	}
 
-	accept_transition(transition: Core4Transition | undefined): void {
+	new_timer_id(prefix: string): TimerID {
+		this.next_id++;
+		return `core4-timer-${prefix}-${this.next_id}` as TimerID;
+	}
+
+	accept_transition(
+		transition: Core4Transition | undefined,
+		options?: { before_effects?: () => void },
+	): boolean {
 		if (!transition) {
-			return;
+			return false;
 		}
 		this.model = transition.model;
 		this.notify_work_update();
+		options?.before_effects?.();
 		for (const effect of transition.effects) {
 			this.run_effect(effect);
 		}
 		this.pump_revalidation();
+		return true;
 	}
 
 	fail_boot(error: string): void {
@@ -2794,8 +3103,17 @@ class Core4Runtime {
 			this.abort_client_loader_prefetches(effect.token);
 			return;
 		}
+		if (effect.type === "release_route_work") {
+			this.route_abort_controllers.delete(effect.token);
+			this.abort_client_loader_prefetches(effect.token);
+			return;
+		}
 		if (effect.type === "abort_api_submission") {
 			this.api_abort_controllers.get(effect.token)?.abort();
+			this.api_abort_controllers.delete(effect.token);
+			return;
+		}
+		if (effect.type === "release_api_submission") {
 			this.api_abort_controllers.delete(effect.token);
 			return;
 		}
@@ -2860,7 +3178,10 @@ class Core4Runtime {
 		}
 		if (effect.type === "fetch_api") {
 			void this.run_api_fetch(effect);
+			return;
 		}
+		const _exhaustive: never = effect;
+		return _exhaustive;
 	}
 
 	clear_refresh_timer(id: TimerID): void {
@@ -2923,44 +3244,23 @@ class Core4Runtime {
 			const response_facts = result.response
 				? this.response_facts(result.response)
 				: undefined;
-			if (response_facts) {
-				this.accept_transition(
-					observe_route_response_build_id(this.model, {
+			const owner = route_response_owner(this.model, effect.token);
+			const outcome = response_facts
+				? classify_route_response({
+						owner,
+						payload:
+							result.kind === "data" ? result.payload : undefined,
 						requested_href: effect.href,
 						response: response_facts,
 						token: effect.token,
-					}),
-				);
-			}
-			const outcome =
-				result.kind === "data"
-					? classify_route_response({
-							payload: result.payload,
-							requested_href: effect.href,
-							response: response_facts!,
-							token: effect.token,
-						})
-					: response_facts
-						? classify_route_response({
-								requested_href: effect.href,
-								response: response_facts,
-								token: effect.token,
-							})
-						: {
-								kind: "failed" as const,
-								retryable: true,
-								token: effect.token,
-							};
+					})
+				: classify_route_failure({
+						owner,
+						retryable: true,
+						token: effect.token,
+					});
 			const transition = accept_route_response(this.model, outcome);
 			this.accept_transition(transition);
-			if (
-				transition?.kind !== "preparing_active_route" &&
-				transition?.kind !== "preparing_prefetch" &&
-				outcome.kind !== "soft_redirect"
-			) {
-				this.route_abort_controllers.delete(effect.token);
-				this.abort_client_loader_prefetches(effect.token);
-			}
 			if (effect.trigger === "boot" && outcome.kind !== "data") {
 				this.fail_boot("Initial route request failed");
 			}
@@ -2968,16 +3268,15 @@ class Core4Runtime {
 			if (controller.signal.aborted) {
 				return;
 			}
-			const transition = accept_route_response(this.model, {
-				kind: "failed",
-				retryable: effect.trigger === "revalidation",
-				token: effect.token,
-			});
+			const transition = accept_route_response(
+				this.model,
+				classify_route_failure({
+					owner: route_response_owner(this.model, effect.token),
+					retryable: effect.trigger === "revalidation",
+					token: effect.token,
+				}),
+			);
 			this.accept_transition(transition);
-			if (transition?.kind !== "preparing_active_route") {
-				this.route_abort_controllers.delete(effect.token);
-				this.abort_client_loader_prefetches(effect.token);
-			}
 			if (effect.trigger === "boot") {
 				this.fail_boot("Initial route request failed");
 			}
@@ -3028,61 +3327,41 @@ class Core4Runtime {
 				effect.payload.routes.length > 0
 					? effect.payload.routes[0]!.pattern
 					: "",
-				this.route_href_for_prepare(effect),
-				this.route_state_for_prepare(effect),
+				effect.href,
+				effect.history_state,
 				effect.token,
 				controller.signal,
 			);
 			if (controller.signal.aborted || !prepared) {
+				this.accept_transition(
+					accept_route_preparation(this.model, {
+						kind: "aborted",
+						token: effect.token,
+					}),
+				);
 				if (effect.trigger === "boot") {
 					this.fail_boot("Initial route preparation was canceled");
 				}
 				this.route_abort_controllers.delete(effect.token);
 				return;
 			}
-			const transition = accept_prepared_route(this.model, {
+			const transition = accept_route_preparation(this.model, {
+				kind: "prepared",
 				prepared,
 				token: effect.token,
 			});
 			this.accept_transition(transition);
-			if (transition?.kind === "prefetch_prepared") {
-				this.route_abort_controllers.delete(effect.token);
-			}
 		} catch {
-			const transition = accept_route_response(this.model, {
+			const transition = accept_route_preparation(this.model, {
 				kind: "failed",
 				retryable: effect.trigger === "revalidation",
 				token: effect.token,
 			});
 			this.accept_transition(transition);
-			if (transition?.kind !== "preparing_active_route") {
-				this.route_abort_controllers.delete(effect.token);
-			}
 			if (effect.trigger === "boot") {
 				this.fail_boot("Initial route preparation failed");
 			}
 		}
-	}
-
-	route_href_for_prepare(
-		effect: Extract<Core4Effect, { type: "prepare_route" }>,
-	): string {
-		if (this.model.active_route?.token === effect.token) {
-			return this.model.active_route.href;
-		}
-		if (this.model.prefetch?.token === effect.token) {
-			return this.model.prefetch.href;
-		}
-		return this.model.browser?.href ?? window.location.href;
-	}
-
-	route_state_for_prepare(
-		effect: Extract<Core4Effect, { type: "prepare_route" }>,
-	): unknown {
-		if (this.model.active_route?.token === effect.token) {
-			return this.model.active_route.state;
-		}
-		return this.model.browser?.state;
 	}
 
 	async prepare_route_payload(
@@ -3570,126 +3849,11 @@ class Core4Runtime {
 		const payload = plan.next
 			.render_payload as Core4PreparedRenderPayload | null;
 		if (!payload) {
-			if (plan.reason === "boot") {
-				this.fail_boot(
-					"Initial route publication was missing render state",
-				);
-				return;
-			}
-			if (!this.current_render_state) {
-				return;
-			}
-			if (plan.save_current_scroll) {
-				this.save_current_scroll();
-			}
-			this.apply_publication_history(plan);
-			const committed = commit_publication(this.model, {
-				token: plan.token,
-			});
-			if (!committed) {
-				return;
-			}
-			this.accept_transition(committed);
-			const next_render_state = {
-				...this.current_render_state,
-				history_state: plan.position.state,
-			};
-			this.current_render_state = next_render_state;
-			const scroll_intent = this.publication_scroll_intent(plan.scroll);
-			this.commit({
-				route_render: {
-					scroll_intent,
-					state: next_render_state,
-				},
-				route_update: {
-					previous_route: plan.previous?.route ?? null,
-					reason: plan.reason,
-					route: plan.next.route,
-				},
-				work: {
-					...derive_core4_work_state(this.model),
-					navigation: null,
-				},
-			});
-			this.user_on_route_update?.(
-				plan.next.route,
-				plan.previous?.route ?? null,
-				plan.reason,
-			);
-			if (scroll_intent) {
-				this.apply_core4_scroll(scroll_intent.scroll);
-			}
-			this.accept_transition(settle_publication(this.model, plan.token));
-			this.route_abort_controllers.delete(plan.token);
+			await this.execute_publication_transaction(plan, null);
 			return;
 		}
 		const publish = async (): Promise<void> => {
-			if (plan.hooks.kind === "run") {
-				try {
-					await this.run_publication_hooks(plan);
-				} catch {
-					this.accept_transition(
-						fail_publication(this.model, plan.token),
-					);
-					this.route_abort_controllers.delete(plan.token);
-					return;
-				}
-			}
-			if (plan.save_current_scroll) {
-				this.save_current_scroll();
-			}
-			this.apply_publication_history(plan);
-			apply_head_and_title(
-				payload.title,
-				[...payload.meta_head_els],
-				[...payload.rest_head_els],
-			);
-			apply_css_bundles([...payload.css_bundles]);
-			preload_modules([...payload.deps]);
-			const committed = commit_publication(this.model, {
-				token: plan.token,
-			});
-			if (!committed) {
-				return;
-			}
-			this.accept_transition(committed);
-			this.current_render_state = {
-				...payload.render_state,
-				history_state: plan.position.state,
-			};
-			const scroll_intent = this.publication_scroll_intent(plan.scroll);
-			const client_commit: ClientCommit = {
-				route_render: {
-					scroll_intent,
-					state: this.current_render_state,
-				},
-				route_update: {
-					previous_route: plan.previous?.route ?? null,
-					reason: plan.reason,
-					route: plan.next.route,
-				},
-				work: {
-					...derive_core4_work_state(this.model),
-					navigation: null,
-				},
-			};
-			this.commit(client_commit);
-			this.user_on_route_update?.(
-				plan.next.route,
-				plan.previous?.route ?? null,
-				plan.reason,
-			);
-			if (scroll_intent) {
-				this.apply_core4_scroll(scroll_intent.scroll);
-			}
-			this.last_activity_ms = Date.now();
-			this.accept_transition(settle_publication(this.model, plan.token));
-			this.route_abort_controllers.delete(plan.token);
-			if (plan.reason === "boot" && this.boot_waiter) {
-				this.boot_waiter.resolve(R.ok(undefined));
-				this.boot_waiter = null;
-				this.start_deferred_redirect();
-			}
+			await this.execute_publication_transaction(plan, payload);
 		};
 		const view_transition =
 			plan.use_view_transition && "startViewTransition" in document
@@ -3713,6 +3877,116 @@ class Core4Runtime {
 		if (transition.finished) {
 			await transition.finished;
 		}
+	}
+
+	async execute_publication_transaction(
+		plan: PublicationPlan,
+		payload: Core4PreparedRenderPayload | null,
+	): Promise<void> {
+		const current_render_state = this.current_render_state;
+		if (!payload && plan.reason === "boot") {
+			this.fail_publication_transaction(
+				plan,
+				"Initial route publication was missing render state",
+			);
+			return;
+		}
+		if (!payload && !current_render_state) {
+			this.fail_publication_transaction(plan);
+			return;
+		}
+		const next_render_state_source =
+			payload?.render_state ?? current_render_state;
+		if (!next_render_state_source) {
+			this.fail_publication_transaction(plan);
+			return;
+		}
+		if (plan.hooks.kind === "run") {
+			try {
+				await this.run_publication_hooks(plan);
+			} catch {
+				this.fail_publication_transaction(plan);
+				return;
+			}
+		}
+		if (plan.save_current_scroll) {
+			this.save_current_scroll();
+		}
+		this.apply_publication_history(plan);
+		if (payload) {
+			apply_head_and_title(
+				payload.title,
+				[...payload.meta_head_els],
+				[...payload.rest_head_els],
+			);
+			apply_css_bundles([...payload.css_bundles]);
+			preload_modules([...payload.deps]);
+		}
+		const committed = commit_publication(this.model, {
+			token: plan.token,
+		});
+		if (!committed) {
+			this.route_abort_controllers.delete(plan.token);
+			return;
+		}
+		this.accept_transition(committed);
+		const next_render_state: RouteRenderState = {
+			...next_render_state_source,
+			history_state: plan.position.state,
+		};
+		this.current_render_state = next_render_state;
+		const scroll_intent = this.publication_scroll_intent(plan.scroll);
+		const client_commit: ClientCommit = {
+			route_render: {
+				scroll_intent,
+				state: next_render_state,
+			},
+			work: {
+				...derive_core4_work_state(this.model),
+				navigation: null,
+			},
+		};
+		const previous_route = plan.previous?.route ?? null;
+		if (
+			!previous_route ||
+			!jsonDeepEquals(previous_route, plan.next.route)
+		) {
+			client_commit.route_update = {
+				previous_route,
+				reason: plan.reason,
+				route: plan.next.route,
+			};
+		}
+		this.commit(client_commit);
+		if (client_commit.route_update) {
+			this.user_on_route_update?.(
+				client_commit.route_update.route,
+				client_commit.route_update.previous_route,
+				client_commit.route_update.reason,
+			);
+		}
+		if (scroll_intent) {
+			this.apply_core4_scroll(scroll_intent.scroll);
+		}
+		if (payload) {
+			this.last_activity_ms = Date.now();
+		}
+		this.accept_transition(settle_publication(this.model, plan.token));
+		if (plan.reason === "boot" && this.boot_waiter) {
+			this.boot_waiter.resolve(R.ok(undefined));
+			this.boot_waiter = null;
+			this.start_deferred_redirect();
+		}
+	}
+
+	fail_publication_transaction(
+		plan: PublicationPlan,
+		boot_error?: string,
+	): void {
+		if (boot_error) {
+			this.fail_boot(boot_error);
+		}
+		this.accept_transition(fail_publication(this.model, plan.token));
 	}
 
 	async run_publication_hooks(plan: PublicationPlan): Promise<void> {
@@ -3813,15 +4087,6 @@ class Core4Runtime {
 				signal: controller.signal,
 			});
 			const response_facts = this.response_facts(response);
-			this.accept_transition(
-				observe_api_response_build_id(this.model, {
-					method: effect.method,
-					requested_href: effect.href,
-					response: response_facts,
-					route_kind: effect.route_kind,
-					token: effect.token,
-				}),
-			);
 			const data = await this.read_api_response_data(response);
 			this.accept_transition(
 				accept_api_submission_outcome(
@@ -3833,6 +4098,8 @@ class Core4Runtime {
 						requested_href: effect.href,
 						response: response_facts,
 						state: undefined,
+						submission:
+							this.model.submissions[effect.token] ?? null,
 						token: effect.token,
 					}),
 				),
@@ -3840,28 +4107,37 @@ class Core4Runtime {
 		} catch (error) {
 			if (controller.signal.aborted) {
 				this.accept_transition(
-					accept_api_submission_outcome(this.model, {
-						dispatched,
-						kind: "aborted",
-						token: effect.token,
-					}),
+					accept_api_submission_outcome(
+						this.model,
+						classify_api_runtime_failure({
+							dispatched,
+							error: api_aborted_error,
+							kind: "aborted",
+							submission:
+								this.model.submissions[effect.token] ?? null,
+							token: effect.token,
+						}),
+					),
 				);
 				return;
 			}
 			this.accept_transition(
-				accept_api_submission_outcome(this.model, {
-					dispatched,
-					error: is_abort_error(error)
-						? "Aborted"
-						: error instanceof Error
-							? error.message
-							: String(error),
-					kind: "network_error",
-					token: effect.token,
-				}),
+				accept_api_submission_outcome(
+					this.model,
+					classify_api_runtime_failure({
+						dispatched,
+						error: is_abort_error(error)
+							? api_aborted_error
+							: error instanceof Error
+								? error.message
+								: String(error),
+						kind: "network_error",
+						submission:
+							this.model.submissions[effect.token] ?? null,
+						token: effect.token,
+					}),
+				),
 			);
-		} finally {
-			this.api_abort_controllers.delete(effect.token);
 		}
 	}
 
@@ -3974,8 +4250,10 @@ class Core4Runtime {
 			);
 		}
 		const raw_record = raw_payload as Record<string, unknown>;
-		this.client_build_id = String(raw_record.ClientBuildID ?? "");
-		this.deployment_id = String(raw_record.DeploymentID ?? "");
+		this.client_build_id = String(
+			(raw_record.ClientBuildID as string) ?? "",
+		);
+		this.deployment_id = String((raw_record.DeploymentID as string) ?? "");
 		this.user_on_route_update = options.onRouteUpdate;
 		this.user_on_work_update = options.onWorkUpdate;
 		this.user_on_build_skew_detected = options.onBuildSkewDetected;
@@ -4077,7 +4355,7 @@ class Core4Runtime {
 				request_revalidation(this.model, {
 					reason: "windowFocus",
 					skip_work_indicator,
-					timer_id: this.new_token("refresh-timer"),
+					timer_id: this.new_timer_id("refresh"),
 				}),
 			);
 		};
@@ -4102,18 +4380,12 @@ class Core4Runtime {
 		if (this.model.phase !== "ready" || !this.model.browser) {
 			throw new Error("Vorma not booted");
 		}
-		const target = new URL(String(href), this.model.browser.href);
-		if (target.origin !== new URL(this.model.browser.href).origin) {
-			this.hard_redirect(target.href);
-			return { didNavigate: false };
-		}
 		const id = this.new_public_call_id("navigation");
 		const deferred = make_deferred<{ didNavigate: boolean }>();
-		this.navigation_waiters.set(id, deferred);
-		this.accept_transition(
+		const accepted = this.accept_transition(
 			begin_navigation(this.model, {
 				browser_key: this.new_history_key(),
-				href: target.href,
+				href: String(href),
 				public_call_ids: [id],
 				replace: options?.replace ?? false,
 				scroll_to_top: options?.scrollToTop,
@@ -4121,7 +4393,15 @@ class Core4Runtime {
 				state: options?.state,
 				token: this.new_token("navigation"),
 			}),
+			{
+				before_effects: () => {
+					this.navigation_waiters.set(id, deferred);
+				},
+			},
 		);
+		if (!accepted) {
+			return { didNavigate: false };
+		}
 		return deferred.promise;
 	}
 
@@ -4131,15 +4411,22 @@ class Core4Runtime {
 		}
 		const id = this.new_public_call_id("refresh");
 		const deferred = make_deferred<RevalidationResult>();
-		this.refresh_waiters.set(id, deferred);
-		this.accept_transition(
+		const accepted = this.accept_transition(
 			request_revalidation(this.model, {
 				reason: "manual",
 				skip_work_indicator: false,
-				timer_id: this.new_token("refresh-timer"),
+				timer_id: this.new_timer_id("refresh"),
 				waiter_id: id,
 			}),
+			{
+				before_effects: () => {
+					this.refresh_waiters.set(id, deferred);
+				},
+			},
 		);
+		if (!accepted) {
+			return REVALIDATION_OK;
+		}
 		return deferred.promise;
 	}
 
@@ -4156,7 +4443,7 @@ class Core4Runtime {
 		if (!this.model.current || !this.model.browser) {
 			throw new Error("Vorma not booted");
 		}
-		const href = new URL(String(url), this.model.browser.href).href;
+		const href = String(url);
 		const method = (request_init?.method ?? "GET").toUpperCase().trim();
 		const route_kind =
 			options?.apiRouteKind ??
@@ -4167,18 +4454,14 @@ class Core4Runtime {
 		const api_deferred = make_deferred<Core4APIResult<unknown>>();
 		let refresh_promise: Promise<RevalidationResult> =
 			Promise.resolve(REVALIDATION_OK);
+		let refresh_deferred: Deferred<RevalidationResult> | undefined;
 		let refresh_waiter_id: PublicCallID | undefined;
 		if (should_revalidate && this.model.phase === "ready") {
 			refresh_waiter_id = this.new_public_call_id("api-refresh");
-			const refresh_deferred = make_deferred<RevalidationResult>();
-			this.refresh_waiters.set(refresh_waiter_id, refresh_deferred);
+			refresh_deferred = make_deferred<RevalidationResult>();
 			refresh_promise = refresh_deferred.promise;
 		}
-		this.api_waiters.set(api_token, {
-			deferred: api_deferred,
-			revalidation: refresh_promise,
-		});
-		this.accept_transition(
+		const accepted = this.accept_transition(
 			begin_api_submission(this.model, {
 				dedupe_key: options?.dedupeKey ?? null,
 				href,
@@ -4194,7 +4477,29 @@ class Core4Runtime {
 				skip_work_indicator: options?.skipWorkIndicator ?? false,
 				token: api_token,
 			}),
+			{
+				before_effects: () => {
+					if (refresh_waiter_id && refresh_deferred) {
+						this.refresh_waiters.set(
+							refresh_waiter_id,
+							refresh_deferred,
+						);
+					}
+					this.api_waiters.set(api_token, {
+						deferred: api_deferred,
+						revalidation: refresh_promise,
+					});
+				},
+			},
 		);
+		if (!accepted) {
+			refresh_deferred?.resolve(REVALIDATION_OK);
+			return {
+				error: "API submission was not accepted.",
+				revalidationPromise: refresh_promise,
+				success: false,
+			};
+		}
 		return api_deferred.promise as Promise<Core4APIResult<T>>;
 	}
 
@@ -4303,7 +4608,7 @@ class Core4Runtime {
 		}
 		this.accept_transition(
 			begin_prefetch(this.model, {
-				href: new URL(href, this.model.browser.href).href,
+				href,
 				token: this.new_token("prefetch"),
 			}),
 		);
@@ -4324,15 +4629,22 @@ class Core4Runtime {
 		}
 		const id = this.new_public_call_id("popstate");
 		const deferred = make_deferred<{ didNavigate: boolean }>();
-		this.navigation_waiters.set(id, deferred);
-		this.accept_transition(
+		const accepted = this.accept_transition(
 			begin_popstate(this.model, {
 				browser: next,
 				public_call_ids: [id],
 				restored_scroll: this.get_scroll_for_key(next.key),
 				token: this.new_token("popstate"),
 			}),
+			{
+				before_effects: () => {
+					this.navigation_waiters.set(id, deferred);
+				},
+			},
 		);
+		if (!accepted) {
+			return;
+		}
 		const result = await deferred.promise;
 		if (
 			!result.didNavigate &&
@@ -4384,7 +4696,7 @@ class Core4Runtime {
 				: undefined;
 		return {
 			href: this.current_url().href,
-			key,
+			key: key as BrowserKey,
 			state: user_state,
 		};
 	}

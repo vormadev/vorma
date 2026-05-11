@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	deferred,
 	has_route_render_commit,
 	json_response,
 	mock_fetch,
@@ -1080,6 +1081,66 @@ describe("submit body handling", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("submit dedupe edge cases", () => {
+	it("settles replaced deduped submit without waiting for aborted fetch", async () => {
+		const { core } = await setup();
+		const first_response = deferred<Response>();
+		const second_response = deferred<Response>();
+		const calls: Array<{ signal: AbortSignal; url: string }> = [];
+
+		vi.spyOn(globalThis, "fetch").mockImplementation(
+			(input: string | URL | Request, init?: RequestInit) => {
+				const signal = init?.signal;
+				if (!signal) {
+					throw new Error("Expected API fetch to receive a signal");
+				}
+				const url =
+					input instanceof URL
+						? input.href
+						: typeof input === "string"
+							? input
+							: input.url;
+				calls.push({ signal, url });
+				return calls.length === 1
+					? first_response.promise
+					: second_response.promise;
+			},
+		);
+
+		const first = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				dedupeKey: "k",
+				revalidate: false,
+			},
+		);
+		await tick();
+		expect(calls).toHaveLength(1);
+
+		const second = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				dedupeKey: "k",
+				revalidate: false,
+			},
+		);
+		await tick();
+
+		expect(calls).toHaveLength(2);
+		expect(calls[0]!.signal.aborted).toBe(true);
+		await expect(first).resolves.toMatchObject({
+			error: "Aborted",
+			success: false,
+		});
+
+		second_response.resolve(json_response({ winner: true }));
+		await expect(second).resolves.toMatchObject({
+			data: { winner: true },
+			success: true,
+		});
+	});
+
 	it("ignores redirect from late-resolving deduped submit", async () => {
 		const { core, hard_redirect } = await setup();
 		const { call, wait_for } = mock_fetch();

@@ -123,6 +123,40 @@ describe("revalidate", () => {
 		});
 	});
 
+	it("does not report route update when revalidation route state is unchanged", async () => {
+		const route_updates: any[] = [];
+		const { core } = await setup({
+			payload: {
+				MatchedPatterns: ["/"],
+				LoadersData: [{ fresh: false }],
+			},
+			clientOptions: {
+				onRouteUpdate: (
+					route: unknown,
+					previous_route: unknown,
+					reason: unknown,
+				) => {
+					route_updates.push({ route, previous_route, reason });
+				},
+			},
+		});
+		route_updates.length = 0;
+		const { call, wait_for } = mock_fetch();
+
+		const rev = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await wait_for(1);
+		call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/"],
+				LoadersData: [{ fresh: false }],
+			}),
+		);
+		await rev;
+
+		expect(route_updates).toHaveLength(0);
+	});
+
 	it("returns a promise that resolves when freshness is achieved", async () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();

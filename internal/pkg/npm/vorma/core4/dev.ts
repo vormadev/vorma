@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { jsonDeepEquals } from "vorma/kit/json";
 import { registerPattern, type PatternRegistry } from "vorma/kit/matcher";
 import type {
 	ClientCommit,
@@ -201,15 +202,24 @@ async function update_core4_hmr_route(
 	};
 	runtime.current_render_state = next_render_state;
 	runtime.accept_hmr_route_state(next_route);
-	runtime.commit({
+	const client_commit: ClientCommit = {
 		route_render: {
 			state: next_render_state,
 		},
-		route_update: {
+	};
+	if (!jsonDeepEquals(previous_route, next_route)) {
+		client_commit.route_update = {
 			previous_route,
 			reason: "revalidation",
 			route: next_route,
-		},
-	});
-	runtime.user_on_route_update?.(next_route, previous_route, "revalidation");
+		};
+	}
+	runtime.commit(client_commit);
+	if (client_commit.route_update) {
+		runtime.user_on_route_update?.(
+			client_commit.route_update.route,
+			client_commit.route_update.previous_route,
+			client_commit.route_update.reason,
+		);
+	}
 }

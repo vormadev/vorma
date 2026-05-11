@@ -24,11 +24,15 @@ export type {
 	WorkState,
 };
 
-export type Core4Token = string;
-export type PublicCallID = string;
-export type BrowserKey = string;
+type Core4Identity<Name extends string> = string & {
+	readonly __core4_identity: Name;
+};
+
+export type Core4Token = Core4Identity<"Core4Token">;
+export type PublicCallID = Core4Identity<"PublicCallID">;
+export type BrowserKey = Core4Identity<"BrowserKey">;
 export type SubmissionKey = string;
-export type TimerID = string;
+export type TimerID = Core4Identity<"TimerID">;
 
 export type BrowserPosition = {
 	href: string;
@@ -144,22 +148,60 @@ export type ActiveRoutePhase = "fetching" | "preparing" | "publishing";
 
 export type NavigationSource = "navigate" | "popstate" | "redirect";
 
-export type ActiveRouteSlot = {
+type ActiveRouteBase = {
 	browser_key: BrowserKey;
 	href: string;
-	kind: ActiveRouteKind;
 	phase: ActiveRoutePhase;
-	public_call_ids: readonly PublicCallID[];
 	redirect_count: number;
-	restored_scroll?: Core4ScrollState;
-	replace: boolean;
-	scroll_to_top?: boolean;
 	sequence: number;
-	skip_work_indicator: boolean;
-	source: NavigationSource | null;
 	state: unknown;
 	token: Core4Token;
 };
+
+export type BootActiveRouteSlot = ActiveRouteBase & {
+	kind: "boot";
+	public_call_ids: readonly [];
+	replace: true;
+	restored_scroll?: Core4ScrollState;
+	scroll_to_top: true;
+	skip_work_indicator: true;
+	source: null;
+};
+
+export type NavigationActiveRouteSlot = ActiveRouteBase & {
+	kind: "navigation";
+	public_call_ids: readonly PublicCallID[];
+	replace: boolean;
+	restored_scroll?: Core4ScrollState;
+	scroll_to_top?: boolean;
+	skip_work_indicator: boolean;
+	source: Exclude<NavigationSource, "popstate">;
+};
+
+export type PopstateActiveRouteSlot = ActiveRouteBase & {
+	kind: "popstate";
+	public_call_ids: readonly PublicCallID[];
+	replace: true;
+	restored_scroll?: Core4ScrollState;
+	scroll_to_top: true;
+	skip_work_indicator: true;
+	source: "popstate";
+};
+
+export type RevalidationActiveRouteSlot = ActiveRouteBase & {
+	kind: "revalidation";
+	public_call_ids: readonly [];
+	replace: true;
+	scroll_to_top: false;
+	skip_work_indicator: boolean;
+	source: null;
+};
+
+export type ActiveRouteSlot =
+	| BootActiveRouteSlot
+	| NavigationActiveRouteSlot
+	| PopstateActiveRouteSlot
+	| RevalidationActiveRouteSlot;
 
 export type PrefetchSlot =
 	| {
@@ -213,7 +255,10 @@ export type RefreshSlot =
 			attempt: number;
 			demand: RefreshDemand;
 			kind: "running";
-			token: Core4Token;
+	  }
+	| {
+			demand: RefreshDemand;
+			kind: "settling";
 	  };
 
 export type SubmissionSlot = {
@@ -221,7 +266,6 @@ export type SubmissionSlot = {
 	href: string;
 	key: SubmissionKey;
 	method: string;
-	phase: "running" | "superseded";
 	refresh_waiter_id?: PublicCallID;
 	route_kind: APIRouteKind;
 	should_revalidate: boolean;
@@ -236,35 +280,67 @@ export type DeferredAPIRedirect = {
 export type PublicationReason = RouteUpdateReason;
 
 export type PublicationSlot = {
-	committed: boolean;
 	did_navigate: boolean;
-	history: PublicationHistoryAction;
-	hooks: PublicationHookPlan;
-	next: PreparedRoute;
-	position: BrowserPosition;
-	previous: RouteSnapshot | null;
+	phase: "publishing" | "committed";
+	plan: PublicationPlan;
 	public_call_ids: readonly PublicCallID[];
-	reason: PublicationReason;
-	route_sequence: number;
-	save_current_scroll: boolean;
-	scroll: PublicationScrollPlan;
 	token: Core4Token;
 };
 
-export type Core4Model = {
-	active_route: ActiveRouteSlot | null;
-	browser: BrowserPosition | null;
+type RunningRefreshSlot = Extract<RefreshSlot, { kind: "running" }>;
+type SettlingRefreshSlot = Extract<RefreshSlot, { kind: "settling" }>;
+type NonRunningRefreshSlot = Exclude<RefreshSlot, RunningRefreshSlot>;
+type NonRunningSettlingRefreshSlot = Exclude<
+	RefreshSlot,
+	RunningRefreshSlot | SettlingRefreshSlot
+>;
+type PublishingPublicationSlot = PublicationSlot & { phase: "publishing" };
+type CommittedPublicationSlot = PublicationSlot & { phase: "committed" };
+
+type Core4OwnerSlots =
+	| {
+			active_route: RevalidationActiveRouteSlot;
+			publication: PublishingPublicationSlot | null;
+			refresh: RunningRefreshSlot;
+	  }
+	| {
+			active_route: ActiveRouteSlot | null;
+			publication: CommittedPublicationSlot;
+			refresh: NonRunningRefreshSlot;
+	  }
+	| {
+			active_route: ActiveRouteSlot;
+			publication: PublishingPublicationSlot;
+			refresh: NonRunningSettlingRefreshSlot;
+	  }
+	| {
+			active_route: ActiveRouteSlot | null;
+			publication: null;
+			refresh: NonRunningSettlingRefreshSlot;
+	  };
+
+type Core4ModelBase = Core4OwnerSlots & {
 	client_build_id: string;
-	current: RouteSnapshot | null;
 	deferred_api_redirect: DeferredAPIRedirect | null;
-	phase: "booting" | "ready";
 	prefetch: PrefetchSlot | null;
-	publication: PublicationSlot | null;
-	refresh: RefreshSlot;
 	sequence: number;
 	submissions: Readonly<Record<Core4Token, SubmissionSlot | undefined>>;
 	use_view_transitions: boolean;
 };
+
+export type Core4BootingModel = Core4ModelBase & {
+	browser: BrowserPosition | null;
+	current: RouteSnapshot | null;
+	phase: "booting";
+};
+
+export type Core4ReadyModel = Core4ModelBase & {
+	browser: BrowserPosition;
+	current: RouteSnapshot;
+	phase: "ready";
+};
+
+export type Core4Model = Core4BootingModel | Core4ReadyModel;
 
 export type PublicNavigationResult = {
 	didNavigate: boolean;
@@ -313,7 +389,15 @@ export type Core4Effect =
 			token: Core4Token;
 	  }
 	| {
+			type: "release_route_work";
+			token: Core4Token;
+	  }
+	| {
 			type: "abort_api_submission";
+			token: Core4Token;
+	  }
+	| {
+			type: "release_api_submission";
 			token: Core4Token;
 	  }
 	| {
@@ -332,6 +416,8 @@ export type Core4Effect =
 			type: "fetch_route";
 	  }
 	| {
+			history_state: unknown;
+			href: string;
 			payload: RoutePayload;
 			target: "active_route" | "prefetch";
 			token: Core4Token;
@@ -404,14 +490,25 @@ export type Core4Transition<Kind extends string = string> = {
 	model: Core4Model;
 };
 
-export type Core4Init = {
-	browser?: BrowserPosition | null;
+type Core4InitBase = {
 	client_build_id: string;
-	current?: RouteSnapshot | null;
 	deferred_api_redirect?: DeferredAPIRedirect | null;
-	phase?: Core4Model["phase"];
 	use_view_transitions?: boolean;
 };
+
+export type Core4BootingInit = Core4InitBase & {
+	browser?: BrowserPosition | null;
+	current?: RouteSnapshot | null;
+	phase?: "booting";
+};
+
+export type Core4ReadyInit = Core4InitBase & {
+	browser: BrowserPosition;
+	current: RouteSnapshot;
+	phase: "ready";
+};
+
+export type Core4Init = Core4BootingInit | Core4ReadyInit;
 
 export type Core4WorkProjection =
 	| {
@@ -468,35 +565,66 @@ export type PrefetchRequest = {
 	token: Core4Token;
 };
 
-export type RouteResponseOutcome =
+export type RouteBuildSkewReport = {
+	default_behavior: BuildSkewDefaultBehavior;
+	requested_href: string;
+	response: BuildSkewResponseFacts;
+};
+
+export type RouteResponseOwner =
 	| {
-			href: string;
-			kind: "build_skew";
-			response: BuildSkewResponseFacts;
-			token: Core4Token;
+			active_route: ActiveRouteSlot;
+			kind: "active_route";
 	  }
 	| {
-			href: string;
-			kind: "hard_redirect";
-			token: Core4Token;
+			kind: "prefetch";
+			prefetch: PrefetchSlot;
 	  }
 	| {
-			href: string;
-			kind: "soft_redirect";
-			token: Core4Token;
-	  }
-	| {
-			kind: "failed";
-			retryable: boolean;
-			token: Core4Token;
-	  }
-	| {
-			kind: "data";
-			payload: RoutePayload;
-			token: Core4Token;
+			kind: "stale";
 	  };
 
+export type RouteResponseOwnerKind = RouteResponseOwner["kind"];
+
+type RouteResponseOutcomeBase = {
+	build_skew_report?: RouteBuildSkewReport;
+	token: Core4Token;
+};
+
+type OwnedRouteResponseOutcomeBase = RouteResponseOutcomeBase & {
+	owner_kind: Exclude<RouteResponseOwnerKind, "stale">;
+};
+
+export type RouteResponseOutcome =
+	| (RouteResponseOutcomeBase & {
+			kind: "ignored_stale";
+			owner_kind: "stale";
+	  })
+	| (OwnedRouteResponseOutcomeBase &
+			(
+				| {
+						behavior: "drop" | "reload";
+						default_behavior: BuildSkewDefaultBehavior;
+						href: string;
+						kind: "build_skew";
+						response: BuildSkewResponseFacts;
+				  }
+				| {
+						href: string;
+						kind: "soft_redirect";
+				  }
+				| {
+						kind: "failed";
+						retryable: boolean;
+				  }
+				| {
+						kind: "data";
+						payload: RoutePayload;
+				  }
+			));
+
 export type RouteResponseClassificationInput = {
+	owner: RouteResponseOwner;
 	payload?: RoutePayload;
 	requested_href: string;
 	response: Core4ResponseFacts;
@@ -511,14 +639,26 @@ export type RouteResponseTransition =
 	| Core4Transition<"failed">
 	| Core4Transition<"build_skew">;
 
-export type PreparedRouteOutcome = {
-	prepared: PreparedRoute;
-	token: Core4Token;
-};
+export type RoutePreparationOutcome =
+	| {
+			kind: "aborted";
+			token: Core4Token;
+	  }
+	| {
+			kind: "failed";
+			retryable: boolean;
+			token: Core4Token;
+	  }
+	| {
+			kind: "prepared";
+			prepared: PreparedRoute;
+			token: Core4Token;
+	  };
 
-export type PreparedRouteTransition =
+export type RoutePreparationTransition =
 	| Core4Transition<"prefetch_prepared">
-	| Core4Transition<"publishing">;
+	| Core4Transition<"publishing">
+	| RouteResponseTransition;
 
 export type PublicationCommit = {
 	token: Core4Token;
@@ -560,51 +700,60 @@ export type APISubmissionResult =
 			success: false;
 	  };
 
+export type APISubmissionBuildSkewReport = {
+	default_behavior: BuildSkewDefaultBehavior;
+	response: BuildSkewResponseFacts;
+};
+
+type APISubmissionOutcomeBase = {
+	build_skew_report?: APISubmissionBuildSkewReport;
+	token: Core4Token;
+};
+
 export type APISubmissionOutcome =
-	| {
-			data: unknown;
-			kind: "success";
-			response?: unknown;
-			token: Core4Token;
-	  }
-	| {
-			error: string;
-			kind: "http_error";
-			response?: unknown;
-			token: Core4Token;
-	  }
-	| {
-			dispatched: boolean;
-			kind: "aborted";
-			token: Core4Token;
-	  }
-	| {
-			dispatched: boolean;
-			error: string;
-			kind: "network_error";
-			token: Core4Token;
-	  }
-	| {
-			href: string;
-			kind: "hard_redirect";
-			response?: unknown;
-			token: Core4Token;
-	  }
-	| {
-			browser_key: BrowserKey;
-			href: string;
-			kind: "soft_redirect";
-			navigation_token: Core4Token;
-			response?: unknown;
-			state: unknown;
-			token: Core4Token;
-	  }
-	| {
-			error: string;
-			kind: "invalid_redirect";
-			response?: unknown;
-			token: Core4Token;
-	  };
+	| (APISubmissionOutcomeBase & {
+			kind: "ignored_stale";
+	  })
+	| (APISubmissionOutcomeBase &
+			(
+				| {
+						data: unknown;
+						kind: "success";
+						response?: unknown;
+				  }
+				| {
+						error: string;
+						kind: "http_error";
+						response?: unknown;
+				  }
+				| {
+						dispatched: boolean;
+						kind: "aborted";
+				  }
+				| {
+						dispatched: boolean;
+						error: string;
+						kind: "network_error";
+				  }
+				| {
+						href: string;
+						kind: "hard_redirect";
+						response?: unknown;
+				  }
+				| {
+						browser_key: BrowserKey;
+						href: string;
+						kind: "soft_redirect";
+						navigation_token: Core4Token;
+						response?: unknown;
+						state: unknown;
+				  }
+				| {
+						error: string;
+						kind: "invalid_redirect";
+						response?: unknown;
+				  }
+			));
 
 export type APIResponseClassificationInput = {
 	browser_key: BrowserKey;
@@ -613,6 +762,7 @@ export type APIResponseClassificationInput = {
 	requested_href: string;
 	response: Core4ResponseFacts;
 	state: unknown;
+	submission: SubmissionSlot | null;
 	token: Core4Token;
 };
 
