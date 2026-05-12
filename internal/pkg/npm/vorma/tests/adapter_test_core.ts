@@ -257,6 +257,21 @@ function deferred_response(): {
 	return { promise, resolve };
 }
 
+function dispatch_link_intent_prefetch(anchor: HTMLAnchorElement): void {
+	anchor.dispatchEvent(
+		new Event("pointerover", {
+			bubbles: true,
+			cancelable: true,
+		}),
+	);
+	anchor.dispatchEvent(
+		new Event("pointerenter", {
+			bubbles: true,
+			cancelable: true,
+		}),
+	);
+}
+
 /////// Test definitions
 
 export function define_adapter_tests(harness: AdapterTestHarness) {
@@ -1091,10 +1106,11 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		it("does not rerender the route tree for prefetch work changes", async () => {
+		it("does not rerender the route tree when link intent prefetch starts", async () => {
 			const root_pattern = "/";
 			const prefetch_target_path = "/prefetch-granularity-target";
 			const page_module_url = "/prefetch-granularity-page.js";
+			let client!: TestVormaClient;
 			let route_render_count = 0;
 
 			vi.doMock(page_module_url, () => {
@@ -1106,7 +1122,12 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 							return harness.h(
 								"main",
 								{ "data-granularity-route": "true" },
-								"prefetch route",
+								harness.h(client.Link as any, {
+									pattern: prefetch_target_path,
+									prefetch: "intent",
+									prefetchDelayMs: 0,
+									children: "Prefetch",
+								}),
 							);
 						},
 					},
@@ -1118,30 +1139,31 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				LoadersData: [{}],
 				ImportURLs: [page_module_url],
 			});
-			const client = harness.create_client(TEST_CONFIG);
+			client = harness.create_client(TEST_CONFIG);
 
 			await client.boot();
 
 			const response = deferred_response();
-			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response.promise);
+			const fetch_mock = vi
+				.spyOn(globalThis, "fetch")
+				.mockReturnValueOnce(response.promise);
 
 			const { container, render, cleanup } = harness.mount();
 			try {
 				render(harness.h(client.RootOutlet, { idx: 0 }));
-				expect(container.textContent).toBe("prefetch route");
 				expect(route_render_count).toBe(1);
 
-				client.prefetch({ href: prefetch_target_path });
+				const anchor = container.querySelector("a")!;
+				dispatch_link_intent_prefetch(anchor);
 
 				await wait_for_dom(() => {
-					expect(client.getWorkState().prefetch?.href).toContain(
-						prefetch_target_path,
-					);
+					expect(fetch_mock).toHaveBeenCalledTimes(1);
 				});
+				expect(route_render_count).toBe(1);
+
 				await new Promise((resolve) => {
 					return setTimeout(resolve, 0);
 				});
-
 				expect(route_render_count).toBe(1);
 			} finally {
 				response.resolve(
@@ -1154,7 +1176,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		it("rerenders only work subscribers whose selected value changes", async () => {
+		it("rerenders only work subscribers whose selected value changes when link intent prefetch starts", async () => {
 			const root_pattern = "/";
 			const prefetch_target_path =
 				"/prefetch-selector-granularity-target";
@@ -1175,6 +1197,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 						const href = v.workState((work) => {
 							return work.prefetch?.href ?? "none";
 						});
+						v.routeSync({ pattern: root_pattern });
 						return harness.h(
 							"output",
 							{ "data-prefetch-work": "true" },
@@ -1224,6 +1247,12 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 										return null;
 									},
 								}),
+								harness.h(client.Link as any, {
+									pattern: prefetch_target_path,
+									prefetch: "intent",
+									prefetchDelayMs: 0,
+									children: "Prefetch",
+								}),
 							);
 						},
 					},
@@ -1240,7 +1269,9 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			await client.boot();
 
 			const response = deferred_response();
-			vi.spyOn(globalThis, "fetch").mockReturnValueOnce(response.promise);
+			const fetch_mock = vi
+				.spyOn(globalThis, "fetch")
+				.mockReturnValueOnce(response.promise);
 
 			const { container, render, cleanup } = harness.mount();
 			try {
@@ -1251,7 +1282,12 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				expect(prefetch_read_count).toBe(1);
 				expect(navigation_read_count).toBe(1);
 
-				client.prefetch({ href: prefetch_target_path });
+				const anchor = container.querySelector("a")!;
+				dispatch_link_intent_prefetch(anchor);
+
+				await wait_for_dom(() => {
+					expect(fetch_mock).toHaveBeenCalledTimes(1);
+				});
 
 				await wait_for_dom(() => {
 					expect(
@@ -1364,6 +1400,87 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 					});
 				}
 				expect(fetch_spy).not.toHaveBeenCalled();
+			} finally {
+				cleanup();
+			}
+		});
+
+		it("useRouteSync cancels a debounced navigation when the target returns to the current route", async () => {
+			const amount_pattern = "/amount/:amount";
+			const route_sync_delay_ms = 20;
+			let amount = "12";
+
+			window.history.replaceState({}, "", "/amount/12");
+			seed_payload({
+				MatchedPatterns: [amount_pattern],
+				LoadersData: [{}],
+				Params: { amount },
+				SplatValues: [],
+			});
+			const client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			const sync_view = harness.create_view({
+				client,
+				pattern: amount_pattern,
+				render: ({ v }) => {
+					v.routeSync({
+						pattern: amount_pattern,
+						params: { amount },
+						debounceMs: route_sync_delay_ms,
+					});
+					return harness.h(
+						"output",
+						{ "data-route-sync-amount": "" },
+						amount,
+					);
+				},
+			});
+			const fetch_mock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+				route_response({
+					MatchedPatterns: [amount_pattern],
+					LoadersData: [{}],
+					Params: { amount: "1" },
+				}),
+			);
+
+			const { container, render, cleanup } = harness.mount();
+			const render_sync = () => {
+				render(
+					harness.h(sync_view.component, {
+						idx: 0,
+						sync_amount: amount,
+						Outlet: () => {
+							return null;
+						},
+					}),
+				);
+			};
+			try {
+				render_sync();
+				expect(container.textContent).toBe("12");
+
+				amount = "1";
+				render_sync();
+				expect(container.textContent).toBe("1");
+				await new Promise((resolve) => {
+					return setTimeout(resolve, 0);
+				});
+				expect(fetch_mock).not.toHaveBeenCalled();
+
+				amount = "12";
+				render_sync();
+				expect(container.textContent).toBe("12");
+				await new Promise((resolve) => {
+					return setTimeout(resolve, 0);
+				});
+				await new Promise((resolve) => {
+					return setTimeout(resolve, route_sync_delay_ms + 5);
+				});
+
+				expect(fetch_mock).not.toHaveBeenCalled();
+				expect(window.location.pathname).toBe("/amount/12");
 			} finally {
 				cleanup();
 			}

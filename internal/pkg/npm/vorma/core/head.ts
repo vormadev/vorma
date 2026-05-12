@@ -14,11 +14,16 @@ export function apply_head_and_title(
 	meta_els: HeadEl[],
 	rest_els: HeadEl[],
 ): Result<void> {
-	if (title !== undefined) {
-		if (title !== "" || document.head.querySelector("title")) {
-			document.title = title;
+	try {
+		if (title !== undefined) {
+			if (title !== "" || document.head.querySelector("title")) {
+				document.title = title;
+			}
 		}
+	} catch (error) {
+		return R.err(error instanceof Error ? error.message : String(error));
 	}
+
 	const meta_res = reconcile_section("meta", meta_els);
 	if (!meta_res.ok) {
 		return R.err(meta_res.err);
@@ -37,144 +42,147 @@ function reconcile_section(section: HeadSection, els: HeadEl[]): Result<void> {
 		return R.err(boundary_res.err);
 	}
 	const { start, end } = boundary_res.val;
-	if (!start || !end || !end.parentNode) {
+	if (!end.parentNode) {
 		return R.err(
 			`Invalid head section boundaries for section "${section}"`,
 		);
 	}
 	const parent = end.parentNode;
+	let first_error: string | undefined;
 
-	// Collect current elements between markers
-	const current_elements: Element[] = [];
-	let node: Node | null = start.nextSibling;
-	while (node && node !== end) {
-		if (node.nodeType === Node.ELEMENT_NODE) {
-			current_elements.push(node as Element);
+	try {
+		const current_elements: Element[] = [];
+		let node: Node | null = start.nextSibling;
+		while (node && node !== end) {
+			if (node.nodeType === Node.ELEMENT_NODE) {
+				current_elements.push(node as Element);
+			}
+			node = node.nextSibling;
 		}
-		node = node.nextSibling;
-	}
 
-	// Build new elements from blocks
-	const new_elements: Element[] = [];
-	const new_element_fingerprints = new Map<string, Element>();
+		const new_elements: Element[] = [];
+		const new_element_fingerprints = new Map<string, Element>();
 
-	for (const block of els) {
-		if (!block.tag) {
-			continue;
+		for (const block of els) {
+			if (!block.tag) {
+				first_error ??= `Invalid head element tag for section "${section}"`;
+				continue;
+			}
+			const el = document.createElement(block.tag);
+			if (block.attributesKnownSafe) {
+				for (const [key, value] of Object.entries(
+					block.attributesKnownSafe,
+				)) {
+					el.setAttribute(key, value);
+				}
+			}
+			if (block.booleanAttributes) {
+				for (const key of block.booleanAttributes) {
+					el.setAttribute(key, "");
+				}
+			}
+			if (block.dangerousInnerHTML) {
+				el.innerHTML = block.dangerousInnerHTML;
+			}
+
+			const fp = fingerprint_element(el);
+
+			if (new_element_fingerprints.has(fp)) {
+				const prev = new_element_fingerprints.get(fp)!;
+				const idx = new_elements.indexOf(prev);
+				if (idx > -1) {
+					new_elements.splice(idx, 1);
+				}
+			}
+			new_elements.push(el);
+			new_element_fingerprints.set(fp, el);
 		}
-		const el = document.createElement(block.tag);
-		if (block.attributesKnownSafe) {
-			for (const [key, value] of Object.entries(
-				block.attributesKnownSafe,
-			)) {
-				el.setAttribute(key, value);
+
+		const current_by_fp = new Map<string, Element[]>();
+		for (const el of current_elements) {
+			const fp = fingerprint_element(el);
+			const list = current_by_fp.get(fp);
+			if (list) {
+				list.push(el);
+			} else {
+				current_by_fp.set(fp, [el]);
 			}
 		}
-		if (block.booleanAttributes) {
-			for (const key of block.booleanAttributes) {
-				el.setAttribute(key, "");
+
+		const final_elements: Element[] = [];
+		const used = new Set<Element>();
+
+		for (const new_el of new_elements) {
+			const fp = fingerprint_element(new_el);
+			const candidates = current_by_fp.get(fp) ?? [];
+			const matched = candidates.find((el) => {
+				return !used.has(el);
+			});
+
+			if (matched) {
+				used.add(matched);
+				final_elements.push(matched);
+			} else {
+				final_elements.push(new_el);
 			}
 		}
-		if (block.dangerousInnerHTML) {
-			el.innerHTML = block.dangerousInnerHTML;
-		}
 
-		const fp = fingerprint_element(el);
-
-		// Deduplicate: if a later block has the same fingerprint,
-		// it replaces the earlier one.
-		if (new_element_fingerprints.has(fp)) {
-			const prev = new_element_fingerprints.get(fp)!;
-			const idx = new_elements.indexOf(prev);
-			if (idx > -1) {
-				new_elements.splice(idx, 1);
+		const remaining = new Set(current_elements);
+		for (const el of current_elements) {
+			if (!used.has(el)) {
+				parent.removeChild(el);
+				remaining.delete(el);
 			}
 		}
-		new_elements.push(el);
-		new_element_fingerprints.set(fp, el);
-	}
 
-	// Build map of current elements by fingerprint
-	const current_by_fp = new Map<string, Element[]>();
-	for (const el of current_elements) {
-		const fp = fingerprint_element(el);
-		const list = current_by_fp.get(fp);
-		if (list) {
-			list.push(el);
-		} else {
-			current_by_fp.set(fp, [el]);
-		}
-	}
-
-	// Match new elements to existing DOM elements by exact fingerprint
-	const final_elements: Element[] = [];
-	const used = new Set<Element>();
-
-	for (const new_el of new_elements) {
-		const fp = fingerprint_element(new_el);
-		const candidates = current_by_fp.get(fp) ?? [];
-		const matched = candidates.find((el) => {
-			return !used.has(el);
-		});
-
-		if (matched) {
-			used.add(matched);
-			final_elements.push(matched);
-		} else {
-			final_elements.push(new_el);
-		}
-	}
-
-	// Remove elements that are no longer needed
-	const remaining = new Set(current_elements);
-	for (const el of current_elements) {
-		if (!used.has(el)) {
-			parent.removeChild(el);
-			remaining.delete(el);
-		}
-	}
-
-	// Remove stray text/comment nodes between markers
-	node = start.nextSibling;
-	while (node && node !== end) {
-		const next = node.nextSibling;
-		if (node.nodeType !== Node.ELEMENT_NODE) {
-			parent.removeChild(node);
-		}
-		node = next;
-	}
-
-	// Position elements in correct order with minimal DOM operations
-	let last_processed: Element | null = null;
-
-	for (const element of final_elements) {
-		const is_existing = used.has(element);
-
-		if (is_existing) {
-			const expected_next: Element | null = last_processed
-				? last_processed.nextElementSibling
-				: start.nextElementSibling;
-
-			if (expected_next !== element) {
-				parent.insertBefore(element, (expected_next as Node) ?? end);
+		node = start.nextSibling;
+		while (node && node !== end) {
+			const next = node.nextSibling;
+			if (node.nodeType !== Node.ELEMENT_NODE) {
+				parent.removeChild(node);
 			}
-			remaining.delete(element);
-		} else {
-			const insert_before = last_processed
-				? last_processed.nextSibling
-				: start.nextSibling;
-			parent.insertBefore(element, insert_before ?? end);
+			node = next;
 		}
 
-		last_processed = element;
-	}
+		let last_processed: Element | null = null;
 
-	return R.ok(undefined);
+		for (const element of final_elements) {
+			const is_existing = used.has(element);
+
+			if (is_existing) {
+				const expected_next: Element | null = last_processed
+					? last_processed.nextElementSibling
+					: start.nextElementSibling;
+
+				if (expected_next !== element) {
+					parent.insertBefore(
+						element,
+						(expected_next as Node) ?? end,
+					);
+				}
+				remaining.delete(element);
+			} else {
+				const insert_before = last_processed
+					? last_processed.nextSibling
+					: start.nextSibling;
+				parent.insertBefore(element, insert_before ?? end);
+			}
+
+			last_processed = element;
+		}
+
+		if (first_error) {
+			return R.err(first_error);
+		}
+		return R.ok(undefined);
+	} catch (error) {
+		return R.err(error instanceof Error ? error.message : String(error));
+	}
 }
 
 function find_boundary_comments(section: HeadSection): Result<{
-	start: Comment | undefined;
-	end: Comment | undefined;
+	start: Comment;
+	end: Comment;
 }> {
 	const start_text = `vorma-${section}-start`;
 	const end_text = `vorma-${section}-end`;

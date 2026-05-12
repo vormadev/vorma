@@ -1,4 +1,4 @@
-import type { ViewDefinition, RouteRenderEntry } from "./create_client_core.ts";
+import type { RouteRenderEntry, ViewDefinition } from "./create_client_core.ts";
 import type { RouteErrorState } from "./types.ts";
 
 export type OutletSlot =

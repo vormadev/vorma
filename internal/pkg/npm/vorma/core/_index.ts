@@ -19,13 +19,14 @@ export {
 	type ClientCommit,
 	type ClientOptions,
 	type CommitFn,
-	type ProgressIndicatorConfig,
 	type RevalidationReason,
 	type RouteRenderEntry,
 	type RouteRenderState,
 	type ScrollIntent,
 	type ScrollState,
 	type ViewDefinition,
+	type WorkIndicator,
+	type WorkIndicatorOptions,
 	type WorkState,
 } from "./create_client_core.ts";
 export {

@@ -49,7 +49,6 @@ export type {
 	BeforeRouteYieldFn,
 	BuildSkewDetectedEvent,
 	MutationResult,
-	ProgressIndicatorConfig,
 	QueryResult,
 	RevalidationReason,
 	RevalidationResult,
@@ -82,6 +81,8 @@ export type {
 	ToRouteSyncArgs,
 	ToViewPattern,
 	AppConfig as VormaClientSeed,
+	WorkIndicator,
+	WorkIndicatorOptions,
 	WorkState,
 } from "vorma/__internal";
 

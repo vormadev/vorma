@@ -1,10 +1,10 @@
 import { serializeToSearchParams } from "vorma/kit/json";
 import type {
 	AppConfig,
-	ToViewPattern,
 	ToNavigateArgs,
 	ToNavigationTarget,
 	ToRouteDestination,
+	ToViewPattern,
 } from "./types.ts";
 
 const DYNAMIC_RUNE = ":";
@@ -146,7 +146,7 @@ export function create_typed_navigate<A extends AppConfig>(
 			replace?: boolean;
 			scrollToTop?: boolean;
 			state?: unknown;
-			skipProgressIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		},
 	) => Promise<{ didNavigate: boolean }>,
 ) {
@@ -159,7 +159,7 @@ export function create_typed_navigate<A extends AppConfig>(
 			replace: args.replace,
 			scrollToTop: args.scrollToTop,
 			state: args.state,
-			skipProgressIndicator: args.skipProgressIndicator,
+			skipWorkIndicator: args.skipWorkIndicator,
 		});
 	};
 }

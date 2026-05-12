@@ -21,7 +21,7 @@ type SubmitFn = <T>(
 		apiRouteKind?: APIRouteKind;
 		dedupeKey?: string;
 		revalidate?: boolean;
-		skipProgressIndicator?: boolean;
+		skipWorkIndicator?: boolean;
 	},
 ) => Promise<QueryResult<T> | MutationResult<T>>;
 
@@ -86,7 +86,7 @@ export function create_typed_api_client<A extends AppConfig>(
 			params,
 			pattern,
 			revalidate,
-			skipProgressIndicator,
+			skipWorkIndicator,
 			splatValues,
 			...request_init
 		} = args as any;
@@ -125,7 +125,7 @@ export function create_typed_api_client<A extends AppConfig>(
 			apiRouteKind?: APIRouteKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
-			skipProgressIndicator?: boolean;
+			skipWorkIndicator?: boolean;
 		} = {
 			apiRouteKind: api_route_kind,
 		};
@@ -135,8 +135,8 @@ export function create_typed_api_client<A extends AppConfig>(
 		if (revalidate !== undefined) {
 			options.revalidate = revalidate;
 		}
-		if (skipProgressIndicator !== undefined) {
-			options.skipProgressIndicator = skipProgressIndicator;
+		if (skipWorkIndicator !== undefined) {
+			options.skipWorkIndicator = skipWorkIndicator;
 		}
 		return submit_fn<__APIClientOutput<A, Args>>(url, init, options);
 	}

@@ -92,4 +92,15 @@ describe("debounce", () => {
 		await expect(p).rejects.toThrow("boom");
 		expect(spy).toHaveBeenCalledTimes(1);
 	});
+
+	it("cancels pending calls", () => {
+		const spy = vi.fn();
+		const debounced = debounce(spy, 100);
+
+		void debounced();
+		debounced.cancel();
+		vi.advanceTimersByTime(100);
+
+		expect(spy).not.toHaveBeenCalled();
+	});
 });

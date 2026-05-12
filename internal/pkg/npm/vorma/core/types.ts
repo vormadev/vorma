@@ -102,6 +102,7 @@ export type LinkPropsBase = {
 	visitOnPointerDown?: boolean;
 	replace?: boolean;
 	scrollToTop?: boolean;
+	skipWorkIndicator?: boolean;
 };
 
 /////// APP CONFIG
@@ -388,7 +389,7 @@ export type ToNavigateArgs<
 	replace?: boolean;
 	scrollToTop?: boolean;
 	state?: unknown;
-	skipProgressIndicator?: boolean;
+	skipWorkIndicator?: boolean;
 };
 
 export type ToRouteSyncArgs<
@@ -414,7 +415,7 @@ type __APIClientArgsForAPIRoute<A extends AppConfig, Act> = Act extends {
 					dedupeKey?: string;
 					pattern: P;
 					revalidate?: boolean;
-					skipProgressIndicator?: boolean;
+					skipWorkIndicator?: boolean;
 				} & __APIRouteMethodField<A, P, M> &
 					__ConditionalAPIRouteParams<Act> &
 					__ConditionalSplat<P> &

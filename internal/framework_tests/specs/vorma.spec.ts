@@ -65,7 +65,6 @@ type FixtureState = {
 	manual_revalidation_build_skew_detections: number;
 	last_build_skew_server_id: string | null;
 	last_build_skew_active_client_id: string | null;
-	last_build_skew_default_behavior: string | null;
 	last_build_skew_response_kind: string | null;
 	last_build_skew_response_trigger: string | null;
 	last_build_skew_api_route_kind: string | null;
@@ -80,7 +79,6 @@ type FixtureState = {
 	last_build_skew_current_work_submission_count: number | null;
 	last_api_build_skew_server_id: string | null;
 	last_api_build_skew_active_client_id: string | null;
-	last_api_build_skew_default_behavior: string | null;
 	last_api_build_skew_api_route_kind: string | null;
 	last_api_build_skew_status: number | null;
 	last_api_build_skew_ok: boolean | null;
@@ -261,8 +259,6 @@ const fixture_state = extract((state): FixtureState => {
 		last_build_skew_server_id: probe?.last_build_skew_server_id ?? null,
 		last_build_skew_active_client_id:
 			probe?.last_build_skew?.active_client_build_id ?? null,
-		last_build_skew_default_behavior:
-			probe?.last_build_skew?.default_behavior ?? null,
 		last_build_skew_response_kind:
 			probe?.last_build_skew?.response_kind ?? null,
 		last_build_skew_response_trigger:
@@ -289,8 +285,6 @@ const fixture_state = extract((state): FixtureState => {
 			probe?.last_api_build_skew?.server_build_id ?? null,
 		last_api_build_skew_active_client_id:
 			probe?.last_api_build_skew?.active_client_build_id ?? null,
-		last_api_build_skew_default_behavior:
-			probe?.last_api_build_skew?.default_behavior ?? null,
 		last_api_build_skew_api_route_kind:
 			probe?.last_api_build_skew?.api_route_kind ?? null,
 		last_api_build_skew_status: probe?.last_api_build_skew?.status ?? null,
@@ -322,8 +316,6 @@ function api_skew_kept_client_build_id(api_route_kind: string, ok: boolean) {
 		fixture_state.current.route_client_build_id !== null &&
 		fixture_state.current.last_api_build_skew_server_id !== null &&
 		fixture_state.current.last_api_build_skew_active_client_id !== null &&
-		fixture_state.current.last_api_build_skew_default_behavior ===
-			"notifyOnly" &&
 		fixture_state.current.last_api_build_skew_api_route_kind ===
 			api_route_kind &&
 		fixture_state.current.last_api_build_skew_ok === ok &&
@@ -513,7 +505,6 @@ export const vorma_build_skew_events_include_context = always(() => {
 	return (
 		fixture_state.current.last_build_skew_server_id !== null &&
 		fixture_state.current.last_build_skew_active_client_id !== null &&
-		fixture_state.current.last_build_skew_default_behavior !== null &&
 		fixture_state.current.last_build_skew_response_kind !== null &&
 		fixture_state.current.last_build_skew_requested_href !== null &&
 		fixture_state.current.last_build_skew_status !== null &&

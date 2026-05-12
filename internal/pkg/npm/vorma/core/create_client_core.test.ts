@@ -10,6 +10,7 @@ import {
 	deferred,
 	has_route_render_commit,
 	mock_fetch,
+	redirect_response,
 	register_ccc_lifecycle,
 	route_render_commit_at,
 	route_render_commit_count,
@@ -19,14 +20,18 @@ import {
 	setup,
 	tick,
 } from "./___ccc_test_helpers.ts";
-import { BUILD_ID_HEADER, X_VORMA_BUILD_SKEW } from "./constants.ts";
+import {
+	BUILD_ID_HEADER,
+	X_CLIENT_REDIRECT,
+	X_VORMA_BUILD_SKEW,
+} from "./constants.ts";
 import {
 	REVALIDATION_DEBOUNCE_MS,
 	apply_scroll,
 	create_client_core,
 	type ClientCommit,
 	type ClientCore,
-	type ProgressIndicatorConfig,
+	type WorkIndicatorOptions,
 } from "./create_client_core.ts";
 
 register_ccc_lifecycle(beforeEach, afterEach);
@@ -53,6 +58,19 @@ async function wait_until(
 		});
 	}
 	throw new Error(message);
+}
+
+async function expect_revalidation_promise_resolves_ok(
+	promise: Promise<unknown>,
+): Promise<void> {
+	const pending = Symbol("pending");
+	const result = await Promise.race([
+		promise,
+		tick().then(() => {
+			return pending;
+		}),
+	]);
+	expect(result).toEqual({ ok: true });
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -1093,6 +1111,48 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 			page: "second",
 		});
 	});
+
+	it("settles navigation without publishing when a route hook rejects", async () => {
+		vi.doMock("/current.js", () => {
+			return {
+				default: {
+					pattern: "/current",
+					component: () => {
+						return null;
+					},
+					before_route_yield: async () => {
+						throw new Error("yield rejected");
+					},
+				},
+			};
+		});
+
+		const { core, commit } = await setup({
+			payload: {
+				MatchedPatterns: ["/current"],
+				LoadersData: [{ page: "current" }],
+				ImportURLs: ["/current.js"],
+			},
+		});
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({
+				MatchedPatterns: ["/next"],
+				LoadersData: [{ page: "next" }],
+			}),
+		);
+
+		const pending = Symbol("pending");
+		let result: unknown = pending;
+		void core.navigate("/next").then((nav_result) => {
+			result = nav_result;
+		});
+		await wait_until(() => {
+			return result !== pending;
+		}, "navigation did not settle after route hook rejection");
+
+		expect(result).toEqual({ didNavigate: false });
+		expect(route_render_commit_count(commit)).toBe(0);
+	});
 });
 
 /////////////////////////////////////////////////////////////////////
@@ -1175,6 +1235,66 @@ describe("client loaders", () => {
 		expect(call_order.indexOf("b_start")).toBeLessThan(
 			call_order.indexOf("a_end"),
 		);
+	});
+
+	it("passes cached search-schema input to prestarted client loaders", async () => {
+		let captured_args: any = null;
+		const loader_started = deferred<void>();
+
+		vi.doMock("/users-module.js", () => {
+			return {
+				default: {
+					pattern: "/users",
+					component: () => {
+						return null;
+					},
+					client_loader: async (args: any) => {
+						if (args.trigger === "navigation") {
+							captured_args = args;
+							loader_started.resolve();
+							await args.serverPromise;
+						}
+						return { client: true };
+					},
+				},
+			};
+		});
+
+		const { core } = await setup({
+			payload: {
+				MatchedPatterns: ["/users"],
+				LoadersData: [{ users: "initial" }],
+				ImportURLs: ["/users-module.js"],
+				SearchSchemas: [
+					{
+						page: SEARCH_PARAM_SCHEMA_NUMBER,
+					},
+				],
+			},
+		});
+		const fetcher = mock_fetch();
+
+		const nav = core.navigate("/users?page=3");
+		await loader_started.promise;
+
+		expect(captured_args.input).toEqual({ page: 3 });
+		expect(captured_args.knownMatches).toEqual([
+			{ pattern: "/users", input: { page: 3 } },
+		]);
+
+		fetcher.call(0).resolve(
+			route_response({
+				MatchedPatterns: ["/users"],
+				LoadersData: [{ users: "next" }],
+				ImportURLs: ["/users-module.js"],
+				SearchSchemas: [
+					{
+						page: SEARCH_PARAM_SCHEMA_NUMBER,
+					},
+				],
+			}),
+		);
+		await nav;
 	});
 
 	it("receives correct serverPromise content", async () => {
@@ -1689,7 +1809,6 @@ describe("build ID", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "navigation",
@@ -1735,6 +1854,48 @@ describe("build ID", () => {
 		await core.navigate("/page");
 
 		expect(on_build_skew).not.toHaveBeenCalled();
+	});
+
+	it("reports build skew context for route hard redirects with a newer build", async () => {
+		seed_payload({ ClientBuildID: "build-1" });
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		const on_build_skew = vi.fn();
+		await core.boot({ onBuildSkewDetected: on_build_skew });
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_CLIENT_REDIRECT]: "https://example.com/page",
+			}),
+		);
+
+		await core.navigate("/page");
+
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					ok: true,
+					requestedHref: `${window.location.origin}/page`,
+					status: 200,
+					trigger: "navigation",
+				}),
+			}),
+		);
 	});
 });
 
@@ -1806,16 +1967,185 @@ describe("work integration", () => {
 });
 
 /////////////////////////////////////////////////////////////////////
-/////// Progress indicators
+/////// API submit revalidation settlement
 /////////////////////////////////////////////////////////////////////
 
-describe("progress indicators", () => {
+describe("API submit revalidation settlement", () => {
+	it("settles the revalidation promise for cross-origin mutation rejection", async () => {
+		const { core } = await setup();
+
+		const result = await core.submit_inner("https://example.com/api", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(false);
+		await expect_revalidation_promise_resolves_ok(
+			result.revalidationPromise,
+		);
+	});
+
+	it("settles the revalidation promise for invalid API redirects", async () => {
+		const { core } = await setup();
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[X_CLIENT_REDIRECT]: "mailto:not-http",
+			}),
+		);
+
+		const result = await core.submit_inner("/api/action", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(false);
+		await expect_revalidation_promise_resolves_ok(
+			result.revalidationPromise,
+		);
+	});
+
+	it("settles the revalidation promise for hard API redirects", async () => {
+		const { core, hard_redirect } = await setup();
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[X_CLIENT_REDIRECT]: "https://example.com/elsewhere",
+			}),
+		);
+
+		const result = await core.submit_inner("/api/action", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(true);
+		expect(hard_redirect).toHaveBeenCalledWith(
+			"https://example.com/elsewhere",
+		);
+		await expect_revalidation_promise_resolves_ok(
+			result.revalidationPromise,
+		);
+	});
+
+	it("reports build skew context for hard API redirects", async () => {
+		const on_build_skew = vi.fn();
+		const { core } = await setup({
+			clientOptions: { onBuildSkewDetected: on_build_skew },
+			payload: { ClientBuildID: "build-1" },
+		});
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			redirect_response({
+				[BUILD_ID_HEADER]: "build-2",
+				[X_CLIENT_REDIRECT]: "https://example.com/elsewhere",
+			}),
+		);
+
+		const result = await core.submit_inner("/api/action", {
+			method: "POST",
+		});
+
+		expect(result.success).toBe(true);
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				triggeringResponse: expect.objectContaining({
+					apiRouteKind: "mutation",
+					kind: "apiRoute",
+					method: "POST",
+					ok: true,
+					requestedHref: `${window.location.origin}/api/action`,
+					status: 200,
+				}),
+			}),
+		);
+	});
+});
+
+/////////////////////////////////////////////////////////////////////
+/////// Work indicators
+/////////////////////////////////////////////////////////////////////
+
+describe("work indicators", () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
+	type WorkIndicatorRenderEvent = {
+		kind: "start" | "stop";
+		was_visible: boolean;
+	};
+
+	type WorkIndicatorRenderer = WorkIndicatorOptions & {
+		events: WorkIndicatorRenderEvent[];
+		force_visible: () => void;
+		is_visible: () => boolean;
+		reset_events: () => void;
+		start: ReturnType<typeof vi.fn>;
+		stop: ReturnType<typeof vi.fn>;
+	};
+
+	function make_work_indicator_renderer(
+		initial_visible = false,
+	): WorkIndicatorRenderer {
+		let visible = initial_visible;
+		const events: WorkIndicatorRenderEvent[] = [];
+		const start = vi.fn(() => {
+			events.push({ kind: "start", was_visible: visible });
+			visible = true;
+		});
+		const stop = vi.fn(() => {
+			events.push({ kind: "stop", was_visible: visible });
+			visible = false;
+		});
+		return {
+			events,
+			force_visible: () => {
+				visible = true;
+			},
+			is_visible: () => {
+				return visible;
+			},
+			reset_events: () => {
+				events.length = 0;
+				start.mockClear();
+				stop.mockClear();
+			},
+			start,
+			startDelayMS: 1,
+			stop,
+			stopDelayMS: 1,
+		};
+	}
+
+	function expect_work_indicator_idle(
+		core: ClientCore,
+		config: WorkIndicatorRenderer,
+	): void {
+		expect(core.workIndicator.isActive()).toBe(false);
+		expect(core.getWorkState()).toEqual({
+			apiRequests: [],
+			navigation: null,
+			prefetch: null,
+			revalidation: null,
+		});
+		expect(config.is_visible()).toBe(false);
+	}
+
+	function expect_stop_after_last_start(config: WorkIndicatorRenderer): void {
+		let last_start_index = -1;
+		let last_stop_index = -1;
+		for (let i = 0; i < config.events.length; i++) {
+			const event = config.events[i];
+			if (event?.kind === "start") {
+				last_start_index = i;
+			}
+			if (event?.kind === "stop") {
+				last_stop_index = i;
+			}
+		}
+		expect(last_start_index).toBeGreaterThanOrEqual(0);
+		expect(last_stop_index).toBeGreaterThan(last_start_index);
+	}
+
 	async function setup_core(
-		progressIndicator: ProgressIndicatorConfig,
+		workIndicator: WorkIndicatorOptions,
 	): Promise<ClientCore> {
 		seed_payload();
 		const commit = vi.fn();
@@ -1829,23 +2159,15 @@ describe("progress indicators", () => {
 				`create_client_core failed with error: ${core_res.err}`,
 			);
 		}
-		await core_res.val.boot({ progressIndicator });
+		await core_res.val.boot({ workIndicator });
 		return core_res.val;
 	}
 
-	it("start/stop around navigation with delays", async () => {
+	it("starts and stops around navigation with delays", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
-			},
+			start: vi.fn(),
+			stop: vi.fn(),
 			startDelayMS: 10,
 			stopDelayMS: 10,
 		};
@@ -1870,22 +2192,12 @@ describe("progress indicators", () => {
 		expect(config.stop).toHaveBeenCalled();
 	});
 
-	it("respects inclusion filter for navigations only", async () => {
+	it("respects category skips", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
-			},
-			include: ["navigations"] as Array<
-				"navigations" | "apiRequests" | "revalidations"
-			>,
+			start: vi.fn(),
+			stop: vi.fn(),
+			skipAPIRequests: true,
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
@@ -1910,19 +2222,11 @@ describe("progress indicators", () => {
 		expect(config.start).not.toHaveBeenCalled();
 	});
 
-	it("skips progress indicator for opted-out submissions", async () => {
+	it("skips work indicator for opted-out submissions", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
-			},
+			start: vi.fn(),
+			stop: vi.fn(),
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
@@ -1940,28 +2244,192 @@ describe("progress indicators", () => {
 			{ method: "POST" },
 			{
 				revalidate: false,
-				skipProgressIndicator: true,
+				skipWorkIndicator: true,
 			},
 		);
 		await vi.advanceTimersByTimeAsync(10);
 
+		expect(config.start).not.toHaveBeenCalled();
+	});
+
+	it("skips work indicator for opted-out GET query submissions", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+
+		const submit = core.submit_inner("/api/search?q=ada", undefined, {
+			apiRouteKind: "query",
+			dedupeKey: "search:debug",
+			skipWorkIndicator: true,
+		});
+		await fetcher.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(core.getWorkState().apiRequests).toEqual([
+			{
+				key: "search:debug",
+				method: "GET",
+				href: "http://localhost:3000/api/search?q=ada",
+			},
+		]);
+		expect(config.start).not.toHaveBeenCalled();
+		expect(core.workIndicator.isActive()).toBe(false);
+
+		fetcher.call(0).resolve(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const result = await submit;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(result.success).toBe(true);
+		expect(fetcher.calls).toHaveLength(1);
 		expect(config.start).not.toHaveBeenCalled();
 		expect(config.stop).not.toHaveBeenCalled();
+		expect_work_indicator_idle(core, config);
 	});
 
-	it("skips progress indicator for opted-out navigations", async () => {
+	it("skips work indicator for opted-out mutation revalidation", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+
+		const submit = core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{
+				skipWorkIndicator: true,
 			},
+		);
+		await fetcher.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
+
+		fetcher.call(0).resolve(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		const result = await submit;
+		await fetcher.wait_for(2);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
+
+		fetcher.call(1).resolve(route_response());
+		await result.revalidationPromise;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).not.toHaveBeenCalled();
+	});
+
+	it("shows work indicator for focus-triggered revalidation by default", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		seed_payload();
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+		const fetcher = mock_fetch();
+
+		await core.boot({
+			revalidateOnWindowFocus: { staleTimeMS: 100 },
+			workIndicator: config,
+		});
+
+		await vi.advanceTimersByTimeAsync(100);
+		window.dispatchEvent(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100);
+		await fetcher.wait_for(1);
+
+		expect(core.getWorkState().revalidation).not.toBeNull();
+		expect(config.start).toHaveBeenCalledTimes(1);
+
+		fetcher.call(0).resolve(route_response());
+		await vi.advanceTimersByTimeAsync(10);
+		await tick();
+
+		expect(config.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("skips work indicator for configured focus-triggered revalidation", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		seed_payload();
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+		const fetcher = mock_fetch();
+
+		await core.boot({
+			revalidateOnWindowFocus: {
+				skipWorkIndicator: true,
+				staleTimeMS: 100,
+			},
+			workIndicator: config,
+		});
+
+		await vi.advanceTimersByTimeAsync(100);
+		window.dispatchEvent(new Event("focus"));
+		await vi.advanceTimersByTimeAsync(100);
+		await fetcher.wait_for(1);
+
+		expect(core.getWorkState().revalidation).not.toBeNull();
+		expect(config.start).not.toHaveBeenCalled();
+
+		fetcher.call(0).resolve(route_response());
+		await vi.advanceTimersByTimeAsync(10);
+		await tick();
+
+		expect(config.start).not.toHaveBeenCalled();
+	});
+
+	it("skips work indicator for opted-out navigations", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
@@ -1975,7 +2443,7 @@ describe("progress indicators", () => {
 		});
 
 		void core.navigate("/quiet-page", {
-			skipProgressIndicator: true,
+			skipWorkIndicator: true,
 		});
 		await vi.advanceTimersByTimeAsync(10);
 
@@ -1984,23 +2452,13 @@ describe("progress indicators", () => {
 		resolve_fetch(route_response());
 		await vi.advanceTimersByTimeAsync(10);
 		await tick();
-
-		expect(config.stop).not.toHaveBeenCalled();
 	});
 
 	it("overlapping work does not cause start-stop thrash", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
-			},
+			start: vi.fn(),
+			stop: vi.fn(),
 			startDelayMS: 1,
 			stopDelayMS: 1,
 		};
@@ -2060,17 +2518,9 @@ describe("progress indicators", () => {
 
 	it("clears pending start timer when work finishes before delay", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
-			},
+			start: vi.fn(),
+			stop: vi.fn(),
 			startDelayMS: 100,
 			stopDelayMS: 10,
 		};
@@ -2087,17 +2537,9 @@ describe("progress indicators", () => {
 
 	it("cancels pending stop timer when new work begins", async () => {
 		vi.useFakeTimers();
-		let running = false;
 		const config = {
-			start: vi.fn(() => {
-				running = true;
-			}),
-			stop: vi.fn(() => {
-				running = false;
-			}),
-			isRunning: () => {
-				return running;
-			},
+			start: vi.fn(),
+			stop: vi.fn(),
 			startDelayMS: 1,
 			stopDelayMS: 100,
 		};
@@ -2137,6 +2579,411 @@ describe("progress indicators", () => {
 		await tick();
 
 		expect(config.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("tracks app-owned promise work", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		const core = await setup_core(config);
+		const external_work = deferred<number>();
+
+		const tracked = core.workIndicator.track(external_work.promise);
+
+		expect(core.workIndicator.isActive()).toBe(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
+
+		external_work.resolve(42);
+		await expect(tracked).resolves.toBe(42);
+
+		expect(core.workIndicator.isActive()).toBe(false);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(config.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps app-owned work active after Vorma work settles", async () => {
+		vi.useFakeTimers();
+		const config = {
+			start: vi.fn(),
+			stop: vi.fn(),
+			startDelayMS: 1,
+			stopDelayMS: 1,
+		};
+		const core = await setup_core(config);
+		const external_work = deferred<void>();
+		const tracked = core.workIndicator.track(external_work.promise);
+
+		await vi.advanceTimersByTimeAsync(1);
+		expect(config.start).toHaveBeenCalledTimes(1);
+
+		let resolve_fetch!: (r: Response) => void;
+		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+			return new Promise((r) => {
+				resolve_fetch = r;
+			});
+		});
+
+		const nav = core.navigate("/page");
+		await vi.advanceTimersByTimeAsync(1);
+		resolve_fetch(route_response());
+		await nav;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.stop).not.toHaveBeenCalled();
+
+		external_work.resolve();
+		await tracked;
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.stop).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not stop a visible renderer when boot starts idle", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer(true);
+
+		await setup_core(config);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.stop).not.toHaveBeenCalled();
+		expect(config.is_visible()).toBe(true);
+	});
+
+	it("does not stop a visible renderer after skipped Vorma work settles", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		await vi.advanceTimersByTimeAsync(1);
+		config.reset_events();
+		config.force_visible();
+
+		let resolve_fetch!: (r: Response) => void;
+		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+			return new Promise((r) => {
+				resolve_fetch = r;
+			});
+		});
+
+		void core.navigate("/quiet-page", {
+			skipWorkIndicator: true,
+		});
+		await vi.advanceTimersByTimeAsync(1);
+		resolve_fetch(route_response());
+		await vi.advanceTimersByTimeAsync(1);
+		await tick();
+
+		expect(config.stop).not.toHaveBeenCalled();
+		expect(config.is_visible()).toBe(true);
+	});
+
+	it("stops after Vorma-owned navigation aborts", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+			new DOMException("Aborted", "AbortError"),
+		);
+
+		await core.navigate("/aborted");
+		await vi.advanceTimersByTimeAsync(1);
+		await tick();
+
+		expect(config.start).not.toHaveBeenCalled();
+		expect_work_indicator_idle(core, config);
+
+		const slow_fetch = mock_fetch();
+		const nav = core.navigate("/slow-abort");
+		await slow_fetch.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).toHaveBeenCalledTimes(1);
+		slow_fetch.call(0).reject(new DOMException("Aborted", "AbortError"));
+		await nav;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect_work_indicator_idle(core, config);
+		expect_stop_after_last_start(config);
+	});
+
+	it("stops after Vorma-owned API request rejects", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+
+		const submit = core.submit_inner(
+			"/api/failing-action",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await fetcher.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).toHaveBeenCalledTimes(1);
+		fetcher.call(0).reject(new Error("network down"));
+		const result = await submit;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(result.success).toBe(false);
+		expect_work_indicator_idle(core, config);
+		expect_stop_after_last_start(config);
+	});
+
+	it("stops after revalidation debounce and fetch settle", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+
+		const revalidation = core.revalidate();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		fetcher.call(0).resolve(route_response());
+		await revalidation;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect_work_indicator_idle(core, config);
+		expect_stop_after_last_start(config);
+	});
+
+	it("moves a visible Vorma-owned indicator across option replacement", async () => {
+		vi.useFakeTimers();
+		const first_config = make_work_indicator_renderer();
+		const core = await setup_core(first_config);
+		const external_work = deferred<void>();
+		const tracked = core.workIndicator.track(external_work.promise);
+
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(first_config.start).toHaveBeenCalledTimes(1);
+		expect(first_config.is_visible()).toBe(true);
+
+		const second_config = make_work_indicator_renderer();
+		await core.boot({ workIndicator: second_config });
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(first_config.is_visible()).toBe(false);
+		expect(first_config.stop).toHaveBeenCalledTimes(1);
+		expect(second_config.start).toHaveBeenCalledTimes(1);
+		expect(second_config.is_visible()).toBe(true);
+
+		external_work.resolve();
+		await tracked;
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect_work_indicator_idle(core, second_config);
+		expect_stop_after_last_start(first_config);
+		expect_stop_after_last_start(second_config);
+	});
+
+	it("keeps the renderer reconciled after varied work ordering", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		const tracked_work = [
+			deferred<void>(),
+			deferred<void>(),
+			deferred<void>(),
+		];
+
+		const tracked = tracked_work.map((work) => {
+			return core.workIndicator.track(work.promise);
+		});
+
+		let resolve_first_fetch!: (r: Response) => void;
+		let resolve_second_fetch!: (r: Response) => void;
+		let fetch_count = 0;
+		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+			fetch_count++;
+			if (fetch_count === 1) {
+				return new Promise((r) => {
+					resolve_first_fetch = r;
+				});
+			}
+			if (fetch_count === 2) {
+				return new Promise((r) => {
+					resolve_second_fetch = r;
+				});
+			}
+			return Promise.resolve(
+				new Response(JSON.stringify({ ok: true }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+			);
+		});
+
+		const first_nav = core.navigate("/first");
+		await vi.advanceTimersByTimeAsync(1);
+		void core.submit_inner(
+			"/api/action",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		tracked_work[1]!.resolve();
+		await tracked[1];
+		resolve_first_fetch(route_response());
+		await first_nav;
+		await tick();
+
+		const second_nav = core.navigate("/second");
+		await vi.advanceTimersByTimeAsync(1);
+		tracked_work[0]!.resolve();
+		await tracked[0];
+		resolve_second_fetch(route_response());
+		await second_nav;
+		await tick();
+
+		tracked_work[2]!.resolve();
+		await tracked[2];
+		await vi.advanceTimersByTimeAsync(1);
+		await tick();
+
+		expect_work_indicator_idle(core, config);
+		expect_stop_after_last_start(config);
+	});
+
+	it("does not orphan after mixed Vorma and app work settle", async () => {
+		vi.useFakeTimers();
+		const config = make_work_indicator_renderer();
+		const core = await setup_core(config);
+		const fetcher = mock_fetch();
+		const external_work = deferred<void>();
+		const tracked = core.workIndicator.track(external_work.promise);
+
+		const nav = core.navigate("/chaos-nav");
+		await fetcher.wait_for(1);
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.start).toHaveBeenCalledTimes(1);
+
+		const submit = core.submit_inner(
+			"/api/chaos-action",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
+		await fetcher.wait_for(2);
+		const revalidation = core.revalidate();
+
+		fetcher.call(0).resolve(route_response());
+		await nav;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect(config.is_visible()).toBe(true);
+
+		external_work.resolve();
+		await tracked;
+		fetcher.call(1).resolve(
+			new Response(JSON.stringify({ ok: true }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		await submit;
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(3);
+
+		expect(config.is_visible()).toBe(true);
+
+		fetcher.call(2).resolve(route_response());
+		await revalidation;
+		await tick();
+		await vi.advanceTimersByTimeAsync(1);
+
+		expect_work_indicator_idle(core, config);
+		expect_stop_after_last_start(config);
+	});
+});
+
+/////////////////////////////////////////////////////////////////////
+/////// Revalidation timers
+/////////////////////////////////////////////////////////////////////
+
+describe("revalidation timers", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("clears replaced refresh debounce timers", async () => {
+		vi.useFakeTimers();
+		const { core } = await setup();
+		const clear_timeout = vi.spyOn(window, "clearTimeout");
+		const fetcher = mock_fetch();
+
+		const first = core.revalidate();
+		const second = core.revalidate();
+
+		expect(clear_timeout).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		fetcher.call(0).resolve(route_response());
+
+		await first;
+		await second;
+	});
+
+	it("keeps same-hash navigation a no-op while revalidation is running", async () => {
+		vi.useFakeTimers();
+		const { core, scroll_to } = await setup();
+		const fetcher = mock_fetch();
+
+		const revalidation = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		const push_state = vi.spyOn(window.history, "pushState");
+
+		await expect(core.navigate("/")).resolves.toEqual({
+			didNavigate: false,
+		});
+
+		expect(push_state).not.toHaveBeenCalled();
+		expect(scroll_to).toHaveBeenCalledWith(0, 0);
+
+		fetcher.call(0).resolve(route_response());
+		await revalidation;
+	});
+
+	it("keeps same-hash replace navigation non-navigating while revalidation is running", async () => {
+		vi.useFakeTimers();
+		const { core, scroll_to } = await setup();
+		const fetcher = mock_fetch();
+
+		const revalidation = core.revalidate();
+		await vi.advanceTimersByTimeAsync(REVALIDATION_DEBOUNCE_MS);
+		await fetcher.wait_for(1);
+		const replace_state = vi.spyOn(window.history, "replaceState");
+
+		await expect(
+			core.navigate("/", {
+				replace: true,
+				state: { source: "replace" },
+			}),
+		).resolves.toEqual({
+			didNavigate: false,
+		});
+
+		expect(replace_state).toHaveBeenCalled();
+		expect(core.getRouteState().historyState).toEqual({
+			source: "replace",
+		});
+		expect(scroll_to).toHaveBeenCalledWith(0, 0);
+
+		fetcher.call(0).resolve(route_response());
+		await revalidation;
 	});
 });
 
@@ -2218,7 +3065,6 @@ describe("focus-triggered revalidation", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "dropResponse",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "revalidation",
@@ -2879,6 +3725,46 @@ describe("prefetch integration", () => {
 		expect(globalThis.fetch).toHaveBeenCalled();
 		const fetched_url = (globalThis.fetch as any).mock.calls[0][0];
 		expect(fetched_url.toString()).toContain("/prefetch-target");
+	});
+
+	it("reports build skew from a successful prefetch response", async () => {
+		seed_payload({ ClientBuildID: "build-1" });
+		const commit = vi.fn();
+		const core_res = create_client_core(
+			{ apiMountRoot: "/api/" },
+			commit,
+			t_opts(),
+		);
+		if (!core_res.ok) {
+			throw new Error(
+				`create_client_core failed with error: ${core_res.err}`,
+			);
+		}
+		const core = core_res.val;
+
+		const on_build_skew = vi.fn();
+		await core.boot({ onBuildSkewDetected: on_build_skew });
+
+		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+			route_response({}, "build-2"),
+		);
+
+		core.start_prefetch("/prefetch-target");
+		await tick(10);
+
+		expect(on_build_skew).toHaveBeenCalledWith(
+			expect.objectContaining({
+				activeClientBuildID: "build-1",
+				serverBuildID: "build-2",
+				triggeringResponse: expect.objectContaining({
+					kind: "route",
+					ok: true,
+					requestedHref: `${window.location.origin}/prefetch-target`,
+					status: 200,
+					trigger: "prefetch",
+				}),
+			}),
+		);
 	});
 
 	it("stop_prefetch cancels in-flight prefetch", async () => {
@@ -4069,6 +4955,44 @@ describe("CSS preload gating", () => {
 /////////////////////////////////////////////////////////////////////
 
 describe("client loader promise reuse on hash change", () => {
+	it("retargets in-flight same-href navigation when options differ", async () => {
+		const { core } = await setup();
+		let resolve_fetch!: (r: Response) => void;
+		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+			return new Promise((resolve) => {
+				resolve_fetch = resolve;
+			});
+		});
+
+		const first = core.navigate("/reuse", {
+			state: { request: "first" },
+		});
+		await tick();
+
+		const second = core.navigate("/reuse", {
+			state: { request: "second" },
+		});
+		const pending = Symbol("pending");
+		let first_result: unknown = pending;
+		void first.then((result) => {
+			first_result = result;
+		});
+		await tick();
+		expect(first_result).toEqual({ didNavigate: false });
+
+		resolve_fetch(
+			route_response({
+				MatchedPatterns: ["/reuse"],
+				LoadersData: [{ v: 1 }],
+			}),
+		);
+
+		await expect(second).resolves.toEqual({ didNavigate: true });
+		expect(core.getRouteState().historyState).toEqual({
+			request: "second",
+		});
+	});
+
 	it("does not re-invoke client loader when only hash changes on in-flight navigation", async () => {
 		let invocation_count = 0;
 

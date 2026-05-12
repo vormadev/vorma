@@ -115,9 +115,11 @@ describe("navigate", () => {
 		);
 
 		const first = core.navigate("/first");
+		await tick();
 		expect(calls).toHaveLength(1);
 
 		const second = core.navigate("/second");
+		await tick();
 		expect(calls).toHaveLength(2);
 		expect(calls[0]!.signal.aborted).toBe(true);
 		await expect(first).resolves.toEqual({ didNavigate: false });
@@ -603,7 +605,6 @@ describe("navigate redirects", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "hardReload",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "navigation",
@@ -702,9 +703,9 @@ describe("navigate redirects", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const nav = core.navigate("/start");
+		await wait_for(1);
 		expect(core.getWorkState().navigation !== null).toBe(true);
 
-		await wait_for(1);
 		call(0).resolve(redirect_response({ [X_CLIENT_REDIRECT]: "/mid" }));
 		await wait_for(2);
 		expect(core.getWorkState().navigation !== null).toBe(true);
@@ -1322,6 +1323,153 @@ describe("popstate", () => {
 		expect(push_spy).not.toHaveBeenCalled();
 	});
 
+	it("passes stored destination scroll to full popstate navigation", async () => {
+		const { core, commit } = await setup();
+		const seed_key = get_history_key();
+		const { call, wait_for } = mock_fetch();
+
+		const nav = core.navigate("/page");
+		await wait_for(1);
+		call(0).resolve(route_response());
+		await nav;
+		commit.mockClear();
+
+		sessionStorage.setItem(
+			SCROLL_STORAGE_KEY,
+			JSON.stringify([[seed_key, { x: 11, y: 22 }]]),
+		);
+
+		simulate_popstate(seed_key, "/");
+
+		await wait_for(2);
+		call(1).resolve(route_response());
+
+		for (let i = 0; i < 50; i++) {
+			if (route_render_commit_count(commit) > 0) {
+				break;
+			}
+			await new Promise((r) => {
+				return setTimeout(r, 0);
+			});
+		}
+
+		expect(route_render_scroll_intent_at(commit, 0)?.scroll).toEqual({
+			x: 11,
+			y: 22,
+		});
+	});
+
+	it("reloads when full popstate route data cannot commit", async () => {
+		const { core, reload } = await setup();
+		const seed_key = get_history_key();
+		const { call, wait_for } = mock_fetch();
+
+		const nav = core.navigate("/page");
+		await wait_for(1);
+		call(0).resolve(route_response());
+		await nav;
+
+		simulate_popstate(seed_key, "/");
+
+		await wait_for(2);
+		call(1).resolve(new Response("error", { status: 500 }));
+
+		for (let i = 0; i < 50; i++) {
+			if (reload.mock.calls.length > 0) {
+				break;
+			}
+			await new Promise((r) => {
+				return setTimeout(r, 0);
+			});
+		}
+
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("reloads when full popstate route preparation fails", async () => {
+		const { core, commit, reload } = await setup();
+		const seed_key = get_history_key();
+		const { call, wait_for } = mock_fetch();
+
+		const nav = core.navigate("/page");
+		await wait_for(1);
+		call(0).resolve(route_response());
+		await nav;
+		commit.mockClear();
+
+		simulate_popstate(seed_key, "/");
+
+		await wait_for(2);
+		call(1).resolve(
+			route_response({
+				MatchedPatterns: ["/"],
+				LoadersData: [{ home: true }],
+				ImportURLs: ["/missing-popstate-route.js"],
+			}),
+		);
+
+		for (let i = 0; i < 50; i++) {
+			if (reload.mock.calls.length > 0) {
+				break;
+			}
+			await new Promise((r) => {
+				return setTimeout(r, 0);
+			});
+		}
+
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(route_render_commit_count(commit)).toBe(0);
+	});
+
+	it("reloads when full popstate route publication fails", async () => {
+		vi.doMock("/reject-popstate-route.js", () => {
+			return {
+				default: {
+					pattern: "/",
+					component: () => {
+						return null;
+					},
+					before_route_commit: async () => {
+						throw new Error("commit rejected");
+					},
+				},
+			};
+		});
+
+		const { core, commit, reload } = await setup();
+		const seed_key = get_history_key();
+		const { call, wait_for } = mock_fetch();
+
+		const nav = core.navigate("/page");
+		await wait_for(1);
+		call(0).resolve(route_response());
+		await nav;
+		commit.mockClear();
+
+		simulate_popstate(seed_key, "/");
+
+		await wait_for(2);
+		call(1).resolve(
+			route_response({
+				MatchedPatterns: ["/"],
+				LoadersData: [{ home: true }],
+				ImportURLs: ["/reject-popstate-route.js"],
+			}),
+		);
+
+		for (let i = 0; i < 50; i++) {
+			if (reload.mock.calls.length > 0) {
+				break;
+			}
+			await new Promise((r) => {
+				return setTimeout(r, 0);
+			});
+		}
+
+		expect(reload).toHaveBeenCalledTimes(1);
+		expect(route_render_commit_count(commit)).toBe(0);
+	});
+
 	it("handles hash-only popstate without fetching", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
@@ -1607,6 +1755,7 @@ describe("status", () => {
 		void core.navigate("/first");
 		await wait_for(1);
 		void core.navigate("/second");
+		await wait_for(2);
 
 		expect(work_updates).toHaveLength(2);
 		expect(work_updates.map((work) => work.navigation?.href)).toEqual([
@@ -1614,7 +1763,6 @@ describe("status", () => {
 			`${window.location.origin}/second`,
 		]);
 
-		await wait_for(2);
 		call(1).resolve(route_response());
 		await tick();
 	});
