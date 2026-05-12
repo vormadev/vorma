@@ -674,7 +674,6 @@ export function accept_api_submission_outcome(
 				requestedHref: submission.href,
 				status: build_skew_report.response.status,
 			},
-			build_skew_report.default_behavior,
 		);
 	}
 	const settled_model = remove_submission(model, submission);
@@ -1728,7 +1727,6 @@ function accept_active_route_response(
 				build_skew_report.requested_href,
 				build_skew_report.response,
 			),
-			build_skew_report.default_behavior,
 		);
 	}
 	if (outcome.kind === "build_skew") {
@@ -1833,7 +1831,6 @@ function accept_prefetch_response(
 				status: build_skew_report.response.status,
 				trigger: "prefetch",
 			},
-			build_skew_report.default_behavior,
 		);
 	}
 	if (outcome.kind !== "data") {
@@ -2779,7 +2776,6 @@ function append_build_skew_notification(
 	model: Core4Model,
 	response: BuildSkewResponseFacts,
 	triggering_response: BuildSkewTriggeringResponse,
-	default_behavior: BuildSkewDefaultBehavior,
 ): void {
 	if (
 		!model.current ||
@@ -2793,7 +2789,6 @@ function append_build_skew_notification(
 			activeClientBuildID: model.client_build_id,
 			currentRouteState: model.current.route,
 			currentWorkState: derive_core4_work_state(model),
-			defaultBehavior: default_behavior,
 			serverBuildID: response.server_build_id,
 			triggeringResponse: triggering_response,
 		},

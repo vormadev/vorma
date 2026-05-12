@@ -32,8 +32,8 @@ navigation/submission behavior.
       publication.
 - [x] Publishing publication cannot be manually constructed without an active
       route owner.
-- [x] Boot active routes cannot carry public waiters, visible source, non-replace
-      policy, or work-indicator state.
+- [x] Boot active routes cannot carry public waiters, visible source,
+      non-replace policy, or work-indicator state.
 - [x] Revalidation active routes cannot carry navigation waiters, source,
       history policy, or navigation scroll policy.
 - [x] Popstate active routes cannot carry navigate/redirect source tags or
@@ -167,7 +167,8 @@ navigation/submission behavior.
 ## Effect And Work Projection Laws
 
 - [x] Hard redirects do not mutate the model.
-- [x] Cross-origin navigation emits hard redirect and settles public calls false.
+- [x] Cross-origin navigation emits hard redirect and settles public calls
+      false.
 - [x] Same-document no-op navigation emits scroll/public settlement and no route
       fetch.
 - [x] Same-document hash navigation emits publication, not route fetch.

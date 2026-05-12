@@ -1809,7 +1809,6 @@ describe("build ID", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "navigation",
@@ -1887,7 +1886,6 @@ describe("build ID", () => {
 		expect(on_build_skew).toHaveBeenCalledWith(
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
-				defaultBehavior: "hardReload",
 				serverBuildID: "build-2",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
@@ -2046,7 +2044,6 @@ describe("API submit revalidation settlement", () => {
 		expect(on_build_skew).toHaveBeenCalledWith(
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
-				defaultBehavior: "hardReload",
 				serverBuildID: "build-2",
 				triggeringResponse: expect.objectContaining({
 					apiRouteKind: "mutation",
@@ -3068,7 +3065,6 @@ describe("focus-triggered revalidation", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "dropResponse",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "revalidation",
@@ -3759,7 +3755,6 @@ describe("prefetch integration", () => {
 		expect(on_build_skew).toHaveBeenCalledWith(
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
-				defaultBehavior: "notifyOnly",
 				serverBuildID: "build-2",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",

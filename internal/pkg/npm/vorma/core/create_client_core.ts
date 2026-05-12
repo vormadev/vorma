@@ -8,6 +8,8 @@ import {
 } from "vorma/kit/matcher";
 import { R, type Result } from "vorma/kit/result";
 import { create_client_core4 } from "../core4/core.ts";
+import { create_client_core5 } from "../core5/core.ts";
+import { create_client_core6 } from "../core6/core.ts";
 import {
 	BUILD_ID_HEADER,
 	DATA_SCRIPT_ID,
@@ -37,7 +39,9 @@ import type {
 	RouteUpdateReason,
 } from "./types.ts";
 
-const USE_CORE_4 = true;
+const USE_CORE_6 = false;
+const USE_CORE_5 = false;
+const USE_CORE_4 = false;
 
 /////////////////////////////////////////////////////////////////////
 /////// Public Types
@@ -123,7 +127,6 @@ export type BuildSkewDetectedEvent = {
 		  };
 	currentRouteState: RouteState;
 	currentWorkState: WorkState;
-	defaultBehavior: "dropResponse" | "hardReload" | "notifyOnly";
 };
 
 export type WorkIndicator = {
@@ -182,7 +185,7 @@ export type ViewDefinition = {
 	before_route_yield?: BeforeRouteYieldFn;
 };
 
-type ClientLoaderFn = (args: {
+export type ClientLoaderFn = (args: {
 	trigger: "boot" | "navigation" | "revalidation" | "prefetch";
 	href: string;
 	historyState: unknown;
@@ -195,12 +198,12 @@ type ClientLoaderFn = (args: {
 	signal: AbortSignal;
 }) => Promise<unknown>;
 
-type ClientLoaderKnownMatch = {
+export type ClientLoaderKnownMatch = {
 	pattern: string;
 	input: unknown;
 };
 
-type ClientLoaderServerState = {
+export type ClientLoaderServerState = {
 	clientBuildID: string;
 	matches: Array<{
 		pattern: string;
@@ -507,6 +510,22 @@ export function create_client_core(
 	commit: CommitFn,
 	test_options?: TestOptions,
 ): Result<ClientCore> {
+	if (USE_CORE_6) {
+		return create_client_core6(app_config, commit, {
+			hard_redirect: test_options?.hard_redirect,
+			reload: test_options?.reload,
+			scroll_to: test_options?.scroll_to,
+		});
+	}
+
+	if (USE_CORE_5) {
+		return create_client_core5(app_config, commit, {
+			hard_redirect: test_options?.hard_redirect,
+			reload: test_options?.reload,
+			scroll_to: test_options?.scroll_to,
+		});
+	}
+
 	if (USE_CORE_4) {
 		return create_client_core4(app_config, commit, {
 			hard_redirect: test_options?.hard_redirect,
@@ -692,9 +711,14 @@ function _legacy_create_client_core(
 
 	type Submission = {
 		ac: AbortController;
+		deferred: Deferred<APIResult<unknown>>;
+		did_dispatch: boolean;
 		key: string;
 		method: string;
 		href: string;
+		revalidation_promise: Promise<RevalidationResult>;
+		settled: boolean;
+		should_revalidate: boolean;
 		skip_work_indicator?: boolean;
 	};
 
@@ -1409,7 +1433,6 @@ function _legacy_create_client_core(
 			triggeringResponse: event.triggeringResponse,
 			currentRouteState: route_snapshot_to_state(route_snapshot),
 			currentWorkState: derive_work_state(),
-			defaultBehavior: event.defaultBehavior,
 		});
 		return true;
 	}
@@ -1417,7 +1440,6 @@ function _legacy_create_client_core(
 	function report_route_build_skew(
 		f: FetchBase & { intent: FetchIntent },
 		response: Response,
-		default_behavior: BuildSkewDetectedEvent["defaultBehavior"],
 	): boolean {
 		const base = {
 			kind: "route" as const,
@@ -1448,7 +1470,6 @@ function _legacy_create_client_core(
 		return report_build_skew({
 			response,
 			triggeringResponse,
-			defaultBehavior: default_behavior,
 		});
 	}
 
@@ -1605,11 +1626,7 @@ function _legacy_create_client_core(
 			}
 
 			if (result.kind === "build_skew") {
-				report_route_build_skew(
-					f,
-					result.response,
-					f.intent.kind === "reval" ? "dropResponse" : "hardReload",
-				);
+				report_route_build_skew(f, result.response);
 				if (f.intent.kind === "reval") {
 					mark_refresh_build_skew();
 					return;
@@ -1619,18 +1636,9 @@ function _legacy_create_client_core(
 			}
 
 			if (result.response) {
-				const default_behavior =
-					result.kind === "redirect" &&
-					result.hard &&
-					is_http(result.href)
-						? f.intent.kind === "reval"
-							? "dropResponse"
-							: "hardReload"
-						: "notifyOnly";
 				const did_detect_skew = report_route_build_skew(
 					f,
 					result.response,
-					default_behavior,
 				);
 				if (
 					did_detect_skew &&
@@ -2366,21 +2374,14 @@ function _legacy_create_client_core(
 				return;
 			}
 			if (result.kind === "build_skew") {
-				report_route_build_skew(f, result.response, "dropResponse");
+				report_route_build_skew(f, result.response);
 				mark_refresh_build_skew();
 				return;
 			}
 			if (result.response) {
-				const default_behavior =
-					result.kind === "redirect" &&
-					result.hard &&
-					is_http(result.href)
-						? "dropResponse"
-						: "notifyOnly";
 				const did_detect_skew = report_route_build_skew(
 					f,
 					result.response,
-					default_behavior,
 				);
 				if (
 					did_detect_skew &&
@@ -2438,14 +2439,17 @@ function _legacy_create_client_core(
 	async function prepare_prefetch(f: PrefetchFetch): Promise<void> {
 		try {
 			const result = await f.data_promise;
-			if (result.response) {
-				report_route_build_skew(
-					f,
-					result.response,
-					result.kind === "data" ? "notifyOnly" : "dropResponse",
-				);
+			if (f.ac.signal.aborted) {
+				if (prefetch === f) {
+					prefetch = null;
+					notify_work_update();
+				}
+				return;
 			}
-			if (f.ac.signal.aborted || result.kind !== "data") {
+			if (result.response) {
+				report_route_build_skew(f, result.response);
+			}
+			if (result.kind !== "data") {
 				if (prefetch === f) {
 					prefetch = null;
 					notify_work_update();
@@ -2569,7 +2573,76 @@ function _legacy_create_client_core(
 
 	/////// Submit
 
-	async function submit_inner<T = unknown>(
+	function schedule_submission_revalidation(
+		sub: Submission,
+		start = true,
+	): Promise<RevalidationResult> {
+		if (!sub.should_revalidate) {
+			return Promise.resolve(REVALIDATION_OK);
+		}
+		if (phase === "ready") {
+			const waiter = make_deferred<RevalidationResult>();
+			require_refresh(
+				"apiRequest",
+				waiter,
+				undefined,
+				sub.skip_work_indicator,
+			);
+			if (start) {
+				maybe_revalidate();
+			}
+			return waiter.promise;
+		}
+		require_refresh(
+			"apiRequest",
+			undefined,
+			undefined,
+			sub.skip_work_indicator,
+		);
+		return Promise.resolve(REVALIDATION_OK);
+	}
+
+	function settle_submission(
+		sub: Submission,
+		result: APIResult<unknown>,
+		notify = true,
+	): void {
+		if (sub.settled) {
+			return;
+		}
+		sub.settled = true;
+		if (submissions.get(sub.key)?.ac === sub.ac) {
+			submissions.delete(sub.key);
+		}
+		sub.deferred.resolve(result);
+		if (notify) {
+			notify_work_update();
+		}
+	}
+
+	function replace_submission(sub: Submission): boolean {
+		sub.ac.abort();
+		let scheduled_revalidation = false;
+		if (sub.did_dispatch) {
+			sub.revalidation_promise = schedule_submission_revalidation(
+				sub,
+				false,
+			);
+			scheduled_revalidation = sub.should_revalidate;
+		}
+		settle_submission(
+			sub,
+			{
+				success: false,
+				error: "Aborted",
+				revalidationPromise: sub.revalidation_promise,
+			},
+			false,
+		);
+		return scheduled_revalidation;
+	}
+
+	function submit_inner<T = unknown>(
 		url: string | URL,
 		request_init?: RequestInit,
 		options?: {
@@ -2580,16 +2653,16 @@ function _legacy_create_client_core(
 		},
 	): Promise<APIResult<T>> {
 		if (!route_snapshot) {
-			throw new Error("Vorma not booted");
+			return Promise.reject(new Error("Vorma not booted"));
 		}
 		const resolved = new URL(String(url), window.location.href);
 
 		if (!is_same_origin(resolved)) {
-			return {
+			return Promise.resolve({
 				success: false,
 				error: `submit only supports same-origin targets. Received: "${resolved.href}".`,
 				revalidationPromise: Promise.resolve(REVALIDATION_OK),
-			};
+			});
 		}
 
 		const method = request_init?.method
@@ -2604,57 +2677,48 @@ function _legacy_create_client_core(
 		}
 
 		let dedupe_key = options?.dedupeKey;
+		let start_replaced_revalidation = false;
 		if (dedupe_key) {
-			submissions.get(dedupe_key)?.ac.abort();
+			const previous = submissions.get(dedupe_key);
+			if (previous) {
+				start_replaced_revalidation = replace_submission(previous);
+			}
 		} else {
 			dedupe_key = crypto.randomUUID();
 		}
 
 		const ac = new AbortController();
+		const deferred = make_deferred<APIResult<unknown>>();
 		const sub: Submission = {
 			ac,
+			deferred,
+			did_dispatch: false,
 			key: dedupe_key,
 			method,
 			href: resolved.href,
+			revalidation_promise: Promise.resolve(REVALIDATION_OK),
+			settled: false,
+			should_revalidate,
 			skip_work_indicator: options?.skipWorkIndicator,
 		};
 		submissions.set(dedupe_key, sub);
 		notify_work_update();
 
-		let revalidation_promise: Promise<RevalidationResult> =
-			Promise.resolve(REVALIDATION_OK);
-		let did_dispatch = false;
-
-		function schedule_revalidation(): void {
-			if (!should_revalidate) {
-				return;
-			}
-			if (phase === "ready") {
-				const waiter = make_deferred<RevalidationResult>();
-				revalidation_promise = waiter.promise;
-				require_refresh(
-					"apiRequest",
-					waiter,
-					undefined,
-					options?.skipWorkIndicator,
-				);
-				maybe_revalidate();
-			} else {
-				// During boot, register refresh demand so post-boot
-				// maybe_revalidate will fire. Do not attach a waiter;
-				// the returned revalidationPromise stays resolved so initial
-				// client loaders awaiting it do not deadlock.
-				require_refresh(
-					"apiRequest",
-					undefined,
-					undefined,
-					options?.skipWorkIndicator,
-				);
-			}
+		void run_submission(sub, resolved, request_init, api_route_kind);
+		if (start_replaced_revalidation) {
+			maybe_revalidate();
 		}
+		return deferred.promise as Promise<APIResult<T>>;
+	}
 
+	async function run_submission<T = unknown>(
+		sub: Submission,
+		resolved: URL,
+		request_init: RequestInit | undefined,
+		api_route_kind: APIRouteKind,
+	): Promise<void> {
 		try {
-			const is_get = method === "GET" || method === "HEAD";
+			const is_get = sub.method === "GET" || sub.method === "HEAD";
 
 			const headers = new Headers();
 			if (deployment_id) {
@@ -2679,9 +2743,9 @@ function _legacy_create_client_core(
 
 			const final_init: RequestInit = {
 				...request_init,
-				method,
+				method: sub.method,
 				headers,
-				signal: ac.signal,
+				signal: sub.ac.signal,
 			};
 			if (is_get) {
 				delete final_init.body;
@@ -2692,8 +2756,11 @@ function _legacy_create_client_core(
 				}
 			}
 
-			did_dispatch = true;
+			sub.did_dispatch = true;
 			const res = await fetch(resolved, final_init);
+			if (sub.settled || sub.ac.signal.aborted) {
+				return;
+			}
 
 			const redirect = detect_redirect(res, resolved);
 			report_build_skew({
@@ -2702,44 +2769,41 @@ function _legacy_create_client_core(
 					kind: "apiRoute",
 					apiRouteKind: api_route_kind,
 					requestedHref: resolved.href,
-					method,
+					method: sub.method,
 					status: res.status,
 					ok: res.ok,
 				},
-				defaultBehavior:
-					redirect &&
-					is_http(redirect.href) &&
-					(redirect.hard || !is_same_origin_href(redirect.href))
-						? "hardReload"
-						: "notifyOnly",
 			});
 
-			if (redirect && !ac.signal.aborted) {
+			if (redirect) {
 				if (!is_http(redirect.href)) {
-					return {
+					settle_submission(sub, {
 						success: false,
 						error: `Redirect target must use an HTTP(S) scheme. Received: "${redirect.href}".`,
 						response: res,
-						revalidationPromise: revalidation_promise,
-					};
+						revalidationPromise: sub.revalidation_promise,
+					});
+					return;
 				}
 				if (redirect.hard || !is_same_origin_href(redirect.href)) {
 					hard_redirect(redirect.href);
-					return {
+					settle_submission(sub, {
 						success: true,
 						data: undefined as T,
 						response: res,
-						revalidationPromise: revalidation_promise,
-					};
+						revalidationPromise: sub.revalidation_promise,
+					});
+					return;
 				}
 				if (phase !== "ready") {
 					deferred_submit_redirect = new URL(redirect.href);
-					return {
+					settle_submission(sub, {
 						success: true,
 						data: undefined as T,
 						response: res,
-						revalidationPromise: revalidation_promise,
-					};
+						revalidationPromise: sub.revalidation_promise,
+					});
+					return;
 				}
 				void start_nav_inner(
 					new URL(redirect.href),
@@ -2747,22 +2811,25 @@ function _legacy_create_client_core(
 					0,
 					{ source: "redirect" },
 				);
-				return {
+				settle_submission(sub, {
 					success: true,
 					data: undefined as T,
 					response: res,
-					revalidationPromise: revalidation_promise,
-				};
+					revalidationPromise: sub.revalidation_promise,
+				});
+				return;
 			}
 
 			if (!res.ok) {
-				schedule_revalidation();
-				return {
+				sub.revalidation_promise =
+					schedule_submission_revalidation(sub);
+				settle_submission(sub, {
 					success: false,
 					error: res.statusText,
 					response: res,
-					revalidationPromise: revalidation_promise,
-				};
+					revalidationPromise: sub.revalidation_promise,
+				});
+				return;
 			}
 
 			let data: unknown;
@@ -2776,38 +2843,38 @@ function _legacy_create_client_core(
 				}
 			}
 
-			schedule_revalidation();
-
-			return {
+			sub.revalidation_promise = schedule_submission_revalidation(sub);
+			settle_submission(sub, {
 				success: true,
 				data: data as T,
 				response: res,
-				revalidationPromise: revalidation_promise,
-			};
+				revalidationPromise: sub.revalidation_promise,
+			});
 		} catch (e) {
+			if (sub.settled) {
+				return;
+			}
 			if (is_abort_error(e)) {
-				if (did_dispatch) {
-					schedule_revalidation();
+				if (sub.did_dispatch) {
+					sub.revalidation_promise =
+						schedule_submission_revalidation(sub);
 				}
-				return {
+				settle_submission(sub, {
 					success: false,
 					error: "Aborted",
-					revalidationPromise: revalidation_promise,
-				};
+					revalidationPromise: sub.revalidation_promise,
+				});
+				return;
 			}
-			if (did_dispatch) {
-				schedule_revalidation();
+			if (sub.did_dispatch) {
+				sub.revalidation_promise =
+					schedule_submission_revalidation(sub);
 			}
-			return {
+			settle_submission(sub, {
 				success: false,
 				error: String(e instanceof Error ? e.message : e),
-				revalidationPromise: revalidation_promise,
-			};
-		} finally {
-			if (submissions.get(dedupe_key)?.ac === ac) {
-				submissions.delete(dedupe_key);
-			}
-			notify_work_update();
+				revalidationPromise: sub.revalidation_promise,
+			});
 		}
 	}
 
@@ -3314,6 +3381,7 @@ function _legacy_create_client_core(
 						require_refresh(
 							"windowFocus",
 							undefined,
+							true,
 							skip_work_indicator,
 						);
 						notify_work_update();

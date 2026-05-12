@@ -331,7 +331,6 @@ describe("revalidate redirects", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "dropResponse",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "revalidation",

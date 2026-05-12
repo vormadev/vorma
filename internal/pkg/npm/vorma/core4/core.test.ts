@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+	BUILD_ID_HEADER,
+	VORMA_PROTOCOL_ENABLED,
+	X_CLIENT_REDIRECT,
+	X_VORMA_BUILD_SKEW,
+} from "../core/constants.ts";
+import {
 	accept_api_submission_outcome,
 	accept_boot_provisional_route,
 	accept_route_preparation,
 	accept_route_response,
-	CORE4_MAX_REDIRECTS,
 	begin_api_submission,
 	begin_boot,
 	begin_navigation,
@@ -15,6 +20,7 @@ import {
 	classify_api_response,
 	classify_route_response,
 	commit_publication,
+	CORE4_MAX_REDIRECTS,
 	create_core4_model,
 	derive_core4_work_projection,
 	derive_core4_work_state,
@@ -24,12 +30,6 @@ import {
 	request_revalidation,
 	settle_publication,
 } from "./core.ts";
-import {
-	BUILD_ID_HEADER,
-	X_CLIENT_REDIRECT,
-	X_VORMA_BUILD_SKEW,
-	VORMA_PROTOCOL_ENABLED,
-} from "../core/constants.ts";
 import type {
 	APISubmissionOutcome,
 	BootActiveRouteSlot,
@@ -39,9 +39,9 @@ import type {
 	Core4BootingModel,
 	Core4Effect,
 	Core4Model,
-	Core4ResponseFacts,
 	Core4ReadyInit,
 	Core4ReadyModel,
+	Core4ResponseFacts,
 	Core4Token,
 	Core4Transition,
 	PopstateActiveRouteSlot,
@@ -421,7 +421,9 @@ describe("core4 model phase laws", () => {
 		expect(publishing.model.publication?.plan.hooks).toEqual({
 			kind: "none",
 		});
-		expect(settle_publication(publishing.model, first_token)).toBeUndefined();
+		expect(
+			settle_publication(publishing.model, first_token),
+		).toBeUndefined();
 
 		const committed = must(
 			commit_publication(publishing.model, { token: first_token }),
@@ -498,8 +500,7 @@ describe("core4 active route kind laws", () => {
 		// @ts-expect-error Revalidation routes do not own navigation scroll policy.
 		const _revalidation_scroll: RevalidationActiveRouteSlot["scroll_to_top"] = true;
 		// @ts-expect-error Popstate routes cannot be retagged as navigate or redirect.
-		const _popstate_source: PopstateActiveRouteSlot["source"] =
-			"navigate";
+		const _popstate_source: PopstateActiveRouteSlot["source"] = "navigate";
 		// @ts-expect-error Popstate routes never push or replace browser history.
 		const _popstate_replace: PopstateActiveRouteSlot["replace"] = false;
 
@@ -1978,12 +1979,12 @@ describe("core4 freshness demand laws", () => {
 		);
 
 		expect(retried.model.refresh.kind).toBe("retrying");
-		expect(find_effect(retried.effects, "start_refresh_timer")).toMatchObject(
-			{
-				ms: 500,
-				type: "start_refresh_timer",
-			},
-		);
+		expect(
+			find_effect(retried.effects, "start_refresh_timer"),
+		).toMatchObject({
+			ms: 500,
+			type: "start_refresh_timer",
+		});
 		expect(failed.model.refresh.kind).toBe("idle");
 		expect(failed.effects).toContainEqual({
 			ids: [waiter_id],
@@ -2142,14 +2143,20 @@ describe("core4 redirect laws", () => {
 		);
 
 		expect(invalid_redirect.model.active_route).toBeNull();
-		expect(find_effect(invalid_redirect.effects, "fetch_route")).toBeUndefined();
+		expect(
+			find_effect(invalid_redirect.effects, "fetch_route"),
+		).toBeUndefined();
 		expect(hard_redirect.effects).toContainEqual({
 			href: "https://elsewhere.test/next",
 			type: "hard_redirect",
 		});
-		expect(find_effect(hard_redirect.effects, "fetch_route")).toBeUndefined();
+		expect(
+			find_effect(hard_redirect.effects, "fetch_route"),
+		).toBeUndefined();
 		expect(no_op_redirect.model.active_route).toBeNull();
-		expect(find_effect(no_op_redirect.effects, "fetch_route")).toBeUndefined();
+		expect(
+			find_effect(no_op_redirect.effects, "fetch_route"),
+		).toBeUndefined();
 		expect(too_many.kind).toBe("failed");
 		expect(too_many.model.active_route).toBeNull();
 	});
@@ -2257,7 +2264,9 @@ describe("core4 build-skew laws", () => {
 			}),
 		);
 		expect(dropped_prefetch.model.prefetch).toBeNull();
-		expect(find_effect(dropped_prefetch.effects, "hard_redirect")).toBeUndefined();
+		expect(
+			find_effect(dropped_prefetch.effects, "hard_redirect"),
+		).toBeUndefined();
 		expect(
 			classify_route_response({
 				owner: { active_route, kind: "active_route" },
@@ -2432,8 +2441,11 @@ describe("core4 build-skew laws", () => {
 			}),
 		);
 
-		expect(find_effect(suppressed.effects, "notify_build_skew")).toBeUndefined();
-		expect(find_effect(emitted.effects, "notify_build_skew")).toMatchObject({
+		expect(
+			find_effect(suppressed.effects, "notify_build_skew"),
+		).toBeUndefined();
+		expect(find_effect(emitted.effects, "notify_build_skew")).toMatchObject(
+			{
 				notification: {
 					activeClientBuildID: client_build_id,
 					currentRouteState: make_route_state(base_href),
@@ -2444,16 +2456,16 @@ describe("core4 build-skew laws", () => {
 							source: "navigate",
 						},
 					},
-					defaultBehavior: "notifyOnly",
 					serverBuildID: "server-build",
-				triggeringResponse: {
-					kind: "route",
-					requestedHref: next_href,
-					trigger: "navigation",
+					triggeringResponse: {
+						kind: "route",
+						requestedHref: next_href,
+						trigger: "navigation",
+					},
 				},
+				type: "notify_build_skew",
 			},
-			type: "notify_build_skew",
-		});
+		);
 	});
 
 	it("uses hard reload default for cross-origin navigation build-skew reports", () => {
@@ -2720,7 +2732,8 @@ describe("core4 effect algebra laws", () => {
 		expect(find_effect(hash.effects, "publish_route")).toBeDefined();
 		expect(find_effect(hash.effects, "fetch_route")).toBeUndefined();
 		expect(
-			find_effect(hash.effects, "publish_route")?.plan.use_view_transition,
+			find_effect(hash.effects, "publish_route")?.plan
+				.use_view_transition,
 		).toBe(false);
 	});
 

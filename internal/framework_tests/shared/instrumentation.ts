@@ -17,7 +17,6 @@ type ProbeWork = {
 type ProbeBuildSkew = {
 	active_client_build_id: string;
 	server_build_id: string;
-	default_behavior: string;
 	response_kind: string;
 	response_trigger: string | null;
 	api_route_kind: string | null;
@@ -92,7 +91,6 @@ type WorkLike = {
 type BuildSkewEventLike = {
 	activeClientBuildID: string;
 	serverBuildID: string;
-	defaultBehavior: string;
 	triggeringResponse:
 		| {
 				kind: "route";
@@ -339,7 +337,6 @@ function serialize_build_skew(event: BuildSkewEventLike): ProbeBuildSkew {
 	return {
 		active_client_build_id: event.activeClientBuildID,
 		server_build_id: event.serverBuildID,
-		default_behavior: event.defaultBehavior,
 		response_kind: event.triggeringResponse.kind,
 		response_trigger:
 			event.triggeringResponse.kind === "route"

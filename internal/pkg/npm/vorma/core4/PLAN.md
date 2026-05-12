@@ -48,9 +48,9 @@ because retry decisions are finished once the revalidation publication commits.
 
 The stronger type-level end state is represented by a cross-slot model union:
 `running` cannot be manually constructed without an active revalidation route,
-`settling` cannot be manually constructed without a committed publication, and
-a `publishing` publication cannot be manually constructed without an active
-route owner. The union deliberately avoids value-level token equality because
+`settling` cannot be manually constructed without a committed publication, and a
+`publishing` publication cannot be manually constructed without an active route
+owner. The union deliberately avoids value-level token equality because
 TypeScript cannot express that relationship without runtime wrappers.
 
 ## Improvements

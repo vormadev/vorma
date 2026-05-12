@@ -89,7 +89,9 @@ export type BuildSkewResponseFacts = {
 };
 
 export type BuildSkewDefaultBehavior =
-	BuildSkewDetectedEvent["defaultBehavior"];
+	| "dropResponse"
+	| "hardReload"
+	| "notifyOnly";
 
 export type BuildSkewTriggeringResponse =
 	BuildSkewDetectedEvent["triggeringResponse"];

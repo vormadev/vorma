@@ -325,7 +325,6 @@ describe("submit", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "dropResponse",
 				triggeringResponse: expect.objectContaining({
 					kind: "route",
 					trigger: "revalidation",
@@ -366,7 +365,6 @@ describe("submit", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
 					kind: "apiRoute",
 					apiRouteKind: "mutation",
@@ -418,7 +416,6 @@ describe("submit", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
 					kind: "apiRoute",
 					apiRouteKind: "mutation",
@@ -455,7 +452,6 @@ describe("submit", () => {
 			expect.objectContaining({
 				activeClientBuildID: "build-1",
 				serverBuildID: "build-2",
-				defaultBehavior: "notifyOnly",
 				triggeringResponse: expect.objectContaining({
 					kind: "apiRoute",
 					apiRouteKind: "query",

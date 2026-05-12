@@ -1,6 +1,9 @@
 package main
 
 import (
+	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/vormadev/vorma/internal/cmd/internal/tooling"
@@ -130,6 +133,42 @@ func TestEnforcerReusesSharedTasks(t *testing.T) {
 	}
 }
 
+func TestTypeScriptOtherTestBuildsPackageExports(t *testing.T) {
+	output := run_args_for_test_output(
+		t,
+		"test",
+		"--lang",
+		"ts",
+		"--scope",
+		"other",
+	)
+	assert_dry_run_order(
+		t,
+		output,
+		"build TypeScript packages",
+		"test TypeScript other",
+	)
+}
+
+func TestTypeScriptOtherStressBuildsPackageExports(t *testing.T) {
+	output := run_args_for_test_output(
+		t,
+		"stress",
+		"--lang",
+		"ts",
+		"--scope",
+		"other",
+		"--intensity",
+		"1",
+	)
+	assert_dry_run_order(
+		t,
+		output,
+		"build TypeScript packages",
+		"stress TypeScript other",
+	)
+}
+
 func assert_matrix_has_all_tasks(
 	t *testing.T,
 	action action_name,
@@ -181,4 +220,48 @@ func run_args_for_test(args ...string) error {
 		return err
 	}
 	return app.run_request(req)
+}
+
+func run_args_for_test_output(t *testing.T, args ...string) string {
+	t.Helper()
+	real_stdout := os.Stdout
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stdout pipe: %v", err)
+	}
+	os.Stdout = writer
+	run_err := run_args_for_test(args...)
+	close_err := writer.Close()
+	os.Stdout = real_stdout
+	data, read_err := io.ReadAll(reader)
+	if read_err != nil {
+		t.Fatalf("failed to read stdout pipe: %v", read_err)
+	}
+	if close_err != nil {
+		t.Fatalf("failed to close stdout pipe: %v", close_err)
+	}
+	if run_err != nil {
+		t.Fatalf("%v dry run failed: %v", args, run_err)
+	}
+	return string(data)
+}
+
+func assert_dry_run_order(
+	t *testing.T,
+	output string,
+	before string,
+	after string,
+) {
+	t.Helper()
+	before_idx := strings.Index(output, before)
+	if before_idx < 0 {
+		t.Fatalf("dry run output missing %q:\n%s", before, output)
+	}
+	after_idx := strings.Index(output, after)
+	if after_idx < 0 {
+		t.Fatalf("dry run output missing %q:\n%s", after, output)
+	}
+	if before_idx > after_idx {
+		t.Fatalf("expected %q before %q:\n%s", before, after, output)
+	}
 }

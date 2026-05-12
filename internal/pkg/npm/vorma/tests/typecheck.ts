@@ -1471,9 +1471,6 @@ function assert_public_runtime_contracts(): void {
 				expect_type<string>(event.serverBuildID);
 				expect_type<RouteState>(event.currentRouteState);
 				expect_type<WorkState>(event.currentWorkState);
-				expect_type<"dropResponse" | "hardReload" | "notifyOnly">(
-					event.defaultBehavior,
-				);
 				if (event.triggeringResponse.kind === "route") {
 					expect_type<
 						"navigation" | "popstate" | "revalidation" | "prefetch"
