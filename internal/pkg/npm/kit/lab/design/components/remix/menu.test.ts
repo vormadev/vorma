@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 
-import { createElement } from "remix/ui";
+import { createElement, type RemixNode } from "remix/ui";
 import { render, type RenderResult } from "remix/ui/test";
 import { describe, expect, it } from "vitest";
+import { checkableState } from "./checkable-state.ts";
 import { componentStateAttribute } from "./component-state.ts";
 import {
 	componentAnatomyAttrs,
 	createMenu,
+	menuAnatomy,
 	menuOpenChangeReason,
+	type MenuChecked,
 	type MenuStyleSystem,
 } from "./remix.ts";
 import { setup_remix_component_test_environment } from "./test-setup.ts";
@@ -19,12 +22,13 @@ const test_menu_recipe = {
 		variant: "default",
 	},
 	slots: {
-		group: {},
-		groupLabel: {},
-		item: {},
-		popup: {},
-		separator: {},
-		trigger: {},
+		[menuAnatomy.group]: {},
+		[menuAnatomy.groupLabel]: {},
+		[menuAnatomy.item]: {},
+		[menuAnatomy.itemIndicator]: {},
+		[menuAnatomy.popup]: {},
+		[menuAnatomy.separator]: {},
+		[menuAnatomy.trigger]: {},
 	},
 	variants: {
 		layout: {
@@ -104,11 +108,32 @@ function get_menu_items(result: RenderResult): HTMLButtonElement[] {
 	});
 }
 
+function get_all_menu_items(result: RenderResult): HTMLButtonElement[] {
+	return Array.from(
+		result.$$(
+			"[role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio']",
+		),
+	).map((item) => {
+		return item as HTMLButtonElement;
+	});
+}
+
 function require_menu_item(
 	result: RenderResult,
 	index: number,
 ): HTMLButtonElement {
 	const item = get_menu_items(result)[index];
+	if (!item) {
+		throw new Error(`Expected menu item at index ${index}`);
+	}
+	return item;
+}
+
+function require_all_menu_item(
+	result: RenderResult,
+	index: number,
+): HTMLButtonElement {
+	const item = get_all_menu_items(result)[index];
 	if (!item) {
 		throw new Error(`Expected menu item at index ${index}`);
 	}
@@ -154,6 +179,7 @@ describe("Remix Menu", () => {
 		const popup = require_element<HTMLElement>(result, "[role='menu']");
 		expect(popup.hidden).toBe(true);
 		expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+		expect(popup.getAttribute("aria-labelledby")).toBe(trigger.id);
 
 		await result.act(() => {
 			trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -281,6 +307,132 @@ describe("Remix Menu", () => {
 		result.cleanup();
 	});
 
+	it("supports checkbox menu items with check state and indicator anatomy", async () => {
+		const Menu = createMenu(create_test_menu_style_system());
+		const checked_values: MenuChecked[] = [];
+		const result = render(
+			createElement(
+				Menu.Root,
+				{ defaultOpen: true },
+				createElement(Menu.Trigger, {}, "Menu"),
+				createElement(
+					Menu.Popup,
+					{},
+					createElement(
+						Menu.CheckboxItem,
+						{
+							defaultChecked: checkableState.indeterminate,
+							onCheckedChange: (checked: MenuChecked) => {
+								checked_values.push(checked);
+							},
+						},
+						createElement(Menu.ItemIndicator, {}, "✓"),
+						"Show toolbar",
+					),
+				),
+			),
+		);
+		await flush_render(result);
+
+		const item = require_element<HTMLButtonElement>(
+			result,
+			"[role='menuitemcheckbox']",
+		);
+		const indicator = require_element<HTMLElement>(
+			result,
+			`[${componentAnatomyAttrs.part}='${menuAnatomy.itemIndicator}']`,
+		);
+		expect(item.getAttribute("aria-checked")).toBe("mixed");
+		expect(item.getAttribute(componentStateAttribute)).toBe(
+			checkableState.indeterminate,
+		);
+		expect(indicator.getAttribute(componentStateAttribute)).toBe(
+			checkableState.indeterminate,
+		);
+
+		await result.act(() => {
+			item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		await flush_render(result);
+
+		expect(checked_values).toEqual([true]);
+		expect(item.getAttribute("aria-checked")).toBe("true");
+		expect(item.getAttribute(componentStateAttribute)).toBe(
+			checkableState.checked,
+		);
+		expect(indicator.getAttribute(componentStateAttribute)).toBe(
+			checkableState.checked,
+		);
+		expect(
+			require_element<HTMLElement>(result, "[role='menu']").hidden,
+		).toBe(true);
+
+		result.cleanup();
+	});
+
+	it("supports radio menu item groups", async () => {
+		const Menu = createMenu(create_test_menu_style_system());
+		const value_changes: string[] = [];
+		const result = render(
+			createElement(
+				Menu.Root,
+				{ closeOnSelect: false, defaultOpen: true },
+				createElement(Menu.Trigger, {}, "Menu"),
+				createElement(
+					Menu.Popup,
+					{},
+					createElement(
+						Menu.RadioGroup,
+						{
+							defaultValue: "comfortable",
+							onValueChange: (value: string) => {
+								value_changes.push(value);
+							},
+						},
+						createElement(
+							Menu.RadioItem,
+							{ value: "compact" },
+							createElement(Menu.ItemIndicator, {}, "•"),
+							"Compact",
+						),
+						createElement(
+							Menu.RadioItem,
+							{ value: "comfortable" },
+							createElement(Menu.ItemIndicator, {}, "•"),
+							"Comfortable",
+						),
+					),
+				),
+			),
+		);
+		await flush_render(result);
+
+		const compact = require_element<HTMLButtonElement>(
+			result,
+			"[role='menuitemradio']",
+		);
+		const comfortable = get_all_menu_items(result)[1];
+		if (!comfortable) {
+			throw new Error("Expected second radio item");
+		}
+		expect(compact.getAttribute("aria-checked")).toBe("false");
+		expect(comfortable.getAttribute("aria-checked")).toBe("true");
+
+		await result.act(() => {
+			compact.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		await flush_render(result);
+
+		expect(value_changes).toEqual(["compact"]);
+		expect(compact.getAttribute("aria-checked")).toBe("true");
+		expect(comfortable.getAttribute("aria-checked")).toBe("false");
+		expect(
+			require_element<HTMLElement>(result, "[role='menu']").hidden,
+		).toBe(false);
+
+		result.cleanup();
+	});
+
 	it("supports typeahead over menu item text", async () => {
 		const Menu = createMenu(create_test_menu_style_system());
 		const result = render(
@@ -366,6 +518,160 @@ describe("Remix Menu", () => {
 		result.cleanup();
 	});
 
+	it("closes on outside pointer interaction", async () => {
+		const Menu = createMenu(create_test_menu_style_system());
+		const open_reasons: (string | undefined)[] = [];
+		const result = render(
+			createElement(
+				"div",
+				{},
+				createElement(
+					Menu.Root,
+					{
+						defaultOpen: true,
+						onOpenChange: (
+							_open: boolean,
+							details: { reason: string } | undefined,
+						) => {
+							open_reasons.push(details?.reason);
+						},
+					},
+					createElement(Menu.Trigger, {}, "Menu"),
+					createElement(
+						Menu.Popup,
+						{},
+						createElement(Menu.Item, {}, "Edit"),
+					),
+				),
+				createElement("button", { id: "outside" }, "Outside"),
+			),
+		);
+		await flush_render(result);
+
+		const outside = require_element<HTMLButtonElement>(result, "#outside");
+		await result.act(() => {
+			outside.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+		});
+		await flush_render(result);
+
+		expect(open_reasons).toEqual([menuOpenChangeReason.interactOutside]);
+		expect(
+			require_element<HTMLElement>(result, "[role='menu']").hidden,
+		).toBe(true);
+
+		result.cleanup();
+	});
+
+	it("keeps controlled open state external", async () => {
+		const Menu = createMenu(create_test_menu_style_system());
+		let open = true;
+		const open_values: boolean[] = [];
+		function view(): RemixNode {
+			return createElement(
+				Menu.Root,
+				{
+					onOpenChange: (next_open: boolean) => {
+						open_values.push(next_open);
+					},
+					open,
+				},
+				createElement(Menu.Trigger, {}, "Menu"),
+				createElement(
+					Menu.Popup,
+					{},
+					createElement(Menu.Item, {}, "Edit"),
+				),
+			);
+		}
+		const result = render(view());
+		await flush_render(result);
+
+		const item = require_menu_item(result, 0);
+		await result.act(() => {
+			item.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		await flush_render(result);
+
+		expect(open_values).toEqual([false]);
+		expect(
+			require_element<HTMLElement>(result, "[role='menu']").hidden,
+		).toBe(false);
+
+		open = false;
+		await result.act(() => {
+			result.root.render(view());
+		});
+		await flush_render(result);
+		expect(
+			require_element<HTMLElement>(result, "[role='menu']").hidden,
+		).toBe(true);
+
+		result.cleanup();
+	});
+
+	it("reports completed open changes after render", async () => {
+		const Menu = createMenu(create_test_menu_style_system());
+		const completed_values: boolean[] = [];
+		const result = render(
+			createElement(
+				Menu.Root,
+				{
+					onOpenChangeComplete: (open: boolean) => {
+						completed_values.push(open);
+					},
+				},
+				createElement(Menu.Trigger, {}, "Menu"),
+				createElement(
+					Menu.Popup,
+					{},
+					createElement(Menu.Item, {}, "Edit"),
+				),
+			),
+		);
+		await flush_render(result);
+
+		const trigger = require_element<HTMLButtonElement>(result, "button");
+		await result.act(() => {
+			trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		await flush_render(result);
+
+		expect(completed_values).toEqual([true]);
+
+		result.cleanup();
+	});
+
+	it("closes on Tab without preventing tab navigation", async () => {
+		const Menu = createMenu(create_test_menu_style_system());
+		const result = render(
+			createElement(
+				Menu.Root,
+				{ defaultOpen: true },
+				createElement(Menu.Trigger, {}, "Menu"),
+				createElement(
+					Menu.Popup,
+					{},
+					createElement(Menu.Item, {}, "Edit"),
+				),
+			),
+		);
+		await flush_render(result);
+
+		const event = await dispatch_keydown(
+			result,
+			require_menu_item(result, 0),
+			"Tab",
+		);
+		await flush_render(result);
+
+		expect(event.defaultPrevented).toBe(false);
+		expect(
+			require_element<HTMLElement>(result, "[role='menu']").hidden,
+		).toBe(true);
+
+		result.cleanup();
+	});
+
 	it("preserves static menu anatomy", async () => {
 		const Menu = createMenu(create_test_menu_style_system());
 		const result = render(
@@ -391,24 +697,24 @@ describe("Remix Menu", () => {
 		expect(
 			require_element<HTMLElement>(
 				result,
-				`[${componentAnatomyAttrs.part}='group']`,
+				`[${componentAnatomyAttrs.part}='${menuAnatomy.group}']`,
 			).getAttribute("role"),
 		).toBe("group");
 		expect(
 			require_element<HTMLElement>(
 				result,
-				`[${componentAnatomyAttrs.part}='group']`,
+				`[${componentAnatomyAttrs.part}='${menuAnatomy.group}']`,
 			).getAttribute("aria-labelledby"),
 		).toBe(
 			require_element<HTMLElement>(
 				result,
-				`[${componentAnatomyAttrs.part}='groupLabel']`,
+				`[${componentAnatomyAttrs.part}='${menuAnatomy.groupLabel}']`,
 			).id,
 		);
 		expect(
 			require_element<HTMLElement>(
 				result,
-				`[${componentAnatomyAttrs.part}='separator']`,
+				`[${componentAnatomyAttrs.part}='${menuAnatomy.separator}']`,
 			).getAttribute("role"),
 		).toBe("separator");
 

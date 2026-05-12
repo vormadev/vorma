@@ -88,7 +88,9 @@ export function createFieldset<
 		} satisfies FieldsetRecipeSelection<TRecipe>).slots[slot];
 	}
 
-	function Root(): (props: FieldsetRootProps<TLayout, TBreakpoint>) => RemixNode {
+	function Root(): (
+		props: FieldsetRootProps<TLayout, TBreakpoint>,
+	) => RemixNode {
 		return (props: FieldsetRootProps<TLayout, TBreakpoint>): RemixNode => {
 			const { at, children, layout, mix, ...root_props } = props;
 			const parts = createComponentStyleTargets({

@@ -1,7 +1,6 @@
 import {
 	Fragment,
 	createElement,
-	css,
 	on,
 	ref,
 	type Handle,
@@ -16,6 +15,18 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
+	checkableStateFromValue,
+	type CheckableStateName,
+} from "./checkable-state.ts";
+import {
+	ariaBoolean,
+	ariaTrue,
+	componentDataAttribute,
+	componentStateAttribute,
+	dataFlag,
+	openStateFromBoolean,
+} from "./component-state.ts";
+import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
 	createComponentStyleTargets,
@@ -26,6 +37,7 @@ import {
 	get_last_collection_item,
 } from "./composite-navigation.ts";
 import { create_controllable_state } from "./controllable-state.ts";
+import { createNativeSelectFormMirror } from "./form-mirror.ts";
 import {
 	create_group_label_ref_mix,
 	create_group_label_relationship,
@@ -35,10 +47,12 @@ import {
 	create_ordered_collection,
 	type OrderedCollectionItem,
 } from "./ordered-collection.ts";
+import { popoverScrollLockGuard } from "./popover-scroll-lock.ts";
 import {
-	popoverScrollLockGuard,
-	releasePopoverScrollLock,
-} from "./popover-scroll-lock.ts";
+	createPopupRefMix,
+	createPopupRelationship,
+	type PopupRelationship,
+} from "./popup-behavior.ts";
 import {
 	mergeRecipeConditionSelectors,
 	type RecipeConditionSelectorMap,
@@ -53,7 +67,6 @@ import type {
 	ComponentStyleSystem,
 	RemixComponent,
 } from "./types.ts";
-import { visuallyHiddenStyle } from "./visually-hidden.ts";
 
 const select_slot = {
 	group: "group",
@@ -297,7 +310,6 @@ export type SelectOptions = {
 
 type SelectRuntimeContext = {
 	close: (details: SelectOpenChangeDetails) => void;
-	contains_target: (target: EventTarget | null) => boolean;
 	get_disabled: () => boolean;
 	get_highlighted_id: () => string | undefined;
 	get_highlighted_value: () => string | null;
@@ -305,6 +317,7 @@ type SelectRuntimeContext = {
 	get_list_id: () => string;
 	get_open: () => boolean;
 	get_placeholder: () => string | undefined;
+	get_popup_relationship: () => PopupRelationship;
 	get_popup_id: () => string;
 	get_read_only: () => boolean;
 	get_required: () => boolean;
@@ -327,7 +340,6 @@ type SelectRuntimeContext = {
 		highlight?: SelectOpenHighlight,
 	) => void;
 	register_option: (option: RegisteredSelectOption) => void;
-	register_popup: (node: HTMLElement | null) => void;
 	register_trigger: (node: HTMLElement | null) => void;
 	search: (text: string, event: KeyboardEvent) => void;
 	select_value: (
@@ -351,36 +363,31 @@ const trigger_conditions = {
 	focusVisible: "&:focus-visible",
 	hover: "&:hover",
 	open: "&[aria-expanded='true']",
-	placeholder: "&[data-placeholder]",
+	placeholder: `&[${componentDataAttribute.placeholder}]`,
 	reducedMotion: "@media (prefers-reduced-motion: reduce)",
 } as const satisfies RecipeConditionSelectorMap<SelectRecipeCondition>;
 
 const option_conditions = {
-	disabled: "&[aria-disabled='true']",
-	highlighted: "&[data-highlighted]",
+	disabled: `&[aria-disabled='true'], &[${componentDataAttribute.disabled}]`,
+	highlighted: `&[${componentDataAttribute.highlighted}]`,
 	reducedMotion: "@media (prefers-reduced-motion: reduce)",
-	selected: "&[aria-selected='true']",
+	selected: `&[aria-selected='true'], &[${componentDataAttribute.selected}]`,
 } as const satisfies RecipeConditionSelectorMap<SelectRecipeCondition>;
 
 const open_conditions = {
-	open: "&:popover-open, &[data-open]",
+	open: `&:popover-open, &[${componentDataAttribute.open}]`,
 	reducedMotion: "@media (prefers-reduced-motion: reduce)",
 } as const satisfies RecipeConditionSelectorMap<SelectRecipeCondition>;
 
 const value_conditions = {
-	placeholder: "&[data-placeholder]",
+	placeholder: `&[${componentDataAttribute.placeholder}]`,
 	reducedMotion: "@media (prefers-reduced-motion: reduce)",
 } as const satisfies RecipeConditionSelectorMap<SelectRecipeCondition>;
 
 const select_scope = "select";
 const select_option_value_attribute = "data-vorma-select-value";
-const select_empty_value = "";
 const select_page_jump_size = 10;
 const select_typeahead_reset_ms = 700;
-const select_hidden_select_mix = css<HTMLSelectElement>({
-	...visuallyHiddenStyle,
-	pointerEvents: "none",
-});
 
 function infer_text_value(children: RemixNode): string {
 	if (typeof children === "string" || typeof children === "number") {
@@ -404,31 +411,12 @@ function is_printable_key_event(event: KeyboardEvent): boolean {
 	);
 }
 
-function sync_native_popover(node: HTMLElement, open: boolean): void {
-	if (open) {
-		node.hidden = false;
-		if ("showPopover" in node && !node.matches(":popover-open")) {
-			node.showPopover();
-		}
-		return;
-	}
-
-	if ("hidePopover" in node && node.matches(":popover-open")) {
-		node.hidePopover();
-	}
-	node.hidden = true;
-	releasePopoverScrollLock(node.ownerDocument);
-}
-
-function contains_event_target(
-	node: HTMLElement | null,
-	target: EventTarget | null,
-): boolean {
-	return target instanceof Node && node?.contains(target) === true;
-}
-
 function coerce_select_value(value: string | null | undefined): string | null {
 	return value ?? null;
+}
+
+function select_option_state(selected: boolean): CheckableStateName {
+	return checkableStateFromValue(selected, false);
 }
 
 export function createSelect<
@@ -461,8 +449,7 @@ export function createSelect<
 		let last_open_details: SelectOpenChangeDetails = {
 			reason: selectOpenChangeReason.trigger,
 		};
-		let popup_node: HTMLElement | null = null;
-		let trigger_node: HTMLElement | null = null;
+		const popup_relationship = createPopupRelationship();
 		const option_collection =
 			create_ordered_collection<RegisteredSelectOption>();
 		const option_typeahead = create_typeahead<RegisteredSelectOption>({
@@ -712,61 +699,22 @@ export function createSelect<
 		}
 
 		function create_hidden_select(props: SelectProps): RemixNode {
-			if (!props.name && !props.form) {
-				return null;
-			}
-
-			const current_value = get_value();
-			const registered_options = get_options();
-			const has_current_value =
-				current_value === null ||
-				registered_options.some((option) => {
-					return option.value === current_value;
-				});
-
-			return createElement(
-				"select",
-				{
-					"aria-hidden": "true",
-					autoComplete: props.autoComplete,
-					disabled: props.disabled,
-					form: props.form,
-					mix: select_hidden_select_mix,
-					name: props.name,
-					required: props.required,
-					tabIndex: -1,
-					value: current_value ?? select_empty_value,
-				},
-				createElement(
-					"option",
-					{
-						selected: current_value === null,
-						value: select_empty_value,
-					},
-					props.placeholder ?? "",
-				),
-				...registered_options.map((option) => {
-					return createElement(
-						"option",
-						{
-							disabled: option.disabled,
-							selected: option.value === current_value,
-							value: option.value,
-						},
-						option.text,
-					);
+			return createNativeSelectFormMirror({
+				autoComplete: props.autoComplete,
+				disabled: props.disabled,
+				form: props.form,
+				name: props.name,
+				options: get_options().map((option) => {
+					return {
+						disabled: option.disabled,
+						text: option.text,
+						value: option.value,
+					};
 				}),
-				has_current_value
-					? null
-					: createElement(
-							"option",
-							{
-								selected: true,
-								value: current_value ?? select_empty_value,
-							},
-							current_value ?? "",
-						),
-			);
+				placeholder: props.placeholder,
+				required: props.required,
+				value: get_value(),
+			});
 		}
 
 		function open_from_keyboard(
@@ -929,12 +877,6 @@ export function createSelect<
 			close: (details) => {
 				request_open(false, details);
 			},
-			contains_target: (target) => {
-				return (
-					contains_event_target(trigger_node, target) ||
-					contains_event_target(popup_node, target)
-				);
-			},
 			get_disabled: () => {
 				return handle.props.disabled === true;
 			},
@@ -951,6 +893,9 @@ export function createSelect<
 			get_open,
 			get_placeholder: () => {
 				return handle.props.placeholder;
+			},
+			get_popup_relationship: () => {
+				return popup_relationship;
 			},
 			get_popup_id: () => {
 				return `${handle.id}-popup`;
@@ -1004,18 +949,13 @@ export function createSelect<
 					void handle.update();
 				}
 			},
-			register_popup: (node) => {
-				popup_node = node;
-			},
 			register_trigger: (node) => {
-				trigger_node = node;
+				popup_relationship.registerTrigger(node);
 			},
 			search,
 			select_value,
 			sync_popup: () => {
-				if (popup_node) {
-					sync_native_popover(popup_node, get_open());
-				}
+				popup_relationship.syncPopup(get_open());
 				schedule_highlight_scroll();
 			},
 			toggle: (details) => {
@@ -1161,33 +1101,29 @@ export function createSelect<
 							? highlighted_id
 							: undefined,
 						"aria-controls": context.get_list_id(),
-						"aria-disabled": context.get_disabled()
-							? "true"
-							: undefined,
-						"aria-expanded": is_open ? "true" : "false",
+						"aria-disabled": ariaTrue(context.get_disabled()),
+						"aria-expanded": ariaBoolean(is_open),
 						"aria-haspopup": "listbox",
-						"aria-invalid": context.get_invalid()
-							? "true"
-							: undefined,
-						"aria-readonly": context.get_read_only()
-							? "true"
-							: undefined,
-						"aria-required": context.get_required()
-							? "true"
-							: undefined,
-						"data-disabled": context.get_disabled()
-							? ""
-							: undefined,
-						"data-invalid": context.get_invalid() ? "" : undefined,
-						"data-open": is_open ? "" : undefined,
-						"data-placeholder": has_value ? undefined : "",
-						"data-readonly": context.get_read_only()
-							? ""
-							: undefined,
-						"data-required": context.get_required()
-							? ""
-							: undefined,
-						"data-state": is_open ? "open" : "closed",
+						"aria-invalid": ariaTrue(context.get_invalid()),
+						"aria-readonly": ariaTrue(context.get_read_only()),
+						"aria-required": ariaTrue(context.get_required()),
+						[componentDataAttribute.disabled]: dataFlag(
+							context.get_disabled(),
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							context.get_invalid(),
+						),
+						[componentDataAttribute.open]: dataFlag(is_open),
+						[componentDataAttribute.placeholder]:
+							dataFlag(!has_value),
+						[componentDataAttribute.readOnly]: dataFlag(
+							context.get_read_only(),
+						),
+						[componentDataAttribute.required]: dataFlag(
+							context.get_required(),
+						),
+						[componentStateAttribute]:
+							openStateFromBoolean(is_open),
 						disabled: context.get_disabled(),
 						id: context.get_trigger_id(),
 						mix,
@@ -1232,34 +1168,15 @@ export function createSelect<
 				props: { layout },
 				styleSystem: style_system,
 			});
-			const popup_ref_mix = ref<HTMLElement>((node, signal) => {
-				context.register_popup(node);
-				sync_native_popover(node, context.get_open());
-				const on_pointer_down = (event: PointerEvent): void => {
-					if (!context.get_open()) {
-						return;
-					}
-					if (context.contains_target(event.target)) {
-						return;
-					}
+			const popup_ref_mix = createPopupRefMix({
+				getOpen: context.get_open,
+				onInteractOutside: (event) => {
 					context.close({
 						event,
 						reason: selectOpenChangeReason.interactOutside,
 					});
-				};
-				node.ownerDocument.addEventListener(
-					"pointerdown",
-					on_pointer_down,
-					true,
-				);
-				signal.addEventListener("abort", () => {
-					context.register_popup(null);
-					node.ownerDocument.removeEventListener(
-						"pointerdown",
-						on_pointer_down,
-						true,
-					);
-				});
+				},
+				relationship: context.get_popup_relationship(),
 			});
 
 			handle.queueTask((signal) => {
@@ -1284,7 +1201,7 @@ export function createSelect<
 					props: {
 						...popup_props,
 						"aria-labelledby": context.get_trigger_id(),
-						"data-open": is_open ? "" : undefined,
+						[componentDataAttribute.open]: dataFlag(is_open),
 						hidden: !is_open,
 						id: context.get_popup_id(),
 						mix,
@@ -1392,7 +1309,8 @@ export function createSelect<
 					mix: parts.hosts[select_slot.value].mix,
 					props: {
 						...value_props,
-						"data-placeholder": is_placeholder ? "" : undefined,
+						[componentDataAttribute.placeholder]:
+							dataFlag(is_placeholder),
 						mix,
 					},
 				}),
@@ -1685,12 +1603,14 @@ export function createSelect<
 					],
 					props: {
 						...option_props,
-						"aria-disabled": disabled ? "true" : undefined,
-						"aria-selected": selected ? "true" : "false",
-						"data-disabled": disabled ? "" : undefined,
-						"data-highlighted": highlighted ? "" : undefined,
-						"data-selected": selected ? "" : undefined,
-						"data-state": selected ? "checked" : "unchecked",
+						"aria-disabled": ariaTrue(disabled),
+						"aria-selected": ariaBoolean(selected),
+						[componentDataAttribute.disabled]: dataFlag(disabled),
+						[componentDataAttribute.highlighted]:
+							dataFlag(highlighted),
+						[componentDataAttribute.selected]: dataFlag(selected),
+						[componentStateAttribute]:
+							select_option_state(selected),
 						[select_option_value_attribute]: value,
 						id: current_option_id,
 						mix,

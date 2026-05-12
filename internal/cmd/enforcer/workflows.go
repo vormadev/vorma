@@ -257,7 +257,7 @@ var task_test_ts_fw = tasks.NewTask(
 
 var task_test_ts_other = tasks.NewTask(
 	func(ctx *tasks.Cache, input enforcer_input) (struct{}, error) {
-		if _, err := task_install_npm_ts.Run(ctx, input); err != nil {
+		if _, err := task_build_ts.Run(ctx, input); err != nil {
 			return struct{}{}, err
 		}
 		return input.run_step(tooling.Step{
@@ -410,7 +410,7 @@ var task_stress_ts_fw = tasks.NewTask(
 
 var task_stress_ts_other = tasks.NewTask(
 	func(ctx *tasks.Cache, input enforcer_input) (struct{}, error) {
-		if _, err := task_install_npm_ts.Run(ctx, input); err != nil {
+		if _, err := task_build_ts.Run(ctx, input); err != nil {
 			return struct{}{}, err
 		}
 		for range input.intensity {

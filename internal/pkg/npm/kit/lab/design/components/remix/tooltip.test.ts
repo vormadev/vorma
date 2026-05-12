@@ -4,10 +4,7 @@ import { createElement } from "remix/ui";
 import { render } from "remix/ui/test";
 import { describe, expect, it } from "vitest";
 import { componentStateAttribute } from "./component-state.ts";
-import {
-	createTooltip,
-	type TooltipStyleSystem,
-} from "./remix.ts";
+import { createTooltip, type TooltipStyleSystem } from "./remix.ts";
 import { setup_remix_component_test_environment } from "./test-setup.ts";
 
 describe("Remix Tooltip", () => {

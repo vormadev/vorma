@@ -125,8 +125,12 @@ export function createAlert<
 		} satisfies TSelection).slots[slot];
 	}
 
-	function Root(): (props: AlertRootProps<TTone, TVariant, TBreakpoint>) => RemixNode {
-		return (props: AlertRootProps<TTone, TVariant, TBreakpoint>): RemixNode => {
+	function Root(): (
+		props: AlertRootProps<TTone, TVariant, TBreakpoint>,
+	) => RemixNode {
+		return (
+			props: AlertRootProps<TTone, TVariant, TBreakpoint>,
+		): RemixNode => {
 			const { at, children, mix, tone, variant, ...root_props } = props;
 			const parts = createComponentStyleTargets({
 				at,

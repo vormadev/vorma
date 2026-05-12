@@ -14,6 +14,12 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
+	ariaBoolean,
+	ariaTrue,
+	componentDataAttribute,
+	dataFlag,
+} from "./component-state.ts";
+import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
 	createComponentStyleTargets,
@@ -291,7 +297,7 @@ type RegisteredListboxOption = OrderedCollectionItem<string>;
 const option_conditions = mergeRecipeConditionSelectors<ListboxRecipeCondition>(
 	commonConditions,
 	{
-		highlighted: "&[data-highlighted]",
+		highlighted: `&[${componentDataAttribute.highlighted}]`,
 	} satisfies RecipeConditionSelectorMap<ListboxRecipeCondition>,
 );
 
@@ -888,18 +894,23 @@ export function createListbox<
 					props: {
 						...root_props,
 						"aria-activedescendant": highlighted_id,
-						"aria-disabled": disabled ? "true" : undefined,
-						"aria-invalid": invalid ? "true" : undefined,
-						"aria-multiselectable":
-							selectionMode === multiple_selection_mode
-								? "true"
-								: undefined,
+						"aria-disabled": ariaTrue(disabled === true),
+						"aria-invalid": ariaTrue(invalid === true),
+						"aria-multiselectable": ariaTrue(
+							selectionMode === multiple_selection_mode,
+						),
 						"aria-orientation": orientation,
-						"aria-required": required ? "true" : undefined,
-						"data-disabled": disabled ? "" : undefined,
-						"data-invalid": invalid ? "" : undefined,
+						"aria-required": ariaTrue(required === true),
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							invalid === true,
+						),
 						"data-orientation": orientation,
-						"data-required": required ? "" : undefined,
+						[componentDataAttribute.required]: dataFlag(
+							required === true,
+						),
 						mix,
 						role: root_props.role ?? "listbox",
 						tabIndex: disabled
@@ -1029,11 +1040,12 @@ export function createListbox<
 					],
 					props: {
 						...option_props,
-						"aria-disabled": disabled ? "true" : undefined,
-						"aria-selected": selected ? "true" : "false",
-						"data-disabled": disabled ? "" : undefined,
-						"data-highlighted": highlighted ? "" : undefined,
-						"data-selected": selected ? "true" : undefined,
+						"aria-disabled": ariaTrue(disabled),
+						"aria-selected": ariaBoolean(selected),
+						[componentDataAttribute.disabled]: dataFlag(disabled),
+						[componentDataAttribute.highlighted]:
+							dataFlag(highlighted),
+						[componentDataAttribute.selected]: dataFlag(selected),
 						id: current_option_id,
 						mix,
 						role: "option",

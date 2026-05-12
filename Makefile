@@ -202,7 +202,7 @@ stress-ts:
 docs-dev:
 	@cd ./internal/apps/docs && pnpm dev
 
-build-docs:
+docs-build:
 	@cd ./internal/apps/docs && pnpm build
 
 #####################################################################

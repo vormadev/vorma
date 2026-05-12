@@ -13,15 +13,15 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	componentStateAttribute,
 	openState,
 	openStateFromBoolean,
 } from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import {
 	mergeRecipeConditionSelectors,
@@ -55,9 +55,8 @@ export type CollapsibleRecipeInput<TLayout extends string = string> =
 export type CollapsibleRecipeLayout<TRecipe extends CollapsibleRecipeInput> =
 	RecipeVariantValue<TRecipe, "layout">;
 
-export type CollapsibleRecipeSelection<
-	TRecipe extends CollapsibleRecipeInput,
-> = RecipeVariantPropsFor<TRecipe, "layout">;
+export type CollapsibleRecipeSelection<TRecipe extends CollapsibleRecipeInput> =
+	RecipeVariantPropsFor<TRecipe, "layout">;
 
 export type CollapsibleStyleSystem<
 	TMode extends string = string,
@@ -106,10 +105,7 @@ export type CollapsibleContentProps = Omit<Props<"div">, "style"> & {
 
 export type CollapsibleComponents<TLayout extends string = string> = {
 	Content: RemixComponent<CollapsibleContentProps>;
-	Root: RemixComponent<
-		CollapsibleRootProps<TLayout>,
-		CollapsibleContext
-	>;
+	Root: RemixComponent<CollapsibleRootProps<TLayout>, CollapsibleContext>;
 	Trigger: RemixComponent<CollapsibleTriggerProps>;
 };
 

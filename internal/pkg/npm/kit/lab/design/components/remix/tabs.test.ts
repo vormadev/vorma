@@ -80,11 +80,27 @@ describe("Remix Tabs", () => {
 				createElement(
 					Tabs.List,
 					{},
-					createElement(Tabs.Trigger, { value: "account" }, "Account"),
-					createElement(Tabs.Trigger, { value: "billing" }, "Billing"),
+					createElement(
+						Tabs.Trigger,
+						{ value: "account" },
+						"Account",
+					),
+					createElement(
+						Tabs.Trigger,
+						{ value: "billing" },
+						"Billing",
+					),
 				),
-				createElement(Tabs.Panel, { value: "account" }, "Account panel"),
-				createElement(Tabs.Panel, { value: "billing" }, "Billing panel"),
+				createElement(
+					Tabs.Panel,
+					{ value: "account" },
+					"Account panel",
+				),
+				createElement(
+					Tabs.Panel,
+					{ value: "billing" },
+					"Billing panel",
+				),
 			),
 		);
 

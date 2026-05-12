@@ -13,15 +13,15 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
-	createComponentAnatomyAttrs,
-	createComponentSlotProps,
-	createComponentStyleTargets,
-} from "./component-style.ts";
-import {
 	componentStateAttribute,
 	openState,
 	openStateFromBoolean,
 } from "./component-state.ts";
+import {
+	createComponentAnatomyAttrs,
+	createComponentSlotProps,
+	createComponentStyleTargets,
+} from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import {
 	mergeRecipeConditionSelectors,
@@ -170,13 +170,10 @@ const button_type_default = "button";
 const click_event = "click";
 
 const accordion_conditions =
-	mergeRecipeConditionSelectors<AccordionRecipeCondition>(
-		commonConditions,
-		{
-			closed: `&[${componentStateAttribute}='${openState.closed}']`,
-			open: `&[${componentStateAttribute}='${openState.open}']`,
-		} satisfies RecipeConditionSelectorMap<AccordionRecipeCondition>,
-	);
+	mergeRecipeConditionSelectors<AccordionRecipeCondition>(commonConditions, {
+		closed: `&[${componentStateAttribute}='${openState.closed}']`,
+		open: `&[${componentStateAttribute}='${openState.open}']`,
+	} satisfies RecipeConditionSelectorMap<AccordionRecipeCondition>);
 
 function normalize_accordion_values(value: AccordionValue): readonly string[] {
 	if (value === null) {
@@ -242,7 +239,10 @@ export function createAccordion<
 	}
 
 	function Root(
-		handle: Handle<AccordionRootProps<TLayout, TBreakpoint>, AccordionRootContext>,
+		handle: Handle<
+			AccordionRootProps<TLayout, TBreakpoint>,
+			AccordionRootContext
+		>,
 	): (props: AccordionRootProps<TLayout, TBreakpoint>) => RemixNode {
 		let local_values = normalize_accordion_values(
 			handle.props.defaultValue ?? null,
@@ -253,7 +253,9 @@ export function createAccordion<
 		}
 
 		function get_values(): readonly string[] {
-			return normalize_accordion_values(handle.props.value ?? local_values);
+			return normalize_accordion_values(
+				handle.props.value ?? local_values,
+			);
 		}
 
 		const context: AccordionRootContext = {
@@ -309,10 +311,7 @@ export function createAccordion<
 			return createElement(
 				"div",
 				createComponentSlotProps({
-					attrs: createComponentAnatomyAttrs(
-						accordion_scope,
-						"root",
-					),
+					attrs: createComponentAnatomyAttrs(accordion_scope, "root"),
 					mix: parts.hosts.root.mix,
 					props: {
 						...root_props,
@@ -325,7 +324,10 @@ export function createAccordion<
 	}
 
 	function Item(
-		handle: Handle<AccordionItemProps<TVariant, TSize, TBreakpoint>, AccordionItemContext>,
+		handle: Handle<
+			AccordionItemProps<TVariant, TSize, TBreakpoint>,
+			AccordionItemContext
+		>,
 	): (props: AccordionItemProps<TVariant, TSize, TBreakpoint>) => RemixNode {
 		const root_context = handle.context.get(Root);
 		const context: AccordionItemContext = {
@@ -356,7 +358,9 @@ export function createAccordion<
 		};
 		handle.context.set(context);
 
-		return (props: AccordionItemProps<TVariant, TSize, TBreakpoint>): RemixNode => {
+		return (
+			props: AccordionItemProps<TVariant, TSize, TBreakpoint>,
+		): RemixNode => {
 			const {
 				at,
 				children,
@@ -385,15 +389,11 @@ export function createAccordion<
 			return createElement(
 				"div",
 				createComponentSlotProps({
-					attrs: createComponentAnatomyAttrs(
-						accordion_scope,
-						"item",
-					),
+					attrs: createComponentAnatomyAttrs(accordion_scope, "item"),
 					mix: parts.hosts.item.mix,
 					props: {
 						...item_props,
-						[componentStateAttribute]:
-							openStateFromBoolean(open),
+						[componentStateAttribute]: openStateFromBoolean(open),
 						mix,
 					},
 				}),

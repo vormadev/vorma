@@ -83,7 +83,7 @@ and uncontrolled state, styling escape hatches, and relevant edge cases.
 | List             |             |              |
 | Listbox          | yes         | WIP          |
 | LiveRegion       |             |              |
-| Menu             | WIP         | WIP          |
+| Menu             | yes         | WIP          |
 | Menubar          |             |              |
 | Meter            |             |              |
 | NavigationMenu   |             |              |

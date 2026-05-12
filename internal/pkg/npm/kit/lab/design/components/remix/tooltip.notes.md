@@ -1,8 +1,8 @@
 # Tooltip Notes
 
-Needs fuller coverage for delay behavior, Escape dismissal, pointer versus
-focus interactions, disabled triggers, positioning, accessible name
-expectations, and consumer `mix` precedence.
+Needs fuller coverage for delay behavior, Escape dismissal, pointer versus focus
+interactions, disabled triggers, positioning, accessible name expectations, and
+consumer `mix` precedence.
 
 ## Semantic/API Audit
 

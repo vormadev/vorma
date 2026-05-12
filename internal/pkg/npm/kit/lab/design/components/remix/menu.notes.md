@@ -1,10 +1,13 @@
 # Menu Notes
 
-## Current WIP Contract
+## Fully Built Contract
 
-`Menu` is a command menu primitive for actions. It is not a select, listbox,
-combobox, navigation menubar, context menu, command palette, or arbitrary list
-of interactive content.
+`Menu` is a dropdown command-menu primitive for actions and action-like choices.
+It is not a select, listbox, combobox, navigation menubar, context menu, command
+palette, submenu system, or arbitrary list of interactive content.
+
+`Menubar`, `ContextMenu`, and nested submenu behavior are separate component
+families. Do not widen `Menu` to absorb them.
 
 The public anatomy is:
 
@@ -12,6 +15,10 @@ The public anatomy is:
 - `Trigger`
 - `Popup`
 - `Item`
+- `CheckboxItem`
+- `RadioGroup`
+- `RadioItem`
+- `ItemIndicator`
 - `Separator`
 - `Group`
 - `GroupLabel`
@@ -20,6 +27,7 @@ Root owns open state, close-on-select behavior, item collection, roving focus,
 and typeahead:
 
 - `open`, `defaultOpen`, and `onOpenChange`
+- `onOpenChangeComplete`
 - `closeOnSelect`, defaulting to enabled
 - `loopFocus`
 - `typeahead`, defaulting to enabled
@@ -31,7 +39,12 @@ The popup uses `role="menu"`. Items are native buttons with `role="menuitem"`.
 Disabled items use `aria-disabled` instead of the native `disabled` attribute so
 they remain focusable, matching the WAI-ARIA menu pattern.
 
-Keyboard behavior currently covers the non-submenu command-menu shape:
+Checkbox and radio items use `role="menuitemcheckbox"` and
+`role="menuitemradio"`, expose `aria-checked`, and share the item slot so recipe
+authors can style all menu item kinds consistently. `ItemIndicator` provides a
+styled inline indicator slot for checkbox and radio items.
+
+Keyboard behavior covers the non-submenu command-menu shape:
 
 - Trigger `ArrowDown`, `Enter`, and `Space` open and focus the first item.
 - Trigger `ArrowUp` opens and focuses the last item.
@@ -41,20 +54,17 @@ Keyboard behavior currently covers the non-submenu command-menu shape:
 - Popup/item `Enter` and `Space` activate the focused item.
 - Popup/item `Escape` closes and returns focus to the trigger.
 - Popup/item `Tab` closes and allows normal tab navigation.
+- Outside pointer interaction closes the popup.
 
 ## Current Test Status
 
 Testing is WIP. The current tests cover trigger open, close-on-select, roving
-focus, disabled item focusability, disabled item activation guard, typeahead,
-Escape focus return, and static anatomy.
+focus, disabled item focusability, disabled item activation guard,
+checkbox/radio item behavior, typeahead, Escape focus return, outside
+interaction, controlled open state, completed open changes, `Tab` close
+behavior, and static anatomy.
 
-Before marking `Fully built: yes`, research and settle the final public API
-against mature systems and APG guidance, especially submenu behavior,
-checkbox/radio menu items, context-menu entry, outside interaction,
-close-complete timing, orientation, and whether menubar belongs in this
-component family or a separate one.
-
-Before marking `Fully tested: yes`, add broader coverage for controlled open
-state, looping focus, `Tab` close behavior, item consumer `mix` ownership,
-outside interaction, browser-level focus behavior, and submenu behavior if it
-belongs in the final contract.
+Before marking `Fully tested: yes`, add broader coverage for looping focus, item
+consumer `mix` ownership, browser-level focus behavior, custom trigger IDs,
+controlled checkbox/radio state, and recipe condition output for highlighted and
+checkable states.

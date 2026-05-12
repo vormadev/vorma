@@ -1,5 +1,30 @@
 export const componentStateAttribute = "data-state";
 
+export const componentDataAttribute = {
+	disabled: "data-disabled",
+	highlighted: "data-highlighted",
+	invalid: "data-invalid",
+	open: "data-open",
+	placeholder: "data-placeholder",
+	readOnly: "data-readonly",
+	required: "data-required",
+	selected: "data-selected",
+} as const;
+
+export type ARIABoolean = "false" | "true";
+
+export function ariaBoolean(value: boolean): ARIABoolean {
+	return value ? "true" : "false";
+}
+
+export function ariaTrue(value: boolean): "true" | undefined {
+	return value ? "true" : undefined;
+}
+
+export function dataFlag(value: boolean): "" | undefined {
+	return value ? "" : undefined;
+}
+
 export const openState = {
 	closed: "closed",
 	open: "open",
