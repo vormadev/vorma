@@ -3,7 +3,11 @@
 import { createElement, on } from "remix/ui";
 import { render } from "remix/ui/test";
 import { describe, expect, it } from "vitest";
-import { checkableStateAttribute } from "./checkable-state.ts";
+import {
+	checkableChangeEvent,
+	checkableStateAttribute,
+} from "./checkable-state.ts";
+import { formResetEvent } from "./form-reset.ts";
 import {
 	componentAnatomyAttrs,
 	componentDataAttribute,
@@ -111,9 +115,12 @@ describe("Remix RadioGroup", () => {
 				}),
 				createElement(RadioGroup.Item, {
 					"data-testid": "sms",
-					mix: on<HTMLInputElement, "change">("change", (event) => {
-						item_mix_target_tag = event.currentTarget.tagName;
-					}),
+					mix: on<HTMLInputElement, typeof checkableChangeEvent>(
+						checkableChangeEvent,
+						(event) => {
+							item_mix_target_tag = event.currentTarget.tagName;
+						},
+					),
 					value: "sms",
 				}),
 			),
@@ -139,7 +146,9 @@ describe("Remix RadioGroup", () => {
 
 		await result.act(() => {
 			sms.checked = true;
-			sms.dispatchEvent(new Event("change", { bubbles: true }));
+			sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
 		});
 
 		expect(value_changes).toEqual(["sms"]);
@@ -148,6 +157,39 @@ describe("Remix RadioGroup", () => {
 		expect(email.getAttribute(checkableStateAttribute)).toBe("unchecked");
 		expect(sms.checked).toBe(true);
 		expect(sms.getAttribute(checkableStateAttribute)).toBe("checked");
+
+		result.cleanup();
+	});
+
+	it("preserves item-level form and required ownership", () => {
+		const RadioGroup = createRadioGroup(create_test_style_system());
+		const result = render(
+			createElement(
+				RadioGroup.Root,
+				{
+					form: "root-form",
+					name: "contact",
+				},
+				createElement(RadioGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(RadioGroup.Item, {
+					"data-testid": "sms",
+					form: "item-form",
+					required: true,
+					value: "sms",
+				}),
+			),
+		);
+
+		const email = result.$("[data-testid='email']") as HTMLInputElement;
+		const sms = result.$("[data-testid='sms']") as HTMLInputElement;
+
+		expect(email.getAttribute("form")).toBe("root-form");
+		expect(email.required).toBe(false);
+		expect(sms.getAttribute("form")).toBe("item-form");
+		expect(sms.required).toBe(true);
 
 		result.cleanup();
 	});
@@ -184,7 +226,9 @@ describe("Remix RadioGroup", () => {
 
 		await result.act(() => {
 			sms.checked = true;
-			sms.dispatchEvent(new Event("change", { bubbles: true }));
+			sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
 		});
 
 		expect(value_changes).toEqual(["sms"]);
@@ -198,6 +242,280 @@ describe("Remix RadioGroup", () => {
 
 		expect(email.checked).toBe(false);
 		expect(sms.checked).toBe(true);
+
+		result.cleanup();
+	});
+
+	it("does not change value from disabled root or item events", async () => {
+		const RadioGroup = createRadioGroup(create_test_style_system());
+		const value_changes: string[] = [];
+
+		function disabled_root_view(): ReturnType<typeof createElement> {
+			return createElement(
+				RadioGroup.Root,
+				{
+					defaultValue: "email",
+					disabled: true,
+					name: "contact",
+					onValueChange: (value: string) => {
+						value_changes.push(value);
+					},
+				},
+				createElement(RadioGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(RadioGroup.Item, {
+					"data-testid": "sms",
+					value: "sms",
+				}),
+			);
+		}
+
+		const result = render(disabled_root_view());
+		const root = result.$("[role='radiogroup']");
+		const email = result.$("[data-testid='email']") as HTMLInputElement;
+		const sms = result.$("[data-testid='sms']") as HTMLInputElement;
+
+		expect(root?.getAttribute("aria-disabled")).toBe("true");
+		expect(root?.getAttribute(componentDataAttribute.disabled)).toBe("");
+		expect(email.disabled).toBe(true);
+		expect(sms.disabled).toBe(true);
+		expect(sms.getAttribute(componentDataAttribute.disabled)).toBe("");
+
+		await result.act(() => {
+			sms.checked = true;
+			sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
+		});
+		await result.act(() => {
+			result.root.render(disabled_root_view());
+		});
+
+		expect(value_changes).toEqual([]);
+		expect(email.checked).toBe(true);
+		expect(sms.checked).toBe(false);
+
+		result.cleanup();
+
+		const item_disabled_result = render(
+			createElement(
+				RadioGroup.Root,
+				{
+					defaultValue: "email",
+					name: "contact",
+					onValueChange: (value: string) => {
+						value_changes.push(value);
+					},
+				},
+				createElement(RadioGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(RadioGroup.Item, {
+					"data-testid": "sms",
+					disabled: true,
+					value: "sms",
+				}),
+			),
+		);
+		const item_disabled_email = item_disabled_result.$(
+			"[data-testid='email']",
+		) as HTMLInputElement;
+		const item_disabled_sms = item_disabled_result.$(
+			"[data-testid='sms']",
+		) as HTMLInputElement;
+
+		expect(
+			item_disabled_sms.getAttribute(componentDataAttribute.disabled),
+		).toBe("");
+
+		await item_disabled_result.act(() => {
+			item_disabled_sms.checked = true;
+			item_disabled_sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
+		});
+		await item_disabled_result.act(() => {
+			item_disabled_result.root.render(
+				createElement(
+					RadioGroup.Root,
+					{
+						defaultValue: "email",
+						name: "contact",
+						onValueChange: (value: string) => {
+							value_changes.push(value);
+						},
+					},
+					createElement(RadioGroup.Item, {
+						"data-testid": "email",
+						value: "email",
+					}),
+					createElement(RadioGroup.Item, {
+						"data-testid": "sms",
+						disabled: true,
+						value: "sms",
+					}),
+				),
+			);
+		});
+
+		expect(value_changes).toEqual([]);
+		expect(item_disabled_email.checked).toBe(true);
+		expect(item_disabled_sms.checked).toBe(false);
+
+		item_disabled_result.cleanup();
+	});
+
+	it("does not change value from read-only root or item events", async () => {
+		const RadioGroup = createRadioGroup(create_test_style_system());
+		const value_changes: string[] = [];
+
+		const result = render(
+			createElement(
+				RadioGroup.Root,
+				{
+					defaultValue: "email",
+					name: "contact",
+					onValueChange: (value: string) => {
+						value_changes.push(value);
+					},
+					readOnly: true,
+				},
+				createElement(RadioGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(RadioGroup.Item, {
+					"data-testid": "sms",
+					value: "sms",
+				}),
+			),
+		);
+
+		const root = result.$("[role='radiogroup']");
+		const email = result.$("[data-testid='email']") as HTMLInputElement;
+		const sms = result.$("[data-testid='sms']") as HTMLInputElement;
+
+		expect(root?.getAttribute(componentDataAttribute.readOnly)).toBe("");
+		expect(sms.readOnly).toBe(true);
+		expect(sms.getAttribute(componentDataAttribute.readOnly)).toBe("");
+
+		await result.act(() => {
+			sms.checked = true;
+			sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
+		});
+
+		expect(value_changes).toEqual([]);
+		expect(email.checked).toBe(true);
+		expect(sms.checked).toBe(false);
+
+		result.cleanup();
+
+		const item_read_only_result = render(
+			createElement(
+				RadioGroup.Root,
+				{
+					defaultValue: "email",
+					name: "contact",
+					onValueChange: (value: string) => {
+						value_changes.push(value);
+					},
+				},
+				createElement(RadioGroup.Item, {
+					"data-testid": "email",
+					value: "email",
+				}),
+				createElement(RadioGroup.Item, {
+					"data-testid": "sms",
+					readOnly: true,
+					value: "sms",
+				}),
+			),
+		);
+		const item_read_only_email = item_read_only_result.$(
+			"[data-testid='email']",
+		) as HTMLInputElement;
+		const item_read_only_sms = item_read_only_result.$(
+			"[data-testid='sms']",
+		) as HTMLInputElement;
+
+		expect(
+			item_read_only_sms.getAttribute(componentDataAttribute.readOnly),
+		).toBe("");
+
+		await item_read_only_result.act(() => {
+			item_read_only_sms.checked = true;
+			item_read_only_sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
+		});
+
+		expect(value_changes).toEqual([]);
+		expect(item_read_only_email.checked).toBe(true);
+		expect(item_read_only_sms.checked).toBe(false);
+
+		item_read_only_result.cleanup();
+	});
+
+	it("resets uncontrolled value state from the form owner", async () => {
+		const RadioGroup = createRadioGroup(create_test_style_system());
+		const value_changes: string[] = [];
+		const result = render(
+			createElement(
+				"form",
+				{ id: "contact-form" },
+				createElement(
+					RadioGroup.Root,
+					{
+						defaultValue: "email",
+						name: "contact",
+						onValueChange: (value: string) => {
+							value_changes.push(value);
+						},
+					},
+					createElement(RadioGroup.Item, {
+						"data-testid": "email",
+						value: "email",
+					}),
+					createElement(RadioGroup.Item, {
+						"data-testid": "sms",
+						value: "sms",
+					}),
+				),
+			),
+		);
+
+		const form = result.$("form") as HTMLFormElement;
+		const email = result.$("[data-testid='email']") as HTMLInputElement;
+		const sms = result.$("[data-testid='sms']") as HTMLInputElement;
+
+		await result.act(() => {
+			sms.checked = true;
+			sms.dispatchEvent(
+				new Event(checkableChangeEvent, { bubbles: true }),
+			);
+		});
+
+		expect(value_changes).toEqual(["sms"]);
+		expect(email.checked).toBe(false);
+		expect(sms.checked).toBe(true);
+
+		await result.act(() => {
+			form.dispatchEvent(
+				new Event(formResetEvent, {
+					bubbles: true,
+					cancelable: true,
+				}),
+			);
+		});
+
+		expect(value_changes).toEqual(["sms"]);
+		expect(email.checked).toBe(true);
+		expect(sms.checked).toBe(false);
 
 		result.cleanup();
 	});

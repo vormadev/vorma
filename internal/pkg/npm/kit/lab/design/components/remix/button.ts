@@ -6,6 +6,7 @@ import {
 	type RecipeVariantValue,
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
+import { componentDataAttribute, dataFlag } from "./component-state.ts";
 import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
@@ -25,14 +26,15 @@ import type {
 	RemixComponent,
 } from "./types.ts";
 
-const button_slot = {
+export const buttonAnatomy = {
 	content: "content",
-	loading_indicator: "loadingIndicator",
-	loading_indicator_frame: "loadingIndicatorFrame",
+	loadingIndicator: "loadingIndicator",
+	loadingIndicatorFrame: "loadingIndicatorFrame",
 	root: "root",
 } as const;
 
-export type ButtonRecipeSlot = (typeof button_slot)[keyof typeof button_slot];
+export type ButtonRecipeSlot =
+	(typeof buttonAnatomy)[keyof typeof buttonAnatomy];
 
 export type ButtonRecipeCondition =
 	| "active"
@@ -109,6 +111,7 @@ export type ButtonProps<
 	ButtonStyleProps<TVariant, TSize, TLayout> &
 	ResponsiveProps<ButtonStyleProps<TVariant, TSize, TLayout>, TBreakpoint> & {
 		loading?: boolean;
+		loadingIndicator?: RemixNode;
 		loadingLabel?: string;
 		style?: never;
 	};
@@ -132,7 +135,6 @@ const loading_indicator_conditions = {
 } as const satisfies RecipeConditionSelectorMap<ButtonRecipeCondition>;
 
 const button_scope = "button";
-const loading_label_default = "Loading";
 const button_type_default = "button";
 
 export function createButton<
@@ -185,7 +187,8 @@ export function createButton<
 				fluid = false,
 				layout,
 				loading = false,
-				loadingLabel: loading_label = loading_label_default,
+				loadingIndicator: loading_indicator,
+				loadingLabel: loading_label,
 				mix,
 				size,
 				type = button_type_default,
@@ -202,56 +205,58 @@ export function createButton<
 			const parts = createComponentStyleTargets({
 				at,
 				targets: {
-					[button_slot.content]: {
-						host: button_slot.content,
+					[buttonAnatomy.content]: {
+						host: buttonAnatomy.content,
 						conditions: mergeRecipeConditionSelectors(
 							button_conditions,
-							options.conditions?.[button_slot.content],
+							options.conditions?.[buttonAnatomy.content],
 						),
 						resolveSlot: (current_style_props) => {
 							return resolve_slot(
-								button_slot.content,
+								buttonAnatomy.content,
 								current_style_props,
 							);
 						},
 					},
-					[button_slot.loading_indicator]: {
-						host: button_slot.loading_indicator,
+					[buttonAnatomy.loadingIndicator]: {
+						host: buttonAnatomy.loadingIndicator,
 						conditions: mergeRecipeConditionSelectors(
 							loading_indicator_conditions,
-							options.conditions?.[button_slot.loading_indicator],
-						),
-						resolveSlot: (current_style_props) => {
-							return resolve_slot(
-								button_slot.loading_indicator,
-								current_style_props,
-							);
-						},
-					},
-					[button_slot.loading_indicator_frame]: {
-						host: button_slot.loading_indicator_frame,
-						conditions: mergeRecipeConditionSelectors(
-							button_conditions,
 							options.conditions?.[
-								button_slot.loading_indicator_frame
+								buttonAnatomy.loadingIndicator
 							],
 						),
 						resolveSlot: (current_style_props) => {
 							return resolve_slot(
-								button_slot.loading_indicator_frame,
+								buttonAnatomy.loadingIndicator,
 								current_style_props,
 							);
 						},
 					},
-					[button_slot.root]: {
-						host: button_slot.root,
+					[buttonAnatomy.loadingIndicatorFrame]: {
+						host: buttonAnatomy.loadingIndicatorFrame,
 						conditions: mergeRecipeConditionSelectors(
 							button_conditions,
-							options.conditions?.[button_slot.root],
+							options.conditions?.[
+								buttonAnatomy.loadingIndicatorFrame
+							],
 						),
 						resolveSlot: (current_style_props) => {
 							return resolve_slot(
-								button_slot.root,
+								buttonAnatomy.loadingIndicatorFrame,
+								current_style_props,
+							);
+						},
+					},
+					[buttonAnatomy.root]: {
+						host: buttonAnatomy.root,
+						conditions: mergeRecipeConditionSelectors(
+							button_conditions,
+							options.conditions?.[buttonAnatomy.root],
+						),
+						resolveSlot: (current_style_props) => {
+							return resolve_slot(
+								buttonAnatomy.root,
 								current_style_props,
 							);
 						},
@@ -267,15 +272,18 @@ export function createButton<
 				createComponentSlotProps({
 					attrs: createComponentAnatomyAttrs(
 						button_scope,
-						button_slot.root,
+						buttonAnatomy.root,
 					),
-					mix: parts.hosts[button_slot.root].mix,
+					mix: parts.hosts[buttonAnatomy.root].mix,
 					props: {
 						...button_props,
 						"aria-busy": loading || undefined,
 						"aria-label": loading
-							? loading_label
+							? (loading_label ?? props["aria-label"])
 							: props["aria-label"],
+						[componentDataAttribute.disabled]:
+							dataFlag(is_disabled),
+						[componentDataAttribute.loading]: dataFlag(loading),
 						disabled: is_disabled,
 						mix,
 						type,
@@ -286,9 +294,9 @@ export function createButton<
 					createComponentSlotProps({
 						attrs: createComponentAnatomyAttrs(
 							button_scope,
-							button_slot.content,
+							buttonAnatomy.content,
 						),
-						mix: parts.hosts[button_slot.content].mix,
+						mix: parts.hosts[buttonAnatomy.content].mix,
 					}),
 					children,
 				),
@@ -298,10 +306,10 @@ export function createButton<
 							createComponentSlotProps({
 								attrs: createComponentAnatomyAttrs(
 									button_scope,
-									button_slot.loading_indicator_frame,
+									buttonAnatomy.loadingIndicatorFrame,
 								),
 								mix: parts.hosts[
-									button_slot.loading_indicator_frame
+									buttonAnatomy.loadingIndicatorFrame
 								].mix,
 								props: {
 									"aria-hidden": "true",
@@ -312,12 +320,13 @@ export function createButton<
 								createComponentSlotProps({
 									attrs: createComponentAnatomyAttrs(
 										button_scope,
-										button_slot.loading_indicator,
+										buttonAnatomy.loadingIndicator,
 									),
 									mix: parts.hosts[
-										button_slot.loading_indicator
+										buttonAnatomy.loadingIndicator
 									].mix,
 								}),
+								loading_indicator,
 							),
 						)
 					: null,

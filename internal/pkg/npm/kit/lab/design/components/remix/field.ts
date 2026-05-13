@@ -13,6 +13,11 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
+	ariaTrue,
+	componentDataAttribute,
+	dataFlag,
+} from "./component-state.ts";
+import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
 	createComponentStyleTargets,
@@ -25,14 +30,14 @@ import type {
 	RemixComponent,
 } from "./types.ts";
 
-const field_slot = {
+export const fieldAnatomy = {
 	description: "description",
 	error: "error",
 	label: "label",
 	root: "root",
 } as const;
 
-export type FieldRecipeSlot = (typeof field_slot)[keyof typeof field_slot];
+export type FieldRecipeSlot = (typeof fieldAnatomy)[keyof typeof fieldAnatomy];
 export type FieldRecipeInput = RecipeWithVariantGroups<
 	FieldRecipeSlot,
 	string,
@@ -58,6 +63,8 @@ export type FieldProps = Omit<Props<"div">, "style"> & {
 	controlID?: string;
 	disabled?: boolean;
 	invalid?: boolean;
+	readOnly?: boolean;
+	required?: boolean;
 	style?: never;
 };
 
@@ -81,6 +88,8 @@ type FieldContext = {
 	disabled: () => boolean;
 	errorID: () => string;
 	invalid: () => boolean;
+	readOnly: () => boolean;
+	required: () => boolean;
 };
 
 export type FieldControlMixin = <
@@ -131,29 +140,29 @@ function create_field_parts_for_system<
 
 		return createComponentStyleTargets({
 			targets: {
-				[field_slot.description]: {
-					host: field_slot.description,
+				[fieldAnatomy.description]: {
+					host: fieldAnatomy.description,
 					conditions: commonConditions,
 					resolveSlot: () => {
 						return resolved.slots.description;
 					},
 				},
-				[field_slot.error]: {
-					host: field_slot.error,
+				[fieldAnatomy.error]: {
+					host: fieldAnatomy.error,
 					conditions: commonConditions,
 					resolveSlot: () => {
 						return resolved.slots.error;
 					},
 				},
-				[field_slot.label]: {
-					host: field_slot.label,
+				[fieldAnatomy.label]: {
+					host: fieldAnatomy.label,
 					conditions: commonConditions,
 					resolveSlot: () => {
 						return resolved.slots.label;
 					},
 				},
-				[field_slot.root]: {
-					host: field_slot.root,
+				[fieldAnatomy.root]: {
+					host: fieldAnatomy.root,
 					conditions: commonConditions,
 					resolveSlot: () => {
 						return resolved.slots.root;
@@ -187,6 +196,12 @@ function create_field_parts_for_system<
 			invalid: (): boolean => {
 				return Boolean(handle.props.invalid);
 			},
+			readOnly: (): boolean => {
+				return Boolean(handle.props.readOnly);
+			},
+			required: (): boolean => {
+				return Boolean(handle.props.required);
+			},
 		};
 		handle.context.set(context);
 
@@ -197,6 +212,8 @@ function create_field_parts_for_system<
 				disabled,
 				invalid,
 				mix,
+				readOnly,
+				required,
 				...host_props
 			} = props;
 			const parts = create_parts();
@@ -206,13 +223,24 @@ function create_field_parts_for_system<
 				createComponentSlotProps({
 					attrs: createComponentAnatomyAttrs(
 						field_scope,
-						field_slot.root,
+						fieldAnatomy.root,
 					),
-					mix: parts.hosts[field_slot.root].mix,
+					mix: parts.hosts[fieldAnatomy.root].mix,
 					props: {
 						...host_props,
-						"aria-disabled": disabled || undefined,
-						"data-invalid": invalid || undefined,
+						"aria-disabled": ariaTrue(disabled === true),
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							invalid === true,
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							readOnly === true,
+						),
+						[componentDataAttribute.required]: dataFlag(
+							required === true,
+						),
 						mix,
 					},
 				}),
@@ -237,6 +265,8 @@ function create_field_parts_for_system<
 						(context.invalid() ? true : undefined),
 					disabled: context.disabled() ? true : props.disabled,
 					id: props.id ?? context.controlID(),
+					readOnly: context.readOnly() ? true : props.readOnly,
+					required: context.required() ? true : props.required,
 				});
 			};
 		},
@@ -260,13 +290,24 @@ function create_field_parts_for_system<
 				createComponentSlotProps({
 					attrs: createComponentAnatomyAttrs(
 						field_scope,
-						field_slot.label,
+						fieldAnatomy.label,
 					),
-					mix: parts.hosts[field_slot.label].mix,
+					mix: parts.hosts[fieldAnatomy.label].mix,
 					props: {
 						...host_props,
-						"aria-disabled": context.disabled() || undefined,
-						"data-invalid": context.invalid() || undefined,
+						"aria-disabled": ariaTrue(context.disabled()),
+						[componentDataAttribute.disabled]: dataFlag(
+							context.disabled(),
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							context.invalid(),
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							context.readOnly(),
+						),
+						[componentDataAttribute.required]: dataFlag(
+							context.required(),
+						),
 						htmlFor: host_props.htmlFor ?? context.controlID(),
 						mix,
 					},
@@ -288,12 +329,24 @@ function create_field_parts_for_system<
 				createComponentSlotProps({
 					attrs: createComponentAnatomyAttrs(
 						field_scope,
-						field_slot.description,
+						fieldAnatomy.description,
 					),
-					mix: parts.hosts[field_slot.description].mix,
+					mix: parts.hosts[fieldAnatomy.description].mix,
 					props: {
 						...host_props,
-						"aria-disabled": context.disabled() || undefined,
+						"aria-disabled": ariaTrue(context.disabled()),
+						[componentDataAttribute.disabled]: dataFlag(
+							context.disabled(),
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							context.invalid(),
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							context.readOnly(),
+						),
+						[componentDataAttribute.required]: dataFlag(
+							context.required(),
+						),
 						id: host_props.id ?? context.descriptionID(),
 						mix,
 					},
@@ -319,12 +372,24 @@ function create_field_parts_for_system<
 				createComponentSlotProps({
 					attrs: createComponentAnatomyAttrs(
 						field_scope,
-						field_slot.error,
+						fieldAnatomy.error,
 					),
-					mix: parts.hosts[field_slot.error].mix,
+					mix: parts.hosts[fieldAnatomy.error].mix,
 					props: {
 						...host_props,
-						"aria-disabled": context.disabled() || undefined,
+						"aria-disabled": ariaTrue(context.disabled()),
+						[componentDataAttribute.disabled]: dataFlag(
+							context.disabled(),
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							context.invalid(),
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							context.readOnly(),
+						),
+						[componentDataAttribute.required]: dataFlag(
+							context.required(),
+						),
 						id: host_props.id ?? context.errorID(),
 						mix,
 					},

@@ -13,6 +13,7 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
+	checkableChangeEvent,
 	checkableInitialChecked,
 	checkableState,
 	checkableStateAttribute,
@@ -31,6 +32,7 @@ import {
 } from "./component-style.ts";
 import { commonConditions, type CommonRecipeCondition } from "./conditions.ts";
 import { create_controllable_state } from "./controllable-state.ts";
+import { formResetMixin } from "./form-reset.ts";
 import {
 	mergeRecipeConditionSelectors,
 	type RecipeConditionSelectorMap,
@@ -124,6 +126,7 @@ export type RadioGroupRootProps<
 		form?: string;
 		name?: string;
 		onValueChange?: RadioGroupValueChangeHandler<TValue>;
+		readOnly?: boolean;
 		required?: boolean;
 		style?: never;
 		value?: TValue | null;
@@ -157,15 +160,16 @@ type RadioGroupContext = {
 	get_disabled: () => boolean;
 	get_form: () => string | undefined;
 	get_name: () => string;
+	get_read_only: () => boolean;
 	get_required: () => boolean;
 	get_value: () => string | null;
 	set_value: (value: string, details?: RadioGroupValueChangeDetails) => void;
+	sync_items: () => void;
 };
 
 const radio_group_scope = "radioGroup";
 const radio_group_role = "radiogroup";
 const radio_type = "radio";
-const change_event = "change";
 
 const item_conditions =
 	mergeRecipeConditionSelectors<RadioGroupRecipeCondition>(commonConditions, {
@@ -245,6 +249,14 @@ export function createRadioGroup<
 			},
 		});
 
+		function reset_value(): void {
+			if (handle.props.value !== undefined) {
+				return;
+			}
+			local_value = handle.props.defaultValue ?? null;
+			void handle.update();
+		}
+
 		const context: RadioGroupContext = {
 			get_disabled: () => {
 				return handle.props.disabled === true;
@@ -254,6 +266,9 @@ export function createRadioGroup<
 			},
 			get_name: () => {
 				return handle.props.name ?? handle.id;
+			},
+			get_read_only: () => {
+				return handle.props.readOnly === true;
 			},
 			get_required: () => {
 				return handle.props.required === true;
@@ -266,6 +281,9 @@ export function createRadioGroup<
 				if (changed) {
 					void handle.update();
 				}
+			},
+			sync_items: () => {
+				void handle.update();
 			},
 		};
 		handle.context.set(context);
@@ -283,6 +301,7 @@ export function createRadioGroup<
 				mix,
 				name: _name,
 				onValueChange: _on_value_change,
+				readOnly,
 				required: _required,
 				value: _value,
 				...root_props
@@ -307,13 +326,24 @@ export function createRadioGroup<
 						radio_group_scope,
 						"root",
 					),
-					mix: parts.hosts.root.mix,
+					mix: [
+						formResetMixin({
+							form: _form,
+							onReset: () => {
+								reset_value();
+							},
+						}),
+						parts.hosts.root.mix,
+					],
 					props: {
 						...root_props,
 						"aria-disabled": ariaTrue(disabled === true),
 						"aria-required": ariaTrue(_required === true),
 						[componentDataAttribute.disabled]: dataFlag(
 							disabled === true,
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							readOnly === true,
 						),
 						[componentDataAttribute.required]: dataFlag(
 							_required === true,
@@ -335,10 +365,22 @@ export function createRadioGroup<
 		return (
 			props: RadioGroupItemProps<TVariant, TSize, TBreakpoint>,
 		): RemixNode => {
-			const { at, disabled, mix, size, value, variant, ...item_props } =
-				props;
+			const {
+				at,
+				disabled,
+				form,
+				mix,
+				readOnly,
+				required,
+				size,
+				value,
+				variant,
+				...item_props
+			} = props;
 			const checked = context.get_value() === value;
 			const is_disabled = context.get_disabled() || disabled === true;
+			const is_read_only = context.get_read_only() || readOnly === true;
+			const is_required = context.get_required() || required === true;
 			const parts = createComponentStyleTargets({
 				at,
 				hostElements: {
@@ -367,10 +409,16 @@ export function createRadioGroup<
 							allowIndeterminate: false,
 							checked,
 							defaultChecked: undefined,
+							disabled: is_disabled,
+							readOnly: is_read_only,
 						}),
-						on<HTMLInputElement, typeof change_event>(
-							change_event,
+						on<HTMLInputElement, typeof checkableChangeEvent>(
+							checkableChangeEvent,
 							(event) => {
+								if (is_disabled || is_read_only) {
+									context.sync_items();
+									return;
+								}
 								if (event.currentTarget.checked) {
 									context.set_value(value, { event });
 								}
@@ -384,12 +432,19 @@ export function createRadioGroup<
 							checked,
 							false,
 						),
+						[componentDataAttribute.disabled]:
+							dataFlag(is_disabled),
+						[componentDataAttribute.readOnly]:
+							dataFlag(is_read_only),
+						[componentDataAttribute.required]:
+							dataFlag(is_required),
 						checked: checkableInitialChecked(checked),
 						disabled: is_disabled || undefined,
-						form: item_props.form ?? context.get_form(),
+						form: form ?? context.get_form(),
 						mix,
 						name: context.get_name(),
-						required: context.get_required() || undefined,
+						readOnly: is_read_only || undefined,
+						required: is_required || undefined,
 						type: radio_type,
 						value,
 					},

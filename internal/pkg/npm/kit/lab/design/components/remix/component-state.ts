@@ -4,6 +4,7 @@ export const componentDataAttribute = {
 	disabled: "data-disabled",
 	highlighted: "data-highlighted",
 	invalid: "data-invalid",
+	loading: "data-loading",
 	open: "data-open",
 	placeholder: "data-placeholder",
 	readOnly: "data-readonly",
@@ -23,6 +24,15 @@ export function ariaTrue(value: boolean): "true" | undefined {
 
 export function dataFlag(value: boolean): "" | undefined {
 	return value ? "" : undefined;
+}
+
+export function is_aria_invalid(value: unknown): boolean {
+	return (
+		value === true ||
+		value === "true" ||
+		value === "grammar" ||
+		value === "spelling"
+	);
 }
 
 export const openState = {

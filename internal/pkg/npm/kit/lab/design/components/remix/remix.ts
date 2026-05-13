@@ -73,6 +73,7 @@ export {
 	type BoxStyleSystem,
 } from "./box.ts";
 export {
+	buttonAnatomy,
 	createButton,
 	type ButtonOptions,
 	type ButtonProps,
@@ -114,6 +115,8 @@ export {
 export {
 	createCheckbox,
 	type CheckboxChecked,
+	type CheckboxCheckedChangeDetails,
+	type CheckboxCheckedChangeHandler,
 	type CheckboxProps,
 	type CheckboxRecipeCondition,
 	type CheckboxRecipeInput,
@@ -230,6 +233,7 @@ export {
 	createFieldError,
 	createFieldLabel,
 	createFieldParts,
+	fieldAnatomy,
 	type FieldComponents,
 	type FieldControlMixin,
 	type FieldDescriptionProps,
@@ -288,6 +292,7 @@ export {
 } from "./icon.ts";
 export {
 	createInput,
+	inputAnatomy,
 	type InputProps,
 	type InputRecipeInput,
 	type InputRecipeSelection,
@@ -559,6 +564,8 @@ export {
 } from "./surface.ts";
 export {
 	createSwitch,
+	type SwitchCheckedChangeDetails,
+	type SwitchCheckedChangeHandler,
 	type SwitchProps,
 	type SwitchRecipeCondition,
 	type SwitchRecipeInput,
@@ -621,6 +628,7 @@ export {
 } from "./text.ts";
 export {
 	createTextarea,
+	textareaAnatomy,
 	type TextareaProps,
 	type TextareaRecipeInput,
 	type TextareaRecipeSelection,

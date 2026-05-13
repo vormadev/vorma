@@ -5,6 +5,11 @@ Living component inventory for `kit/lab/design/components/remix`.
 Status cells are intentionally blank until they are re-audited. Do not add
 ambiguous status values or extra matrix columns.
 
+Do not move onto starting new components while others are still in
+`Fully built: WIP` status, otherwise we will have a bunch of half-finished
+components. For now, it's fine to leave them in `Fully tested: WIP` state,
+though.
+
 An empty status cell means the work has not started.
 
 `WIP` means the work has started. See the component's individual notes file for
@@ -36,14 +41,14 @@ and uncontrolled state, styling escape hatches, and relevant edge cases.
 | Box              |             |              |
 | Blockquote       |             |              |
 | Breadcrumbs      |             |              |
-| Button           |             |              |
+| Button           | yes         | WIP          |
 | ButtonGroup      |             |              |
 | Calendar         |             |              |
 | Callout          |             |              |
 | Card             |             |              |
 | Carousel         |             |              |
-| Checkbox         |             |              |
-| CheckboxGroup    |             |              |
+| Checkbox         | yes         | WIP          |
+| CheckboxGroup    | yes         | WIP          |
 | Chip             |             |              |
 | CloseButton      |             |              |
 | Code             |             |              |
@@ -60,7 +65,7 @@ and uncontrolled state, styling escape hatches, and relevant edge cases.
 | Drawer           |             |              |
 | Editable         |             |              |
 | EmptyState       |             |              |
-| Field            |             |              |
+| Field            | yes         | WIP          |
 | Fieldset         |             |              |
 | FileInput        |             |              |
 | Flex             |             |              |
@@ -76,7 +81,7 @@ and uncontrolled state, styling escape hatches, and relevant edge cases.
 | Image            |             |              |
 | ImageComparer    |             |              |
 | Include          |             |              |
-| Input            |             |              |
+| Input            | yes         | WIP          |
 | Kbd              | yes         | WIP          |
 | Label            |             |              |
 | Link             |             |              |
@@ -98,7 +103,7 @@ and uncontrolled state, styling escape hatches, and relevant edge cases.
 | Progress         |             |              |
 | ProgressRing     |             |              |
 | QRCode           |             |              |
-| RadioGroup       |             |              |
+| RadioGroup       | yes         | WIP          |
 | Rating           |             |              |
 | RelativeTime     |             |              |
 | ResizeObserver   |             |              |
@@ -116,13 +121,13 @@ and uncontrolled state, styling escape hatches, and relevant edge cases.
 | Stat             |             |              |
 | Stepper          |             |              |
 | Surface          |             |              |
-| Switch           |             |              |
+| Switch           | yes         | WIP          |
 | Table            |             |              |
 | Tabs             |             |              |
 | Tag              |             |              |
 | TagsInput        |             |              |
 | Text             |             |              |
-| Textarea         |             |              |
+| Textarea         | yes         | WIP          |
 | Timeline         |             |              |
 | Toast            |             |              |
 | Toggle           |             |              |

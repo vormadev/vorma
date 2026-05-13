@@ -7,6 +7,11 @@ import {
 	type RecipeWithVariantGroups,
 } from "../../core/core.ts";
 import {
+	componentDataAttribute,
+	dataFlag,
+	is_aria_invalid,
+} from "./component-state.ts";
+import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
 	createComponentStyleTargets,
@@ -71,6 +76,10 @@ export type TextareaProps<
 		style?: never;
 	};
 
+export const textareaAnatomy = {
+	root: "root",
+} as const;
+
 const textarea_scope = "textarea";
 
 export function createTextarea<
@@ -104,7 +113,17 @@ export function createTextarea<
 				TBreakpoint
 			>,
 		): RemixNode => {
-			const { at, mix, size, variant, ...host_props } = props;
+			const {
+				at,
+				"aria-invalid": aria_invalid,
+				disabled,
+				mix,
+				readOnly,
+				required,
+				size,
+				variant,
+				...host_props
+			} = props;
 			const selection = {
 				size,
 				variant,
@@ -128,11 +147,30 @@ export function createTextarea<
 			return createElement(
 				"textarea",
 				createComponentSlotProps({
-					attrs: createComponentAnatomyAttrs(textarea_scope, "root"),
+					attrs: createComponentAnatomyAttrs(
+						textarea_scope,
+						textareaAnatomy.root,
+					),
 					mix: parts.hosts.root.mix,
 					props: {
 						...host_props,
+						"aria-invalid": aria_invalid,
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.invalid]: dataFlag(
+							is_aria_invalid(aria_invalid),
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							readOnly === true,
+						),
+						[componentDataAttribute.required]: dataFlag(
+							required === true,
+						),
+						disabled,
 						mix,
+						readOnly,
+						required,
 					},
 				}),
 			);

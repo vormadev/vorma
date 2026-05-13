@@ -13,7 +13,10 @@ import {
 	checkableStateFromValue,
 	checkableStateMixin,
 	type CheckableChecked,
+	type CheckableCheckedChangeDetails,
+	type CheckableCheckedChangeHandler,
 } from "./checkable-state.ts";
+import { componentDataAttribute, dataFlag } from "./component-state.ts";
 import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
@@ -41,6 +44,10 @@ export type CheckboxRecipeCondition =
 	| "unchecked";
 
 export type CheckboxChecked = CheckableChecked;
+
+export type CheckboxCheckedChangeDetails = CheckableCheckedChangeDetails;
+
+export type CheckboxCheckedChangeHandler = CheckableCheckedChangeHandler;
 
 export type CheckboxRecipeInput<
 	TVariant extends string = string,
@@ -90,6 +97,7 @@ export type CheckboxProps<
 	> & {
 		checked?: CheckboxChecked;
 		defaultChecked?: CheckboxChecked;
+		onCheckedChange?: CheckboxCheckedChangeHandler;
 		style?: never;
 	};
 
@@ -138,7 +146,11 @@ export function createCheckbox<
 				at,
 				checked,
 				defaultChecked,
+				disabled,
 				mix,
+				onCheckedChange,
+				readOnly,
+				required,
 				size,
 				variant,
 				...host_props
@@ -171,11 +183,23 @@ export function createCheckbox<
 						checkableStateMixin({
 							checked,
 							defaultChecked,
+							disabled,
+							onCheckedChange,
+							readOnly,
 						}),
 						parts.hosts.root.mix,
 					],
 					props: {
 						...host_props,
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.required]: dataFlag(
+							required === true,
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							readOnly === true,
+						),
 						[checkableStateAttribute]: checkableStateFromValue(
 							checked ?? defaultChecked,
 						),
@@ -187,7 +211,10 @@ export function createCheckbox<
 							checked === undefined
 								? checkableInitialChecked(defaultChecked)
 								: undefined,
+						disabled,
 						mix,
+						readOnly,
+						required,
 						type: checkbox_type,
 					},
 				}),

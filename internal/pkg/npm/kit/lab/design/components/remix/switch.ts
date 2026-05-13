@@ -12,7 +12,9 @@ import {
 	checkableStateAttribute,
 	checkableStateFromValue,
 	checkableStateMixin,
+	type CheckableCheckedChangeDetails,
 } from "./checkable-state.ts";
+import { componentDataAttribute, dataFlag } from "./component-state.ts";
 import {
 	createComponentAnatomyAttrs,
 	createComponentSlotProps,
@@ -37,6 +39,13 @@ export type SwitchRecipeCondition =
 	| CommonRecipeCondition
 	| "checked"
 	| "unchecked";
+
+export type SwitchCheckedChangeDetails = CheckableCheckedChangeDetails;
+
+export type SwitchCheckedChangeHandler = (
+	checked: boolean,
+	details?: SwitchCheckedChangeDetails,
+) => void;
 
 export type SwitchRecipeInput<
 	TVariant extends string = string,
@@ -89,6 +98,7 @@ export type SwitchProps<
 	> & {
 		checked?: boolean;
 		defaultChecked?: boolean;
+		onCheckedChange?: SwitchCheckedChangeHandler;
 		style?: never;
 	};
 
@@ -139,7 +149,11 @@ export function createSwitch<
 				at,
 				checked,
 				defaultChecked,
+				disabled,
 				mix,
+				onCheckedChange,
+				readOnly,
+				required,
 				size,
 				variant,
 				...host_props
@@ -173,11 +187,30 @@ export function createSwitch<
 							allowIndeterminate: false,
 							checked,
 							defaultChecked,
+							disabled,
+							onCheckedChange: onCheckedChange
+								? (next_checked, details) => {
+										onCheckedChange(
+											next_checked === true,
+											details,
+										);
+									}
+								: undefined,
+							readOnly,
 						}),
 						parts.hosts.root.mix,
 					],
 					props: {
 						...host_props,
+						[componentDataAttribute.disabled]: dataFlag(
+							disabled === true,
+						),
+						[componentDataAttribute.required]: dataFlag(
+							required === true,
+						),
+						[componentDataAttribute.readOnly]: dataFlag(
+							readOnly === true,
+						),
 						[checkableStateAttribute]: checkableStateFromValue(
 							checked ?? defaultChecked,
 							false,
@@ -190,7 +223,10 @@ export function createSwitch<
 							checked === undefined
 								? checkableInitialChecked(defaultChecked)
 								: undefined,
+						disabled,
 						mix,
+						readOnly,
+						required,
 						role: switch_role,
 						type: switch_type,
 					},

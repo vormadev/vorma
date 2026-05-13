@@ -18,7 +18,7 @@ export const commonConditions = {
 	focusVisible: "&:focus-visible",
 	hover: "&:hover",
 	idle: "&[data-idle='true']",
-	invalid: `&[aria-invalid='true'], &[${componentDataAttribute.invalid}]`,
+	invalid: `&:invalid, &[aria-invalid='true'], &[${componentDataAttribute.invalid}]`,
 	placeholder: "&::placeholder",
 	reducedMotion: "@media (prefers-reduced-motion: reduce)",
 	selected: `&[aria-selected='true'], &[${componentDataAttribute.selected}]`,

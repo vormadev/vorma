@@ -164,15 +164,19 @@ Expected consumers:
 
 - [x] Add an internal form-mirror primitive now for custom form controls.
 - [x] Support visually hidden native `select` for select-like controls.
+- [x] Add an internal form-reset listener primitive for controls with local
+      uncontrolled state.
+- [x] Keep native checkable `data-state` mirrors synchronized after form reset.
 - [ ] Support hidden inputs for non-select controls where native mirrors are not
       possible.
 - [ ] Support `name`, `form`, `required`, `disabled`, `autoComplete`, and
       current value.
 - [ ] Keep native validation behavior in mind before marking this settled.
 - [x] Move `Select` hidden native select rendering onto it.
-- [ ] Validate and adjust it with `RadioGroup`, `CheckboxGroup`, `Slider`, and
-      `Switch`. `RadioGroup` and `CheckboxGroup` are native-input backed and do
-      not need a hidden mirror.
+- [ ] Validate and adjust it with `Slider`. `RadioGroup`, `CheckboxGroup`,
+      `Checkbox`, and `Switch` are native-input backed and do not need a hidden
+      mirror; their uncontrolled reset behavior now uses the shared
+      form-reset/checkable-state primitives.
 
 Expected consumers:
 

@@ -3,6 +3,7 @@ import {
 	ariaBoolean,
 	ariaTrue,
 	dataFlag,
+	is_aria_invalid,
 	openState,
 	openStateFromBoolean,
 	selectionState,
@@ -20,6 +21,15 @@ describe("component state helpers", () => {
 	it("renders data flags by presence", () => {
 		expect(dataFlag(true)).toBe("");
 		expect(dataFlag(false)).toBe(undefined);
+	});
+
+	it("recognizes ARIA invalid states", () => {
+		expect(is_aria_invalid(true)).toBe(true);
+		expect(is_aria_invalid("true")).toBe(true);
+		expect(is_aria_invalid("grammar")).toBe(true);
+		expect(is_aria_invalid("spelling")).toBe(true);
+		expect(is_aria_invalid(false)).toBe(false);
+		expect(is_aria_invalid("false")).toBe(false);
 	});
 
 	it("maps shared state names", () => {

@@ -1,8 +1,20 @@
 # Checkbox Notes
 
-Needs fuller coverage for controlled and uncontrolled state, form reset
-behavior, indeterminate state transitions, keyboard behavior, disabled/read-only
-semantics, responsive recipe props, and consumer `mix` precedence.
+Fully built. `Checkbox` is a native checkbox host primitive with boolean and
+`"indeterminate"` checked state, `onCheckedChange`, read-only change blocking,
+native form prop ownership, component state attributes, and open consumer `mix`
+ownership on the input host.
+
+Current coverage includes native input host ownership, checked/unchecked/mixed
+state attributes, controlled prop resync, semantic checked-change callbacks,
+read-only behavior, uncontrolled mixed-state form reset, disabled and required
+data flags, consumer `mix` event target ownership, and state-condition recipe
+mapping.
+
+Fully tested is still WIP. Remaining coverage should focus on keyboard/browser
+activation behavior, disabled browser behavior, responsive recipe props,
+consumer `mix` precedence, native form submission, and field/composition
+relationships.
 
 ## Semantic/API Audit
 

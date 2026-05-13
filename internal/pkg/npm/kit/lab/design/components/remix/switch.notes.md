@@ -1,8 +1,20 @@
 # Switch Notes
 
-Needs fuller coverage for controlled and uncontrolled state, form reset
-behavior, keyboard behavior, disabled/read-only semantics, responsive recipe
-props, and consumer `mix` precedence.
+Fully built. `Switch` is a native checkbox host primitive for binary on/off
+settings with `role="switch"`, boolean checked state, `onCheckedChange`,
+read-only change blocking, native form prop ownership, component state
+attributes, and open consumer `mix` ownership on the input host.
+
+Current coverage includes native checkbox host ownership, switch role,
+checked/unchecked state attributes, controlled prop resync, semantic
+checked-change callbacks, read-only behavior, uncontrolled form reset, disabled
+and required data flags, consumer `mix` event target ownership, and native form
+prop ownership.
+
+Fully tested is still WIP. Remaining coverage should focus on keyboard/browser
+activation behavior, disabled browser behavior, responsive recipe props,
+consumer `mix` precedence, native form submission, and field/composition
+relationships.
 
 ## Semantic/API Audit
 
