@@ -22,6 +22,11 @@ type public_test_harness struct {
 	t *testing.T
 }
 
+const (
+	emitted_public_asset_url     = "/vorma_out_vite_dynamic.js"
+	emitted_public_asset_fs_path = "public/vorma_out_vite_dynamic.js"
+)
+
 type page_output struct {
 	ID     string
 	Filter string
@@ -272,12 +277,62 @@ func TestPublicStaticMiddlewareServesManifestAssetsOnly(t *testing.T) {
 	}
 }
 
+func TestPublicStaticMiddlewareServesEmittedFilesWhenBaseIsRoot(t *testing.T) {
+	h := public_test_harness{t: t}
+	manifest := h.default_manifest()
+	manifest.PublicStaticBasePath = "/"
+	manifest.PublicFilepaths = []string{emitted_public_asset_url}
+
+	v := vormarun.New(&vormarun.Config{})
+	v.MustSetStaticFS(h.static_fs(manifest))
+	router, err := v.Router()
+	if err != nil {
+		t.Fatalf("error getting router: %v", err)
+	}
+	err = router.UsePublicFileServerMiddleware()
+	if err != nil {
+		t.Fatalf("error adding public file server middleware: %v", err)
+	}
+	router.AddHTTPHandlerFunc("GET", "/*", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	})
+
+	asset_res := httptest.NewRecorder()
+	router.Router.ServeHTTP(
+		asset_res,
+		httptest.NewRequest(http.MethodGet, emitted_public_asset_url, nil),
+	)
+	if asset_res.Code != http.StatusOK {
+		t.Fatalf("expected emitted asset status 200, got %d", asset_res.Code)
+	}
+	if got := asset_res.Body.String(); got != "dynamic" {
+		t.Fatalf("expected emitted asset body, got %q", got)
+	}
+
+	pass_res := httptest.NewRecorder()
+	router.Router.ServeHTTP(
+		pass_res,
+		httptest.NewRequest(http.MethodGet, "/not-public", nil),
+	)
+	if pass_res.Code != http.StatusAccepted {
+		t.Fatalf("expected request to pass through, got %d", pass_res.Code)
+	}
+}
+
 func (h public_test_harness) default_manifest() vormarun.Manifest {
 	return vormarun.Manifest{
 		VormaVersion:         "test",
 		PublicStaticBasePath: "/static/",
 		APIMountRoot:         "/api/",
 		UIVariant:            "react",
+		PublicFilepaths: []string{
+			"/static/favicon.ico",
+			"/static/entry.css",
+			"/static/entry.js",
+			"/static/items.css",
+			"/static/items.js",
+			"/static/shared.js",
+		},
 		PublicFilemap: map[string]string{
 			"favicon.ico": "/static/favicon.ico",
 		},
@@ -330,6 +385,7 @@ func (h public_test_harness) static_fs(manifest vormarun.Manifest) fstest.MapFS 
 	return fstest.MapFS{
 		vormarun.ManifestStaticOutProd: &fstest.MapFile{Data: manifest_json},
 		"public/favicon.ico":           &fstest.MapFile{Data: []byte("ico")},
+		emitted_public_asset_fs_path:   &fstest.MapFile{Data: []byte("dynamic")},
 	}
 }
 

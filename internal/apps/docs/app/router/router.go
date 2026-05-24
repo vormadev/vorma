@@ -25,6 +25,7 @@ func Router() (*vorma.Router, error) {
 	r.UseMiddleware(chimw.Recoverer)
 	r.UseMiddleware(etag.Auto())
 	r.UseMiddleware(chimw.Compress(5))
+	r.UseMiddleware(chimw.Compress(5, "application/wasm"))
 	r.MustUsePublicFileServerMiddleware()
 	r.UseMiddleware(secureheaders.Middleware)
 	r.UseMiddleware(healthcheck.Healthz)

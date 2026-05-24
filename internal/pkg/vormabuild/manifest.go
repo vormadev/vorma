@@ -2,7 +2,11 @@ package vormabuild
 
 import (
 	"fmt"
+	"io/fs"
+	"os"
+	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/vormadev/vorma/internal/pkg/npm"
@@ -12,6 +16,8 @@ import (
 	"github.com/vormadev/vorma/kit/cryptoutil"
 	"github.com/vormadev/vorma/kit/fsutil"
 )
+
+const client_core_wasm_source_filename = "vorma_client_wasm_bg.wasm"
 
 func (cfg vorma_cfg) manifest_json_out(is_dev bool) string {
 	out := vormarun.ManifestStaticOutProd
@@ -32,6 +38,7 @@ func (rs *run_state) write_manifest() error {
 
 	var ts_entry_cm vormarun.ClientModule
 	ts_routes := make(map[string]vormarun.ClientModule, len(rs.ts_modules))
+	var client_core_assets *vormarun.ClientCoreAssets
 
 	vite_server_port := rs.vite_server_sv.port()
 
@@ -78,6 +85,8 @@ func (rs *run_state) write_manifest() error {
 			return fmt.Errorf("error reading Vite manifest: %w", err)
 		}
 
+		client_core_assets = cfg.to_client_core_assets(vite_manifest)
+
 		ts_entry_src := filepath.ToSlash(cfg.ts_entry())
 		ts_entry_cm, err = cfg.to_client_module(vite_manifest, ts_entry_src)
 		if err != nil {
@@ -91,7 +100,32 @@ func (rs *run_state) write_manifest() error {
 				return fmt.Errorf("error processing TS route module for manifest (pattern: %s, import path: %s): %w", pattern, r.ImportPath, err)
 			}
 		}
+		if err := cfg.remove_prod_tmp_vite_manifest(); err != nil {
+			return fmt.Errorf("error removing temporary Vite manifest: %w", err)
+		}
 	}
+
+	public_filepaths := make([]string, 0)
+	if err := filepath.WalkDir(cfg.pub_out(), func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(cfg.pub_out(), p)
+		if err != nil {
+			return fmt.Errorf("error getting relative public filepath: %w", err)
+		}
+		public_filepaths = append(
+			public_filepaths,
+			cfg.public_static_base_path()+filepath.ToSlash(rel),
+		)
+		return nil
+	}); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error collecting public filepaths: %w", err)
+	}
+	slices.Sort(public_filepaths)
 
 	root_html_tmpl_hash := cryptoutil.Sha256Hash(
 		[]byte(strings.TrimSpace(cfg.root_html_template())),
@@ -110,12 +144,14 @@ func (rs *run_state) write_manifest() error {
 		UIVariant:            cfg.ui_variant(),
 		RootHTMLTemplateHash: bytesutil.ToBase64(root_html_tmpl_hash),
 
-		PublicFilemap: rs.pub_fm,
-		CriticalCSS:   rs.critical_css,
-		SearchSchemas: rs.search_schemas,
+		PublicFilepaths: public_filepaths,
+		PublicFilemap:   rs.pub_fm,
+		CriticalCSS:     rs.critical_css,
+		SearchSchemas:   rs.search_schemas,
 
-		ClientEntry:  ts_entry_cm,
-		ClientRoutes: ts_routes,
+		ClientEntry:      ts_entry_cm,
+		ClientCoreAssets: client_core_assets,
+		ClientRoutes:     ts_routes,
 	}
 
 	if rs.is_dev {
@@ -126,10 +162,6 @@ func (rs *run_state) write_manifest() error {
 
 	if err := write_json_to_file(m, cfg.manifest_json_out(rs.is_dev)); err != nil {
 		return fmt.Errorf("error writing vorma manifest json: %w", err)
-	}
-
-	if err := cfg.remove_prod_tmp_vite_manifest(); err != nil {
-		return fmt.Errorf("error removing temporary Vite manifest: %w", err)
 	}
 
 	rs.manifest = &m
@@ -174,4 +206,36 @@ func (cfg vorma_cfg) to_client_module(
 		CSSBundleURLs: css_bundle_urls,
 	}
 	return cm, nil
+}
+
+func (cfg vorma_cfg) to_client_core_assets(
+	manifest viteutil.ViteManifest,
+) *vormarun.ClientCoreAssets {
+	base := cfg.public_static_base_path()
+	wasm_file := ""
+	for key, chunk := range manifest {
+		src := chunk.Src
+		if src == "" {
+			src = key
+		}
+		if path.Base(src) != client_core_wasm_source_filename {
+			continue
+		}
+		wasm_file = chunk.File
+		break
+	}
+	if wasm_file == "" {
+		return nil
+	}
+
+	for _, chunk := range manifest {
+		if !slices.Contains(chunk.Assets, wasm_file) {
+			continue
+		}
+		return &vormarun.ClientCoreAssets{
+			ModuleURL: base + chunk.File,
+			WasmURL:   base + wasm_file,
+		}
+	}
+	return nil
 }

@@ -159,6 +159,44 @@ func TestViewsHandlerInjectsVercelDeploymentID(t *testing.T) {
 	}
 }
 
+func TestViewsHandlerPreloadsClientCoreAssets(t *testing.T) {
+	h := handler_test_harness{t: t}
+	module_url := "/static/vorma_out_vite_vorma_client_wasm.js"
+	wasm_url := "/static/vorma_out_vite_vorma_client_wasm_bg.wasm"
+	manifest := Manifest{
+		VormaVersion:         "test",
+		PublicStaticBasePath: "/static/",
+		APIMountRoot:         "/api/",
+		UIVariant:            "react",
+		PublicFilemap:        map[string]string{},
+		ClientEntry: ClientModule{
+			URL: "/static/entry.js",
+		},
+		ClientCoreAssets: &ClientCoreAssets{
+			ModuleURL: module_url,
+			WasmURL:   wasm_url,
+		},
+		ClientRoutes: map[string]ClientModule{
+			"/": {
+				URL: "/static/root.js",
+			},
+		},
+	}
+
+	router := h.init_router(manifest)
+	res := httptest.NewRecorder()
+	router.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", res.Code)
+	}
+
+	body := res.Body.String()
+	h.assert_substrings_in_order(body, []string{
+		`<link href="` + module_url + `" rel="modulepreload" />`,
+		`<link as="fetch" crossorigin="anonymous" href="` + wasm_url + `" rel="preload" type="application/wasm" />`,
+	})
+}
+
 func (h handler_test_harness) init_router(manifest Manifest) *Router {
 	h.t.Helper()
 

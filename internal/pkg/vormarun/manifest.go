@@ -25,6 +25,11 @@ type ClientModule struct {
 	CSSBundleURLs []string
 }
 
+type ClientCoreAssets struct {
+	ModuleURL string
+	WasmURL   string
+}
+
 // Client Build ID is a hash of the JSON-marshaled Manifest
 type Manifest struct {
 	VormaVersion string
@@ -41,9 +46,10 @@ type Manifest struct {
 	RootHTMLTemplateHash string
 
 	// Static build outputs
-	PublicFilemap map[string]string
-	CriticalCSS   string
-	SearchSchemas map[string]searchparams.Schema
+	PublicFilepaths []string
+	PublicFilemap   map[string]string
+	CriticalCSS     string
+	SearchSchemas   map[string]searchparams.Schema
 
 	// Dev:    {
 	//             URL: "http://localhost:5173/frontend/entry.tsx",
@@ -55,7 +61,8 @@ type Manifest struct {
 	//             DepURLs: ["/public/vorma_out_vite_chunk_some_dep-abc123.js"],
 	//             CSSBundleURLs: ["/public/vorma_out_vite_chunk_some_dep-abc123.css"],
 	//         }
-	ClientEntry ClientModule
+	ClientEntry      ClientModule
+	ClientCoreAssets *ClientCoreAssets `json:",omitempty"`
 
 	// Dev:    {
 	//             "/user/:id": {
@@ -189,22 +196,8 @@ func (inst *Instance) make_final_public_filepaths() (*set.Set[string], error) {
 		return nil, fmt.Errorf("error getting manifest: %w", err)
 	}
 	filepaths := set.New[string]()
-	for _, v := range manifest.PublicFilemap {
-		filepaths.Add(v)
-	}
-	for _, cm := range manifest.ClientEntry.DepURLs {
-		filepaths.Add(cm)
-	}
-	for _, cm := range manifest.ClientEntry.CSSBundleURLs {
-		filepaths.Add(cm)
-	}
-	for _, route := range manifest.ClientRoutes {
-		for _, cm := range route.DepURLs {
-			filepaths.Add(cm)
-		}
-		for _, cm := range route.CSSBundleURLs {
-			filepaths.Add(cm)
-		}
+	for _, p := range manifest.PublicFilepaths {
+		filepaths.Add(p)
 	}
 	return filepaths, nil
 }

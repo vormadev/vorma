@@ -215,6 +215,29 @@ func (router *Router) loaders_handler() mux.TasksCacheRequirerFunc {
 					SelfClosing: true,
 				})
 			}
+			if assets := manifest.ClientCoreAssets; assets != nil {
+				if !seen_deps.Has(assets.ModuleURL) {
+					raw_head_els = append(raw_head_els, &htmlutil.Element{
+						Tag: "link",
+						AttributesKnownSafe: map[string]string{
+							"rel":  "modulepreload",
+							"href": assets.ModuleURL,
+						},
+						SelfClosing: true,
+					})
+				}
+				raw_head_els = append(raw_head_els, &htmlutil.Element{
+					Tag: "link",
+					AttributesKnownSafe: map[string]string{
+						"rel":         "preload",
+						"href":        assets.WasmURL,
+						"as":          "fetch",
+						"type":        "application/wasm",
+						"crossorigin": "anonymous",
+					},
+					SelfClosing: true,
+				})
+			}
 		}
 
 		prepared_head := inst.head_renderer.Prepare(raw_head_els)
