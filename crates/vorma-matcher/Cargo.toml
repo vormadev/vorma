@@ -1,0 +1,10 @@
+[package]
+name = "vorma-matcher"
+description = "Vorma route pattern parsing and matching."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]

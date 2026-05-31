@@ -1,0 +1,21 @@
+{
+	"private": true,
+	"type": "module",
+	"devDependencies": {
+		"@antithesishq/bombadil": "^0.4.5",
+		"@preact/preset-vite": "^2.10.5",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@typescript/native-preview": "7.0.0-dev.20260326.1",
+		"@vitejs/plugin-react": "^6.0.1",
+		"preact": "^10.29.1",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"remix": "3.0.0-beta.0",
+		"solid-js": "^1.9.12",
+		"typescript": "^6.0.2",
+		"vite": "^8.0.3",
+		"vite-plugin-solid": "^2.11.12",
+		"vorma": "workspace:*"
+	}
+}

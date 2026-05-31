@@ -1,0 +1,133 @@
+{
+	"name": "vorma",
+	"version": "0.86.0-pre.0",
+	"description": "Vorma is a full-featured metaframework for building highly dynamic and flexible web applications with Rust and Vite.",
+	"type": "module",
+	"sideEffects": false,
+	"license": "MIT",
+	"repository": {
+		"url": "https://github.com/vormadev/vorma",
+		"type": "git",
+		"directory": "packages/vorma"
+	},
+	"bugs": {
+		"url": "https://github.com/vormadev/vorma/issues"
+	},
+	"homepage": "https://vorma.dev",
+	"author": "Samuel J. Cook",
+	"keywords": [
+		"rust",
+		"typescript",
+		"vite",
+		"react",
+		"preact",
+		"solid",
+		"remix",
+		"framework",
+		"metaframework",
+		"meta-framework"
+	],
+	"exports": {
+		"./__internal": {
+			"import": "./.dist/core/_index.js",
+			"types": "./.dist/core/_index.d.ts"
+		},
+		"./react": {
+			"import": "./.dist/ui/react/react.js",
+			"types": "./.dist/ui/react/react.d.ts"
+		},
+		"./preact": {
+			"import": "./.dist/ui/preact/preact.js",
+			"types": "./.dist/ui/preact/preact.d.ts"
+		},
+		"./solid": {
+			"import": "./.dist/ui/solid/solid.js",
+			"types": "./.dist/ui/solid/solid.d.ts"
+		},
+		"./remix": {
+			"import": "./.dist/ui/remix/remix.js",
+			"types": "./.dist/ui/remix/remix.d.ts"
+		},
+		"./vite": {
+			"import": "./.dist/vite/vite.mjs",
+			"types": "./.dist/vite/vite.d.mts"
+		},
+		"./kit/converters": {
+			"import": "./.dist/kit/converters/converters.js",
+			"types": "./.dist/kit/converters/converters.d.ts"
+		},
+		"./kit/cookies": {
+			"import": "./.dist/kit/cookies/cookies.js",
+			"types": "./.dist/kit/cookies/cookies.d.ts"
+		},
+		"./kit/csrf": {
+			"import": "./.dist/kit/csrf/csrf.js",
+			"types": "./.dist/kit/csrf/csrf.d.ts"
+		},
+		"./kit/debounce": {
+			"import": "./.dist/kit/debounce/debounce.js",
+			"types": "./.dist/kit/debounce/debounce.d.ts"
+		},
+		"./kit/fmt": {
+			"import": "./.dist/kit/fmt/fmt.js",
+			"types": "./.dist/kit/fmt/fmt.d.ts"
+		},
+		"./kit/json": {
+			"import": "./.dist/kit/json/json.js",
+			"types": "./.dist/kit/json/json.d.ts"
+		},
+		"./kit/lab/design/core": {
+			"import": "./.dist/kit/lab/design/core/core.js",
+			"types": "./.dist/kit/lab/design/core/core.d.ts"
+		},
+		"./kit/lab/design/components/remix": {
+			"import": "./.dist/kit/lab/design/components/remix/remix.js",
+			"types": "./.dist/kit/lab/design/components/remix/remix.d.ts"
+		},
+		"./kit/listeners": {
+			"import": "./.dist/kit/listeners/listeners.js",
+			"types": "./.dist/kit/listeners/listeners.d.ts"
+		},
+		"./kit/result": {
+			"import": "./.dist/kit/result/result.js",
+			"types": "./.dist/kit/result/result.d.ts"
+		},
+		"./kit/theme": {
+			"import": "./.dist/kit/theme/theme.js",
+			"types": "./.dist/kit/theme/theme.d.ts"
+		}
+	},
+	"devDependencies": {
+		"@preact/signals": "^2.9.0",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"jsdom": "^29.0.1",
+		"preact": "^10.29.1",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"remix": "3.0.0-beta.0",
+		"solid-js": "^1.9.12"
+	},
+	"files": [
+		".dist/",
+		"core/",
+		"kit/",
+		"ui/",
+		"vite/",
+		"banner.webp",
+		"!node_modules/",
+		"!pnpm-lock.yaml",
+		"!**/tsconfig.json",
+		"!**/*.test.*",
+		"!**/*.bench.*",
+		"!**/.DS_Store",
+		"!**/AGENTS.md",
+		"!**/*.notes.md",
+		"!**/*PLAN.md",
+		"!**/COMPONENT_MATRIX.md",
+		"!**/test-setup.ts",
+		"!.dist/kit/url/**",
+		"!tests/",
+		"!core/_test_helpers.ts"
+	]
+}

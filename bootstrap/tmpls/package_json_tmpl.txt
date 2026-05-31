@@ -1,9 +1,0 @@
-{
-	"type": "module",
-	"private": true,
-	"scripts": {
-		"dev": "go run ./backend/cmd/build --dev",
-		"build": "go run ./backend/cmd/build"{{.PackageJSONExtras}}
-	},
-	"devDependencies": {}
-}

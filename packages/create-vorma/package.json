@@ -1,0 +1,29 @@
+{
+	"name": "create-vorma",
+	"version": "0.86.0-pre.0",
+	"description": "CLI for creating new Vorma applications.",
+	"type": "module",
+	"license": "MIT",
+	"repository": {
+		"url": "https://github.com/vormadev/vorma",
+		"type": "git",
+		"directory": "packages/create-vorma"
+	},
+	"bugs": {
+		"url": "https://github.com/vormadev/vorma/issues"
+	},
+	"homepage": "https://vorma.dev",
+	"author": "Samuel J. Cook",
+	"bin": {
+		"create-vorma": "./.dist/main.js"
+	},
+	"files": [
+		".dist/"
+	],
+	"dependencies": {
+		"@clack/prompts": "^1.2.0"
+	},
+	"engines": {
+		"node": ">=22.11.0"
+	}
+}

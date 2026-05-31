@@ -1,0 +1,31 @@
+{
+	/////// GLOBAL
+	"search.exclude": {
+		"**/target": true,
+		"**/node_modules": true
+	},
+
+	/////// RUST
+	"[rust]": {
+		"editor.defaultFormatter": "rust-lang.rust-analyzer",
+		"editor.formatOnSave": true,
+		"editor.codeActionsOnSave": {
+			"source.fixAll": "explicit"
+		},
+		"editor.tabSize": 4
+	},
+	"rust-analyzer.check.command": "clippy",
+	"rust-analyzer.checkOnSave": true,
+
+	/////// HTML / CSS / JSON[C] / TOML / TYPESCRIPT / MARKDOWN / REACT
+	"oxc.fmt.configPath": "oxfmt.config.ts",
+	"[html][css][json][jsonc][toml][typescript][markdown][javascriptreact][typescriptreact]": {
+		"editor.codeActionsOnSave": {
+			"source.fixAll.oxc": "always"
+		},
+		"editor.defaultFormatter": "oxc.oxc-vscode",
+		"editor.formatOnSave": true
+	},
+	"js/ts.experimental.useTsgo": true,
+	"js/ts.preferences.importModuleSpecifierEnding": "js"
+}

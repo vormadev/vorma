@@ -1,0 +1,17 @@
+[package]
+name = "vorma-macros"
+description = "Procedural macros for Vorma."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn = { workspace = true, features = ["full"] }
+vorma-matcher.workspace = true

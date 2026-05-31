@@ -1,89 +1,113 @@
 #####################################################################
-####### GO
+####### GLOBAL
 #####################################################################
 
-gotest:
-	@go test -race ./...
-
-gotestloud:
-	@go test -race -v ./...
-
-gobump: gotest
-	@go run ./internal/scripts/bumper
-
-# call with `make gobench pkg=./kit/mux` (or whatever)
-gobench:
-	@go test -bench=. $(pkg)
+e2e:
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-prod
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant react
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant preact
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant solid
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant remix
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant react
 
 #####################################################################
-####### TS
+####### RUST
 #####################################################################
 
-tstest:
-	@pnpm vitest run
+rust-build:
+	cargo build --workspace --all-targets
 
-tstestwatch:
-	@pnpm vitest
+rust-build-client-wasm:
+	cargo build -p vorma-client-wasm \
+		--target wasm32-unknown-unknown \
+		--profile wasm-release
+	wasm-opt --enable-bulk-memory -Oz target/wasm32-unknown-unknown/wasm-release/vorma_client_wasm.wasm \
+		-o packages/vorma/core/client_wasm/vorma_client_wasm_bg.wasm
 
-tsbench:
-	@npx vitest bench
+rust-fmt:
+	cargo fmt --all
 
-nuke-node-modules:
-	@rm -rf node_modules 2>/dev/null || true
-	@find . -path "*/node_modules" -type d -exec rm -rf {} \; 2>/dev/null || true
+rust-fmt-check:
+	cargo fmt --all --check
 
-tsinstall:
-	@pnpm i
-	@cd internal/framework/_typescript/create && pnpm i
+rust-lint:
+	cargo clippy --workspace --all-targets -- -D warnings
 
-tsreset: nuke-node-modules tsinstall
+rust-lint-fix:
+	cargo clippy --fix --workspace --all-targets --allow-dirty --allow-staged -- -D warnings
 
-tslint:
-	@pnpm oxlint
+rust-package:
+	cargo package --workspace --exclude vorma-xtask --allow-dirty
 
-tscheck: tscheck-kit tscheck-fw-client tscheck-fw-react tscheck-fw-solid
+rust-test:
+	cargo test --workspace --all-targets
+	cargo test --workspace --doc
 
-tscheck-kit:
-	@pnpm tsgo --noEmit --project ./kit/_typescript
+rust-gate: rust-fmt-check rust-lint rust-test rust-build rust-build-client-wasm rust-package
 
-tscheck-fw-client:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/client
+#####################################################################
+####### TYPESCRIPT
+#####################################################################
 
-tscheck-fw-react:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/react
+ts-install:
+	pnpm install --config.confirmModulesPurge=false
 
-tscheck-fw-solid:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/solid
+ts-fmt:
+	pnpm exec oxfmt --config=oxfmt.config.ts --write .
 
-tscheck-fw-preact:
-	@pnpm tsgo --noEmit --project ./internal/framework/_typescript/preact
+ts-fmt-check:
+	pnpm exec oxfmt --config=oxfmt.config.ts --check .
 
-tsprepforpub: tsreset tstest tslint tscheck
+ts-lint:
+	pnpm exec oxlint --config=oxlint.config.ts .
 
-tspublishpre: tsprepforpub
-	@npm publish --access public --tag pre
-	@cd internal/framework/_typescript/create && npm publish --access public --tag pre
+ts-lint-fix:
+	pnpm exec oxlint --config=oxlint.config.ts --fix .
 
-tspublishnonpre: tsprepforpub
-	@npm publish --access public
-	@cd internal/framework/_typescript/create && npm publish --access public
+ts-typecheck: ts-build
+	pnpm exec tsgo -p packages/vorma/kit --pretty false
+	pnpm exec tsgo -p packages/vorma/core --pretty false
+	pnpm exec tsgo -p packages/vorma/ui/preact --pretty false
+	pnpm exec tsgo -p packages/vorma/ui/react --pretty false
+	pnpm exec tsgo -p packages/vorma/ui/remix --pretty false
+	pnpm exec tsgo -p packages/vorma/ui/solid --pretty false
+	pnpm exec tsgo -p packages/vorma/vite --pretty false
+	pnpm exec tsgo -p packages/vorma/tests --pretty false
+	pnpm exec tsgo -p packages/create-vorma --pretty false
 
-npmbuild:
-	@go run ./internal/scripts/buildts
+ts-test:
+	pnpm exec vitest run --reporter=dot
 
-npmbump:
-	@go run ./internal/scripts/npm_bumper
+ts-build: ts-install rust-build-client-wasm
+	pnpm exec tsdown
+	mkdir -p packages/vorma/.dist/core
+	cp packages/vorma/core/client_wasm/vorma_client_wasm_bg.wasm \
+		packages/vorma/.dist/core/vorma_client_wasm_bg.wasm
 
-docker-site:
-	@docker build -t vorma-site -f Dockerfile.site .
+ts-gate: ts-fmt-check ts-lint ts-typecheck ts-test rust-build-client-wasm
 
-docker-run-site:
-	@docker run -d -p $(PORT):$(PORT) -e PORT=$(PORT) vorma-site
+#####################################################################
+####### RELEASES
+#####################################################################
 
-sum:
-	@go run ./internal/scripts/sum
+gate:
+	@cargo run --manifest-path xtask/Cargo.toml --quiet
 
-run-create: tsreset npmbuild nuke-node-modules
-	@mkdir -p test_create.local && \
-		cd test_create.local && \
-		node ../internal/framework/_typescript/create/dist/main.js --local-test
+ts-publish-pre: gate
+	test -n "$(version)" || { echo "version= is required"; exit 1; }
+	test -n "$(pre)" || { echo "pre= is required"; exit 1; }
+	pnpm version $(version)-pre.$(pre) --recursive --no-git-checks --no-git-tag-version --allow-same-version
+	git add . && git commit -m 'v$(version)-pre.$(pre)' --no-verify && git tag v$(version)-pre.$(pre)
+	pnpm publish --access public --recursive --tag pre
+
+ts-publish: gate
+	test -n "$(version)" || { echo "version= is required"; exit 1; }
+	pnpm version $(version) --recursive --no-git-checks --no-git-tag-version --allow-same-version
+	git add . && git commit -m 'v$(version)' --no-verify && git tag v$(version)
+	pnpm publish --access public --recursive

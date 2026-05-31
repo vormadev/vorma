@@ -1,0 +1,14 @@
+[package]
+name = "vorma-tasks"
+description = "Vorma task runtime with execution-context memoization and optional shared caching."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }

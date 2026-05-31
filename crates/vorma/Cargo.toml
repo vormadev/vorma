@@ -1,0 +1,46 @@
+[package]
+name = "vorma"
+description = "Vorma framework."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+base64.workspace = true
+blake3.workspace = true
+bytes.workspace = true
+cookie.workspace = true
+data-encoding.workspace = true
+futures-util.workspace = true
+html-escape.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+mime.workspace = true
+mime_guess.workspace = true
+multer.workspace = true
+path-clean.workspace = true
+percent-encoding.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+serde_urlencoded.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tower-http = { workspace = true, features = [
+	"catch-panic",
+	"compression-br",
+	"compression-deflate",
+	"compression-gzip",
+	"compression-zstd",
+	"limit",
+	"request-id",
+	"timeout",
+] }
+tower-layer.workspace = true
+tower-service.workspace = true
+url.workspace = true
+vorma-macros.workspace = true
+vorma-matcher.workspace = true
+vorma-tasks.workspace = true

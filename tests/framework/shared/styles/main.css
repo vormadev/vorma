@@ -1,0 +1,49 @@
+@import "./public-url-probe.css";
+
+body {
+	background: #f7f5ef;
+	color: #161616;
+	font-family:
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		sans-serif;
+	margin: 0;
+}
+
+button,
+input,
+a {
+	font: inherit;
+}
+
+a {
+	color: #1d5f8c;
+}
+
+[data-vorma-active-exact] {
+	font-weight: 700;
+}
+
+[data-vorma-pending-exact],
+[data-vorma-pending-ancestor] {
+	outline: 2px solid #c54f2f;
+	outline-offset: 2px;
+}
+
+.button {
+	background: #1f6f52;
+	border: 0;
+	border-radius: 6px;
+	color: white;
+	cursor: pointer;
+	padding: 8px 12px;
+}
+
+.input {
+	border: 1px solid #b9b1a2;
+	border-radius: 6px;
+	padding: 7px 9px;
+}

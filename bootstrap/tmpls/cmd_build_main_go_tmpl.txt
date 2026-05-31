@@ -1,9 +1,0 @@
-package main
-
-import (
-	"{{.GoImportBase}}/backend/src/router"
-)
-
-func main() {
-	router.App.Build()
-}

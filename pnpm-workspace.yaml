@@ -1,0 +1,7 @@
+packages:
+    - "packages/vorma"
+    - "packages/create-vorma"
+    - "examples/minimal"
+    - "tests/framework"
+allowBuilds:
+    esbuild: false

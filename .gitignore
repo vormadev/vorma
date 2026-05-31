@@ -1,14 +1,21 @@
-node_modules
+# Rust
+**/target/
 
-.DS_Store
+# Node
+**/node_modules/
+**/.dist/
 
-*.local
-*.local.*
+# MacOS
+**/.DS_Store
 
-.env
-.env.*
-!.env.example
-
+# IDE
 .vscode/settings.json
 
-npm_dist/
+# Env
+*.env
+*.env.*
+!.env.example
+
+# Local
+*.local
+*.local.*

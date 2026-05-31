@@ -1,4 +1,0 @@
-# Wave
-backend/dist/static/*
-!backend/dist/static/.keep
-backend/dist/main*

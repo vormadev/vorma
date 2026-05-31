@@ -1,4 +1,0 @@
-html {
-	background-color: #101214;
-	color: #f4f4f5;
-}

@@ -1,0 +1,15 @@
+[package]
+name = "vorma-client-wasm"
+description = "Vorma browser WASM protocol helpers."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+vorma-matcher.workspace = true
