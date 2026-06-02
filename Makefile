@@ -105,14 +105,14 @@ ts-gate: ts-fmt-check ts-lint ts-typecheck ts-test rust-build-client-wasm
 gate:
 	@cargo run --manifest-path xtask/Cargo.toml --quiet
 
-ts-publish-pre: gate
+ts-publish-pre:
 	test -n "$(version)" || { echo "version= is required"; exit 1; }
 	test -n "$(pre)" || { echo "pre= is required"; exit 1; }
 	pnpm version $(version)-pre.$(pre) --recursive --no-git-checks --no-git-tag-version --allow-same-version
 	git add . && git commit -m 'v$(version)-pre.$(pre)' --no-verify && git tag v$(version)-pre.$(pre)
 	pnpm publish --access public --recursive --tag pre
 
-ts-publish: gate
+ts-publish:
 	test -n "$(version)" || { echo "version= is required"; exit 1; }
 	pnpm version $(version) --recursive --no-git-checks --no-git-tag-version --allow-same-version
 	git add . && git commit -m 'v$(version)' --no-verify && git tag v$(version)

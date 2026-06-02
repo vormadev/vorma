@@ -1,6 +1,6 @@
 {
 	"name": "create-vorma",
-	"version": "0.86.0-pre.0",
+	"version": "0.86.0-pre.1",
 	"description": "CLI for creating new Vorma applications.",
 	"type": "module",
 	"license": "MIT",
