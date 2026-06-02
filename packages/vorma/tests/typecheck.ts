@@ -24,8 +24,6 @@ import type {
 	ToClientLoaderArgs,
 	ToDefineViewArgs,
 	ToLinkProps,
-	ToLoaderInput,
-	ToLoaderOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -40,9 +38,11 @@ import type {
 	ToQueryMethod,
 	ToQueryOutput,
 	ToQueryPattern,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewInput,
+	ToViewOutput,
 	ToViewPattern,
 	ViewDefinition,
 	WorkIndicator,
@@ -116,7 +116,7 @@ const vorma_app_config = {
 			__o: null as unknown as { posts: string[] },
 		},
 	] as const,
-	__vorma_api_routes: [
+	__vorma_resources: [
 		{
 			method: "GET" as const,
 			pattern: "/users/:userID",
@@ -183,7 +183,7 @@ const solid = Solid__createVormaClient(vorma_app_config);
 
 function assert_exported_type_contracts(): void {
 	// View patterns
-	type _loader_patterns = Assert<
+	type _view_patterns = Assert<
 		IsExact<
 			ToViewPattern<App>,
 			"/" | "/users" | "/users/:userID" | "/docs/*" | "/blog/_index"
@@ -214,30 +214,30 @@ function assert_exported_type_contracts(): void {
 		IsExact<ToMutationPattern<App, "POST">, "/users/:userID" | "/logout">
 	>;
 
-	// Loader output types
-	type _loader_o_root = Assert<
-		IsExact<ToLoaderOutput<App, "/">, { sessionUserID: string | null }>
+	// View output types
+	type _view_o_root = Assert<
+		IsExact<ToViewOutput<App, "/">, { sessionUserID: string | null }>
 	>;
-	type _loader_o_users = Assert<
-		IsExact<ToLoaderOutput<App, "/users">, { userCount: number }>
+	type _view_o_users = Assert<
+		IsExact<ToViewOutput<App, "/users">, { userCount: number }>
 	>;
-	type _loader_o_user_detail = Assert<
-		IsExact<ToLoaderOutput<App, "/users/:userID">, { userName: string }>
+	type _view_o_user_detail = Assert<
+		IsExact<ToViewOutput<App, "/users/:userID">, { userName: string }>
 	>;
-	type _loader_o_docs = Assert<
-		IsExact<ToLoaderOutput<App, "/docs/*">, { slugParts: string[] }>
+	type _view_o_docs = Assert<
+		IsExact<ToViewOutput<App, "/docs/*">, { slugParts: string[] }>
 	>;
-	type _loader_o_blog = Assert<
-		IsExact<ToLoaderOutput<App, "/blog/_index">, { posts: string[] }>
+	type _view_o_blog = Assert<
+		IsExact<ToViewOutput<App, "/blog/_index">, { posts: string[] }>
 	>;
 
-	// Loader input types
-	type _loader_i_root = Assert<IsExact<ToLoaderInput<App, "/">, Record<never, never>>>;
-	type _loader_i_users = Assert<
-		IsExact<ToLoaderInput<App, "/users">, { sort?: "name" | "created" }>
+	// View input types
+	type _view_i_root = Assert<IsExact<ToViewInput<App, "/">, Record<never, never>>>;
+	type _view_i_users = Assert<
+		IsExact<ToViewInput<App, "/users">, { sort?: "name" | "created" }>
 	>;
-	type _loader_i_user_detail = Assert<
-		IsExact<ToLoaderInput<App, "/users/:userID">, { tab?: string; page?: number }>
+	type _view_i_user_detail = Assert<
+		IsExact<ToViewInput<App, "/users/:userID">, { tab?: string; page?: number }>
 	>;
 
 	// Query I/O types
@@ -431,11 +431,11 @@ function assert_exported_type_contracts(): void {
 			Array<{ pattern: string; input: unknown }>
 		>
 	>;
-	type _cl_props_loader_data = Assert<
+	type _cl_props_view_data = Assert<
 		IsExact<
 			Awaited<
 				ToClientLoaderArgs<App, "/users/:userID">["serverPromise"]
-			>["loaderData"],
+			>["viewData"],
 			{ userName: string }
 		>
 	>;
@@ -444,7 +444,7 @@ function assert_exported_type_contracts(): void {
 			Awaited<
 				ToClientLoaderArgs<App, "/users/:userID">["serverPromise"]
 			>["matches"],
-			Array<{ pattern: string; input: unknown; loaderData: unknown }>
+			Array<{ pattern: string; input: unknown; viewData: unknown }>
 		>
 	>;
 	type _cl_props_root_params = Assert<
@@ -593,14 +593,14 @@ function assert_exported_type_contracts(): void {
 		input: {},
 		module_url: "/mod.js",
 		module: {},
-		loader_data: null,
+		view_data: null,
 		client_loader_data: undefined,
 	};
 	expect_type<string>(entry.pattern);
 	expect_type<unknown>(entry.input);
 	expect_type<string>(entry.module_url);
 	expect_type<Record<string, unknown>>(entry.module);
-	expect_type<unknown>(entry.loader_data);
+	expect_type<unknown>(entry.view_data);
 	expect_type<unknown>(entry.client_loader_data);
 
 	// RouteRenderState
@@ -633,7 +633,7 @@ function assert_exported_type_contracts(): void {
 				input: {
 					tab: "posts",
 				},
-				loaderData: {
+				viewData: {
 					userName: "Ada",
 				},
 				clientLoaderData: undefined,
@@ -646,7 +646,7 @@ function assert_exported_type_contracts(): void {
 	expect_type<string>(route_state.clientBuildId);
 	expect_type<Record<string, string>>(route_state.params);
 	expect_type<string[]>(route_state.splatValues);
-	expect_type<unknown>(route_state.matches[0]!.loaderData);
+	expect_type<unknown>(route_state.matches[0]!.viewData);
 	expect_type<RouteState["error"]>(route_state.error);
 
 	const route_update_reason: RouteUpdateReason = "navigation";
@@ -710,28 +710,28 @@ function assert_navigate_contracts(): void {
 		hash: "#recent",
 	});
 
-	// @ts-expect-error route params are required for /users/:userID.
+	// @ts-expect-error params are required for /users/:userID.
 	void react.navigate({ pattern: "/users/:userID" });
 	void react.navigate({
 		pattern: "/users/:userID",
-		// @ts-expect-error params key must match route parameter names.
+		// @ts-expect-error params key must match pattern parameter names.
 		params: { slug: "u-1" },
 	});
 	void react.navigate({
 		pattern: "/users/:userID",
-		// @ts-expect-error route params must be string values.
+		// @ts-expect-error params must be string values.
 		params: { userID: 123 },
 	});
 	void react.navigate({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		// @ts-expect-error search must match the loader input type.
+		// @ts-expect-error search must match the view input type.
 		search: { page: "2" },
 	});
 	void react.navigate({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		// @ts-expect-error search must match parent loader input types.
+		// @ts-expect-error search must match parent view input types.
 		search: { sort: "updated" },
 	});
 	// @ts-expect-error href string cannot be mixed with typed search.
@@ -739,14 +739,14 @@ function assert_navigate_contracts(): void {
 		href: "/users/u-1",
 		search: { tab: "posts" },
 	});
-	// @ts-expect-error splatValues are required for splat loader routes.
+	// @ts-expect-error splatValues are required for splat view patterns.
 	void react.navigate({ pattern: "/docs/*" });
 	void react.navigate({
 		pattern: "/docs/*",
 		// @ts-expect-error splatValues must be an array of strings.
 		splatValues: "guide",
 	});
-	// @ts-expect-error unknown route patterns are rejected.
+	// @ts-expect-error unknown view patterns are rejected.
 	void react.navigate({ pattern: "/does-not-exist" });
 }
 void assert_navigate_contracts;
@@ -775,7 +775,7 @@ function assert_link_contracts(): void {
 		search: { tab: "posts" },
 	});
 
-	// @ts-expect-error route params are required for /users/:userID.
+	// @ts-expect-error params are required for /users/:userID.
 	void react.Link({
 		pattern: "/users/:userID",
 		children: null,
@@ -791,13 +791,13 @@ function assert_api_client_contracts(): void {
 	});
 	expect_type<unknown[]>(health_identity);
 
-	// @ts-expect-error identity arrays use the same API route identity typing.
+	// @ts-expect-error identity arrays use the same resource identity typing.
 	void react.apiClient.toIdentityArray({
 		pattern: "/logout",
 	});
 
-	// Valid GET API route with required params and input. Method is required
-	// because this pattern has multiple API route methods.
+	// Valid GET resource with required params and input. Method is required
+	// because this pattern has multiple resource methods.
 	const user_get_result = react.apiClient.query({
 		method: "GET",
 		pattern: "/users/:userID",
@@ -809,32 +809,32 @@ function assert_api_client_contracts(): void {
 		user_get_result,
 	);
 
-	// Valid GET-only API route with nullable input. Method can be omitted.
+	// Valid GET-only resource with nullable input. Method can be omitted.
 	void react.apiClient.mutate({
 		pattern: "/health",
 	});
 
-	// Valid GET-only API route with nullable input (explicit null).
+	// Valid GET-only resource with nullable input (explicit null).
 	void react.apiClient.mutate({
 		pattern: "/health",
 		input: null,
 	});
 
-	// Valid GET-only API route with flattened request options.
+	// Valid GET-only resource with flattened request options.
 	void react.apiClient.mutate({
 		pattern: "/health",
 		dedupeKey: "health-check",
 		revalidate: false,
 	});
 
-	// @ts-expect-error method is required for patterns with multiple API route methods.
+	// @ts-expect-error method is required for patterns with multiple resource methods.
 	void react.apiClient.query({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
 		input: { includePosts: true },
 	});
 
-	// @ts-expect-error object API route inputs are required when input type is non-empty.
+	// @ts-expect-error object resource inputs are required when input type is non-empty.
 	void react.apiClient.query({
 		method: "GET",
 		pattern: "/users/:userID",
@@ -844,27 +844,27 @@ function assert_api_client_contracts(): void {
 	void react.apiClient.query({
 		method: "GET",
 		pattern: "/users/:userID",
-		// @ts-expect-error API route params must match route parameter names.
+		// @ts-expect-error resource params must match route parameter names.
 		params: { id: "u-1" },
 		input: { includePosts: true },
 	});
 
 	void react.apiClient.mutate({
 		pattern: "/health",
-		// @ts-expect-error API route input root must be object, null, or undefined.
+		// @ts-expect-error resource input root must be object, null, or undefined.
 		input: "invalid",
 	});
 
 	void react.apiClient.query({
 		method: "GET",
-		// @ts-expect-error API route pattern must come from API route patterns.
+		// @ts-expect-error resource pattern must come from resource patterns.
 		pattern: "/docs/*",
 		splatValues: ["x"],
-		// @ts-expect-error API route input must match one of the API route inputs.
+		// @ts-expect-error resource input must match one of the resource inputs.
 		input: {},
 	});
 
-	// Valid PATCH API route with required params and input.
+	// Valid PATCH resource with required params and input.
 	const patch_result = react.apiClient.mutate({
 		method: "PATCH",
 		pattern: "/users/:userID",
@@ -875,7 +875,7 @@ function assert_api_client_contracts(): void {
 		Promise<MutationResult<ToMutationOutput<App, "PATCH", "/users/:userID">>>
 	>(patch_result);
 
-	// Valid same-pattern POST API route with different input and output.
+	// Valid same-pattern POST resource with different input and output.
 	const user_post_result = react.apiClient.mutate({
 		method: "POST",
 		pattern: "/users/:userID",
@@ -886,7 +886,7 @@ function assert_api_client_contracts(): void {
 		user_post_result,
 	);
 
-	// Valid POST API route.
+	// Valid POST resource.
 	const post_result = react.apiClient.query({
 		method: "POST",
 		pattern: "/sessions",
@@ -896,13 +896,13 @@ function assert_api_client_contracts(): void {
 		post_result,
 	);
 
-	// Valid POST API route with optional input (omitted).
+	// Valid POST resource with optional input (omitted).
 	void react.apiClient.mutate({
 		method: "POST",
 		pattern: "/logout",
 	});
 
-	// @ts-expect-error method is required for non-GET API routes.
+	// @ts-expect-error method is required for non-GET resources.
 	void react.apiClient.mutate({
 		pattern: "/logout",
 	});
@@ -915,14 +915,14 @@ function assert_api_client_contracts(): void {
 		input: { nickname: "neo" },
 	});
 
-	// @ts-expect-error non-empty API route input is required.
+	// @ts-expect-error non-empty resource input is required.
 	void react.apiClient.query({
 		method: "POST",
 		pattern: "/sessions",
 	});
 
 	void react.apiClient.query({
-		// @ts-expect-error method must come from API route methods.
+		// @ts-expect-error method must come from resource methods.
 		method: "PUT",
 		pattern: "/sessions",
 		input: { email: "a@b.com", password: "pw" },
@@ -976,13 +976,13 @@ function assert_query_mutation_args_contracts(): void {
 	const wrong_get_params: ToQueryArgs<App> = {
 		method: "GET",
 		pattern: "/users/:userID",
-		// @ts-expect-error API route params keys must match route params.
+		// @ts-expect-error resource params keys must match pattern params.
 		params: { id: "u-1" },
 		input: { includePosts: true },
 	};
 	void wrong_get_params;
 
-	// Required PATCH API route.
+	// Required PATCH resource.
 	const required_patch: ToMutationArgs<App> = {
 		method: "PATCH",
 		pattern: "/users/:userID",
@@ -991,7 +991,7 @@ function assert_query_mutation_args_contracts(): void {
 	};
 	expect_type<{ nickname: string }>(required_patch.input);
 
-	// Required same-pattern POST API route.
+	// Required same-pattern POST resource.
 	const required_user_post: ToMutationArgs<App> = {
 		method: "POST",
 		pattern: "/users/:userID",
@@ -1000,7 +1000,7 @@ function assert_query_mutation_args_contracts(): void {
 	};
 	expect_type<{ inviteEmail: string }>(required_user_post.input);
 
-	// Required POST API route.
+	// Required POST resource.
 	const required_post: ToQueryArgs<App> = {
 		method: "POST",
 		pattern: "/sessions",
@@ -1062,14 +1062,14 @@ function assert_query_mutation_args_contracts(): void {
 	};
 	void wrong_post_method;
 
-	const wrong_api_route_params: ToMutationArgs<App> = {
+	const wrong_resource_params: ToMutationArgs<App> = {
 		method: "PATCH",
 		pattern: "/users/:userID",
-		// @ts-expect-error API route params keys must match route params.
+		// @ts-expect-error resource params keys must match pattern params.
 		params: { id: "u-1" },
 		input: { nickname: "neo" },
 	};
-	void wrong_api_route_params;
+	void wrong_resource_params;
 
 	const body_not_allowed: ToMutationArgs<App> = {
 		method: "POST",
@@ -1084,24 +1084,24 @@ void assert_query_mutation_args_contracts;
 /////// React Adapter Type Safety
 
 function assert_react_adapter_contracts(): void {
-	const route_props = null as unknown as ToRouteComponentProps<App, "/users/:userID">;
+	const route_props = null as unknown as ToViewComponentProps<App, "/users/:userID">;
 
-	// useLoaderData
-	const loader_data = react.useLoaderData(route_props);
-	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data);
+	// useViewData
+	const view_data = react.useViewData(route_props);
+	expect_type<ToViewOutput<App, "/users/:userID">>(view_data);
 
-	// usePatternLoaderData
-	const maybe_pattern_data = react.usePatternLoaderData("/docs/*");
-	expect_type<ToLoaderOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
+	// usePatternViewData
+	const maybe_pattern_data = react.usePatternViewData("/docs/*");
+	expect_type<ToViewOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
 
-	const maybe_root_data = react.usePatternLoaderData("/");
-	expect_type<ToLoaderOutput<App, "/"> | undefined>(maybe_root_data);
+	const maybe_root_data = react.usePatternViewData("/");
+	expect_type<ToViewOutput<App, "/"> | undefined>(maybe_root_data);
 
-	const maybe_blog_data = react.usePatternLoaderData("/blog/_index");
-	expect_type<ToLoaderOutput<App, "/blog/_index"> | undefined>(maybe_blog_data);
+	const maybe_blog_data = react.usePatternViewData("/blog/_index");
+	expect_type<ToViewOutput<App, "/blog/_index"> | undefined>(maybe_blog_data);
 
-	void react.usePatternLoaderData(
-		// @ts-expect-error typed pattern loader data rejects unknown patterns.
+	void react.usePatternViewData(
+		// @ts-expect-error typed pattern view data rejects unknown patterns.
 		"/not-a-route",
 	);
 
@@ -1177,8 +1177,8 @@ function assert_react_adapter_contracts(): void {
 	void react.defineView({
 		pattern: "/docs/*",
 		component: (props) => {
-			const data = react.useLoaderData(props);
-			expect_type<ToLoaderOutput<App, "/docs/*">>(data);
+			const data = react.useViewData(props);
+			expect_type<ToViewOutput<App, "/docs/*">>(data);
 			return null!;
 		},
 		errorBoundary: (props) => {
@@ -1191,8 +1191,8 @@ function assert_react_adapter_contracts(): void {
 	void react.defineView({
 		pattern: "/users/:userID",
 		component: (props) => {
-			const data = react.useLoaderData(props);
-			expect_type<ToLoaderOutput<App, "/users/:userID">>(data);
+			const data = react.useViewData(props);
+			expect_type<ToViewOutput<App, "/users/:userID">>(data);
 
 			const client_loader_data = react.useClientLoaderData(props);
 			expect_type<number>(client_loader_data);
@@ -1224,15 +1224,15 @@ function assert_react_adapter_contracts(): void {
 			expect_type<{ tab?: string; page?: number }>(input);
 			expect_type<Array<{ pattern: string; input: unknown }>>(knownMatches);
 			const server_data = await serverPromise;
-			expect_type<ToLoaderOutput<App, "/users/:userID">>(server_data.loaderData);
+			expect_type<ToViewOutput<App, "/users/:userID">>(server_data.viewData);
 			expect_type<string>(server_data.clientBuildId);
-			expect_type<Array<{ pattern: string; input: unknown; loaderData: unknown }>>(
+			expect_type<Array<{ pattern: string; input: unknown; viewData: unknown }>>(
 				server_data.matches,
 			);
 			expect_type<null | { idx: number; error: unknown }>(
 				server_data.outermostServerError,
 			);
-			return server_data.loaderData.userName.length;
+			return server_data.viewData.userName.length;
 		},
 		beforeRouteCommit: async ({ current, next, signal, trigger }) => {
 			expect_type<Exclude<RouteUpdateReason, "boot">>(trigger);
@@ -1250,12 +1250,12 @@ function assert_react_adapter_contracts(): void {
 	});
 
 	// useClientLoaderData: tested with an explicit T via RouteProps
-	const cl_route_props = null as unknown as ToRouteComponentProps<
+	const client_loader_route_props = null as unknown as ToViewComponentProps<
 		App,
 		"/users/:userID",
 		number
 	>;
-	const client_loader_data = react.useClientLoaderData(cl_route_props);
+	const client_loader_data = react.useClientLoaderData(client_loader_route_props);
 	expect_type<number>(client_loader_data);
 
 	// usePatternClientLoaderData
@@ -1265,7 +1265,7 @@ function assert_react_adapter_contracts(): void {
 
 	// defineView: invalid pattern
 	void react.defineView({
-		// @ts-expect-error defineView pattern must exist in loader route patterns.
+		// @ts-expect-error defineView pattern must exist in view patterns.
 		pattern: "/not-a-route",
 		component: () => {
 			return null!;
@@ -1333,13 +1333,13 @@ function assert_react_adapter_contracts(): void {
 	void react.Link({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		// @ts-expect-error typed links enforce loader search input.
+		// @ts-expect-error typed links enforce view search input.
 		search: { page: "2" },
 	});
 	void react.Link({
 		pattern: "/users/:userID",
 		params: { userID: "u-1" },
-		// @ts-expect-error typed links enforce parent loader search input.
+		// @ts-expect-error typed links enforce parent view search input.
 		search: { sort: "updated" },
 	});
 	// @ts-expect-error href string cannot be mixed with typed hash.
@@ -1347,7 +1347,7 @@ function assert_react_adapter_contracts(): void {
 		href: "/users/u-1",
 		hash: "#recent",
 	});
-	// @ts-expect-error typed links require splatValues for splat routes.
+	// @ts-expect-error typed links require splatValues for splat view patterns.
 	void react.Link({ pattern: "/docs/*" });
 	void react.Link({
 		pattern: "/docs/*",
@@ -1355,7 +1355,7 @@ function assert_react_adapter_contracts(): void {
 		splatValues: "guide",
 	});
 	void react.Link({
-		// @ts-expect-error typed links reject unknown route patterns.
+		// @ts-expect-error typed links reject unknown view patterns.
 		pattern: "/not-a-route",
 	});
 	void react.Link({
@@ -1403,7 +1403,7 @@ function assert_public_runtime_contracts(): void {
 					);
 				}
 			} else {
-				expect_type<"query" | "mutation">(event.triggeringResponse.apiRouteKind);
+				expect_type<"query" | "mutation">(event.triggeringResponse.resourceKind);
 			}
 		},
 	});
@@ -1525,16 +1525,16 @@ void assert_public_runtime_contracts;
 /////// Preact Adapter Type Safety
 
 function assert_preact_adapter_contracts(): void {
-	const route_props = null as unknown as ToRouteComponentProps<App, "/users/:userID">;
+	const route_props = null as unknown as ToViewComponentProps<App, "/users/:userID">;
 
-	// useLoaderData returns ReadonlySignal<T>
-	const loader_data = preact.useLoaderData(route_props);
-	expect_type<ReadonlySignal<ToLoaderOutput<App, "/users/:userID">>>(loader_data);
-	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data.value);
+	// useViewData returns ReadonlySignal<T>
+	const view_data = preact.useViewData(route_props);
+	expect_type<ReadonlySignal<ToViewOutput<App, "/users/:userID">>>(view_data);
+	expect_type<ToViewOutput<App, "/users/:userID">>(view_data.value);
 
-	// usePatternLoaderData
-	const maybe_pattern_data = preact.usePatternLoaderData("/docs/*");
-	expect_type<ReadonlySignal<ToLoaderOutput<App, "/docs/*"> | undefined>>(
+	// usePatternViewData
+	const maybe_pattern_data = preact.usePatternViewData("/docs/*");
+	expect_type<ReadonlySignal<ToViewOutput<App, "/docs/*"> | undefined>>(
 		maybe_pattern_data,
 	);
 
@@ -1570,12 +1570,12 @@ function assert_preact_adapter_contracts(): void {
 	});
 
 	// useClientLoaderData returns ReadonlySignal<T>
-	const cl_route_props = null as unknown as ToRouteComponentProps<
+	const client_loader_route_props = null as unknown as ToViewComponentProps<
 		App,
 		"/users/:userID",
 		number
 	>;
-	const client_loader_data = preact.useClientLoaderData(cl_route_props);
+	const client_loader_data = preact.useClientLoaderData(client_loader_route_props);
 	expect_type<ReadonlySignal<number>>(client_loader_data);
 	expect_type<number>(client_loader_data.value);
 
@@ -1588,8 +1588,8 @@ function assert_preact_adapter_contracts(): void {
 	void preact.defineView({
 		pattern: "/users/:userID",
 		component: (props) => {
-			const data = preact.useLoaderData(props);
-			expect_type<ReadonlySignal<ToLoaderOutput<App, "/users/:userID">>>(data);
+			const data = preact.useViewData(props);
+			expect_type<ReadonlySignal<ToViewOutput<App, "/users/:userID">>>(data);
 			return null!;
 		},
 	});
@@ -1616,13 +1616,13 @@ void assert_preact_adapter_contracts;
 /////// Remix Adapter Type Safety
 
 function assert_remix_adapter_contracts(): void {
-	const route_props = null as unknown as ToRouteComponentProps<App, "/users/:userID">;
+	const route_props = null as unknown as ToViewComponentProps<App, "/users/:userID">;
 
 	// Remix data/state/sync APIs are view-scoped.
-	// @ts-expect-error Remix loader data is view-scoped.
-	remix.useLoaderData(route_props);
-	// @ts-expect-error Remix pattern loader data is view-scoped.
-	remix.usePatternLoaderData("/docs/*");
+	// @ts-expect-error Remix view data is view-scoped.
+	remix.useViewData(route_props);
+	// @ts-expect-error Remix pattern view data is view-scoped.
+	remix.usePatternViewData("/docs/*");
 	// @ts-expect-error Remix route state is view-scoped.
 	remix.useRouteState();
 	// @ts-expect-error Remix route state selectors are view-scoped.
@@ -1642,13 +1642,13 @@ function assert_remix_adapter_contracts(): void {
 		scrollToTop: false,
 	});
 
-	const cl_route_props = null as unknown as ToRouteComponentProps<
+	const client_loader_route_props = null as unknown as ToViewComponentProps<
 		App,
 		"/users/:userID",
 		number
 	>;
 	// @ts-expect-error Remix client loader data is view-scoped.
-	remix.useClientLoaderData(cl_route_props);
+	remix.useClientLoaderData(client_loader_route_props);
 	// @ts-expect-error Remix pattern client loader data is view-scoped.
 	remix.usePatternClientLoaderData<number>("/users/:userID");
 
@@ -1678,16 +1678,16 @@ function assert_remix_adapter_contracts(): void {
 				search: { page: 2, tab: "posts" },
 			});
 
-			const maybe_pattern_data = v.patternLoaderData("/docs/*");
-			expect_type<ToLoaderOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
+			const maybe_pattern_data = v.patternViewData("/docs/*");
+			expect_type<ToViewOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
 
 			const maybe_client_loader_data =
 				v.patternClientLoaderData<number>("/users/:userID");
 			expect_type<number | undefined>(maybe_client_loader_data);
 
 			return (props) => {
-				const data = v.loaderData(props);
-				expect_type<ToLoaderOutput<App, "/users/:userID">>(data);
+				const data = v.viewData(props);
+				expect_type<ToViewOutput<App, "/users/:userID">>(data);
 
 				const client_loader_data = v.clientLoaderData(props);
 				expect_type<number>(client_loader_data);
@@ -1706,7 +1706,7 @@ function assert_remix_adapter_contracts(): void {
 		},
 		clientLoader: async ({ serverPromise }) => {
 			const server_data = await serverPromise;
-			return server_data.loaderData.userName.length;
+			return server_data.viewData.userName.length;
 		},
 	});
 
@@ -1734,17 +1734,17 @@ void assert_remix_adapter_contracts;
 /////// Solid Adapter Type Safety
 
 function assert_solid_adapter_contracts(): void {
-	const route_props = null as unknown as ToRouteComponentProps<App, "/users/:userID">;
+	const route_props = null as unknown as ToViewComponentProps<App, "/users/:userID">;
 
-	// useLoaderData returns Accessor<T>
-	const loader_data = solid.useLoaderData(route_props);
-	expect_type<Accessor<ToLoaderOutput<App, "/users/:userID">>>(loader_data);
+	// useViewData returns Accessor<T>
+	const view_data = solid.useViewData(route_props);
+	expect_type<Accessor<ToViewOutput<App, "/users/:userID">>>(view_data);
 	// Calling the accessor returns the value
-	expect_type<ToLoaderOutput<App, "/users/:userID">>(loader_data());
+	expect_type<ToViewOutput<App, "/users/:userID">>(view_data());
 
-	// usePatternLoaderData returns Accessor<T | undefined>
-	const maybe_pattern_data = solid.usePatternLoaderData("/docs/*");
-	expect_type<Accessor<ToLoaderOutput<App, "/docs/*"> | undefined>>(maybe_pattern_data);
+	// usePatternViewData returns Accessor<T | undefined>
+	const maybe_pattern_data = solid.usePatternViewData("/docs/*");
+	expect_type<Accessor<ToViewOutput<App, "/docs/*"> | undefined>>(maybe_pattern_data);
 
 	// useRouteState returns Accessor
 	const route_state = solid.useRouteState();
@@ -1778,12 +1778,12 @@ function assert_solid_adapter_contracts(): void {
 	});
 
 	// useClientLoaderData returns Accessor<T>
-	const cl_route_props = null as unknown as ToRouteComponentProps<
+	const client_loader_route_props = null as unknown as ToViewComponentProps<
 		App,
 		"/users/:userID",
 		number
 	>;
-	const client_loader_data = solid.useClientLoaderData(cl_route_props);
+	const client_loader_data = solid.useClientLoaderData(client_loader_route_props);
 	expect_type<Accessor<number>>(client_loader_data);
 	expect_type<number>(client_loader_data());
 
@@ -1796,8 +1796,8 @@ function assert_solid_adapter_contracts(): void {
 	void solid.defineView({
 		pattern: "/users/:userID",
 		component: (props) => {
-			const data = solid.useLoaderData(props);
-			expect_type<Accessor<ToLoaderOutput<App, "/users/:userID">>>(data);
+			const data = solid.useViewData(props);
+			expect_type<Accessor<ToViewOutput<App, "/users/:userID">>>(data);
 			return null!;
 		},
 	});

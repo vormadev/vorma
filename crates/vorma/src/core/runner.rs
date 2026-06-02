@@ -7,7 +7,7 @@ use serde_json::Value;
 use vorma_matcher::Params;
 use vorma_tasks::Result as TaskResult;
 
-use super::{ApiCtx, ViewCtx};
+use super::{ResourceCtx, ViewCtx};
 use crate::api;
 use crate::mux::{self, None, RequestCtx, RouteExecutionError};
 
@@ -22,7 +22,7 @@ pub type ErasedRequestCtx<S, E> = RequestCtx<S, E, None>;
 pub type ErasedRouteHandler<S, E> = fn(ErasedRequestCtx<S, E>) -> ErasedRouteFuture<E>;
 
 type StaticViewHandler<S, E, I, P, O> = fn(ViewCtx<S, E, I, P>) -> RouteFuture<O, E>;
-type StaticApiRouteHandler<S, E, I, P, O> = fn(ApiCtx<S, E, I, P>) -> RouteFuture<O, E>;
+type StaticResourceHandler<S, E, I, P, O> = fn(ResourceCtx<S, E, I, P>) -> RouteFuture<O, E>;
 pub(super) type DynamicRouteHandler<S, E> =
 	dyn Fn(ErasedRequestCtx<S, E>) -> ErasedRouteFuture<E> + Send + Sync;
 
@@ -54,7 +54,7 @@ where
 {
 	Box::pin(async move {
 		let input =
-			api::parse_loader_input::<I>(ctx.request()).map_err(RouteExecutionError::Input)?;
+			api::parse_view_input::<I>(ctx.request()).map_err(RouteExecutionError::Input)?;
 		let params = P::from_raw_path_params(ctx.params()).map_err(RouteExecutionError::Input)?;
 		let handler_ctx = ViewCtx::new(ctx.with_input(input), params);
 		let output = handler(handler_ctx)
@@ -65,23 +65,23 @@ where
 }
 
 #[doc(hidden)]
-pub fn run_static_api_route<S, E, I, P, O>(
+pub fn run_static_resource<S, E, I, P, O>(
 	ctx: ErasedRequestCtx<S, E>,
-	handler: StaticApiRouteHandler<S, E, I, P, O>,
+	handler: StaticResourceHandler<S, E, I, P, O>,
 ) -> ErasedRouteFuture<E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
-	I: api::ApiInput,
+	I: api::ResourceInput,
 	P: Clone + PathParams,
 	O: Serialize + Send + Sync + 'static,
 {
 	Box::pin(async move {
-		let input = api::parse_api_input::<I>(ctx.request())
+		let input = api::parse_resource_input::<I>(ctx.request())
 			.await
 			.map_err(RouteExecutionError::Input)?;
 		let params = P::from_raw_path_params(ctx.params()).map_err(RouteExecutionError::Input)?;
-		let handler_ctx = ApiCtx::new(ctx.with_input(input), params);
+		let handler_ctx = ResourceCtx::new(ctx.with_input(input), params);
 		let output = handler(handler_ctx)
 			.await
 			.map_err(RouteExecutionError::Task)?;
@@ -90,14 +90,14 @@ where
 }
 
 pub(super) async fn run_route_runner<S, E>(
-	loader: RouteRunner<S, E>,
+	handler: RouteRunner<S, E>,
 	ctx: ErasedRequestCtx<S, E>,
 ) -> Result<Value, RouteExecutionError<E>>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	match loader {
+	match handler {
 		RouteRunner::Static(handler) => handler(ctx).await,
 		RouteRunner::Dynamic(handler) => handler(ctx).await,
 	}

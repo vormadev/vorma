@@ -17,7 +17,7 @@ describe("debounce", () => {
 		});
 		const debounced = debounce(spy, 100);
 
-		const resultPromise = debounced({
+		const result_promise = debounced({
 			firstNumber: 1,
 			secondNumber: 2,
 		});
@@ -30,7 +30,7 @@ describe("debounce", () => {
 
 		// after full delay
 		vi.advanceTimersByTime(50);
-		await expect(resultPromise).resolves.toBe(3);
+		await expect(result_promise).resolves.toBe(3);
 
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(spy).toHaveBeenCalledWith({

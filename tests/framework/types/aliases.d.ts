@@ -7,7 +7,7 @@ declare module "#variant-runtime" {
 	export function read_box(box: any): any;
 	export function read_text_state(value: any): any;
 	export function dynamic(read_value: () => any): any;
-	export const use_loader_data: ((props: any) => any) | undefined;
+	export const use_view_data: ((props: any) => any) | undefined;
 	export const use_client_loader_data: ((props: any) => any) | undefined;
 	export const use_route_state: (() => any) | undefined;
 	export const use_work_state: (() => any) | undefined;

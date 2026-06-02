@@ -177,7 +177,8 @@ impl Type for FormData {
 }
 
 #[doc(hidden)]
-pub type ApiInputFuture<'a, I> = Pin<Box<dyn Future<Output = Result<I, InputError>> + Send + 'a>>;
+pub type ResourceInputFuture<'a, I> =
+	Pin<Box<dyn Future<Output = Result<I, InputError>> + Send + 'a>>;
 
 #[doc(hidden)]
 pub trait ViewInput: Sized + Send + Sync + 'static {
@@ -190,47 +191,47 @@ where
 	I: DeserializeOwned + Send + Sync + 'static,
 {
 	fn parse_view_input(request: &RawRequest) -> Result<Self, InputError> {
-		let query = loader_input_query(request.query().unwrap_or(""));
+		let query = view_input_query(request.query().unwrap_or(""));
 		search_params_into_struct_from_query(&query)
 	}
 }
 
 #[doc(hidden)]
-pub trait ApiInput: Sized + Send + Sync + 'static {
+pub trait ResourceInput: Sized + Send + Sync + 'static {
 	#[doc(hidden)]
-	fn parse_api_input(request: &RawRequest) -> ApiInputFuture<'_, Self>;
+	fn parse_resource_input(request: &RawRequest) -> ResourceInputFuture<'_, Self>;
 }
 
-impl<I> ApiInput for I
+impl<I> ResourceInput for I
 where
 	I: DeserializeOwned + Send + Sync + 'static,
 {
-	fn parse_api_input(request: &RawRequest) -> ApiInputFuture<'_, Self> {
-		Box::pin(async move { parse_serde_api_input(request).await })
+	fn parse_resource_input(request: &RawRequest) -> ResourceInputFuture<'_, Self> {
+		Box::pin(async move { parse_serde_resource_input(request).await })
 	}
 }
 
-impl ApiInput for FormData {
-	fn parse_api_input(request: &RawRequest) -> ApiInputFuture<'_, Self> {
-		Box::pin(async move { parse_form_api_input(request).await })
+impl ResourceInput for FormData {
+	fn parse_resource_input(request: &RawRequest) -> ResourceInputFuture<'_, Self> {
+		Box::pin(async move { parse_form_resource_input(request).await })
 	}
 }
 
-pub(crate) fn parse_loader_input<I>(request: &RawRequest) -> Result<I, InputError>
+pub(crate) fn parse_view_input<I>(request: &RawRequest) -> Result<I, InputError>
 where
 	I: ViewInput,
 {
 	I::parse_view_input(request)
 }
 
-pub(crate) async fn parse_api_input<I>(request: &RawRequest) -> Result<I, InputError>
+pub(crate) async fn parse_resource_input<I>(request: &RawRequest) -> Result<I, InputError>
 where
-	I: ApiInput,
+	I: ResourceInput,
 {
-	I::parse_api_input(request).await
+	I::parse_resource_input(request).await
 }
 
-async fn parse_serde_api_input<I>(request: &RawRequest) -> Result<I, InputError>
+async fn parse_serde_resource_input<I>(request: &RawRequest) -> Result<I, InputError>
 where
 	I: DeserializeOwned + Send + Sync + 'static,
 {
@@ -263,7 +264,7 @@ where
 		.map_err(|err| InputError::bad_request(format!("error decoding JSON: {err}")))
 }
 
-async fn parse_form_api_input(request: &RawRequest) -> Result<FormData, InputError> {
+async fn parse_form_resource_input(request: &RawRequest) -> Result<FormData, InputError> {
 	if request.method() == Method::GET || request.method() == Method::HEAD {
 		return Ok(parse_query_form_data(request.query().unwrap_or_default()));
 	}
@@ -306,7 +307,7 @@ where
 		.map_err(|err| InputError::bad_request(format!("error parsing URL parameters: {err}")))
 }
 
-fn loader_input_query(raw_query: &str) -> std::borrow::Cow<'_, str> {
+fn view_input_query(raw_query: &str) -> std::borrow::Cow<'_, str> {
 	let mut removed_internal_param = false;
 	let mut serializer = form_urlencoded::Serializer::new(String::new());
 
@@ -468,9 +469,9 @@ mod tests {
 	}
 
 	#[test]
-	fn loader_input_parses_url_search_params() {
+	fn view_input_parses_url_search_params() {
 		let request = RawRequest::get("/users?q=ada&page=2");
-		let input: SearchInput = parse_loader_input(&request).unwrap();
+		let input: SearchInput = parse_view_input(&request).unwrap();
 
 		assert_eq!(
 			input,
@@ -482,9 +483,9 @@ mod tests {
 	}
 
 	#[test]
-	fn loader_input_ignores_internal_json_request_param() {
+	fn view_input_ignores_internal_json_request_param() {
 		let request = RawRequest::get("/users?q=ada&vorma-json=current-build&page=2");
-		let input: SearchInput = parse_loader_input(&request).unwrap();
+		let input: SearchInput = parse_view_input(&request).unwrap();
 
 		assert_eq!(
 			input,
@@ -495,23 +496,23 @@ mod tests {
 		);
 
 		let request = RawRequest::get("/users?vorma-json=current-build");
-		parse_loader_input::<()>(&request).unwrap();
+		parse_view_input::<()>(&request).unwrap();
 	}
 
 	#[test]
-	fn loader_unit_input_ignores_route_query_params() {
+	fn view_unit_input_ignores_url_search_params() {
 		let request = RawRequest::get("/slow?delay_ms=120");
-		parse_loader_input::<()>(&request).unwrap();
+		parse_view_input::<()>(&request).unwrap();
 	}
 
 	#[tokio::test]
-	async fn api_get_and_head_parse_url_search_params() {
+	async fn resource_get_and_head_parse_url_search_params() {
 		let get = RawRequest::get("/users?q=ada&page=2");
-		let input: SearchInput = parse_api_input(&get).await.unwrap();
+		let input: SearchInput = parse_resource_input(&get).await.unwrap();
 		assert_eq!(input.page, 2);
 
 		let head = request(Method::HEAD, "/users?q=grace&page=3", None, b"");
-		let input: SearchInput = parse_api_input(&head).await.unwrap();
+		let input: SearchInput = parse_resource_input(&head).await.unwrap();
 		assert_eq!(
 			input,
 			SearchInput {
@@ -522,20 +523,20 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn api_get_unit_input_ignores_query_params() {
+	async fn resource_get_unit_input_ignores_query_params() {
 		let request = RawRequest::get("/count?delta=9");
-		parse_api_input::<()>(&request).await.unwrap();
+		parse_resource_input::<()>(&request).await.unwrap();
 	}
 
 	#[tokio::test]
-	async fn api_non_get_decodes_json_body() {
+	async fn resource_non_get_decodes_json_body() {
 		let request = request(
 			Method::POST,
 			"/users",
 			Some("application/json"),
 			br#"{"email":"jeff@example.com","count":4}"#,
 		);
-		let input: JsonInput = parse_api_input(&request).await.unwrap();
+		let input: JsonInput = parse_resource_input(&request).await.unwrap();
 
 		assert_eq!(
 			input,
@@ -547,20 +548,20 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn api_non_get_accepts_json_suffix_content_type() {
+	async fn resource_non_get_accepts_json_suffix_content_type() {
 		let request = request(
 			Method::PATCH,
 			"/users",
 			Some("application/vnd.api+json"),
 			br#"{"email":"jeff@example.com","count":4}"#,
 		);
-		let input: JsonInput = parse_api_input(&request).await.unwrap();
+		let input: JsonInput = parse_resource_input(&request).await.unwrap();
 
 		assert_eq!(input.count, 4);
 	}
 
 	#[tokio::test]
-	async fn api_non_get_json_input_does_not_require_json_content_type() {
+	async fn resource_non_get_json_input_does_not_require_json_content_type() {
 		for content_type in [None, Some("text/plain"), Some("application/json")] {
 			let request = request(
 				Method::POST,
@@ -568,14 +569,14 @@ mod tests {
 				content_type,
 				br#"{"email":"jeff@example.com","count":4}"#,
 			);
-			let input: JsonInput = parse_api_input(&request).await.unwrap();
+			let input: JsonInput = parse_resource_input(&request).await.unwrap();
 
 			assert_eq!(input.count, 4);
 		}
 	}
 
 	#[tokio::test]
-	async fn api_non_get_json_input_ignores_malformed_non_form_content_type() {
+	async fn resource_non_get_json_input_ignores_malformed_non_form_content_type() {
 		let request = request(
 			Method::POST,
 			"/users",
@@ -583,7 +584,7 @@ mod tests {
 			br#"{"email":"jeff@example.com","count":4}"#,
 		);
 
-		let input: JsonInput = parse_api_input(&request).await.unwrap();
+		let input: JsonInput = parse_resource_input(&request).await.unwrap();
 
 		assert_eq!(input.count, 4);
 	}
@@ -597,7 +598,9 @@ mod tests {
 			br#"{"email":"jeff@example.com","count":4}"#,
 		);
 
-		let err = parse_api_input::<JsonInput>(&request).await.unwrap_err();
+		let err = parse_resource_input::<JsonInput>(&request)
+			.await
+			.unwrap_err();
 
 		assert!(err.is_bad_request());
 		assert!(err.to_string().contains("error parsing form Content-Type"));
@@ -606,13 +609,15 @@ mod tests {
 	#[tokio::test]
 	async fn api_empty_non_get_input_accepts_empty_body_without_content_type() {
 		let request = request(Method::POST, "/empty", None, b"");
-		parse_api_input::<()>(&request).await.unwrap();
+		parse_resource_input::<()>(&request).await.unwrap();
 	}
 
 	#[tokio::test]
 	async fn api_invalid_json_is_bad_request() {
 		let request = request(Method::POST, "/users", Some("application/json"), b"{");
-		let err = parse_api_input::<JsonInput>(&request).await.unwrap_err();
+		let err = parse_resource_input::<JsonInput>(&request)
+			.await
+			.unwrap_err();
 
 		assert!(err.is_bad_request());
 		assert!(err.to_string().contains("error decoding JSON"));
@@ -626,10 +631,12 @@ mod tests {
 			Some("application/x-www-form-urlencoded"),
 			b"",
 		);
-		let form: FormData = parse_api_input(&request).await.unwrap();
+		let form: FormData = parse_resource_input(&request).await.unwrap();
 		assert!(form.fields().is_empty());
 
-		let err = parse_api_input::<JsonInput>(&request).await.unwrap_err();
+		let err = parse_resource_input::<JsonInput>(&request)
+			.await
+			.unwrap_err();
 		assert!(err.is_bad_request());
 		assert_eq!(err.to_string(), "form content type required FormData input");
 	}
@@ -642,7 +649,7 @@ mod tests {
 			Some("application/x-www-form-urlencoded"),
 			b"tag=a&tag=b&name=jeff",
 		);
-		let form: FormData = parse_api_input(&request).await.unwrap();
+		let form: FormData = parse_resource_input(&request).await.unwrap();
 
 		assert_eq!(form.content_type(), "application/x-www-form-urlencoded");
 		assert_eq!(form.body(), &Bytes::from_static(b"tag=a&tag=b&name=jeff"));
@@ -677,7 +684,7 @@ mod tests {
 			Some("multipart/form-data; boundary=vorma"),
 			body.as_bytes(),
 		);
-		let form: FormData = parse_api_input(&request).await.unwrap();
+		let form: FormData = parse_resource_input(&request).await.unwrap();
 		let file = form.file("upload").unwrap();
 
 		assert_eq!(form.field("title").unwrap().value(), "Hello");
@@ -702,7 +709,9 @@ mod tests {
 			body.as_bytes(),
 		);
 
-		let error = parse_api_input::<FormData>(&request).await.unwrap_err();
+		let error = parse_resource_input::<FormData>(&request)
+			.await
+			.unwrap_err();
 
 		assert!(error.is_bad_request());
 		assert_eq!(error.to_string(), "multipart form field missing name");
@@ -711,7 +720,9 @@ mod tests {
 	#[tokio::test]
 	async fn form_data_rejects_non_form_body_content_type() {
 		let request = request(Method::POST, "/form", Some("application/json"), b"{}");
-		let error = parse_api_input::<FormData>(&request).await.unwrap_err();
+		let error = parse_resource_input::<FormData>(&request)
+			.await
+			.unwrap_err();
 
 		assert!(
 			error
@@ -724,7 +735,7 @@ mod tests {
 	async fn form_data_parses_query_for_get_and_head() {
 		for method in [Method::GET, Method::HEAD] {
 			let request = request(method, "/form?tag=a&tag=b", None, b"");
-			let form: FormData = parse_api_input(&request).await.unwrap();
+			let form: FormData = parse_resource_input(&request).await.unwrap();
 
 			assert_eq!(form.content_type(), "");
 			assert!(form.body().is_empty());

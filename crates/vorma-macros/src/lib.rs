@@ -18,9 +18,9 @@ pub fn __vorma_view(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn __vorma_api_route(input: TokenStream) -> TokenStream {
-	let input = parse_macro_input!(input as ApiRouteMacroInput);
-	expand_api_route(input)
+pub fn __vorma_resource(input: TokenStream) -> TokenStream {
+	let input = parse_macro_input!(input as ResourceMacroInput);
+	expand_resource(input)
 		.unwrap_or_else(syn::Error::into_compile_error)
 		.into()
 }
@@ -41,7 +41,7 @@ struct ViewMacroInput {
 	handler: ClosureExpr,
 }
 
-struct ApiRouteMacroInput {
+struct ResourceMacroInput {
 	kind: Option<Expr>,
 	method: Expr,
 	pattern: LitStr,
@@ -67,7 +67,7 @@ impl Parse for ViewMacroInput {
 	}
 }
 
-impl Parse for ApiRouteMacroInput {
+impl Parse for ResourceMacroInput {
 	fn parse(input: ParseStream<'_>) -> Result<Self> {
 		let kind = if next_field_is(input, "kind") {
 			Some(parse_expr_field(input, "kind")?)
@@ -126,7 +126,7 @@ fn expand_view(input: ViewMacroInput) -> Result<proc_macro2::TokenStream> {
 	}})
 }
 
-fn expand_api_route(input: ApiRouteMacroInput) -> Result<proc_macro2::TokenStream> {
+fn expand_resource(input: ResourceMacroInput) -> Result<proc_macro2::TokenStream> {
 	let method = input.method;
 	let pattern = input.pattern;
 	let input_type = input.input_type;
@@ -143,14 +143,14 @@ fn expand_api_route(input: ApiRouteMacroInput) -> Result<proc_macro2::TokenStrea
 	Ok(quote! {{
 		#params_def
 
-		::vorma::ApiRoute::from_static(
+		::vorma::Resource::from_static(
 			#method,
 			#pattern,
 			#kind,
 			::vorma::__private::type_resolver::<#input_type>,
 			::vorma::__private::type_resolver::<#output_type>,
 			|ctx| {
-				::vorma::__private::run_static_api_route::<
+				::vorma::__private::run_static_resource::<
 					_,
 					_,
 					#input_type,

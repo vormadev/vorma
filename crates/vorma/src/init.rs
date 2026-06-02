@@ -18,7 +18,7 @@ use crate::config::normalize_api_mount_root;
 use crate::core::{RuntimeRoutes, runtime_routes_for};
 use crate::document::{DocumentBuildCtx, DocumentBuilder};
 use crate::envutil::{is_build, is_dev};
-use crate::error::LoaderErrorClientMsg;
+use crate::error::ViewErrorClientMsg;
 use crate::handler::{
 	ApiResponseInput, ViewResponseResultsInput, build_api_response,
 	build_view_response_from_results, build_view_skew_response, refresh_script_inner_html,
@@ -35,7 +35,7 @@ use crate::r#static::{
 	static_out_dir,
 };
 
-/// Runtime service that serves Vorma static assets, API-routes, and views.
+/// Runtime service that serves Vorma static assets, resources, and views.
 pub struct RuntimeHost<S, E = Box<dyn std::error::Error + Send + Sync>> {
 	state: Arc<S>,
 	tasks: Tasks<E>,
@@ -48,15 +48,15 @@ pub struct RuntimeHost<S, E = Box<dyn std::error::Error + Send + Sync>> {
 impl<S, E> RuntimeHost<S, E>
 where
 	S: Send + Sync + 'static,
-	E: LoaderErrorClientMsg + Send + Sync + 'static,
+	E: ViewErrorClientMsg + Send + Sync + 'static,
 {
 	pub(crate) fn new(app: App<S, E>) -> Result<Self, String> {
 		let App {
 			config: cfg,
 			state,
 			views,
-			api_routes,
-			task_middlewares,
+			resources,
+			middlewares,
 			tasks_options,
 			document,
 			request_body_limit,
@@ -74,7 +74,7 @@ where
 			.unwrap_or(&cfg.path_config.api_base);
 		let api_mount_root = normalize_api_mount_root(api_mount_root)
 			.map_err(|err| format!("error with API mount root: {err}"))?;
-		let routes = runtime_routes_for(&views, &api_routes, &task_middlewares, &api_mount_root)
+		let routes = runtime_routes_for(&views, &resources, &middlewares, &api_mount_root)
 			.map_err(|err| err.to_string())?;
 		Ok(Self {
 			state: Arc::new(state),
@@ -158,7 +158,7 @@ where
 
 		let request = raw_request(request);
 
-		if request_path_is_under_mount_root(request.path(), self.routes.api.mount_root()) {
+		if request_path_is_under_mount_root(request.path(), self.routes.resources.mount_root()) {
 			return self.handle_api_request(request).await;
 		}
 
@@ -174,7 +174,7 @@ where
 	}
 
 	async fn handle_api_request(&self, request: RawRequest) -> Result<Response<Bytes>, String> {
-		if !self.routes.api.method_is_allowed(request.method()) {
+		if !self.routes.resources.method_is_allowed(request.method()) {
 			let allow = self.api_allow_header();
 			if !allow.is_empty() {
 				return method_not_allowed_response(&allow);
@@ -202,8 +202,8 @@ where
 		} = self.request_exec_ctx();
 		let result = match self
 			.routes
-			.api
-			.execute_task_route(request, self.state.clone(), exec_ctx, public_filemap)
+			.resources
+			.execute_route(request, self.state.clone(), exec_ctx, public_filemap)
 			.await
 		{
 			Ok(result) => result,
@@ -332,7 +332,7 @@ where
 	}
 
 	fn api_allow_header_for_path(&self, path: &str) -> Option<String> {
-		let methods = self.routes.api.allowed_methods_for_path(path);
+		let methods = self.routes.resources.allowed_methods_for_path(path);
 		if methods.is_empty() {
 			return None;
 		}
@@ -340,7 +340,7 @@ where
 	}
 
 	fn api_allow_header(&self) -> String {
-		allow_header_value(&self.routes.api.allowed_methods())
+		allow_header_value(&self.routes.resources.allowed_methods())
 	}
 
 	fn snapshot(&self) -> Result<Arc<RuntimeAssetSnapshot>, String> {
@@ -375,7 +375,7 @@ impl<S, E> Clone for RuntimeHost<S, E> {
 impl<S, E, B> tower_service::Service<Request<B>> for RuntimeHost<S, E>
 where
 	S: Send + Sync + 'static,
-	E: LoaderErrorClientMsg + Send + Sync + 'static,
+	E: ViewErrorClientMsg + Send + Sync + 'static,
 	B: Body + Send + 'static,
 	B::Data: Buf + Send + 'static,
 	B::Error:

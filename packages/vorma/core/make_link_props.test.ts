@@ -19,12 +19,12 @@ import {
 
 let dom: JSDOM;
 
-const TEST_ROUTE_STATE: LinkRouteState = {
+const test_route_state: LinkRouteState = {
 	href: "/page",
 	matched_patterns: [],
 };
 
-const TEST_WORK_STATE: LinkWorkState = {
+const test_work_state: LinkWorkState = {
 	navigation_href: null,
 };
 
@@ -197,8 +197,8 @@ describe("fallthrough", () => {
 		const result = make_link_props(
 			{ href: "/page" },
 			nav,
-			TEST_ROUTE_STATE,
-			TEST_WORK_STATE,
+			test_route_state,
+			test_work_state,
 		);
 		const ev = primary_click({ metaKey: true });
 
@@ -644,8 +644,8 @@ describe("route state attributes", () => {
 		const result = make_link_props(
 			{ href: "/page" },
 			nav,
-			TEST_ROUTE_STATE,
-			TEST_WORK_STATE,
+			test_route_state,
+			test_work_state,
 		);
 
 		expect(result.anchor_props).toHaveProperty(LINK_ACTIVE_EXACT_ATTR, "");
@@ -670,8 +670,8 @@ describe("route state attributes", () => {
 				"aria-current": "step",
 			},
 			nav,
-			TEST_ROUTE_STATE,
-			TEST_WORK_STATE,
+			test_route_state,
+			test_work_state,
 		);
 
 		expect(result.anchor_props).toHaveProperty("aria-current", "step");

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::document::Document;
 use crate::envutil::is_dev;
-use crate::error::LoaderErrorClientMsg;
+use crate::error::ViewErrorClientMsg;
 use crate::htmlutil::Element;
 use crate::manifest::Manifest;
 use crate::mux::{NestedTasksResults, RouteExecutionError};
@@ -20,11 +20,11 @@ pub(crate) struct SsrPayload {
 	pub(crate) deployment_id: String,
 
 	#[serde(flatten)]
-	pub(crate) loader_payload: LoaderPayload,
+	pub(crate) view_payload: ViewPayload,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub(crate) struct LoaderPayload {
+pub(crate) struct ViewPayload {
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
 	pub(crate) matched_patterns: Vec<String>,
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -54,24 +54,24 @@ pub(crate) struct LoaderPayload {
 	pub(crate) css_bundles: Vec<String>,
 
 	#[serde(default, skip_serializing_if = "Vec::is_empty")]
-	pub(crate) loaders_data: Vec<serde_json::Value>,
+	pub(crate) views_data: Vec<serde_json::Value>,
 }
 
 fn is_false(value: &bool) -> bool {
 	!*value
 }
 
-pub(crate) fn build_loader_payload<E>(
+pub(crate) fn build_view_payload<E>(
 	manifest: &Manifest,
 	document: &Document,
 	match_results: &vorma_matcher::NestedMatches,
 	tasks_results: &NestedTasksResults<E>,
 	include_prod_preloads: bool,
-) -> Result<(LoaderPayload, Proxy), String>
+) -> Result<(ViewPayload, Proxy), String>
 where
-	E: LoaderErrorClientMsg,
+	E: ViewErrorClientMsg,
 {
-	let terminal_idx = first_terminal_loader_idx(tasks_results);
+	let terminal_idx = first_terminal_view_idx(tasks_results);
 	let matched_patterns = match_results
 		.matches
 		.iter()
@@ -94,14 +94,14 @@ where
 		}
 		let prepared_head = document.prepare_head(&raw_head_els);
 		return Ok((
-			LoaderPayload {
+			ViewPayload {
 				matched_patterns,
 				params,
 				splat_values,
 				title: prepared_head.title,
 				meta_head_els: prepared_head.meta,
 				rest_head_els: prepared_head.rest,
-				..LoaderPayload::default()
+				..ViewPayload::default()
 			},
 			merged_proxy,
 		));
@@ -119,7 +119,7 @@ where
 		.collect::<Result<Vec<_>, _>>()?;
 
 	let mut import_urls = Vec::with_capacity(matched_patterns.len());
-	let mut loaders_data = Vec::new();
+	let mut views_data = Vec::new();
 	let mut deps = Vec::new();
 	let mut seen_deps = BTreeSet::new();
 	let mut css_bundles = Vec::new();
@@ -140,9 +140,9 @@ where
 			break;
 		}
 		let route_mod = manifest
-			.client_routes
+			.client_views
 			.get(pattern)
-			.ok_or_else(|| format!("no route module found for matched pattern: {pattern}"))?;
+			.ok_or_else(|| format!("no view module found for matched pattern: {pattern}"))?;
 		import_urls.push(route_mod.url.clone());
 		append_unique(&mut deps, &mut seen_deps, &route_mod.dep_urls);
 		append_unique(
@@ -154,17 +154,17 @@ where
 		let result = tasks_results
 			.results()
 			.get(idx)
-			.ok_or_else(|| format!("missing loader result for matched pattern: {pattern}"))?;
+			.ok_or_else(|| format!("missing view result for matched pattern: {pattern}"))?;
 		if let Some(error) = result.error() {
-			outermost_server_err = loader_client_msg(error);
+			outermost_server_err = view_client_msg(error);
 			outermost_server_err_idx = Some(idx);
 			break;
 		}
 		if result.ran_task() && !proxy_short_circuited {
-			let data = result.data().ok_or_else(|| {
-				format!("missing loader data for executed loader pattern: {pattern}")
-			})?;
-			loaders_data.push(data.clone());
+			let data = result
+				.data()
+				.ok_or_else(|| format!("missing view data for executed view pattern: {pattern}"))?;
+			views_data.push(data.clone());
 		}
 	}
 
@@ -213,7 +213,7 @@ where
 	}
 
 	let prepared_head = document.prepare_head(&raw_head_els);
-	let payload = LoaderPayload {
+	let payload = ViewPayload {
 		matched_patterns,
 		params,
 		splat_values,
@@ -226,12 +226,12 @@ where
 		import_urls,
 		deps,
 		css_bundles,
-		loaders_data,
+		views_data,
 	};
 	Ok((payload, merged_proxy))
 }
 
-fn first_terminal_loader_idx<E>(tasks_results: &NestedTasksResults<E>) -> Option<usize> {
+fn first_terminal_view_idx<E>(tasks_results: &NestedTasksResults<E>) -> Option<usize> {
 	if tasks_results
 		.middleware_proxy()
 		.is_some_and(Proxy::is_terminal_response)
@@ -274,9 +274,9 @@ fn response_proxy_refs_for_payload<E>(
 	proxies
 }
 
-fn loader_client_msg<E>(error: &RouteExecutionError<E>) -> String
+fn view_client_msg<E>(error: &RouteExecutionError<E>) -> String
 where
-	E: LoaderErrorClientMsg,
+	E: ViewErrorClientMsg,
 {
 	if let RouteExecutionError::Input(input_error) = error
 		&& input_error.is_bad_request()
@@ -284,7 +284,7 @@ where
 		return input_error.to_string();
 	}
 	if let RouteExecutionError::Task(vorma_tasks::Error::Failed(error)) = error
-		&& let Some(client_msg) = error.loader_error_client_msg()
+		&& let Some(client_msg) = error.view_error_client_msg()
 	{
 		return client_msg.to_owned();
 	}
@@ -304,11 +304,11 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn loader_payload_json_keys_are_snake_case() {
+	fn view_payload_json_keys_are_snake_case() {
 		let payload = SsrPayload {
 			client_build_id: "build-id".to_owned(),
 			is_dev: true,
-			loader_payload: LoaderPayload {
+			view_payload: ViewPayload {
 				matched_patterns: vec!["/".to_owned()],
 				params: BTreeMap::from([("id".to_owned(), "123".to_owned())]),
 				title: Some(Element {
@@ -317,8 +317,8 @@ mod tests {
 					..Element::default()
 				}),
 				import_urls: vec!["/entry.js".to_owned()],
-				loaders_data: vec![serde_json::json!({"ok": true})],
-				..LoaderPayload::default()
+				views_data: vec![serde_json::json!({"ok": true})],
+				..ViewPayload::default()
 			},
 			..SsrPayload::default()
 		};
@@ -331,6 +331,6 @@ mod tests {
 		assert_eq!(json["params"]["id"], "123");
 		assert!(json.get("title").is_some());
 		assert_eq!(json["import_urls"][0], "/entry.js");
-		assert_eq!(json["loaders_data"][0]["ok"], true);
+		assert_eq!(json["views_data"][0]["ok"], true);
 	}
 }

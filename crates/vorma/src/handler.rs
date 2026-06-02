@@ -18,11 +18,10 @@ use crate::constants::{
 };
 use crate::document::{Document, DocumentRenderInput};
 use crate::envutil::is_dev;
-use crate::error::LoaderErrorClientMsg;
+use crate::error::ViewErrorClientMsg;
 use crate::htmlutil::{
 	Element, render_element, render_element_to_string, render_module_script_to_string,
 };
-use crate::loader_payload::{LoaderPayload, SsrPayload, build_loader_payload};
 use crate::manifest::Manifest;
 #[cfg(test)]
 use crate::mux::NestedRouter;
@@ -32,9 +31,10 @@ use crate::response::{
 	insert_header, internal_server_error_response, json_response, plain_text_response,
 	response_with_client_build_id,
 };
+use crate::view_payload::{SsrPayload, ViewPayload, build_view_payload};
 
 /////////////////////////////////////////////////////////////////////
-/////// Loaders Handler
+/////// View Handler
 /////////////////////////////////////////////////////////////////////
 
 pub(crate) fn is_json_request(uri: &Uri) -> bool {
@@ -85,7 +85,7 @@ pub(crate) async fn build_view_response<S, E>(
 ) -> Result<Response<Bytes>, String>
 where
 	S: Send + Sync + 'static,
-	E: LoaderErrorClientMsg + Send + Sync + 'static,
+	E: ViewErrorClientMsg + Send + Sync + 'static,
 {
 	if let Some(response) =
 		build_view_skew_response(input.request.uri(), input.expected_client_build_id)?
@@ -144,10 +144,10 @@ pub(crate) fn build_view_response_from_results<E>(
 	input: ViewResponseResultsInput<'_, E>,
 ) -> Result<Response<Bytes>, String>
 where
-	E: LoaderErrorClientMsg,
+	E: ViewErrorClientMsg,
 {
 	let is_json = is_json_request(input.request.uri());
-	let (payload, merged_proxy) = build_loader_payload(
+	let (payload, merged_proxy) = build_view_payload(
 		input.manifest,
 		input.document,
 		input.match_results,
@@ -209,7 +209,7 @@ fn html_response(
 	expected_client_build_id: &str,
 	manifest: &Manifest,
 	document: &Document,
-	payload: &LoaderPayload,
+	payload: &ViewPayload,
 ) -> Result<Response<Bytes>, String> {
 	let mut vorma_head = String::new();
 	let prepared = crate::head::Prepared {
@@ -244,7 +244,7 @@ fn html_response(
 		client_build_id: expected_client_build_id.to_owned(),
 		is_dev: is_dev(),
 		deployment_id: vercel_deployment_id(),
-		loader_payload: payload.clone(),
+		view_payload: payload.clone(),
 	};
 	let payload_json = json_for_script(&ssr_payload)?;
 	let data_json_el = Element {
@@ -394,7 +394,7 @@ pub(crate) fn build_api_response<E>(
 		let data = input
 			.result
 			.data()
-			.ok_or_else(|| "missing API route data".to_owned())?;
+			.ok_or_else(|| "missing resource data".to_owned())?;
 		json_response(
 			StatusCode::OK,
 			Bytes::from(serde_json::to_vec(data).map_err(|err| err.to_string())?),

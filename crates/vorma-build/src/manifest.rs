@@ -9,7 +9,7 @@ use walkdir::WalkDir;
 use crate::config::{VormaCfg, relative_path};
 use crate::constants::DEV_LOOPBACK_HOST;
 use crate::generation::{LiveMetadata, StaticMetadata};
-use crate::ts_modules::TsRoute;
+use crate::ts_modules::TsViewModule;
 use crate::utils::write_json_to_file;
 use crate::viteutil::ViteManifest;
 
@@ -22,7 +22,7 @@ pub(crate) struct ManifestInput {
 	pub(crate) vite_server_port: i32,
 	pub(crate) dev_mux_port: i32,
 	pub(crate) dev_refresh_token: String,
-	pub(crate) ts_modules: BTreeMap<String, TsRoute>,
+	pub(crate) ts_modules: BTreeMap<String, TsViewModule>,
 	pub(crate) pub_fm: BTreeMap<String, String>,
 	pub(crate) critical_css: String,
 	pub(crate) search_schemas: BTreeMap<String, serde_json::Value>,
@@ -43,7 +43,7 @@ impl ManifestInput {
 			vite_server_port,
 			dev_mux_port,
 			dev_refresh_token,
-			ts_modules: live.route_modules.clone(),
+			ts_modules: live.view_modules.clone(),
 			pub_fm: static_metadata.public_filemap.clone(),
 			critical_css: static_metadata.critical_css.clone(),
 			search_schemas: live.search_schemas.clone(),
@@ -74,7 +74,7 @@ pub(crate) fn prepare_manifest(
 		return Err("dev manifest requires Vite server port".to_owned());
 	}
 
-	let mut ts_routes = BTreeMap::new();
+	let mut ts_views = BTreeMap::new();
 
 	let (ts_entry_cm, client_core_assets) = if input.is_dev {
 		let to_url = |p: &str| -> String {
@@ -101,11 +101,11 @@ pub(crate) fn prepare_manifest(
 			)
 			.ok_or_else(|| {
 				format!(
-					"error getting relative path for TS route (pattern: {}, import path: {})",
+					"error getting relative path for TS view (pattern: {}, import path: {})",
 					pattern, r.import_path,
 				)
 			})?;
-			ts_routes.insert(
+			ts_views.insert(
 				pattern.clone(),
 				ClientModule {
 					url: to_url(&ip_rel.to_string_lossy()),
@@ -130,12 +130,12 @@ pub(crate) fn prepare_manifest(
 			.map_err(|err| format!("error processing TS entry module for manifest: {err}"))?;
 
 		for (pattern, r) in &input.ts_modules {
-			ts_routes.insert(
+			ts_views.insert(
 				pattern.clone(),
 				cfg.to_client_module(&vite_manifest, &r.import_path)
 					.map_err(|err| {
 						format!(
-							"error processing TS route module for manifest (pattern: {}, import path: {}): {}",
+							"error processing TS view module for manifest (pattern: {}, import path: {}): {}",
 							pattern, r.import_path, err,
 						)
 					})?,
@@ -160,7 +160,7 @@ pub(crate) fn prepare_manifest(
 		search_schemas: input.search_schemas.clone(),
 		client_entry: ts_entry_cm,
 		client_core_assets,
-		client_routes: ts_routes,
+		client_views: ts_views,
 		..Manifest::default()
 	};
 
@@ -355,7 +355,7 @@ fn manifest_client_asset_urls(manifest: &Manifest) -> Vec<&String> {
 		urls.push(&assets.module_url);
 		urls.push(&assets.wasm_url);
 	}
-	for module in manifest.client_routes.values() {
+	for module in manifest.client_views.values() {
 		push_client_module_urls(&mut urls, module);
 	}
 	urls
@@ -593,7 +593,7 @@ mod tests {
 			root_document_hash_source: "\n<html></html>\n".to_owned(),
 			ts_modules: BTreeMap::from([(
 				"/item/:id".to_owned(),
-				TsRoute {
+				TsViewModule {
 					pattern: "/item/:id".to_owned(),
 					import_path: "src/item.tsx".to_owned(),
 					deps: Vec::new(),
@@ -615,7 +615,7 @@ mod tests {
 			"http://127.0.0.1:5173/src/entry.tsx"
 		);
 		assert_eq!(
-			manifest.client_routes["/item/:id"].url,
+			manifest.client_views["/item/:id"].url,
 			"http://127.0.0.1:5173/src/item.tsx"
 		);
 		assert_eq!(manifest.dev_vite_server_port, 5173);
@@ -836,7 +836,7 @@ mod tests {
 			root_document_hash_source: "<html></html>".to_owned(),
 			ts_modules: BTreeMap::from([(
 				"/item/:id".to_owned(),
-				TsRoute {
+				TsViewModule {
 					pattern: "/item/:id".to_owned(),
 					import_path: "src/item.tsx".to_owned(),
 					deps: Vec::new(),
@@ -863,7 +863,7 @@ mod tests {
 			["/static/assets/entry.css"]
 		);
 		assert_eq!(
-			manifest.client_routes["/item/:id"].url,
+			manifest.client_views["/item/:id"].url,
 			"/static/assets/item.js"
 		);
 		assert_eq!(

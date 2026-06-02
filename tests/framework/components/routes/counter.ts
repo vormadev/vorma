@@ -1,25 +1,25 @@
 import { ui } from "../../route_factory.ts";
 import {
-	action_count_pattern,
 	counter_href,
 	counter_next,
 	counter_previous,
 	dynamic,
 	h,
 	klass,
-	loader_box,
-	route_counter_pattern,
+	resource_count_pattern,
 	text_state,
+	view_counter_pattern,
+	view_data_box,
 } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_counter_pattern,
+	pattern: view_counter_pattern,
 	component: (props: any) => {
-		const data = loader_box(props);
-		const action_next = text_state("");
+		const data = view_data_box(props);
+		const resource_next = text_state("");
 		return h(
 			"section",
-			{ ...klass("panel"), "data-bmb-route": "counter" },
+			{ ...klass("panel"), "data-bmb-view": "counter" },
 			h("h2", null, "Counter"),
 			h(
 				"div",
@@ -85,56 +85,56 @@ export default ui.defineView({
 					"button",
 					{
 						...klass("button"),
-						"data-bmb-action": "count-action-low",
+						"data-bmb-action": "count-resource-low",
 						type: "button",
 						onClick: () => {
 							void ui.apiClient
 								.query({
 									method: "GET",
-									pattern: action_count_pattern,
+									pattern: resource_count_pattern,
 									input: { delta: -9 },
 								})
 								.then((result: any) => {
 									if (result.success) {
-										action_next.set(String(result.data.Next));
+										resource_next.set(String(result.data.Next));
 										return;
 									}
-									action_next.set(result.error);
+									resource_next.set(result.error);
 								});
 						},
 					},
-					"Action low",
+					"Resource low",
 				),
 				h(
 					"button",
 					{
 						...klass("button"),
-						"data-bmb-action": "count-action-high",
+						"data-bmb-action": "count-resource-high",
 						type: "button",
 						onClick: () => {
 							void ui.apiClient
 								.query({
 									method: "GET",
-									pattern: action_count_pattern,
+									pattern: resource_count_pattern,
 									input: { delta: 9 },
 								})
 								.then((result: any) => {
 									if (result.success) {
-										action_next.set(String(result.data.Next));
+										resource_next.set(String(result.data.Next));
 										return;
 									}
-									action_next.set(result.error);
+									resource_next.set(result.error);
 								});
 						},
 					},
-					"Action high",
+					"Resource high",
 				),
 			),
 			h(
 				"div",
-				{ ...klass("status"), "data-bmb-count-action-next": true },
+				{ ...klass("status"), "data-bmb-count-resource-next": true },
 				dynamic(() => {
-					return action_next.value();
+					return resource_next.value();
 				}),
 			),
 		);

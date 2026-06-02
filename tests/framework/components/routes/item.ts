@@ -1,15 +1,15 @@
 import { ui } from "../../route_factory.ts";
-import { dynamic, h, klass, loader_box, route_item_pattern } from "./support.ts";
+import { dynamic, h, klass, view_data_box, view_item_pattern } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_item_pattern,
+	pattern: view_item_pattern,
 	component: (props: any) => {
-		const data = loader_box(props);
+		const data = view_data_box(props);
 		return h(
 			"section",
 			{
 				...klass("panel"),
-				"data-bmb-route": "item",
+				"data-bmb-view": "item",
 				"data-bmb-item-id": dynamic(() => {
 					return data().ID;
 				}),

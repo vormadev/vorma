@@ -24,11 +24,11 @@ use super::error::{Error, RouteExecutionError};
 #[cfg(test)]
 use super::input::InputParser;
 use super::middleware::{
-	TaskMiddlewareInvocation, TaskMw, merge_owned_proxy_responses, run_task_middleware_entries,
+	Middleware, MiddlewareInvocation, merge_owned_proxy_responses, run_middleware_entries,
 };
 use super::request::{RawRequest, RouteMatch, route_match};
 #[cfg(test)]
-use super::task::typed_task_handler;
+use super::task::typed_handler;
 use super::task::{ErasedTask, proxy_for_task_output, run_erased_task};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,7 +52,7 @@ pub struct Router<S = (), E = Box<dyn std::error::Error + Send + Sync>> {
 	matcher_options: MatcherOptions,
 	mount_root: String,
 	method_matchers: HashMap<Method, MethodMatcher<S, E>>,
-	task_mws: Vec<TaskMw<S, E>>,
+	middlewares: Vec<Middleware<S, E>>,
 }
 
 impl<S, E> Router<S, E>
@@ -73,12 +73,12 @@ where
 			matcher_options,
 			mount_root,
 			method_matchers: HashMap::new(),
-			task_mws: Vec::new(),
+			middlewares: Vec::new(),
 		})
 	}
 
 	#[cfg(test)]
-	pub fn add_task_handler<I, F, Fut, O>(
+	pub fn add_handler<I, F, Fut, O>(
 		&mut self,
 		method: Method,
 		pattern: impl Into<String>,
@@ -91,25 +91,25 @@ where
 		Fut: Future<Output = Result<O, RouteExecutionError<E>>> + Send + 'static,
 		O: Serialize + Send + Sync + 'static,
 	{
-		self.add_task_handler_entry(method, pattern, typed_task_handler(parser, handler))
+		self.add_handler_entry(method, pattern, typed_handler(parser, handler))
 	}
 
 	#[cfg(test)]
-	pub(crate) fn use_task_middleware<F, Fut, O>(&mut self, handler: F) -> Result<(), Error>
+	pub(crate) fn use_middleware<F, Fut, O>(&mut self, handler: F) -> Result<(), Error>
 	where
 		F: Fn(RequestCtx<S, E, None>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = TaskResult<O, E>> + Send + 'static,
 		O: Send + Sync + 'static,
 	{
-		self.use_task_middleware_entry(&TaskMw::new(handler));
+		self.use_middleware_entry(&Middleware::new(handler));
 		Ok(())
 	}
 
-	pub(crate) fn use_task_middleware_entry(&mut self, entry: &TaskMw<S, E>) {
-		self.task_mws.push(entry.clone());
+	pub(crate) fn use_middleware_entry(&mut self, entry: &Middleware<S, E>) {
+		self.middlewares.push(entry.clone());
 	}
 
-	pub(crate) fn add_task_handler_entry(
+	pub(crate) fn add_handler_entry(
 		&mut self,
 		method: Method,
 		pattern: impl Into<String>,
@@ -125,12 +125,9 @@ where
 			.register_pattern(&pattern)
 			.map_err(Error::InvalidPattern)?;
 		method_matcher.matcher = method_matcher.matcher_builder.clone().finish();
-		method_matcher.routes.insert(
-			pattern,
-			RouteEntry {
-				task_handler: handler,
-			},
-		);
+		method_matcher
+			.routes
+			.insert(pattern, RouteEntry { handler });
 		Ok(())
 	}
 
@@ -188,7 +185,7 @@ where
 			|| (method == Method::HEAD && self.method_matchers.contains_key(&Method::GET))
 	}
 
-	pub async fn execute_task_route(
+	pub async fn execute_route(
 		&self,
 		request: RawRequest,
 		state: Arc<S>,
@@ -207,9 +204,9 @@ where
 			.get(route_match.original_pattern())
 			.ok_or_else(|| Error::RouteNotFound(route_match.original_pattern().to_owned()))?;
 
-		let middleware_entries = self.collect_task_middleware(route_match.original_pattern());
+		let middleware_entries = self.collect_middleware(route_match.original_pattern());
 		let middleware_proxy = self
-			.run_task_middleware(
+			.run_middleware(
 				&request,
 				&route_match,
 				state.clone(),
@@ -232,7 +229,7 @@ where
 
 		let proxy = Arc::new(Mutex::new(Proxy::new()));
 		let handler_run = run_erased_task(
-			route.task_handler.clone(),
+			route.handler.clone(),
 			request,
 			RequestBase {
 				matched_pattern: route_match.original_pattern().to_owned(),
@@ -273,27 +270,24 @@ where
 		&self.mount_root
 	}
 
-	fn collect_task_middleware(
-		&self,
-		matched_pattern: &str,
-	) -> Vec<TaskMiddlewareInvocation<S, E>> {
-		let mut out = Vec::with_capacity(self.task_mws.len());
-		for entry in &self.task_mws {
-			out.push(TaskMiddlewareInvocation::new(entry, matched_pattern));
+	fn collect_middleware(&self, matched_pattern: &str) -> Vec<MiddlewareInvocation<S, E>> {
+		let mut out = Vec::with_capacity(self.middlewares.len());
+		for entry in &self.middlewares {
+			out.push(MiddlewareInvocation::new(entry, matched_pattern));
 		}
 		out
 	}
 
-	async fn run_task_middleware(
+	async fn run_middleware(
 		&self,
 		request: &RawRequest,
 		route_match: &RouteMatch,
 		state: Arc<S>,
 		exec_ctx: ExecCtx<E>,
 		public_filemap: Arc<BTreeMap<String, String>>,
-		middleware_entries: Vec<TaskMiddlewareInvocation<S, E>>,
+		middleware_entries: Vec<MiddlewareInvocation<S, E>>,
 	) -> Result<Proxy, Error> {
-		run_task_middleware_entries(
+		run_middleware_entries(
 			request,
 			state,
 			exec_ctx,
@@ -357,7 +351,7 @@ struct MethodMatcher<S, E> {
 }
 
 struct RouteEntry<S, E> {
-	task_handler: Arc<dyn ErasedTask<S, E>>,
+	handler: Arc<dyn ErasedTask<S, E>>,
 }
 
 pub struct TaskRouteResult<E> {

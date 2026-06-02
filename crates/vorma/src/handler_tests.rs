@@ -11,7 +11,7 @@ use vorma_tasks::{CancelToken, Tasks, TasksOptions};
 
 use super::*;
 use crate::constants::X_VORMA_CLIENT_BUILD_ID;
-use crate::error::{LoaderError, LoaderErrorClientMsg};
+use crate::error::{ViewError, ViewErrorClientMsg};
 use crate::manifest::{ClientCoreAssets, ClientModule, Manifest};
 use crate::mux::{InputParser, RawRequest, Router};
 
@@ -23,9 +23,9 @@ fn boxed_exec_ctx() -> vorma_tasks::ExecCtx<Box<dyn Error + Send + Sync>> {
 	Tasks::new(TasksOptions::default()).exec_ctx(CancelToken::new())
 }
 
-fn manifest_with_routes(routes: &[(&str, &str)]) -> Manifest {
+fn manifest_with_views(views: &[(&str, &str)]) -> Manifest {
 	Manifest {
-		client_routes: routes
+		client_views: views
 			.iter()
 			.map(|(pattern, url)| {
 				(
@@ -37,7 +37,7 @@ fn manifest_with_routes(routes: &[(&str, &str)]) -> Manifest {
 				)
 			})
 			.collect(),
-		search_schemas: routes
+		search_schemas: views
 			.iter()
 			.map(|(pattern, _)| ((*pattern).to_owned(), serde_json::Value::Null))
 			.collect(),
@@ -45,13 +45,13 @@ fn manifest_with_routes(routes: &[(&str, &str)]) -> Manifest {
 	}
 }
 
-fn manifest_with_client_route_modules(routes: &[(&str, ClientModule)]) -> Manifest {
+fn manifest_with_client_view_modules(views: &[(&str, ClientModule)]) -> Manifest {
 	Manifest {
-		client_routes: routes
+		client_views: views
 			.iter()
 			.map(|(pattern, module)| ((*pattern).to_owned(), module.clone()))
 			.collect(),
-		search_schemas: routes
+		search_schemas: views
 			.iter()
 			.map(|(pattern, _)| ((*pattern).to_owned(), serde_json::Value::Null))
 			.collect(),
@@ -59,7 +59,7 @@ fn manifest_with_client_route_modules(routes: &[(&str, ClientModule)]) -> Manife
 	}
 }
 
-fn api_get(path: &str) -> RawRequest {
+fn resource_get(path: &str) -> RawRequest {
 	RawRequest::get(api_path(path))
 }
 
@@ -80,14 +80,14 @@ fn api_path(path: &str) -> String {
 #[derive(Debug)]
 struct EmptyClientMsgError;
 
-impl LoaderErrorClientMsg for EmptyClientMsgError {
-	fn loader_error_client_msg(&self) -> Option<&str> {
+impl ViewErrorClientMsg for EmptyClientMsgError {
+	fn view_error_client_msg(&self) -> Option<&str> {
 		Some("")
 	}
 }
 
 #[test]
-fn build_view_skew_response_reports_stale_client_build_before_loader_work() {
+fn build_view_skew_response_reports_stale_client_build_before_view_handler_work() {
 	let uri = "/items?vorma-json=old-build".parse::<Uri>().unwrap();
 	let response = build_view_skew_response(&uri, "current-build")
 		.unwrap()
@@ -127,7 +127,7 @@ fn build_view_skew_response_reports_stale_client_build_before_loader_work() {
 async fn build_api_response_serializes_json_value() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/ping",
 			InputParser::<()>::default_input(),
@@ -136,8 +136,8 @@ async fn build_api_response_serializes_json_value() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
-			api_get("/ping"),
+		.execute_route(
+			resource_get("/ping"),
 			Arc::new(()),
 			exec_ctx(),
 			Arc::new(BTreeMap::new()),
@@ -163,7 +163,7 @@ async fn build_api_response_serializes_json_value() {
 async fn build_api_response_middleware_success_status_does_not_short_circuit_handler() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::ACCEPTED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -174,7 +174,7 @@ async fn build_api_response_middleware_success_status_does_not_short_circuit_han
 		})
 		.unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/success",
 			InputParser::<()>::default_input(),
@@ -187,8 +187,8 @@ async fn build_api_response_middleware_success_status_does_not_short_circuit_han
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
-			api_get("/success"),
+		.execute_route(
+			resource_get("/success"),
 			Arc::new(()),
 			exec_ctx(),
 			Arc::new(BTreeMap::new()),
@@ -211,7 +211,7 @@ async fn build_api_response_middleware_success_status_does_not_short_circuit_han
 async fn build_api_response_short_circuits_proxy_redirects() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::POST,
 			"/sessions",
 			InputParser::<()>::default_input(),
@@ -225,7 +225,7 @@ async fn build_api_response_short_circuits_proxy_redirects() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request(Method::POST, "/sessions"),
 			Arc::new(()),
 			exec_ctx(),
@@ -249,7 +249,7 @@ async fn build_api_response_short_circuits_proxy_redirects() {
 async fn build_api_response_task_errors_are_internal_server_errors() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/boom",
 			InputParser::<()>::default_input(),
@@ -260,8 +260,8 @@ async fn build_api_response_task_errors_are_internal_server_errors() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
-			api_get("/boom"),
+		.execute_route(
+			resource_get("/boom"),
 			Arc::new(()),
 			exec_ctx(),
 			Arc::new(BTreeMap::new()),
@@ -286,7 +286,7 @@ async fn build_api_response_task_errors_are_internal_server_errors() {
 async fn build_api_response_preserves_handler_owned_error_proxy() {
 	let mut router = Router::<(), Box<dyn Error + Send + Sync>>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::POST,
 			"/bad",
 			InputParser::<()>::default_input(),
@@ -307,7 +307,7 @@ async fn build_api_response_preserves_handler_owned_error_proxy() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request(Method::POST, "/bad"),
 			Arc::new(()),
 			boxed_exec_ctx(),
@@ -333,7 +333,7 @@ async fn build_api_response_preserves_handler_owned_error_proxy() {
 async fn build_api_response_preserves_handler_owned_redirect_proxy_on_error() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::POST,
 			"/redirect",
 			InputParser::<()>::default_input(),
@@ -353,7 +353,7 @@ async fn build_api_response_preserves_handler_owned_redirect_proxy_on_error() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request(Method::POST, "/redirect"),
 			Arc::new(()),
 			exec_ctx(),
@@ -378,7 +378,7 @@ async fn build_api_response_preserves_handler_owned_redirect_proxy_on_error() {
 async fn build_api_response_suppresses_success_proxy_when_handler_errors() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::CREATED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -391,7 +391,7 @@ async fn build_api_response_suppresses_success_proxy_when_handler_errors() {
 		})
 		.unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::POST,
 			"/boom",
 			InputParser::<()>::default_input(),
@@ -410,7 +410,7 @@ async fn build_api_response_suppresses_success_proxy_when_handler_errors() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request(Method::POST, "/boom"),
 			Arc::new(()),
 			exec_ctx(),
@@ -440,7 +440,7 @@ async fn build_api_response_suppresses_success_proxy_when_handler_errors() {
 async fn build_api_response_does_not_double_apply_successful_proxy_short_circuit() {
 	let mut router = Router::<(), Box<dyn Error + Send + Sync>>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::POST,
 			"/drifted",
 			InputParser::<()>::default_input(),
@@ -455,7 +455,7 @@ async fn build_api_response_does_not_double_apply_successful_proxy_short_circuit
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request(Method::POST, "/drifted"),
 			Arc::new(()),
 			boxed_exec_ctx(),
@@ -480,7 +480,7 @@ async fn build_api_response_does_not_double_apply_successful_proxy_short_circuit
 async fn build_api_response_set_headers_replace_existing_response_headers() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/typed",
 			InputParser::<()>::default_input(),
@@ -495,8 +495,8 @@ async fn build_api_response_set_headers_replace_existing_response_headers() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
-			api_get("/typed"),
+		.execute_route(
+			resource_get("/typed"),
 			Arc::new(()),
 			exec_ctx(),
 			Arc::new(BTreeMap::new()),
@@ -522,7 +522,7 @@ async fn build_api_response_set_headers_replace_existing_response_headers() {
 async fn build_api_response_input_bad_request_errors_are_bad_requests() {
 	let mut router = Router::<(), &'static str>::new(Default::default()).unwrap();
 	router
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::CREATED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -535,7 +535,7 @@ async fn build_api_response_input_bad_request_errors_are_bad_requests() {
 		})
 		.unwrap();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/bad",
 			InputParser::<()>::callback(|_| Err(crate::mux::InputError::bad_request("bad input"))),
@@ -544,8 +544,8 @@ async fn build_api_response_input_bad_request_errors_are_bad_requests() {
 		.unwrap();
 
 	let result = router
-		.execute_task_route(
-			api_get("/bad"),
+		.execute_route(
+			resource_get("/bad"),
 			Arc::new(()),
 			exec_ctx(),
 			Arc::new(BTreeMap::new()),
@@ -566,18 +566,18 @@ async fn build_api_response_input_bad_request_errors_are_bad_requests() {
 }
 
 #[tokio::test]
-async fn build_view_response_exposes_loader_error_client_msg() {
+async fn build_view_response_exposes_view_error_client_msg() {
 	let mut views = crate::mux::NestedRouter::<(), Box<dyn Error + Send + Sync>>::default();
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), |_| async {
-			let error: Box<dyn Error + Send + Sync> = Box::new(LoaderError {
+		.add_handler("/items", InputParser::<()>::default_input(), |_| async {
+			let error: Box<dyn Error + Send + Sync> = Box::new(ViewError {
 				client_msg: "client visible".to_owned(),
 				err: Some("server hidden".into()),
 			});
 			Err::<Value, _>(RouteExecutionError::Task(vorma_tasks::Error::from(error)))
 		})
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js")]);
 	let document = Document::new();
 
 	let response = build_view_response(ViewResponseInput {
@@ -602,7 +602,7 @@ async fn build_view_response_exposes_loader_error_client_msg() {
 async fn build_view_response_input_bad_request_errors_are_bad_requests() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::CREATED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -615,13 +615,13 @@ async fn build_view_response_input_bad_request_errors_are_bad_requests() {
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::callback(|_| Err(crate::mux::InputError::bad_request("bad input"))),
 			|_| async { Ok(json!({"unused": true})) },
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js")]);
 	let document = Document::new();
 	let exec_ctx = Tasks::new(TasksOptions::default()).exec_ctx(CancelToken::new());
 
@@ -645,10 +645,10 @@ async fn build_view_response_input_bad_request_errors_are_bad_requests() {
 }
 
 #[tokio::test]
-async fn build_view_response_terminal_middleware_does_not_require_route_modules() {
+async fn build_view_response_terminal_middleware_does_not_require_view_modules() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.redirect(false, "/login", Some(StatusCode::FOUND))
 				.unwrap();
@@ -656,7 +656,7 @@ async fn build_view_response_terminal_middleware_does_not_require_route_modules(
 		})
 		.unwrap();
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), |_| async {
+		.add_handler("/items", InputParser::<()>::default_input(), |_| async {
 			Ok(json!({"unused": true}))
 		})
 		.unwrap();
@@ -680,10 +680,10 @@ async fn build_view_response_terminal_middleware_does_not_require_route_modules(
 }
 
 #[tokio::test]
-async fn build_view_response_middleware_success_status_does_not_short_circuit_loaders() {
+async fn build_view_response_middleware_success_status_does_not_short_circuit_view_handlers() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::ACCEPTED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -694,7 +694,7 @@ async fn build_view_response_middleware_success_status_does_not_short_circuit_lo
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -704,7 +704,7 @@ async fn build_view_response_middleware_success_status_does_not_short_circuit_lo
 			},
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js")]);
 
 	let response = build_view_response(ViewResponseInput {
 		expected_client_build_id: "build-id",
@@ -722,14 +722,14 @@ async fn build_view_response_middleware_success_status_does_not_short_circuit_lo
 
 	assert_eq!(response.status(), StatusCode::CREATED);
 	assert_eq!(response.headers().get("x-middleware").unwrap(), "kept");
-	assert_eq!(payload["loaders_data"], json!([{"loaded": true}]));
+	assert_eq!(payload["views_data"], json!([{"loaded": true}]));
 }
 
 #[tokio::test]
 async fn build_view_response_preserves_handler_owned_error_proxy() {
 	let mut views = crate::mux::NestedRouter::<(), Box<dyn Error + Send + Sync>>::default();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -745,7 +745,7 @@ async fn build_view_response_preserves_handler_owned_error_proxy() {
 			},
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js")]);
 	let document = Document::new();
 
 	let response = build_view_response(ViewResponseInput {
@@ -774,7 +774,7 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_redire
 	let child_started_for_child = child_started.clone();
 
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), move |ctx| {
+		.add_handler("/items", InputParser::<()>::default_input(), move |ctx| {
 			let child_started = child_started_for_parent.clone();
 			async move {
 				child_started.notified().await;
@@ -786,7 +786,7 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_redire
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			move |ctx| {
@@ -802,7 +802,7 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_redire
 			},
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]);
 	let document = Document::new();
 
 	let response = build_view_response(ViewResponseInput {
@@ -824,14 +824,14 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_redire
 }
 
 #[tokio::test]
-async fn build_view_response_suppresses_descendant_effects_after_ancestor_loader_error() {
+async fn build_view_response_suppresses_descendant_effects_after_ancestor_view_error() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	let child_started = Arc::new(Notify::new());
 	let child_started_for_parent = child_started.clone();
 	let child_started_for_child = child_started.clone();
 
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), move |_| {
+		.add_handler("/items", InputParser::<()>::default_input(), move |_| {
 			let child_started = child_started_for_parent.clone();
 			async move {
 				child_started.notified().await;
@@ -842,7 +842,7 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_loader
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			move |ctx| {
@@ -858,7 +858,7 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_loader
 			},
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]);
 	let document = Document::new();
 
 	let response = build_view_response(ViewResponseInput {
@@ -883,7 +883,7 @@ async fn build_view_response_suppresses_descendant_effects_after_ancestor_loader
 	);
 	assert_eq!(payload["outermost_server_err_idx"], 0);
 	assert_eq!(payload["import_urls"], json!(["/items.js"]));
-	assert!(payload.get("loaders_data").is_none());
+	assert!(payload.get("views_data").is_none());
 }
 
 #[tokio::test]
@@ -891,7 +891,7 @@ async fn build_view_response_deepest_success_status_wins_and_keeps_all_success_e
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -906,7 +906,7 @@ async fn build_view_response_deepest_success_status_wins_and_keeps_all_success_e
 		)
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -927,7 +927,7 @@ async fn build_view_response_deepest_success_status_wins_and_keeps_all_success_e
 		state: Arc::new(()),
 		exec_ctx: exec_ctx(),
 		views: &views,
-		manifest: &manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
+		manifest: &manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
 		document: &Document::new(),
 		public_filemap: Arc::new(BTreeMap::new()),
 	})
@@ -939,7 +939,7 @@ async fn build_view_response_deepest_success_status_wins_and_keeps_all_success_e
 	assert_eq!(response.headers().get("x-parent").unwrap(), "1");
 	assert_eq!(response.headers().get("x-child").unwrap(), "1");
 	assert_eq!(
-		payload["loaders_data"],
+		payload["views_data"],
 		json!([{"parent": true}, {"child": true}])
 	);
 }
@@ -949,7 +949,7 @@ async fn build_view_response_child_redirect_keeps_parent_effects_and_short_circu
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -962,7 +962,7 @@ async fn build_view_response_child_redirect_keeps_parent_effects_and_short_circu
 		)
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -980,7 +980,7 @@ async fn build_view_response_child_redirect_keeps_parent_effects_and_short_circu
 		state: Arc::new(()),
 		exec_ctx: exec_ctx(),
 		views: &views,
-		manifest: &manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
+		manifest: &manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
 		document: &Document::new(),
 		public_filemap: Arc::new(BTreeMap::new()),
 	})
@@ -1004,7 +1004,7 @@ async fn build_view_response_child_redirect_waits_for_parent_success_effects() {
 	let child_redirected_for_child = child_redirected.clone();
 
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), move |ctx| {
+		.add_handler("/items", InputParser::<()>::default_input(), move |ctx| {
 			let parent_started = parent_started_for_parent.clone();
 			let child_redirected = child_redirected_for_parent.clone();
 			async move {
@@ -1019,7 +1019,7 @@ async fn build_view_response_child_redirect_waits_for_parent_success_effects() {
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			move |ctx| {
@@ -1045,7 +1045,7 @@ async fn build_view_response_child_redirect_waits_for_parent_success_effects() {
 			state: Arc::new(()),
 			exec_ctx: exec_ctx(),
 			views: &views,
-			manifest: &manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
+			manifest: &manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
 			document: &Document::new(),
 			public_filemap: Arc::new(BTreeMap::new()),
 		}),
@@ -1068,7 +1068,7 @@ async fn build_view_response_parent_error_status_suppresses_finished_child_effec
 	let child_started_for_child = child_started.clone();
 
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), move |ctx| {
+		.add_handler("/items", InputParser::<()>::default_input(), move |ctx| {
 			let child_started = child_started_for_parent.clone();
 			async move {
 				child_started.notified().await;
@@ -1083,7 +1083,7 @@ async fn build_view_response_parent_error_status_suppresses_finished_child_effec
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			move |ctx| {
@@ -1106,7 +1106,7 @@ async fn build_view_response_parent_error_status_suppresses_finished_child_effec
 		state: Arc::new(()),
 		exec_ctx: exec_ctx(),
 		views: &views,
-		manifest: &manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
+		manifest: &manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]),
 		document: &Document::new(),
 		public_filemap: Arc::new(BTreeMap::new()),
 	})
@@ -1127,7 +1127,7 @@ async fn build_view_response_erroring_child_suppresses_own_success_effects_and_g
 	let grandchild_started_for_grandchild = grandchild_started.clone();
 
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -1140,7 +1140,7 @@ async fn build_view_response_erroring_child_suppresses_own_success_effects_and_g
 		)
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			move |ctx| {
@@ -1161,7 +1161,7 @@ async fn build_view_response_erroring_child_suppresses_own_success_effects_and_g
 		)
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id/details",
 			InputParser::<()>::default_input(),
 			move |ctx| {
@@ -1184,7 +1184,7 @@ async fn build_view_response_erroring_child_suppresses_own_success_effects_and_g
 		state: Arc::new(()),
 		exec_ctx: exec_ctx(),
 		views: &views,
-		manifest: &manifest_with_routes(&[
+		manifest: &manifest_with_views(&[
 			("/items", "/items.js"),
 			("/items/:id", "/item.js"),
 			("/items/:id/details", "/details.js"),
@@ -1206,27 +1206,27 @@ async fn build_view_response_erroring_child_suppresses_own_success_effects_and_g
 	);
 	assert_eq!(payload["outermost_server_err_idx"], 1);
 	assert_eq!(payload["import_urls"], json!(["/items.js", "/item.js"]));
-	assert_eq!(payload["loaders_data"], json!([{"parent": true}]));
+	assert_eq!(payload["views_data"], json!([{"parent": true}]));
 }
 
 #[tokio::test]
 async fn build_view_response_keeps_match_metadata_when_payload_truncates_on_parent_error() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), |_| async {
+		.add_handler("/items", InputParser::<()>::default_input(), |_| async {
 			Err::<Value, _>(RouteExecutionError::Task(vorma_tasks::Error::from(
 				"parent failed",
 			)))
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			|_| async { Ok(json!({"child": true})) },
 		)
 		.unwrap();
-	let mut manifest = manifest_with_routes(&[("/items", "/items.js"), ("/items/:id", "/item.js")]);
+	let mut manifest = manifest_with_views(&[("/items", "/items.js"), ("/items/:id", "/item.js")]);
 	manifest
 		.search_schemas
 		.insert("/items".to_owned(), json!({"parent": "schema"}));
@@ -1257,19 +1257,19 @@ async fn build_view_response_keeps_match_metadata_when_payload_truncates_on_pare
 	);
 	assert_eq!(payload["outermost_server_err_idx"], 0);
 	assert_eq!(payload["import_urls"], json!(["/items.js"]));
-	assert!(payload.get("loaders_data").is_none());
+	assert!(payload.get("views_data").is_none());
 }
 
 #[tokio::test]
 async fn build_view_response_errors_when_manifest_missing_search_schema_for_matched_pattern() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.add_task_handler("/", InputParser::<()>::default_input(), |_| async {
+		.add_handler("/", InputParser::<()>::default_input(), |_| async {
 			Ok(json!({"root": true}))
 		})
 		.unwrap();
 	let manifest = Manifest {
-		client_routes: BTreeMap::from([(
+		client_views: BTreeMap::from([(
 			"/".to_owned(),
 			ClientModule {
 				url: "/root.js".to_owned(),
@@ -1296,15 +1296,15 @@ async fn build_view_response_errors_when_manifest_missing_search_schema_for_matc
 }
 
 #[tokio::test]
-async fn build_view_response_truncates_route_assets_after_first_loader_error() {
+async fn build_view_response_truncates_route_assets_after_first_view_error() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.add_task_handler("/items", InputParser::<()>::default_input(), |_| async {
+		.add_handler("/items", InputParser::<()>::default_input(), |_| async {
 			Ok(json!({"parent": true}))
 		})
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			|_| async {
@@ -1315,13 +1315,13 @@ async fn build_view_response_truncates_route_assets_after_first_loader_error() {
 		)
 		.unwrap();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id/details",
 			InputParser::<()>::default_input(),
 			|_| async { Ok(json!({"grandchild": true})) },
 		)
 		.unwrap();
-	let mut manifest = manifest_with_client_route_modules(&[
+	let mut manifest = manifest_with_client_view_modules(&[
 		(
 			"/items",
 			ClientModule {
@@ -1374,20 +1374,20 @@ async fn build_view_response_truncates_route_assets_after_first_loader_error() {
 		payload["css_bundles"],
 		json!(["/entry.css", "/parent.css", "/child.css"])
 	);
-	assert_eq!(payload["loaders_data"], json!([{"parent": true}]));
+	assert_eq!(payload["views_data"], json!([{"parent": true}]));
 }
 
 #[tokio::test]
 async fn build_view_response_prod_html_preloads_dedupe_route_and_core_assets() {
 	let mut views = crate::mux::NestedRouter::<(), &'static str>::default();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items/:id",
 			InputParser::<()>::default_input(),
 			|_| async { Ok(json!({"id": "123"})) },
 		)
 		.unwrap();
-	let mut manifest = manifest_with_client_route_modules(&[(
+	let mut manifest = manifest_with_client_view_modules(&[(
 		"/items/:id",
 		ClientModule {
 			url: "/items.js".to_owned(),
@@ -1453,10 +1453,10 @@ fn vite_dev_origin_preserves_ipv6_loopback_brackets() {
 }
 
 #[tokio::test]
-async fn build_view_response_suppresses_success_proxy_when_loader_errors() {
+async fn build_view_response_suppresses_success_proxy_when_view_errors() {
 	let mut views = crate::mux::NestedRouter::<(), Box<dyn Error + Send + Sync>>::default();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -1466,7 +1466,7 @@ async fn build_view_response_suppresses_success_proxy_when_loader_errors() {
 					http::header::HeaderName::from_static("x-view-header"),
 					http::HeaderValue::from_static("1"),
 				);
-				let error: Box<dyn Error + Send + Sync> = Box::new(LoaderError {
+				let error: Box<dyn Error + Send + Sync> = Box::new(ViewError {
 					client_msg: "client visible".to_owned(),
 					err: Option::None,
 				});
@@ -1474,7 +1474,7 @@ async fn build_view_response_suppresses_success_proxy_when_loader_errors() {
 			},
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js")]);
 	let document = Document::new();
 
 	let response = build_view_response(ViewResponseInput {
@@ -1497,10 +1497,10 @@ async fn build_view_response_suppresses_success_proxy_when_loader_errors() {
 }
 
 #[tokio::test]
-async fn build_view_response_detects_loader_error_by_index_not_message_text() {
+async fn build_view_response_detects_view_error_by_index_not_message_text() {
 	let mut views = crate::mux::NestedRouter::<(), EmptyClientMsgError>::default();
 	views
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::default_input(),
 			|ctx| async move {
@@ -1512,7 +1512,7 @@ async fn build_view_response_detects_loader_error_by_index_not_message_text() {
 			},
 		)
 		.unwrap();
-	let manifest = manifest_with_routes(&[("/items", "/items.js")]);
+	let manifest = manifest_with_views(&[("/items", "/items.js")]);
 	let document = Document::new();
 	let exec_ctx = Tasks::new(TasksOptions::default()).exec_ctx(CancelToken::new());
 

@@ -21,10 +21,10 @@ use super::context::RequestCtx;
 use super::error::{Error, RouteExecutionError};
 #[cfg(test)]
 use super::input::InputParser;
-use super::middleware::{TaskMiddlewareInvocation, TaskMw, run_task_middleware_entries};
+use super::middleware::{Middleware, MiddlewareInvocation, run_middleware_entries};
 use super::request::RawRequest;
 #[cfg(test)]
-use super::task::typed_task_handler;
+use super::task::typed_handler;
 use super::task::{
 	ErasedTask, proxy_for_task_output, record_bad_request_input_error, run_erased_task,
 	run_with_exec_cancellation,
@@ -49,24 +49,24 @@ impl Default for NestedOptions {
 
 pub struct NestedRoute<S = (), E = Box<dyn std::error::Error + Send + Sync>> {
 	original_pattern: String,
-	task_handler: Option<Arc<dyn ErasedTask<S, E>>>,
+	handler: Option<Arc<dyn ErasedTask<S, E>>>,
 }
 
 impl<S, E> Clone for NestedRoute<S, E> {
 	fn clone(&self) -> Self {
 		Self {
 			original_pattern: self.original_pattern.clone(),
-			task_handler: self.task_handler.clone(),
+			handler: self.handler.clone(),
 		}
 	}
 }
 
 impl<S, E> NestedRoute<S, E> {
 	#[cfg(test)]
-	pub fn without_task_handler(pattern: impl Into<String>) -> Self {
+	pub fn without_handler(pattern: impl Into<String>) -> Self {
 		Self {
 			original_pattern: pattern.into(),
-			task_handler: Option::None,
+			handler: Option::None,
 		}
 	}
 
@@ -75,8 +75,8 @@ impl<S, E> NestedRoute<S, E> {
 	}
 
 	#[cfg(test)]
-	pub fn has_task_handler(&self) -> bool {
-		self.task_handler.is_some()
+	pub fn has_handler(&self) -> bool {
+		self.handler.is_some()
 	}
 }
 
@@ -103,13 +103,13 @@ where
 				matcher_builder,
 				matcher,
 				routes: BTreeMap::new(),
-				task_mws: Vec::new(),
+				middlewares: Vec::new(),
 			},
 		})
 	}
 
 	#[cfg(test)]
-	pub fn add_task_handler<I, F, Fut, O>(
+	pub fn add_handler<I, F, Fut, O>(
 		&mut self,
 		pattern: impl Into<String>,
 		parser: InputParser<I>,
@@ -121,38 +121,38 @@ where
 		Fut: Future<Output = Result<O, RouteExecutionError<E>>> + Send + 'static,
 		O: Serialize + Send + Sync + 'static,
 	{
-		self.add_task_handler_entry(pattern, typed_task_handler(parser, handler))
+		self.add_handler_entry(pattern, typed_handler(parser, handler))
 	}
 
-	pub(crate) fn add_task_handler_entry(
+	pub(crate) fn add_handler_entry(
 		&mut self,
 		pattern: impl Into<String>,
 		handler: Arc<dyn ErasedTask<S, E>>,
 	) -> Result<(), Error> {
 		self.add_route(NestedRoute::<S, E> {
 			original_pattern: pattern.into(),
-			task_handler: Some(handler),
+			handler: Some(handler),
 		})
 	}
 
 	#[cfg(test)]
-	pub(crate) fn use_task_middleware<F, Fut, O>(&mut self, handler: F) -> Result<(), Error>
+	pub(crate) fn use_middleware<F, Fut, O>(&mut self, handler: F) -> Result<(), Error>
 	where
 		F: Fn(RequestCtx<S, E, None>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = TaskResult<O, E>> + Send + 'static,
 		O: Send + Sync + 'static,
 	{
-		self.use_task_middleware_entry(&TaskMw::new(handler));
+		self.use_middleware_entry(&Middleware::new(handler));
 		Ok(())
 	}
 
-	pub(crate) fn use_task_middleware_entry(&mut self, entry: &TaskMw<S, E>) {
-		self.inner.task_mws.push(entry.clone());
+	pub(crate) fn use_middleware_entry(&mut self, entry: &Middleware<S, E>) {
+		self.inner.middlewares.push(entry.clone());
 	}
 
 	#[cfg(test)]
 	pub fn add_pattern_without_handler(&mut self, pattern: impl Into<String>) -> Result<(), Error> {
-		self.add_route(NestedRoute::<S, E>::without_task_handler(pattern))
+		self.add_route(NestedRoute::<S, E>::without_handler(pattern))
 	}
 
 	fn add_route(&mut self, route: NestedRoute<S, E>) -> Result<(), Error> {
@@ -176,12 +176,12 @@ where
 	}
 
 	#[cfg(test)]
-	pub fn has_task_handler(&self, pattern: &str) -> Result<bool, Error> {
+	pub fn has_handler(&self, pattern: &str) -> Result<bool, Error> {
 		Ok(self
 			.inner
 			.routes
 			.get(pattern)
-			.is_some_and(NestedRoute::has_task_handler))
+			.is_some_and(NestedRoute::has_handler))
 	}
 
 	#[cfg(test)]
@@ -223,7 +223,7 @@ where
 				ran_task: false,
 			});
 
-			let Some(handler) = route.task_handler else {
+			let Some(handler) = route.handler else {
 				continue;
 			};
 			bound.push(NestedBoundTask {
@@ -235,7 +235,7 @@ where
 
 		let params = results.params.clone();
 		let splat_values = results.splat_values.clone();
-		let middleware_proxy = run_task_middleware_entries(
+		let middleware_proxy = run_middleware_entries(
 			&request,
 			state.clone(),
 			exec_ctx.clone(),
@@ -283,9 +283,9 @@ where
 			})?
 			.pattern
 			.original_pattern();
-		let mut middleware_entries = Vec::with_capacity(self.inner.task_mws.len());
-		for entry in &self.inner.task_mws {
-			middleware_entries.push(TaskMiddlewareInvocation::new(entry, deepest_pattern));
+		let mut middleware_entries = Vec::with_capacity(self.inner.middlewares.len());
+		for entry in &self.inner.middlewares {
+			middleware_entries.push(MiddlewareInvocation::new(entry, deepest_pattern));
 		}
 		let matched_routes = matches
 			.iter()
@@ -320,7 +320,7 @@ struct NestedInner<S, E> {
 	matcher_builder: MatcherBuilder,
 	matcher: Matcher,
 	routes: BTreeMap<String, NestedRoute<S, E>>,
-	task_mws: Vec<TaskMw<S, E>>,
+	middlewares: Vec<Middleware<S, E>>,
 }
 
 struct NestedBoundTask<S, E> {
@@ -329,7 +329,7 @@ struct NestedBoundTask<S, E> {
 	handler: Arc<dyn ErasedTask<S, E>>,
 }
 
-type NestedTaskInputs<S, E> = (Vec<TaskMiddlewareInvocation<S, E>>, Vec<NestedRoute<S, E>>);
+type NestedTaskInputs<S, E> = (Vec<MiddlewareInvocation<S, E>>, Vec<NestedRoute<S, E>>);
 
 #[derive(Clone)]
 struct NestedRunCtx<S, E> {

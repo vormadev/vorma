@@ -87,15 +87,15 @@ describe("wait_for_css", () => {
 		const ac = new AbortController();
 		const promise = wait_for_css(["/a.css", "/b.css"], ac.signal);
 
-		const linkA = document.head.querySelector(
+		const link_a = document.head.querySelector(
 			'link[data-vorma-css-preload="/a.css"]',
 		) as HTMLLinkElement;
-		const linkB = document.head.querySelector(
+		const link_b = document.head.querySelector(
 			'link[data-vorma-css-preload="/b.css"]',
 		) as HTMLLinkElement;
 
-		linkA.dispatchEvent(new Event("load"));
-		linkB.dispatchEvent(new Event("load"));
+		link_a.dispatchEvent(new Event("load"));
+		link_b.dispatchEvent(new Event("load"));
 
 		await promise;
 	});
@@ -143,18 +143,18 @@ describe("wait_for_css", () => {
 	it("resolves with mix of settled and pending preloads", async () => {
 		preload_css(["/a.css", "/b.css"]);
 
-		const linkA = document.head.querySelector(
+		const link_a = document.head.querySelector(
 			'link[data-vorma-css-preload="/a.css"]',
 		) as HTMLLinkElement;
-		linkA.dispatchEvent(new Event("load"));
+		link_a.dispatchEvent(new Event("load"));
 
 		const ac = new AbortController();
 		const promise = wait_for_css(["/a.css", "/b.css"], ac.signal);
 
-		const linkB = document.head.querySelector(
+		const link_b = document.head.querySelector(
 			'link[data-vorma-css-preload="/b.css"]',
 		) as HTMLLinkElement;
-		linkB.dispatchEvent(new Event("load"));
+		link_b.dispatchEvent(new Event("load"));
 
 		await promise;
 	});

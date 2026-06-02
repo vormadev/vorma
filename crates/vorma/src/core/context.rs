@@ -1,7 +1,7 @@
 use cookie::Cookie;
 use http::{HeaderName, HeaderValue, StatusCode};
 use std::sync::{Arc, Mutex, MutexGuard};
-use vorma_matcher::Params;
+use vorma_matcher::Params as MatcherParams;
 use vorma_tasks::ExecCtx;
 
 use crate::head;
@@ -9,13 +9,13 @@ use crate::mux::{None, RequestCtx};
 use crate::request::HttpRequest;
 use crate::response::{CLIENT_ACCEPTS_REDIRECT_HEADER, Proxy};
 
-/// Route parameters exposed to route-generic task middleware.
+/// Parameters exposed to middleware.
 #[derive(Clone, Copy, Debug)]
-pub struct RouteParams<'a> {
-	inner: &'a Params,
+pub struct Params<'a> {
+	inner: &'a MatcherParams,
 }
 
-impl<'a> RouteParams<'a> {
+impl<'a> Params<'a> {
 	/// Return the value for a named parameter.
 	pub fn get(&self, key: &str) -> Option<&'a str> {
 		self.inner.get(key).map(String::as_str)
@@ -39,13 +39,13 @@ impl<'a> RouteParams<'a> {
 	}
 }
 
-/// Context passed to API-route handlers.
-pub struct ApiCtx<S, E, I, P = ()> {
+/// Context passed to resource handlers.
+pub struct ResourceCtx<S, E, I, P = ()> {
 	inner: RequestCtx<S, E, I>,
 	params: P,
 }
 
-impl<S, E, I, P> ApiCtx<S, E, I, P> {
+impl<S, E, I, P> ResourceCtx<S, E, I, P> {
 	pub(crate) fn new(inner: RequestCtx<S, E, I>, params: P) -> Self {
 		Self { inner, params }
 	}
@@ -55,7 +55,7 @@ impl<S, E, I, P> ApiCtx<S, E, I, P> {
 		self.inner.state()
 	}
 
-	/// Parsed API-route input.
+	/// Parsed resource input.
 	pub fn input(&self) -> &I {
 		self.inner.input()
 	}
@@ -96,7 +96,7 @@ impl<S, E, I, P> ApiCtx<S, E, I, P> {
 	}
 }
 
-/// Context passed to view loader handlers.
+/// Context passed to view handlers.
 pub struct ViewCtx<S, E, I, P = ()> {
 	inner: RequestCtx<S, E, I>,
 	params: P,
@@ -325,24 +325,24 @@ impl HeadHandle {
 	}
 }
 
-/// Context passed to task middleware.
-pub struct TaskMiddlewareCtx<S, E = Box<dyn std::error::Error + Send + Sync>> {
+/// Context passed to middleware.
+pub struct MiddlewareCtx<S, E = Box<dyn std::error::Error + Send + Sync>> {
 	inner: RequestCtx<S, E, None>,
 }
 
-impl<S, E> TaskMiddlewareCtx<S, E> {
+impl<S, E> MiddlewareCtx<S, E> {
 	pub(crate) fn new(inner: RequestCtx<S, E, None>) -> Self {
 		Self { inner }
 	}
 
-	/// Pattern matched by the view or API-route being handled.
+	/// Pattern matched by the view or resource being handled.
 	pub fn matched_pattern(&self) -> &str {
 		self.inner.matched_pattern()
 	}
 
-	/// Route parameters for the matched view or API-route.
-	pub fn params(&self) -> RouteParams<'_> {
-		RouteParams {
+	/// Route parameters for the matched view or resource.
+	pub fn params(&self) -> Params<'_> {
+		Params {
 			inner: self.inner.params(),
 		}
 	}

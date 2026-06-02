@@ -30,7 +30,7 @@ pub(crate) trait ErasedTask<S, E>: Send + Sync {
 }
 
 #[cfg(test)]
-pub(in crate::mux) fn typed_task_handler<S, E, I, F, Fut, O>(
+pub(in crate::mux) fn typed_handler<S, E, I, F, Fut, O>(
 	parser: InputParser<I>,
 	handler: F,
 ) -> Arc<dyn ErasedTask<S, E>>
@@ -45,7 +45,7 @@ where
 	Arc::new(FnTask::<S, E, I, F, O>::new(parser, handler))
 }
 
-pub(crate) fn erased_task_handler<S, E, F, Fut>(handler: F) -> Arc<dyn ErasedTask<S, E>>
+pub(crate) fn erased_handler<S, E, F, Fut>(handler: F) -> Arc<dyn ErasedTask<S, E>>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,

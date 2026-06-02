@@ -32,12 +32,12 @@ import type {
 	ToApiDecorator,
 	ToDefineViewArgs,
 	ToLinkProps,
-	ToLoaderOutput,
 	ToNavigateArgs,
 	ToNavigationTarget,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewOutput,
 	ToViewPattern,
 } from "./types";
 import {
@@ -54,7 +54,7 @@ export type DecomposedState = {
 	error: RouteErrorState | null;
 
 	// Stable per channel
-	loaders_data: unknown[];
+	views_data: unknown[];
 	client_loaders_data: unknown[];
 	matched_patterns: string[];
 	import_urls: string[];
@@ -138,7 +138,7 @@ export function create_adapter_base<A extends AppConfig>(
 	let prev: DecomposedState = {
 		entries: [],
 		error: null,
-		loaders_data: [],
+		views_data: [],
 		client_loaders_data: [],
 		matched_patterns: [],
 		import_urls: [],
@@ -205,10 +205,10 @@ export function create_adapter_base<A extends AppConfig>(
 		const next: DecomposedState = {
 			entries: route_state.entries,
 			error: route_state.error,
-			loaders_data: stable(
-				prev.loaders_data,
+			views_data: stable(
+				prev.views_data,
 				route_state.entries.map((e) => {
-					return e.loader_data;
+					return e.view_data;
 				}),
 			),
 			client_loaders_data: stable(
@@ -430,16 +430,16 @@ export type VormaClient<
 		<T>(selector: StateSelector<WorkState, T>): HookReturn<T, HookReturnMode>;
 	};
 
-	useLoaderData: <P extends ToViewPattern<A>>(
-		args: ToRouteComponentProps<A, P>,
-	) => HookReturn<ToLoaderOutput<A, P>, HookReturnMode>;
+	useViewData: <P extends ToViewPattern<A>>(
+		args: ToViewComponentProps<A, P>,
+	) => HookReturn<ToViewOutput<A, P>, HookReturnMode>;
 
-	usePatternLoaderData: <P extends ToViewPattern<A>>(
+	usePatternViewData: <P extends ToViewPattern<A>>(
 		pattern: P,
-	) => HookReturn<ToLoaderOutput<A, P> | undefined, HookReturnMode>;
+	) => HookReturn<ToViewOutput<A, P> | undefined, HookReturnMode>;
 
 	useClientLoaderData: <P extends ToViewPattern<A>, T>(
-		args: ToRouteComponentProps<A, P, T>,
+		args: ToViewComponentProps<A, P, T>,
 	) => HookReturn<T, HookReturnMode>;
 
 	usePatternClientLoaderData: <T>(

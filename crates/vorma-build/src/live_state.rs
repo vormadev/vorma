@@ -11,7 +11,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use vorma::__private::Config;
 use vorma::__private::core::Contract;
 use vorma::__private::core::contract_for;
-use vorma::{ApiRoutes, DocumentBuildCtx, DocumentBuilder, Views};
+use vorma::{DocumentBuildCtx, DocumentBuilder, Resources, Views};
 
 use crate::build_cancel::BuildCancel;
 use crate::config::{VormaCfg, to_cfg};
@@ -19,8 +19,8 @@ use crate::constants::LIVE_STATE_MODE_ENV_KEY;
 use crate::process_wait::{ChildWaitError, current_thread_runtime, wait_child_or_cancel};
 use crate::supervisor::{clear_vorma_runtime_env, prepare_child_process};
 use crate::ts_gen::{LiveTsResult, to_live_ts_result};
-use crate::ts_modules::TsRoute;
-use crate::ts_modules::get_dev_ts_modules_from_contract;
+use crate::ts_modules::TsViewModule;
+use crate::ts_modules::get_dev_view_modules_from_contract;
 use vorma::__private::constants::ENV_KEY_IS_BUILD;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -29,7 +29,7 @@ pub(crate) struct LiveState {
 	pub(crate) error: String,
 	pub(crate) vorma_config: Config,
 	pub(crate) ts_result: LiveTsResult,
-	pub(crate) ts_modules: BTreeMap<String, TsRoute>,
+	pub(crate) ts_modules: BTreeMap<String, TsViewModule>,
 	pub(crate) search_schemas: BTreeMap<String, Value>,
 	pub(crate) root_document_hash_source: String,
 }
@@ -215,7 +215,7 @@ fn get_live_state_from_contract(
 ) -> Result<LiveState, String> {
 	let ts_result = to_live_ts_result(cfg, contract)
 		.map_err(|err| format!("error generating TS types: {err}"))?;
-	let ts_modules = get_dev_ts_modules_from_contract(contract)
+	let ts_modules = get_dev_view_modules_from_contract(contract)
 		.map_err(|err| format!("error getting TS modules: {err}"))?;
 	let search_schemas = contract
 		.views()
@@ -235,7 +235,7 @@ fn get_live_state_from_contract(
 pub(crate) fn get_live_state_from_app<S, E>(
 	config: &Config,
 	views: &Views<S, E>,
-	api_routes: &ApiRoutes<S, E>,
+	resources: &Resources<S, E>,
 	document: &DocumentBuilder,
 ) -> Result<LiveState, String>
 where
@@ -243,7 +243,7 @@ where
 	E: Send + Sync + 'static,
 {
 	let cfg = to_cfg(config).map_err(|err| format!("error converting config: {err}"))?;
-	let contract = contract_for(views, api_routes)
+	let contract = contract_for(views, resources)
 		.map_err(|err| format!("error collecting app contract: {err}"))?;
 	let mut live_state = get_live_state_from_contract(config, &cfg, &contract)?;
 	live_state.root_document_hash_source = root_document_hash_source(document)?;
@@ -306,7 +306,7 @@ mod tests {
 	use std::sync::atomic::{AtomicBool, Ordering};
 	use vorma::__private::Config;
 	use vorma::__private::core::contract_for;
-	use vorma::{ApiRoutes, Document, DocumentBuilder, FrontendConfig, ServerConfig, Views};
+	use vorma::{Document, DocumentBuilder, FrontendConfig, Resources, ServerConfig, Views};
 
 	vorma::app!(mod live_state_app for ());
 
@@ -328,7 +328,7 @@ mod tests {
 			},
 			ts_modules: BTreeMap::from([(
 				"/".to_owned(),
-				TsRoute {
+				TsViewModule {
 					pattern: "/".to_owned(),
 					import_path: "src/root.tsx".to_owned(),
 					deps: Vec::new(),
@@ -483,18 +483,18 @@ JSON
 				Ok(())
 			};
 		}];
-		let api_routes = live_state_app::api_routes![live_state_app::api_route! {
+		let resources = live_state_app::resources![live_state_app::resource! {
 			method: vorma::HttpMethod::GET;
 			pattern: "/ping";
 			input: ();
 			output: ();
 
 			handler: |ctx| {
-				let _: live_state_app::ApiCtx = ctx;
+				let _: live_state_app::ResourceCtx = ctx;
 				Ok(())
 			};
 		}];
-		let contract = contract_for(&views, &api_routes).unwrap();
+		let contract = contract_for(&views, &resources).unwrap();
 
 		let got = get_live_state(&config, &contract, "<html></html>").unwrap();
 
@@ -502,7 +502,7 @@ JSON
 		assert!(
 			got.ts_result
 				.routes_section
-				.contains("const __vorma_api_routes = [")
+				.contains("const __vorma_resources = [")
 		);
 		assert_eq!(got.ts_modules["/"].import_path, "src/root.tsx");
 		assert_eq!(got.search_schemas["/"], serde_json::json!({}));
@@ -536,7 +536,7 @@ JSON
 				Ok(())
 			};
 		}];
-		let api_routes = live_state_app::api_routes![];
+		let resources = live_state_app::resources![];
 		let document = DocumentBuilder::new(|ctx| async move {
 			let mut document = Document::new();
 			document.head().title("Example");
@@ -546,7 +546,7 @@ JSON
 			Ok(document)
 		});
 
-		let got = get_live_state_from_app(&config, &views, &api_routes, &document).unwrap();
+		let got = get_live_state_from_app(&config, &views, &resources, &document).unwrap();
 		let root_document = root_document_hash_source(&got);
 
 		assert!(got.ts_modules.contains_key("/"));
@@ -568,13 +568,13 @@ JSON
 		let document_ran_for_builder = Arc::clone(&document_ran);
 		let config = Config::default();
 		let views: Views<(), &'static str> = Views::new();
-		let api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
+		let resources: Resources<(), &'static str> = Resources::new();
 		let document = DocumentBuilder::new(move |_| {
 			document_ran_for_builder.store(true, Ordering::SeqCst);
 			async move { Err("document should not run before config validation".to_owned()) }
 		});
 
-		let error = get_live_state_from_app(&config, &views, &api_routes, &document).unwrap_err();
+		let error = get_live_state_from_app(&config, &views, &resources, &document).unwrap_err();
 
 		assert!(error.starts_with("error converting config:"));
 		assert!(!document_ran.load(Ordering::SeqCst));
@@ -613,13 +613,13 @@ JSON
 			vorma::__private::search_schema_resolver::<()>,
 			noop_view_handler,
 		));
-		let api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
+		let resources: Resources<(), &'static str> = Resources::new();
 		let document = DocumentBuilder::new(move |_| {
 			document_ran_for_builder.store(true, Ordering::SeqCst);
 			async move { Err("document should not run before route validation".to_owned()) }
 		});
 
-		let error = get_live_state_from_app(&config, &views, &api_routes, &document).unwrap_err();
+		let error = get_live_state_from_app(&config, &views, &resources, &document).unwrap_err();
 
 		assert!(error.starts_with("error collecting app contract:"));
 		assert!(error.contains("pattern must not be empty"));
@@ -643,7 +643,7 @@ JSON
 			..Config::default()
 		};
 		let views: Views<(), &'static str> = Views::new();
-		let api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
+		let resources: Resources<(), &'static str> = Resources::new();
 		let document = DocumentBuilder::new(|ctx| async move {
 			let mut document = Document::new();
 			let app_css = ctx.public_url(" app.css ")?;
@@ -652,7 +652,7 @@ JSON
 			Ok(document)
 		});
 
-		let got = get_live_state_from_app(&config, &views, &api_routes, &document).unwrap();
+		let got = get_live_state_from_app(&config, &views, &resources, &document).unwrap();
 		let root_document = root_document_hash_source(&got);
 
 		assert!(
@@ -679,7 +679,7 @@ JSON
 			..Config::default()
 		};
 		let views: Views<(), &'static str> = Views::new();
-		let api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
+		let resources: Resources<(), &'static str> = Resources::new();
 		let document = DocumentBuilder::new(|ctx| async move {
 			let mut document = Document::new();
 			document
@@ -688,7 +688,7 @@ JSON
 			Ok(document)
 		});
 
-		let got = get_live_state_from_app(&config, &views, &api_routes, &document).unwrap();
+		let got = get_live_state_from_app(&config, &views, &resources, &document).unwrap();
 		let root_document = root_document_hash_source(&got);
 
 		assert!(

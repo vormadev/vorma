@@ -65,8 +65,8 @@ pub const MACRO_ASSET_VIEW: macro_app::View = macro_app::view! {
 	};
 };
 
-pub const MACRO_STORY_API: macro_app::ApiRoute = macro_app::api_route! {
-	kind: crate::ApiRouteKind::Mutation;
+pub const MACRO_STORY_API: macro_app::Resource = macro_app::resource! {
+	kind: crate::ResourceKind::Mutation;
 	method: crate::HttpMethod::GET;
 	pattern: "/stories/:story_id";
 	input: MacroStoryInput;
@@ -100,24 +100,24 @@ fn accepts_client_redirect_matches_bool_header_semantics() {
 }
 
 #[test]
-fn api_route_kind_defaults_follow_method() {
-	let get_route: ApiRoute<(), &'static str> =
-		ApiRoute::without_handler(Method::GET, "/health", Option::None);
-	let post_route: ApiRoute<(), &'static str> =
-		ApiRoute::without_handler(Method::POST, "/sessions", Option::None);
-	let explicit: ApiRoute<(), &'static str> =
-		ApiRoute::without_handler(Method::POST, "/search", Some(ApiRouteKind::Query));
+fn resource_kind_defaults_follow_method() {
+	let get_route: Resource<(), &'static str> =
+		Resource::without_handler(Method::GET, "/health", Option::None);
+	let post_route: Resource<(), &'static str> =
+		Resource::without_handler(Method::POST, "/sessions", Option::None);
+	let explicit: Resource<(), &'static str> =
+		Resource::without_handler(Method::POST, "/search", Some(ResourceKind::Query));
 
 	assert_eq!(get_route.kind(), Option::None);
 	assert_eq!(post_route.kind(), Option::None);
-	assert_eq!(explicit.kind(), Some(ApiRouteKind::Query));
+	assert_eq!(explicit.kind(), Some(ResourceKind::Query));
 	assert_eq!(
-		default_api_route_kind_for_method(get_route.method()),
-		ApiRouteKind::Query
+		default_resource_kind_for_method(get_route.method()),
+		ResourceKind::Query
 	);
 	assert_eq!(
-		default_api_route_kind_for_method(post_route.method()),
-		ApiRouteKind::Mutation
+		default_resource_kind_for_method(post_route.method()),
+		ResourceKind::Mutation
 	);
 }
 
@@ -130,59 +130,59 @@ fn contract_for_validates_view_patterns_before_contract_output() {
 		InputParser::<()>::default_input(),
 		|_: ViewCtx<(), &'static str, ()>| async { Ok(()) },
 	));
-	let api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
+	let resources: Resources<(), &'static str> = Resources::new();
 
-	let error = contract_for(&views, &api_routes).unwrap_err();
+	let error = contract_for(&views, &resources).unwrap_err();
 
 	assert!(error.starts_with("error validating app route contract:"));
 	assert!(error.contains("pattern must not be empty"));
 }
 
 #[test]
-fn contract_for_validates_api_route_patterns_before_contract_output() {
+fn contract_for_validates_resource_patterns_before_contract_output() {
 	let views: Views<(), &'static str> = Views::new();
-	let mut api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
-	api_routes.push(ApiRoute::new(
+	let mut resources: Resources<(), &'static str> = Resources::new();
+	resources.push(Resource::new(
 		Method::GET,
 		"",
 		Option::None,
 		InputParser::<()>::default_input(),
-		|_: ApiCtx<(), &'static str, ()>| async { Ok(()) },
+		|_: ResourceCtx<(), &'static str, ()>| async { Ok(()) },
 	));
 
-	let error = contract_for(&views, &api_routes).unwrap_err();
+	let error = contract_for(&views, &resources).unwrap_err();
 
 	assert!(error.starts_with("error validating app route contract:"));
-	assert!(error.contains("API-route pattern must not be empty"));
+	assert!(error.contains("resource pattern must not be empty"));
 }
 
 #[test]
-fn contract_for_validates_api_route_collisions_before_contract_output() {
+fn contract_for_validates_resource_collisions_before_contract_output() {
 	let views: Views<(), &'static str> = Views::new();
-	let mut api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
-	api_routes.push(ApiRoute::new(
+	let mut resources: Resources<(), &'static str> = Resources::new();
+	resources.push(Resource::new(
 		Method::GET,
 		"/stories/:story_id",
 		Option::None,
 		InputParser::<()>::default_input(),
-		|_: ApiCtx<(), &'static str, ()>| async { Ok(()) },
+		|_: ResourceCtx<(), &'static str, ()>| async { Ok(()) },
 	));
-	api_routes.push(ApiRoute::new(
+	resources.push(Resource::new(
 		Method::GET,
 		"/stories/:id",
 		Option::None,
 		InputParser::<()>::default_input(),
-		|_: ApiCtx<(), &'static str, ()>| async { Ok(()) },
+		|_: ResourceCtx<(), &'static str, ()>| async { Ok(()) },
 	));
 
-	let error = contract_for(&views, &api_routes).unwrap_err();
+	let error = contract_for(&views, &resources).unwrap_err();
 
 	assert!(error.starts_with("error validating app route contract:"));
 	assert!(error.contains("route shape collision"));
 }
 
 #[tokio::test]
-async fn runtime_routes_register_views_and_api_routes() {
+async fn runtime_routes_register_views_and_resources() {
 	let mut views: Views<(), &'static str> = Views::new();
 	views.push(View::new(
 		"/users/:id",
@@ -195,20 +195,20 @@ async fn runtime_routes_register_views_and_api_routes() {
 		},
 	));
 
-	let mut api_routes: ApiRoutes<(), &'static str> = ApiRoutes::new();
-	api_routes.push(ApiRoute::new(
+	let mut resources: Resources<(), &'static str> = Resources::new();
+	resources.push(Resource::new(
 		Method::GET,
 		"/users/:id",
 		Option::None,
 		InputParser::<()>::default_input(),
-		|ctx: ApiCtx<(), &'static str, ()>| async move {
+		|ctx: ResourceCtx<(), &'static str, ()>| async move {
 			ctx.response().set_status(http::StatusCode::CREATED);
 			Ok(ctx.param("id").to_owned())
 		},
 	));
 
-	let task_middlewares = TaskMiddlewares::new();
-	let routes = runtime_routes_for(&views, &api_routes, &task_middlewares, "/api/").unwrap();
+	let middlewares = Middlewares::new();
+	let routes = runtime_routes_for(&views, &resources, &middlewares, "/api/").unwrap();
 	let view_matches = routes
 		.views
 		.find_nested_matches("/users/123")
@@ -231,8 +231,8 @@ async fn runtime_routes_register_views_and_api_routes() {
 	);
 
 	let api_result = routes
-		.api
-		.execute_task_route(
+		.resources
+		.execute_route(
 			RawRequest::get("/api/users/456"),
 			Arc::new(()),
 			exec_ctx(),
@@ -251,10 +251,10 @@ async fn runtime_routes_register_views_and_api_routes() {
 #[tokio::test]
 async fn macros_define_const_routes_with_inferred_typed_params() {
 	let views = macro_app::views![MACRO_STORY_VIEW];
-	let api_routes = macro_app::api_routes![MACRO_STORY_API];
+	let resources = macro_app::resources![MACRO_STORY_API];
 
-	let task_middlewares = TaskMiddlewares::new();
-	let routes = runtime_routes_for(&views, &api_routes, &task_middlewares, "/api/").unwrap();
+	let middlewares = Middlewares::new();
+	let routes = runtime_routes_for(&views, &resources, &middlewares, "/api/").unwrap();
 	let view_matches = routes
 		.views
 		.find_nested_matches("/stories/123")
@@ -274,8 +274,8 @@ async fn macros_define_const_routes_with_inferred_typed_params() {
 	assert_eq!(view_results.results()[0].data().unwrap()["storyId"], "123");
 
 	let api_result = routes
-		.api
-		.execute_task_route(
+		.resources
+		.execute_route(
 			RawRequest::get("/api/stories/456"),
 			Arc::new(()),
 			boxed_exec_ctx(),
@@ -290,9 +290,9 @@ async fn macros_define_const_routes_with_inferred_typed_params() {
 #[tokio::test]
 async fn macros_support_public_url_in_default_error_context() {
 	let views = macro_app::views![MACRO_ASSET_VIEW];
-	let api_routes = macro_app::api_routes![];
-	let task_middlewares = macro_app::task_middlewares![];
-	let routes = runtime_routes_for(&views, &api_routes, &task_middlewares, "/api/").unwrap();
+	let resources = macro_app::resources![];
+	let middlewares = macro_app::middlewares![];
+	let routes = runtime_routes_for(&views, &resources, &middlewares, "/api/").unwrap();
 	let view_matches = routes
 		.views
 		.find_nested_matches("/assets")
@@ -320,32 +320,31 @@ async fn macros_support_public_url_in_default_error_context() {
 }
 
 #[tokio::test]
-async fn public_task_middlewares_wire_once_and_filter_from_request_context() {
+async fn public_middlewares_wire_once_and_filter_from_request_context() {
 	let views = macro_app::views![MACRO_STORY_VIEW];
-	let api_routes = macro_app::api_routes![MACRO_STORY_API];
-	let task_middlewares =
-		macro_app::task_middlewares![macro_app::TaskMiddleware::new(|ctx| async move {
-			if ctx.request().method() != Method::GET {
-				return Ok(());
-			}
-			if ctx.matched_pattern() != "/stories/:story_id" {
-				return Ok(());
-			}
-			let story_id = ctx.param("story_id");
-			let params = ctx.params();
-			assert_eq!(params.len(), 1);
-			assert!(!params.is_empty());
-			assert_eq!(params.get("story_id"), Some(story_id));
-			assert_eq!(
-				params.iter().collect::<Vec<_>>(),
-				vec![("story_id", story_id)]
-			);
-			let header_value = http::HeaderValue::from_str(story_id).unwrap();
-			ctx.response()
-				.set_header(http::HeaderName::from_static("x-vorma-story"), header_value);
-			Ok(())
-		})];
-	let routes = runtime_routes_for(&views, &api_routes, &task_middlewares, "/api/").unwrap();
+	let resources = macro_app::resources![MACRO_STORY_API];
+	let middlewares = macro_app::middlewares![macro_app::Middleware::new(|ctx| async move {
+		if ctx.request().method() != Method::GET {
+			return Ok(());
+		}
+		if ctx.matched_pattern() != "/stories/:story_id" {
+			return Ok(());
+		}
+		let story_id = ctx.param("story_id");
+		let params = ctx.params();
+		assert_eq!(params.len(), 1);
+		assert!(!params.is_empty());
+		assert_eq!(params.get("story_id"), Some(story_id));
+		assert_eq!(
+			params.iter().collect::<Vec<_>>(),
+			vec![("story_id", story_id)]
+		);
+		let header_value = http::HeaderValue::from_str(story_id).unwrap();
+		ctx.response()
+			.set_header(http::HeaderName::from_static("x-vorma-story"), header_value);
+		Ok(())
+	})];
+	let routes = runtime_routes_for(&views, &resources, &middlewares, "/api/").unwrap();
 
 	let view_matches = routes
 		.views
@@ -371,8 +370,8 @@ async fn public_task_middlewares_wire_once_and_filter_from_request_context() {
 	assert_eq!(view_header.to_str().unwrap(), "123");
 
 	let api_result = routes
-		.api
-		.execute_task_route(
+		.resources
+		.execute_route(
 			RawRequest::get("/api/stories/456"),
 			Arc::new(()),
 			boxed_exec_ctx(),

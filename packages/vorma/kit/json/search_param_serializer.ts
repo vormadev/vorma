@@ -1,7 +1,7 @@
 export function serializeToSearchParams(obj: unknown): URLSearchParams {
 	const params = new URLSearchParams();
 
-	function appendValue(key: string, value: unknown) {
+	function append_value(key: string, value: unknown) {
 		if (value === null || value === undefined) {
 			params.append(key, "");
 			return;
@@ -12,7 +12,7 @@ export function serializeToSearchParams(obj: unknown): URLSearchParams {
 				params.append(key, "");
 			} else {
 				for (const item of value) {
-					appendValue(key, item);
+					append_value(key, item);
 				}
 			}
 			return;
@@ -24,10 +24,10 @@ export function serializeToSearchParams(obj: unknown): URLSearchParams {
 				params.append(key, "");
 			} else {
 				// Sort nested keys alphabetically
-				entries.sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
-				for (const [subKey, subValue] of entries) {
-					const newKey = key ? `${key}.${subKey}` : subKey;
-					appendValue(newKey, subValue);
+				entries.sort(([key_a], [key_b]) => key_a.localeCompare(key_b));
+				for (const [sub_key, sub_value] of entries) {
+					const new_key = key ? `${key}.${sub_key}` : sub_key;
+					append_value(new_key, sub_value);
 				}
 			}
 			return;
@@ -40,9 +40,9 @@ export function serializeToSearchParams(obj: unknown): URLSearchParams {
 	if (typeof obj === "object" && obj !== null) {
 		// Sort top-level keys alphabetically
 		const entries = Object.entries(obj);
-		entries.sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
+		entries.sort(([key_a], [key_b]) => key_a.localeCompare(key_b));
 		for (const [key, value] of entries) {
-			appendValue(key, value);
+			append_value(key, value);
 		}
 	}
 

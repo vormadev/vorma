@@ -27,10 +27,10 @@ import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
 import { preload_modules } from "./modules.ts";
 import type {
-	ApiRouteKind,
 	AppConfig,
 	BeforeRouteCommitFn,
 	BeforeRouteYieldFn,
+	ResourceKind,
 	RevalidationResult,
 	RouteErrorState,
 	RouteState,
@@ -45,7 +45,7 @@ export type ScrollState = { x: number; y: number } | { hash: string };
 
 export type ScrollIntent = {
 	scroll: ScrollState;
-	target_route_id: string;
+	target_entry_id: string;
 };
 
 export type RouteRenderEntry = {
@@ -53,7 +53,7 @@ export type RouteRenderEntry = {
 	input: unknown;
 	module_url: string;
 	module: Record<string, unknown>;
-	loader_data: unknown;
+	view_data: unknown;
 	client_loader_data: unknown;
 };
 
@@ -108,8 +108,8 @@ export type BuildSkewDetectedEvent = {
 				ok: boolean;
 		  }
 		| {
-				kind: "apiRoute";
-				apiRouteKind: ApiRouteKind;
+				kind: "resource";
+				resourceKind: ResourceKind;
 				requestedHref: string;
 				method: string;
 				status: number;
@@ -198,13 +198,13 @@ type ClientLoaderServerState = {
 	matches: Array<{
 		pattern: string;
 		input: unknown;
-		loaderData: unknown;
+		viewData: unknown;
 	}>;
 	outermostServerError: null | {
 		idx: number;
 		error: unknown;
 	};
-	loaderData: unknown;
+	viewData: unknown;
 };
 
 type ApiResult<T> =
@@ -238,7 +238,7 @@ export type ClientCore = {
 		url: string | URL,
 		requestInit?: RequestInit,
 		options?: {
-			apiRouteKind?: ApiRouteKind;
+			resourceKind?: ResourceKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipWorkIndicator?: boolean;
@@ -322,7 +322,7 @@ export function apply_scroll(
 	scroll_to(scroll.x, scroll.y);
 }
 
-export function make_route_id(idx: number, pattern: string): string {
+export function make_entry_id(idx: number, pattern: string): string {
 	return `${idx}:${pattern}`;
 }
 
@@ -492,7 +492,7 @@ function create_work_indicator(): WorkIndicatorController {
 /////////////////////////////////////////////////////////////////////
 
 export function create_client_core(
-	_: Omit<AppConfig, "__vorma_views" | "__vorma_api_routes">,
+	_: Omit<AppConfig, "__vorma_views" | "__vorma_resources">,
 	commit: CommitFn,
 	test_options?: TestOptions,
 ): Result<ClientCore> {
@@ -522,7 +522,7 @@ export function create_client_core(
 		input: unknown;
 		module_url: string;
 		module: Record<string, unknown>;
-		loader_data: unknown;
+		view_data: unknown;
 		client_loader_data: unknown;
 	};
 
@@ -631,7 +631,7 @@ export function create_client_core(
 		pattern: string;
 		input: unknown;
 		module_url: string;
-		loader_data: unknown;
+		view_data: unknown;
 		server_error: unknown;
 	};
 
@@ -696,11 +696,11 @@ export function create_client_core(
 
 	 1. phase: router lifecycle ('booting' | 'ready')
 	 2. browser: the browser's current history entry
-	 3. route_snapshot: current route data available to Vorma APIs
+	 3. route_snapshot: current RouteState data available to Vorma APIs
 	 4. active: the one in-flight nav or revalidation (at most one, ever)
 	 5. prefetch: the at-most-one in-flight prefetch
-	 6. refresh: outstanding route data demand and its retry timing
-	 7. apiRequests: concurrent action requests (independent of routes)
+	 6. refresh: outstanding view-data demand and its retry timing
+	 7. apiRequests: concurrent API requests (independent of routes)
 	 8. deferred_submit_redirect: submit redirect waiting for boot completion
 	 9. seq: monotonic counter; refresh is ordered by seq, never wall clock
 
@@ -756,7 +756,7 @@ export function create_client_core(
 	let work_indicator_options: WorkIndicatorOptions | undefined;
 	let work_indicator_sync_registered = false;
 	const work_update_listeners = new Set<(work: WorkState) => void>();
-	const module_map: Record<string, ClientLoaderFn> = {};
+	const client_loader_map: Record<string, ClientLoaderFn> = {};
 	const search_schema_map: Record<string, unknown> = {};
 	const hmr_rerun_patterns = new Set<string>();
 	const module_cache = new Map<string, Record<string, unknown>>();
@@ -782,7 +782,14 @@ export function create_client_core(
 		route_matcher?.register_pattern(pattern);
 	}
 
-	function find_client_route_match(path: string): ClientMatcherNestedMatch | null {
+	// If the full path does not match, find_client_view_match tries progressively
+	// shorter path prefixes: `/a/b/c`, then `/a/b`, then `/a`, then `/`. The reason
+	// is that the client matcher only knows patterns for view modules that have
+	// already been loaded and that have client loaders registered. So if the user
+	// navigates to `/parent/child`, but the client currently only knows `/parent`,
+	// exact matching would return null even though `/parent` is a real parent view
+	// whose client loader can and must be started early.
+	function find_client_view_match(path: string): ClientMatcherNestedMatch | null {
 		const matcher = route_matcher;
 		if (!matcher) {
 			return null;
@@ -975,7 +982,7 @@ export function create_client_core(
 		const schemas: unknown[] = Array.isArray(p.search_schemas)
 			? p.search_schemas
 			: [];
-		const loaders_data: unknown[] = p.loaders_data ?? [];
+		const views_data: unknown[] = p.views_data ?? [];
 		const import_urls: string[] = p.import_urls ?? [];
 		const err_idx: number | null = p.outermost_server_err_idx ?? null;
 		const err_msg: string = p.outermost_server_err ?? "";
@@ -988,7 +995,7 @@ export function create_client_core(
 				pattern,
 				input: parseSearchParams(schema, search_params),
 				module_url: import_urls[i] ?? "",
-				loader_data: loaders_data[i],
+				view_data: views_data[i],
 				server_error: err_idx !== null && i === err_idx ? err_msg : undefined,
 			};
 		});
@@ -1018,7 +1025,7 @@ export function create_client_core(
 		href: string;
 		history_state: unknown;
 		known_matches: ClientLoaderKnownMatch[];
-		loader: ClientLoaderFn;
+		client_loader: ClientLoaderFn;
 		params: Record<string, string>;
 		pattern: string;
 		route_input: unknown;
@@ -1049,7 +1056,7 @@ export function create_client_core(
 			);
 		}
 
-		const result_promise = input.loader({
+		const result_promise = input.client_loader({
 			trigger: input.trigger,
 			href: input.href,
 			historyState: input.history_state,
@@ -1096,7 +1103,7 @@ export function create_client_core(
 				return {
 					pattern: r.pattern,
 					input: r.input,
-					loaderData: r.loader_data,
+					viewData: r.view_data,
 				};
 			}),
 			outermostServerError:
@@ -1106,7 +1113,7 @@ export function create_client_core(
 							idx: err_idx,
 							error: routes[err_idx]!.server_error,
 						},
-			loaderData: routes[idx]?.loader_data,
+			viewData: routes[idx]?.view_data,
 		};
 	}
 
@@ -1146,8 +1153,8 @@ export function create_client_core(
 				promises.push(existing.result_promise);
 				continue;
 			}
-			const loader = module_map[route.pattern];
-			if (!loader) {
+			const client_loader = client_loader_map[route.pattern];
+			if (!client_loader) {
 				promises.push(Promise.resolve(undefined));
 				abort_later.push(null);
 				continue;
@@ -1164,7 +1171,7 @@ export function create_client_core(
 				});
 			}
 			promises.push(
-				loader({
+				client_loader({
 					trigger,
 					href,
 					historyState: history_state,
@@ -1187,7 +1194,7 @@ export function create_client_core(
 		const wrapped = promises.map(async (p, i) => {
 			return p.catch((err) => {
 				// On non-abort failure, cascade abort to later routes to avoid
-				// running loaders that can never be used.
+				// running client loaders that can never be used.
 				if (!is_abort_error(err)) {
 					for (let j = i + 1; j < abort_later.length; j++) {
 						abort_later[j]?.();
@@ -1254,7 +1261,7 @@ export function create_client_core(
 			}
 			const def = mod.default as ViewDefinition | undefined;
 			if (def?.client_loader) {
-				module_map[route.pattern] = def.client_loader;
+				client_loader_map[route.pattern] = def.client_loader;
 				register_route_pattern(route.pattern);
 			}
 		}
@@ -1267,14 +1274,14 @@ export function create_client_core(
 		cl_results: Array<{ data: unknown } | { error: unknown } | undefined>,
 	): RouteRecord {
 		const matches: RouteMatchRecord[] = payload.routes.map((route, i) => {
-			const cl = cl_results[i];
+			const cl_res = cl_results[i];
 			return {
 				pattern: route.pattern,
 				input: route.input,
 				module_url: route.module_url,
 				module: modules.get(route.module_url) ?? {},
-				loader_data: route.loader_data,
-				client_loader_data: cl && "data" in cl ? cl.data : undefined,
+				view_data: route.view_data,
+				client_loader_data: cl_res && "data" in cl_res ? cl_res.data : undefined,
 			};
 		});
 		let error: RouteErrorState | null = null;
@@ -1288,8 +1295,8 @@ export function create_client_core(
 				source: "server",
 			};
 		} else {
-			const client_loader_error_idx = cl_results.findIndex((cl) => {
-				return cl !== undefined && "error" in cl;
+			const client_loader_error_idx = cl_results.findIndex((cl_res) => {
+				return cl_res !== undefined && "error" in cl_res;
 			});
 			if (client_loader_error_idx !== -1) {
 				error = {
@@ -1408,20 +1415,20 @@ export function create_client_core(
 			status: response.status,
 			ok: response.ok,
 		};
-		let triggeringResponse: BuildSkewDetectedEvent["triggeringResponse"];
+		let triggering_response: BuildSkewDetectedEvent["triggeringResponse"];
 		if (f.intent.kind === "reval") {
-			triggeringResponse = {
+			triggering_response = {
 				...base,
 				trigger: "revalidation",
 				revalidationReason: f.intent.reason,
 			};
 		} else if (f.intent.kind === "prefetch") {
-			triggeringResponse = {
+			triggering_response = {
 				...base,
 				trigger: "prefetch",
 			};
 		} else {
-			triggeringResponse = {
+			triggering_response = {
 				...base,
 				trigger: f.intent.source === "popstate" ? "popstate" : "navigation",
 			};
@@ -1429,7 +1436,7 @@ export function create_client_core(
 
 		return report_build_skew({
 			response,
-			triggeringResponse,
+			triggeringResponse: triggering_response,
 		});
 	}
 
@@ -1458,7 +1465,7 @@ export function create_client_core(
 				if (ac.signal.aborted) {
 					return;
 				}
-				const match = find_client_route_match(url.pathname);
+				const match = find_client_view_match(url.pathname);
 				if (!match || ac.signal.aborted) {
 					return;
 				}
@@ -1478,14 +1485,14 @@ export function create_client_core(
 				);
 				const history_state = history_state_for_fetch(intent);
 				for (const pattern of match.patterns) {
-					const loader = module_map[pattern];
-					if (loader) {
+					const client_loader = client_loader_map[pattern];
+					if (client_loader) {
 						cl_prefetches.push(
 							make_cl_prefetch({
 								href: url.href,
 								history_state,
 								known_matches,
-								loader,
+								client_loader,
 								params: match.params,
 								pattern,
 								route_input: input_by_pattern.get(pattern),
@@ -1772,7 +1779,7 @@ export function create_client_core(
 				if (ss) {
 					scroll_intent = {
 						scroll: ss,
-						target_route_id: make_route_id(
+						target_entry_id: make_entry_id(
 							prepared.route.matches.length - 1,
 							prepared.route.matches[prepared.route.matches.length - 1]
 								?.pattern ?? "",
@@ -1817,7 +1824,7 @@ export function create_client_core(
 					input: m.input,
 					module_url: m.module_url,
 					module: m.module,
-					loader_data: m.loader_data,
+					view_data: m.view_data,
 					client_loader_data: m.client_loader_data,
 				};
 			}),
@@ -1852,7 +1859,7 @@ export function create_client_core(
 				return {
 					pattern: m.pattern,
 					input: m.input,
-					loaderData: m.loader_data,
+					viewData: m.view_data,
 					clientLoaderData: m.client_loader_data,
 				};
 			}),
@@ -2420,15 +2427,15 @@ export function create_client_core(
 					retained_prefetches.add(existing);
 					continue;
 				}
-				const loader = module_map[route.pattern];
-				if (!loader) {
+				const client_loader = client_loader_map[route.pattern];
+				if (!client_loader) {
 					continue;
 				}
 				const p = make_cl_prefetch({
 					href: f.url.href,
 					history_state: undefined,
 					known_matches,
-					loader,
+					client_loader,
 					params: payload.params,
 					pattern: route.pattern,
 					route_input: route.input,
@@ -2559,7 +2566,7 @@ export function create_client_core(
 		url: string | URL,
 		request_init?: RequestInit,
 		options?: {
-			apiRouteKind?: ApiRouteKind;
+			resourceKind?: ResourceKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipWorkIndicator?: boolean;
@@ -2581,10 +2588,10 @@ export function create_client_core(
 		const method = request_init?.method
 			? request_init.method.toUpperCase().trim()
 			: "GET";
-		const api_route_kind =
-			options?.apiRouteKind ??
+		const resource_kind =
+			options?.resourceKind ??
 			(method === "GET" || method === "HEAD" ? "query" : "mutation");
-		let should_revalidate = api_route_kind === "mutation";
+		let should_revalidate = resource_kind === "mutation";
 		if (options?.revalidate !== undefined) {
 			should_revalidate = options.revalidate;
 		}
@@ -2617,7 +2624,7 @@ export function create_client_core(
 		submissions.set(dedupe_key, sub);
 		notify_work_update();
 
-		void run_submission(sub, resolved, request_init, api_route_kind);
+		void run_submission(sub, resolved, request_init, resource_kind);
 		if (start_replaced_revalidation) {
 			maybe_revalidate();
 		}
@@ -2628,7 +2635,7 @@ export function create_client_core(
 		sub: Submission,
 		resolved: URL,
 		request_init: RequestInit | undefined,
-		api_route_kind: ApiRouteKind,
+		resource_kind: ResourceKind,
 	): Promise<void> {
 		try {
 			const is_get = sub.method === "GET" || sub.method === "HEAD";
@@ -2679,8 +2686,8 @@ export function create_client_core(
 			report_build_skew({
 				response: res,
 				triggeringResponse: {
-					kind: "apiRoute",
-					apiRouteKind: api_route_kind,
+					kind: "resource",
+					resourceKind: resource_kind,
 					requestedHref: resolved.href,
 					method: sub.method,
 					status: res.status,
@@ -2973,7 +2980,7 @@ export function create_client_core(
 		if (!import.meta.env.DEV || !import.meta.hot) {
 			return;
 		}
-		window.__vorma_hmr_route_update = async (raw_url, mod) => {
+		window.__vorma_hmr_view_update = async (raw_url, mod) => {
 			if (!route_snapshot) {
 				return;
 			}
@@ -2989,16 +2996,16 @@ export function create_client_core(
 			const match = route_snapshot.route.matches[idx]!;
 			const def = mod.default as ViewDefinition | undefined;
 			if (def?.client_loader) {
-				module_map[match.pattern] = def.client_loader;
+				client_loader_map[match.pattern] = def.client_loader;
 				register_route_pattern(match.pattern);
 			} else {
-				delete module_map[match.pattern];
+				delete client_loader_map[match.pattern];
 			}
 
 			let client_loader_data = match.client_loader_data;
 			if (hmr_rerun_patterns.has(match.pattern)) {
-				const loader = module_map[match.pattern];
-				if (loader) {
+				const client_loader = client_loader_map[match.pattern];
+				if (client_loader) {
 					try {
 						const current_route = route_snapshot.route;
 						const routes = current_route.matches.map((m, i) => {
@@ -3006,7 +3013,7 @@ export function create_client_core(
 								pattern: m.pattern,
 								input: m.input,
 								module_url: m.module_url,
-								loader_data: m.loader_data,
+								view_data: m.view_data,
 								server_error:
 									current_route.error?.source === "server" &&
 									current_route.error.idx === i
@@ -3014,7 +3021,7 @@ export function create_client_core(
 										: undefined,
 							};
 						});
-						client_loader_data = await loader({
+						client_loader_data = await client_loader({
 							trigger: "revalidation",
 							href: route_snapshot.position.href,
 							historyState: route_snapshot.position.state,
@@ -3189,7 +3196,7 @@ export function create_client_core(
 		const make_scroll_intent = (scroll: ScrollState): ScrollIntent => {
 			return {
 				scroll,
-				target_route_id: make_route_id(
+				target_entry_id: make_entry_id(
 					route.matches.length - 1,
 					route.matches[route.matches.length - 1]?.pattern ?? "",
 				),
@@ -3327,7 +3334,7 @@ export function create_client_core(
 		return waiter.promise;
 	}
 
-	function getRouteState(): RouteState {
+	function get_route_state(): RouteState {
 		const snapshot = route_snapshot;
 		if (!snapshot) {
 			throw new Error("Vorma not booted");
@@ -3335,14 +3342,14 @@ export function create_client_core(
 		return route_snapshot_to_state(snapshot);
 	}
 
-	function getWorkState(): WorkState {
+	function get_work_state(): WorkState {
 		if (!route_snapshot) {
 			throw new Error("Vorma not booted");
 		}
 		return derive_work_state();
 	}
 
-	function getRootEl(): HTMLElement {
+	function get_root_el(): HTMLElement {
 		const el = document.getElementById(VORMA_ROOT_EL_ID);
 		if (el) {
 			return el;
@@ -3353,7 +3360,7 @@ export function create_client_core(
 		return fresh;
 	}
 
-	function defineView<T = any>(input: {
+	function define_view<T = any>(input: {
 		pattern: string;
 		component: (props: any) => any;
 		errorBoundary?: (props: { error: unknown }) => any;
@@ -3387,11 +3394,11 @@ export function create_client_core(
 		navigate,
 		revalidate,
 		submit_inner,
-		getRouteState,
-		getWorkState,
+		getRouteState: get_route_state,
+		getWorkState: get_work_state,
 		getClientBuildId: () => client_build_id,
-		getRootEl,
-		defineView,
+		getRootEl: get_root_el,
+		defineView: define_view,
 		start_prefetch,
 		stop_prefetch,
 		save_current_scroll,
@@ -3401,7 +3408,7 @@ export function create_client_core(
 
 declare global {
 	interface Window {
-		__vorma_hmr_route_update?: (
+		__vorma_hmr_view_update?: (
 			raw_url: string,
 			mod: Record<string, unknown>,
 		) => Promise<void>;

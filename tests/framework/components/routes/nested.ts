@@ -3,17 +3,17 @@ import {
 	dynamic,
 	h,
 	klass,
-	loader_box,
 	read_box,
-	route_nested_detail_alpha_href,
-	route_nested_detail_beta_href,
-	route_nested_pattern,
+	view_data_box,
+	view_nested_detail_alpha_href,
+	view_nested_detail_beta_href,
+	view_nested_pattern,
 } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_nested_pattern,
+	pattern: view_nested_pattern,
 	component: (props: any) => {
-		const data = loader_box(props);
+		const data = view_data_box(props);
 		const route_state = ui.useRouteState();
 		const route = () => {
 			return read_box(route_state);
@@ -37,7 +37,7 @@ export default ui.defineView({
 				h(
 					ui.Link,
 					{
-						href: route_nested_detail_alpha_href,
+						href: view_nested_detail_alpha_href,
 						"data-bmb-action": "nested-alpha",
 					},
 					"Nested alpha",
@@ -45,19 +45,19 @@ export default ui.defineView({
 				h(
 					ui.Link,
 					{
-						href: route_nested_detail_beta_href,
+						href: view_nested_detail_beta_href,
 						"data-bmb-action": "nested-beta",
 					},
 					"Nested beta",
 				),
 			),
 			dynamic(() => {
-				if (pathname() !== route_nested_pattern) {
+				if (pathname() !== view_nested_pattern) {
 					return props.Outlet();
 				}
 				return h(
 					"div",
-					{ "data-bmb-route": "nested-index" },
+					{ "data-bmb-view": "nested-index" },
 					dynamic(() => {
 						return data().Section;
 					}),

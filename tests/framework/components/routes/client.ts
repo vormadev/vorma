@@ -4,12 +4,12 @@ import {
 	dynamic,
 	h,
 	klass,
-	loader_box,
-	route_client_pattern,
+	view_client_pattern,
+	view_data_box,
 } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_client_pattern,
+	pattern: view_client_pattern,
 	clientLoader: async (args: any) => {
 		await new Promise((resolve) => {
 			setTimeout(resolve, 20);
@@ -21,13 +21,13 @@ export default ui.defineView({
 		};
 	},
 	component: (props: any) => {
-		const data = loader_box(props);
+		const data = view_data_box(props);
 		const client_data = client_loader_box(props);
 		return h(
 			"section",
 			{
 				...klass("panel"),
-				"data-bmb-route": "client",
+				"data-bmb-view": "client",
 				"data-bmb-client-id": dynamic(() => {
 					return data().ID;
 				}),

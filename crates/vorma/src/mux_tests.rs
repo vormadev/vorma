@@ -98,16 +98,16 @@ fn router_defaults_mount_root_and_best_match() {
 	})
 	.unwrap();
 	router
-		.add_task_handler(Method::GET, "/", no_input(), |_| async { Ok(()) })
+		.add_handler(Method::GET, "/", no_input(), |_| async { Ok(()) })
 		.unwrap();
 	router
-		.add_task_handler(Method::GET, "/users/new", no_input(), |_| async { Ok(()) })
+		.add_handler(Method::GET, "/users/new", no_input(), |_| async { Ok(()) })
 		.unwrap();
 	router
-		.add_task_handler(Method::GET, "/users/:id", no_input(), |_| async { Ok(()) })
+		.add_handler(Method::GET, "/users/:id", no_input(), |_| async { Ok(()) })
 		.unwrap();
 	router
-		.add_task_handler(Method::POST, "/users", no_input(), |_| async { Ok(()) })
+		.add_handler(Method::POST, "/users", no_input(), |_| async { Ok(()) })
 		.unwrap();
 
 	let found = router.find_best(&Method::GET, "/api").unwrap();
@@ -135,7 +135,7 @@ fn router_defaults_mount_root_and_best_match() {
 	assert_eq!(methods, ["GET", "HEAD"]);
 
 	router
-		.add_task_handler(Method::HEAD, "/users/:id", no_input(), |_| async { Ok(()) })
+		.add_handler(Method::HEAD, "/users/:id", no_input(), |_| async { Ok(()) })
 		.unwrap();
 	let found = router.find_best(&Method::HEAD, "/api/users/123").unwrap();
 	assert_eq!(found.method(), &Method::HEAD);
@@ -150,10 +150,10 @@ fn router_defaults_mount_root_and_best_match() {
 }
 
 #[tokio::test]
-async fn task_route_executes_with_typed_input_and_request_context() {
+async fn route_executes_with_typed_input_and_request_context() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/orgs/:org_id/files/*",
 			InputParser::callback(|request| {
@@ -174,7 +174,7 @@ async fn task_route_executes_with_typed_input_and_request_context() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/orgs/acme/files/reports/q1?Jeff"),
 			state,
 			exec_ctx,
@@ -193,10 +193,10 @@ async fn task_route_executes_with_typed_input_and_request_context() {
 }
 
 #[tokio::test]
-async fn task_middleware_runs_in_scope_order_and_merges_response_proxy() {
+async fn middleware_runs_in_scope_order_and_merges_response_proxy() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	router
-		.add_task_handler(Method::GET, "/items/:id", no_input(), |ctx| async move {
+		.add_handler(Method::GET, "/items/:id", no_input(), |ctx| async move {
 			{
 				let mut proxy = ctx.response_proxy_mut();
 				proxy.add_header(
@@ -208,7 +208,7 @@ async fn task_middleware_runs_in_scope_order_and_merges_response_proxy() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			let mut proxy = ctx.response_proxy_mut();
 			proxy.add_header(
 				HeaderName::from_static("x-mux"),
@@ -218,7 +218,7 @@ async fn task_middleware_runs_in_scope_order_and_merges_response_proxy() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			if ctx.request().method() != Method::GET {
 				return Ok(());
 			}
@@ -231,7 +231,7 @@ async fn task_middleware_runs_in_scope_order_and_merges_response_proxy() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			if ctx.matched_pattern() != "/items/:id" {
 				return Ok(());
 			}
@@ -246,7 +246,7 @@ async fn task_middleware_runs_in_scope_order_and_merges_response_proxy() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/items/123"),
 			state,
 			exec_ctx,
@@ -267,15 +267,15 @@ async fn task_middleware_runs_in_scope_order_and_merges_response_proxy() {
 }
 
 #[tokio::test]
-async fn task_middleware_filter_controls_execution() {
+async fn middleware_filter_controls_execution() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let ran = Arc::new(AtomicUsize::new(0));
 	let ran_for_middleware = ran.clone();
 	router
-		.add_task_handler(Method::GET, "/public", no_input(), |_| async { Ok("ok") })
+		.add_handler(Method::GET, "/public", no_input(), |_| async { Ok("ok") })
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let ran = ran_for_middleware.clone();
 			async move {
 				if !ctx.request().path().starts_with("/private") {
@@ -289,7 +289,7 @@ async fn task_middleware_filter_controls_execution() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/public"),
 			state,
 			exec_ctx,
@@ -304,7 +304,7 @@ async fn task_middleware_filter_controls_execution() {
 }
 
 #[tokio::test]
-async fn task_middleware_error_cancels_later_parallel_sibling_and_short_circuits_handler() {
+async fn middleware_error_cancels_later_parallel_sibling_and_short_circuits_handler() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
@@ -313,7 +313,7 @@ async fn task_middleware_error_cancels_later_parallel_sibling_and_short_circuits
 	let later_started_for_waiting_middleware = later_started.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-cancel", no_input(), move |_| {
+		.add_handler(Method::GET, "/middleware-cancel", no_input(), move |_| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -322,7 +322,7 @@ async fn task_middleware_error_cancels_later_parallel_sibling_and_short_circuits
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |_| {
+		.use_middleware(move |_| {
 			let later_started = later_started_for_error_middleware.clone();
 			async move {
 				later_started.notified().await;
@@ -332,7 +332,7 @@ async fn task_middleware_error_cancels_later_parallel_sibling_and_short_circuits
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_started = later_started_for_waiting_middleware.clone();
 			async move {
 				later_started.notify_one();
@@ -345,7 +345,7 @@ async fn task_middleware_error_cancels_later_parallel_sibling_and_short_circuits
 	let (state, exec_ctx) = default_runtime();
 	let result = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_task_route(
+		router.execute_route(
 			api_request("/middleware-cancel"),
 			state,
 			exec_ctx,
@@ -365,13 +365,13 @@ async fn task_middleware_error_cancels_later_parallel_sibling_and_short_circuits
 }
 
 #[tokio::test]
-async fn task_middleware_error_preserves_explicit_error_proxy() {
+async fn middleware_error_preserves_explicit_error_proxy() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), move |_| {
+		.add_handler(Method::GET, "/middleware-error", no_input(), move |_| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -380,7 +380,7 @@ async fn task_middleware_error_preserves_explicit_error_proxy() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::FORBIDDEN, Some("denied".to_owned()));
 			ctx.response_proxy_mut().set_header(
@@ -393,7 +393,7 @@ async fn task_middleware_error_preserves_explicit_error_proxy() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -418,19 +418,19 @@ async fn task_middleware_error_preserves_explicit_error_proxy() {
 }
 
 #[tokio::test]
-async fn task_middleware_cancelled_later_sibling_does_not_mask_real_error_proxy() {
+async fn middleware_cancelled_later_sibling_does_not_mask_real_error_proxy() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let later_started = Arc::new(Notify::new());
 	let later_started_for_error_middleware = later_started.clone();
 	let later_started_for_waiting_middleware = later_started.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), |_| async {
+		.add_handler(Method::GET, "/middleware-error", no_input(), |_| async {
 			Ok("handler")
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_started = later_started_for_error_middleware.clone();
 			async move {
 				later_started.notified().await;
@@ -441,7 +441,7 @@ async fn task_middleware_cancelled_later_sibling_does_not_mask_real_error_proxy(
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_started = later_started_for_waiting_middleware.clone();
 			async move {
 				later_started.notify_one();
@@ -454,7 +454,7 @@ async fn task_middleware_cancelled_later_sibling_does_not_mask_real_error_proxy(
 	let (state, exec_ctx) = default_runtime();
 	let result = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_task_route(
+		router.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -474,15 +474,15 @@ async fn task_middleware_cancelled_later_sibling_does_not_mask_real_error_proxy(
 }
 
 #[tokio::test]
-async fn task_middleware_prior_redirect_short_circuits_later_plain_error() {
+async fn middleware_prior_redirect_short_circuits_later_plain_error() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), |_| async {
+		.add_handler(Method::GET, "/middleware-error", no_input(), |_| async {
 			Ok("handler")
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut()
 				.redirect(false, "/ok", Option::None)
 				.unwrap();
@@ -490,14 +490,14 @@ async fn task_middleware_prior_redirect_short_circuits_later_plain_error() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|_: RequestCtx<TestEnv, &'static str, None>| async {
+		.use_middleware(|_: RequestCtx<TestEnv, &'static str, None>| async {
 			Err::<(), _>(TaskError::from("boom"))
 		})
 		.unwrap();
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -516,7 +516,7 @@ async fn task_middleware_prior_redirect_short_circuits_later_plain_error() {
 }
 
 #[tokio::test]
-async fn task_middleware_prior_redirect_suppresses_later_success_effects() {
+async fn middleware_prior_redirect_suppresses_later_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
@@ -525,7 +525,7 @@ async fn task_middleware_prior_redirect_suppresses_later_success_effects() {
 	let later_ran_for_later_middleware = later_ran.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-redirect", no_input(), move |_| {
+		.add_handler(Method::GET, "/middleware-redirect", no_input(), move |_| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -534,7 +534,7 @@ async fn task_middleware_prior_redirect_suppresses_later_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_ran = later_ran_for_redirect_middleware.clone();
 			async move {
 				later_ran.notified().await;
@@ -546,7 +546,7 @@ async fn task_middleware_prior_redirect_suppresses_later_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_ran = later_ran_for_later_middleware.clone();
 			async move {
 				ctx.response_proxy_mut().set_header(
@@ -561,7 +561,7 @@ async fn task_middleware_prior_redirect_suppresses_later_success_effects() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-redirect"),
 			state,
 			exec_ctx,
@@ -586,7 +586,7 @@ async fn task_middleware_prior_redirect_suppresses_later_success_effects() {
 }
 
 #[tokio::test]
-async fn task_middleware_prior_error_status_suppresses_later_success_effects() {
+async fn middleware_prior_error_status_suppresses_later_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
@@ -595,7 +595,7 @@ async fn task_middleware_prior_error_status_suppresses_later_success_effects() {
 	let later_ran_for_later_middleware = later_ran.clone();
 
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/middleware-error-status",
 			no_input(),
@@ -609,7 +609,7 @@ async fn task_middleware_prior_error_status_suppresses_later_success_effects() {
 		)
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_ran = later_ran_for_error_middleware.clone();
 			async move {
 				later_ran.notified().await;
@@ -620,7 +620,7 @@ async fn task_middleware_prior_error_status_suppresses_later_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_ran = later_ran_for_later_middleware.clone();
 			async move {
 				ctx.response_proxy_mut().set_header(
@@ -635,7 +635,7 @@ async fn task_middleware_prior_error_status_suppresses_later_success_effects() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error-status"),
 			state,
 			exec_ctx,
@@ -660,13 +660,13 @@ async fn task_middleware_prior_error_status_suppresses_later_success_effects() {
 }
 
 #[tokio::test]
-async fn task_middleware_later_redirect_keeps_prior_success_effects_and_short_circuits_handler() {
+async fn middleware_later_redirect_keeps_prior_success_effects_and_short_circuits_handler() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-redirect", no_input(), move |_| {
+		.add_handler(Method::GET, "/middleware-redirect", no_input(), move |_| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -675,7 +675,7 @@ async fn task_middleware_later_redirect_keeps_prior_success_effects_and_short_ci
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut().set_header(
 				HeaderName::from_static("x-prior"),
 				HeaderValue::from_static("kept"),
@@ -684,7 +684,7 @@ async fn task_middleware_later_redirect_keeps_prior_success_effects_and_short_ci
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut()
 				.redirect(false, "/login", Option::None)
 				.unwrap();
@@ -694,7 +694,7 @@ async fn task_middleware_later_redirect_keeps_prior_success_effects_and_short_ci
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-redirect"),
 			state,
 			exec_ctx,
@@ -720,7 +720,7 @@ async fn task_middleware_later_redirect_keeps_prior_success_effects_and_short_ci
 }
 
 #[tokio::test]
-async fn task_middleware_later_redirect_waits_for_prior_success_effects() {
+async fn middleware_later_redirect_waits_for_prior_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
@@ -732,7 +732,7 @@ async fn task_middleware_later_redirect_waits_for_prior_success_effects() {
 	let redirect_done_for_redirect_middleware = redirect_done.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-redirect", no_input(), move |_| {
+		.add_handler(Method::GET, "/middleware-redirect", no_input(), move |_| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -741,7 +741,7 @@ async fn task_middleware_later_redirect_waits_for_prior_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let prior_started = prior_started_for_prior_middleware.clone();
 			let redirect_done = redirect_done_for_prior_middleware.clone();
 			async move {
@@ -756,7 +756,7 @@ async fn task_middleware_later_redirect_waits_for_prior_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let prior_started = prior_started_for_redirect_middleware.clone();
 			let redirect_done = redirect_done_for_redirect_middleware.clone();
 			async move {
@@ -773,7 +773,7 @@ async fn task_middleware_later_redirect_waits_for_prior_success_effects() {
 	let (state, exec_ctx) = default_runtime();
 	let result = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_task_route(
+		router.execute_route(
 			api_request("/middleware-redirect"),
 			state,
 			exec_ctx,
@@ -801,13 +801,13 @@ async fn task_middleware_later_redirect_waits_for_prior_success_effects() {
 }
 
 #[tokio::test]
-async fn task_middleware_error_status_without_returned_error_short_circuits_handler() {
+async fn middleware_error_status_without_returned_error_short_circuits_handler() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
 
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/middleware-error-status",
 			no_input(),
@@ -821,7 +821,7 @@ async fn task_middleware_error_status_without_returned_error_short_circuits_hand
 		)
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut().set_header(
 				HeaderName::from_static("x-prior"),
 				HeaderValue::from_static("kept"),
@@ -830,7 +830,7 @@ async fn task_middleware_error_status_without_returned_error_short_circuits_hand
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::FORBIDDEN, Some("denied".to_owned()));
 			Ok(())
@@ -839,7 +839,7 @@ async fn task_middleware_error_status_without_returned_error_short_circuits_hand
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error-status"),
 			state,
 			exec_ctx,
@@ -865,7 +865,7 @@ async fn task_middleware_error_status_without_returned_error_short_circuits_hand
 }
 
 #[tokio::test]
-async fn task_middleware_prior_terminal_does_not_wait_for_uncancellable_later_sibling() {
+async fn middleware_prior_terminal_does_not_wait_for_uncancellable_later_sibling() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let later_started = Arc::new(Notify::new());
 	let terminal_can_finish = Arc::new(Notify::new());
@@ -874,12 +874,12 @@ async fn task_middleware_prior_terminal_does_not_wait_for_uncancellable_later_si
 	let terminal_can_finish_for_terminal = terminal_can_finish.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-terminal", no_input(), |_| async {
+		.add_handler(Method::GET, "/middleware-terminal", no_input(), |_| async {
 			Ok("handler should not run")
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx| {
+		.use_middleware(move |ctx| {
 			let later_started = later_started_for_terminal.clone();
 			let terminal_can_finish = terminal_can_finish_for_terminal.clone();
 			async move {
@@ -892,7 +892,7 @@ async fn task_middleware_prior_terminal_does_not_wait_for_uncancellable_later_si
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |_| {
+		.use_middleware(move |_| {
 			let later_started = later_started_for_later.clone();
 			async move {
 				later_started.notify_one();
@@ -906,7 +906,7 @@ async fn task_middleware_prior_terminal_does_not_wait_for_uncancellable_later_si
 	let (state, exec_ctx) = default_runtime();
 	let result = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_task_route(
+		router.execute_route(
 			api_request("/middleware-terminal"),
 			state,
 			exec_ctx,
@@ -926,19 +926,19 @@ async fn task_middleware_prior_terminal_does_not_wait_for_uncancellable_later_si
 }
 
 #[tokio::test]
-async fn task_middleware_prior_plain_error_suppresses_later_success_effects() {
+async fn middleware_prior_plain_error_suppresses_later_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let later_ran = Arc::new(Notify::new());
 	let later_ran_for_error_middleware = later_ran.clone();
 	let later_ran_for_later_middleware = later_ran.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), |_| async {
+		.add_handler(Method::GET, "/middleware-error", no_input(), |_| async {
 			Ok("handler")
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |_: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |_: RequestCtx<TestEnv, &'static str, None>| {
 			let later_ran = later_ran_for_error_middleware.clone();
 			async move {
 				later_ran.notified().await;
@@ -947,7 +947,7 @@ async fn task_middleware_prior_plain_error_suppresses_later_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let later_ran = later_ran_for_later_middleware.clone();
 			async move {
 				ctx.response_proxy_mut().set_header(
@@ -962,7 +962,7 @@ async fn task_middleware_prior_plain_error_suppresses_later_success_effects() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -985,15 +985,15 @@ async fn task_middleware_prior_plain_error_suppresses_later_success_effects() {
 }
 
 #[tokio::test]
-async fn task_middleware_plain_error_preserves_prior_response_effects() {
+async fn middleware_plain_error_preserves_prior_response_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), |_| async {
+		.add_handler(Method::GET, "/middleware-error", no_input(), |_| async {
 			Ok("handler")
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut().set_header(
 				HeaderName::from_static("x-prior"),
 				HeaderValue::from_static("kept"),
@@ -1002,14 +1002,14 @@ async fn task_middleware_plain_error_preserves_prior_response_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|_: RequestCtx<TestEnv, &'static str, None>| async {
+		.use_middleware(|_: RequestCtx<TestEnv, &'static str, None>| async {
 			Err::<(), _>(TaskError::from("boom"))
 		})
 		.unwrap();
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -1033,15 +1033,15 @@ async fn task_middleware_plain_error_preserves_prior_response_effects() {
 }
 
 #[tokio::test]
-async fn task_middleware_plain_error_suppresses_own_success_effects() {
+async fn middleware_plain_error_suppresses_own_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), |_| async {
+		.add_handler(Method::GET, "/middleware-error", no_input(), |_| async {
 			Ok("handler")
 		})
 		.unwrap();
 	router
-		.use_task_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
+		.use_middleware(|ctx: RequestCtx<TestEnv, &'static str, None>| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::ACCEPTED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -1054,7 +1054,7 @@ async fn task_middleware_plain_error_suppresses_own_success_effects() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -1077,7 +1077,7 @@ async fn task_middleware_plain_error_suppresses_own_success_effects() {
 }
 
 #[tokio::test]
-async fn task_middleware_later_plain_error_waits_for_prior_success_effects() {
+async fn middleware_later_plain_error_waits_for_prior_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
@@ -1089,7 +1089,7 @@ async fn task_middleware_later_plain_error_waits_for_prior_success_effects() {
 	let error_done_for_error = error_done.clone();
 
 	router
-		.add_task_handler(Method::GET, "/middleware-error", no_input(), move |_| {
+		.add_handler(Method::GET, "/middleware-error", no_input(), move |_| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -1098,7 +1098,7 @@ async fn task_middleware_later_plain_error_waits_for_prior_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let prior_started = prior_started_for_prior.clone();
 			let error_done = error_done_for_prior.clone();
 			async move {
@@ -1115,7 +1115,7 @@ async fn task_middleware_later_plain_error_waits_for_prior_success_effects() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |_: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |_: RequestCtx<TestEnv, &'static str, None>| {
 			let prior_started = prior_started_for_error.clone();
 			let error_done = error_done_for_error.clone();
 			async move {
@@ -1129,7 +1129,7 @@ async fn task_middleware_later_plain_error_waits_for_prior_success_effects() {
 	let (state, exec_ctx) = default_runtime();
 	let result = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_task_route(
+		router.execute_route(
 			api_request("/middleware-error"),
 			state,
 			exec_ctx,
@@ -1158,12 +1158,12 @@ async fn task_middleware_later_plain_error_waits_for_prior_success_effects() {
 }
 
 #[tokio::test]
-async fn task_route_bad_request_input_errors_are_reported_without_running_handler() {
+async fn route_bad_request_input_errors_are_reported_without_running_handler() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/validate",
 			InputParser::<()>::callback(|_| Err(InputError::bad_request("bad input"))),
@@ -1179,7 +1179,7 @@ async fn task_route_bad_request_input_errors_are_reported_without_running_handle
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/validate"),
 			state,
 			exec_ctx,
@@ -1199,10 +1199,10 @@ async fn task_route_bad_request_input_errors_are_reported_without_running_handle
 }
 
 #[tokio::test]
-async fn task_route_handler_error_suppresses_own_success_effects() {
+async fn route_handler_error_suppresses_own_success_effects() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	router
-		.add_task_handler(
+		.add_handler(
 			Method::GET,
 			"/handler-error",
 			no_input(),
@@ -1220,7 +1220,7 @@ async fn task_route_handler_error_suppresses_own_success_effects() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/handler-error"),
 			state,
 			exec_ctx,
@@ -1244,7 +1244,7 @@ async fn task_route_handler_error_suppresses_own_success_effects() {
 }
 
 #[tokio::test]
-async fn task_route_and_middleware_share_task_scope() {
+async fn route_and_middleware_share_task_scope() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let shared_runs = Arc::new(AtomicUsize::new(0));
 	let shared_runs_for_task = shared_runs.clone();
@@ -1259,7 +1259,7 @@ async fn task_route_and_middleware_share_task_scope() {
 	let shared_task_for_handler = shared_task.clone();
 
 	router
-		.add_task_handler(Method::GET, "/shared", no_input(), move |ctx| {
+		.add_handler(Method::GET, "/shared", no_input(), move |ctx| {
 			let shared_task = shared_task_for_handler.clone();
 			async move {
 				let value = shared_task.run(ctx.exec_ctx(), SharedInput).await?;
@@ -1268,7 +1268,7 @@ async fn task_route_and_middleware_share_task_scope() {
 		})
 		.unwrap();
 	router
-		.use_task_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
+		.use_middleware(move |ctx: RequestCtx<TestEnv, &'static str, None>| {
 			let shared_task = shared_task.clone();
 			async move {
 				let _ = shared_task.run(ctx.exec_ctx(), SharedInput).await?;
@@ -1279,7 +1279,7 @@ async fn task_route_and_middleware_share_task_scope() {
 
 	let (state, exec_ctx) = test_runtime(shared_runs.clone());
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/shared"),
 			state,
 			exec_ctx,
@@ -1294,13 +1294,13 @@ async fn task_route_and_middleware_share_task_scope() {
 }
 
 #[tokio::test]
-async fn task_middleware_success_status_does_not_short_circuit_handler() {
+async fn middleware_success_status_does_not_short_circuit_handler() {
 	let mut router: Router<TestEnv, &'static str> = Router::default();
 	let handler_runs = Arc::new(AtomicUsize::new(0));
 	let handler_runs_for_handler = handler_runs.clone();
 
 	router
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::ACCEPTED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -1311,7 +1311,7 @@ async fn task_middleware_success_status_does_not_short_circuit_handler() {
 		})
 		.unwrap();
 	router
-		.add_task_handler(Method::GET, "/success", no_input(), move |ctx| {
+		.add_handler(Method::GET, "/success", no_input(), move |ctx| {
 			let handler_runs = handler_runs_for_handler.clone();
 			async move {
 				handler_runs.fetch_add(1, Ordering::SeqCst);
@@ -1324,7 +1324,7 @@ async fn task_middleware_success_status_does_not_short_circuit_handler() {
 
 	let (state, exec_ctx) = default_runtime();
 	let result = router
-		.execute_task_route(
+		.execute_route(
 			api_request("/success"),
 			state,
 			exec_ctx,
@@ -1360,14 +1360,14 @@ fn nested_router_registration_snapshots_and_matching() {
 	router.add_pattern_without_handler("/").unwrap();
 	router.add_pattern_without_handler("/users").unwrap();
 	router
-		.add_task_handler("/users/:id", no_input(), |_| async { Ok("user") })
+		.add_handler("/users/:id", no_input(), |_| async { Ok("user") })
 		.unwrap();
 	router
-		.add_task_handler("/users/_index", no_input(), |_| async { Ok("index") })
+		.add_handler("/users/_index", no_input(), |_| async { Ok("index") })
 		.unwrap();
 
 	assert!(router.is_registered("/users/:id").unwrap());
-	assert!(router.has_task_handler("/users/:id").unwrap());
+	assert!(router.has_handler("/users/:id").unwrap());
 
 	let mut snapshot = router.all_routes().unwrap();
 	snapshot.clear();
@@ -1396,13 +1396,13 @@ async fn nested_tasks_run_in_parallel_and_preserve_match_order() {
 	let mut router: NestedRouter<TestEnv, &'static str> = NestedRouter::default();
 	let sleep = Duration::from_millis(60);
 	router
-		.add_task_handler("/parallel", no_input(), move |_| async move {
+		.add_handler("/parallel", no_input(), move |_| async move {
 			tokio::time::sleep(sleep).await;
 			Ok("parent-ok")
 		})
 		.unwrap();
 	router
-		.add_task_handler("/parallel/:id", no_input(), move |ctx| async move {
+		.add_handler("/parallel/:id", no_input(), move |ctx| async move {
 			tokio::time::sleep(sleep).await;
 			Ok(ctx.param("id").unwrap().to_string())
 		})
@@ -1444,7 +1444,7 @@ async fn nested_tasks_run_in_parallel_and_preserve_match_order() {
 }
 
 #[tokio::test]
-async fn nested_task_middleware_terminal_proxy_suppresses_matched_handlers() {
+async fn nested_middleware_terminal_proxy_suppresses_matched_handlers() {
 	let mut router: NestedRouter<TestEnv, &'static str> = NestedRouter::default();
 	let parent_runs = Arc::new(AtomicUsize::new(0));
 	let child_runs = Arc::new(AtomicUsize::new(0));
@@ -1452,7 +1452,7 @@ async fn nested_task_middleware_terminal_proxy_suppresses_matched_handlers() {
 	let child_runs_for_handler = child_runs.clone();
 
 	router
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			assert_eq!(ctx.matched_pattern(), "/items/:id");
 			assert_eq!(ctx.param("id"), Some("123"));
 			assert_eq!(ctx.request().path(), "/items/123");
@@ -1463,7 +1463,7 @@ async fn nested_task_middleware_terminal_proxy_suppresses_matched_handlers() {
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items", no_input(), move |_| {
+		.add_handler("/items", no_input(), move |_| {
 			let parent_runs = parent_runs_for_handler.clone();
 			async move {
 				parent_runs.fetch_add(1, Ordering::SeqCst);
@@ -1472,7 +1472,7 @@ async fn nested_task_middleware_terminal_proxy_suppresses_matched_handlers() {
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), move |_| {
+		.add_handler("/items/:id", no_input(), move |_| {
 			let child_runs = child_runs_for_handler.clone();
 			async move {
 				child_runs.fetch_add(1, Ordering::SeqCst);
@@ -1514,7 +1514,7 @@ async fn nested_task_middleware_terminal_proxy_suppresses_matched_handlers() {
 }
 
 #[tokio::test]
-async fn nested_task_middleware_success_status_does_not_short_circuit_matched_handlers() {
+async fn nested_middleware_success_status_does_not_short_circuit_matched_handlers() {
 	let mut router: NestedRouter<TestEnv, &'static str> = NestedRouter::default();
 	let parent_runs = Arc::new(AtomicUsize::new(0));
 	let child_runs = Arc::new(AtomicUsize::new(0));
@@ -1522,7 +1522,7 @@ async fn nested_task_middleware_success_status_does_not_short_circuit_matched_ha
 	let child_runs_for_handler = child_runs.clone();
 
 	router
-		.use_task_middleware(|ctx| async move {
+		.use_middleware(|ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::ACCEPTED, Option::None);
 			ctx.response_proxy_mut().set_header(
@@ -1533,7 +1533,7 @@ async fn nested_task_middleware_success_status_does_not_short_circuit_matched_ha
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items", no_input(), move |_| {
+		.add_handler("/items", no_input(), move |_| {
 			let parent_runs = parent_runs_for_handler.clone();
 			async move {
 				parent_runs.fetch_add(1, Ordering::SeqCst);
@@ -1542,7 +1542,7 @@ async fn nested_task_middleware_success_status_does_not_short_circuit_matched_ha
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), move |ctx| {
+		.add_handler("/items/:id", no_input(), move |ctx| {
 			let child_runs = child_runs_for_handler.clone();
 			async move {
 				child_runs.fetch_add(1, Ordering::SeqCst);
@@ -1594,7 +1594,7 @@ async fn nested_parent_error_cancels_descendants() {
 	let child_started_for_child = child_started.clone();
 
 	router
-		.add_task_handler("/items", no_input(), move |_| {
+		.add_handler("/items", no_input(), move |_| {
 			let child_started = child_started_for_parent.clone();
 			async move {
 				child_started.notified().await;
@@ -1603,7 +1603,7 @@ async fn nested_parent_error_cancels_descendants() {
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), move |ctx| {
+		.add_handler("/items/:id", no_input(), move |ctx| {
 			let child_started = child_started_for_child.clone();
 			async move {
 				child_started.notify_one();
@@ -1647,7 +1647,7 @@ async fn nested_parent_response_error_cancels_descendants() {
 	let child_started_for_child = child_started.clone();
 
 	router
-		.add_task_handler("/items", no_input(), move |ctx| {
+		.add_handler("/items", no_input(), move |ctx| {
 			let child_started = child_started_for_parent.clone();
 			async move {
 				child_started.notified().await;
@@ -1658,7 +1658,7 @@ async fn nested_parent_response_error_cancels_descendants() {
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), move |ctx| {
+		.add_handler("/items/:id", no_input(), move |ctx| {
 			let child_started = child_started_for_child.clone();
 			async move {
 				child_started.notify_one();
@@ -1704,7 +1704,7 @@ async fn nested_parent_terminal_does_not_wait_for_uncancellable_child() {
 	let parent_can_finish_for_parent = parent_can_finish.clone();
 
 	router
-		.add_task_handler("/items", no_input(), move |ctx| {
+		.add_handler("/items", no_input(), move |ctx| {
 			let child_started = child_started_for_parent.clone();
 			let parent_can_finish = parent_can_finish_for_parent.clone();
 			async move {
@@ -1717,7 +1717,7 @@ async fn nested_parent_terminal_does_not_wait_for_uncancellable_child() {
 		})
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), move |_| {
+		.add_handler("/items/:id", no_input(), move |_| {
 			let child_started = child_started_for_child.clone();
 			async move {
 				child_started.notify_one();
@@ -1760,7 +1760,7 @@ async fn nested_parent_bad_request_input_error_cancels_descendants() {
 	let child_started_for_child = child_started.clone();
 
 	router
-		.add_task_handler(
+		.add_handler(
 			"/items",
 			InputParser::<()>::callback(move |_| {
 				child_started_for_parent.notify_one();
@@ -1770,7 +1770,7 @@ async fn nested_parent_bad_request_input_error_cancels_descendants() {
 		)
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), move |ctx| {
+		.add_handler("/items/:id", no_input(), move |ctx| {
 			let child_started = child_started_for_child.clone();
 			async move {
 				child_started.notified().await;
@@ -1816,10 +1816,10 @@ async fn nested_handler_error_suppresses_own_success_effects_in_execution_result
 	let mut router: NestedRouter<TestEnv, &'static str> = NestedRouter::default();
 
 	router
-		.add_task_handler("/items", no_input(), |_| async { Ok("parent") })
+		.add_handler("/items", no_input(), |_| async { Ok("parent") })
 		.unwrap();
 	router
-		.add_task_handler("/items/:id", no_input(), |ctx| async move {
+		.add_handler("/items/:id", no_input(), |ctx| async move {
 			ctx.response_proxy_mut()
 				.set_status(StatusCode::CREATED, Option::None);
 			ctx.response_proxy_mut().set_header(

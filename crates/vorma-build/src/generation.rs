@@ -7,19 +7,19 @@ use vorma::__private::manifest::Manifest;
 
 use crate::config::ConfigView;
 use crate::ts_gen::{LiveTsResult, StaticTsResult};
-use crate::ts_modules::TsRoute;
+use crate::ts_modules::TsViewModule;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct LiveMetadata {
 	pub(crate) generated_ts: LiveGeneratedTs,
-	pub(crate) route_modules: BTreeMap<String, RouteModule>,
+	pub(crate) view_modules: BTreeMap<String, ViewModule>,
 	pub(crate) search_schemas: BTreeMap<String, Value>,
 	pub(crate) root_document_hash_source: String,
 }
 
 pub(crate) type LiveGeneratedTs = LiveTsResult;
 pub(crate) type StaticGeneratedTs = StaticTsResult;
-pub(crate) type RouteModule = TsRoute;
+pub(crate) type ViewModule = TsViewModule;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct StaticMetadata {
@@ -70,7 +70,7 @@ pub(crate) struct CommittedGeneration {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DevMuxGeneration {
 	pub(crate) config: Config,
-	pub(crate) route_modules: BTreeMap<String, RouteModule>,
+	pub(crate) view_modules: BTreeMap<String, ViewModule>,
 	pub(crate) public_filemap: BTreeMap<String, String>,
 }
 
@@ -124,7 +124,7 @@ impl CommittedGeneration {
 	pub(crate) fn dev_mux_generation(&self) -> DevMuxGeneration {
 		DevMuxGeneration {
 			config: self.config.clone(),
-			route_modules: self.live.route_modules.clone(),
+			view_modules: self.live.view_modules.clone(),
 			public_filemap: self.static_metadata.public_filemap.clone(),
 		}
 	}
@@ -171,9 +171,9 @@ mod tests {
 		let candidate = GenerationCandidate {
 			config: config(),
 			live: LiveMetadata {
-				route_modules: BTreeMap::from([(
+				view_modules: BTreeMap::from([(
 					"/".to_owned(),
-					RouteModule {
+					ViewModule {
 						pattern: "/".to_owned(),
 						import_path: "src/root.tsx".to_owned(),
 						deps: Vec::new(),
@@ -209,7 +209,7 @@ mod tests {
 			committed.app_server_executable(),
 			Some(&PathBuf::from("/tmp/app-server"))
 		);
-		assert_eq!(dev_mux.route_modules["/"].import_path, "src/root.tsx");
+		assert_eq!(dev_mux.view_modules["/"].import_path, "src/root.tsx");
 		assert_eq!(
 			dev_mux.public_filemap["logo.svg"],
 			"/static/vorma_out_logo_hash.svg"

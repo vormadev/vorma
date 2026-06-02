@@ -24,15 +24,14 @@ mod context;
 mod contract;
 #[cfg(test)]
 use context::accepts_client_redirect;
-pub use context::{ApiCtx, HeadHandle, ResponseHandle, RouteParams, TaskMiddlewareCtx, ViewCtx};
+pub use context::{HeadHandle, MiddlewareCtx, Params, ResourceCtx, ResponseHandle, ViewCtx};
 use contract::RouteCollector;
-pub use contract::{ApiRouteEntry, Contract, ViewEntry, contract_for};
+pub use contract::{Contract, ResourceEntry, ViewEntry, contract_for};
 #[cfg(test)]
-use pattern::default_api_route_kind_for_method;
+use pattern::default_resource_kind_for_method;
 use pattern::validate_declared_route_pattern;
 pub use pattern::{
-	default_api_route_kind, route_is_splat_pattern, route_params_for_pattern,
-	view_parents_for_patterns,
+	default_resource_kind, params_for_pattern, pattern_is_splat, view_parents_for_patterns,
 };
 mod pattern;
 pub(crate) use runtime::{RuntimeRoutes, runtime_routes_for};
@@ -41,7 +40,7 @@ mod runtime;
 use runner::serialize_route_output;
 pub use runner::{
 	ErasedRequestCtx, ErasedRouteFuture, ErasedRouteHandler, PathParams, RouteFuture,
-	run_static_api_route, run_static_view,
+	run_static_resource, run_static_view,
 };
 use runner::{RouteRunner, run_route_runner};
 mod runner;
@@ -51,7 +50,8 @@ pub type TypeResolver = fn(TypePhase, &mut TypeRegistry) -> Result<TypeRef, Stri
 #[doc(hidden)]
 pub type SearchSchemaResolver = fn() -> Result<Value, String>;
 #[cfg(test)]
-type ApiRouteHandler<S, E, I, P, O> = dyn Fn(ApiCtx<S, E, I, P>) -> RouteFuture<O, E> + Send + Sync;
+type ResourceHandler<S, E, I, P, O> =
+	dyn Fn(ResourceCtx<S, E, I, P>) -> RouteFuture<O, E> + Send + Sync;
 #[cfg(test)]
 type ViewHandler<S, E, I, P, O> = dyn Fn(ViewCtx<S, E, I, P>) -> RouteFuture<O, E> + Send + Sync;
 
@@ -72,59 +72,59 @@ where
 	searchparams::schema_for_type::<T>().map_err(|err| err.to_string())
 }
 
-/// Request-scoped task middleware declaration shared by views and API-routes.
-pub struct TaskMiddleware<S, E = Box<dyn std::error::Error + Send + Sync>> {
-	mw: mux::TaskMw<S, E>,
+/// Request-scoped middleware declaration shared by views and resources.
+pub struct Middleware<S, E = Box<dyn std::error::Error + Send + Sync>> {
+	mw: mux::Middleware<S, E>,
 }
 
-impl<S, E> TaskMiddleware<S, E>
+impl<S, E> Middleware<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	/// Create task middleware from an async handler.
+	/// Create middleware from an async handler.
 	pub fn new<F, Fut, O>(handler: F) -> Self
 	where
-		F: Fn(TaskMiddlewareCtx<S, E>) -> Fut + Send + Sync + 'static,
+		F: Fn(MiddlewareCtx<S, E>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = vorma_tasks::Result<O, E>> + Send + 'static,
 		O: Send + Sync + 'static,
 	{
 		Self {
-			mw: mux::TaskMw::new(move |ctx| {
-				let future = handler(TaskMiddlewareCtx::new(ctx));
+			mw: mux::Middleware::new(move |ctx| {
+				let future = handler(MiddlewareCtx::new(ctx));
 				async move { future.await.map(|_| ()) }
 			}),
 		}
 	}
 
-	fn register_api(&self, r: &mut mux::Router<S, E>) -> Result<(), mux::Error> {
-		r.use_task_middleware_entry(&self.mw);
+	fn register_resource(&self, r: &mut mux::Router<S, E>) -> Result<(), mux::Error> {
+		r.use_middleware_entry(&self.mw);
 		Ok(())
 	}
 
 	fn register_view(&self, r: &mut NestedRouter<S, E>) -> Result<(), mux::Error> {
-		r.use_task_middleware_entry(&self.mw);
+		r.use_middleware_entry(&self.mw);
 		Ok(())
 	}
 
 	fn register_runtime(&self, routes: &mut RuntimeRoutes<S, E>) -> Result<(), mux::Error> {
-		self.register_api(&mut routes.api)?;
+		self.register_resource(&mut routes.resources)?;
 		self.register_view(&mut routes.views)?;
 		Ok(())
 	}
 }
 
-/// Generated-client classification for an API-route.
+/// Generated-client classification for a resource.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ApiRouteKind {
-	/// Read-shaped route. GET/HEAD routes default to this when no explicit kind is set.
+pub enum ResourceKind {
+	/// Read-shaped resource. GET/HEAD resources default to this when no explicit kind is set.
 	Query,
-	/// Write-shaped route. Non-GET/HEAD routes default to this when no explicit kind is set.
+	/// Write-shaped resource. Non-GET/HEAD resources default to this when no explicit kind is set.
 	Mutation,
 }
 
-impl ApiRouteKind {
-	/// Return the generated TypeScript literal for this API-route kind.
+impl ResourceKind {
+	/// Return the generated TypeScript literal for this resource kind.
 	pub fn as_str(self) -> &'static str {
 		match self {
 			Self::Query => "query",
@@ -136,7 +136,7 @@ impl ApiRouteKind {
 /// Nested view declaration.
 pub struct View<S, E = Box<dyn std::error::Error + Send + Sync>> {
 	pattern: Cow<'static, str>,
-	loader: RouteRunner<S, E>,
+	handler: RouteRunner<S, E>,
 	client_file: Cow<'static, str>,
 	input_type: TypeResolver,
 	output_type: TypeResolver,
@@ -155,11 +155,11 @@ where
 		input_type: TypeResolver,
 		output_type: TypeResolver,
 		search_schema: SearchSchemaResolver,
-		loader: ErasedRouteHandler<S, E>,
+		handler: ErasedRouteHandler<S, E>,
 	) -> Self {
 		Self {
 			pattern: Cow::Borrowed(pattern),
-			loader: RouteRunner::Static(loader),
+			handler: RouteRunner::Static(handler),
 			client_file: Cow::Borrowed(client_file),
 			input_type,
 			output_type,
@@ -172,7 +172,7 @@ where
 		pattern: impl Into<String>,
 		client_file: impl Into<String>,
 		input_parser: InputParser<I>,
-		loader: F,
+		handler: F,
 	) -> Self
 	where
 		F: Fn(ViewCtx<S, E, I, P>) -> Fut + Send + Sync + 'static,
@@ -181,12 +181,12 @@ where
 		P: PathParams,
 		O: Type + Serialize + Send + Sync + 'static,
 	{
-		let loader: Arc<ViewHandler<S, E, I, P, O>> = Arc::new(move |ctx| Box::pin(loader(ctx)));
+		let handler: Arc<ViewHandler<S, E, I, P, O>> = Arc::new(move |ctx| Box::pin(handler(ctx)));
 		Self {
 			pattern: Cow::Owned(pattern.into()),
-			loader: RouteRunner::Dynamic(Arc::new(move |ctx| {
+			handler: RouteRunner::Dynamic(Arc::new(move |ctx| {
 				let input_parser = input_parser.clone();
-				let loader = loader.clone();
+				let handler = handler.clone();
 				Box::pin(async move {
 					let input = input_parser
 						.parse(ctx.request())
@@ -194,7 +194,7 @@ where
 						.map_err(RouteExecutionError::Input)?;
 					let params = P::from_raw_path_params(ctx.params())
 						.map_err(RouteExecutionError::Input)?;
-					let output = loader(ViewCtx::new(ctx.with_input(input), params))
+					let output = handler(ViewCtx::new(ctx.with_input(input), params))
 						.await
 						.map_err(RouteExecutionError::Task)?;
 					serialize_route_output(output)
@@ -218,33 +218,33 @@ where
 	}
 }
 
-/// Collection of task middleware declarations.
+/// Collection of middleware declarations.
 #[derive(Default)]
-pub struct TaskMiddlewares<S, E = Box<dyn std::error::Error + Send + Sync>> {
-	task_mws: Vec<TaskMiddleware<S, E>>,
+pub struct Middlewares<S, E = Box<dyn std::error::Error + Send + Sync>> {
+	middlewares: Vec<Middleware<S, E>>,
 }
 
-impl<S, E> TaskMiddlewares<S, E>
+impl<S, E> Middlewares<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	/// Create an empty task middleware collection.
+	/// Create an empty middleware collection.
 	pub fn new() -> Self {
 		Self {
-			task_mws: Vec::new(),
+			middlewares: Vec::new(),
 		}
 	}
 
-	/// Append a task middleware declaration.
-	pub fn push(&mut self, task_middleware: TaskMiddleware<S, E>) -> &mut Self {
-		self.task_mws.push(task_middleware);
+	/// Append a middleware declaration.
+	pub fn push(&mut self, middleware: Middleware<S, E>) -> &mut Self {
+		self.middlewares.push(middleware);
 		self
 	}
 
 	fn register_runtime(&self, routes: &mut RuntimeRoutes<S, E>) -> Result<(), mux::Error> {
-		for task_middleware in &self.task_mws {
-			task_middleware.register_runtime(routes)?;
+		for middleware in &self.middlewares {
+			middleware.register_runtime(routes)?;
 		}
 		Ok(())
 	}
@@ -272,28 +272,28 @@ where
 	fn register_to_mux(&self, r: &mut NestedRouter<S, E>) -> Result<(), mux::Error> {
 		validate_declared_route_pattern("view", &self.pattern)
 			.map_err(mux::Error::InvalidPattern)?;
-		let loader = self.loader.clone();
-		r.add_task_handler_entry(
+		let handler = self.handler.clone();
+		r.add_handler_entry(
 			self.pattern.to_string(),
-			mux::erased_task_handler(move |ctx| {
-				let loader = loader.clone();
-				async move { run_route_runner(loader, ctx).await }
+			mux::erased_handler(move |ctx| {
+				let handler = handler.clone();
+				async move { run_route_runner(handler, ctx).await }
 			}),
 		)
 	}
 }
 
-/// API-route declaration.
-pub struct ApiRoute<S, E = Box<dyn std::error::Error + Send + Sync>> {
+/// Resource declaration.
+pub struct Resource<S, E = Box<dyn std::error::Error + Send + Sync>> {
 	method: Method,
 	pattern: Cow<'static, str>,
-	kind: Option<ApiRouteKind>,
+	kind: Option<ResourceKind>,
 	handler: RouteRunner<S, E>,
 	input_type: TypeResolver,
 	output_type: TypeResolver,
 }
 
-impl<S, E> ApiRoute<S, E>
+impl<S, E> Resource<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
@@ -302,7 +302,7 @@ where
 	pub const fn from_static(
 		method: Method,
 		pattern: &'static str,
-		kind: Option<ApiRouteKind>,
+		kind: Option<ResourceKind>,
 		input_type: TypeResolver,
 		output_type: TypeResolver,
 		handler: ErasedRouteHandler<S, E>,
@@ -321,18 +321,18 @@ where
 	pub(crate) fn new<I, P, O, F, Fut>(
 		method: Method,
 		pattern: impl Into<String>,
-		kind: Option<ApiRouteKind>,
+		kind: Option<ResourceKind>,
 		input_parser: InputParser<I>,
 		handler: F,
 	) -> Self
 	where
-		F: Fn(ApiCtx<S, E, I, P>) -> Fut + Send + Sync + 'static,
+		F: Fn(ResourceCtx<S, E, I, P>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = TaskResult<O, E>> + Send + 'static,
-		I: Type + api::ApiInput,
+		I: Type + api::ResourceInput,
 		P: PathParams,
 		O: Type + Serialize + Send + Sync + 'static,
 	{
-		let handler: Arc<ApiRouteHandler<S, E, I, P, O>> =
+		let handler: Arc<ResourceHandler<S, E, I, P, O>> =
 			Arc::new(move |ctx| Box::pin(handler(ctx)));
 		Self {
 			method,
@@ -348,7 +348,7 @@ where
 						.map_err(RouteExecutionError::Input)?;
 					let params = P::from_raw_path_params(ctx.params())
 						.map_err(RouteExecutionError::Input)?;
-					let output = handler(ApiCtx::new(ctx.with_input(input), params))
+					let output = handler(ResourceCtx::new(ctx.with_input(input), params))
 						.await
 						.map_err(RouteExecutionError::Task)?;
 					serialize_route_output(output)
@@ -359,23 +359,23 @@ where
 		}
 	}
 
-	/// HTTP method registered for this API-route.
+	/// HTTP method registered for this resource.
 	pub fn method(&self) -> &Method {
 		&self.method
 	}
 
-	/// API-route pattern relative to the configured API mount root.
+	/// Resource pattern relative to the configured API mount root.
 	pub fn pattern(&self) -> &str {
 		&self.pattern
 	}
 
 	/// Explicit generated-client kind override, when one was declared.
-	pub fn kind(&self) -> Option<ApiRouteKind> {
+	pub fn kind(&self) -> Option<ResourceKind> {
 		self.kind
 	}
 }
 
-impl<S, E> ApiRoute<S, E>
+impl<S, E> Resource<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
@@ -384,19 +384,19 @@ where
 	pub(crate) fn without_handler(
 		method: Method,
 		pattern: impl Into<String>,
-		kind: Option<ApiRouteKind>,
+		kind: Option<ResourceKind>,
 	) -> Self {
 		Self::new(
 			method,
 			pattern,
 			kind,
 			InputParser::default_input(),
-			|_: ApiCtx<S, E, (), ()>| async { Ok(None) },
+			|_: ResourceCtx<S, E, (), ()>| async { Ok(None) },
 		)
 	}
 }
 
-impl<S, E> ApiRoute<S, E>
+impl<S, E> Resource<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
@@ -404,7 +404,7 @@ where
 	fn register_contract(&self, collector: &mut RouteCollector) -> Result<(), String> {
 		let input = (self.input_type)(TypePhase::Deserialize, &mut collector.types)?;
 		let output = (self.output_type)(TypePhase::Serialize, &mut collector.types)?;
-		collector.api_routes.push(ApiRouteEntry {
+		collector.resources.push(ResourceEntry {
 			method: self.method.as_str().to_owned(),
 			pattern: self.pattern.to_string(),
 			kind: self.kind,
@@ -415,13 +415,13 @@ where
 	}
 
 	fn register_to_mux(&self, r: &mut mux::Router<S, E>) -> Result<(), mux::Error> {
-		validate_declared_route_pattern("API-route", &self.pattern)
+		validate_declared_route_pattern("resource", &self.pattern)
 			.map_err(mux::Error::InvalidPattern)?;
 		let handler = self.handler.clone();
-		r.add_task_handler_entry(
+		r.add_handler_entry(
 			self.method.clone(),
 			self.pattern.to_string(),
-			mux::erased_task_handler(move |ctx| {
+			mux::erased_handler(move |ctx| {
 				let handler = handler.clone();
 				async move { run_route_runner(handler, ctx).await }
 			}),
@@ -467,40 +467,40 @@ where
 	}
 }
 
-/// Collection of API-route declarations.
+/// Collection of resource declarations.
 #[derive(Default)]
-pub struct ApiRoutes<S, E = Box<dyn std::error::Error + Send + Sync>> {
-	api_routes: Vec<ApiRoute<S, E>>,
+pub struct Resources<S, E = Box<dyn std::error::Error + Send + Sync>> {
+	resources: Vec<Resource<S, E>>,
 }
 
-impl<S, E> ApiRoutes<S, E>
+impl<S, E> Resources<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	/// Create an empty API-route collection.
+	/// Create an empty resource collection.
 	pub fn new() -> Self {
 		Self {
-			api_routes: Vec::new(),
+			resources: Vec::new(),
 		}
 	}
 
-	/// Append an API-route declaration.
-	pub fn push(&mut self, api_route: ApiRoute<S, E>) -> &mut Self {
-		self.api_routes.push(api_route);
+	/// Append a resource declaration.
+	pub fn push(&mut self, resource: Resource<S, E>) -> &mut Self {
+		self.resources.push(resource);
 		self
 	}
 
 	fn register_contract(&self, collector: &mut RouteCollector) -> Result<(), String> {
-		for api_route in &self.api_routes {
-			api_route.register_contract(collector)?;
+		for resource in &self.resources {
+			resource.register_contract(collector)?;
 		}
 		Ok(())
 	}
 
 	fn register_runtime(&self, routes: &mut RuntimeRoutes<S, E>) -> Result<(), mux::Error> {
-		for api_route in &self.api_routes {
-			api_route.register_to_mux(&mut routes.api)?;
+		for resource in &self.resources {
+			resource.register_to_mux(&mut routes.resources)?;
 		}
 		Ok(())
 	}

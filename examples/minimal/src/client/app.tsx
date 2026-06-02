@@ -10,4 +10,4 @@ export const app = createVormaClient(vormaClientSeed, {
 	},
 });
 
-export const { Link, apiClient, defineView, useLoaderData } = app;
+export const { Link, apiClient, defineView, useViewData } = app;

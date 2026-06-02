@@ -25,18 +25,18 @@ type ThemeChangeEventDetail = {
 };
 
 type ThemeStorageBackend = {
-	getItem: (key: string) => string | null | undefined;
-	setItem: (key: string, value: string) => void;
+	get_item: (key: string) => string | null | undefined;
+	set_item: (key: string, value: string) => void;
 };
 
-const cookieThemeStorageBackend: ThemeStorageBackend = {
-	getItem: getClientCookie,
-	setItem: setClientCookie,
+const cookie_theme_storage_backend: ThemeStorageBackend = {
+	get_item: getClientCookie,
+	set_item: setClientCookie,
 };
 
-const localThemeStorageBackend: ThemeStorageBackend = {
-	getItem: (key: string) => localStorage.getItem(key),
-	setItem: (key: string, value: string) => localStorage.setItem(key, value),
+const local_theme_storage_backend: ThemeStorageBackend = {
+	get_item: (key: string) => localStorage.getItem(key),
+	set_item: (key: string, value: string) => localStorage.setItem(key, value),
 };
 
 /////////////////////////////////////////////////////////////////////
@@ -60,9 +60,10 @@ function __newBC(): BroadcastChannel {
 function __setBCOnMessage(bc: BroadcastChannel) {
 	bc.onmessage = (e) => {
 		const detail = e.data as ThemeChangeEventDetail;
-		const theme = detail.theme;
-		const resolvedTheme = __getResolvedThemeFromTheme(theme);
-		__setClassesAndDispatchEvent({ theme, resolvedTheme });
+		__setClassesAndDispatchEvent({
+			theme: detail.theme,
+			resolvedTheme: __getResolvedThemeFromTheme(detail.theme),
+		});
 	};
 }
 
@@ -81,34 +82,34 @@ PREFERS_DARK_QUERY.addEventListener("change", () => {
 /////////////////////////////////////////////////////////////////////
 
 export function getTheme(): Theme {
-	return readThemeOrDefault(cookieThemeStorageBackend);
+	return read_theme_or_default(cookie_theme_storage_backend);
 }
 
 export function getThemeLocal(): Theme {
-	return readThemeOrDefault(localThemeStorageBackend);
+	return read_theme_or_default(local_theme_storage_backend);
 }
 
 export function getResolvedTheme(): ResolvedTheme {
-	return readResolvedThemeOrDefault(cookieThemeStorageBackend);
+	return read_resolved_theme_or_default(cookie_theme_storage_backend);
 }
 
 export function getResolvedThemeLocal(): ResolvedTheme {
-	return readResolvedThemeOrDefault(localThemeStorageBackend);
+	return read_resolved_theme_or_default(local_theme_storage_backend);
 }
 
 export function setTheme(theme: Theme) {
-	writeThemeAndBroadcast(cookieThemeStorageBackend, theme);
+	write_theme_and_broadcast(cookie_theme_storage_backend, theme);
 }
 
 export function setThemeLocal(theme: Theme) {
-	writeThemeAndBroadcast(localThemeStorageBackend, theme);
+	write_theme_and_broadcast(local_theme_storage_backend, theme);
 }
 
-function writeThemeAndBroadcast(storageBackend: ThemeStorageBackend, theme: Theme) {
-	const resolvedTheme = __getResolvedThemeFromTheme(theme);
-	storageBackend.setItem(THEME_KEY, theme);
-	storageBackend.setItem(RESOLVED_THEME_KEY, resolvedTheme);
-	const detail: ThemeChangeEventDetail = { theme, resolvedTheme };
+function write_theme_and_broadcast(storage_backend: ThemeStorageBackend, theme: Theme) {
+	const resolved_theme = __getResolvedThemeFromTheme(theme);
+	storage_backend.set_item(THEME_KEY, theme);
+	storage_backend.set_item(RESOLVED_THEME_KEY, resolved_theme);
+	const detail: ThemeChangeEventDetail = { theme, resolvedTheme: resolved_theme };
 	__setClassesAndDispatchEvent(detail);
 	bc.postMessage(detail);
 }
@@ -126,15 +127,15 @@ type CleanupFunction = () => void;
 
 export function initLocal() {
 	const theme = localStorage.getItem(THEME_KEY) || THEMES.System;
-	const resolvedTheme = __getResolvedThemeFromTheme(
+	const resolved_theme = __getResolvedThemeFromTheme(
 		__isTheme(theme) ? theme : THEMES.System,
 	);
 	CLASSLIST.add(theme);
 	if (theme === THEMES.System) {
-		CLASSLIST.add(resolvedTheme);
+		CLASSLIST.add(resolved_theme);
 	}
 	localStorage.setItem(THEME_KEY, theme);
-	localStorage.setItem(RESOLVED_THEME_KEY, resolvedTheme);
+	localStorage.setItem(RESOLVED_THEME_KEY, resolved_theme);
 }
 
 export function getNextToggleValue(theme: Theme): Theme {
@@ -153,11 +154,11 @@ export function getNextToggleValue(theme: Theme): Theme {
 /////////////////////////////////////////////////////////////////////
 
 function __getResolvedThemeFromTheme(theme: Theme): ResolvedTheme {
-	let resolvedTheme = theme;
-	if (resolvedTheme === THEMES.System) {
-		resolvedTheme = PREFERS_DARK_QUERY.matches ? THEMES.Dark : THEMES.Light;
+	let resolved_theme = theme;
+	if (resolved_theme === THEMES.System) {
+		resolved_theme = PREFERS_DARK_QUERY.matches ? THEMES.Dark : THEMES.Light;
 	}
-	return resolvedTheme;
+	return resolved_theme;
 }
 
 function __setClassesAndDispatchEvent(detail: ThemeChangeEventDetail) {
@@ -177,14 +178,16 @@ function __isTheme(theme: string | undefined | null): theme is Theme {
 	return THEME_VALUES.includes(theme as Theme);
 }
 
-function readThemeOrDefault(storageBackend: ThemeStorageBackend): Theme {
-	const theme = storageBackend.getItem(THEME_KEY);
+function read_theme_or_default(storage_backend: ThemeStorageBackend): Theme {
+	const theme = storage_backend.get_item(THEME_KEY);
 	return __isTheme(theme) ? theme : THEMES.System;
 }
 
-function readResolvedThemeOrDefault(storageBackend: ThemeStorageBackend): ResolvedTheme {
-	const resolvedTheme = storageBackend.getItem(RESOLVED_THEME_KEY);
-	return __isResolvedTheme(resolvedTheme) ? resolvedTheme : THEMES.Light;
+function read_resolved_theme_or_default(
+	storage_backend: ThemeStorageBackend,
+): ResolvedTheme {
+	const resolved_theme = storage_backend.get_item(RESOLVED_THEME_KEY);
+	return __isResolvedTheme(resolved_theme) ? resolved_theme : THEMES.Light;
 }
 
 function __isResolvedTheme(theme: string | undefined | null): theme is ResolvedTheme {

@@ -54,7 +54,7 @@ impl From<LiveState> for LiveMetadata {
 	fn from(live_state: LiveState) -> Self {
 		Self {
 			generated_ts: live_state.ts_result,
-			route_modules: live_state.ts_modules,
+			view_modules: live_state.ts_modules,
 			search_schemas: live_state.search_schemas,
 			root_document_hash_source: live_state.root_document_hash_source,
 		}
@@ -143,7 +143,7 @@ mod tests {
 	use super::*;
 	use crate::live_state::LiveState;
 	use crate::ts_gen::LiveTsResult;
-	use crate::ts_modules::TsRoute;
+	use crate::ts_modules::TsViewModule;
 	use std::collections::BTreeMap;
 	use std::path::PathBuf;
 	use vorma::{FrontendConfig, PathConfig, ServerConfig, TsGenConfig};
@@ -186,7 +186,7 @@ mod tests {
 			},
 			ts_modules: BTreeMap::from([(
 				"/".to_owned(),
-				TsRoute {
+				TsViewModule {
 					pattern: "/".to_owned(),
 					import_path: "src/root.tsx".to_owned(),
 					deps: Vec::new(),
@@ -199,7 +199,7 @@ mod tests {
 		let metadata = LiveMetadata::from(live_state);
 
 		assert_eq!(metadata.generated_ts.routes_section, "routes");
-		assert_eq!(metadata.route_modules["/"].import_path, "src/root.tsx");
+		assert_eq!(metadata.view_modules["/"].import_path, "src/root.tsx");
 		assert_eq!(metadata.root_document_hash_source, "doc");
 	}
 

@@ -19,7 +19,7 @@ type ProbeBuildSkew = {
 	server_build_id: string;
 	response_kind: string;
 	response_trigger: string | null;
-	api_route_kind: string | null;
+	resource_kind: string | null;
 	revalidation_reason: string | null;
 	requested_href: string;
 	status: number;
@@ -101,8 +101,8 @@ type BuildSkewEventLike = {
 				ok: boolean;
 		  }
 		| {
-				kind: "apiRoute";
-				apiRouteKind: string;
+				kind: "resource";
+				resourceKind: string;
 				requestedHref: string;
 				status: number;
 				ok: boolean;
@@ -157,13 +157,13 @@ export function on_vorma_build_skew_detected(event: BuildSkewEventLike): void {
 	) {
 		current_probe.manual_revalidation_build_skew_detections += 1;
 	}
-	if (event.triggeringResponse.kind === "apiRoute") {
+	if (event.triggeringResponse.kind === "resource") {
 		current_probe.api_build_skew_detections += 1;
 		current_probe.last_api_build_skew = serialized_event;
-		if (event.triggeringResponse.apiRouteKind === "query") {
+		if (event.triggeringResponse.resourceKind === "query") {
 			current_probe.query_build_skew_detections += 1;
 		}
-		if (event.triggeringResponse.apiRouteKind === "mutation") {
+		if (event.triggeringResponse.resourceKind === "mutation") {
 			current_probe.mutation_build_skew_detections += 1;
 		}
 		if (!event.triggeringResponse.ok) {
@@ -338,9 +338,9 @@ function serialize_build_skew(event: BuildSkewEventLike): ProbeBuildSkew {
 			event.triggeringResponse.kind === "route"
 				? event.triggeringResponse.trigger
 				: null,
-		api_route_kind:
-			event.triggeringResponse.kind === "apiRoute"
-				? event.triggeringResponse.apiRouteKind
+		resource_kind:
+			event.triggeringResponse.kind === "resource"
+				? event.triggeringResponse.resourceKind
 				: null,
 		revalidation_reason:
 			event.triggeringResponse.kind === "route"

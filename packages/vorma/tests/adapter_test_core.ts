@@ -39,13 +39,13 @@ type TestClientLoaderProps = {
 		matches: Array<{
 			pattern: string;
 			input: unknown;
-			loaderData: unknown;
+			viewData: unknown;
 		}>;
 		outermostServerError: null | {
 			idx: number;
 			error: unknown;
 		};
-		loaderData: unknown;
+		viewData: unknown;
 	}>;
 	signal: AbortSignal;
 };
@@ -76,9 +76,9 @@ type TestVormaClient = {
 
 	Link: (props: { href: unknown } & Record<string, unknown>) => unknown;
 
-	useLoaderData: (props: { idx: number } & Record<string, unknown>) => unknown;
+	useViewData: (props: { idx: number } & Record<string, unknown>) => unknown;
 
-	usePatternLoaderData: (pattern: string) => unknown;
+	usePatternViewData: (pattern: string) => unknown;
 
 	useRouteState: (...args: any[]) => unknown;
 
@@ -105,8 +105,8 @@ type TestVormaClient = {
 };
 
 type TestViewScope = {
-	loaderData: (props: { idx: number } & Record<string, unknown>) => unknown;
-	patternLoaderData: (pattern: string) => unknown;
+	viewData: (props: { idx: number } & Record<string, unknown>) => unknown;
+	patternViewData: (pattern: string) => unknown;
 	routeState: {
 		(): unknown;
 		<T>(selector: (state: any) => T): T;
@@ -191,7 +191,7 @@ export function seed_payload(overrides: Record<string, unknown> = {}) {
 		client_build_id: "build-1",
 		deployment_id: "",
 		matched_patterns: [],
-		loaders_data: [],
+		views_data: [],
 		import_urls: [],
 		params: {},
 		splat_values: [],
@@ -215,7 +215,7 @@ export function route_response(
 ): Response {
 	const data = {
 		matched_patterns: [],
-		loaders_data: [],
+		views_data: [],
 		import_urls: [],
 		params: {},
 		splat_values: [],
@@ -329,7 +329,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{ root: true }],
+				views_data: [{ root: true }],
 				import_urls: ["/root.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -363,7 +363,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/props-check.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -398,7 +398,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/", "/child"],
-				loaders_data: [{}, {}],
+				views_data: [{}, {}],
 				import_urls: ["/no-comp.js", "/child.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -443,7 +443,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/default-idx.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -459,7 +459,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		it("renders error boundary from route module", async () => {
+		it("renders error boundary from view module", async () => {
 			vi.doMock("/error-route.js", () => {
 				return {
 					default: {
@@ -476,7 +476,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/error"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/error-route.js"],
 				outermost_server_err_idx: 0,
 				outermost_server_err: "boom",
@@ -509,7 +509,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/no-boundary"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/no-boundary.js"],
 				outermost_server_err_idx: 0,
 				outermost_server_err: "default-boom",
@@ -572,7 +572,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/parent", "/parent/child"],
-				loaders_data: [{}, {}],
+				views_data: [{}, {}],
 				import_urls: ["/parent-live.js", "/child-err.js"],
 				outermost_server_err_idx: 1,
 				outermost_server_err: "child-boom",
@@ -625,7 +625,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 					route_response({
 						matched_patterns: ["/scrolled"],
-						loaders_data: [{}],
+						views_data: [{}],
 						import_urls: ["/scroll-target.js"],
 					}),
 				);
@@ -683,7 +683,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/parent", "/parent/child"],
-				loaders_data: [{}, {}],
+				views_data: [{}, {}],
 				import_urls: ["/id-parent.js", "/id-child-a.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -709,7 +709,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 					route_response({
 						matched_patterns: ["/parent", "/parent/child"],
-						loaders_data: [{}, {}],
+						views_data: [{}, {}],
 						import_urls: ["/id-parent.js", "/id-child-b.js"],
 					}),
 				);
@@ -758,7 +758,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{ v: "initial" }],
+				views_data: [{ v: "initial" }],
 				import_urls: ["/stable.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -773,7 +773,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 					route_response({
 						matched_patterns: ["/"],
-						loaders_data: [{ v: "updated" }],
+						views_data: [{ v: "updated" }],
 						import_urls: ["/stable.js"],
 					}),
 				);
@@ -794,17 +794,17 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 	///////////////////////////////////////////////////////////////////
 
 	describe("hooks", () => {
-		it("useLoaderData returns data at props.idx", async () => {
+		it("useViewData returns data at props.idx", async () => {
 			let captured: unknown;
 			let client!: TestVormaClient;
 
-			vi.doMock("/hook-loader.js", () => {
+			vi.doMock("/hook-view-data.js", () => {
 				return {
 					default: harness.create_view({
 						client,
 						pattern: "/",
 						render: ({ props, v }) => {
-							captured = v.loaderData(props);
+							captured = v.viewData(props);
 							return harness.h("div", {}, "hook-test");
 						},
 					}),
@@ -813,8 +813,8 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{ name: "Ada" }],
-				import_urls: ["/hook-loader.js"],
+				views_data: [{ name: "Ada" }],
+				import_urls: ["/hook-view-data.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
 
@@ -829,7 +829,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		it("usePatternLoaderData returns data for matching pattern", async () => {
+		it("usePatternViewData returns data for matching pattern", async () => {
 			let captured: unknown;
 			let client!: TestVormaClient;
 
@@ -839,7 +839,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 						client,
 						pattern: "/",
 						render: ({ v }) => {
-							captured = v.patternLoaderData("/");
+							captured = v.patternViewData("/");
 							return harness.h("div", {}, "pattern-test");
 						},
 					}),
@@ -848,7 +848,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{ session: "abc" }],
+				views_data: [{ session: "abc" }],
 				import_urls: ["/hook-pattern.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -864,7 +864,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			}
 		});
 
-		it("usePatternLoaderData returns undefined for non-matching pattern", async () => {
+		it("usePatternViewData returns undefined for non-matching pattern", async () => {
 			let captured: unknown = "sentinel";
 			let client!: TestVormaClient;
 
@@ -874,7 +874,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 						client,
 						pattern: "/",
 						render: ({ v }) => {
-							captured = v.patternLoaderData("/does-not-exist" as any);
+							captured = v.patternViewData("/does-not-exist" as any);
 							return harness.h("div", {}, "no-match-test");
 						},
 					}),
@@ -883,7 +883,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/hook-no-match.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -918,7 +918,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/users/:id"],
-				loaders_data: [{ user: "Ada" }],
+				views_data: [{ user: "Ada" }],
 				import_urls: ["/hook-router.js"],
 				params: { id: "42" },
 				splat_values: [],
@@ -1024,7 +1024,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			window.history.replaceState({}, "", initial_child_path);
 			seed_payload({
 				matched_patterns: [parent_pattern, initial_child_path],
-				loaders_data: [{}, {}],
+				views_data: [{}, {}],
 				import_urls: ["/atomic-parent.js", "/atomic-child-a.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -1044,7 +1044,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				resolve_response(
 					route_response({
 						matched_patterns: [parent_pattern, next_child_path],
-						loaders_data: [{}, {}],
+						views_data: [{}, {}],
 						import_urls: ["/atomic-parent.js", "/atomic-child-b.js"],
 					}),
 				);
@@ -1120,7 +1120,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: [root_pattern],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: [page_module_url],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -1153,7 +1153,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				response.resolve(
 					route_response({
 						matched_patterns: [prefetch_target_path],
-						loaders_data: [{}],
+						views_data: [{}],
 					}),
 				);
 				cleanup();
@@ -1244,7 +1244,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: [root_pattern],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: [page_module_url],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -1286,7 +1286,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				response.resolve(
 					route_response({
 						matched_patterns: [prefetch_target_path],
-						loaders_data: [{}],
+						views_data: [{}],
 					}),
 				);
 				cleanup();
@@ -1346,7 +1346,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			window.history.replaceState({}, "", "/canonical");
 			seed_payload({
 				matched_patterns: ["/canonical"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/canonical.js"],
 			});
 			const client = harness.create_client(TEST_CONFIG);
@@ -1395,7 +1395,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			window.history.replaceState({}, "", "/amount/12");
 			seed_payload({
 				matched_patterns: [amount_pattern],
-				loaders_data: [{}],
+				views_data: [{}],
 				params: { amount },
 				splat_values: [],
 			});
@@ -1418,7 +1418,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			const fetch_mock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
 				route_response({
 					matched_patterns: [amount_pattern],
-					loaders_data: [{}],
+					views_data: [{}],
 					params: { amount: "1" },
 				}),
 			);
@@ -1487,7 +1487,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/cl-test"],
-				loaders_data: [{ raw: "data" }],
+				views_data: [{ raw: "data" }],
 				import_urls: ["/hook-cl.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -1522,7 +1522,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{}],
+				views_data: [{}],
 				import_urls: ["/hook-pcl.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -1550,7 +1550,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 						client,
 						pattern: "/",
 						render: ({ v }) => {
-							const data = v.loaderData({
+							const data = v.viewData({
 								idx: 0,
 							} as any);
 							read_current_value = () => {
@@ -1570,7 +1570,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{ v: "initial" }],
+				views_data: [{ v: "initial" }],
 				import_urls: ["/hook-rerender.js"],
 			});
 			client = harness.create_client(TEST_CONFIG);
@@ -1585,7 +1585,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 					route_response({
 						matched_patterns: ["/"],
-						loaders_data: [{ v: "updated" }],
+						views_data: [{ v: "updated" }],
 						import_urls: ["/hook-rerender.js"],
 					}),
 				);
@@ -1694,7 +1694,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			window.history.replaceState({}, "", "/products/7?tab=reviews#top");
 			seed_payload({
 				matched_patterns: ["/", "/products/:id"],
-				loaders_data: [{}, {}],
+				views_data: [{}, {}],
 				params: { id: "7" },
 				splat_values: [],
 			});
@@ -1783,7 +1783,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			try {
 				seed_payload({
 					matched_patterns: ["/", "/products/:id"],
-					loaders_data: [{}, {}],
+					views_data: [{}, {}],
 					params: { id: "7" },
 					splat_values: [],
 				});
@@ -1833,7 +1833,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			window.history.replaceState({}, "", "/products/7?tab=reviews#top");
 			seed_payload({
 				matched_patterns: ["/products/:id"],
-				loaders_data: [{}],
+				views_data: [{}],
 				params: { id: "7" },
 				splat_values: [],
 			});
@@ -1891,7 +1891,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 		it("adds pending attributes for the pending navigation route", async () => {
 			seed_payload({
 				matched_patterns: ["/"],
-				loaders_data: [{}],
+				views_data: [{}],
 			});
 			const client = harness.create_client(TEST_CONFIG);
 
@@ -1938,7 +1938,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				resolve_response(
 					route_response({
 						matched_patterns: ["/pending"],
-						loaders_data: [{}],
+						views_data: [{}],
 					}),
 				);
 				cleanup();
@@ -2076,7 +2076,7 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				boundary_props = props;
 				return harness.h("div", {}, "test");
 			});
-			const loader = async () => {
+			const client_loader_fn = async () => {
 				return { data: true };
 			};
 
@@ -2084,11 +2084,11 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				pattern: "/test",
 				component: comp,
 				errorBoundary: boundary,
-				clientLoader: loader,
+				clientLoader: client_loader_fn,
 			} as any);
 
 			expect(def.pattern).toBe("/test");
-			expect(def.client_loader).toBe(loader);
+			expect(def.client_loader).toBe(client_loader_fn);
 
 			const route_props = {
 				idx: 7,

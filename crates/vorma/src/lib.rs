@@ -1,6 +1,6 @@
 //! Rust full-stack framework runtime and app declaration API.
 //!
-//! Application code declares views, API-routes, task middleware, document defaults, and
+//! Application code declares views, resources, middleware, document defaults, and
 //! build/runtime config through this crate. `vorma-build` consumes the same declarations
 //! to generate manifests and TypeScript contracts, while [`RuntimeHost`] serves the
 //! runtime handler that users mount into their HTTP stack.
@@ -23,7 +23,6 @@ mod handler;
 mod head;
 mod htmlutil;
 mod init;
-mod loader_payload;
 mod manifest;
 pub mod middleware;
 mod mux;
@@ -34,18 +33,19 @@ mod response;
 mod searchparams;
 mod r#static;
 mod tsgen;
+mod view_payload;
 
-#[doc(hidden)]
-pub use api::{ApiInput, ViewInput};
 pub use api::{FormData, FormField, FormFile};
+#[doc(hidden)]
+pub use api::{ResourceInput, ViewInput};
 pub use config::{DevWatchConfig, FrontendConfig, PathConfig, ServerConfig, TsGenConfig};
 pub use cookie::Cookie as HttpCookie;
 pub use core::{
-	ApiCtx, ApiRoute, ApiRouteKind, ApiRoutes, HeadHandle, ResponseHandle, RouteParams,
-	TaskMiddleware, TaskMiddlewareCtx, TaskMiddlewares, View, ViewCtx, Views,
+	HeadHandle, Middleware, MiddlewareCtx, Middlewares, Params, Resource, ResourceCtx,
+	ResourceKind, Resources, ResponseHandle, View, ViewCtx, Views,
 };
 pub use document::{Document, DocumentAttributes, DocumentBuildCtx, DocumentBuilder};
-pub use error::{BoxError, Error, LoaderError, LoaderErrorClientMsg};
+pub use error::{BoxError, Error, ViewError, ViewErrorClientMsg};
 pub use head::{
 	HeadAttr, HeadBooleanAttribute, HeadBuilder, HeadInnerHtml, HeadSelfClosing, HeadTag,
 	HeadTextContent, HtmlElementDef,
@@ -62,7 +62,7 @@ pub use tsgen::{
 };
 pub use vorma_macros::TsGen;
 #[doc(hidden)]
-pub use vorma_macros::{__vorma_api_route, __vorma_view};
+pub use vorma_macros::{__vorma_resource, __vorma_view};
 pub use vorma_tasks::{
 	CancelToken, Clock as TaskClock, ClockInstant as TaskClockInstant, Error as TaskError, ExecCtx,
 	PreparedTask, Result as TaskResult, SystemClock as SystemTaskClock, Task, TaskEvent,
@@ -133,10 +133,10 @@ pub struct AppConfig<S, E = Box<dyn std::error::Error + Send + Sync>> {
 	pub state: S,
 	/// Registered nested views.
 	pub views: Views<S, E>,
-	/// Registered API-routes.
-	pub api_routes: ApiRoutes<S, E>,
-	/// Registered task middleware.
-	pub task_middlewares: TaskMiddlewares<S, E>,
+	/// Registered resources.
+	pub resources: Resources<S, E>,
+	/// Registered middleware.
+	pub middlewares: Middlewares<S, E>,
 	/// Task runtime options.
 	pub tasks_options: TasksOptions<E>,
 	/// Document shell/default-head builder.
@@ -150,8 +150,8 @@ pub struct App<S, E = Box<dyn std::error::Error + Send + Sync>> {
 	config: Config,
 	state: S,
 	views: Views<S, E>,
-	api_routes: ApiRoutes<S, E>,
-	task_middlewares: TaskMiddlewares<S, E>,
+	resources: Resources<S, E>,
+	middlewares: Middlewares<S, E>,
 	tasks_options: TasksOptions<E>,
 	document: DocumentBuilder,
 	request_body_limit: usize,
@@ -173,8 +173,8 @@ where
 			dev_watch_config,
 			state,
 			views,
-			api_routes,
-			task_middlewares,
+			resources,
+			middlewares,
 			tasks_options,
 			document,
 			request_body_limit,
@@ -191,8 +191,8 @@ where
 			},
 			state,
 			views,
-			api_routes,
-			task_middlewares,
+			resources,
+			middlewares,
 			tasks_options,
 			document,
 			request_body_limit,
@@ -201,18 +201,18 @@ where
 
 	pub(crate) fn into_live_state_parts(
 		self,
-	) -> (Config, Views<S, E>, ApiRoutes<S, E>, DocumentBuilder) {
+	) -> (Config, Views<S, E>, Resources<S, E>, DocumentBuilder) {
 		let Self {
 			config,
 			state: _,
 			views,
-			api_routes,
-			task_middlewares: _,
+			resources,
+			middlewares: _,
 			tasks_options: _,
 			document,
 			request_body_limit: _,
 		} = self;
-		(config, views, api_routes, document)
+		(config, views, resources, document)
 	}
 }
 
@@ -237,7 +237,7 @@ fn bind_addr_from_port(port: &str) -> Result<SocketAddr> {
 impl<S, E> App<S, E>
 where
 	S: Send + Sync + 'static,
-	E: LoaderErrorClientMsg + Send + Sync + 'static,
+	E: ViewErrorClientMsg + Send + Sync + 'static,
 {
 	/// Build a runtime host from an app declaration.
 	pub fn from_config(app_config: AppConfig<S, E>) -> Result<RuntimeHost<S, E>> {
@@ -255,21 +255,21 @@ macro_rules! app {
             #[allow(dead_code)]
             pub type App = ::vorma::App<State>;
             #[allow(dead_code)]
-            pub type ApiRoute = ::vorma::ApiRoute<State>;
+            pub type Resource = ::vorma::Resource<State>;
             #[allow(dead_code)]
-            pub type ApiRoutes = ::vorma::ApiRoutes<State>;
+            pub type Resources = ::vorma::Resources<State>;
             #[allow(dead_code)]
-            pub type ApiCtx<I = (), P = ()> = ::vorma::ApiCtx<State, ::vorma::BoxError, I, P>;
+            pub type ResourceCtx<I = (), P = ()> = ::vorma::ResourceCtx<State, ::vorma::BoxError, I, P>;
             #[allow(dead_code)]
             pub type DocumentBuildCtx = ::vorma::DocumentBuildCtx;
             #[allow(dead_code)]
             pub type DocumentBuilder = ::vorma::DocumentBuilder;
             #[allow(dead_code)]
-            pub type TaskMiddlewareCtx = ::vorma::TaskMiddlewareCtx<State>;
+            pub type MiddlewareCtx = ::vorma::MiddlewareCtx<State>;
             #[allow(dead_code)]
-            pub type TaskMiddleware = ::vorma::TaskMiddleware<State>;
+            pub type Middleware = ::vorma::Middleware<State>;
             #[allow(dead_code)]
-            pub type TaskMiddlewares = ::vorma::TaskMiddlewares<State>;
+            pub type Middlewares = ::vorma::Middlewares<State>;
             #[allow(dead_code)]
             pub type View = ::vorma::View<State>;
             #[allow(dead_code)]
@@ -279,8 +279,8 @@ macro_rules! app {
 
             #[allow(unused_imports)]
             pub use ::vorma::{
-                __vorma_api_route as api_route, __vorma_api_routes as api_routes,
-                __vorma_task_middlewares as task_middlewares, __vorma_view as view,
+                __vorma_resource as resource, __vorma_resources as resources,
+                __vorma_middlewares as middlewares, __vorma_view as view,
                 __vorma_views as views,
             };
         }
@@ -304,31 +304,31 @@ macro_rules! __vorma_views {
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __vorma_api_routes {
+macro_rules! __vorma_resources {
     () => {
-        ::vorma::ApiRoutes::new()
+        ::vorma::Resources::new()
     };
-    ($($api_route:expr),+ $(,)?) => {{
-        let mut api_routes = ::vorma::ApiRoutes::new();
+    ($($resource:expr),+ $(,)?) => {{
+        let mut resources = ::vorma::Resources::new();
         $(
-            api_routes.push($api_route);
+            resources.push($resource);
         )*
-        api_routes
+        resources
     }};
 }
 
 #[doc(hidden)]
 #[macro_export]
-macro_rules! __vorma_task_middlewares {
+macro_rules! __vorma_middlewares {
     () => {
-        ::vorma::TaskMiddlewares::new()
+        ::vorma::Middlewares::new()
     };
-    ($($task_middleware:expr),+ $(,)?) => {{
-        let mut task_middlewares = ::vorma::TaskMiddlewares::new();
+    ($($middleware:expr),+ $(,)?) => {{
+        let mut middlewares = ::vorma::Middlewares::new();
         $(
-            task_middlewares.push($task_middleware);
+            middlewares.push($middleware);
         )*
-        task_middlewares
+        middlewares
     }};
 }
 
@@ -354,8 +354,8 @@ pub mod __private {
 
 	pub mod core {
 		pub use crate::core::{
-			ApiRouteEntry, Contract, ViewEntry, contract_for, default_api_route_kind,
-			route_is_splat_pattern, route_params_for_pattern, view_parents_for_patterns,
+			Contract, ResourceEntry, ViewEntry, contract_for, default_resource_kind,
+			params_for_pattern, pattern_is_splat, view_parents_for_patterns,
 		};
 	}
 
@@ -372,10 +372,10 @@ pub mod __private {
 
 	pub use crate::core::{
 		ErasedRequestCtx, ErasedRouteFuture, PathParams, RouteFuture, TypeResolver,
-		run_static_api_route, run_static_view, search_schema_resolver, type_resolver,
+		run_static_resource, run_static_view, search_schema_resolver, type_resolver,
 	};
 	pub use crate::mux::{InputError, Params};
-	pub use crate::{ApiInput, ViewInput};
+	pub use crate::{ResourceInput, ViewInput};
 
 	pub fn is_build() -> bool {
 		crate::envutil::is_build()
@@ -394,7 +394,7 @@ pub mod __private {
 	) -> (
 		Config,
 		crate::Views<S, E>,
-		crate::ApiRoutes<S, E>,
+		crate::Resources<S, E>,
 		crate::DocumentBuilder,
 	)
 	where

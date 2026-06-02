@@ -1,13 +1,13 @@
 import { ui } from "../../route_factory.ts";
-import { dynamic, h, klass, loader_box, route_slow_pattern } from "./support.ts";
+import { dynamic, h, klass, view_data_box, view_slow_pattern } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_slow_pattern,
+	pattern: view_slow_pattern,
 	component: (props: any) => {
-		const data = loader_box(props);
+		const data = view_data_box(props);
 		return h(
 			"section",
-			{ ...klass("panel"), "data-bmb-route": "slow" },
+			{ ...klass("panel"), "data-bmb-view": "slow" },
 			h("h2", null, "Slow"),
 			h(
 				"div",

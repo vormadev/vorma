@@ -17,8 +17,8 @@ import {
 	apply_scroll,
 	create_adapter_base,
 	get_entry_key,
+	make_entry_id,
 	make_link_props,
-	make_route_id,
 	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
@@ -31,9 +31,9 @@ import {
 	type ToApiDecorator,
 	type ToDefineViewArgs,
 	type ToLinkProps,
-	type ToLoaderOutput,
-	type ToRouteComponentProps,
 	type ToRouteSyncArgs,
+	type ToViewComponentProps,
+	type ToViewOutput,
 	type ToViewPattern,
 	type ViewDefinition,
 	type VormaClient,
@@ -60,8 +60,6 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
-	ToLoaderInput,
-	ToLoaderOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -76,9 +74,11 @@ export type {
 	ToQueryMethod,
 	ToQueryOutput,
 	ToQueryPattern,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewInput,
+	ToViewOutput,
 	ToViewPattern,
 	AppConfig as VormaClientSeed,
 	WorkIndicator,
@@ -99,7 +99,7 @@ export function createVormaClient<A extends AppConfig>(
 ): VormaClient<A, JSX.Element, JSX.AnchorHTMLAttributes<HTMLAnchorElement>, "accessor"> {
 	const [entries, set_entries] = createSignal<DecomposedState["entries"]>([]);
 	const [route_error, set_route_error] = createSignal<DecomposedState["error"]>(null);
-	const [loaders_data, set_loaders_data] = createSignal<unknown[]>([]);
+	const [views_data, set_views_data] = createSignal<unknown[]>([]);
 	const [client_loaders_data, set_client_loaders_data] = createSignal<unknown[]>([]);
 	const [matched_patterns, set_matched_patterns] = createSignal<string[]>([]);
 	const [import_urls, set_import_urls] = createSignal<string[]>([]);
@@ -134,7 +134,7 @@ export function createVormaClient<A extends AppConfig>(
 				if (adapter_commit.state) {
 					set_entries(adapter_commit.state.entries);
 					set_route_error(adapter_commit.state.error);
-					set_loaders_data(adapter_commit.state.loaders_data);
+					set_views_data(adapter_commit.state.views_data);
 					set_client_loaders_data(adapter_commit.state.client_loaders_data);
 					set_matched_patterns(adapter_commit.state.matched_patterns);
 					set_import_urls(adapter_commit.state.import_urls);
@@ -247,29 +247,29 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function useLoaderData<P extends ToViewPattern<A>>(
-		args: ToRouteComponentProps<A, P>,
-	): Accessor<ToLoaderOutput<A, P>> {
+	function useViewData<P extends ToViewPattern<A>>(
+		args: ToViewComponentProps<A, P>,
+	): Accessor<ToViewOutput<A, P>> {
 		return createMemo(() => {
-			return loaders_data()[args.idx] as ToLoaderOutput<A, P>;
+			return views_data()[args.idx] as ToViewOutput<A, P>;
 		});
 	}
 
-	function usePatternLoaderData<P extends ToViewPattern<A>>(
+	function usePatternViewData<P extends ToViewPattern<A>>(
 		pattern: P,
-	): Accessor<ToLoaderOutput<A, P> | undefined> {
+	): Accessor<ToViewOutput<A, P> | undefined> {
 		return createMemo(() => {
 			const patterns = matched_patterns();
 			const idx = patterns.indexOf(pattern);
 			if (idx < 0) {
 				return undefined;
 			}
-			return loaders_data()[idx] as ToLoaderOutput<A, P>;
+			return views_data()[idx] as ToViewOutput<A, P>;
 		});
 	}
 
 	function useClientLoaderData<P extends ToViewPattern<A>, T>(
-		args: ToRouteComponentProps<A, P, T>,
+		args: ToViewComponentProps<A, P, T>,
 	): Accessor<T> {
 		return createMemo(() => {
 			return client_loaders_data()[args.idx] as T;
@@ -312,8 +312,8 @@ export function createVormaClient<A extends AppConfig>(
 			}
 
 			if (
-				make_route_id(idx, entry.pattern) !==
-				pending_scroll_intent.target_route_id
+				make_entry_id(idx, entry.pattern) !==
+				pending_scroll_intent.target_entry_id
 			) {
 				return;
 			}
@@ -482,8 +482,8 @@ export function createVormaClient<A extends AppConfig>(
 		useRouteSync,
 		useRouteState,
 		useWorkState,
-		useLoaderData,
-		usePatternLoaderData,
+		useViewData,
+		usePatternViewData,
 		useClientLoaderData,
 		usePatternClientLoaderData,
 	};

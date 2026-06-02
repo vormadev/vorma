@@ -15,8 +15,8 @@ import {
 	apply_scroll,
 	create_adapter_base,
 	get_entry_key,
+	make_entry_id,
 	make_link_props,
-	make_route_id,
 	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
@@ -29,9 +29,9 @@ import {
 	type ToApiDecorator,
 	type ToDefineViewArgs,
 	type ToLinkProps,
-	type ToLoaderOutput,
-	type ToRouteComponentProps,
 	type ToRouteSyncArgs,
+	type ToViewComponentProps,
+	type ToViewOutput,
 	type ToViewPattern,
 	type ViewDefinition,
 	type VormaClient,
@@ -58,8 +58,6 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
-	ToLoaderInput,
-	ToLoaderOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -74,9 +72,11 @@ export type {
 	ToQueryMethod,
 	ToQueryOutput,
 	ToQueryPattern,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewInput,
+	ToViewOutput,
 	ToViewPattern,
 	AppConfig as VormaClientSeed,
 	WorkIndicator,
@@ -98,7 +98,7 @@ export function createVormaClient<A extends AppConfig>(
 ): VormaClient<A, JSX.Element, HTMLAttributes<HTMLAnchorElement>, "signal"> {
 	const entries_signal = signal<DecomposedState["entries"]>([]);
 	const route_error_signal = signal<DecomposedState["error"]>(null);
-	const loaders_data_signal = signal<unknown[]>([]);
+	const views_data_signal = signal<unknown[]>([]);
 	const client_loaders_data_signal = signal<unknown[]>([]);
 	const matched_patterns_signal = signal<string[]>([]);
 	const route_state_signal = signal<RouteState | null>(null);
@@ -159,7 +159,7 @@ export function createVormaClient<A extends AppConfig>(
 				if (adapter_commit.state) {
 					entries_signal.value = adapter_commit.state.entries;
 					route_error_signal.value = adapter_commit.state.error;
-					loaders_data_signal.value = adapter_commit.state.loaders_data;
+					views_data_signal.value = adapter_commit.state.views_data;
 					client_loaders_data_signal.value =
 						adapter_commit.state.client_loaders_data;
 					matched_patterns_signal.value = adapter_commit.state.matched_patterns;
@@ -256,29 +256,29 @@ export function createVormaClient<A extends AppConfig>(
 		});
 	}
 
-	function useLoaderData<P extends ToViewPattern<A>>(
-		args: ToRouteComponentProps<A, P>,
-	): ReadonlySignal<ToLoaderOutput<A, P>> {
+	function useViewData<P extends ToViewPattern<A>>(
+		args: ToViewComponentProps<A, P>,
+	): ReadonlySignal<ToViewOutput<A, P>> {
 		return use_computed_signal(() => {
-			return loaders_data_signal.value[args.idx] as ToLoaderOutput<A, P>;
+			return views_data_signal.value[args.idx] as ToViewOutput<A, P>;
 		});
 	}
 
-	function usePatternLoaderData<P extends ToViewPattern<A>>(
+	function usePatternViewData<P extends ToViewPattern<A>>(
 		pattern: P,
-	): ReadonlySignal<ToLoaderOutput<A, P> | undefined> {
+	): ReadonlySignal<ToViewOutput<A, P> | undefined> {
 		return use_computed_signal(() => {
 			const patterns = matched_patterns_signal.value;
 			const idx = patterns.indexOf(pattern);
 			if (idx < 0) {
 				return undefined;
 			}
-			return loaders_data_signal.value[idx] as ToLoaderOutput<A, P>;
+			return views_data_signal.value[idx] as ToViewOutput<A, P>;
 		});
 	}
 
 	function useClientLoaderData<P extends ToViewPattern<A>, T>(
-		args: ToRouteComponentProps<A, P, T>,
+		args: ToViewComponentProps<A, P, T>,
 	): ReadonlySignal<T> {
 		return use_computed_signal(() => {
 			return client_loaders_data_signal.value[args.idx] as T;
@@ -321,8 +321,8 @@ export function createVormaClient<A extends AppConfig>(
 			}
 
 			if (
-				make_route_id(idx, entry.pattern) !==
-				pending_scroll_intent.target_route_id
+				make_entry_id(idx, entry.pattern) !==
+				pending_scroll_intent.target_entry_id
 			) {
 				return;
 			}
@@ -468,8 +468,8 @@ export function createVormaClient<A extends AppConfig>(
 		useRouteSync,
 		useRouteState,
 		useWorkState,
-		useLoaderData,
-		usePatternLoaderData,
+		useViewData,
+		usePatternViewData,
 		useClientLoaderData,
 		usePatternClientLoaderData,
 	};

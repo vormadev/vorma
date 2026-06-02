@@ -14,8 +14,8 @@ import {
 	apply_scroll,
 	create_adapter_base,
 	get_entry_key,
+	make_entry_id,
 	make_link_props,
-	make_route_id,
 	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
@@ -28,9 +28,9 @@ import {
 	type ToApiDecorator,
 	type ToDefineViewArgs,
 	type ToLinkProps,
-	type ToLoaderOutput,
-	type ToRouteComponentProps,
 	type ToRouteSyncArgs,
+	type ToViewComponentProps,
+	type ToViewOutput,
 	type ToViewPattern,
 	type ViewDefinition,
 	type VormaClient,
@@ -57,8 +57,6 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
-	ToLoaderInput,
-	ToLoaderOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -73,9 +71,11 @@ export type {
 	ToQueryMethod,
 	ToQueryOutput,
 	ToQueryPattern,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewInput,
+	ToViewOutput,
 	ToViewPattern,
 	AppConfig as VormaClientSeed,
 	WorkIndicator,
@@ -96,7 +96,7 @@ export function createVormaClient<A extends AppConfig>(
 	let store: DecomposedState = {
 		entries: [],
 		error: null,
-		loaders_data: [],
+		views_data: [],
 		client_loaders_data: [],
 		matched_patterns: [],
 		import_urls: [],
@@ -343,28 +343,28 @@ export function createVormaClient<A extends AppConfig>(
 		]);
 	}
 
-	function useLoaderData<P extends ToViewPattern<A>>(
-		args: ToRouteComponentProps<A, P>,
-	): ToLoaderOutput<A, P> {
+	function useViewData<P extends ToViewPattern<A>>(
+		args: ToViewComponentProps<A, P>,
+	): ToViewOutput<A, P> {
 		return use_channel((s) => {
-			return s.loaders_data[args.idx] as ToLoaderOutput<A, P>;
+			return s.views_data[args.idx] as ToViewOutput<A, P>;
 		});
 	}
 
-	function usePatternLoaderData<P extends ToViewPattern<A>>(
+	function usePatternViewData<P extends ToViewPattern<A>>(
 		pattern: P,
-	): ToLoaderOutput<A, P> | undefined {
+	): ToViewOutput<A, P> | undefined {
 		return use_channel((s) => {
 			const idx = s.matched_patterns.indexOf(pattern);
 			if (idx < 0) {
 				return undefined;
 			}
-			return s.loaders_data[idx] as ToLoaderOutput<A, P>;
+			return s.views_data[idx] as ToViewOutput<A, P>;
 		});
 	}
 
 	function useClientLoaderData<P extends ToViewPattern<A>, T>(
-		args: ToRouteComponentProps<A, P, T>,
+		args: ToViewComponentProps<A, P, T>,
 	): T {
 		return use_channel((s) => {
 			return s.client_loaders_data[args.idx] as T;
@@ -416,8 +416,8 @@ export function createVormaClient<A extends AppConfig>(
 			}
 
 			if (
-				make_route_id(idx, entry.pattern) !==
-				pending_scroll_intent.target_route_id
+				make_entry_id(idx, entry.pattern) !==
+				pending_scroll_intent.target_entry_id
 			) {
 				return;
 			}
@@ -554,8 +554,8 @@ export function createVormaClient<A extends AppConfig>(
 		useRouteSync,
 		useRouteState,
 		useWorkState,
-		useLoaderData,
-		usePatternLoaderData,
+		useViewData,
+		usePatternViewData,
 		useClientLoaderData,
 		usePatternClientLoaderData,
 	};

@@ -35,7 +35,7 @@ mod work_queue;
 
 use std::process;
 
-use vorma::{AppConfig, LoaderErrorClientMsg};
+use vorma::{AppConfig, ViewErrorClientMsg};
 
 use crate::config::CargoBinTarget;
 use crate::session::BuildSession;
@@ -67,7 +67,7 @@ pub fn run<S, E, F>(app_config: F, build_options: BuildOptions) -> Result<(), St
 where
 	F: FnOnce() -> vorma::Result<AppConfig<S, E>>,
 	S: Send + Sync + 'static,
-	E: LoaderErrorClientMsg + Send + Sync + 'static,
+	E: ViewErrorClientMsg + Send + Sync + 'static,
 {
 	run_with_args(app_config, build_options, std::env::args().skip(1))
 }
@@ -80,16 +80,16 @@ fn run_with_args<S, E, F, I>(
 where
 	F: FnOnce() -> vorma::Result<AppConfig<S, E>>,
 	S: Send + Sync + 'static,
-	E: LoaderErrorClientMsg + Send + Sync + 'static,
+	E: ViewErrorClientMsg + Send + Sync + 'static,
 	I: IntoIterator<Item = String>,
 {
 	set_build_env();
 
 	let app_config = app_config().map_err(|err| err.to_string())?;
-	let (config, views, api_routes, document) = vorma::__private::app_live_state_parts(app_config);
+	let (config, views, resources, document) = vorma::__private::app_live_state_parts(app_config);
 
 	if is_live_state_mode() {
-		match live_state::get_live_state_from_app(&config, &views, &api_routes, &document) {
+		match live_state::get_live_state_from_app(&config, &views, &resources, &document) {
 			Ok(live_state) => print_json_and_exit(&live_state, 0),
 			Err(err) => print_err_json_and_exit("error getting live state", &err),
 		}
@@ -211,8 +211,8 @@ fn print_json_and_exit<T: serde::Serialize>(value: &T, code: i32) -> ! {
 mod tests {
 	use super::*;
 	use vorma::{
-		ApiRoutes, DevWatchConfig, DocumentBuilder, FrontendConfig, PathConfig, ServerConfig,
-		TaskMiddlewares, TasksOptions, TsGenConfig, Views,
+		DevWatchConfig, DocumentBuilder, FrontendConfig, Middlewares, PathConfig, Resources,
+		ServerConfig, TasksOptions, TsGenConfig, Views,
 	};
 
 	#[test]
@@ -263,8 +263,8 @@ mod tests {
 					dev_watch_config: DevWatchConfig::default(),
 					state: (),
 					views: Views::new(),
-					api_routes: ApiRoutes::new(),
-					task_middlewares: TaskMiddlewares::new(),
+					resources: Resources::new(),
+					middlewares: Middlewares::new(),
 					tasks_options: TasksOptions::default(),
 					document: DocumentBuilder::default(),
 					request_body_limit: 1024,

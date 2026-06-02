@@ -5,7 +5,7 @@ import type { VormaClientSeed } from "vorma/react";
 export const vormaClientSeed = {
 	apiMountRoot: "/api/",
 	__vorma_views: null as unknown as typeof __vorma_views,
-	__vorma_api_routes: null as unknown as typeof __vorma_api_routes,
+	__vorma_resources: null as unknown as typeof __vorma_resources,
 } as const satisfies VormaClientSeed;
 
 declare global {
@@ -17,7 +17,7 @@ const vormaPublicUrlKeys = ["fonts/IoskeleyMono-400.woff2", "mark.svg"] as const
 
 type VormaPublicUrlKey = `${"" | "/"}${(typeof vormaPublicUrlKeys)[number]}`;
 
-const __vorma_api_routes = [
+const __vorma_resources = [
 	{
 		method: "POST",
 		pattern: "/notes",

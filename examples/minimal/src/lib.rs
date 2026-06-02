@@ -115,7 +115,7 @@ pub const NOTE: app::View = app::view! {
 	};
 };
 
-pub const CREATE_NOTE: app::ApiRoute = app::api_route! {
+pub const CREATE_NOTE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::POST;
 	pattern: "/notes";
 	input: CreateNoteInput;
@@ -155,7 +155,7 @@ pub const CREATE_NOTE: app::ApiRoute = app::api_route! {
 	};
 };
 
-pub const PING: app::ApiRoute = app::api_route! {
+pub const PING: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
 	pattern: "/ping";
 	input: ();
@@ -198,8 +198,8 @@ pub fn app_config() -> vorma::Result<vorma::AppConfig<AppState>> {
 		dev_watch_config: vorma::DevWatchConfig::default(),
 		state: state(),
 		views: views(),
-		api_routes: api_routes(),
-		task_middlewares: task_middlewares(),
+		resources: resources(),
+		middlewares: middlewares(),
 		tasks_options: vorma::TasksOptions::default(),
 		document: document(),
 		request_body_limit: REQUEST_BODY_LIMIT,
@@ -228,12 +228,12 @@ fn views() -> app::Views {
 	app::views![HOME, NOTE]
 }
 
-fn api_routes() -> app::ApiRoutes {
-	app::api_routes![CREATE_NOTE, PING]
+fn resources() -> app::Resources {
+	app::resources![CREATE_NOTE, PING]
 }
 
-fn task_middlewares() -> app::TaskMiddlewares {
-	app::task_middlewares![app::TaskMiddleware::new(|ctx| async move {
+fn middlewares() -> app::Middlewares {
+	app::middlewares![app::Middleware::new(|ctx| async move {
 		let _ = ctx.request().path();
 		ctx.response().set_header(
 			vorma::HttpHeaderName::from_static("x-minimal-task-middleware"),
@@ -425,7 +425,7 @@ mod tests {
 				"dep_urls": [],
 				"css_bundle_urls": []
 			},
-			"client_routes": {
+			"client_views": {
 				"/": {
 					"url": "/assets/home.view.js",
 					"dep_urls": [],

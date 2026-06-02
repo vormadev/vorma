@@ -1,15 +1,15 @@
 use serde_json::Value;
 
 use super::runtime::runtime_routes_for;
-use super::{ApiRouteKind, ApiRoutes, TaskMiddlewares, Views};
+use super::{Middlewares, ResourceKind, Resources, Views};
 use crate::tsgen::{TypeDef, TypeRef, TypeRegistry};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[doc(hidden)]
-pub struct ApiRouteEntry {
+pub struct ResourceEntry {
 	pub method: String,
 	pub pattern: String,
-	pub kind: Option<ApiRouteKind>,
+	pub kind: Option<ResourceKind>,
 	pub input: TypeRef,
 	pub output: TypeRef,
 }
@@ -27,14 +27,14 @@ pub struct ViewEntry {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 #[doc(hidden)]
 pub struct Contract {
-	api_routes: Vec<ApiRouteEntry>,
+	resources: Vec<ResourceEntry>,
 	views: Vec<ViewEntry>,
 	type_defs: Vec<TypeDef>,
 }
 
 impl Contract {
-	pub fn api_routes(&self) -> &[ApiRouteEntry] {
-		&self.api_routes
+	pub fn resources(&self) -> &[ResourceEntry] {
+		&self.resources
 	}
 
 	pub fn views(&self) -> &[ViewEntry] {
@@ -48,7 +48,7 @@ impl Contract {
 
 #[derive(Default)]
 pub(super) struct RouteCollector {
-	pub(super) api_routes: Vec<ApiRouteEntry>,
+	pub(super) resources: Vec<ResourceEntry>,
 	pub(super) views: Vec<ViewEntry>,
 	pub(super) types: TypeRegistry,
 }
@@ -56,7 +56,7 @@ pub(super) struct RouteCollector {
 impl RouteCollector {
 	fn resolve(self) -> Contract {
 		Contract {
-			api_routes: self.api_routes,
+			resources: self.resources,
 			views: self.views,
 			type_defs: self.types.into_defs(),
 		}
@@ -66,29 +66,29 @@ impl RouteCollector {
 #[doc(hidden)]
 pub fn contract_for<S, E>(
 	views: &Views<S, E>,
-	api_routes: &ApiRoutes<S, E>,
+	resources: &Resources<S, E>,
 ) -> Result<Contract, String>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	validate_route_contract(views, api_routes)?;
+	validate_route_contract(views, resources)?;
 	let mut collector = RouteCollector::default();
 	views.register_contract(&mut collector)?;
-	api_routes.register_contract(&mut collector)?;
+	resources.register_contract(&mut collector)?;
 	Ok(collector.resolve())
 }
 
 fn validate_route_contract<S, E>(
 	views: &Views<S, E>,
-	api_routes: &ApiRoutes<S, E>,
+	resources: &Resources<S, E>,
 ) -> Result<(), String>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	let task_middlewares = TaskMiddlewares::new();
-	runtime_routes_for(views, api_routes, &task_middlewares, "/api/")
+	let middlewares = Middlewares::new();
+	runtime_routes_for(views, resources, &middlewares, "/api/")
 		.map(|_| ())
 		.map_err(|err| format!("error validating app route contract: {err}"))
 }

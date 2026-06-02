@@ -5,22 +5,22 @@ import { jsonStringifyStable } from "./stringify_stable.ts";
 describe("jsonStringifyStable", () => {
 	describe("basic functionality", () => {
 		it("should stringify primitives correctly", () => {
-			expect(must_jsonStringifyStable(42)).toBe("42");
-			expect(must_jsonStringifyStable("hello")).toBe('"hello"');
-			expect(must_jsonStringifyStable(true)).toBe("true");
-			expect(must_jsonStringifyStable(null)).toBe("null");
+			expect(must_json_stringify_stable(42)).toBe("42");
+			expect(must_json_stringify_stable("hello")).toBe('"hello"');
+			expect(must_json_stringify_stable(true)).toBe("true");
+			expect(must_json_stringify_stable(null)).toBe("null");
 		});
 
 		it("should stringify arrays correctly", () => {
-			expect(must_jsonStringifyStable([])).toBe("[]");
-			expect(must_jsonStringifyStable([1, 2, 3])).toBe("[1,2,3]");
-			expect(must_jsonStringifyStable(["a", "b", "c"])).toBe('["a","b","c"]');
+			expect(must_json_stringify_stable([])).toBe("[]");
+			expect(must_json_stringify_stable([1, 2, 3])).toBe("[1,2,3]");
+			expect(must_json_stringify_stable(["a", "b", "c"])).toBe('["a","b","c"]');
 		});
 
 		it("should stringify objects correctly", () => {
-			expect(must_jsonStringifyStable({})).toBe("{}");
-			expect(must_jsonStringifyStable({ a: 1 })).toBe('{"a":1}');
-			expect(must_jsonStringifyStable({ a: 1, b: 2 })).toBe('{"a":1,"b":2}');
+			expect(must_json_stringify_stable({})).toBe("{}");
+			expect(must_json_stringify_stable({ a: 1 })).toBe('{"a":1}');
+			expect(must_json_stringify_stable({ a: 1, b: 2 })).toBe('{"a":1,"b":2}');
 		});
 	});
 
@@ -36,9 +36,11 @@ describe("jsonStringifyStable", () => {
 			obj2.b = 2;
 
 			// Both should stringify to the same result
-			expect(must_jsonStringifyStable(obj1)).toBe(must_jsonStringifyStable(obj2));
+			expect(must_json_stringify_stable(obj1)).toBe(
+				must_json_stringify_stable(obj2),
+			);
 			// And the keys should be alphabetically sorted
-			expect(must_jsonStringifyStable(obj1)).toBe('{"a":1,"b":2,"c":3}');
+			expect(must_json_stringify_stable(obj1)).toBe('{"a":1,"b":2,"c":3}');
 		});
 
 		it("should handle objects with numeric and non-alphanumeric keys", () => {
@@ -48,7 +50,7 @@ describe("jsonStringifyStable", () => {
 				_a: "underscore",
 				a: "alpha",
 			};
-			expect(must_jsonStringifyStable(obj)).toBe(
+			expect(must_json_stringify_stable(obj)).toBe(
 				'{"1":"also numeric","2":"numeric","_a":"underscore","a":"alpha"}',
 			);
 		});
@@ -59,18 +61,18 @@ describe("jsonStringifyStable", () => {
 			const nested1 = { a: 1, b: { d: 4, c: 3 } };
 			const nested2 = { a: 1, b: { c: 3, d: 4 } };
 
-			expect(must_jsonStringifyStable(nested1)).toBe(
-				must_jsonStringifyStable(nested2),
+			expect(must_json_stringify_stable(nested1)).toBe(
+				must_json_stringify_stable(nested2),
 			);
-			expect(must_jsonStringifyStable(nested1)).toBe('{"a":1,"b":{"c":3,"d":4}}');
+			expect(must_json_stringify_stable(nested1)).toBe('{"a":1,"b":{"c":3,"d":4}}');
 		});
 
 		it("should handle nested arrays consistently", () => {
-			const arrObj1 = { a: [1, { c: 3, b: 2 }] };
-			const arrObj2 = { a: [1, { b: 2, c: 3 }] };
+			const array_object_1 = { a: [1, { c: 3, b: 2 }] };
+			const array_object_2 = { a: [1, { b: 2, c: 3 }] };
 
-			expect(must_jsonStringifyStable(arrObj1)).toBe(
-				must_jsonStringifyStable(arrObj2),
+			expect(must_json_stringify_stable(array_object_1)).toBe(
+				must_json_stringify_stable(array_object_2),
 			);
 		});
 
@@ -89,38 +91,38 @@ describe("jsonStringifyStable", () => {
 			// Expected output with keys sorted alphabetically at each level
 			const expected =
 				'{"a":1,"arr":[5,4,3,2,1],"nested":{"a":"first","x":[10,{"a":1,"b":2,"c":3}],"y":25},"z":26}';
-			expect(must_jsonStringifyStable(complex)).toBe(expected);
+			expect(must_json_stringify_stable(complex)).toBe(expected);
 		});
 	});
 
 	describe("edge cases", () => {
 		it("should handle undefined values", () => {
 			// In standard JSON.stringify, undefined becomes null in arrays and is omitted in objects
-			expect(must_jsonStringifyStable([undefined])).toBe("[null]");
-			expect(must_jsonStringifyStable({ a: undefined })).toBe("{}");
+			expect(must_json_stringify_stable([undefined])).toBe("[null]");
+			expect(must_json_stringify_stable({ a: undefined })).toBe("{}");
 		});
 
 		it("should handle special number values", () => {
 			// NaN and Infinity become null in standard JSON
-			expect(must_jsonStringifyStable(Number.NaN)).toBe("null");
-			expect(must_jsonStringifyStable(Number.POSITIVE_INFINITY)).toBe("null");
-			expect(must_jsonStringifyStable(-Number.POSITIVE_INFINITY)).toBe("null");
+			expect(must_json_stringify_stable(Number.NaN)).toBe("null");
+			expect(must_json_stringify_stable(Number.POSITIVE_INFINITY)).toBe("null");
+			expect(must_json_stringify_stable(-Number.POSITIVE_INFINITY)).toBe("null");
 		});
 
 		it("should handle empty slots in arrays", () => {
 			// Create an array with empty slots
-			const sparseArray = Array(3);
-			sparseArray[0] = 1;
-			sparseArray[2] = 3;
+			const sparse_array = Array(3);
+			sparse_array[0] = 1;
+			sparse_array[2] = 3;
 
 			// Empty slots should become null in JSON
-			expect(must_jsonStringifyStable(sparseArray)).toBe("[1,null,3]");
+			expect(must_json_stringify_stable(sparse_array)).toBe("[1,null,3]");
 		});
 
 		it("should handle special characters in strings", () => {
-			expect(must_jsonStringifyStable("Line1\nLine2")).toBe('"Line1\\nLine2"');
-			expect(must_jsonStringifyStable("Tab\t")).toBe('"Tab\\t"');
-			expect(must_jsonStringifyStable('Quote"')).toBe('"Quote\\""');
+			expect(must_json_stringify_stable("Line1\nLine2")).toBe('"Line1\\nLine2"');
+			expect(must_json_stringify_stable("Tab\t")).toBe('"Tab\\t"');
+			expect(must_json_stringify_stable('Quote"')).toBe('"Quote\\""');
 		});
 
 		it("should handle circular references", () => {
@@ -135,7 +137,7 @@ describe("jsonStringifyStable", () => {
 	describe("stability verification", () => {
 		it("should produce identical output for equivalent objects with different property orders", () => {
 			// Generate a bunch of equivalent objects with randomized property order
-			const testCases = [
+			const test_cases = [
 				{ obj1: { a: 1, b: 2, c: 3 }, obj2: { c: 3, a: 1, b: 2 } },
 				{
 					obj1: { foo: "bar", baz: [1, 2, 3] },
@@ -147,9 +149,9 @@ describe("jsonStringifyStable", () => {
 				},
 			];
 
-			for (const { obj1, obj2 } of testCases) {
-				const str1 = must_jsonStringifyStable(obj1);
-				const str2 = must_jsonStringifyStable(obj2);
+			for (const { obj1, obj2 } of test_cases) {
+				const str1 = must_json_stringify_stable(obj1);
+				const str2 = must_json_stringify_stable(obj2);
 				expect(str1).toBe(str2);
 			}
 		});
@@ -160,9 +162,11 @@ describe("jsonStringifyStable", () => {
 			const arr2 = [3, 1, 2]; // Same order
 			const arr3 = [1, 2, 3]; // Different order
 
-			expect(must_jsonStringifyStable(arr1)).toBe(must_jsonStringifyStable(arr2));
-			expect(must_jsonStringifyStable(arr1)).not.toBe(
-				must_jsonStringifyStable(arr3),
+			expect(must_json_stringify_stable(arr1)).toBe(
+				must_json_stringify_stable(arr2),
+			);
+			expect(must_json_stringify_stable(arr1)).not.toBe(
+				must_json_stringify_stable(arr3),
 			);
 		});
 
@@ -180,8 +184,8 @@ describe("jsonStringifyStable", () => {
 				{ name: "Bob", id: 2 },
 			];
 
-			const str1 = must_jsonStringifyStable(arr1);
-			const str2 = must_jsonStringifyStable(arr2);
+			const str1 = must_json_stringify_stable(arr1);
+			const str2 = must_json_stringify_stable(arr2);
 
 			// This should pass if the function properly stabilizes object keys at all levels
 			expect(str1).toBe(str2);
@@ -209,8 +213,8 @@ describe("jsonStringifyStable", () => {
 				],
 			};
 
-			const str1 = must_jsonStringifyStable(nested1);
-			const str2 = must_jsonStringifyStable(nested2);
+			const str1 = must_json_stringify_stable(nested1);
+			const str2 = must_json_stringify_stable(nested2);
 
 			expect(str1).toBe(str2);
 		});
@@ -231,8 +235,8 @@ describe("jsonStringifyStable", () => {
 				[{ nested2: false, nested1: true }],
 			];
 
-			const str1 = must_jsonStringifyStable(mixed1);
-			const str2 = must_jsonStringifyStable(mixed2);
+			const str1 = must_json_stringify_stable(mixed1);
+			const str2 = must_json_stringify_stable(mixed2);
 
 			expect(str1).toBe(str2);
 		});
@@ -252,8 +256,8 @@ describe("jsonStringifyStable", () => {
 				large2[`prop${i}`] = { value: i };
 			}
 
-			const str1 = must_jsonStringifyStable(large1);
-			const str2 = must_jsonStringifyStable(large2);
+			const str1 = must_json_stringify_stable(large1);
+			const str2 = must_json_stringify_stable(large2);
 
 			expect(str1).toBe(str2);
 		});
@@ -261,7 +265,7 @@ describe("jsonStringifyStable", () => {
 
 	describe("functional verification", () => {
 		it("should round-trip data correctly", () => {
-			const testObjects = [
+			const test_objects = [
 				42,
 				"hello",
 				true,
@@ -270,10 +274,10 @@ describe("jsonStringifyStable", () => {
 				{ nested: { objects: [1, 2, { x: "y" }] } },
 			];
 
-			for (const obj of testObjects) {
-				const jsonString = must_jsonStringifyStable(obj);
-				const parsedBack = JSON.parse(jsonString);
-				expect(jsonDeepEquals(obj, parsedBack)).toBe(true);
+			for (const obj of test_objects) {
+				const json_string = must_json_stringify_stable(obj);
+				const parsed_back = JSON.parse(json_string);
+				expect(jsonDeepEquals(obj, parsed_back)).toBe(true);
 			}
 		});
 	});
@@ -281,28 +285,28 @@ describe("jsonStringifyStable", () => {
 	describe("performance considerations", () => {
 		it("should handle large objects", () => {
 			// Create a moderately large object
-			const largeObj = {};
+			const large_object = {};
 			for (let i = 0; i < 1000; i++) {
 				// @ts-ignore
-				largeObj[`key${i}`] = i;
+				large_object[`key${i}`] = i;
 			}
 
 			// This just verifies it can stringify without errors
-			expect(jsonStringifyStable(largeObj).ok).toBe(true);
+			expect(jsonStringifyStable(large_object).ok).toBe(true);
 		});
 
 		it("should handle large arrays", () => {
-			const largeArray = Array(10000)
+			const large_array = Array(10000)
 				.fill(0)
 				.map((_unusedValue: number, index: number) => {
 					return index;
 				});
-			expect(jsonStringifyStable(largeArray).ok).toBe(true);
+			expect(jsonStringifyStable(large_array).ok).toBe(true);
 		});
 	});
 });
 
-function must_jsonStringifyStable(input: unknown): string {
+function must_json_stringify_stable(input: unknown): string {
 	const res = jsonStringifyStable(input);
 	if (!res.ok) {
 		throw new Error(

@@ -1,6 +1,6 @@
 import { actions, always, extract } from "@antithesishq/bombadil";
 
-type LatencyRoute = {
+type LatencyTarget = {
 	href: string;
 	key: string;
 };
@@ -24,7 +24,7 @@ type ClickTarget = {
 	y: number;
 };
 
-const latency_routes: LatencyRoute[] = [
+const latency_targets: LatencyTarget[] = [
 	{ href: "/", key: "home" },
 	{ href: "/counter?n=0", key: "counter" },
 	{ href: "/echo", key: "echo" },
@@ -70,9 +70,9 @@ const click_targets = extract((state): ClickTarget[] => {
 	});
 });
 
-function current_route_idx(): number {
-	return latency_routes.findIndex((route) => {
-		const [pathname = "", search = ""] = route.href.split("?");
+function current_target_idx(): number {
+	return latency_targets.findIndex((target) => {
+		const [pathname = "", search = ""] = target.href.split("?");
 		return (
 			latency_state.current.pathname === pathname &&
 			latency_state.current.search === (search === "" ? "" : `?${search}`)
@@ -80,12 +80,12 @@ function current_route_idx(): number {
 	});
 }
 
-function next_route(): LatencyRoute {
-	const idx = current_route_idx();
+function next_target(): LatencyTarget {
+	const idx = current_target_idx();
 	if (idx < 0) {
-		return latency_routes[0]!;
+		return latency_targets[0]!;
 	}
-	return latency_routes[(idx + 1) % latency_routes.length]!;
+	return latency_targets[(idx + 1) % latency_targets.length]!;
 }
 
 export const vorma_latency_probe_is_ordered = always(() => {
@@ -106,9 +106,9 @@ export const vorma_latency_fixture_actions = actions(() => {
 		return ["Wait"];
 	}
 
-	const target_route = next_route();
+	const next_latency_target = next_target();
 	const target = click_targets.current.find((candidate) => {
-		return candidate.name === target_route.key;
+		return candidate.name === next_latency_target.key;
 	});
 	if (target == null) {
 		return ["Wait"];

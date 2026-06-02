@@ -12,40 +12,40 @@ use serde::{Deserialize, Serialize};
 use url::form_urlencoded;
 
 #[allow(dead_code)]
-const ROUTE_ROOT_PATTERN: &str = "/";
+const VIEW_ROOT_PATTERN: &str = "/";
 #[allow(dead_code)]
-const ROUTE_COUNTER_PATTERN: &str = "/counter";
+const VIEW_COUNTER_PATTERN: &str = "/counter";
 #[allow(dead_code)]
-const ROUTE_SLOW_PATTERN: &str = "/slow";
+const VIEW_SLOW_PATTERN: &str = "/slow";
 #[allow(dead_code)]
-const ROUTE_ECHO_PATTERN: &str = "/echo";
+const VIEW_ECHO_PATTERN: &str = "/echo";
 #[allow(dead_code)]
-const ROUTE_ITEM_PATTERN: &str = "/items/:id";
+const VIEW_ITEM_PATTERN: &str = "/items/:id";
 #[allow(dead_code)]
-const ROUTE_CLIENT_PATTERN: &str = "/client/:id";
+const VIEW_CLIENT_PATTERN: &str = "/client/:id";
 #[allow(dead_code)]
-const ROUTE_NESTED_PATTERN: &str = "/nested";
+const VIEW_NESTED_PATTERN: &str = "/nested";
 #[allow(dead_code)]
-const ROUTE_NESTED_DETAIL_PATTERN: &str = "/nested/:id/details";
+const VIEW_NESTED_DETAIL_PATTERN: &str = "/nested/:id/details";
 #[allow(dead_code)]
-const ROUTE_FAIL_PATTERN: &str = "/fail";
+const VIEW_FAIL_PATTERN: &str = "/fail";
 
 #[allow(dead_code)]
-const ACTION_ECHO_PATTERN: &str = "/echo";
+const RESOURCE_ECHO_PATTERN: &str = "/echo";
 #[allow(dead_code)]
-const ACTION_COUNT_PATTERN: &str = "/count";
+const RESOURCE_COUNT_PATTERN: &str = "/count";
 #[allow(dead_code)]
-const ACTION_FORM_PATTERN: &str = "/form";
+const RESOURCE_FORM_PATTERN: &str = "/form";
 #[allow(dead_code)]
-const ACTION_FORM_QUERY_PATTERN: &str = "/form-query";
+const RESOURCE_FORM_QUERY_PATTERN: &str = "/form-query";
 #[allow(dead_code)]
-const ACTION_SERVER_MARKER_PATTERN: &str = "/server-marker";
-const ECHO_ACTION_FAIL_MESSAGE: &str = "__bombadil_fail__";
+const RESOURCE_SERVER_MARKER_PATTERN: &str = "/server-marker";
+const ECHO_RESOURCE_FAIL_MESSAGE: &str = "__bombadil_fail__";
 const VARIANT_ENV_KEY: &str = "VORMA_BOMBADIL_VARIANT";
 const DEPLOYMENT_ENV_KEY: &str = "VORMA_BOMBADIL_DEPLOYMENT";
 const MODE_ENV_KEY: &str = "VORMA_BOMBADIL_MODE";
-const PANIC_ROUTE_ENV_KEY: &str = "VORMA_BOMBADIL_ENABLE_PANIC_ROUTE";
-const EXIT_ROUTE_ENV_KEY: &str = "VORMA_BOMBADIL_ENABLE_EXIT_ROUTE";
+const PANIC_ENDPOINT_ENV_KEY: &str = "VORMA_BOMBADIL_ENABLE_PANIC_ENDPOINT";
+const EXIT_ENDPOINT_ENV_KEY: &str = "VORMA_BOMBADIL_ENABLE_EXIT_ENDPOINT";
 const VARIANT_REACT: &str = "react";
 const VARIANT_PREACT: &str = "preact";
 const VARIANT_REMIX: &str = "remix";
@@ -62,7 +62,7 @@ const SERVER_ENTRY_BIN: &str = "framework-serve";
 const BUILD_ENTRY_BIN: &str = "framework-build";
 const RENDER_ENTRY: &str = "vorma.entry.ts";
 #[allow(dead_code)]
-const ROUTE_MODULE_ROOT: &str = "components/routes";
+const VIEW_MODULE_ROOT: &str = "components/routes";
 const REQUEST_BODY_LIMIT: usize = 16 * 1024 * 1024;
 
 vorma::app!(pub mod app for crate::scenario::AppState);
@@ -177,35 +177,35 @@ pub struct NestedDetailData {
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Default, Deserialize, vorma::TsGen)]
-pub struct CountActionInput {
+pub struct CountResourceInput {
 	#[serde(default, rename = "delta")]
 	Delta: i32,
 }
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
-pub struct CountActionData {
+pub struct CountResourceData {
 	Next: i32,
 	Deployment: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Default, Deserialize, vorma::TsGen)]
-pub struct EchoActionInput {
+pub struct EchoResourceInput {
 	#[serde(default)]
 	Message: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
-pub struct EchoActionData {
+pub struct EchoResourceData {
 	Message: String,
 	Deployment: String,
 }
 
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
-pub struct FormActionData {
+pub struct FormResourceData {
 	Accepted: bool,
 	Title: Option<String>,
 	Tags: Vec<String>,
@@ -303,7 +303,7 @@ pub const SLOW: app::View = app::view! {
 	handler: |ctx| {
 		let delay_ms = ctx.input().DelayMS.clamp(0, 250);
 		std::thread::sleep(Duration::from_millis(delay_ms as u64));
-		ctx.head().title("Slow Route");
+		ctx.head().title("Slow View");
 		Ok(SlowData {
 			DelayMS: delay_ms,
 			Stamp: unix_nanos(),
@@ -395,75 +395,75 @@ pub const FAIL: app::View = app::view! {
 	handler: |ctx| {
 		ctx.response().set_error_status(
 			vorma::HttpStatusCode::INTERNAL_SERVER_ERROR,
-			"Fixture loader failed on purpose.",
+			"Fixture view handler failed on purpose.",
 		);
 		Err::<EmptyData, _>(
-			(Box::new(vorma::LoaderError {
-				client_msg: "Fixture loader failed on purpose.".to_owned(),
+			(Box::new(vorma::ViewError {
+				client_msg: "Fixture view handler failed on purpose.".to_owned(),
 				err: None,
 			}) as vorma::BoxError).into(),
 		)
 	};
 };
 
-pub const COUNT_ACTION: app::ApiRoute = app::api_route! {
+pub const COUNT_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
 	pattern: "/count";
-	input: CountActionInput;
-	output: CountActionData;
+	input: CountResourceInput;
+	output: CountResourceData;
 	handler: |ctx| {
 		let next = ctx.input().Delta.clamp(-5, 5);
-		Ok(CountActionData {
+		Ok(CountResourceData {
 			Next: next,
 			Deployment: ctx.state().deployment.data_suffix.to_owned(),
 		})
 	};
 };
 
-pub const ECHO_ACTION: app::ApiRoute = app::api_route! {
+pub const ECHO_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::POST;
 	pattern: "/echo";
-	input: EchoActionInput;
-	output: EchoActionData;
+	input: EchoResourceInput;
+	output: EchoResourceData;
 	handler: |ctx| {
-		if ctx.input().Message == ECHO_ACTION_FAIL_MESSAGE {
+		if ctx.input().Message == ECHO_RESOURCE_FAIL_MESSAGE {
 			ctx.response().set_error_status(
 				vorma::HttpStatusCode::CONFLICT,
-				"Fixture action failed on purpose.",
+				"Fixture resource failed on purpose.",
 			);
-			return Ok(EchoActionData {
+			return Ok(EchoResourceData {
 				Message: String::new(),
 				Deployment: ctx.state().deployment.data_suffix.to_owned(),
 			});
 		}
-		Ok(EchoActionData {
+		Ok(EchoResourceData {
 			Message: ctx.input().Message.clone(),
 			Deployment: ctx.state().deployment.data_suffix.to_owned(),
 		})
 	};
 };
 
-pub const FORM_ACTION: app::ApiRoute = app::api_route! {
+pub const FORM_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::POST;
 	pattern: "/form";
 	input: vorma::FormData;
-	output: FormActionData;
+	output: FormResourceData;
 	handler: |ctx| {
-		Ok(form_action(&ctx))
+		Ok(form_resource(&ctx))
 	};
 };
 
-pub const FORM_QUERY_ACTION: app::ApiRoute = app::api_route! {
+pub const FORM_QUERY_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
 	pattern: "/form-query";
 	input: vorma::FormData;
-	output: FormActionData;
+	output: FormResourceData;
 	handler: |ctx| {
-		Ok(form_action(&ctx))
+		Ok(form_resource(&ctx))
 	};
 };
 
-pub const SERVER_MARKER_ACTION: app::ApiRoute = app::api_route! {
+pub const SERVER_MARKER_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
 	pattern: "/server-marker";
 	input: ();
@@ -578,8 +578,8 @@ impl Variant {
 			},
 			state: AppState { deployment },
 			views: views(),
-			api_routes: api_routes(),
-			task_middlewares: task_middlewares(),
+			resources: resources(),
+			middlewares: middlewares(),
 			tasks_options: vorma::TasksOptions::default(),
 			document: document(),
 			request_body_limit: REQUEST_BODY_LIMIT,
@@ -631,13 +631,13 @@ impl Switchboard {
 	fn serve_control(&self, request: Request<Body>) -> Response<Body> {
 		match request.uri().path() {
 			PANIC_PATH => {
-				if env_bool(PANIC_ROUTE_ENV_KEY) {
-					panic!("framework test panic route");
+				if env_bool(PANIC_ENDPOINT_ENV_KEY) {
+					panic!("framework test panic endpoint");
 				}
 				empty_response(StatusCode::NOT_FOUND)
 			}
 			EXIT_PATH => {
-				if env_bool(EXIT_ROUTE_ENV_KEY) {
+				if env_bool(EXIT_ENDPOINT_ENV_KEY) {
 					std::thread::spawn(|| {
 						std::thread::sleep(Duration::from_millis(50));
 						std::process::exit(86);
@@ -737,18 +737,18 @@ fn views() -> app::Views {
 	]
 }
 
-fn api_routes() -> app::ApiRoutes {
-	app::api_routes![
-		COUNT_ACTION,
-		ECHO_ACTION,
-		FORM_ACTION,
-		FORM_QUERY_ACTION,
-		SERVER_MARKER_ACTION,
+fn resources() -> app::Resources {
+	app::resources![
+		COUNT_RESOURCE,
+		ECHO_RESOURCE,
+		FORM_RESOURCE,
+		FORM_QUERY_RESOURCE,
+		SERVER_MARKER_RESOURCE,
 	]
 }
 
-fn task_middlewares() -> app::TaskMiddlewares {
-	app::task_middlewares![]
+fn middlewares() -> app::Middlewares {
+	app::middlewares![]
 }
 
 fn document() -> app::DocumentBuilder {
@@ -764,8 +764,8 @@ fn document() -> app::DocumentBuilder {
 	})
 }
 
-fn form_action(ctx: &app::ApiCtx<vorma::FormData>) -> FormActionData {
-	FormActionData {
+fn form_resource(ctx: &app::ResourceCtx<vorma::FormData>) -> FormResourceData {
+	FormResourceData {
 		Accepted: true,
 		Title: ctx.input().text("title").map(ToOwned::to_owned),
 		Tags: ctx.input().texts("tag").map(ToOwned::to_owned).collect(),

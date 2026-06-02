@@ -1,11 +1,11 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Link, apiClient, defineView, useLoaderData } from "../app.tsx";
+import { Link, apiClient, defineView, useViewData } from "../app.tsx";
 
 export default defineView({
 	pattern: "/",
 	component: (props) => {
-		const data = useLoaderData(props);
+		const data = useViewData(props);
 		const [body, set_body] = useState(data.draft ?? "");
 		const [error, set_error] = useState<string | null>(null);
 		const [saving, set_saving] = useState(false);

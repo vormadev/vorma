@@ -14,7 +14,7 @@ See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
 
 ## Suite Ownership
 
-- Bombadil owns broad runtime behavior: browser navigation, loaders, actions,
+- Bombadil owns broad runtime behavior: browser navigation, view handlers, resources,
   revalidation, prefetch, history, build outputs, dev-server behavior, and production
   deployment switching.
 - Framework-level Rust and TypeScript tests can live here when the behavior is covered
@@ -26,9 +26,9 @@ See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
 
 ## Layout
 
-- `src/scenario.rs` owns the Rust route topology, loaders, actions, and shared Vorma app
-  config factory.
-- `components/routes/` owns the single client route tree used by every adapter.
+- `src/scenario.rs` owns the Rust view/resource topology and shared Vorma app config
+  factory.
+- `components/routes/` owns the client view fixtures used by every adapter.
 - `runtime/` owns the React, Preact, Remix, and Solid adapter shims.
 - `shared/` owns browser instrumentation and shared CSS.
 - `specs/vorma.property.ts` contains the Bombadil properties and fixture-specific action
@@ -45,12 +45,12 @@ See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
 
 Bombadil writes run artifacts under `.bombadil/`:
 
-- `.bombadil/<variant>/` for prod root-route runs.
-- `.bombadil/<variant>-nested/` for prod nested-route runs.
-- `.bombadil/<variant>-counter/` for prod counter-route runs.
-- `.bombadil/dev-<variant>/` for dev root-route runs.
-- `.bombadil/dev-<variant>-nested/` for dev nested-route runs.
-- `.bombadil/dev-<variant>-counter/` for dev counter-route runs.
+- `.bombadil/<variant>/` for prod root-view runs.
+- `.bombadil/<variant>-nested/` for prod nested-view runs.
+- `.bombadil/<variant>-counter/` for prod counter-view runs.
+- `.bombadil/dev-<variant>/` for dev root-view runs.
+- `.bombadil/dev-<variant>-nested/` for dev nested-view runs.
+- `.bombadil/dev-<variant>-counter/` for dev counter-view runs.
 - `.bombadil/logs/build-prod-<variant>-a.log` for production deployment A build output.
 - `.bombadil/logs/build-prod-<variant>-b.log` for production deployment B build output.
 - `.bombadil/logs/build-prod-<variant>-server.log` for production server build output.
@@ -125,7 +125,7 @@ deployment switching a different problem than the production build-output switch
 writes to separate `.dist.*.dev.*` directories so it can run alongside prod.
 
 This does not mean build skew is impossible or irrelevant in dev. Dev pages still boot
-with a client build ID, route-data requests still submit that ID, and the server can still
+with a client build ID, view-data requests still submit that ID, and the server can still
 report a stale client build with `X-Vorma-Build-Skew`. Production Bombadil currently owns
 the A/B cases needed to exercise build-skew hard reloads. That skew case is one behavior
 inside the broader production suite, not the point of the suite.

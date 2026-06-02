@@ -83,9 +83,9 @@ describe("title", () => {
 	});
 
 	it("does not create title element for empty string when none exists", () => {
-		const titleEl = document.head.querySelector("title");
-		if (titleEl) {
-			titleEl.remove();
+		const title_el = document.head.querySelector("title");
+		if (title_el) {
+			title_el.remove();
 		}
 		apply_head_and_title("", [], []);
 		// title should remain empty, no element created

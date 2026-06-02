@@ -3,10 +3,10 @@ use crate::constants::{
 };
 use crate::mux::{self, NestedOptions, NestedRouter, Options};
 
-use super::{ApiRoutes, TaskMiddlewares, Views};
+use super::{Middlewares, Resources, Views};
 
 pub(crate) struct RuntimeRoutes<S, E = Box<dyn std::error::Error + Send + Sync>> {
-	pub(crate) api: mux::Router<S, E>,
+	pub(crate) resources: mux::Router<S, E>,
 	pub(crate) views: mux::NestedRouter<S, E>,
 }
 
@@ -16,7 +16,7 @@ where
 	E: Send + Sync + 'static,
 {
 	fn new(api_base: &str) -> Result<Self, mux::Error> {
-		let api = mux::Router::new(Options {
+		let resources = mux::Router::new(Options {
 			mount_root: api_base.to_string(),
 			dynamic_param_prefix: DYNAMIC_PARAM_PREFIX,
 			splat_segment_identifier: SPLAT_SEGMENT_IDENTIFIER,
@@ -26,14 +26,14 @@ where
 			splat_segment_identifier: SPLAT_SEGMENT_IDENTIFIER,
 			explicit_index_segment_identifier: EXPLICIT_INDEX_SEGMENT_IDENTIFIER.to_string(),
 		})?;
-		Ok(Self { api, views })
+		Ok(Self { resources, views })
 	}
 }
 
 pub(crate) fn runtime_routes_for<S, E>(
 	views: &Views<S, E>,
-	api_routes: &ApiRoutes<S, E>,
-	task_middlewares: &TaskMiddlewares<S, E>,
+	resources: &Resources<S, E>,
+	middlewares: &Middlewares<S, E>,
 	api_base: &str,
 ) -> Result<RuntimeRoutes<S, E>, mux::Error>
 where
@@ -42,7 +42,7 @@ where
 {
 	let mut routes = RuntimeRoutes::new(api_base)?;
 	views.register_runtime(&mut routes)?;
-	api_routes.register_runtime(&mut routes)?;
-	task_middlewares.register_runtime(&mut routes)?;
+	resources.register_runtime(&mut routes)?;
+	middlewares.register_runtime(&mut routes)?;
 	Ok(routes)
 }

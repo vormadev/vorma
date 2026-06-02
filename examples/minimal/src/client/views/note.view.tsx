@@ -1,9 +1,9 @@
-import { Link, defineView, useLoaderData } from "../app.tsx";
+import { Link, defineView, useViewData } from "../app.tsx";
 
 export default defineView({
 	pattern: "/notes/:note_id",
 	component: (props) => {
-		const data = useLoaderData(props);
+		const data = useViewData(props);
 
 		return (
 			<main className="shell">

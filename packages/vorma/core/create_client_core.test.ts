@@ -152,7 +152,7 @@ describe("boot lifecycle", () => {
 	it("parses #vorma-data-json script element for initial payload", async () => {
 		seed_payload({
 			matched_patterns: ["/"],
-			loaders_data: [{ root: true }],
+			views_data: [{ root: true }],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core({ apiMountRoot: "/api/" }, commit, t_opts());
@@ -167,14 +167,14 @@ describe("boot lifecycle", () => {
 		const state = route_render_commit_at(commit, 0);
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/");
-		expect(state.entries[0].loader_data).toEqual({ root: true });
+		expect(state.entries[0].view_data).toEqual({ root: true });
 	});
 
 	it("parses matched input from initial search schemas", async () => {
 		window.history.replaceState({}, "", "/users?page=2&active=true&tags=a&tags=b");
 		seed_payload({
 			matched_patterns: ["/users"],
-			loaders_data: [{ users: true }],
+			views_data: [{ users: true }],
 			search_schemas: [
 				{
 					active: SEARCH_PARAM_SCHEMA_BOOL,
@@ -267,13 +267,13 @@ describe("boot lifecycle", () => {
 		expect(scroll_intent?.scroll).toEqual({ hash: "#section" });
 	});
 
-	it("allows initial client loaders to submit API actions", async () => {
+	it("allows initial client loaders to submit API requests", async () => {
 		let core: any;
 
-		vi.doMock("/mod-boot-action.js", () => {
+		vi.doMock("/mod-boot-resource.js", () => {
 			return {
 				default: {
-					pattern: "/boot-action",
+					pattern: "/boot-resource",
 					component: () => {
 						return null;
 					},
@@ -289,8 +289,8 @@ describe("boot lifecycle", () => {
 		});
 
 		seed_payload({
-			matched_patterns: ["/boot-action"],
-			import_urls: ["/mod-boot-action.js"],
+			matched_patterns: ["/boot-resource"],
+			import_urls: ["/mod-boot-resource.js"],
 		});
 		const commit = vi.fn();
 		const core_res = create_client_core({ apiMountRoot: "/api/" }, commit, t_opts());
@@ -391,7 +391,7 @@ describe("boot lifecycle", () => {
 
 		seed_payload({
 			matched_patterns: ["/", "/boot-router-data"],
-			loaders_data: [{ root: true }, { route: true }],
+			views_data: [{ root: true }, { route: true }],
 			import_urls: ["/mod-root.js", "/mod-boot-router-data.js"],
 		});
 		const commit = vi.fn();
@@ -414,13 +414,13 @@ describe("boot lifecycle", () => {
 				{
 					pattern: "/",
 					input: {},
-					loaderData: { root: true },
+					viewData: { root: true },
 					clientLoaderData: undefined,
 				},
 				{
 					pattern: "/boot-router-data",
 					input: {},
-					loaderData: { route: true },
+					viewData: { route: true },
 					clientLoaderData: undefined,
 				},
 			],
@@ -519,7 +519,7 @@ describe("navigation flow", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/about"],
-				loaders_data: [{ page: "about" }],
+				views_data: [{ page: "about" }],
 			}),
 		);
 
@@ -529,7 +529,7 @@ describe("navigation flow", () => {
 		const state = route_render_commit_at(commit, 0);
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/about");
-		expect(state.entries[0].loader_data).toEqual({ page: "about" });
+		expect(state.entries[0].view_data).toEqual({ page: "about" });
 	});
 
 	it("parses matched input from navigation search schemas", async () => {
@@ -537,7 +537,7 @@ describe("navigation flow", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/users"],
-				loaders_data: [{ users: true }],
+				views_data: [{ users: true }],
 				search_schemas: [
 					{
 						active: SEARCH_PARAM_SCHEMA_BOOL,
@@ -671,7 +671,7 @@ describe("navigation flow", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/first"],
-				loaders_data: [{ page: "first" }],
+				views_data: [{ page: "first" }],
 			}),
 		);
 		await wait_until(() => {
@@ -683,7 +683,7 @@ describe("navigation flow", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/second"],
-				loaders_data: [{ page: "second" }],
+				views_data: [{ page: "second" }],
 			}),
 		);
 		await wait_until(() => {
@@ -701,7 +701,7 @@ describe("navigation flow", () => {
 
 		expect(route_render_commit_count(commit)).toBe(1);
 		const state = route_render_commit_at(commit, 0);
-		expect(state.entries[0].loader_data).toEqual({ page: "second" });
+		expect(state.entries[0].view_data).toEqual({ page: "second" });
 	});
 });
 
@@ -762,7 +762,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		const { core, commit } = await setup({
 			payload: {
 				matched_patterns: ["/", "/current"],
-				loaders_data: [{ root: "old" }, { page: "current" }],
+				views_data: [{ root: "old" }, { page: "current" }],
 				import_urls: ["/root.js", "/current.js"],
 			},
 		});
@@ -773,7 +773,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/", "/next"],
-				loaders_data: [{ root: "new" }, { page: "next" }],
+				views_data: [{ root: "new" }, { page: "next" }],
 				import_urls: ["/root.js", "/next.js"],
 			}),
 		);
@@ -797,7 +797,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		await expect(nav).resolves.toEqual({ didNavigate: true });
 		expect(calls).toEqual(["root_start", "current_start", "root_end", "current_end"]);
 		expect(route_render_commit_count(commit)).toBe(1);
-		expect(route_render_commit_at(commit, 0).entries[1].loader_data).toEqual({
+		expect(route_render_commit_at(commit, 0).entries[1].view_data).toEqual({
 			page: "next",
 		});
 	});
@@ -841,7 +841,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		const { core, commit } = await setup({
 			payload: {
 				matched_patterns: ["/current"],
-				loaders_data: [{ page: "current" }],
+				views_data: [{ page: "current" }],
 				import_urls: ["/current.js"],
 			},
 		});
@@ -852,7 +852,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/next"],
-				loaders_data: [{ page: "next" }],
+				views_data: [{ page: "next" }],
 				import_urls: ["/next.js"],
 			}),
 		);
@@ -905,14 +905,14 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		const { core, commit } = await setup({
 			payload: {
 				matched_patterns: ["/current"],
-				loaders_data: [{ page: "current" }],
+				views_data: [{ page: "current" }],
 				import_urls: ["/current.js"],
 			},
 		});
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/next"],
-				loaders_data: [{ page: "next" }],
+				views_data: [{ page: "next" }],
 				import_urls: ["/next.js"],
 			}),
 		);
@@ -958,7 +958,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		const { core, commit } = await setup({
 			payload: {
 				matched_patterns: ["/current"],
-				loaders_data: [{ page: "current" }],
+				views_data: [{ page: "current" }],
 				import_urls: ["/current.js"],
 			},
 		});
@@ -969,7 +969,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/first"],
-				loaders_data: [{ page: "first" }],
+				views_data: [{ page: "first" }],
 			}),
 		);
 		await hook_started.promise;
@@ -979,7 +979,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/second"],
-				loaders_data: [{ page: "second" }],
+				views_data: [{ page: "second" }],
 			}),
 		);
 
@@ -988,7 +988,7 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 
 		expect(aborted).toBe(true);
 		expect(route_render_commit_count(commit)).toBe(1);
-		expect(route_render_commit_at(commit, 0).entries[0].loader_data).toEqual({
+		expect(route_render_commit_at(commit, 0).entries[0].view_data).toEqual({
 			page: "second",
 		});
 	});
@@ -1011,14 +1011,14 @@ describe("beforeRouteYield / beforeRouteCommit", () => {
 		const { core, commit } = await setup({
 			payload: {
 				matched_patterns: ["/current"],
-				loaders_data: [{ page: "current" }],
+				views_data: [{ page: "current" }],
 				import_urls: ["/current.js"],
 			},
 		});
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/next"],
-				loaders_data: [{ page: "next" }],
+				views_data: [{ page: "next" }],
 			}),
 		);
 
@@ -1091,7 +1091,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/parent", "/parent/child"],
-				loaders_data: [{ p: 1 }, { c: 2 }],
+				views_data: [{ p: 1 }, { c: 2 }],
 				import_urls: ["/mod-a.js", "/mod-b.js"],
 			}),
 		);
@@ -1106,7 +1106,7 @@ describe("client loaders", () => {
 
 	it("passes cached search-schema input to prestarted client loaders", async () => {
 		let captured_args: any = null;
-		const loader_started = deferred<void>();
+		const client_loader_started = deferred<void>();
 
 		vi.doMock("/users-module.js", () => {
 			return {
@@ -1118,7 +1118,7 @@ describe("client loaders", () => {
 					client_loader: async (args: any) => {
 						if (args.trigger === "navigation") {
 							captured_args = args;
-							loader_started.resolve();
+							client_loader_started.resolve();
 							await args.serverPromise;
 						}
 						return { client: true };
@@ -1130,7 +1130,7 @@ describe("client loaders", () => {
 		const { core } = await setup({
 			payload: {
 				matched_patterns: ["/users"],
-				loaders_data: [{ users: "initial" }],
+				views_data: [{ users: "initial" }],
 				import_urls: ["/users-module.js"],
 				search_schemas: [
 					{
@@ -1142,7 +1142,7 @@ describe("client loaders", () => {
 		const fetcher = mock_fetch();
 
 		const nav = core.navigate("/users?page=3");
-		await loader_started.promise;
+		await client_loader_started.promise;
 
 		expect(captured_args.input).toEqual({ page: 3 });
 		expect(captured_args.knownMatches).toEqual([
@@ -1152,7 +1152,7 @@ describe("client loaders", () => {
 		fetcher.call(0).resolve(
 			route_response({
 				matched_patterns: ["/users"],
-				loaders_data: [{ users: "next" }],
+				views_data: [{ users: "next" }],
 				import_urls: ["/users-module.js"],
 				search_schemas: [
 					{
@@ -1206,7 +1206,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/", "/users/:id"],
-				loaders_data: [{ session: "abc" }, { name: "Ada" }],
+				views_data: [{ session: "abc" }, { name: "Ada" }],
 				import_urls: ["/mod-root.js", "/mod-users.js"],
 				params: { id: "42" },
 			}),
@@ -1220,16 +1220,16 @@ describe("client loaders", () => {
 				{
 					pattern: "/",
 					input: {},
-					loaderData: { session: "abc" },
+					viewData: { session: "abc" },
 				},
 				{
 					pattern: "/users/:id",
 					input: {},
-					loaderData: { name: "Ada" },
+					viewData: { name: "Ada" },
 				},
 			],
 			outermostServerError: null,
-			loaderData: { name: "Ada" },
+			viewData: { name: "Ada" },
 		});
 	});
 
@@ -1277,7 +1277,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/", "/users/:id"],
-				loaders_data: [{ session: "abc" }, { name: "Ada" }],
+				views_data: [{ session: "abc" }, { name: "Ada" }],
 				import_urls: ["/mod-root.js", "/mod-users.js"],
 				params: { id: "42" },
 				search_schemas: [
@@ -1312,16 +1312,16 @@ describe("client loaders", () => {
 				{
 					pattern: "/",
 					input: {},
-					loaderData: { session: "abc" },
+					viewData: { session: "abc" },
 				},
 				{
 					pattern: "/users/:id",
 					input: { page: 2 },
-					loaderData: { name: "Ada" },
+					viewData: { name: "Ada" },
 				},
 			],
 			outermostServerError: null,
-			loaderData: { name: "Ada" },
+			viewData: { name: "Ada" },
 		});
 	});
 
@@ -1362,7 +1362,7 @@ describe("client loaders", () => {
 			.mockResolvedValueOnce(
 				route_response({
 					matched_patterns: ["/slow"],
-					loaders_data: [{ v: 1 }],
+					views_data: [{ v: 1 }],
 					import_urls: ["/mod-slow.js"],
 				}),
 			)
@@ -1388,7 +1388,7 @@ describe("client loaders", () => {
 		expect(captured_signal!.aborted).toBe(true);
 	});
 
-	it("failure in one loader cascades abort to subsequent loaders", async () => {
+	it("failure in one client loader cascades abort to subsequent client loaders", async () => {
 		let second_signal: AbortSignal | null = null;
 
 		vi.doMock("/mod-fail.js", () => {
@@ -1399,7 +1399,7 @@ describe("client loaders", () => {
 						return null;
 					},
 					client_loader: async () => {
-						throw new Error("loader failed");
+						throw new Error("client loader failed");
 					},
 				},
 			};
@@ -1434,7 +1434,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/fail-parent", "/fail-parent/child"],
-				loaders_data: [{ p: 1 }, { c: 2 }],
+				views_data: [{ p: 1 }, { c: 2 }],
 				import_urls: ["/mod-fail.js", "/mod-child.js"],
 			}),
 		);
@@ -1474,7 +1474,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/err-route"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/mod-err.js"],
 			}),
 		);
@@ -1499,7 +1499,7 @@ describe("client loaders", () => {
 					},
 					client_loader: async ({ serverPromise }: any) => {
 						const server = await serverPromise;
-						return { enhanced: true, original: server.loaderData };
+						return { enhanced: true, original: server.viewData };
 					},
 				},
 			};
@@ -1519,7 +1519,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/cl-route"],
-				loaders_data: [{ raw: "data" }],
+				views_data: [{ raw: "data" }],
 				import_urls: ["/mod-cl.js"],
 			}),
 		);
@@ -1562,7 +1562,7 @@ describe("client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/abort-route"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/mod-abort.js"],
 			}),
 		);
@@ -1779,7 +1779,7 @@ describe("API submit revalidation settlement", () => {
 			}),
 		);
 
-		const result = await core.submit_inner("/api/action", {
+		const result = await core.submit_inner("/api/some-resource", {
 			method: "POST",
 		});
 
@@ -1795,7 +1795,7 @@ describe("API submit revalidation settlement", () => {
 			}),
 		);
 
-		const result = await core.submit_inner("/api/action", {
+		const result = await core.submit_inner("/api/some-resource", {
 			method: "POST",
 		});
 
@@ -1817,7 +1817,7 @@ describe("API submit revalidation settlement", () => {
 			}),
 		);
 
-		const result = await core.submit_inner("/api/action", {
+		const result = await core.submit_inner("/api/some-resource", {
 			method: "POST",
 		});
 
@@ -1827,11 +1827,11 @@ describe("API submit revalidation settlement", () => {
 				activeClientBuildId: "build-1",
 				serverBuildId: "build-2",
 				triggeringResponse: expect.objectContaining({
-					apiRouteKind: "mutation",
-					kind: "apiRoute",
+					resourceKind: "mutation",
+					kind: "resource",
 					method: "POST",
 					ok: true,
-					requestedHref: `${window.location.origin}/api/action`,
+					requestedHref: `${window.location.origin}/api/some-resource`,
 					status: 200,
 				}),
 			}),
@@ -1984,7 +1984,7 @@ describe("work indicators", () => {
 		);
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -2013,7 +2013,7 @@ describe("work indicators", () => {
 		);
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -2032,7 +2032,7 @@ describe("work indicators", () => {
 		const fetcher = mock_fetch();
 
 		const submit = core.submit_inner("/api/search?q=ada", undefined, {
-			apiRouteKind: "query",
+			resourceKind: "query",
 			dedupeKey: "search:debug",
 			skipWorkIndicator: true,
 		});
@@ -2078,7 +2078,7 @@ describe("work indicators", () => {
 		const fetcher = mock_fetch();
 
 		const submit = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				skipWorkIndicator: true,
@@ -2472,7 +2472,7 @@ describe("work indicators", () => {
 		const fetcher = mock_fetch();
 
 		const submit = core.submit_inner(
-			"/api/failing-action",
+			"/api/failing-resource",
 			{ method: "POST" },
 			{ revalidate: false },
 		);
@@ -2576,7 +2576,11 @@ describe("work indicators", () => {
 
 		const first_nav = core.navigate("/first");
 		await vi.advanceTimersByTimeAsync(1);
-		void core.submit_inner("/api/action", { method: "POST" }, { revalidate: false });
+		void core.submit_inner(
+			"/api/some-resource",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
 		tracked_work[1]!.resolve();
 		await tracked[1];
 		resolve_first_fetch(route_response());
@@ -2615,7 +2619,7 @@ describe("work indicators", () => {
 		expect(config.start).toHaveBeenCalledTimes(1);
 
 		const submit = core.submit_inner(
-			"/api/chaos-action",
+			"/api/chaos-resource",
 			{ method: "POST" },
 			{ revalidate: false },
 		);
@@ -2935,7 +2939,11 @@ describe("focus-triggered revalidation", () => {
 			});
 		});
 
-		void core.submit_inner("/api/action", { method: "POST" }, { revalidate: false });
+		void core.submit_inner(
+			"/api/some-resource",
+			{ method: "POST" },
+			{ revalidate: false },
+		);
 		await vi.advanceTimersByTimeAsync(200);
 
 		const fetch_count = (globalThis.fetch as any).mock.calls.length;
@@ -3073,7 +3081,7 @@ describe("HMR", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/hmr"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/hmr-mod.js"],
 			}),
 		);
@@ -3090,7 +3098,7 @@ describe("HMR", () => {
 			},
 		};
 
-		await window.__vorma_hmr_route_update?.("/hmr-mod.js", new_mod);
+		await window.__vorma_hmr_view_update?.("/hmr-mod.js", new_mod);
 
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = route_render_commit_at(commit, 0);
@@ -3098,7 +3106,7 @@ describe("HMR", () => {
 	});
 
 	it("re-runs client loader only for opted-in patterns", async () => {
-		let loader_run_count = 0;
+		let client_loader_run_count = 0;
 
 		vi.doMock("/hmr-cl-mod.js", () => {
 			return {
@@ -3108,9 +3116,9 @@ describe("HMR", () => {
 						return null;
 					},
 					client_loader: async ({ serverPromise }: any) => {
-						loader_run_count++;
+						client_loader_run_count++;
 						await serverPromise;
-						return { run: loader_run_count };
+						return { run: client_loader_run_count };
 					},
 				},
 			};
@@ -3133,9 +3141,9 @@ describe("HMR", () => {
 				return null;
 			},
 			clientLoader: async ({ serverPromise }: any) => {
-				loader_run_count++;
+				client_loader_run_count++;
 				await serverPromise;
-				return { run: loader_run_count };
+				return { run: client_loader_run_count };
 			},
 			runClientLoaderOnHmr: true,
 		});
@@ -3143,13 +3151,13 @@ describe("HMR", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/hmr-cl"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/hmr-cl-mod.js"],
 			}),
 		);
 
 		await core.navigate("/hmr-cl");
-		const runs_after_nav = loader_run_count;
+		const runs_after_nav = client_loader_run_count;
 		commit.mockClear();
 
 		const new_mod = {
@@ -3159,20 +3167,20 @@ describe("HMR", () => {
 					return null;
 				},
 				client_loader: async ({ serverPromise }: any) => {
-					loader_run_count++;
+					client_loader_run_count++;
 					await serverPromise;
-					return { run: loader_run_count };
+					return { run: client_loader_run_count };
 				},
 			},
 		};
 
-		await window.__vorma_hmr_route_update?.("/hmr-cl-mod.js", new_mod);
+		await window.__vorma_hmr_view_update?.("/hmr-cl-mod.js", new_mod);
 
-		expect(loader_run_count).toBeGreaterThan(runs_after_nav);
+		expect(client_loader_run_count).toBeGreaterThan(runs_after_nav);
 	});
 
 	it("does not re-run client loader when not opted in", async () => {
-		let loader_run_count = 0;
+		let client_loader_run_count = 0;
 
 		vi.doMock("/hmr-no-rerun.js", () => {
 			return {
@@ -3182,9 +3190,9 @@ describe("HMR", () => {
 						return null;
 					},
 					client_loader: async ({ serverPromise }: any) => {
-						loader_run_count++;
+						client_loader_run_count++;
 						await serverPromise;
-						return { run: loader_run_count };
+						return { run: client_loader_run_count };
 					},
 				},
 			};
@@ -3203,13 +3211,13 @@ describe("HMR", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/hmr-no-rerun"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/hmr-no-rerun.js"],
 			}),
 		);
 
 		await core.navigate("/hmr-no-rerun");
-		const runs_after_nav = loader_run_count;
+		const runs_after_nav = client_loader_run_count;
 		commit.mockClear();
 
 		const new_mod = {
@@ -3219,16 +3227,16 @@ describe("HMR", () => {
 					return null;
 				},
 				client_loader: async ({ serverPromise }: any) => {
-					loader_run_count++;
+					client_loader_run_count++;
 					await serverPromise;
-					return { run: loader_run_count };
+					return { run: client_loader_run_count };
 				},
 			},
 		};
 
-		await window.__vorma_hmr_route_update?.("/hmr-no-rerun.js", new_mod);
+		await window.__vorma_hmr_view_update?.("/hmr-no-rerun.js", new_mod);
 
-		expect(loader_run_count).toBe(runs_after_nav);
+		expect(client_loader_run_count).toBe(runs_after_nav);
 	});
 
 	it("ignores non-matching module paths", async () => {
@@ -3256,7 +3264,7 @@ describe("HMR", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/hmr-match"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/hmr-match.js"],
 			}),
 		);
@@ -3264,7 +3272,7 @@ describe("HMR", () => {
 		await core.navigate("/hmr-match");
 		commit.mockClear();
 
-		await window.__vorma_hmr_route_update?.("/totally-different.js", {
+		await window.__vorma_hmr_view_update?.("/totally-different.js", {
 			default: {
 				pattern: "/other",
 				component: () => {
@@ -3297,7 +3305,7 @@ describe("defineView", () => {
 		const boundary = () => {
 			return null;
 		};
-		const loader = async () => {
+		const client_loader_fn = async () => {
 			return { data: true };
 		};
 
@@ -3305,13 +3313,13 @@ describe("defineView", () => {
 			pattern: "/test",
 			component: comp,
 			errorBoundary: boundary,
-			clientLoader: loader,
+			clientLoader: client_loader_fn,
 		});
 
 		expect(def.pattern).toBe("/test");
 		expect(def.component).toBe(comp);
 		expect(def.error_boundary).toBe(boundary);
-		expect(def.client_loader).toBe(loader);
+		expect(def.client_loader).toBe(client_loader_fn);
 	});
 
 	it("returns definition without optional fields", () => {
@@ -3427,7 +3435,7 @@ describe("prefetch integration", () => {
 	});
 
 	it("resolves prestarted client loader server data during prefetch", async () => {
-		let loader_call_count = 0;
+		let client_loader_call_count = 0;
 		let seen_server_data: unknown;
 
 		vi.doMock("/known-prefetch-module.js", () => {
@@ -3438,7 +3446,7 @@ describe("prefetch integration", () => {
 						return null;
 					},
 					client_loader: async ({ serverPromise }: any) => {
-						loader_call_count++;
+						client_loader_call_count++;
 						seen_server_data = await serverPromise;
 						return { client: true };
 					},
@@ -3454,7 +3462,7 @@ describe("prefetch integration", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/known-prefetch"],
-				loaders_data: [{ initial: true }],
+				views_data: [{ initial: true }],
 				import_urls: ["/known-prefetch-module.js"],
 			}),
 		);
@@ -3465,19 +3473,19 @@ describe("prefetch integration", () => {
 		call(1).resolve(route_response());
 		await away_nav;
 
-		loader_call_count = 0;
+		client_loader_call_count = 0;
 		seen_server_data = undefined;
 
 		core.start_prefetch("/known-prefetch");
 		await wait_for(3);
 
-		expect(loader_call_count).toBe(1);
+		expect(client_loader_call_count).toBe(1);
 		expect(seen_server_data).toBeUndefined();
 
 		call(2).resolve(
 			route_response({
 				matched_patterns: ["/known-prefetch"],
-				loaders_data: [{ prefetched: true }],
+				views_data: [{ prefetched: true }],
 				import_urls: ["/known-prefetch-module.js"],
 			}),
 		);
@@ -3493,16 +3501,16 @@ describe("prefetch integration", () => {
 				{
 					pattern: "/known-prefetch",
 					input: {},
-					loaderData: { prefetched: true },
+					viewData: { prefetched: true },
 				},
 			],
 			outermostServerError: null,
-			loaderData: { prefetched: true },
+			viewData: { prefetched: true },
 		});
 	});
 
 	it("runs first-time route client loader during prefetch and reuses it on navigation", async () => {
-		let loader_call_count = 0;
+		let client_loader_call_count = 0;
 		let seen_server_data: unknown;
 
 		vi.doMock("/first-prefetch-module.js", () => {
@@ -3513,7 +3521,7 @@ describe("prefetch integration", () => {
 						return null;
 					},
 					client_loader: async ({ serverPromise }: any) => {
-						loader_call_count++;
+						client_loader_call_count++;
 						seen_server_data = await serverPromise;
 						return { from_client: true };
 					},
@@ -3530,7 +3538,7 @@ describe("prefetch integration", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/first-prefetch"],
-				loaders_data: [{ from_server: true }],
+				views_data: [{ from_server: true }],
 				import_urls: ["/first-prefetch-module.js"],
 			}),
 		);
@@ -3540,25 +3548,25 @@ describe("prefetch integration", () => {
 		}, "expected first-time prefetch client loader to run");
 
 		expect(has_route_render_commit(commit)).toBe(false);
-		expect(loader_call_count).toBe(1);
+		expect(client_loader_call_count).toBe(1);
 		expect(seen_server_data).toEqual({
 			clientBuildId: "build-1",
 			matches: [
 				{
 					pattern: "/first-prefetch",
 					input: {},
-					loaderData: { from_server: true },
+					viewData: { from_server: true },
 				},
 			],
 			outermostServerError: null,
-			loaderData: { from_server: true },
+			viewData: { from_server: true },
 		});
 
 		const result = await core.navigate("/first-prefetch");
 
 		expect(result.didNavigate).toBe(true);
 		expect(calls).toHaveLength(1);
-		expect(loader_call_count).toBe(1);
+		expect(client_loader_call_count).toBe(1);
 		expect(route_render_commit_count(commit)).toBe(1);
 
 		const state = route_render_commit_at(commit, 0);
@@ -3590,7 +3598,7 @@ describe("prefetch integration", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/work-prefetch"],
-				loaders_data: [{ from_server: true }],
+				views_data: [{ from_server: true }],
 				import_urls: ["/work-prefetch-module.js"],
 			}),
 		);
@@ -3633,7 +3641,7 @@ describe("prefetch integration", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/abort-prefetch"],
-				loaders_data: [{ value: 1 }],
+				views_data: [{ value: 1 }],
 				import_urls: ["/abort-prefetch-module.js"],
 			}),
 		);
@@ -3671,10 +3679,10 @@ describe("client loader cancellation", () => {
 			return {};
 		};
 
-		vi.doMock("/loader-module.js", () => {
+		vi.doMock("/client-loader-module.js", () => {
 			return {
 				default: {
-					pattern: "/loader",
+					pattern: "/client-loader",
 					component: () => {
 						return null;
 					},
@@ -3688,27 +3696,27 @@ describe("client loader cancellation", () => {
 		vi.spyOn(globalThis, "fetch")
 			.mockResolvedValueOnce(
 				route_response({
-					matched_patterns: ["/loader"],
-					loaders_data: [{ value: 1 }],
-					import_urls: ["/loader-module.js"],
+					matched_patterns: ["/client-loader"],
+					views_data: [{ value: 1 }],
+					import_urls: ["/client-loader-module.js"],
 				}),
 			)
 			.mockResolvedValueOnce(route_response());
 
-		await core.navigate("/loader");
+		await core.navigate("/client-loader");
 		await core.navigate("/other");
 		captured_signal = null;
 
 		vi.spyOn(globalThis, "fetch").mockImplementation(() => {
 			return new Promise(() => {});
 		});
-		core.start_prefetch("/loader");
+		core.start_prefetch("/client-loader");
 		await tick();
 
 		expect(captured_signal).not.toBeNull();
 		expect(captured_signal!.aborted).toBe(false);
 
-		core.stop_prefetch("/loader");
+		core.stop_prefetch("/client-loader");
 
 		expect(captured_signal!.aborted).toBe(true);
 	});
@@ -3746,7 +3754,7 @@ describe("client loader cancellation", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/known-error"],
-				loaders_data: [{ value: 1 }],
+				views_data: [{ value: 1 }],
 				import_urls: ["/known-error-module.js"],
 			}),
 		);
@@ -3841,7 +3849,7 @@ describe("client loader cancellation", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/known-parent", "/known-parent/child"],
-				loaders_data: [{ parent: 1 }, { child: 1 }],
+				views_data: [{ parent: 1 }, { child: 1 }],
 				import_urls: ["/known-parent-module.js", "/known-child-module.js"],
 			}),
 		);
@@ -3932,7 +3940,7 @@ describe("client loader prefetch isolation from unrelated work", () => {
 			.mockResolvedValueOnce(
 				route_response({
 					matched_patterns: ["/products"],
-					loaders_data: [{ value: 1 }],
+					views_data: [{ value: 1 }],
 					import_urls: ["/product-module.js"],
 				}),
 			)
@@ -4019,7 +4027,7 @@ describe("client loader prefetch partial matching", () => {
 			.mockResolvedValueOnce(
 				route_response({
 					matched_patterns: ["/parent"],
-					loaders_data: [{ value: 1 }],
+					views_data: [{ value: 1 }],
 					import_urls: ["/parent-module.js"],
 				}),
 			)
@@ -4044,7 +4052,7 @@ describe("client loader prefetch partial matching", () => {
 		resolve_fetch(
 			route_response({
 				matched_patterns: ["/parent", "/parent/child"],
-				loaders_data: [{ parent: true }, { child: true }],
+				views_data: [{ parent: true }, { child: true }],
 				import_urls: ["/parent-module.js", "/child-module.js"],
 			}),
 		);
@@ -4266,7 +4274,7 @@ describe("route update coherence", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/coherence"],
-				loaders_data: [{ coherent: true }],
+				views_data: [{ coherent: true }],
 			}),
 		);
 
@@ -4348,7 +4356,7 @@ describe("route update coherence", () => {
 
 describe("route update blocked by client loaders", () => {
 	it("does not fire onRouteUpdate until client loaders settle", async () => {
-		let loader_resolve: ((v: unknown) => void) | undefined;
+		let client_loader_resolve: ((v: unknown) => void) | undefined;
 
 		vi.doMock("/mod-blocking.js", () => {
 			return {
@@ -4360,7 +4368,7 @@ describe("route update blocked by client loaders", () => {
 					client_loader: async ({ serverPromise }: any) => {
 						await serverPromise;
 						return new Promise((r) => {
-							loader_resolve = r;
+							client_loader_resolve = r;
 						});
 					},
 				},
@@ -4388,7 +4396,7 @@ describe("route update blocked by client loaders", () => {
 		vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
 			route_response({
 				matched_patterns: ["/blocking"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/mod-blocking.js"],
 			}),
 		);
@@ -4396,7 +4404,7 @@ describe("route update blocked by client loaders", () => {
 		const nav = core.navigate("/blocking");
 
 		for (let i = 0; i < 200; i++) {
-			if (loader_resolve) {
+			if (client_loader_resolve) {
 				break;
 			}
 			await new Promise((r) => {
@@ -4404,10 +4412,10 @@ describe("route update blocked by client loaders", () => {
 			});
 		}
 
-		expect(loader_resolve).toBeDefined();
+		expect(client_loader_resolve).toBeDefined();
 		expect(route_changed).toBe(false);
 
-		loader_resolve!({ loaded: true });
+		client_loader_resolve!({ loaded: true });
 		await nav;
 
 		expect(route_changed).toBe(true);
@@ -4528,7 +4536,7 @@ describe("client loader promise reuse on hash change", () => {
 		resolve_fetch(
 			route_response({
 				matched_patterns: ["/reuse"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 			}),
 		);
 
@@ -4580,7 +4588,7 @@ describe("client loader promise reuse on hash change", () => {
 		resolve_fetch(
 			route_response({
 				matched_patterns: ["/reuse"],
-				loaders_data: [{ v: 1 }],
+				views_data: [{ v: 1 }],
 				import_urls: ["/mod-reuse.js"],
 			}),
 		);
@@ -4613,7 +4621,7 @@ describe("client loader promise reuse on hash change", () => {
 		resolve_fetch(
 			route_response({
 				matched_patterns: ["/reuse"],
-				loaders_data: [{ v: 2 }],
+				views_data: [{ v: 2 }],
 				import_urls: ["/mod-reuse.js"],
 			}),
 		);

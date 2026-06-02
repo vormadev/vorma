@@ -1,30 +1,30 @@
 import { ui } from "../../route_factory.ts";
 import {
-	action_count_pattern,
-	action_echo_pattern,
-	action_form_pattern,
 	client_build_tag,
 	counter_href,
 	dynamic,
-	echo_action_fail_message,
+	echo_resource_fail_message,
 	expected_deployment_storage_key,
 	expected_operation_storage_key,
 	h,
 	is_dev_boot,
 	klass,
-	loader_box,
 	nav_items,
 	read_box,
-	route_counter_one_href,
-	route_root_pattern,
+	resource_count_pattern,
+	resource_echo_pattern,
+	resource_form_pattern,
 	switch_deployment,
 	text_state,
+	view_counter_one_href,
+	view_data_box,
+	view_root_pattern,
 } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_root_pattern,
+	pattern: view_root_pattern,
 	component: (props: any) => {
-		const data = loader_box(props);
+		const data = view_data_box(props);
 		const switch_result = text_state("");
 		const form_result = text_state("");
 		const expected_deployment = text_state(
@@ -58,7 +58,7 @@ export default ui.defineView({
 				current.pathname === target.pathname &&
 				current.search === target.search
 			) {
-				return route_counter_one_href;
+				return view_counter_one_href;
 			}
 			return counter_href(0);
 		};
@@ -131,7 +131,7 @@ export default ui.defineView({
 				{ ...klass("panel"), "data-bmb-deployment-panel": true },
 				h(
 					"div",
-					{ "data-bmb-route-deployment": true },
+					{ "data-bmb-view-deployment": true },
 					dynamic(() => {
 						return data().Deployment;
 					}),
@@ -255,7 +255,7 @@ export default ui.defineView({
 											switch_result.set(deployment);
 											const result: any = await ui.apiClient.query({
 												method: "GET",
-												pattern: action_count_pattern,
+												pattern: resource_count_pattern,
 												input: { delta: 9 },
 											});
 											complete_switch_submit("query", result);
@@ -282,7 +282,7 @@ export default ui.defineView({
 											const result: any = await ui.apiClient.mutate(
 												{
 													method: "POST",
-													pattern: action_echo_pattern,
+													pattern: resource_echo_pattern,
 													input: {
 														Message: "unsafe-ok",
 													},
@@ -312,9 +312,10 @@ export default ui.defineView({
 											const result: any = await ui.apiClient.mutate(
 												{
 													method: "POST",
-													pattern: action_echo_pattern,
+													pattern: resource_echo_pattern,
 													input: {
-														Message: echo_action_fail_message,
+														Message:
+															echo_resource_fail_message,
 													},
 												},
 											);
@@ -331,7 +332,7 @@ export default ui.defineView({
 			),
 			h(
 				"section",
-				{ ...klass("panel"), "data-bmb-route-summary": true },
+				{ ...klass("panel"), "data-bmb-view-summary": true },
 				h(
 					"div",
 					{ "data-bmb-current-href": true },
@@ -364,7 +365,7 @@ export default ui.defineView({
 								void ui.apiClient
 									.mutate({
 										method: "POST",
-										pattern: action_form_pattern,
+										pattern: resource_form_pattern,
 										input: form_data,
 									})
 									.then((result: any) => {
@@ -444,12 +445,12 @@ export default ui.defineView({
 				),
 			),
 			dynamic(() => {
-				if (pathname() !== route_root_pattern) {
+				if (pathname() !== view_root_pattern) {
 					return null;
 				}
 				return h(
 					"section",
-					{ ...klass("panel"), "data-bmb-route": "home" },
+					{ ...klass("panel"), "data-bmb-view": "home" },
 					h("h1", null, "Vorma Bombadil Fixture"),
 					h("p", null, `${ui.variant} variant`),
 				);

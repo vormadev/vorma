@@ -2,17 +2,10 @@
 
 Maintainer docs live at `docs/maintainer/*`.
 
+Always read `docs/maintainer/REMINDERS.md` at least once after each context compaction.
+
 Everything you work on should be written such that it would pass the standards set forth
 in `docs/maintainer/skills/thermo-nuclear-system-review/SKILL.md`.
-
-## Package Structure
-
-`vorma-matcher` and `vorma-tasks` are sovereign crates, not subservient to the Vorma
-framework (composed of `vorma`, `vorma-build`, `vorma-client-wasm`, and `vorma-macros`).
-As such, `vorma-matcher` and `vorma-tasks` should not implement "pet features" or
-opinionated semantics required or requested by Vorma framework. If Vorma needs or wants
-special or more opinionated semantics, it must layer them on top of `vorma-matcher` or
-`vorma-tasks`, as applicable.
 
 ## Maintainer Tooling Should Be As Simple and Minimal As Possible
 
@@ -28,28 +21,24 @@ any other potentially destructive git actions. Never ever hand-edit a gitignored
 Running normal build, test, format, or tooling commands that write ignored generated
 outputs or caches is allowed when those commands are part of the requested workflow.
 
-## TypeScript Rules
+## TypeScript Style
 
-Always use curlies in control flow branches.
+- Always use curlies in control flow branches.
+- Always use curlies and explicit return statement for (1) object literals and (2)
+  anything that doesn't fit on one line.
+- All internal symbols shall be `snake_case`, and all public-facing symbols shall be
+  either: (1) `SCREAMING_CASE`, (2) `camelCase`, or (3) `PascalCase`, as is appropriate or
+  idiomatic contextually. TypeScript type symbols should always be `PascalCase` regardless
+  of exposure, but any individual fields on the type should be `snake_case` if the type is
+  non-public (or the field is otherwise not intended for public consumption, in which case
+  it should also be prefixed with `__`).
 
----
-
-Always use curlies and explicit return statement for (1) object literals and (2) anything
-that doesn't fit on one line.
-
----
-
-All internal symbols shall be `snake_case`, and all public-facing symbols shall be either:
-(1) `SCREAMING_CASE`, (2) `camelCase`, or (3) `PascalCase`, as is appropriate or idiomatic
-contextually. TypeScript types, however, should still always be `PascalCase`, regardless
-of public exposure.
-
-## Universal Rules (applicable to all languages)
+## No Single-Use Helpers
 
 Single-use helpers are strictly prohibited unless they dramatically and objectively
 simplify the code.
 
----
+## Symbol Casing
 
 For repo-wide consistency, when naming a `camelCase` or `PascalCase` variable containing
 an acronym-ish component, always use the style where the acronym-ish component is NOT all
@@ -57,7 +46,7 @@ caps, like `getId` or `formatOklch` (rather than `getID` or `formatOKLCH`), even
 TypeScript or other non-Rust files. This rule makes casing more predictable and improves
 mechanical translatation to/from `snake_case`.
 
----
+## No Multi-Use Magic Strings
 
 Never duplicate contract strings. Define constants for values that are reused or that form
 part of an external/internal contract: environment keys, route paths, storage keys,
@@ -72,7 +61,7 @@ Single-use string literals are fine when they are local, self-explanatory, and n
 a contract. Do not extract one-off labels, prose, or obvious local values into constants
 just to avoid a literal.
 
----
+## Be Mindful of Sandbox Restrictions
 
 Do not directly or indirectly (via other commands) run pnpm installations without
 escalation, as they will fail from sandbox restrictions. Escalate immediately instead of
@@ -80,7 +69,7 @@ even trying the non-escalated call. If you accidentally do this and notice it fa
 (evidenced by `ENOTFOUND` or similar), then kill it immediately and escalate; do not wait
 for natural failure, which is a pure waste of everyone's time.
 
----
+## Comment Style
 
 Comments shall be in one of the following formats only:
 
@@ -143,6 +132,15 @@ suites.
 
 A failing test that exposes a real bug or issue is ALWAYS a HUGE BLESSING, and we should
 be CELEBRATING when that happens.
+
+## Tests Must Never "Skip" When A Resource Is Missing
+
+It is strictly prohibited to skip tests, ever. If something a test needs to run is missing
+(e.g., a live Docker container or whatever), then the test must instantly and loudly fail.
+Zero exceptions. We cannot risk ever having only a subset of tests run; it would
+dangerously lead to false confidence from a suite that didn't even run fully. Printing a
+warning is NOT sufficient. The tests must fail. Similarly, the repo's full gate
+(`make gate`) must include all tests in the repo (otherwise it's not a proper full gate).
 
 ## Long, Clear Function/Method/Variable Names Are Good
 

@@ -6,7 +6,7 @@ export type Debounced<T extends Fn> = ((
 	cancel: () => void;
 };
 
-export function debounce<T extends Fn>(fn: T, delay_in_ms: number): Debounced<T> {
+export function debounce<T extends Fn>(fn: T, delayInMs: number): Debounced<T> {
 	let timeout_id: ReturnType<typeof globalThis.setTimeout> | undefined;
 
 	const debounced = ((...args: Parameters<T>) => {
@@ -21,7 +21,7 @@ export function debounce<T extends Fn>(fn: T, delay_in_ms: number): Debounced<T>
 				} catch (error) {
 					reject(error);
 				}
-			}, delay_in_ms);
+			}, delayInMs);
 		});
 	}) as Debounced<T>;
 

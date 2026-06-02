@@ -7,22 +7,22 @@ type TextState = {
 	set: (next: string) => void;
 };
 
-export const route_root_pattern = "/";
-export const route_counter_pattern = "/counter";
-export const route_slow_pattern = "/slow";
-export const route_echo_pattern = "/echo";
-export const route_item_pattern = "/items/:id";
-export const route_client_pattern = "/client/:id";
-export const route_nested_pattern = "/nested";
-export const route_nested_detail_pattern = "/nested/:id/details";
-export const route_fail_pattern = "/fail";
-export const action_echo_pattern = "/echo";
-export const action_count_pattern = "/count";
-export const action_form_pattern = "/form";
-export const echo_action_fail_message = "__bombadil_fail__";
-export const route_counter_one_href = "/counter?n=1";
-export const route_nested_detail_alpha_href = "/nested/alpha/details";
-export const route_nested_detail_beta_href = "/nested/beta/details";
+export const view_root_pattern = "/";
+export const view_counter_pattern = "/counter";
+export const view_slow_pattern = "/slow";
+export const view_echo_pattern = "/echo";
+export const view_item_pattern = "/items/:id";
+export const view_client_pattern = "/client/:id";
+export const view_nested_pattern = "/nested";
+export const view_nested_detail_pattern = "/nested/:id/details";
+export const view_fail_pattern = "/fail";
+export const resource_echo_pattern = "/echo";
+export const resource_count_pattern = "/count";
+export const resource_form_pattern = "/form";
+export const echo_resource_fail_message = "__bombadil_fail__";
+export const view_counter_one_href = "/counter?n=1";
+export const view_nested_detail_alpha_href = "/nested/alpha/details";
+export const view_nested_detail_beta_href = "/nested/beta/details";
 export const switch_path = "/__bombadil/switch";
 export const expected_deployment_storage_key = "bombadil-expected-deployment";
 export const expected_operation_storage_key = "bombadil-expected-operation";
@@ -37,7 +37,7 @@ export const nav_items = [
 	{ href: "/items/alpha", key: "item-alpha", label: "Item Alpha" },
 	{ href: "/client/alpha", key: "client-alpha", label: "Client Alpha" },
 	{
-		href: route_nested_detail_alpha_href,
+		href: view_nested_detail_alpha_href,
 		key: "nested-alpha",
 		label: "Nested Alpha",
 	},
@@ -59,8 +59,8 @@ export function dynamic(read_value: () => any) {
 	return ui.dynamic(read_value);
 }
 
-export function loader_box(props: any) {
-	const data = ui.useLoaderData(props);
+export function view_data_box(props: any) {
+	const data = ui.useViewData(props);
 	return () => {
 		return read_box(data);
 	};

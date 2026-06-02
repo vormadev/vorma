@@ -52,7 +52,7 @@ pub struct Manifest {
 	pub client_entry: ClientModule,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub client_core_assets: Option<ClientCoreAssets>,
-	pub client_routes: BTreeMap<String, ClientModule>,
+	pub client_views: BTreeMap<String, ClientModule>,
 }
 
 impl Manifest {
@@ -143,7 +143,7 @@ mod tests {
 				dep_urls: Vec::new(),
 				css_bundle_urls: Vec::new(),
 			},
-			client_routes: BTreeMap::new(),
+			client_views: BTreeMap::new(),
 			..Manifest::default()
 		};
 

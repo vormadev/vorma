@@ -6,14 +6,14 @@ import { R, type Result } from "vorma/kit/result";
  * Maps, Sets, Functions, or other non-JSON types.
  */
 export function jsonStringifyStable(input: unknown): Result<string> {
-	const stabilized_res = stabilizeStructure(input, new WeakSet());
+	const stabilized_res = stabilize_structure(input, new WeakSet());
 	if (!stabilized_res.ok) {
 		return R.err(stabilized_res.err);
 	}
 	const stabilized = stabilized_res.val;
 	try {
-		const jsonString = JSON.stringify(stabilized);
-		return R.ok(jsonString);
+		const json_string = JSON.stringify(stabilized);
+		return R.ok(json_string);
 	} catch (err) {
 		return R.err(
 			`Error during JSON stringification: ${
@@ -23,7 +23,7 @@ export function jsonStringifyStable(input: unknown): Result<string> {
 	}
 }
 
-function stabilizeStructure(value: unknown, visited: WeakSet<object>): Result<unknown> {
+function stabilize_structure(value: unknown, visited: WeakSet<object>): Result<unknown> {
 	if (value === null || typeof value !== "object") {
 		return R.ok(value);
 	}
@@ -36,7 +36,7 @@ function stabilizeStructure(value: unknown, visited: WeakSet<object>): Result<un
 	if (Array.isArray(value)) {
 		const result: unknown[] = [];
 		for (const item of value) {
-			const item_res = stabilizeStructure(item, visited);
+			const item_res = stabilize_structure(item, visited);
 			if (!item_res.ok) {
 				return R.err(item_res.err);
 			}
@@ -49,7 +49,7 @@ function stabilizeStructure(value: unknown, visited: WeakSet<object>): Result<un
 	const keys = Object.keys(value).sort();
 	const stable: Record<string, unknown> = {};
 	for (const key of keys) {
-		const val_res = stabilizeStructure(
+		const val_res = stabilize_structure(
 			(value as Record<string, unknown>)[key],
 			visited,
 		);

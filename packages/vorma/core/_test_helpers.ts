@@ -21,7 +21,7 @@ export function seed_payload(overrides: Record<string, unknown> = {}) {
 		client_build_id: "build-1",
 		deployment_id: "",
 		matched_patterns: [],
-		loaders_data: [],
+		views_data: [],
 		import_urls: [],
 		params: {},
 		splat_values: [],
@@ -41,11 +41,11 @@ export function seed_payload(overrides: Record<string, unknown> = {}) {
 
 export function route_response(
 	overrides: Record<string, unknown> = {},
-	buildId = "build-1",
+	build_id = "build-1",
 ): Response {
 	const data = {
 		matched_patterns: [],
-		loaders_data: [],
+		views_data: [],
 		import_urls: [],
 		params: {},
 		splat_values: [],
@@ -60,7 +60,7 @@ export function route_response(
 		status: 200,
 		headers: {
 			"Content-Type": "application/json",
-			[BUILD_ID_HEADER]: buildId,
+			[BUILD_ID_HEADER]: build_id,
 		},
 	});
 }
@@ -367,10 +367,10 @@ export async function setup(
 /////////////////////////////////////////////////////////////////////
 
 export function register_ccc_lifecycle(
-	beforeEach: (fn: () => void) => void,
-	afterEach: (fn: () => void) => void,
+	before_each: (fn: () => void) => void,
+	after_each: (fn: () => void) => void,
 ) {
-	beforeEach(() => {
+	before_each(() => {
 		vi.restoreAllMocks();
 		vi.resetModules();
 		document.head.innerHTML = "";
@@ -379,7 +379,7 @@ export function register_ccc_lifecycle(
 		sessionStorage.clear();
 	});
 
-	afterEach(() => {
+	after_each(() => {
 		cleanup_listeners();
 	});
 }

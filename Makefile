@@ -15,6 +15,12 @@ e2e:
 		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant remix
 	cd tests/framework && \
 		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant react
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant preact
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant solid
+	cd tests/framework && \
+		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant remix
 
 #####################################################################
 ####### RUST

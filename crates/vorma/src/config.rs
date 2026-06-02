@@ -64,7 +64,7 @@ pub struct TsGenConfig {
 pub struct PathConfig {
 	/// Public static asset base path.
 	pub public_static_base: String,
-	/// API-route mount root. Empty/root values are invalid after normalization.
+	/// API mount root. Empty/root values are invalid after normalization.
 	pub api_base: String,
 }
 

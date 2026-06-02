@@ -2,23 +2,23 @@ import { jsonStringifyStable } from "vorma/kit/json";
 import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 import type {
 	ApiClientOutput,
-	ApiRouteKind,
 	AppConfig,
 	MutationResult,
 	QueryResult,
+	ResourceKind,
 	ToApiClient,
 	ToApiDecorator,
 	ToApiDecoratorContext,
 	ToMutationArgs,
 	ToQueryArgs,
 } from "./types.ts";
-import { build_action_url, resolve_body } from "./url.ts";
+import { build_resource_url, resolve_body } from "./url.ts";
 
 type SubmitFn = <T>(
 	url: string | URL,
-	requestInit?: RequestInit,
+	request_init?: RequestInit,
 	options?: {
-		apiRouteKind?: ApiRouteKind;
+		resourceKind?: ResourceKind;
 		dedupeKey?: string;
 		revalidate?: boolean;
 		skipWorkIndicator?: boolean;
@@ -66,20 +66,20 @@ export class MutationError<T = never> extends ApiErrorBase<T> {
 }
 
 export function create_typed_api_client<A extends AppConfig>(
-	actions_mount_root: string,
+	api_mount_root: string,
 	submit_fn: SubmitFn,
 	decorator?: ToApiDecorator<A>,
 ): ToApiClient<A> {
 	async function submit<Args extends ToQueryArgs<A> | ToMutationArgs<A>>(
 		args: Args,
-		api_route_kind: ApiRouteKind,
+		resource_kind: ResourceKind,
 	): Promise<
 		QueryResult<ApiClientOutput<A, Args>> | MutationResult<ApiClientOutput<A, Args>>
 	> {
 		const {
 			dedupeKey,
 			input,
-			method: raw_method,
+			method,
 			params,
 			pattern,
 			revalidate,
@@ -87,11 +87,11 @@ export function create_typed_api_client<A extends AppConfig>(
 			splatValues,
 			...request_init
 		} = args as any;
-		const method = normalize_api_method(raw_method);
+		const normalized_method = normalize_api_method(method);
 		const api_pattern = normalize_api_pattern(pattern);
-		const is_get = method === "GET" || method === "HEAD";
-		const url = build_action_url(
-			actions_mount_root,
+		const is_get = normalized_method === "GET" || normalized_method === "HEAD";
+		const url = build_resource_url(
+			api_mount_root,
 			api_pattern,
 			params,
 			splatValues,
@@ -99,7 +99,7 @@ export function create_typed_api_client<A extends AppConfig>(
 		);
 		const ctx = {
 			input,
-			method,
+			method: normalized_method,
 			pattern: api_pattern,
 			requestInit: request_init,
 		} as ToApiDecoratorContext<A>;
@@ -110,19 +110,19 @@ export function create_typed_api_client<A extends AppConfig>(
 			headers.set(k, v);
 		});
 		init.headers = headers;
-		init.method = method;
+		init.method = normalized_method;
 		if (is_get) {
 			delete init.body;
 		} else {
 			init.body = resolve_body(input);
 		}
 		const options: {
-			apiRouteKind?: ApiRouteKind;
+			resourceKind?: ResourceKind;
 			dedupeKey?: string;
 			revalidate?: boolean;
 			skipWorkIndicator?: boolean;
 		} = {
-			apiRouteKind: api_route_kind,
+			resourceKind: resource_kind,
 		};
 		if (dedupeKey !== undefined) {
 			options.dedupeKey = dedupeKey;
@@ -140,19 +140,13 @@ export function create_typed_api_client<A extends AppConfig>(
 		toIdentityArray: <Args extends ToQueryArgs<A> | ToMutationArgs<A>>(
 			args: Args,
 		): unknown[] => {
-			const {
-				input,
-				method: raw_method,
-				params,
-				pattern,
-				splatValues,
-			} = args as any;
-			const method = normalize_api_method(raw_method);
+			const { input, method, params, pattern, splatValues } = args as any;
+			const normalized_method = normalize_api_method(method);
 			const api_pattern = normalize_api_pattern(pattern);
 			return [
 				API_IDENTITY_ARRAY_PREFIX,
-				actions_mount_root,
-				method,
+				api_mount_root,
+				normalized_method,
 				api_pattern,
 				stringify_identity_value(params ?? null),
 				stringify_identity_value(splatValues ?? []),

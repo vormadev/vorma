@@ -3,12 +3,12 @@
  * found, otherwise undefined. Does not do any encoding or decoding.
  */
 export function getClientCookie(name: string) {
-	const expectedPrefix = `${name}=`;
-	const cookiePairs = document.cookie.split(";");
-	for (const cookiePair of cookiePairs) {
-		const trimmedPair = cookiePair.trim();
-		if (trimmedPair.startsWith(expectedPrefix)) {
-			return trimmedPair.slice(expectedPrefix.length);
+	const expected_prefix = `${name}=`;
+	const cookie_pairs = document.cookie.split(";");
+	for (const cookie_pair of cookie_pairs) {
+		const trimmed_pair = cookie_pair.trim();
+		if (trimmed_pair.startsWith(expected_prefix)) {
+			return trimmed_pair.slice(expected_prefix.length);
 		}
 	}
 	return undefined;

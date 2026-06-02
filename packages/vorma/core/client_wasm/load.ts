@@ -24,16 +24,20 @@ export type RawMatcherExports = {
 let init_promise: Promise<RawMatcherExports> | null = null;
 
 const wasm_url = new URL("./vorma_client_wasm_bg.wasm", import.meta.url);
+const VITE_FS_URL_PREFIX = "/@fs/";
 
 async function instantiate_wasm(): Promise<RawMatcherExports> {
 	if (!import.meta.env || import.meta.env.MODE === "test") {
 		const fs = await import(/* @vite-ignore */ "node:fs/promises");
 		const process = await import(/* @vite-ignore */ "node:process");
-		const bytes = await fs.readFile(
-			wasm_url.protocol === "file:"
-				? wasm_url
-				: new URL(`.${wasm_url.pathname}`, `file://${process.cwd()}/`),
-		);
+		let file_url = wasm_url;
+		if (wasm_url.protocol !== "file:") {
+			const pathname = wasm_url.pathname.startsWith(VITE_FS_URL_PREFIX)
+				? wasm_url.pathname.slice(VITE_FS_URL_PREFIX.length - 1)
+				: `.${wasm_url.pathname}`;
+			file_url = new URL(pathname, `file://${process.cwd()}/`);
+		}
+		const bytes = await fs.readFile(file_url);
 		const result = await WebAssembly.instantiate(bytes as BufferSource, {});
 		return result.instance.exports as RawMatcherExports;
 	}

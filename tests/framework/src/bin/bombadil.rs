@@ -28,8 +28,8 @@ const DEV_MARKER_A: &str = "server-marker-a";
 const DEV_MARKER_B: &str = "server-marker-b";
 const DEV_CRITICAL_CSS_PATH: &str = "shared/styles/main.critical.css";
 const DEV_CRITICAL_CSS_MARKER: &str = "dev-change-critical-css-probe";
-const DEV_ROUTE_MODULE_PATH: &str = "components/routes/root.ts";
-const DEV_ROUTE_MODULE_MARKER: &str = "client-route-module-probe";
+const DEV_VIEW_MODULE_PATH: &str = "components/routes/root.ts";
+const DEV_VIEW_MODULE_MARKER: &str = "client-view-module-probe";
 const VORMA_SPEC_PATH: &str = "./specs/vorma.property.ts";
 const BUILD_SKEW_SPEC_PATH: &str = "./specs/build_skew.property.ts";
 const LATENCY_SPEC_PATH: &str = "./specs/latency.property.ts";
@@ -66,7 +66,7 @@ struct DevManifest {
 	dev_vite_server_port: u16,
 	critical_css: String,
 	client_entry: DevClientModule,
-	client_routes: std::collections::BTreeMap<String, DevClientModule>,
+	client_views: std::collections::BTreeMap<String, DevClientModule>,
 }
 
 #[derive(Deserialize)]
@@ -361,23 +361,23 @@ impl VariantRunner {
 		)?;
 		self.wait_for_manifest_critical_css(child, DEV_CRITICAL_CSS_MARKER)?;
 
-		let root_route_url = self
+		let root_view_url = self
 			.read_dev_manifest()?
-			.client_routes
+			.client_views
 			.get("/")
-			.ok_or_else(|| "dev manifest missing root client route".to_owned())?
+			.ok_or_else(|| "dev manifest missing root client view".to_owned())?
 			.url
 			.clone();
-		let root_route_url = self.dev_url(&base_url, &root_route_url);
-		let _route_guard = append_file_text(
-			&framework_root().join(DEV_ROUTE_MODULE_PATH),
-			&format!("\nexport const dev_change_probe = \"{DEV_ROUTE_MODULE_MARKER}\";\n"),
+		let root_view_url = self.dev_url(&base_url, &root_view_url);
+		let _view_guard = append_file_text(
+			&framework_root().join(DEV_VIEW_MODULE_PATH),
+			&format!("\nexport const dev_change_probe = \"{DEV_VIEW_MODULE_MARKER}\";\n"),
 		)?;
 		self.wait_for_http_body_contains(
 			child,
-			&root_route_url,
-			DEV_ROUTE_MODULE_MARKER,
-			"client route module refresh",
+			&root_view_url,
+			DEV_VIEW_MODULE_MARKER,
+			"client view module refresh",
 		)
 	}
 
@@ -721,8 +721,8 @@ impl VariantRunner {
 			),
 			self.dev_url(app_base_url, &manifest.client_entry.url),
 		];
-		if let Some(root_route) = manifest.client_routes.get("/") {
-			urls.push(self.dev_url(app_base_url, &root_route.url));
+		if let Some(root_view) = manifest.client_views.get("/") {
+			urls.push(self.dev_url(app_base_url, &root_view.url));
 		}
 
 		urls.iter().all(|url| {

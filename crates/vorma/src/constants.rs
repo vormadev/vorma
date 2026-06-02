@@ -1,4 +1,4 @@
-/// Query key used by JSON loader requests.
+/// Query key used by JSON view requests.
 pub const QUERY_KEY_VORMA_JSON: &str = "vorma-json";
 
 /// Header carrying the current client build ID.
@@ -15,7 +15,7 @@ pub const PROD_TMP_VITE_MANIFEST_FILENAME: &str = "vorma_internal_tmp_vite_manif
 pub const CRITICAL_CSS_EL_ID: &str = "vorma-critical-css";
 /// DOM id for the Vorma root element.
 pub const VORMA_ROOT_EL_ID: &str = "vorma-root";
-/// DOM id for the embedded loader payload script.
+/// DOM id for the embedded view payload script.
 pub const VORMA_DATA_JSON_SCRIPT_EL_ID: &str = "vorma-data-json";
 
 /// Attribute used to identify CSS bundle links.

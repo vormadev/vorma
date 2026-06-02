@@ -102,7 +102,7 @@ describe("query and mutate", () => {
 		expect(url.search).toBe("");
 	});
 
-	it("works without input for non-GET API routes", async () => {
+	it("works without input for non-GET resources", async () => {
 		const { submit_fn, calls } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 
@@ -133,7 +133,7 @@ describe("query and mutate", () => {
 		});
 
 		expect(calls[0]!.options).toEqual({
-			apiRouteKind: "mutation",
+			resourceKind: "mutation",
 			dedupeKey: "save",
 			revalidate: false,
 			skipWorkIndicator: true,
@@ -154,7 +154,7 @@ describe("query and mutate", () => {
 
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.options).toEqual({
-			apiRouteKind: "query",
+			resourceKind: "query",
 			dedupeKey: "users:42",
 			skipWorkIndicator: true,
 		});
@@ -185,7 +185,7 @@ describe("query and mutate", () => {
 			input: { op: "quote" },
 		});
 
-		expect(calls[0]!.options).toMatchObject({ apiRouteKind: "query" });
+		expect(calls[0]!.options).toMatchObject({ resourceKind: "query" });
 	});
 
 	it("passes mutation semantics from mutate", async () => {
@@ -196,7 +196,7 @@ describe("query and mutate", () => {
 			pattern: "/health",
 		});
 
-		expect(calls[0]!.options).toMatchObject({ apiRouteKind: "mutation" });
+		expect(calls[0]!.options).toMatchObject({ resourceKind: "mutation" });
 	});
 
 	it("mutateOrThrow returns data for successful mutation", async () => {
@@ -253,7 +253,7 @@ describe("query and mutate", () => {
 });
 
 describe("toIdentityArray", () => {
-	it("builds a stable action identity array", () => {
+	it("builds a stable resource identity array", () => {
 		const { submit_fn } = mock_submit();
 		const client = create_typed_api_client("/api/", submit_fn as any);
 

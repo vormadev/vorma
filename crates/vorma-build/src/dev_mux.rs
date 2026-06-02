@@ -345,7 +345,7 @@ mod tests {
 
 	use super::*;
 	use crate::constants::VITE_PLUGIN_TOKEN_HEADER;
-	use crate::ts_modules::TsRoute;
+	use crate::ts_modules::TsViewModule;
 
 	fn config() -> Config {
 		Config {
@@ -406,9 +406,9 @@ mod tests {
 		let token = dev_mux.vite_plugin_token().unwrap();
 		dev_mux.publish_generation(Some(DevMuxGeneration {
 			config: config(),
-			route_modules: BTreeMap::from([(
+			view_modules: BTreeMap::from([(
 				"/".to_owned(),
-				TsRoute {
+				TsViewModule {
 					pattern: "/".to_owned(),
 					import_path: "src/root.tsx".to_owned(),
 					deps: Vec::new(),
@@ -437,7 +437,7 @@ mod tests {
 		let token = dev_mux.vite_plugin_token().unwrap();
 		dev_mux.publish_generation(Some(DevMuxGeneration {
 			config: config(),
-			route_modules: BTreeMap::new(),
+			view_modules: BTreeMap::new(),
 			public_filemap: BTreeMap::new(),
 		}));
 		let state = dev_mux.state();

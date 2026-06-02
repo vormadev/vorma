@@ -24,7 +24,7 @@ export const {
 	navigate,
 	prefetch,
 	revalidate,
-	useLoaderData,
+	useViewData,
 	useClientLoaderData,
 	useRouteState,
 	useWorkState,

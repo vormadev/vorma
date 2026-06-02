@@ -34,7 +34,7 @@ const node_modules_refresh_exclude = /\/node_modules\//;
 type Config = {
 	PublicStaticBasePath: string;
 	EntryModule: string;
-	RouteModules: Array<string>;
+	ViewModules: Array<string>;
 	IgnoredPatterns: Array<string>;
 	DedupeList: Array<string>;
 };
@@ -94,8 +94,8 @@ async function resolve_public_css_urls(
 
 	const matches: {
 		full: string;
-		assetPath: string;
-		lookupPath: string;
+		asset_path: string;
+		lookup_path: string;
 		suffix: string;
 	}[] = [];
 	let m: RegExpExecArray | null;
@@ -107,17 +107,17 @@ async function resolve_public_css_urls(
 		);
 		matches.push({
 			full: m[0],
-			assetPath: asset_path,
-			lookupPath: parsed_public_url.pathname.slice(1),
+			asset_path,
+			lookup_path: parsed_public_url.pathname.slice(1),
 			suffix: parsed_public_url.search + parsed_public_url.hash,
 		});
 	}
 
 	const resolved = await Promise.all(
-		matches.map(async ({ full, assetPath, lookupPath, suffix }) => {
+		matches.map(async ({ full, asset_path, lookup_path, suffix }) => {
 			return {
 				full,
-				hashed: (await fetch_public_url(lookupPath, assetPath)) + suffix,
+				hashed: (await fetch_public_url(lookup_path, asset_path)) + suffix,
 			};
 		}),
 	);
@@ -151,22 +151,22 @@ function public_css_url_postcss_plugin(
 	};
 }
 
-/// HMR preamble injected into route modules during dev.
+/// HMR preamble injected into view modules during dev.
 /// The self-accept callback forwards the new module to the client
-/// core, which handles the component/loader swap and re-commit.
+/// core, which handles the component/client-loader swap and re-commit.
 const hmr_preamble = [
 	"if (import.meta.hot) {",
 	"  import.meta.hot.accept((mod) => {",
 	"    if (mod) {",
-	"      window.__vorma_hmr_route_update?.(import.meta.url, mod);",
+	"      window.__vorma_hmr_view_update?.(import.meta.url, mod);",
 	"    }",
 	"  });",
 	"}",
 ].join("\n");
 
 export default function vorma(): Vite_Plugin {
-	let route_module_ids: Set<string> | null = null;
-	let route_modules: Array<string> = [];
+	let view_module_ids: Set<string> | null = null;
+	let view_modules: Array<string> = [];
 	const resolved_public_css_urls = new Set<string>();
 
 	const mark_resolved_public_url = (public_url: string) => {
@@ -183,17 +183,17 @@ export default function vorma(): Vite_Plugin {
 	return {
 		name: plugin_name,
 
-		// Run before framework plugins so Vorma's route-module
+		// Run before framework plugins so Vorma's view-module
 		// transform is applied early. React Fast Refresh is disabled
-		// for route modules through `oxc.jsxRefreshExclude` below.
+		// for view modules through `oxc.jsxRefreshExclude` below.
 		enforce: "pre",
 
 		// Call Vorma dev server to fetch config.
 		async config(_: Vite_UserConfig, { command }) {
 			const res = await server_rpc({ method: "cfg" });
 			const cfg: Config = await res.json();
-			route_modules = cfg.RouteModules;
-			const route_refresh_excludes = route_modules.map((p) => {
+			view_modules = cfg.ViewModules;
+			const view_refresh_excludes = view_modules.map((p) => {
 				return module_id_filter_regex(p);
 			});
 			const out_prefix = "vorma_out_vite_[name]_[hash]";
@@ -209,7 +209,7 @@ export default function vorma(): Vite_Plugin {
 						external: (url: string) => {
 							return resolved_public_css_urls.has(url);
 						},
-						input: [cfg.EntryModule, ...cfg.RouteModules],
+						input: [cfg.EntryModule, ...cfg.ViewModules],
 						preserveEntrySignatures: "exports-only",
 						output: {
 							assetFileNames: out_prefix + "[extname]",
@@ -238,7 +238,7 @@ export default function vorma(): Vite_Plugin {
 					jsxRefreshInclude: js_module_regex,
 					jsxRefreshExclude: [
 						node_modules_refresh_exclude,
-						...route_refresh_excludes,
+						...view_refresh_excludes,
 					],
 				};
 			}
@@ -246,8 +246,8 @@ export default function vorma(): Vite_Plugin {
 		},
 
 		configResolved(resolved: Vite_ResolvedConfig) {
-			route_module_ids = new Set(
-				route_modules.map((p) => {
+			view_module_ids = new Set(
+				view_modules.map((p) => {
 					return normalize_module_id(resolve(resolved.root, p));
 				}),
 			);
@@ -269,19 +269,19 @@ export default function vorma(): Vite_Plugin {
 				// Reset lastIndex after the test pass.
 				public_url_regex.lastIndex = 0;
 
-				const matches: { full: string; assetPath: string }[] = [];
+				const matches: { full: string; asset_path: string }[] = [];
 				let m: RegExpExecArray | null;
 				while ((m = public_url_regex.exec(result)) !== null) {
-					matches.push({ full: m[0], assetPath: m[2]! });
+					matches.push({ full: m[0], asset_path: m[2]! });
 				}
 
 				const resolved = await Promise.all(
-					matches.map(async ({ full, assetPath }) => {
+					matches.map(async ({ full, asset_path }) => {
 						return {
 							full,
 							hashed: await fetch_public_url(
-								assetPath,
-								`${pub_url_fn_name}("${assetPath}")`,
+								asset_path,
+								`${pub_url_fn_name}("${asset_path}")`,
 							),
 						};
 					}),
@@ -292,8 +292,8 @@ export default function vorma(): Vite_Plugin {
 				}
 			}
 
-			// HMR self-accept injection for route modules (dev only)
-			if (route_module_ids?.has(normalize_module_id(id))) {
+			// HMR self-accept injection for view modules (dev only)
+			if (view_module_ids?.has(normalize_module_id(id))) {
 				result += "\n" + hmr_preamble;
 			}
 

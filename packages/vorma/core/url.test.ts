@@ -1,21 +1,21 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { build_action_url, resolve_body, resolve_path, to_typed_href } from "./url.ts";
+import { build_resource_url, resolve_body, resolve_path, to_typed_href } from "./url.ts";
 
 describe("resolve_path", () => {
-	describe("loader paths", () => {
+	describe("view paths", () => {
 		it("resolves static pattern", () => {
-			expect(resolve_path("loader", "/users")).toBe("/users");
+			expect(resolve_path("view", "/users")).toBe("/users");
 		});
 
 		it("resolves single dynamic param", () => {
-			expect(resolve_path("loader", "/users/:id", { id: "42" })).toBe("/users/42");
+			expect(resolve_path("view", "/users/:id", { id: "42" })).toBe("/users/42");
 		});
 
 		it("resolves multiple dynamic params", () => {
 			expect(
-				resolve_path("loader", "/users/:id/posts/:postId", {
+				resolve_path("view", "/users/:id/posts/:postId", {
 					id: "42",
 					postId: "7",
 				}),
@@ -23,47 +23,49 @@ describe("resolve_path", () => {
 		});
 
 		it("resolves splat values", () => {
-			expect(resolve_path("loader", "/docs/*", undefined, ["guide", "intro"])).toBe(
+			expect(resolve_path("view", "/docs/*", undefined, ["guide", "intro"])).toBe(
 				"/docs/guide/intro",
 			);
 		});
 
 		it("URL-encodes dynamic param values", () => {
-			expect(resolve_path("loader", "/users/:id", { id: "a/b" })).toBe(
+			expect(resolve_path("view", "/users/:id", { id: "a/b" })).toBe(
 				"/users/a%2Fb",
 			);
 		});
 
 		it("URL-encodes splat values", () => {
-			expect(resolve_path("loader", "/docs/*", undefined, ["hello world"])).toBe(
+			expect(resolve_path("view", "/docs/*", undefined, ["hello world"])).toBe(
 				"/docs/hello%20world",
 			);
 		});
 
-		it("strips _index suffix for loader type", () => {
-			expect(resolve_path("loader", "/blog/_index")).toBe("/blog");
+		it("strips _index suffix for view type", () => {
+			expect(resolve_path("view", "/blog/_index")).toBe("/blog");
 		});
 
 		it("resolves root _index to /", () => {
-			expect(resolve_path("loader", "/_index")).toBe("/");
+			expect(resolve_path("view", "/_index")).toBe("/");
 		});
 
 		it("normalizes trailing slash", () => {
-			expect(resolve_path("loader", "/users/")).toBe("/users");
+			expect(resolve_path("view", "/users/")).toBe("/users");
 		});
 
 		it("preserves root path", () => {
-			expect(resolve_path("loader", "/")).toBe("/");
+			expect(resolve_path("view", "/")).toBe("/");
 		});
 	});
 
-	describe("action paths", () => {
+	describe("resource paths", () => {
 		it("does not strip _index suffix", () => {
-			expect(resolve_path("action", "/blog/_index")).toBe("/blog/_index");
+			expect(resolve_path("resource", "/blog/_index")).toBe("/blog/_index");
 		});
 
 		it("resolves dynamic params", () => {
-			expect(resolve_path("action", "/users/:id", { id: "42" })).toBe("/users/42");
+			expect(resolve_path("resource", "/users/:id", { id: "42" })).toBe(
+				"/users/42",
+			);
 		});
 	});
 });
@@ -117,21 +119,21 @@ describe("to_typed_href", () => {
 		expect(url.hash).toBe("#latest");
 	});
 
-	it("strips _index for loader patterns", () => {
+	it("strips _index for view patterns", () => {
 		const href = to_typed_href("/blog/_index");
 		const url = new URL(href);
 		expect(url.pathname).toBe("/blog");
 	});
 });
 
-describe("build_action_url", () => {
+describe("build_resource_url", () => {
 	it("prepends mount root to resolved path", () => {
-		const url = build_action_url("/api/", "/users/:id", { id: "42" });
+		const url = build_resource_url("/api/", "/users/:id", { id: "42" });
 		expect(url.pathname).toBe("/api/users/42");
 	});
 
 	it("serializes input as search params", () => {
-		const url = build_action_url("/api/", "/users/:id", { id: "42" }, undefined, {
+		const url = build_resource_url("/api/", "/users/:id", { id: "42" }, undefined, {
 			include: "posts",
 			page: 2,
 		});
@@ -141,12 +143,12 @@ describe("build_action_url", () => {
 	});
 
 	it("produces no search params when input is undefined", () => {
-		const url = build_action_url("/api/", "/users/:id", { id: "42" });
+		const url = build_resource_url("/api/", "/users/:id", { id: "42" });
 		expect(url.search).toBe("");
 	});
 
 	it("produces no search params when input is null", () => {
-		const url = build_action_url(
+		const url = build_resource_url(
 			"/api/",
 			"/users/:id",
 			{ id: "42" },
@@ -157,27 +159,27 @@ describe("build_action_url", () => {
 	});
 
 	it("URL-encodes dynamic params", () => {
-		const url = build_action_url("/api/", "/users/:id", { id: "a/b" });
+		const url = build_resource_url("/api/", "/users/:id", { id: "a/b" });
 		expect(url.pathname).toBe("/api/users/a%2Fb");
 	});
 
 	it("handles splat values", () => {
-		const url = build_action_url("/api/", "/docs/*", undefined, ["guide", "intro"]);
+		const url = build_resource_url("/api/", "/docs/*", undefined, ["guide", "intro"]);
 		expect(url.pathname).toBe("/api/docs/guide/intro");
 	});
 
 	it("handles root pattern", () => {
-		const url = build_action_url("/api/", "/");
+		const url = build_resource_url("/api/", "/");
 		expect(url.pathname).toBe("/api");
 	});
 
 	it("normalizes trailing slash on mount root", () => {
-		const url = build_action_url("/api", "/users/:id", { id: "42" });
+		const url = build_resource_url("/api", "/users/:id", { id: "42" });
 		expect(url.pathname).toBe("/api/users/42");
 	});
 
 	it("does not include any search params", () => {
-		const url = build_action_url(
+		const url = build_resource_url(
 			"/api/",
 			"/users/:id",
 			{ id: "42" },

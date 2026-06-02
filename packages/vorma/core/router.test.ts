@@ -49,7 +49,7 @@ describe("navigate", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/about"],
-				loaders_data: [{ page: "about" }],
+				views_data: [{ page: "about" }],
 			}),
 		);
 		const result = await nav;
@@ -59,7 +59,7 @@ describe("navigate", () => {
 		const state = route_render_commit_at(commit, 0);
 		expect(state.entries).toHaveLength(1);
 		expect(state.entries[0].pattern).toBe("/about");
-		expect(state.entries[0].loader_data).toEqual({ page: "about" });
+		expect(state.entries[0].view_data).toEqual({ page: "about" });
 	});
 
 	it("latest navigation wins when earlier is superseded", async () => {
@@ -77,7 +77,7 @@ describe("navigate", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/second"],
-				loaders_data: [{ page: "second" }],
+				views_data: [{ page: "second" }],
 			}),
 		);
 		const [r1, r2] = await Promise.all([n1, n2]);
@@ -86,7 +86,7 @@ describe("navigate", () => {
 		expect(r2.didNavigate).toBe(true);
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ page: "second" });
+		expect(state.entries[0].view_data).toEqual({ page: "second" });
 	});
 
 	it("settles superseded navigation without waiting for ignored abort", async () => {
@@ -127,7 +127,7 @@ describe("navigate", () => {
 		second_fetch.resolve(
 			route_response({
 				matched_patterns: ["/second"],
-				loaders_data: [{ page: "second" }],
+				views_data: [{ page: "second" }],
 			}),
 		);
 		await expect(second).resolves.toEqual({ didNavigate: true });
@@ -135,14 +135,14 @@ describe("navigate", () => {
 		first_fetch.resolve(
 			route_response({
 				matched_patterns: ["/first"],
-				loaders_data: [{ page: "first" }],
+				views_data: [{ page: "first" }],
 			}),
 		);
 		await tick();
 
 		expect(route_render_commit_count(commit)).toBe(1);
 		const state = route_render_commit_at(commit, 0);
-		expect(state.entries[0].loader_data).toEqual({ page: "second" });
+		expect(state.entries[0].view_data).toEqual({ page: "second" });
 	});
 
 	it("aborts in-flight fetch when new navigation starts", async () => {
@@ -196,7 +196,7 @@ describe("navigate", () => {
 		expect(r2.didNavigate).toBe(true);
 	});
 
-	it("commits the latest hash intent when reusing in-flight route data", async () => {
+	it("commits the latest hash intent when reusing in-flight view data", async () => {
 		const { core, commit } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
@@ -332,14 +332,14 @@ describe("navigate", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/winner"],
-				loaders_data: [{ winner: true }],
+				views_data: [{ winner: true }],
 			}),
 		);
 		await Promise.all([n1, n2]);
 
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ winner: true });
+		expect(state.entries[0].view_data).toEqual({ winner: true });
 	});
 
 	it("recovers after network failure and allows subsequent navigation", async () => {
@@ -355,7 +355,7 @@ describe("navigate", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/recover"],
-				loaders_data: [{ recovered: true }],
+				views_data: [{ recovered: true }],
 			}),
 		);
 		const r2 = await nav;
@@ -363,7 +363,7 @@ describe("navigate", () => {
 		expect(r2.didNavigate).toBe(true);
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ recovered: true });
+		expect(state.entries[0].view_data).toEqual({ recovered: true });
 	});
 });
 
@@ -395,7 +395,7 @@ describe("prefetch", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/page"],
-				loaders_data: [{ prefetched: true }],
+				views_data: [{ prefetched: true }],
 			}),
 		);
 		await tick();
@@ -406,7 +406,7 @@ describe("prefetch", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = route_render_commit_at(commit, 0);
-		expect(state.entries[0].loader_data).toEqual({ prefetched: true });
+		expect(state.entries[0].view_data).toEqual({ prefetched: true });
 	});
 
 	it("does not promote a completed failed prefetch", async () => {
@@ -547,7 +547,7 @@ describe("navigate redirects", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/target"],
-				loaders_data: [{ redirected: true }],
+				views_data: [{ redirected: true }],
 			}),
 		);
 		const result = await nav;
@@ -555,7 +555,7 @@ describe("navigate redirects", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = route_render_commit_at(commit, 0);
-		expect(state.entries[0].loader_data).toEqual({ redirected: true });
+		expect(state.entries[0].view_data).toEqual({ redirected: true });
 	});
 
 	it("follows redirect even when response is non-ok", async () => {
@@ -573,7 +573,7 @@ describe("navigate redirects", () => {
 		expect(has_route_render_commit(commit)).toBe(true);
 	});
 
-	it("hard reloads navigation when route data reports build skew", async () => {
+	it("hard reloads navigation when view data reports build skew", async () => {
 		const on_build_skew = vi.fn();
 		const { core, hard_redirect } = await setup({
 			clientOptions: { onBuildSkewDetected: on_build_skew },
@@ -635,7 +635,7 @@ describe("navigate redirects", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/native-target"],
-				loaders_data: [{ native: true }],
+				views_data: [{ native: true }],
 			}),
 		);
 		const result = await nav;
@@ -673,7 +673,7 @@ describe("navigate redirects", () => {
 		call(2).resolve(
 			route_response({
 				matched_patterns: ["/final"],
-				loaders_data: [{ final: true }],
+				views_data: [{ final: true }],
 			}),
 		);
 		const result = await nav;
@@ -681,7 +681,7 @@ describe("navigate redirects", () => {
 		expect(result.didNavigate).toBe(true);
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = route_render_commit_at(commit, 0);
-		expect(state.entries[0].loader_data).toEqual({ final: true });
+		expect(state.entries[0].view_data).toEqual({ final: true });
 	});
 
 	it("maintains navigating status through redirect chains", async () => {
@@ -737,14 +737,14 @@ describe("navigate redirects", () => {
 		call(2).resolve(
 			route_response({
 				matched_patterns: ["/winner"],
-				loaders_data: [{ winner: true }],
+				views_data: [{ winner: true }],
 			}),
 		);
 		await Promise.all([n1, n2]);
 
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ winner: true });
+		expect(state.entries[0].view_data).toEqual({ winner: true });
 	});
 
 	it("resolves relative redirect targets against request URL", async () => {
@@ -855,7 +855,7 @@ describe("navigate stress", () => {
 			non_aborted[0]!.resolve(
 				route_response({
 					matched_patterns: [`/stress-${seed}-last`],
-					loaders_data: [{ index: nav_count - 1 }],
+					views_data: [{ index: nav_count - 1 }],
 				}),
 			);
 
@@ -1219,7 +1219,7 @@ describe("popstate", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/"],
-				loaders_data: [{ home: true }],
+				views_data: [{ home: true }],
 			}),
 		);
 
@@ -1234,7 +1234,7 @@ describe("popstate", () => {
 
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ home: true });
+		expect(state.entries[0].view_data).toEqual({ home: true });
 	});
 
 	it("reuses in-flight popstate data for a later navigation intent", async () => {
@@ -1251,7 +1251,7 @@ describe("popstate", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/target"],
-				loaders_data: [{ target: true }],
+				views_data: [{ target: true }],
 			}),
 		);
 
@@ -1262,7 +1262,7 @@ describe("popstate", () => {
 		expect(reload).not.toHaveBeenCalled();
 		expect(window.location.hash).toBe("#two");
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ target: true });
+		expect(state.entries[0].view_data).toEqual({ target: true });
 	});
 
 	it("does not push history on popstate navigation", async () => {
@@ -1330,7 +1330,7 @@ describe("popstate", () => {
 		});
 	});
 
-	it("reloads when full popstate route data cannot commit", async () => {
+	it("reloads when full popstate view data cannot commit", async () => {
 		const { core, reload } = await setup();
 		const seed_key = get_history_key();
 		const { call, wait_for } = mock_fetch();
@@ -1374,7 +1374,7 @@ describe("popstate", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/"],
-				loaders_data: [{ home: true }],
+				views_data: [{ home: true }],
 				import_urls: ["/missing-popstate-route.js"],
 			}),
 		);
@@ -1423,7 +1423,7 @@ describe("popstate", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/"],
-				loaders_data: [{ home: true }],
+				views_data: [{ home: true }],
 				import_urls: ["/reject-popstate-route.js"],
 			}),
 		);
@@ -1540,7 +1540,7 @@ describe("popstate", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/previous"],
-				loaders_data: [{ previous: true }],
+				views_data: [{ previous: true }],
 			}),
 		);
 
@@ -1555,7 +1555,7 @@ describe("popstate", () => {
 
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ previous: true });
+		expect(state.entries[0].view_data).toEqual({ previous: true });
 		expect(core.getWorkState().navigation !== null).toBe(false);
 	});
 
@@ -1684,7 +1684,7 @@ describe("status", () => {
 		const { call, wait_for } = mock_fetch();
 
 		void core.submit_inner(
-			"/api/action",
+			"/api/resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1785,7 +1785,7 @@ describe("X-Accepts-Client-Redirect header", () => {
 		);
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/resource",
 			{ method: "POST" },
 			{
 				revalidate: false,

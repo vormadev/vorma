@@ -15,8 +15,8 @@ pub use context::{None, RequestCtx};
 pub use error::{Error, InputError, RouteExecutionError};
 #[cfg(test)]
 pub use input::InputParser;
-pub(crate) use middleware::TaskMw;
+pub(crate) use middleware::Middleware;
 pub use nested::{NestedOptions, NestedRouter, NestedTasksResults};
 pub use request::RawRequest;
-pub(crate) use task::erased_task_handler;
+pub(crate) use task::erased_handler;
 pub use vorma_matcher::Params;

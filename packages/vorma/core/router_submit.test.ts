@@ -36,7 +36,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -49,14 +49,14 @@ describe("submit", () => {
 		expect(result).toMatchObject({ success: true, data: { ok: true } });
 	});
 
-	it("sends Vercel deployment ID on action requests when present", async () => {
+	it("sends Vercel deployment ID on API requests when present", async () => {
 		const { core } = await setup({
 			payload: { deployment_id: "dpl_test_123" },
 		});
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -76,7 +76,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -94,7 +94,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -112,7 +112,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -130,7 +130,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -155,7 +155,7 @@ describe("submit", () => {
 		);
 
 		const result = await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -174,7 +174,7 @@ describe("submit", () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
 
 		const result = await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -192,7 +192,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -224,7 +224,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const s1 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -232,7 +232,7 @@ describe("submit", () => {
 			},
 		);
 		const s2 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -258,14 +258,14 @@ describe("submit", () => {
 		const { calls, wait_for } = mock_fetch();
 
 		void core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
 			},
 		);
 		void core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -280,7 +280,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -300,7 +300,7 @@ describe("submit", () => {
 		});
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -337,7 +337,7 @@ describe("submit", () => {
 		});
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(
 			new Response("", {
@@ -362,9 +362,9 @@ describe("submit", () => {
 				activeClientBuildId: "build-1",
 				serverBuildId: "build-2",
 				triggeringResponse: expect.objectContaining({
-					kind: "apiRoute",
-					apiRouteKind: "mutation",
-					requestedHref: `${window.location.origin}/api/action`,
+					kind: "resource",
+					resourceKind: "mutation",
+					requestedHref: `${window.location.origin}/api/some-resource`,
 					method: "POST",
 					status: 500,
 					ok: false,
@@ -372,7 +372,7 @@ describe("submit", () => {
 				currentWorkState: expect.objectContaining({
 					apiRequests: [
 						expect.objectContaining({
-							href: `${window.location.origin}/api/action`,
+							href: `${window.location.origin}/api/some-resource`,
 							method: "POST",
 						}),
 					],
@@ -390,7 +390,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{ revalidate: false },
 		);
@@ -413,9 +413,9 @@ describe("submit", () => {
 				activeClientBuildId: "build-1",
 				serverBuildId: "build-2",
 				triggeringResponse: expect.objectContaining({
-					kind: "apiRoute",
-					apiRouteKind: "mutation",
-					requestedHref: `${window.location.origin}/api/action`,
+					kind: "resource",
+					resourceKind: "mutation",
+					requestedHref: `${window.location.origin}/api/some-resource`,
 					method: "POST",
 					status: 200,
 					ok: true,
@@ -431,7 +431,7 @@ describe("submit", () => {
 		});
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "GET" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "GET" }, {});
 		await wait_for(1);
 		call(0).resolve(
 			new Response("", {
@@ -449,9 +449,9 @@ describe("submit", () => {
 				activeClientBuildId: "build-1",
 				serverBuildId: "build-2",
 				triggeringResponse: expect.objectContaining({
-					kind: "apiRoute",
-					apiRouteKind: "query",
-					requestedHref: `${window.location.origin}/api/action`,
+					kind: "resource",
+					resourceKind: "query",
+					requestedHref: `${window.location.origin}/api/some-resource`,
 					method: "GET",
 					status: 500,
 					ok: false,
@@ -464,7 +464,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).reject(new DOMException("Aborted", "AbortError"));
 		const result = await sub;
@@ -484,7 +484,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).reject(new Error("network down"));
 		const result = await sub;
@@ -505,7 +505,7 @@ describe("submit", () => {
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -519,14 +519,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("skips default POST revalidation when apiRouteKind is query", async () => {
+	it("skips default POST revalidation when resourceKind is query", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
-			{ apiRouteKind: "query" },
+			{ resourceKind: "query" },
 		);
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
@@ -536,14 +536,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("skips default POST revalidation on non-ok when apiRouteKind is query", async () => {
+	it("skips default POST revalidation on non-ok when resourceKind is query", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
-			{ apiRouteKind: "query" },
+			{ resourceKind: "query" },
 		);
 		await wait_for(1);
 		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
@@ -556,15 +556,15 @@ describe("submit", () => {
 		expect(calls).toHaveLength(1);
 	});
 
-	it("lets revalidate: true override query API route semantics", async () => {
+	it("lets revalidate: true override query resource semantics", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
-				apiRouteKind: "query",
+				resourceKind: "query",
 				revalidate: true,
 			},
 		);
@@ -579,14 +579,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(2);
 	});
 
-	it("lets mutation API route semantics override GET default", async () => {
+	it("lets mutation resource semantics override GET default", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "GET" },
-			{ apiRouteKind: "mutation" },
+			{ resourceKind: "mutation" },
 		);
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
@@ -599,14 +599,14 @@ describe("submit", () => {
 		expect(calls).toHaveLength(2);
 	});
 
-	it("lets mutation API route semantics override GET default on non-ok", async () => {
+	it("lets mutation resource semantics override GET default on non-ok", async () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "GET" },
-			{ apiRouteKind: "mutation" },
+			{ resourceKind: "mutation" },
 		);
 		await wait_for(1);
 		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
@@ -628,7 +628,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -648,7 +648,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", {}, {});
+		const sub = core.submit_inner("/api/some-resource", {}, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await sub;
@@ -660,7 +660,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "GET" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "GET" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await sub;
@@ -672,7 +672,7 @@ describe("submit", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "HEAD" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "HEAD" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await sub;
@@ -685,7 +685,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -717,7 +717,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -739,7 +739,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const s1 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -747,7 +747,7 @@ describe("submit", () => {
 			},
 		);
 		void core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -768,7 +768,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -808,7 +808,7 @@ describe("submit", () => {
 		await nav;
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -839,7 +839,7 @@ describe("submit", () => {
 		await nav;
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -860,7 +860,7 @@ describe("submit", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -891,7 +891,7 @@ describe("submit body handling", () => {
 			.mockResolvedValue(json_response());
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST", body: { a: 1 } as unknown as BodyInit },
 			{ revalidate: false },
 		);
@@ -910,7 +910,7 @@ describe("submit body handling", () => {
 			.mockResolvedValue(json_response());
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{
 				method: "POST",
 				body: { a: 1 } as unknown as BodyInit,
@@ -932,7 +932,7 @@ describe("submit body handling", () => {
 			.mockResolvedValue(json_response());
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{
 				method: "GET",
 				body: "should-strip",
@@ -940,7 +940,7 @@ describe("submit body handling", () => {
 			{},
 		);
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{
 				method: "HEAD",
 				body: "should-strip",
@@ -948,7 +948,7 @@ describe("submit body handling", () => {
 			{},
 		);
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{
 				body: "should-strip",
 			},
@@ -969,7 +969,7 @@ describe("submit body handling", () => {
 		form.set("key", "value");
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST", body: form },
 			{ revalidate: false },
 		);
@@ -986,7 +986,7 @@ describe("submit body handling", () => {
 		const params = new URLSearchParams({ a: "1" });
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST", body: params },
 			{ revalidate: false },
 		);
@@ -1039,7 +1039,7 @@ describe("submit body handling", () => {
 			.mockResolvedValue(json_response());
 
 		await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST", body: null },
 			{ revalidate: false },
 		);
@@ -1052,7 +1052,7 @@ describe("submit body handling", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1097,7 +1097,7 @@ describe("submit dedupe edge cases", () => {
 		);
 
 		const first = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1108,7 +1108,7 @@ describe("submit dedupe edge cases", () => {
 		expect(calls).toHaveLength(1);
 
 		const second = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1136,7 +1136,7 @@ describe("submit dedupe edge cases", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const s1 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1144,7 +1144,7 @@ describe("submit dedupe edge cases", () => {
 			},
 		);
 		const s2 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1169,7 +1169,7 @@ describe("submit dedupe edge cases", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const s1 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1177,7 +1177,7 @@ describe("submit dedupe edge cases", () => {
 			},
 		);
 		const s2 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1200,14 +1200,14 @@ describe("submit dedupe edge cases", () => {
 		const { calls, call, wait_for } = mock_fetch();
 
 		const s1 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
 			},
 		);
 		const s2 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1244,7 +1244,7 @@ describe("submit response availability", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1272,7 +1272,7 @@ describe("submit response availability", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1298,7 +1298,7 @@ describe("submit response availability", () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network down"));
 
 		const result = await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1321,7 +1321,7 @@ describe("submit error message preservation", () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
 
 		const result = await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1340,7 +1340,7 @@ describe("submit error message preservation", () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue("not-an-error");
 
 		const result = await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1359,7 +1359,7 @@ describe("submit error message preservation", () => {
 		vi.spyOn(globalThis, "fetch").mockRejectedValue(42);
 
 		const result = await core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1444,7 +1444,7 @@ describe("status continuity", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const s1 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1452,7 +1452,7 @@ describe("status continuity", () => {
 			},
 		);
 		const s2 = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "k",
@@ -1486,7 +1486,7 @@ describe("status continuity", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -1510,7 +1510,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "GET" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "GET" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -1523,7 +1523,7 @@ describe("revalidationPromise", () => {
 		const { call, wait_for } = mock_fetch();
 
 		const sub = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				revalidate: false,
@@ -1540,7 +1540,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -1574,7 +1574,7 @@ describe("revalidationPromise", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;

@@ -19,11 +19,11 @@ define_adapter_tests({
 	}) as AdapterTestHarness["create_define_view_component"],
 	create_view: (({ client, pattern, render, clientLoader }) => {
 		const v = {
-			loaderData: (props: any) => {
-				return client.useLoaderData(props);
+			viewData: (props: any) => {
+				return client.useViewData(props);
 			},
-			patternLoaderData: (view_pattern: string) => {
-				return client.usePatternLoaderData(view_pattern);
+			patternViewData: (view_pattern: string) => {
+				return client.usePatternViewData(view_pattern);
 			},
 			routeState: ((selector?: any) => {
 				if (selector) {

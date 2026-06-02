@@ -3,7 +3,7 @@ use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
 use vorma::__private::core::{
-	Contract, default_api_route_kind, route_params_for_pattern, view_parents_for_patterns,
+	Contract, default_resource_kind, params_for_pattern, view_parents_for_patterns,
 };
 use vorma::__private::tsgen::{self, ResolvedTypes, TypeRef, TypeResolver};
 
@@ -82,9 +82,9 @@ fn resolve_contract_types(
 	contract: &Contract,
 ) -> Result<ResolvedTypes, String> {
 	let mut resolver = TypeResolver::default();
-	for api_route in contract.api_routes() {
-		resolver.add_root(api_route.input.clone());
-		resolver.add_root(api_route.output.clone());
+	for resource in contract.resources() {
+		resolver.add_root(resource.input.clone());
+		resolver.add_root(resource.output.clone());
 	}
 	for view in contract.views() {
 		resolver.add_root(view.input.clone());
@@ -103,23 +103,23 @@ pub(crate) fn render_ts_routes_section(
 	resolved_types: &ResolvedTypes,
 ) -> String {
 	let mut sb = String::new();
-	let api_routes = contract.api_routes();
+	let resources = contract.resources();
 	let views = contract.views();
 
-	if api_routes.is_empty() {
-		sb.push_str("const __vorma_api_routes = [] as const;\n");
+	if resources.is_empty() {
+		sb.push_str("const __vorma_resources = [] as const;\n");
 	} else {
-		sb.push_str("const __vorma_api_routes = [\n");
+		sb.push_str("const __vorma_resources = [\n");
 	}
 
-	for api_route in api_routes {
-		let method = &api_route.method;
+	for resource in resources {
+		let method = &resource.method;
 		sb.push_str("\t{\n");
 		writeln!(&mut sb, "\t\tmethod: {},", tsgen::string_literal(method))
 			.expect("writing to string should not fail");
 
-		if let Some(kind) = api_route.kind {
-			let default_kind = default_api_route_kind(method);
+		if let Some(kind) = resource.kind {
+			let default_kind = default_resource_kind(method);
 			if kind != default_kind {
 				writeln!(
 					&mut sb,
@@ -130,19 +130,19 @@ pub(crate) fn render_ts_routes_section(
 			}
 		}
 
-		push_params_field(&mut sb, &route_params_for_pattern(&api_route.pattern));
+		push_params_field(&mut sb, &params_for_pattern(&resource.pattern));
 		writeln!(
 			&mut sb,
 			"\t\tpattern: {},",
-			tsgen::string_literal(&api_route.pattern)
+			tsgen::string_literal(&resource.pattern)
 		)
 		.expect("writing to string should not fail");
-		push_type_ref_field(&mut sb, "__i", &api_route.input, resolved_types);
-		push_type_ref_field(&mut sb, "__o", &api_route.output, resolved_types);
+		push_type_ref_field(&mut sb, "__i", &resource.input, resolved_types);
+		push_type_ref_field(&mut sb, "__o", &resource.output, resolved_types);
 		sb.push_str("\t},\n");
 	}
 
-	if !api_routes.is_empty() {
+	if !resources.is_empty() {
 		sb.push_str("] as const;\n");
 	}
 
@@ -160,7 +160,7 @@ pub(crate) fn render_ts_routes_section(
 		.collect::<Vec<_>>();
 	for view in views {
 		sb.push_str("\t{\n");
-		push_params_field(&mut sb, &route_params_for_pattern(&view.pattern));
+		push_params_field(&mut sb, &params_for_pattern(&view.pattern));
 		let parents = view_parents_for_patterns(&view.pattern, &view_patterns);
 		push_parents_field(&mut sb, &parents);
 		writeln!(
@@ -231,7 +231,7 @@ pub(crate) fn render_ts_core_types_section(resolved_types: &ResolvedTypes) -> St
 
 pub(crate) fn render_ts_baked_app_types_section(cfg: &VormaCfg<'_>) -> String {
 	format!(
-		"import type {{ VormaClientSeed }} from \"vorma/{}\";\n\nexport const vormaClientSeed = {{\n\tapiMountRoot: {},\n\t__vorma_views: null as unknown as typeof __vorma_views,\n\t__vorma_api_routes: null as unknown as typeof __vorma_api_routes,\n}} as const satisfies VormaClientSeed;\n",
+		"import type {{ VormaClientSeed }} from \"vorma/{}\";\n\nexport const vormaClientSeed = {{\n\tapiMountRoot: {},\n\t__vorma_views: null as unknown as typeof __vorma_views,\n\t__vorma_resources: null as unknown as typeof __vorma_resources,\n}} as const satisfies VormaClientSeed;\n",
 		cfg.ui_variant(),
 		tsgen::string_literal(&cfg.api_mount_root()),
 	)
@@ -318,7 +318,7 @@ mod tests {
 		ok: bool,
 	}
 
-	pub const USER_API: ts_gen_app::ApiRoute = ts_gen_app::api_route! {
+	pub const USER_API: ts_gen_app::Resource = ts_gen_app::resource! {
 		method: vorma::HttpMethod::GET;
 		pattern: "/users/:userID";
 		input: ();
@@ -328,8 +328,8 @@ mod tests {
 		};
 	};
 
-	pub const SESSION_API: ts_gen_app::ApiRoute = ts_gen_app::api_route! {
-		kind: vorma::ApiRouteKind::Query;
+	pub const SESSION_API: ts_gen_app::Resource = ts_gen_app::resource! {
+		kind: vorma::ResourceKind::Query;
 		method: vorma::HttpMethod::POST;
 		pattern: "/sessions";
 		input: SessionInput;
@@ -341,7 +341,7 @@ mod tests {
 		};
 	};
 
-	pub const PATCH_USER_API: ts_gen_app::ApiRoute = ts_gen_app::api_route! {
+	pub const PATCH_USER_API: ts_gen_app::Resource = ts_gen_app::resource! {
 		method: vorma::HttpMethod::PATCH;
 		pattern: "/users/:userID";
 		input: ();
@@ -371,7 +371,7 @@ mod tests {
 		};
 	};
 
-	pub const SESSION_POST_API: ts_gen_app::ApiRoute = ts_gen_app::api_route! {
+	pub const SESSION_POST_API: ts_gen_app::Resource = ts_gen_app::resource! {
 		method: vorma::HttpMethod::POST;
 		pattern: "/sessions";
 		input: SessionInput;
@@ -383,7 +383,7 @@ mod tests {
 		};
 	};
 
-	pub const ROUND_TRIP_API: ts_gen_app::ApiRoute = ts_gen_app::api_route! {
+	pub const ROUND_TRIP_API: ts_gen_app::Resource = ts_gen_app::resource! {
 		method: vorma::HttpMethod::POST;
 		pattern: "/round-trip";
 		input: RoundTrip;
@@ -417,7 +417,7 @@ mod tests {
 
 		assert_eq!(
 			got,
-			"import type { VormaClientSeed } from \"vorma/react\";\n\nexport const vormaClientSeed = {\n\tapiMountRoot: \"/api/\",\n\t__vorma_views: null as unknown as typeof __vorma_views,\n\t__vorma_api_routes: null as unknown as typeof __vorma_api_routes,\n} as const satisfies VormaClientSeed;\n"
+			"import type { VormaClientSeed } from \"vorma/react\";\n\nexport const vormaClientSeed = {\n\tapiMountRoot: \"/api/\",\n\t__vorma_views: null as unknown as typeof __vorma_views,\n\t__vorma_resources: null as unknown as typeof __vorma_resources,\n} as const satisfies VormaClientSeed;\n"
 		);
 	}
 
@@ -468,11 +468,11 @@ mod tests {
 	}
 
 	#[test]
-	fn render_ts_routes_section_uses_private_api_route_and_view_tables() {
-		let api_routes = ts_gen_app::api_routes![USER_API, SESSION_API, PATCH_USER_API];
+	fn render_ts_routes_section_uses_private_resource_and_view_tables() {
+		let resources = ts_gen_app::resources![USER_API, SESSION_API, PATCH_USER_API];
 		let views = ts_gen_app::views![ROOT_VIEW, USER_VIEW];
 
-		let contract = contract_for(&views, &api_routes).unwrap();
+		let contract = contract_for(&views, &resources).unwrap();
 		let config = Config {
 			root_dir: crate::test_support::root_dir(),
 			server_config: server_config(),
@@ -490,7 +490,7 @@ mod tests {
 
 		assert_eq!(
 			got,
-			"const __vorma_api_routes = [\n\
+			"const __vorma_resources = [\n\
 \t{\n\
 \t\tmethod: \"GET\",\n\
 \t\tparams: [\"userID\"],\n\
@@ -545,9 +545,9 @@ const __vorma_views = [\n\
 			..Config::default()
 		};
 		let cfg = to_cfg(&config).unwrap();
-		let api_routes = ts_gen_app::api_routes![SESSION_POST_API];
+		let resources = ts_gen_app::resources![SESSION_POST_API];
 		let views = ts_gen_app::views![];
-		let contract = contract_for(&views, &api_routes).unwrap();
+		let contract = contract_for(&views, &resources).unwrap();
 
 		let got = to_live_ts_result(&cfg, &contract).unwrap();
 
@@ -638,9 +638,9 @@ const __vorma_views = [\n\
 			..Config::default()
 		};
 		let cfg = to_cfg(&config).unwrap();
-		let api_routes = ts_gen_app::api_routes![ROUND_TRIP_API];
+		let resources = ts_gen_app::resources![ROUND_TRIP_API];
 		let views = ts_gen_app::views![];
-		let contract = contract_for(&views, &api_routes).unwrap();
+		let contract = contract_for(&views, &resources).unwrap();
 
 		let got = to_live_ts_result(&cfg, &contract).unwrap();
 

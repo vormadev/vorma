@@ -50,14 +50,14 @@ function resolve_pattern_path(
 }
 
 export function resolve_path(
-	type: "loader" | "action",
+	type: "view" | "resource",
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
 ): string {
 	let path = resolve_pattern_path(pattern, params, splat_values);
 
-	if (type === "loader") {
+	if (type === "view") {
 		const suffix = `/${INDEX_SEGMENT}`;
 		if (path.endsWith(suffix)) {
 			path = path.slice(0, -suffix.length) || "/";
@@ -74,7 +74,7 @@ export function to_typed_href(
 	search?: unknown,
 	hash?: string,
 ): string {
-	const base = resolve_path("loader", pattern, params, splat_values);
+	const base = resolve_path("view", pattern, params, splat_values);
 	const url = new URL(base, window.location.origin);
 	if (search !== undefined) {
 		url.search = serializeToSearchParams(search).toString();
@@ -85,16 +85,16 @@ export function to_typed_href(
 	return url.href;
 }
 
-export function build_action_url(
-	actions_mount_root: string,
+export function build_resource_url(
+	api_mount_root: string,
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
 	input?: unknown,
 ): URL {
-	const pathname = resolve_path("action", pattern, params, splat_values);
+	const pathname = resolve_path("resource", pattern, params, splat_values);
 	const full =
-		strip_trailing_slash(actions_mount_root) + (pathname === "/" ? "" : pathname);
+		strip_trailing_slash(api_mount_root) + (pathname === "/" ? "" : pathname);
 	const url = new URL(full, window.location.origin);
 	if (input && typeof input === "object") {
 		url.search = serializeToSearchParams(input).toString();

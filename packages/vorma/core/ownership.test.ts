@@ -82,7 +82,7 @@ describe("misc ownership tests", () => {
 		const fetch = install_uncooperative_fetch();
 
 		const first = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -92,7 +92,7 @@ describe("misc ownership tests", () => {
 		await fetch.wait_for(1);
 
 		const second = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -128,7 +128,7 @@ describe("misc ownership tests", () => {
 		const fetch = install_uncooperative_fetch();
 
 		const first = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -138,7 +138,7 @@ describe("misc ownership tests", () => {
 		await fetch.wait_for(1);
 
 		const second = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -165,7 +165,7 @@ describe("misc ownership tests", () => {
 		const fetch = install_uncooperative_fetch();
 
 		const first = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -174,7 +174,7 @@ describe("misc ownership tests", () => {
 		await fetch.wait_for(1);
 
 		const second = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -215,7 +215,7 @@ describe("misc ownership tests", () => {
 		const { core } = await setup();
 		const fetch = install_uncooperative_fetch();
 
-		const submit = core.submit_inner("/api/action", { method: "POST" });
+		const submit = core.submit_inner("/api/some-resource", { method: "POST" });
 		await fetch.wait_for(1);
 
 		fetch.call(0).resolve(json_response({ saved: true }));
@@ -244,7 +244,7 @@ describe("misc ownership tests", () => {
 		const fetch = install_uncooperative_fetch();
 
 		void core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -254,7 +254,7 @@ describe("misc ownership tests", () => {
 		await fetch.wait_for(1);
 
 		const second = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -290,7 +290,7 @@ describe("misc ownership tests", () => {
 		const fetch = install_uncooperative_fetch();
 
 		void core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -300,7 +300,7 @@ describe("misc ownership tests", () => {
 		await fetch.wait_for(1);
 
 		const second = core.submit_inner(
-			"/api/action",
+			"/api/some-resource",
 			{ method: "POST" },
 			{
 				dedupeKey: "save",
@@ -337,7 +337,7 @@ describe("misc ownership tests", () => {
 		fetch.call(0).resolve(
 			route_response({
 				matched_patterns: ["/products"],
-				loaders_data: [{ stale_prefetch: true }],
+				views_data: [{ stale_prefetch: true }],
 			}),
 		);
 		await tick();
@@ -347,14 +347,14 @@ describe("misc ownership tests", () => {
 		fetch.call(1).resolve(
 			route_response({
 				matched_patterns: ["/products"],
-				loaders_data: [{ fresh_navigation: true }],
+				views_data: [{ fresh_navigation: true }],
 			}),
 		);
 		await expect(nav).resolves.toEqual({ didNavigate: true });
 
 		expect(fetch.call(0).signal.aborted).toBe(true);
 		expect(route_render_commit_count(commit)).toBe(1);
-		expect(last_route_render_commit(commit).entries[0].loader_data).toEqual({
+		expect(last_route_render_commit(commit).entries[0].view_data).toEqual({
 			fresh_navigation: true,
 		});
 	});
@@ -375,7 +375,7 @@ describe("misc ownership tests", () => {
 			fetch.call(1).resolve(
 				route_response({
 					matched_patterns: ["/winner"],
-					loaders_data: [{ winner: true }],
+					views_data: [{ winner: true }],
 				}),
 			);
 			await expect(nav).resolves.toEqual({ didNavigate: true });
@@ -438,7 +438,7 @@ describe("misc ownership tests", () => {
 		fetch.call(1).resolve(
 			route_response({
 				matched_patterns: ["/winner"],
-				loaders_data: [{ winner: true }],
+				views_data: [{ winner: true }],
 			}),
 		);
 		await expect(second).resolves.toEqual({ didNavigate: true });
@@ -496,7 +496,7 @@ describe("misc ownership tests", () => {
 			fetch.call(1).resolve(
 				route_response({
 					matched_patterns: ["/winner"],
-					loaders_data: [{ winner: true }],
+					views_data: [{ winner: true }],
 				}),
 			);
 			await expect(nav).resolves.toEqual({ didNavigate: true });
@@ -559,7 +559,7 @@ describe("misc ownership tests", () => {
 			fetch.call(1).resolve(
 				route_response({
 					matched_patterns: ["/fresh"],
-					loaders_data: [{ fresh: true }],
+					views_data: [{ fresh: true }],
 				}),
 			);
 
@@ -588,7 +588,7 @@ describe("misc ownership tests", () => {
 		fetch.call(2).resolve(
 			route_response({
 				matched_patterns: ["/winner"],
-				loaders_data: [{ winner: true }],
+				views_data: [{ winner: true }],
 			}),
 		);
 		await expect(second).resolves.toEqual({ didNavigate: true });
@@ -596,7 +596,7 @@ describe("misc ownership tests", () => {
 		fetch.call(1).resolve(
 			route_response({
 				matched_patterns: ["/redirect-target"],
-				loaders_data: [{ stale_redirect: true }],
+				views_data: [{ stale_redirect: true }],
 			}),
 		);
 		await expect(first).resolves.toEqual({ didNavigate: false });
@@ -604,7 +604,7 @@ describe("misc ownership tests", () => {
 
 		expect(fetch.call(1).signal.aborted).toBe(true);
 		expect(route_render_commit_count(commit)).toBe(1);
-		expect(last_route_render_commit(commit).entries[0].loader_data).toEqual({
+		expect(last_route_render_commit(commit).entries[0].view_data).toEqual({
 			winner: true,
 		});
 		expect(window.location.pathname).toBe("/winner");
@@ -668,17 +668,17 @@ describe("misc ownership tests", () => {
 	});
 
 	it("does not publish a superseded navigation after client loader resolves late", async () => {
-		const loader_gate = deferred<unknown>();
+		const client_loader_gate = deferred<unknown>();
 
-		vi.doMock("/late-loader.js", () => {
+		vi.doMock("/late-client-loader.js", () => {
 			return {
 				default: {
-					pattern: "/late-loader",
+					pattern: "/late-client-loader",
 					component: () => {
 						return null;
 					},
 					client_loader: async () => {
-						await loader_gate.promise;
+						await client_loader_gate.promise;
 						return { stale_client_loader: true };
 					},
 				},
@@ -688,13 +688,13 @@ describe("misc ownership tests", () => {
 		const { core, commit } = await setup();
 		const fetch = install_uncooperative_fetch();
 
-		const first = core.navigate("/late-loader");
+		const first = core.navigate("/late-client-loader");
 		await fetch.wait_for(1);
 		fetch.call(0).resolve(
 			route_response({
-				matched_patterns: ["/late-loader"],
-				loaders_data: [{ stale_server: true }],
-				import_urls: ["/late-loader.js"],
+				matched_patterns: ["/late-client-loader"],
+				views_data: [{ stale_server: true }],
+				import_urls: ["/late-client-loader.js"],
 			}),
 		);
 		await tick();
@@ -704,17 +704,17 @@ describe("misc ownership tests", () => {
 		fetch.call(1).resolve(
 			route_response({
 				matched_patterns: ["/winner"],
-				loaders_data: [{ winner: true }],
+				views_data: [{ winner: true }],
 			}),
 		);
 		await expect(second).resolves.toEqual({ didNavigate: true });
 
-		loader_gate.resolve(null);
+		client_loader_gate.resolve(null);
 		await expect(first).resolves.toEqual({ didNavigate: false });
 		await tick();
 
 		expect(route_render_commit_count(commit)).toBe(1);
-		expect(last_route_render_commit(commit).entries[0].loader_data).toEqual({
+		expect(last_route_render_commit(commit).entries[0].view_data).toEqual({
 			winner: true,
 		});
 	});

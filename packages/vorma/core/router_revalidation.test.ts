@@ -52,7 +52,7 @@ describe("revalidate", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/"],
-				loaders_data: [{ fresh: true }],
+				views_data: [{ fresh: true }],
 			}),
 		);
 		await expect(rev).resolves.toEqual({ ok: true });
@@ -83,7 +83,7 @@ describe("revalidate", () => {
 		const { core } = await setup({
 			payload: {
 				matched_patterns: ["/"],
-				loaders_data: [{ fresh: false }],
+				views_data: [{ fresh: false }],
 			},
 			clientOptions: {
 				onRouteUpdate: (
@@ -104,7 +104,7 @@ describe("revalidate", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/"],
-				loaders_data: [{ fresh: true }],
+				views_data: [{ fresh: true }],
 			}),
 		);
 		await rev;
@@ -126,7 +126,7 @@ describe("revalidate", () => {
 		const { core } = await setup({
 			payload: {
 				matched_patterns: ["/"],
-				loaders_data: [{ fresh: false }],
+				views_data: [{ fresh: false }],
 			},
 			clientOptions: {
 				onRouteUpdate: (
@@ -147,7 +147,7 @@ describe("revalidate", () => {
 		call(0).resolve(
 			route_response({
 				matched_patterns: ["/"],
-				loaders_data: [{ fresh: false }],
+				views_data: [{ fresh: false }],
 			}),
 		);
 		await rev;
@@ -285,7 +285,7 @@ describe("revalidate redirects", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/new-page"],
-				loaders_data: [{ navigated: true }],
+				views_data: [{ navigated: true }],
 			}),
 		);
 		await vi.advanceTimersByTimeAsync(0);
@@ -450,7 +450,7 @@ describe("derived isRevalidating status", () => {
 		const { core } = await setup();
 		const { call, wait_for } = mock_fetch();
 
-		void core.submit_inner("/api/action", { method: "POST" }, {});
+		void core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		await vi.advanceTimersByTimeAsync(0);
@@ -470,7 +470,7 @@ describe("derived isRevalidating status", () => {
 		});
 		const { call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -502,7 +502,7 @@ describe("post-submit freshness", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const result = await sub;
@@ -519,7 +519,7 @@ describe("post-submit freshness", () => {
 		const { core } = await setup();
 		const { calls, call, wait_for } = mock_fetch();
 
-		const sub = core.submit_inner("/api/action", { method: "POST" }, {});
+		const sub = core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(1);
 		call(0).resolve(json_response({ ok: true }));
 		const _ = await sub;
@@ -630,7 +630,7 @@ describe("revalidation backoff", () => {
 		await vi.advanceTimersByTimeAsync(0);
 
 		// New non-GET submit resets backoff
-		void core.submit_inner("/api/action", { method: "POST" }, {});
+		void core.submit_inner("/api/some-resource", { method: "POST" }, {});
 		await wait_for(2);
 		call(1).resolve(json_response({ ok: true }));
 		await vi.advanceTimersByTimeAsync(0);
@@ -801,7 +801,7 @@ describe("revalidation stale-ownership", () => {
 		call(1).resolve(
 			route_response({
 				matched_patterns: ["/page"],
-				loaders_data: [{ still_valid: true }],
+				views_data: [{ still_valid: true }],
 			}),
 		);
 		await vi.advanceTimersByTimeAsync(0);
@@ -815,7 +815,7 @@ describe("revalidation stale-ownership", () => {
 
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = last_route_render_commit(commit);
-		expect(state.entries[0].loader_data).toEqual({ still_valid: true });
+		expect(state.entries[0].view_data).toEqual({ still_valid: true });
 	});
 });
 
@@ -849,7 +849,7 @@ describe("revalidation and popstate", () => {
 		call(2).resolve(
 			route_response({
 				matched_patterns: ["/previous"],
-				loaders_data: [{ previous: true }],
+				views_data: [{ previous: true }],
 			}),
 		);
 

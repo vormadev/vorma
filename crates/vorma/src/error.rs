@@ -40,16 +40,16 @@ impl From<Error> for vorma_tasks::Error<BoxError> {
 	}
 }
 
-/// Loader/API handler error with an optional client-safe message.
+/// View error with an optional client-safe message.
 #[derive(Debug)]
-pub struct LoaderError {
+pub struct ViewError {
 	/// Message that may be sent to the browser/client.
 	pub client_msg: String,
 	/// Server-side source error.
 	pub err: Option<BoxError>,
 }
 
-impl fmt::Display for LoaderError {
+impl fmt::Display for ViewError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if let Some(err) = &self.err {
 			return write!(f, "{err}");
@@ -57,26 +57,26 @@ impl fmt::Display for LoaderError {
 		if !self.client_msg.is_empty() {
 			return write!(f, "{}", self.client_msg);
 		}
-		write!(f, "unknown loader error")
+		write!(f, "unknown view error")
 	}
 }
 
-impl StdError for LoaderError {
+impl StdError for ViewError {
 	fn source(&self) -> Option<&(dyn StdError + 'static)> {
 		self.err.as_ref().map(|err| err.as_ref() as &dyn StdError)
 	}
 }
 
 /// Provides an optional client-safe message for handler errors.
-pub trait LoaderErrorClientMsg {
+pub trait ViewErrorClientMsg {
 	/// Return a client-safe error message, if this error type carries one.
-	fn loader_error_client_msg(&self) -> Option<&str> {
+	fn view_error_client_msg(&self) -> Option<&str> {
 		None
 	}
 }
 
-impl LoaderErrorClientMsg for LoaderError {
-	fn loader_error_client_msg(&self) -> Option<&str> {
+impl ViewErrorClientMsg for ViewError {
+	fn view_error_client_msg(&self) -> Option<&str> {
 		if self.client_msg.is_empty() {
 			return None;
 		}
@@ -84,41 +84,41 @@ impl LoaderErrorClientMsg for LoaderError {
 	}
 }
 
-impl LoaderErrorClientMsg for Error {}
+impl ViewErrorClientMsg for Error {}
 
-impl LoaderErrorClientMsg for BoxError {
-	fn loader_error_client_msg(&self) -> Option<&str> {
-		self.downcast_ref::<LoaderError>()
-			.and_then(LoaderErrorClientMsg::loader_error_client_msg)
+impl ViewErrorClientMsg for BoxError {
+	fn view_error_client_msg(&self) -> Option<&str> {
+		self.downcast_ref::<ViewError>()
+			.and_then(ViewErrorClientMsg::view_error_client_msg)
 	}
 }
 
-impl LoaderErrorClientMsg for String {}
+impl ViewErrorClientMsg for String {}
 
-impl LoaderErrorClientMsg for &'static str {}
+impl ViewErrorClientMsg for &'static str {}
 
 #[cfg(test)]
 mod tests {
-	use super::LoaderError;
+	use super::ViewError;
 
 	#[test]
-	fn loader_error_display_matches_fallback_order() {
-		let err = LoaderError {
+	fn view_error_display_matches_fallback_order() {
+		let err = ViewError {
 			client_msg: "client".to_owned(),
 			err: Some("server".into()),
 		};
 		assert_eq!(err.to_string(), "server");
 
-		let err = LoaderError {
+		let err = ViewError {
 			client_msg: "client".to_owned(),
 			err: None,
 		};
 		assert_eq!(err.to_string(), "client");
 
-		let err = LoaderError {
+		let err = ViewError {
 			client_msg: String::new(),
 			err: None,
 		};
-		assert_eq!(err.to_string(), "unknown loader error");
+		assert_eq!(err.to_string(), "unknown view error");
 	}
 }

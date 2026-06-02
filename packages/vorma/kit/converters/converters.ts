@@ -67,9 +67,9 @@ export function utf8ToBase64Url(utf8: Utf8): Base64Url {
 
 // --> BYTES
 export function hexToBytes(hex: Hex): Uint8Array {
-	const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
+	const clean_hex = hex.startsWith("0x") ? hex.slice(2) : hex;
 	const bytes =
-		cleanHex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) || [];
+		clean_hex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) || [];
 	return new Uint8Array(bytes);
 }
 

@@ -6,7 +6,7 @@ type TextBox = {
 
 type ViewScope = {
 	clientLoaderData: (props: any) => any;
-	loaderData: (props: any) => any;
+	viewData: (props: any) => any;
 	routeState: () => any;
 	workState: () => any;
 };
@@ -74,8 +74,8 @@ export function dynamic(read_value: () => any): any {
 	return read_value();
 }
 
-export function use_loader_data(props: any): any {
-	return require_current_view_scope().loaderData(props);
+export function use_view_data(props: any): any {
+	return require_current_view_scope().viewData(props);
 }
 
 export function use_client_loader_data(props: any): any {

@@ -3,21 +3,21 @@ import {
 	dynamic,
 	h,
 	klass,
-	loader_box,
-	route_nested_detail_alpha_href,
-	route_nested_detail_beta_href,
-	route_nested_detail_pattern,
+	view_data_box,
+	view_nested_detail_alpha_href,
+	view_nested_detail_beta_href,
+	view_nested_detail_pattern,
 } from "./support.ts";
 
 export default ui.defineView({
-	pattern: route_nested_detail_pattern,
+	pattern: view_nested_detail_pattern,
 	component: (props: any) => {
-		const data = loader_box(props);
+		const data = view_data_box(props);
 		return h(
 			"section",
 			{
 				...klass("panel"),
-				"data-bmb-route": "nested-detail",
+				"data-bmb-view": "nested-detail",
 				"data-bmb-nested-detail-id": dynamic(() => {
 					return data().ID;
 				}),
@@ -42,7 +42,7 @@ export default ui.defineView({
 				h(
 					ui.Link,
 					{
-						href: route_nested_detail_alpha_href,
+						href: view_nested_detail_alpha_href,
 						"data-bmb-action": "nested-detail-alpha",
 					},
 					"Alpha",
@@ -50,7 +50,7 @@ export default ui.defineView({
 				h(
 					ui.Link,
 					{
-						href: route_nested_detail_beta_href,
+						href: view_nested_detail_beta_href,
 						"data-bmb-action": "nested-detail-beta",
 					},
 					"Beta",

@@ -12,7 +12,7 @@ export const ui = {
 	cancelPrefetch: client.cancelPrefetch,
 	apiClient: client.apiClient,
 	revalidate: client.revalidate,
-	useLoaderData: runtime.use_loader_data ?? client.useLoaderData,
+	useViewData: runtime.use_view_data ?? client.useViewData,
 	useClientLoaderData: runtime.use_client_loader_data ?? client.useClientLoaderData,
 	useRouteState: runtime.use_route_state ?? client.useRouteState,
 	useWorkState: runtime.use_work_state ?? client.useWorkState,

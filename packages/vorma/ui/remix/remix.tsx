@@ -5,8 +5,8 @@ import {
 	apply_scroll,
 	create_adapter_base,
 	get_entry_key,
+	make_entry_id,
 	make_link_props,
-	make_route_id,
 	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
@@ -20,9 +20,9 @@ import {
 	type ToApiDecorator,
 	type ToDefineViewArgs,
 	type ToLinkProps,
-	type ToLoaderOutput,
-	type ToRouteComponentProps,
 	type ToRouteSyncArgs,
+	type ToViewComponentProps,
+	type ToViewOutput,
 	type ToViewPattern,
 	type ViewDefinition,
 	type VormaClient,
@@ -49,8 +49,6 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
-	ToLoaderInput,
-	ToLoaderOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -65,9 +63,11 @@ export type {
 	ToQueryMethod,
 	ToQueryOutput,
 	ToQueryPattern,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewInput,
+	ToViewOutput,
 	ToViewPattern,
 	AppConfig as VormaClientSeed,
 	WorkIndicator,
@@ -131,14 +131,14 @@ export type RemixViewScope<A extends AppConfig> = {
 		<T>(selector: (state: WorkState) => T): T;
 	};
 	routeSync: <P extends ToViewPattern<A>>(args: ToRouteSyncArgs<A, P>) => void;
-	loaderData: <P extends ToViewPattern<A>, T = any>(
-		props: ToRouteComponentProps<A, P, T>,
-	) => ToLoaderOutput<A, P>;
-	patternLoaderData: <P extends ToViewPattern<A>>(
+	viewData: <P extends ToViewPattern<A>, T = any>(
+		props: ToViewComponentProps<A, P, T>,
+	) => ToViewOutput<A, P>;
+	patternViewData: <P extends ToViewPattern<A>>(
 		pattern: P,
-	) => ToLoaderOutput<A, P> | undefined;
+	) => ToViewOutput<A, P> | undefined;
 	clientLoaderData: <P extends ToViewPattern<A>, T>(
-		props: ToRouteComponentProps<A, P, T>,
+		props: ToViewComponentProps<A, P, T>,
 	) => T;
 	patternClientLoaderData: <T>(pattern: ToViewPattern<A>) => T | undefined;
 };
@@ -148,9 +148,9 @@ export type RemixViewComponent<
 	P extends ToViewPattern<A>,
 	T = any,
 > = (
-	handle: Handle<ToRouteComponentProps<A, P, T>>,
+	handle: Handle<ToViewComponentProps<A, P, T>>,
 	v: RemixViewScope<A>,
-) => (props: ToRouteComponentProps<A, P, T>) => RemixNode;
+) => (props: ToViewComponentProps<A, P, T>) => RemixNode;
 
 type RemixErrorBoundaryComponent<A extends AppConfig> = (
 	handle: Handle<{ error: unknown }>,
@@ -165,8 +165,8 @@ export type RemixVormaClient<A extends AppConfig> = Omit<
 	| "useRouteState"
 	| "useRouteSync"
 	| "useWorkState"
-	| "useLoaderData"
-	| "usePatternLoaderData"
+	| "useViewData"
+	| "usePatternViewData"
 	| "useClientLoaderData"
 	| "usePatternClientLoaderData"
 > & {
@@ -205,7 +205,7 @@ export function createVormaClient<A extends AppConfig>(
 	let store: DecomposedState = {
 		entries: [],
 		error: null,
-		loaders_data: [],
+		views_data: [],
 		client_loaders_data: [],
 		matched_patterns: [],
 		import_urls: [],
@@ -543,24 +543,24 @@ export function createVormaClient<A extends AppConfig>(
 		}, debounceMs);
 	}
 
-	function loader_data<P extends ToViewPattern<A>, T = any>(
-		args: ToRouteComponentProps<A, P, T>,
-	): ToLoaderOutput<A, P> {
-		return store.loaders_data[args.idx] as ToLoaderOutput<A, P>;
+	function view_data<P extends ToViewPattern<A>, T = any>(
+		args: ToViewComponentProps<A, P, T>,
+	): ToViewOutput<A, P> {
+		return store.views_data[args.idx] as ToViewOutput<A, P>;
 	}
 
-	function pattern_loader_data<P extends ToViewPattern<A>>(
+	function pattern_view_data<P extends ToViewPattern<A>>(
 		pattern: P,
-	): ToLoaderOutput<A, P> | undefined {
+	): ToViewOutput<A, P> | undefined {
 		const idx = store.matched_patterns.indexOf(pattern);
 		if (idx < 0) {
 			return undefined;
 		}
-		return store.loaders_data[idx] as ToLoaderOutput<A, P>;
+		return store.views_data[idx] as ToViewOutput<A, P>;
 	}
 
 	function client_loader_data<P extends ToViewPattern<A>, T>(
-		args: ToRouteComponentProps<A, P, T>,
+		args: ToViewComponentProps<A, P, T>,
 	): T {
 		return store.client_loaders_data[args.idx] as T;
 	}
@@ -599,18 +599,18 @@ export function createVormaClient<A extends AppConfig>(
 			): void => {
 				return route_sync(handle, args);
 			},
-			loaderData: <P extends ToViewPattern<A>, T = any>(
-				props: ToRouteComponentProps<A, P, T>,
-			): ToLoaderOutput<A, P> => {
-				return loader_data(props);
+			viewData: <P extends ToViewPattern<A>, T = any>(
+				props: ToViewComponentProps<A, P, T>,
+			): ToViewOutput<A, P> => {
+				return view_data(props);
 			},
-			patternLoaderData: <P extends ToViewPattern<A>>(
+			patternViewData: <P extends ToViewPattern<A>>(
 				pattern: P,
-			): ToLoaderOutput<A, P> | undefined => {
-				return pattern_loader_data(pattern);
+			): ToViewOutput<A, P> | undefined => {
+				return pattern_view_data(pattern);
 			},
 			clientLoaderData: <P extends ToViewPattern<A>, T>(
-				props: ToRouteComponentProps<A, P, T>,
+				props: ToViewComponentProps<A, P, T>,
 			): T => {
 				return client_loader_data(props);
 			},
@@ -623,8 +623,8 @@ export function createVormaClient<A extends AppConfig>(
 	function defineView<P extends ToViewPattern<A>, T = any>(
 		input: RemixDefineViewArgs<A, P, T>,
 	): ViewDefinition {
-		const { component, errorBoundary: error_boundary, ...core_input } = input;
-		const remix_component: RemixComponent<ToRouteComponentProps<A, P, T>> = (
+		const { component, errorBoundary, ...core_input } = input;
+		const remix_component: RemixComponent<ToViewComponentProps<A, P, T>> = (
 			handle,
 		) => {
 			return component(handle, create_view_scope(handle));
@@ -633,14 +633,14 @@ export function createVormaClient<A extends AppConfig>(
 			| RemixComponent<{
 					error: unknown;
 			  }>
-			| undefined = error_boundary
+			| undefined = errorBoundary
 			? (handle) => {
-					return error_boundary(handle, create_view_scope(handle));
+					return errorBoundary(handle, create_view_scope(handle));
 				}
 			: undefined;
 		return core.defineView({
 			...core_input,
-			component: (props: ToRouteComponentProps<A, P, T>) => {
+			component: (props: ToViewComponentProps<A, P, T>) => {
 				return create_remix_element(remix_component, props);
 			},
 			errorBoundary: remix_error_boundary
@@ -670,8 +670,8 @@ export function createVormaClient<A extends AppConfig>(
 			const entry = store.entries[idx];
 			if (
 				entry &&
-				make_route_id(idx, entry.pattern) ===
-					pending_scroll_intent.target_route_id
+				make_entry_id(idx, entry.pattern) ===
+					pending_scroll_intent.target_entry_id
 			) {
 				const scroll = pending_scroll_intent.scroll;
 				pending_scroll_intent = undefined;
@@ -863,15 +863,7 @@ export function createVormaClient<A extends AppConfig>(
 		raw: RemixLinkProps<A, P>,
 	): RemixNode {
 		const merged = { ...options?.linkDefaultProps, ...raw } as any;
-		const {
-			href,
-			pattern,
-			params,
-			splatValues: splat_values,
-			search,
-			hash,
-			...props
-		} = merged;
+		const { href, pattern, params, splatValues, search, hash, ...props } = merged;
 		return (
 			<BaseLink
 				{...props}
@@ -881,7 +873,7 @@ export function createVormaClient<A extends AppConfig>(
 					passthrough.toHref({
 						pattern,
 						params,
-						splatValues: splat_values,
+						splatValues,
 						search,
 						hash,
 					} as any)

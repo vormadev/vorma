@@ -1,7 +1,7 @@
 use http::Method;
 use vorma_matcher::parse_segments;
 
-use super::ApiRouteKind;
+use super::ResourceKind;
 use crate::constants::{DYNAMIC_PARAM_PREFIX, SPLAT_SEGMENT_IDENTIFIER};
 
 pub(super) fn validate_declared_route_pattern(kind: &str, pattern: &str) -> Result<(), String> {
@@ -15,25 +15,25 @@ pub(super) fn validate_declared_route_pattern(kind: &str, pattern: &str) -> Resu
 }
 
 #[cfg(test)]
-pub(super) fn default_api_route_kind_for_method(method: &Method) -> ApiRouteKind {
+pub(super) fn default_resource_kind_for_method(method: &Method) -> ResourceKind {
 	if method == Method::GET || method == Method::HEAD {
-		ApiRouteKind::Query
+		ResourceKind::Query
 	} else {
-		ApiRouteKind::Mutation
+		ResourceKind::Mutation
 	}
 }
 
 #[doc(hidden)]
-pub fn default_api_route_kind(method: &str) -> ApiRouteKind {
+pub fn default_resource_kind(method: &str) -> ResourceKind {
 	if method == Method::GET.as_str() || method == Method::HEAD.as_str() {
-		ApiRouteKind::Query
+		ResourceKind::Query
 	} else {
-		ApiRouteKind::Mutation
+		ResourceKind::Mutation
 	}
 }
 
 #[doc(hidden)]
-pub fn route_params_for_pattern(pattern: &str) -> Vec<String> {
+pub fn params_for_pattern(pattern: &str) -> Vec<String> {
 	parse_segments(pattern)
 		.into_iter()
 		.filter_map(|segment| {
@@ -45,7 +45,7 @@ pub fn route_params_for_pattern(pattern: &str) -> Vec<String> {
 }
 
 #[doc(hidden)]
-pub fn route_is_splat_pattern(pattern: &str) -> bool {
+pub fn pattern_is_splat(pattern: &str) -> bool {
 	parse_segments(pattern)
 		.last()
 		.is_some_and(|segment| segment == SPLAT_SEGMENT_IDENTIFIER.to_string().as_str())

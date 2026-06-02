@@ -7,8 +7,8 @@ describe("Cookie Utilities", () => {
 	beforeEach(() => {
 		// Clear all cookies before each test
 		document.cookie.split(";").forEach((cookie) => {
-			const eqPos = cookie.indexOf("=");
-			const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+			const eq_pos = cookie.indexOf("=");
+			const name = eq_pos > -1 ? cookie.substr(0, eq_pos).trim() : cookie.trim();
 			if (name) {
 				document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
 			}
@@ -49,9 +49,9 @@ describe("Cookie Utilities", () => {
 		});
 
 		it("should handle base64 values", () => {
-			const base64Value = "wPrENSVOhk97/V0l6nkZrnH+DNZseEigminmJAbH0Go=";
-			document.cookie = `base64Cookie=${base64Value}`;
-			expect(getClientCookie("base64Cookie")).toBe(base64Value);
+			const base64_value = "wPrENSVOhk97/V0l6nkZrnH+DNZseEigminmJAbH0Go=";
+			document.cookie = `base64Cookie=${base64_value}`;
+			expect(getClientCookie("base64Cookie")).toBe(base64_value);
 		});
 
 		it("should handle cookie names containing regex metacharacters", () => {
@@ -88,9 +88,9 @@ describe("Cookie Utilities", () => {
 		});
 
 		it("should handle base64 values", () => {
-			const base64Value = "wPrENSVOhk97/V0l6nkZrnH+DNZseEigminmJAbH0Go=";
-			setClientCookie("base64Cookie", base64Value);
-			expect(getClientCookie("base64Cookie")).toBe(base64Value);
+			const base64_value = "wPrENSVOhk97/V0l6nkZrnH+DNZseEigminmJAbH0Go=";
+			setClientCookie("base64Cookie", base64_value);
+			expect(getClientCookie("base64Cookie")).toBe(base64_value);
 		});
 	});
 
@@ -101,9 +101,9 @@ describe("Cookie Utilities", () => {
 		});
 
 		it("should not encode or decode values", () => {
-			const encodedValue = "value%20with%20encoding";
-			setClientCookie("encodedCookie", encodedValue);
-			expect(getClientCookie("encodedCookie")).toBe(encodedValue);
+			const encoded_value = "value%20with%20encoding";
+			setClientCookie("encodedCookie", encoded_value);
+			expect(getClientCookie("encodedCookie")).toBe(encoded_value);
 		});
 	});
 });

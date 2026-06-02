@@ -15,24 +15,24 @@ use super::error::Error;
 use super::request::RawRequest;
 use super::task::{proxy_for_task_output, run_with_exec_cancellation};
 
-type TaskMiddlewareFuture<'a, E> = Pin<Box<dyn Future<Output = TaskResult<(), E>> + Send + 'a>>;
+type MiddlewareFuture<'a, E> = Pin<Box<dyn Future<Output = TaskResult<(), E>> + Send + 'a>>;
 
-type TaskMiddlewareMarker<S, E, O> = fn() -> (S, E, O);
+type MiddlewareMarker<S, E, O> = fn() -> (S, E, O);
 
-trait ErasedTaskMiddleware<S, E>: Send + Sync {
-	fn run<'a>(&'a self, ctx: RequestCtx<S, E, None>) -> TaskMiddlewareFuture<'a, E>;
+trait ErasedMiddleware<S, E>: Send + Sync {
+	fn run<'a>(&'a self, ctx: RequestCtx<S, E, None>) -> MiddlewareFuture<'a, E>;
 }
 
-struct FnTaskMiddleware<S, E, F, O>
+struct FnMiddleware<S, E, F, O>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
 	handler: F,
-	_marker: PhantomData<TaskMiddlewareMarker<S, E, O>>,
+	_marker: PhantomData<MiddlewareMarker<S, E, O>>,
 }
 
-impl<S, E, F, Fut, O> ErasedTaskMiddleware<S, E> for FnTaskMiddleware<S, E, F, O>
+impl<S, E, F, Fut, O> ErasedMiddleware<S, E> for FnMiddleware<S, E, F, O>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
@@ -40,16 +40,16 @@ where
 	Fut: Future<Output = TaskResult<O, E>> + Send + 'static,
 	O: Send + Sync + 'static,
 {
-	fn run<'a>(&'a self, ctx: RequestCtx<S, E, None>) -> TaskMiddlewareFuture<'a, E> {
+	fn run<'a>(&'a self, ctx: RequestCtx<S, E, None>) -> MiddlewareFuture<'a, E> {
 		Box::pin(async move { (self.handler)(ctx).await.map(|_| ()) })
 	}
 }
 
-pub(crate) struct TaskMw<S, E> {
-	mw: Arc<dyn ErasedTaskMiddleware<S, E>>,
+pub(crate) struct Middleware<S, E> {
+	mw: Arc<dyn ErasedMiddleware<S, E>>,
 }
 
-impl<S, E> Clone for TaskMw<S, E> {
+impl<S, E> Clone for Middleware<S, E> {
 	fn clone(&self) -> Self {
 		Self {
 			mw: self.mw.clone(),
@@ -57,7 +57,7 @@ impl<S, E> Clone for TaskMw<S, E> {
 	}
 }
 
-impl<S, E> TaskMw<S, E>
+impl<S, E> Middleware<S, E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
@@ -69,7 +69,7 @@ where
 		O: Send + Sync + 'static,
 	{
 		Self {
-			mw: Arc::new(FnTaskMiddleware::<S, E, F, O> {
+			mw: Arc::new(FnMiddleware::<S, E, F, O> {
 				handler,
 				_marker: PhantomData,
 			}),
@@ -77,13 +77,13 @@ where
 	}
 }
 
-pub(in crate::mux) struct TaskMiddlewareInvocation<S, E> {
-	entry: TaskMw<S, E>,
+pub(in crate::mux) struct MiddlewareInvocation<S, E> {
+	entry: Middleware<S, E>,
 	matched_pattern: String,
 }
 
-impl<S, E> TaskMiddlewareInvocation<S, E> {
-	pub(in crate::mux) fn new(entry: &TaskMw<S, E>, matched_pattern: &str) -> Self {
+impl<S, E> MiddlewareInvocation<S, E> {
+	pub(in crate::mux) fn new(entry: &Middleware<S, E>, matched_pattern: &str) -> Self {
 		Self {
 			entry: entry.clone(),
 			matched_pattern: matched_pattern.to_owned(),
@@ -91,13 +91,13 @@ impl<S, E> TaskMiddlewareInvocation<S, E> {
 	}
 }
 
-struct TaskMwOutput<E> {
+struct MiddlewareOutput<E> {
 	index: usize,
 	proxy: Proxy,
 	error: Option<TaskError<E>>,
 }
 
-impl<E> Clone for TaskMwOutput<E>
+impl<E> Clone for MiddlewareOutput<E>
 where
 	TaskError<E>: Clone,
 {
@@ -110,14 +110,14 @@ where
 	}
 }
 
-pub(in crate::mux) async fn run_task_middleware_entries<S, E>(
+pub(in crate::mux) async fn run_middleware_entries<S, E>(
 	request: &RawRequest,
 	state: Arc<S>,
 	exec_ctx: ExecCtx<E>,
 	public_filemap: Arc<BTreeMap<String, String>>,
 	params: Params,
 	splat_values: Vec<String>,
-	middleware_entries: Vec<TaskMiddlewareInvocation<S, E>>,
+	middleware_entries: Vec<MiddlewareInvocation<S, E>>,
 ) -> Result<Proxy, Error>
 where
 	S: Send + Sync + 'static,
@@ -168,12 +168,12 @@ where
 						cancel_later(&cancel_middleware, index);
 					}
 					match output {
-						Ok(()) => TaskMwOutput {
+						Ok(()) => MiddlewareOutput {
 							index,
 							proxy,
 							error: Option::None,
 						},
-						Err(error) => TaskMwOutput {
+						Err(error) => MiddlewareOutput {
 							index,
 							proxy: proxy_for_task_output(true, proxy),
 							error: Some(error),
@@ -226,7 +226,7 @@ where
 }
 
 fn first_terminal_middleware_index<E>(
-	outputs: &[TaskMwOutput<E>],
+	outputs: &[MiddlewareOutput<E>],
 	errors: &[(usize, TaskError<E>)],
 ) -> Option<usize> {
 	let first_proxy_index = outputs

@@ -10,16 +10,16 @@ type ViewBase = {
 	__o?: unknown;
 };
 
-type ApiRouteBase = {
+type ResourceBase = {
 	method: string;
 	params?: ReadonlyArray<string>;
 	pattern: string;
-	kind?: ApiRouteKind;
+	kind?: ResourceKind;
 	__i?: unknown;
 	__o?: unknown;
 };
 
-export type ApiRouteKind = "query" | "mutation";
+export type ResourceKind = "query" | "mutation";
 
 export type RevalidationResult =
 	| { ok: true }
@@ -34,7 +34,7 @@ export type RouteErrorState = {
 export type RouteMatchState = {
 	pattern: string;
 	input: unknown;
-	loaderData: unknown;
+	viewData: unknown;
 	clientLoaderData: unknown;
 };
 
@@ -106,32 +106,32 @@ export type LinkPropsBase = {
 export type AppConfig = {
 	apiMountRoot: string;
 	__vorma_views: readonly ViewBase[];
-	__vorma_api_routes: readonly ApiRouteBase[];
+	__vorma_resources: readonly ResourceBase[];
 };
 
 /////// APP TYPE EXTRACTORS
 
 type AppView<A extends AppConfig> = A["__vorma_views"][number];
-type AppApiRoute<A extends AppConfig> = A["__vorma_api_routes"][number];
+type AppResource<A extends AppConfig> = A["__vorma_resources"][number];
 
 type ViewByPattern<A extends AppConfig, P extends string> = Extract<
 	AppView<A>,
 	{ pattern: P }
 >;
-type ApiRouteByMethodAndPattern<
+type ResourceByMethodAndPattern<
 	A extends AppConfig,
 	M extends string,
 	P extends string,
 > = Extract<
-	AppApiRoute<A>,
+	AppResource<A>,
 	{
 		method: M;
 		pattern: P;
 	}
 >;
 
-type ResolvedApiRouteKind<Act> = Act extends {
-	kind: infer T extends ApiRouteKind;
+type ResolvedResourceKind<Act> = Act extends {
+	kind: infer T extends ResourceKind;
 }
 	? T
 	: Act extends {
@@ -158,7 +158,7 @@ type ConditionalViewParams<A extends AppConfig, P extends string> =
 			: {}
 		: {};
 
-type ConditionalApiRouteParams<Act> = Act extends {
+type ConditionalResourceParams<Act> = Act extends {
 	params: ReadonlyArray<infer Params>;
 }
 	? Params extends string
@@ -175,7 +175,7 @@ type ViewParamsRecord<A extends AppConfig, P extends string> =
 			: Record<string, string>
 		: Record<string, string>;
 
-/////// LOADER INPUT FROM PARENT VIEWS
+/////// VIEW INPUT FROM PARENT VIEWS
 
 type ViewParents<A extends AppConfig, P extends string> =
 	ViewByPattern<A, P> extends {
@@ -187,7 +187,7 @@ type ViewParents<A extends AppConfig, P extends string> =
 type ViewInputWithParentViews<A extends AppConfig, P extends ToViewPattern<A>> = (
 	P | ViewParents<A, P> extends infer Pattern
 		? Pattern extends ToViewPattern<A>
-			? (input: ToLoaderInput<A, Pattern>) => void
+			? (input: ToViewInput<A, Pattern>) => void
 			: never
 		: never
 ) extends (input: infer Input) => void
@@ -206,17 +206,17 @@ type IsUnion<T, U = T> = [T] extends [never]
 			: true
 		: false;
 
-type ApiRouteInputField<Input> =
+type ResourceInputField<Input> =
 	IsEmptyInput<Input> extends true ? { input?: Input } : { input: Input };
 
-type ApiRouteMethodsForPattern<A extends AppConfig, P extends string> = Extract<
-	AppApiRoute<A>,
+type ResourceMethodsForPattern<A extends AppConfig, P extends string> = Extract<
+	AppResource<A>,
 	{ pattern: P }
 >["method"];
 
-type ApiRouteMethodField<A extends AppConfig, P extends string, M extends string> =
-	ApiRouteMethodsForPattern<A, P> extends "GET"
-		? IsUnion<ApiRouteMethodsForPattern<A, P>> extends true
+type ResourceMethodField<A extends AppConfig, P extends string, M extends string> =
+	ResourceMethodsForPattern<A, P> extends "GET"
+		? IsUnion<ResourceMethodsForPattern<A, P>> extends true
 			? { method: M }
 			: { method?: M }
 		: { method: M };
@@ -232,64 +232,64 @@ type PermissiveViewPattern<
 
 export type ToViewPattern<A extends AppConfig> = AppView<A>["pattern"];
 
-type ApiRouteMethod<A extends AppConfig> = AppApiRoute<A>["method"];
-type ApiRoutePattern<
+type ResourceMethod<A extends AppConfig> = AppResource<A>["method"];
+type ResourcePattern<
 	A extends AppConfig,
-	M extends ApiRouteMethod<A> = ApiRouteMethod<A>,
-> = Extract<AppApiRoute<A>, { method: M }>["pattern"];
+	M extends ResourceMethod<A> = ResourceMethod<A>,
+> = Extract<AppResource<A>, { method: M }>["pattern"];
 
-type ApiRoutesByKind<A extends AppConfig, T extends ApiRouteKind> =
-	AppApiRoute<A> extends infer Route
+type ResourcesByKind<A extends AppConfig, T extends ResourceKind> =
+	AppResource<A> extends infer Route
 		? Route extends unknown
-			? ResolvedApiRouteKind<Route> extends T
+			? ResolvedResourceKind<Route> extends T
 				? Route
 				: never
 			: never
 		: never;
 
-type ApiRouteMethodByKind<A extends AppConfig, T extends ApiRouteKind> =
-	ApiRoutesByKind<A, T> extends infer Route
+type ResourceMethodByKind<A extends AppConfig, T extends ResourceKind> =
+	ResourcesByKind<A, T> extends infer Route
 		? Route extends { method: infer M extends string }
 			? M
 			: never
 		: never;
 
-type ApiRoutePatternByKind<
+type ResourcePatternByKind<
 	A extends AppConfig,
-	T extends ApiRouteKind,
-	M extends ApiRouteMethodByKind<A, T> = ApiRouteMethodByKind<A, T>,
+	T extends ResourceKind,
+	M extends ResourceMethodByKind<A, T> = ResourceMethodByKind<A, T>,
 > =
-	Extract<ApiRoutesByKind<A, T>, { method: M }> extends infer Route
+	Extract<ResourcesByKind<A, T>, { method: M }> extends infer Route
 		? Route extends { pattern: infer P extends string }
 			? P
 			: never
 		: never;
 
-type ApiRouteByKindMethodAndPattern<
+type ResourceByKindMethodAndPattern<
 	A extends AppConfig,
-	T extends ApiRouteKind,
-	M extends ApiRouteMethodByKind<A, T>,
-	P extends ApiRoutePatternByKind<A, T, M>,
-> = Extract<ApiRoutesByKind<A, T>, { method: M; pattern: P }>;
+	T extends ResourceKind,
+	M extends ResourceMethodByKind<A, T>,
+	P extends ResourcePatternByKind<A, T, M>,
+> = Extract<ResourcesByKind<A, T>, { method: M; pattern: P }>;
 
-export type ToQueryMethod<A extends AppConfig> = ApiRouteMethodByKind<A, "query">;
+export type ToQueryMethod<A extends AppConfig> = ResourceMethodByKind<A, "query">;
 export type ToQueryPattern<
 	A extends AppConfig,
 	M extends ToQueryMethod<A> = ToQueryMethod<A>,
-> = ApiRoutePatternByKind<A, "query", M>;
+> = ResourcePatternByKind<A, "query", M>;
 
-export type ToMutationMethod<A extends AppConfig> = ApiRouteMethodByKind<A, "mutation">;
+export type ToMutationMethod<A extends AppConfig> = ResourceMethodByKind<A, "mutation">;
 export type ToMutationPattern<
 	A extends AppConfig,
 	M extends ToMutationMethod<A> = ToMutationMethod<A>,
-> = ApiRoutePatternByKind<A, "mutation", M>;
+> = ResourcePatternByKind<A, "mutation", M>;
 
 /////// PUBLIC I/O TYPES
 
-export type ToLoaderOutput<A extends AppConfig, P extends ToViewPattern<A>> =
+export type ToViewOutput<A extends AppConfig, P extends ToViewPattern<A>> =
 	ViewByPattern<A, P> extends { __o: infer O } ? O : never;
 
-export type ToLoaderInput<A extends AppConfig, P extends ToViewPattern<A>> =
+export type ToViewInput<A extends AppConfig, P extends ToViewPattern<A>> =
 	ViewByPattern<A, P> extends { __i: infer I } ? I : never;
 
 export type ToQueryInput<
@@ -297,7 +297,7 @@ export type ToQueryInput<
 	M extends ToQueryMethod<A>,
 	P extends ToQueryPattern<A, M>,
 > =
-	ApiRouteByKindMethodAndPattern<A, "query", M, P> extends {
+	ResourceByKindMethodAndPattern<A, "query", M, P> extends {
 		__i: infer I;
 	}
 		? I
@@ -308,7 +308,7 @@ export type ToQueryOutput<
 	M extends ToQueryMethod<A>,
 	P extends ToQueryPattern<A, M>,
 > =
-	ApiRouteByKindMethodAndPattern<A, "query", M, P> extends {
+	ResourceByKindMethodAndPattern<A, "query", M, P> extends {
 		__o: infer O;
 	}
 		? O
@@ -319,7 +319,7 @@ export type ToMutationInput<
 	M extends ToMutationMethod<A>,
 	P extends ToMutationPattern<A, M>,
 > =
-	ApiRouteByKindMethodAndPattern<A, "mutation", M, P> extends {
+	ResourceByKindMethodAndPattern<A, "mutation", M, P> extends {
 		__i: infer I;
 	}
 		? I
@@ -330,7 +330,7 @@ export type ToMutationOutput<
 	M extends ToMutationMethod<A>,
 	P extends ToMutationPattern<A, M>,
 > =
-	ApiRouteByKindMethodAndPattern<A, "mutation", M, P> extends {
+	ResourceByKindMethodAndPattern<A, "mutation", M, P> extends {
 		__o: infer O;
 	}
 		? O
@@ -379,38 +379,38 @@ export type ToRouteSyncArgs<
 
 /////// API CLIENT ARGS
 
-type ApiClientArgsForApiRoute<A extends AppConfig, Act> = Act extends {
+type ApiClientArgsForResource<A extends AppConfig, Act> = Act extends {
 	method: infer M;
 	pattern: infer P;
 	__i?: infer Input;
 }
-	? M extends ApiRouteMethod<A>
-		? P extends ApiRoutePattern<A, M>
+	? M extends ResourceMethod<A>
+		? P extends ResourcePattern<A, M>
 			? Omit<RequestInit, "body" | "method"> & {
 					dedupeKey?: string;
 					pattern: P;
 					revalidate?: boolean;
 					skipWorkIndicator?: boolean;
-				} & ApiRouteMethodField<A, P, M> &
-					ConditionalApiRouteParams<Act> &
+				} & ResourceMethodField<A, P, M> &
+					ConditionalResourceParams<Act> &
 					ConditionalSplat<P> &
-					ApiRouteInputField<Input>
+					ResourceInputField<Input>
 			: never
 		: never
 	: never;
 
 type ApiClientArgs<A extends AppConfig> =
-	AppApiRoute<A> extends infer Act
+	AppResource<A> extends infer Act
 		? Act extends unknown
-			? ApiClientArgsForApiRoute<A, Act>
+			? ApiClientArgsForResource<A, Act>
 			: never
 		: never;
 
-type ApiClientArgsByKind<A extends AppConfig, T extends ApiRouteKind> =
-	AppApiRoute<A> extends infer Act
+type ApiClientArgsByKind<A extends AppConfig, T extends ResourceKind> =
+	AppResource<A> extends infer Act
 		? Act extends unknown
-			? ResolvedApiRouteKind<Act> extends T
-				? ApiClientArgsForApiRoute<A, Act>
+			? ResolvedResourceKind<Act> extends T
+				? ApiClientArgsForResource<A, Act>
 				: never
 			: never
 		: never;
@@ -422,9 +422,9 @@ export type ApiClientOutput<
 	method: infer M;
 	pattern: infer P;
 }
-	? M extends ApiRouteMethod<A>
-		? P extends ApiRoutePattern<A, M>
-			? ApiRouteByMethodAndPattern<A, M, P> extends { __o: infer O }
+	? M extends ResourceMethod<A>
+		? P extends ResourcePattern<A, M>
+			? ResourceByMethodAndPattern<A, M, P> extends { __o: infer O }
 				? O
 				: never
 			: never
@@ -432,9 +432,9 @@ export type ApiClientOutput<
 	: Args extends {
 				pattern: infer P;
 		  }
-		? "GET" extends ApiRouteMethod<A>
-			? P extends ApiRoutePattern<A, "GET">
-				? ApiRouteByMethodAndPattern<A, "GET", P> extends {
+		? "GET" extends ResourceMethod<A>
+			? P extends ResourcePattern<A, "GET">
+				? ResourceByMethodAndPattern<A, "GET", P> extends {
 						__o: infer O;
 					}
 					? O
@@ -459,9 +459,9 @@ export type ToMutationError<
 export type QueryResult<T> = ApiResultBase<T>;
 export type MutationResult<T> = ApiResultBase<T>;
 
-/////// ROUTE COMPONENT PROPS
+/////// VIEW COMPONENT PROPS
 
-export type ToRouteComponentProps<
+export type ToViewComponentProps<
 	A extends AppConfig,
 	P extends ToViewPattern<A>,
 	ClientLoaderData = unknown,
@@ -484,13 +484,13 @@ export type ClientLoaderServerState<A extends AppConfig, P extends ToViewPattern
 	matches: Array<{
 		pattern: string;
 		input: unknown;
-		loaderData: unknown;
+		viewData: unknown;
 	}>;
 	outermostServerError: null | {
 		idx: number;
 		error: unknown;
 	};
-	loaderData: ToLoaderOutput<A, P>;
+	viewData: ToViewOutput<A, P>;
 };
 
 export type ToClientLoaderArgs<A extends AppConfig, P extends ToViewPattern<A>> = {
@@ -500,7 +500,7 @@ export type ToClientLoaderArgs<A extends AppConfig, P extends ToViewPattern<A>> 
 	pattern: P;
 	params: ViewParamsRecord<A, P>;
 	splatValues: string[];
-	input: ToLoaderInput<A, P>;
+	input: ToViewInput<A, P>;
 	knownMatches: ClientLoaderKnownMatch[];
 	serverPromise: Promise<ClientLoaderServerState<A, P>>;
 	signal: AbortSignal;
@@ -515,7 +515,7 @@ export type ToDefineViewArgs<
 	Element = unknown,
 > = {
 	pattern: P;
-	component: (props: ToRouteComponentProps<A, P, T>) => Element;
+	component: (props: ToViewComponentProps<A, P, T>) => Element;
 	errorBoundary?: (props: { error: unknown }) => Element;
 	clientLoader?: (args: ToClientLoaderArgs<A, P>) => Promise<T>;
 	beforeRouteCommit?: BeforeRouteCommitFn;

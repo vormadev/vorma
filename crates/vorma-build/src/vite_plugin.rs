@@ -23,8 +23,8 @@ pub(crate) struct ViteConfigResponse {
 	pub(crate) public_static_base_path: String,
 	#[serde(rename = "EntryModule")]
 	pub(crate) entry_module: String,
-	#[serde(rename = "RouteModules")]
-	pub(crate) route_modules: Vec<String>,
+	#[serde(rename = "ViewModules")]
+	pub(crate) view_modules: Vec<String>,
 	#[serde(rename = "IgnoredPatterns")]
 	pub(crate) ignored_patterns: Vec<String>,
 	#[serde(rename = "DedupeList")]
@@ -101,15 +101,15 @@ fn vite_config_response_from_generation(
 ) -> Result<ViteConfigResponse, String> {
 	let cfg =
 		to_cfg(&generation.config).map_err(|err| format!("error converting config: {err}"))?;
-	let mut route_modules = Vec::new();
-	for r in generation.route_modules.values() {
-		route_modules.push(abs_path(cfg.root_path_string(&r.import_path))?);
+	let mut view_modules = Vec::new();
+	for r in generation.view_modules.values() {
+		view_modules.push(abs_path(cfg.root_path_string(&r.import_path))?);
 	}
 
 	Ok(ViteConfigResponse {
 		public_static_base_path: cfg.public_static_base_path(),
 		entry_module: cfg.ts_entry_abs_slash(),
-		route_modules,
+		view_modules,
 		ignored_patterns: cfg.vite_ignored_patterns(),
 		dedupe_list: cfg.vite_dedupe_list(),
 	})
@@ -171,7 +171,7 @@ mod tests {
 
 	use super::*;
 	use crate::dev_mux::DevMuxRuntime;
-	use crate::ts_modules::TsRoute;
+	use crate::ts_modules::TsViewModule;
 
 	#[test]
 	fn vite_config_response_uses_vite_plugin_field_names_and_absolute_modules() {
@@ -200,9 +200,9 @@ mod tests {
 		};
 		let generation = DevMuxGeneration {
 			config: cfg,
-			route_modules: BTreeMap::from([(
+			view_modules: BTreeMap::from([(
 				"/".to_owned(),
-				TsRoute {
+				TsViewModule {
 					pattern: "/".to_owned(),
 					import_path: "src/root.tsx".to_owned(),
 					deps: Vec::new(),
@@ -221,7 +221,7 @@ mod tests {
 			root.join("src/entry.tsx").to_string_lossy().as_ref(),
 		);
 		assert_eq!(
-			value["RouteModules"][0],
+			value["ViewModules"][0],
 			root.join("src/root.tsx").to_string_lossy().as_ref(),
 		);
 		assert_eq!(value["DedupeList"][0], "react");

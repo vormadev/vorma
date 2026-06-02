@@ -1,4 +1,4 @@
-export { create_typed_api_client, MutationError, QueryError } from "./api_client.ts";
+export { MutationError, QueryError, create_typed_api_client } from "./api_client.ts";
 export type { ClientMatcher, ClientMatcherNestedMatch } from "./client_wasm/matcher.ts";
 export {
 	BUILD_ID_HEADER,
@@ -11,7 +11,7 @@ export {
 export {
 	apply_scroll,
 	create_client_core,
-	make_route_id,
+	make_entry_id,
 	type BuildSkewDetectedEvent,
 	type ClientCommit,
 	type ClientOptions,
@@ -60,8 +60,6 @@ export type {
 	ToClientLoaderArgs,
 	ToDefineViewArgs,
 	ToLinkProps,
-	ToLoaderInput,
-	ToLoaderOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -76,9 +74,11 @@ export type {
 	ToQueryMethod,
 	ToQueryOutput,
 	ToQueryPattern,
-	ToRouteComponentProps,
 	ToRouteDestination,
 	ToRouteSyncArgs,
+	ToViewComponentProps,
+	ToViewInput,
+	ToViewOutput,
 	ToViewPattern,
 } from "./types.ts";
 export {
@@ -92,7 +92,7 @@ export {
 	type VormaClient,
 } from "./ui_adapter_core.ts";
 export {
-	build_action_url,
+	build_resource_url,
 	create_typed_navigate,
 	create_typed_prefetch,
 	create_typed_to_href,

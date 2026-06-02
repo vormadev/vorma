@@ -19,7 +19,7 @@ type SkewState = {
 	expected_operation: string;
 	expected_deployment: string;
 	route_client_build_id: string | null;
-	route_deployment: string;
+	view_deployment: string;
 	client_build_tag: string;
 	pending_href: string;
 	revalidation_status: string;
@@ -36,7 +36,7 @@ type SkewState = {
 	last_build_skew_ok: boolean | null;
 	last_api_build_skew_server_id: string | null;
 	last_api_build_skew_active_client_id: string | null;
-	last_api_build_skew_api_route_kind: string | null;
+	last_api_build_skew_resource_kind: string | null;
 	last_api_build_skew_status: number | null;
 	last_api_build_skew_ok: boolean | null;
 };
@@ -59,9 +59,8 @@ const skew_state = extract((state): SkewState => {
 			state.document.querySelector("[data-bmb-expected-deployment]")?.textContent ??
 			"",
 		route_client_build_id: probe?.route?.client_build_id ?? null,
-		route_deployment:
-			state.document.querySelector("[data-bmb-route-deployment]")?.textContent ??
-			"",
+		view_deployment:
+			state.document.querySelector("[data-bmb-view-deployment]")?.textContent ?? "",
 		client_build_tag:
 			state.document.querySelector("[data-bmb-client-build-tag]")?.textContent ??
 			"",
@@ -84,8 +83,8 @@ const skew_state = extract((state): SkewState => {
 			probe?.last_api_build_skew?.server_build_id ?? null,
 		last_api_build_skew_active_client_id:
 			probe?.last_api_build_skew?.active_client_build_id ?? null,
-		last_api_build_skew_api_route_kind:
-			probe?.last_api_build_skew?.api_route_kind ?? null,
+		last_api_build_skew_resource_kind:
+			probe?.last_api_build_skew?.resource_kind ?? null,
 		last_api_build_skew_status: probe?.last_api_build_skew?.status ?? null,
 		last_api_build_skew_ok: probe?.last_api_build_skew?.ok ?? null,
 	};
@@ -147,12 +146,12 @@ function build_skew_context_is_populated(): boolean {
 	);
 }
 
-function latest_api_skew_is(api_route_kind: string, ok: boolean): boolean {
+function latest_api_skew_is(resource_kind: string, ok: boolean): boolean {
 	return (
 		skew_state.current.route_client_build_id !== null &&
 		skew_state.current.last_api_build_skew_server_id !== null &&
 		skew_state.current.last_api_build_skew_active_client_id !== null &&
-		skew_state.current.last_api_build_skew_api_route_kind === api_route_kind &&
+		skew_state.current.last_api_build_skew_resource_kind === resource_kind &&
 		skew_state.current.last_api_build_skew_ok === ok &&
 		skew_state.current.route_client_build_id ===
 			skew_state.current.last_api_build_skew_active_client_id &&
