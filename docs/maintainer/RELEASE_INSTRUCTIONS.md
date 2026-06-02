@@ -1,10 +1,28 @@
 # Release Instructions
 
-Bump all crate versions in repo-root `Cargo.toml`.
+First, bump all crate versions in repo-root `Cargo.toml`.
+
+Then run the following:
 
 ```sh
-# Run gate and publish crates
-make gate && cargo publish --dry-run && cargo publish
+# Run gate
+make gate
+
+# Publish crates
+cargo publish -p vorma-matcher --dry-run
+cargo publish -p vorma-matcher
+
+cargo publish -p vorma-tasks --dry-run
+cargo publish -p vorma-tasks
+
+cargo publish -p vorma-macros --dry-run
+cargo publish -p vorma-macros
+
+cargo publish -p vorma --dry-run
+cargo publish -p vorma
+
+cargo publish -p vorma-build --dry-run
+cargo publish -p vorma-build
 
 # Publish npm packages
 npm login

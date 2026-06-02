@@ -19,6 +19,11 @@ export function dynamic(read_value: () => any): any {
 	return read_value();
 }
 
+export const use_view_data = undefined;
+export const use_client_loader_data = undefined;
+export const use_route_state = undefined;
+export const use_work_state = undefined;
+
 export function prepare_view_definition(input: any): any {
 	return input;
 }

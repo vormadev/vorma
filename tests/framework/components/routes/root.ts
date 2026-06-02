@@ -21,6 +21,9 @@ import {
 	view_root_pattern,
 } from "./support.ts";
 
+let expected_storage_sync: (() => void) | undefined;
+let expected_storage_sync_installed = false;
+
 export default ui.defineView({
 	pattern: view_root_pattern,
 	component: (props: any) => {
@@ -86,6 +89,20 @@ export default ui.defineView({
 			window.sessionStorage.setItem(expected_operation_storage_key, operation);
 			expected_operation.set(operation);
 		};
+		expected_storage_sync = () => {
+			expected_deployment.set(
+				window.sessionStorage.getItem(expected_deployment_storage_key) ?? "",
+			);
+			expected_operation.set(
+				window.sessionStorage.getItem(expected_operation_storage_key) ?? "",
+			);
+		};
+		if (!expected_storage_sync_installed) {
+			window.addEventListener("pageshow", () => {
+				expected_storage_sync?.();
+			});
+			expected_storage_sync_installed = true;
+		}
 		const complete_switch_submit = (operation: string, result: any) => {
 			if (result.success) {
 				record_expected_operation(`${operation}-ok`);
