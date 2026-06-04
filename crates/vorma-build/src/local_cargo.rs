@@ -6,10 +6,12 @@ use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
 
 use serde::Deserialize;
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 
 use crate::build_cancel::BuildCancel;
-use crate::config::{CargoBinTarget, VormaCfg};
+use crate::cargo_target::CargoBinTarget;
+use crate::command_runner::{CommandRunError, CommandStderr};
+use crate::config::VormaCfg;
 use crate::process_wait::{ChildWaitError, current_thread_runtime, wait_child_or_cancel};
 use crate::supervisor::{clear_vorma_runtime_env, prepare_child_process};
 
@@ -375,69 +377,24 @@ fn run_cargo_metadata_command(
 }
 
 fn run_command_collecting_output(
-	mut command: Command,
+	command: Command,
 	build_cancel: &Arc<BuildCancel>,
 ) -> Result<Output, CargoBuildError> {
-	clear_vorma_runtime_env(&mut command);
-	prepare_child_process(&mut command);
-	command.stdout(Stdio::piped()).stderr(Stdio::inherit());
-	let runtime =
-		current_thread_runtime().map_err(|source| CargoBuildError::CommandWait { source })?;
-	runtime.block_on(async {
-		let mut command = tokio::process::Command::from(command);
-		let mut child = command
-			.spawn()
-			.map_err(|source| CargoBuildError::CommandStart { source })?;
-		let stdout = child
-			.stdout
-			.take()
-			.ok_or_else(|| CargoBuildError::CommandWait {
-				source: io::Error::other("missing command stdout pipe"),
-			})?;
-		let stdout_thread = tokio::spawn(read_pipe(stdout));
-		let status = match wait_child_or_cancel(&mut child, build_cancel).await {
-			Ok(status) => status,
-			Err(ChildWaitError::Cancelled) => {
-				let _ = join_pipe(stdout_thread).await;
-				return Err(CargoBuildError::Cancelled);
-			}
-			Err(ChildWaitError::Wait(source)) => {
-				return Err(CargoBuildError::CommandWait { source });
-			}
-		};
-
-		let stdout = join_pipe(stdout_thread).await?;
-		let output = Output {
-			status,
-			stdout,
-			stderr: Vec::new(),
-		};
-
-		if !output.status.success() {
-			return Err(CargoBuildError::CommandFailed { output });
-		}
-		Ok(output)
-	})
+	crate::command_runner::run_command_collecting_output(
+		command,
+		build_cancel,
+		CommandStderr::Inherit,
+	)
+	.map_err(cargo_build_error_from_command_error)
 }
 
-async fn read_pipe<R>(mut reader: R) -> io::Result<Vec<u8>>
-where
-	R: AsyncRead + Send + Unpin + 'static,
-{
-	let mut output = Vec::new();
-	reader.read_to_end(&mut output).await?;
-	Ok(output)
-}
-
-async fn join_pipe(
-	join_handle: tokio::task::JoinHandle<io::Result<Vec<u8>>>,
-) -> Result<Vec<u8>, CargoBuildError> {
-	join_handle
-		.await
-		.map_err(|_| CargoBuildError::CommandWait {
-			source: io::Error::other("command pipe reader panicked"),
-		})?
-		.map_err(|source| CargoBuildError::CommandWait { source })
+fn cargo_build_error_from_command_error(error: CommandRunError) -> CargoBuildError {
+	match error {
+		CommandRunError::CommandStart { source } => CargoBuildError::CommandStart { source },
+		CommandRunError::CommandWait { source } => CargoBuildError::CommandWait { source },
+		CommandRunError::CommandFailed { output } => CargoBuildError::CommandFailed { output },
+		CommandRunError::Cancelled => CargoBuildError::Cancelled,
+	}
 }
 
 fn cargo_package_names(
@@ -597,7 +554,7 @@ mod tests {
 	use std::sync::atomic::{AtomicBool, Ordering};
 
 	use crate::build_cancel::BuildCancel;
-	use crate::config::CargoBinTarget;
+	use crate::cargo_target::CargoBinTarget;
 
 	use super::{
 		CargoBuildOutputError, DevArtifactCollector, cargo_bin_executable, cargo_bin_executables,

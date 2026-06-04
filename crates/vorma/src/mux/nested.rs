@@ -7,11 +7,11 @@ use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use serde_json::Value;
 use vorma_matcher::{Matcher, MatcherBuilder, NestedMatches, Options as MatcherOptions, Params};
+use vorma_tasks::ExecCtx;
 #[cfg(test)]
 use vorma_tasks::Result as TaskResult;
-use vorma_tasks::{CancelToken, ExecCtx};
 
-use crate::response::Proxy;
+use crate::response::ResponseEffects;
 
 #[cfg(test)]
 use super::context::None;
@@ -22,13 +22,11 @@ use super::error::{Error, RouteExecutionError};
 #[cfg(test)]
 use super::input::InputParser;
 use super::middleware::{Middleware, MiddlewareInvocation, run_middleware_entries};
+use super::ordered_parallel::{OrderedTaskContexts, OrderedTaskCtx, run_ordered_parallel};
 use super::request::RawRequest;
 #[cfg(test)]
 use super::task::typed_handler;
-use super::task::{
-	ErasedTask, proxy_for_task_output, record_bad_request_input_error, run_erased_task,
-	run_with_exec_cancellation,
-};
+use super::task::{ErasedTask, run_handler_and_collect_effects, run_with_exec_cancellation};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NestedOptions {
@@ -193,33 +191,34 @@ where
 		Ok(self.inner.matcher.find_nested_matches(path))
 	}
 
-	pub async fn run_nested_tasks(
+	pub async fn execute_view_stack(
 		&self,
 		state: Arc<S>,
 		exec_ctx: ExecCtx<E>,
 		request: RawRequest,
 		find_results: NestedMatches,
 		public_filemap: Arc<BTreeMap<String, String>>,
-	) -> Result<NestedTasksResults<E>, Error> {
+	) -> Result<ViewStackExecution<E>, Error> {
 		let matches = find_results.matches;
+		let matched_patterns = matches
+			.iter()
+			.map(|matched| matched.pattern.original_pattern().to_owned())
+			.collect::<Vec<_>>();
 		let (middleware_entries, matched_routes) = self.matched_task_inputs(&matches)?;
-		let mut results = NestedTasksResults {
-			middleware_proxy: Option::None,
-			params: find_results.params,
-			splat_values: find_results.splat_values,
-			results: Vec::with_capacity(matches.len()),
-		};
+		let params = find_results.params;
+		let splat_values = find_results.splat_values;
+		let mut view_results = Vec::with_capacity(matches.len());
 		let mut bound = Vec::new();
 
 		for (matched, route) in matches.into_iter().zip(matched_routes) {
 			let pattern = matched.pattern.original_pattern().to_owned();
-			let index = results.results.len();
-			results.results.push(NestedTasksResult {
+			let index = view_results.len();
+			view_results.push(ViewExecutionResult {
 				#[cfg(test)]
 				pattern: pattern.clone(),
 				data: Option::None,
 				error: Option::None,
-				response_proxy: Option::None,
+				response_effects: Option::None,
 				ran_task: false,
 			});
 
@@ -233,9 +232,7 @@ where
 			});
 		}
 
-		let params = results.params.clone();
-		let splat_values = results.splat_values.clone();
-		let middleware_proxy = run_middleware_entries(
+		let middleware_effects = run_middleware_entries(
 			&request,
 			state.clone(),
 			exec_ctx.clone(),
@@ -245,16 +242,19 @@ where
 			middleware_entries,
 		)
 		.await?;
-		let middleware_is_terminal = middleware_proxy.is_terminal_response();
-		results.middleware_proxy = Some(middleware_proxy);
+		let middleware_is_terminal = middleware_effects.is_terminal_response();
 		if middleware_is_terminal {
-			if results.results.is_empty() {
-				return Ok(results);
+			for result in &mut view_results {
+				result.response_effects = Some(ResponseEffects::new());
 			}
-			for result in &mut results.results {
-				result.response_proxy = Some(Proxy::new());
-			}
-			return Ok(results);
+			return Ok(ViewStackExecution {
+				matched_patterns,
+				params,
+				splat_values,
+				middleware_effects,
+				view_results,
+				terminal_boundary: Some(ViewStackTerminalBoundary::Middleware),
+			});
 		}
 		run_nested_bound(
 			NestedRunCtx {
@@ -262,14 +262,22 @@ where
 				exec_ctx,
 				request,
 				public_filemap,
-				params,
-				splat_values,
+				params: params.clone(),
+				splat_values: splat_values.clone(),
 			},
-			&mut results,
+			&mut view_results,
 			bound,
 		)
 		.await?;
-		Ok(results)
+		let terminal_boundary = terminal_view_boundary(&view_results);
+		Ok(ViewStackExecution {
+			matched_patterns,
+			params,
+			splat_values,
+			middleware_effects,
+			view_results,
+			terminal_boundary,
+		})
 	}
 
 	fn matched_task_inputs(
@@ -341,33 +349,57 @@ struct NestedRunCtx<S, E> {
 	splat_values: Vec<String>,
 }
 
-pub struct NestedTasksResults<E> {
-	middleware_proxy: Option<Proxy>,
+pub struct ViewStackExecution<E> {
+	matched_patterns: Vec<String>,
 	params: Params,
 	splat_values: Vec<String>,
-	results: Vec<NestedTasksResult<E>>,
+	middleware_effects: ResponseEffects,
+	view_results: Vec<ViewExecutionResult<E>>,
+	terminal_boundary: Option<ViewStackTerminalBoundary>,
 }
 
-impl<E> NestedTasksResults<E> {
-	pub fn results(&self) -> &[NestedTasksResult<E>] {
-		&self.results
+impl<E> ViewStackExecution<E> {
+	pub fn matched_patterns(&self) -> &[String] {
+		&self.matched_patterns
 	}
 
-	pub fn middleware_proxy(&self) -> Option<&Proxy> {
-		self.middleware_proxy.as_ref()
+	pub fn params(&self) -> &Params {
+		&self.params
+	}
+
+	pub fn splat_values(&self) -> &[String] {
+		&self.splat_values
+	}
+
+	pub fn view_results(&self) -> &[ViewExecutionResult<E>] {
+		&self.view_results
+	}
+
+	pub fn middleware_effects(&self) -> &ResponseEffects {
+		&self.middleware_effects
+	}
+
+	pub fn terminal_boundary(&self) -> Option<ViewStackTerminalBoundary> {
+		self.terminal_boundary
 	}
 }
 
-pub struct NestedTasksResult<E> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ViewStackTerminalBoundary {
+	Middleware,
+	View { index: usize },
+}
+
+pub struct ViewExecutionResult<E> {
 	#[cfg(test)]
 	pattern: String,
 	data: Option<Value>,
 	error: Option<RouteExecutionError<E>>,
-	response_proxy: Option<Proxy>,
+	response_effects: Option<ResponseEffects>,
 	ran_task: bool,
 }
 
-impl<E> NestedTasksResult<E> {
+impl<E> ViewExecutionResult<E> {
 	#[cfg(test)]
 	pub fn pattern(&self) -> &str {
 		&self.pattern
@@ -381,8 +413,8 @@ impl<E> NestedTasksResult<E> {
 		self.error.as_ref()
 	}
 
-	pub fn response_proxy(&self) -> Option<&Proxy> {
-		self.response_proxy.as_ref()
+	pub fn response_effects(&self) -> Option<&ResponseEffects> {
+		self.response_effects.as_ref()
 	}
 
 	pub fn ran_task(&self) -> bool {
@@ -394,7 +426,7 @@ struct NestedTaskOutput<E> {
 	index: usize,
 	data: Option<Value>,
 	error: Option<RouteExecutionError<E>>,
-	proxy: Proxy,
+	effects: ResponseEffects,
 }
 
 impl<E> Clone for NestedTaskOutput<E>
@@ -406,99 +438,59 @@ where
 			index: self.index,
 			data: self.data.clone(),
 			error: self.error.clone(),
-			proxy: self.proxy.clone(),
+			effects: self.effects.clone(),
 		}
 	}
 }
 
 async fn run_nested_bound<S, E>(
 	ctx: NestedRunCtx<S, E>,
-	results: &mut NestedTasksResults<E>,
+	view_results: &mut [ViewExecutionResult<E>],
 	bound: Vec<NestedBoundTask<S, E>>,
 ) -> Result<(), Error>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	match bound.len() {
-		0 => return Ok(()),
-		1 => {
-			let output =
-				run_one_nested_bound(ctx, bound.into_iter().next().expect("one bound task"))
-					.await?;
-			apply_nested_output(results, output)?;
-			return Ok(());
-		}
-		_ => {}
+	if bound.is_empty() {
+		return Ok(());
 	}
 
-	let mut current_exec_ctx = ctx.exec_ctx;
-	let bound_len = bound.len();
-	let mut handles = Vec::with_capacity(bound_len);
-	for (bound_index, bound_task) in bound.into_iter().enumerate() {
-		let task_exec_ctx = current_exec_ctx.clone();
-		let cancel_descendants = if bound_index < bound_len - 1 {
-			let descendant_exec_ctx = current_exec_ctx.child();
-			let cancel = descendant_exec_ctx.cancel_token().clone();
-			current_exec_ctx = descendant_exec_ctx;
-			Some(cancel)
-		} else {
-			Option::None
-		};
-		let run_ctx = NestedRunCtx {
+	let task_contexts = OrderedTaskContexts::descendant_chain(ctx.exec_ctx.clone(), bound.len());
+	let outputs = run_ordered_parallel(bound, task_contexts, move |bound_task, task_ctx| {
+		let ctx = NestedRunCtx {
 			state: ctx.state.clone(),
-			exec_ctx: task_exec_ctx,
+			exec_ctx: task_ctx.exec_ctx(),
 			request: ctx.request.clone(),
 			public_filemap: ctx.public_filemap.clone(),
 			params: ctx.params.clone(),
 			splat_values: ctx.splat_values.clone(),
 		};
-		handles.push(tokio::spawn(async move {
-			run_one_nested_bound_with_cancel(run_ctx, bound_task, cancel_descendants).await
-		}));
-	}
-
-	let mut outputs = Vec::with_capacity(handles.len());
-	for handle in handles {
-		outputs.push(
-			handle
-				.await
-				.map_err(|error| Error::TaskJoin(error.to_string()))??,
-		);
-	}
-	outputs.sort_by_key(|output| output.index);
-	for output in outputs {
-		apply_nested_output(results, output)?;
+		async move { run_one_nested_bound_with_cancel(ctx, bound_task, task_ctx).await }
+	})
+	.await?;
+	for (_, output) in outputs.into_vec() {
+		let output = output?;
+		apply_nested_output(view_results, output)?;
 	}
 	Ok(())
-}
-
-async fn run_one_nested_bound<S, E>(
-	ctx: NestedRunCtx<S, E>,
-	bound_task: NestedBoundTask<S, E>,
-) -> Result<NestedTaskOutput<E>, Error>
-where
-	S: Send + Sync + 'static,
-	E: Send + Sync + 'static,
-{
-	run_one_nested_bound_with_cancel(ctx, bound_task, Option::None).await
 }
 
 async fn run_one_nested_bound_with_cancel<S, E>(
 	ctx: NestedRunCtx<S, E>,
 	bound_task: NestedBoundTask<S, E>,
-	cancel_descendants: Option<CancelToken>,
+	task_ctx: OrderedTaskCtx<E>,
 ) -> Result<NestedTaskOutput<E>, Error>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	let proxy = Arc::new(Mutex::new(Proxy::new()));
+	let effects = Arc::new(Mutex::new(ResponseEffects::new()));
 	let exec_ctx = ctx.exec_ctx;
 	let handler = bound_task.handler;
 	let pattern = bound_task.pattern.clone();
 	let index = bound_task.index;
-	let proxy_for_task = proxy.clone();
+	let effects_for_task = effects.clone();
 	let request_for_task = ctx.request.clone();
 	let state_for_task = ctx.state.clone();
 	let public_filemap_for_task = ctx.public_filemap.clone();
@@ -506,7 +498,7 @@ where
 	let splat_values_for_task = ctx.splat_values.clone();
 	let handler_exec_ctx = exec_ctx.clone();
 	match run_with_exec_cancellation(&exec_ctx, async move {
-		let mut handler_run = run_erased_task(
+		let handler_execution = run_handler_and_collect_effects(
 			handler,
 			request_for_task,
 			RequestBase {
@@ -516,23 +508,20 @@ where
 				state: state_for_task,
 				exec_ctx: handler_exec_ctx,
 				public_filemap: public_filemap_for_task,
-				response_proxy: proxy_for_task,
+				response_effects: effects_for_task,
 			},
 		)
 		.await;
-		record_bad_request_input_error(&mut handler_run.proxy, &handler_run.output);
 		let should_cancel_descendants =
-			handler_run.output.is_err() || handler_run.proxy.is_terminal_response();
-		if should_cancel_descendants && let Some(cancel) = cancel_descendants {
-			cancel.cancel();
+			handler_execution.error.is_some() || handler_execution.effects.is_terminal_response();
+		if should_cancel_descendants {
+			task_ctx.cancel_later();
 		}
-		let (data, error, proxy) = handler_run.into_parts();
-		let proxy = proxy_for_task_output(error.is_some(), proxy);
 		NestedTaskOutput {
 			index,
-			data,
-			error,
-			proxy,
+			data: handler_execution.data,
+			error: handler_execution.error,
+			effects: handler_execution.effects,
 		}
 	})
 	.await
@@ -542,25 +531,40 @@ where
 			index,
 			data: Option::None,
 			error: Some(RouteExecutionError::Task(error)),
-			proxy: Proxy::new(),
+			effects: ResponseEffects::new(),
 		}),
 	}
 }
 
+fn terminal_view_boundary<E>(
+	view_results: &[ViewExecutionResult<E>],
+) -> Option<ViewStackTerminalBoundary> {
+	view_results.iter().enumerate().find_map(|(index, result)| {
+		if result.error().is_some()
+			|| result
+				.response_effects()
+				.is_some_and(ResponseEffects::is_terminal_response)
+		{
+			return Some(ViewStackTerminalBoundary::View { index });
+		}
+		Option::None
+	})
+}
+
 fn apply_nested_output<E>(
-	results: &mut NestedTasksResults<E>,
+	view_results: &mut [ViewExecutionResult<E>],
 	output: NestedTaskOutput<E>,
 ) -> Result<(), Error> {
-	let Some(result) = results.results.get_mut(output.index) else {
+	let view_results_len = view_results.len();
+	let Some(result) = view_results.get_mut(output.index) else {
 		return Err(Error::Invariant(format!(
 			"nested task output index {} out of range for {} results",
-			output.index,
-			results.results.len()
+			output.index, view_results_len
 		)));
 	};
 	result.data = output.data;
 	result.error = output.error;
-	result.response_proxy = Some(output.proxy);
+	result.response_effects = Some(output.effects);
 	result.ran_task = true;
 	Ok(())
 }

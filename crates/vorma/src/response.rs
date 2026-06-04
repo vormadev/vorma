@@ -22,7 +22,7 @@ enum HeaderOpKind {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Proxy {
+pub(crate) struct ResponseEffects {
 	status: Option<StatusCode>,
 	status_text: String,
 	header_ops: Vec<(HeaderName, HeaderOp)>,
@@ -31,7 +31,7 @@ pub(crate) struct Proxy {
 	location: String,
 }
 
-impl Proxy {
+impl ResponseEffects {
 	pub(crate) fn new() -> Self {
 		Self::default()
 	}
@@ -97,7 +97,7 @@ impl Proxy {
 		}
 		self.head
 			.as_mut()
-			.expect("proxy head should exist")
+			.expect("effects head should exist")
 			.append(b);
 	}
 
@@ -105,7 +105,7 @@ impl Proxy {
 		if self.head.is_none() {
 			self.head = Some(head::HeadBuilder::new());
 		}
-		self.head.as_mut().expect("proxy head should exist")
+		self.head.as_mut().expect("effects head should exist")
 	}
 
 	pub(crate) fn head_builder_ref(&self) -> Option<&head::HeadBuilder> {
@@ -195,26 +195,27 @@ impl Proxy {
 	}
 }
 
-pub(crate) fn merge_proxy_responses(proxies: &[Option<&Proxy>]) -> Proxy {
-	let mut merged = Proxy::new();
-	let proxies = &proxies[..proxy_prefix_through_first_terminal(proxies)];
+pub(crate) fn merge_response_effects(effects_list: &[Option<&ResponseEffects>]) -> ResponseEffects {
+	let mut merged = ResponseEffects::new();
+	let effects_list =
+		&effects_list[..response_effects_prefix_through_first_terminal(effects_list)];
 
-	for proxy in proxies.iter().flatten() {
-		if let Some(head) = &proxy.head {
+	for effects in effects_list.iter().flatten() {
+		if let Some(head) = &effects.head {
 			merged.merge_head(head);
 		}
 	}
 
-	for proxy in proxies.iter().flatten() {
-		merged.header_ops.extend(proxy.header_ops.clone());
+	for effects in effects_list.iter().flatten() {
+		merged.header_ops.extend(effects.header_ops.clone());
 	}
 
 	let mut unique_cookies = Vec::<(usize, Cookie<'static>)>::new();
-	for (idx, proxy) in proxies.iter().enumerate() {
-		let Some(proxy) = proxy else {
+	for (idx, effects) in effects_list.iter().enumerate() {
+		let Some(effects) = effects else {
 			continue;
 		};
-		for cookie in &proxy.cookies {
+		for cookie in &effects.cookies {
 			if let Some((existing_idx, existing_cookie)) = unique_cookies
 				.iter_mut()
 				.find(|(_, existing_cookie)| existing_cookie.name() == cookie.name())
@@ -233,20 +234,20 @@ pub(crate) fn merge_proxy_responses(proxies: &[Option<&Proxy>]) -> Proxy {
 		.collect();
 
 	let mut short_circuited = false;
-	for proxy in proxies.iter().flatten() {
-		if let Some(status) = proxy.status
+	for effects in effects_list.iter().flatten() {
+		if let Some(status) = effects.status
 			&& is_error(status)
 		{
 			merged.status = Some(status);
-			merged.status_text = proxy.status_text.clone();
+			merged.status_text = effects.status_text.clone();
 			short_circuited = true;
 			break;
 		}
-		if proxy.is_redirect() {
-			merged.status = proxy.status;
-			merged.location = proxy.location.clone();
-			if proxy.is_client_redirect()
-				&& let Some(value) = proxy.header(&CLIENT_REDIRECT_HEADER)
+		if effects.is_redirect() {
+			merged.status = effects.status;
+			merged.location = effects.location.clone();
+			if effects.is_client_redirect()
+				&& let Some(value) = effects.header(&CLIENT_REDIRECT_HEADER)
 			{
 				merged.set_header(CLIENT_REDIRECT_HEADER, value.clone());
 			}
@@ -256,13 +257,13 @@ pub(crate) fn merge_proxy_responses(proxies: &[Option<&Proxy>]) -> Proxy {
 	}
 
 	if !short_circuited {
-		for proxy in proxies.iter().flatten() {
-			let Some(status) = proxy.status else {
+		for effects in effects_list.iter().flatten() {
+			let Some(status) = effects.status else {
 				continue;
 			};
 			if merged.status.is_none_or(|status| status.as_u16() < 300) {
 				merged.status = Some(status);
-				merged.status_text = proxy.status_text.clone();
+				merged.status_text = effects.status_text.clone();
 			}
 		}
 	}
@@ -270,44 +271,71 @@ pub(crate) fn merge_proxy_responses(proxies: &[Option<&Proxy>]) -> Proxy {
 	merged
 }
 
-fn proxy_prefix_through_first_terminal(proxies: &[Option<&Proxy>]) -> usize {
-	for (idx, proxy) in proxies.iter().enumerate() {
-		if let Some(proxy) = proxy
-			&& proxy.is_terminal_response()
+fn response_effects_prefix_through_first_terminal(
+	effects_list: &[Option<&ResponseEffects>],
+) -> usize {
+	for (idx, effects) in effects_list.iter().enumerate() {
+		if let Some(effects) = effects
+			&& effects.is_terminal_response()
 		{
 			return idx + 1;
 		}
 	}
-	proxies.len()
+	effects_list.len()
 }
 
-pub(crate) enum ProxyStatusPolicy {
+pub(crate) enum ResponseStatusPolicy {
 	Apply,
 	Suppress,
 }
 
-fn proxy_short_circuit_response(proxy: &Proxy) -> Result<Response<Bytes>, String> {
-	let (status, status_text) = proxy.status();
+pub(crate) enum ResponsePlan<'a> {
+	ShortCircuit {
+		effects: &'a ResponseEffects,
+	},
+	Respond {
+		effects: &'a ResponseEffects,
+		response: Response<Bytes>,
+		status_policy: ResponseStatusPolicy,
+	},
+}
+
+pub(crate) fn finalize_response_plan(
+	plan: ResponsePlan<'_>,
+	expected_client_build_id: &str,
+) -> Result<Response<Bytes>, String> {
+	match plan {
+		ResponsePlan::ShortCircuit { effects } => finalize_response_with_effects(
+			effects,
+			response_effects_short_circuit_response(effects)?,
+			expected_client_build_id,
+			ResponseStatusPolicy::Apply,
+		),
+		ResponsePlan::Respond {
+			effects,
+			response,
+			status_policy,
+		} => finalize_response_with_effects(
+			effects,
+			response,
+			expected_client_build_id,
+			status_policy,
+		),
+	}
+}
+
+fn response_effects_short_circuit_response(
+	effects: &ResponseEffects,
+) -> Result<Response<Bytes>, String> {
+	let (status, status_text) = effects.status();
 	let status = status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-	let mut response = if proxy.is_error() {
+	let mut response = if effects.is_error() {
 		plain_text_response(status, Bytes::from(format!("{status_text}\n")))
 	} else {
 		Response::new(Bytes::new())
 	};
 	*response.status_mut() = status;
 	Ok(response)
-}
-
-pub(crate) fn finalize_proxy_short_circuit_response(
-	proxy: &Proxy,
-	expected_client_build_id: &str,
-) -> Result<Response<Bytes>, String> {
-	finalize_proxy_response(
-		proxy,
-		proxy_short_circuit_response(proxy)?,
-		expected_client_build_id,
-		ProxyStatusPolicy::Apply,
-	)
 }
 
 pub(crate) fn response_with_client_build_id(
@@ -322,13 +350,13 @@ pub(crate) fn response_with_client_build_id(
 	Ok(response)
 }
 
-pub(crate) fn finalize_proxy_response(
-	proxy: &Proxy,
+pub(crate) fn finalize_response_with_effects(
+	effects: &ResponseEffects,
 	mut response: Response<Bytes>,
 	expected_client_build_id: &str,
-	status_policy: ProxyStatusPolicy,
+	status_policy: ResponseStatusPolicy,
 ) -> Result<Response<Bytes>, String> {
-	apply_proxy_to_response_with_options(proxy, &mut response, status_policy)?;
+	apply_response_effects_to_response_with_options(effects, &mut response, status_policy)?;
 	insert_header(
 		response.headers_mut(),
 		X_VORMA_CLIENT_BUILD_ID,
@@ -337,27 +365,27 @@ pub(crate) fn finalize_proxy_response(
 	Ok(response)
 }
 
-fn apply_proxy_to_response_with_options(
-	proxy: &Proxy,
+fn apply_response_effects_to_response_with_options(
+	effects: &ResponseEffects,
 	response: &mut Response<Bytes>,
-	status_policy: ProxyStatusPolicy,
+	status_policy: ResponseStatusPolicy,
 ) -> Result<(), String> {
-	let (status, _) = proxy.status();
-	if matches!(status_policy, ProxyStatusPolicy::Apply)
+	let (status, _) = effects.status();
+	if matches!(status_policy, ResponseStatusPolicy::Apply)
 		&& let Some(status) = status
 	{
 		*response.status_mut() = status;
 	}
 
-	proxy.apply_header_ops_to(response.headers_mut());
+	effects.apply_header_ops_to(response.headers_mut());
 
-	for cookie in proxy.cookies() {
+	for cookie in effects.cookies() {
 		let value = HeaderValue::from_str(&cookie.to_string()).map_err(|err| err.to_string())?;
 		response.headers_mut().append(SET_COOKIE, value);
 	}
 
-	if proxy.is_redirect() && !proxy.is_error() && !proxy.location().is_empty() {
-		insert_header(response.headers_mut(), LOCATION, proxy.location())?;
+	if effects.is_redirect() && !effects.is_error() && !effects.location().is_empty() {
+		insert_header(response.headers_mut(), LOCATION, effects.location())?;
 	}
 
 	Ok(())
@@ -447,133 +475,145 @@ mod tests {
 
 	#[test]
 	fn headers_follow_set_and_add_semantics() {
-		let mut proxy = Proxy::new();
-		proxy.add_header(
+		let mut effects = ResponseEffects::new();
+		effects.add_header(
 			HeaderName::from_static("x-test"),
 			HeaderValue::from_static("one"),
 		);
-		proxy.add_header(
+		effects.add_header(
 			HeaderName::from_static("x-test"),
 			HeaderValue::from_static("two"),
 		);
-		assert_eq!(proxy.headers(&HeaderName::from_static("x-test")).len(), 2);
+		assert_eq!(effects.headers(&HeaderName::from_static("x-test")).len(), 2);
 
-		proxy.set_header(
+		effects.set_header(
 			HeaderName::from_static("x-test"),
 			HeaderValue::from_static("three"),
 		);
 		assert_eq!(
-			proxy.header(&HeaderName::from_static("x-test")).unwrap(),
+			effects.header(&HeaderName::from_static("x-test")).unwrap(),
 			HeaderValue::from_static("three")
 		);
-		assert_eq!(proxy.headers(&HeaderName::from_static("x-test")).len(), 1);
+		assert_eq!(effects.headers(&HeaderName::from_static("x-test")).len(), 1);
 	}
 
 	#[test]
 	fn redirects_validate_client_urls_and_resolve_codes() {
-		let mut proxy = Proxy::new();
+		let mut effects = ResponseEffects::new();
 
-		assert!(proxy.redirect(true, "", None).is_err());
-		assert!(proxy.redirect(true, "javascript:alert(1)", None).is_err());
-		assert!(proxy.redirect(true, "//example.com/target", None).is_err());
-		assert!(proxy.redirect(true, "/target", None).unwrap());
+		assert!(effects.redirect(true, "", None).is_err());
+		assert!(effects.redirect(true, "javascript:alert(1)", None).is_err());
 		assert!(
-			proxy
+			effects
+				.redirect(true, "//example.com/target", None)
+				.is_err()
+		);
+		assert!(effects.redirect(true, "/target", None).unwrap());
+		assert!(
+			effects
 				.redirect(true, "https://example.com/target", None)
 				.unwrap()
 		);
-		assert_eq!(proxy.status().0, Some(StatusCode::OK));
+		assert_eq!(effects.status().0, Some(StatusCode::OK));
 		assert_eq!(
-			proxy.header(&CLIENT_REDIRECT_HEADER).unwrap(),
+			effects.header(&CLIENT_REDIRECT_HEADER).unwrap(),
 			HeaderValue::from_static("https://example.com/target")
 		);
 
-		let mut proxy = Proxy::new();
-		assert!(proxy.redirect(false, "javascript:alert(1)", None).is_err());
-		assert!(proxy.redirect(false, "//example.com/target", None).is_err());
+		let mut effects = ResponseEffects::new();
 		assert!(
-			proxy
+			effects
+				.redirect(false, "javascript:alert(1)", None)
+				.is_err()
+		);
+		assert!(
+			effects
+				.redirect(false, "//example.com/target", None)
+				.is_err()
+		);
+		assert!(
+			effects
 				.redirect(false, "/target", Some(StatusCode::OK))
 				.is_err()
 		);
 		assert!(
-			proxy
+			effects
 				.redirect(true, "/target", Some(StatusCode::OK))
 				.is_err()
 		);
 		assert!(
-			!proxy
+			!effects
 				.redirect(false, "/target", Some(StatusCode::FOUND))
 				.unwrap()
 		);
-		assert_eq!(proxy.status().0, Some(StatusCode::FOUND));
-		assert_eq!(proxy.location(), "/target");
+		assert_eq!(effects.status().0, Some(StatusCode::FOUND));
+		assert_eq!(effects.location(), "/target");
 	}
 
 	#[test]
 	fn client_redirect_does_not_override_existing_error_status() {
-		let mut proxy = Proxy::new();
-		proxy.set_status(StatusCode::FORBIDDEN, Some("denied".to_owned()));
+		let mut effects = ResponseEffects::new();
+		effects.set_status(StatusCode::FORBIDDEN, Some("denied".to_owned()));
 
-		assert!(proxy.redirect(true, "/login", None).unwrap());
+		assert!(effects.redirect(true, "/login", None).unwrap());
 
-		assert_eq!(proxy.status().0, Some(StatusCode::FORBIDDEN));
-		assert!(proxy.header(&CLIENT_REDIRECT_HEADER).is_none());
+		assert_eq!(effects.status().0, Some(StatusCode::FORBIDDEN));
+		assert!(effects.header(&CLIENT_REDIRECT_HEADER).is_none());
 	}
 
 	#[test]
-	fn merge_proxy_responses_uses_first_error_or_last_success() {
-		let mut first = Proxy::new();
+	fn merge_response_effects_uses_first_error_or_last_success() {
+		let mut first = ResponseEffects::new();
 		first.set_status(StatusCode::ACCEPTED, None);
-		let mut second = Proxy::new();
+		let mut second = ResponseEffects::new();
 		second.set_status(StatusCode::CREATED, None);
 
-		let merged = merge_proxy_responses(&[Some(&first), Some(&second)]);
+		let merged = merge_response_effects(&[Some(&first), Some(&second)]);
 		assert_eq!(merged.status().0, Some(StatusCode::CREATED));
 
-		let mut error = Proxy::new();
+		let mut error = ResponseEffects::new();
 		error.set_status(StatusCode::NOT_FOUND, Some("missing".to_owned()));
-		let mut later_error = Proxy::new();
+		let mut later_error = ResponseEffects::new();
 		later_error.set_status(StatusCode::INTERNAL_SERVER_ERROR, None);
 
-		let merged = merge_proxy_responses(&[Some(&first), Some(&error), Some(&later_error)]);
+		let merged = merge_response_effects(&[Some(&first), Some(&error), Some(&later_error)]);
 		assert_eq!(merged.status().0, Some(StatusCode::NOT_FOUND));
 		assert_eq!(merged.status().1, "missing");
 	}
 
 	#[test]
-	fn merge_proxy_responses_no_status_proxy_does_not_clear_success() {
-		let empty = Proxy::new();
-		let mut success = Proxy::new();
+	fn merge_response_effects_no_status_effects_does_not_clear_success() {
+		let empty = ResponseEffects::new();
+		let mut success = ResponseEffects::new();
 		success.set_status(StatusCode::CREATED, None);
 
-		let merged = merge_proxy_responses(&[Some(&success), Some(&empty)]);
+		let merged = merge_response_effects(&[Some(&success), Some(&empty)]);
 		assert_eq!(merged.status().0, Some(StatusCode::CREATED));
 
-		let merged = merge_proxy_responses(&[Some(&empty), Some(&success)]);
+		let merged = merge_response_effects(&[Some(&empty), Some(&success)]);
 		assert_eq!(merged.status().0, Some(StatusCode::CREATED));
 	}
 
 	#[test]
-	fn merge_proxy_responses_uses_first_redirect_when_no_error() {
-		let mut first = Proxy::new();
+	fn merge_response_effects_uses_first_redirect_when_no_error() {
+		let mut first = ResponseEffects::new();
 		first
 			.redirect(false, "/first", Some(StatusCode::FOUND))
 			.unwrap();
-		let mut second = Proxy::new();
+		let mut second = ResponseEffects::new();
 		second
 			.redirect(false, "/second", Some(StatusCode::FOUND))
 			.unwrap();
 
-		let merged = merge_proxy_responses(&[Some(&first), Some(&second)]);
+		let merged = merge_response_effects(&[Some(&first), Some(&second)]);
 
 		assert_eq!(merged.status().0, Some(StatusCode::FOUND));
 		assert_eq!(merged.location(), "/first");
 	}
 
 	#[test]
-	fn merge_proxy_responses_uses_first_error_or_redirect_short_circuit() {
-		let mut parent_redirect = Proxy::new();
+	fn merge_response_effects_uses_first_error_or_redirect_short_circuit() {
+		let mut parent_redirect = ResponseEffects::new();
 		parent_redirect
 			.redirect(false, "/login", Some(StatusCode::FOUND))
 			.unwrap();
@@ -581,7 +621,7 @@ mod tests {
 			HeaderName::from_static("x-parent"),
 			HeaderValue::from_static("kept"),
 		);
-		let mut child_error = Proxy::new();
+		let mut child_error = ResponseEffects::new();
 		child_error.set_status(
 			StatusCode::INTERNAL_SERVER_ERROR,
 			Some("child failed".to_owned()),
@@ -591,7 +631,7 @@ mod tests {
 			HeaderValue::from_static("suppressed"),
 		);
 
-		let merged = merge_proxy_responses(&[Some(&parent_redirect), Some(&child_error)]);
+		let merged = merge_response_effects(&[Some(&parent_redirect), Some(&child_error)]);
 
 		assert_eq!(merged.status().0, Some(StatusCode::FOUND));
 		assert_eq!(merged.location(), "/login");
@@ -601,16 +641,16 @@ mod tests {
 		);
 		assert!(merged.header(&HeaderName::from_static("x-child")).is_none());
 
-		let mut parent_error = Proxy::new();
+		let mut parent_error = ResponseEffects::new();
 		parent_error.set_status(StatusCode::FORBIDDEN, Some("denied".to_owned()));
 		parent_error.set_cookie(Cookie::build(("session", "parent")).build());
-		let mut child_redirect = Proxy::new();
+		let mut child_redirect = ResponseEffects::new();
 		child_redirect
 			.redirect(false, "/child", Some(StatusCode::FOUND))
 			.unwrap();
 		child_redirect.set_cookie(Cookie::build(("session", "child")).build());
 
-		let merged = merge_proxy_responses(&[Some(&parent_error), Some(&child_redirect)]);
+		let merged = merge_response_effects(&[Some(&parent_error), Some(&child_redirect)]);
 
 		assert_eq!(merged.status().0, Some(StatusCode::FORBIDDEN));
 		assert_eq!(merged.status().1, "denied");
@@ -620,21 +660,21 @@ mod tests {
 	}
 
 	#[test]
-	fn merge_proxy_responses_suppresses_all_effects_after_first_terminal() {
-		let mut prior_success = Proxy::new();
+	fn merge_response_effects_suppresses_all_effects_after_first_terminal() {
+		let mut prior_success = ResponseEffects::new();
 		prior_success.set_header(
 			HeaderName::from_static("x-prior"),
 			HeaderValue::from_static("kept"),
 		);
 		prior_success.set_cookie(Cookie::build(("prior", "kept")).build());
-		let mut terminal = Proxy::new();
+		let mut terminal = ResponseEffects::new();
 		terminal.redirect(true, "/client", Option::None).unwrap();
 		terminal.set_header(
 			HeaderName::from_static("x-terminal"),
 			HeaderValue::from_static("kept"),
 		);
 		terminal.set_cookie(Cookie::build(("terminal", "kept")).build());
-		let mut later_success = Proxy::new();
+		let mut later_success = ResponseEffects::new();
 		later_success.set_status(StatusCode::CREATED, Option::None);
 		later_success.set_header(
 			HeaderName::from_static("x-later"),
@@ -643,7 +683,7 @@ mod tests {
 		later_success.set_cookie(Cookie::build(("later", "suppressed")).build());
 
 		let merged =
-			merge_proxy_responses(&[Some(&prior_success), Some(&terminal), Some(&later_success)]);
+			merge_response_effects(&[Some(&prior_success), Some(&terminal), Some(&later_success)]);
 
 		assert_eq!(merged.status().0, Some(StatusCode::OK));
 		assert_eq!(
@@ -667,12 +707,14 @@ mod tests {
 	}
 
 	#[test]
-	fn finalize_proxy_short_circuit_response_applies_proxy_once() {
-		let mut proxy = Proxy::new();
-		proxy.set_status(StatusCode::CONFLICT, Some("drifted".to_owned()));
-		proxy.set_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+	fn finalize_response_plan_short_circuit_applies_effects_once() {
+		let mut effects = ResponseEffects::new();
+		effects.set_status(StatusCode::CONFLICT, Some("drifted".to_owned()));
+		effects.set_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
-		let response = finalize_proxy_short_circuit_response(&proxy, "build-id").unwrap();
+		let response =
+			finalize_response_plan(ResponsePlan::ShortCircuit { effects: &effects }, "build-id")
+				.unwrap();
 
 		assert_eq!(response.status(), StatusCode::CONFLICT);
 		assert_eq!(
@@ -688,23 +730,23 @@ mod tests {
 	}
 
 	#[test]
-	fn finalize_proxy_response_protects_framework_client_build_id_header() {
-		let mut proxy = Proxy::new();
-		proxy.set_header(
+	fn finalize_response_with_effects_protects_framework_client_build_id_header() {
+		let mut effects = ResponseEffects::new();
+		effects.set_header(
 			HeaderName::from_static("x-vorma-client-build-id"),
 			HeaderValue::from_static("handler-build-id"),
 		);
-		proxy.add_header(
+		effects.add_header(
 			HeaderName::from_static("x-vorma-client-build-id"),
 			HeaderValue::from_static("extra-build-id"),
 		);
-		proxy.set_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+		effects.set_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
 
-		let response = finalize_proxy_response(
-			&proxy,
+		let response = finalize_response_with_effects(
+			&effects,
 			plain_text_response(StatusCode::OK, Bytes::new()),
 			"framework-build-id",
-			ProxyStatusPolicy::Apply,
+			ResponseStatusPolicy::Apply,
 		)
 		.unwrap();
 
@@ -727,14 +769,14 @@ mod tests {
 	}
 
 	#[test]
-	fn merge_proxy_responses_dedupes_cookies_by_name_with_later_values() {
-		let mut first = Proxy::new();
+	fn merge_response_effects_dedupes_cookies_by_name_with_later_values() {
+		let mut first = ResponseEffects::new();
 		first.set_cookie(Cookie::build(("session", "old")).build());
 		first.set_cookie(Cookie::build(("theme", "dark")).build());
-		let mut second = Proxy::new();
+		let mut second = ResponseEffects::new();
 		second.set_cookie(Cookie::build(("session", "new")).build());
 
-		let merged = merge_proxy_responses(&[Some(&first), Some(&second)]);
+		let merged = merge_response_effects(&[Some(&first), Some(&second)]);
 
 		assert_eq!(merged.cookies().len(), 2);
 		assert_eq!(merged.cookies()[0].name(), "theme");

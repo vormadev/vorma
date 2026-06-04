@@ -9,7 +9,7 @@ use vorma_tasks::ExecCtx;
 
 use crate::error::Error as VormaError;
 use crate::manifest::public_src_key;
-use crate::response::Proxy;
+use crate::response::ResponseEffects;
 
 use super::request::RawRequest;
 
@@ -23,7 +23,7 @@ pub struct RequestCtx<S, E, I = None> {
 	pub(in crate::mux) state: Arc<S>,
 	pub(in crate::mux) exec_ctx: ExecCtx<E>,
 	pub(in crate::mux) public_filemap: Arc<BTreeMap<String, String>>,
-	pub(in crate::mux) response_proxy: Arc<Mutex<Proxy>>,
+	pub(in crate::mux) response_effects: Arc<Mutex<ResponseEffects>>,
 	pub(in crate::mux) request: RawRequest,
 	pub(in crate::mux) input: I,
 }
@@ -64,14 +64,14 @@ impl<S, E, I> RequestCtx<S, E, I> {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn response_proxy_mut(&self) -> MutexGuard<'_, Proxy> {
-		self.response_proxy
+	pub(crate) fn response_effects_mut(&self) -> MutexGuard<'_, ResponseEffects> {
+		self.response_effects
 			.lock()
-			.expect("response proxy lock poisoned")
+			.expect("response effects lock poisoned")
 	}
 
-	pub(crate) fn response_proxy(&self) -> Arc<Mutex<Proxy>> {
-		self.response_proxy.clone()
+	pub(crate) fn response_effects(&self) -> Arc<Mutex<ResponseEffects>> {
+		self.response_effects.clone()
 	}
 
 	pub fn request(&self) -> &RawRequest {
@@ -90,7 +90,7 @@ impl<S, E, I> RequestCtx<S, E, I> {
 			state: self.state,
 			exec_ctx: self.exec_ctx,
 			public_filemap: self.public_filemap,
-			response_proxy: self.response_proxy,
+			response_effects: self.response_effects,
 			request: self.request,
 			input,
 		}
@@ -109,7 +109,7 @@ where
 			state: self.state.clone(),
 			exec_ctx: self.exec_ctx.clone(),
 			public_filemap: self.public_filemap.clone(),
-			response_proxy: self.response_proxy.clone(),
+			response_effects: self.response_effects.clone(),
 			request: self.request.clone(),
 			input: self.input.clone(),
 		}
@@ -123,7 +123,7 @@ pub(crate) struct RequestBase<S, E> {
 	pub(in crate::mux) state: Arc<S>,
 	pub(in crate::mux) exec_ctx: ExecCtx<E>,
 	pub(in crate::mux) public_filemap: Arc<BTreeMap<String, String>>,
-	pub(in crate::mux) response_proxy: Arc<Mutex<Proxy>>,
+	pub(in crate::mux) response_effects: Arc<Mutex<ResponseEffects>>,
 }
 
 impl<S, E, I> RequestCtx<S, E, I> {
@@ -145,7 +145,7 @@ impl<S, E, I> RequestCtx<S, E, I> {
 			state: self.state.clone(),
 			exec_ctx,
 			public_filemap: self.public_filemap.clone(),
-			response_proxy: self.response_proxy.clone(),
+			response_effects: self.response_effects.clone(),
 			request: self.request.clone(),
 			input,
 		}

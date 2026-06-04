@@ -1,3 +1,7 @@
+mod public_asset_service;
+mod resource_service;
+mod view_service;
+
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -5,7 +9,9 @@ use std::task::{Context, Poll};
 
 use bytes::Buf;
 use bytes::Bytes;
-use http::header::{ALLOW, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_TYPE, HeaderValue};
+use http::header::{ALLOW, CONTENT_LENGTH, HeaderValue};
+#[cfg(test)]
+use http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use http::{Method, Request, Response, StatusCode};
 use http_body::Body;
 use http_body_util::{BodyExt, Full, LengthLimitError, Limited};
@@ -16,24 +22,14 @@ use crate::App;
 use crate::config::Config;
 use crate::config::normalize_api_mount_root;
 use crate::core::{RuntimeRoutes, runtime_routes_for};
-use crate::document::{DocumentBuildCtx, DocumentBuilder};
+use crate::document::DocumentBuilder;
 use crate::envutil::{is_build, is_dev};
 use crate::error::ViewErrorClientMsg;
-use crate::handler::{
-	ApiResponseInput, ViewResponseResultsInput, build_api_response,
-	build_view_response_from_results, build_view_skew_response, refresh_script_inner_html,
-	view_not_found_response,
-};
+use crate::handler::refresh_script_inner_html;
 use crate::htmlutil::{Element, compute_content_sha256};
 use crate::mux::RawRequest;
-use crate::response::response_with_client_build_id;
-use crate::response::{
-	internal_server_error_response, internal_server_error_with_client_build_id, plain_text_response,
-};
-use crate::r#static::{
-	ManifestMode, RuntimeAssetSnapshot, RuntimeAssets, path_is_under_public_static_base,
-	static_out_dir,
-};
+use crate::response::{internal_server_error_response, plain_text_response};
+use crate::r#static::{ManifestMode, RuntimeAssetSnapshot, RuntimeAssets, static_out_dir};
 
 /// Runtime service that serves Vorma static assets, resources, and views.
 pub struct RuntimeHost<S, E = Box<dyn std::error::Error + Send + Sync>> {
@@ -171,176 +167,6 @@ where
 		}
 
 		empty_response(StatusCode::NOT_FOUND)
-	}
-
-	async fn handle_api_request(&self, request: RawRequest) -> Result<Response<Bytes>, String> {
-		if !self.routes.resources.method_is_allowed(request.method()) {
-			let allow = self.api_allow_header();
-			if !allow.is_empty() {
-				return method_not_allowed_response(&allow);
-			}
-		}
-		let snapshot = self
-			.assets
-			.as_ref()
-			.map(RuntimeAssets::snapshot)
-			.transpose()?;
-		let client_build_id = snapshot
-			.as_ref()
-			.map(|snapshot| snapshot.client_build_id().to_owned())
-			.unwrap_or_default();
-		let public_filemap = Arc::new(
-			snapshot
-				.as_ref()
-				.map(|snapshot| snapshot.manifest().public_filemap.clone())
-				.unwrap_or_default(),
-		);
-		let raw_path = request.path().to_owned();
-		let RequestExecCtx {
-			exec_ctx,
-			_cancel_on_drop,
-		} = self.request_exec_ctx();
-		let result = match self
-			.routes
-			.resources
-			.execute_route(request, self.state.clone(), exec_ctx, public_filemap)
-			.await
-		{
-			Ok(result) => result,
-			Err(_) => return internal_server_error_with_client_build_id(&client_build_id),
-		};
-		let Some(result) = result else {
-			if let Some(allow) = self.api_allow_header_for_path(&raw_path) {
-				let response = method_not_allowed_response(&allow)?;
-				return response_with_client_build_id(response, &client_build_id);
-			}
-			let response = empty_response(StatusCode::NOT_FOUND)?;
-			return response_with_client_build_id(response, &client_build_id);
-		};
-		let response = match build_api_response(ApiResponseInput {
-			expected_client_build_id: &client_build_id,
-			result: &result,
-		}) {
-			Ok(response) => response,
-			Err(_) => return internal_server_error_with_client_build_id(&client_build_id),
-		};
-		Ok(response)
-	}
-
-	async fn handle_view_request(&self, request: RawRequest) -> Result<Response<Bytes>, String> {
-		let Some(assets) = &self.assets else {
-			return empty_response(StatusCode::NOT_FOUND);
-		};
-		let snapshot = assets.snapshot()?;
-		match build_view_skew_response(request.uri(), snapshot.client_build_id()) {
-			Ok(Some(response)) => return Ok(response),
-			Ok(Option::None) => {}
-			Err(_) => {
-				return internal_server_error_with_client_build_id(snapshot.client_build_id());
-			}
-		}
-		let match_results = match self.routes.views.find_nested_matches(request.path()) {
-			Ok(Some(match_results)) => match_results,
-			Ok(Option::None) => return view_not_found_response(snapshot.client_build_id()),
-			Err(_) => {
-				return internal_server_error_with_client_build_id(snapshot.client_build_id());
-			}
-		};
-		let RequestExecCtx {
-			exec_ctx,
-			_cancel_on_drop,
-		} = self.request_exec_ctx();
-		let public_filemap = Arc::new(snapshot.manifest().public_filemap.clone());
-		let document = self.document.build(DocumentBuildCtx::manifest(
-			snapshot.manifest_handle(),
-			request.clone(),
-		));
-		let tasks_results = self.routes.views.run_nested_tasks(
-			self.state.clone(),
-			exec_ctx,
-			request.clone(),
-			match_results.clone(),
-			public_filemap,
-		);
-		let (document, tasks_results) = match tokio::try_join!(document, async {
-			tasks_results.await.map_err(|err| err.to_string())
-		}) {
-			Ok(results) => results,
-			Err(_) => {
-				return internal_server_error_with_client_build_id(snapshot.client_build_id());
-			}
-		};
-		match build_view_response_from_results(ViewResponseResultsInput {
-			expected_client_build_id: snapshot.client_build_id(),
-			request: &request,
-			manifest: snapshot.manifest(),
-			document: &document,
-			match_results: &match_results,
-			tasks_results: &tasks_results,
-		}) {
-			Ok(response) => Ok(response),
-			Err(_) => internal_server_error_with_client_build_id(snapshot.client_build_id()),
-		}
-	}
-
-	fn public_asset_response(
-		&self,
-		method: &Method,
-		path: &str,
-	) -> Result<Option<Response<Bytes>>, String> {
-		if method != Method::GET && method != Method::HEAD {
-			return Ok(None);
-		}
-		let Some(assets) = &self.assets else {
-			return Ok(None);
-		};
-		if method == Method::HEAD {
-			let Some(asset) = assets.stat_public_asset(path)? else {
-				return self.public_asset_missing_response(assets, path);
-			};
-			return public_asset_found_response(
-				Bytes::new(),
-				asset.content_length,
-				asset.cache_control,
-				asset.content_type,
-			)
-			.map(Some);
-		}
-		let Some(asset) = assets.read_public_asset(path)? else {
-			return self.public_asset_missing_response(assets, path);
-		};
-		let content_length = asset.bytes.len() as u64;
-		public_asset_found_response(
-			Bytes::from(asset.bytes),
-			content_length,
-			asset.cache_control,
-			asset.content_type,
-		)
-		.map(Some)
-	}
-
-	fn public_asset_missing_response(
-		&self,
-		assets: &RuntimeAssets,
-		path: &str,
-	) -> Result<Option<Response<Bytes>>, String> {
-		let snapshot = assets.snapshot()?;
-		if path_is_under_public_static_base(snapshot.manifest(), path) {
-			return empty_response(StatusCode::NOT_FOUND).map(Some);
-		}
-		Ok(None)
-	}
-
-	fn api_allow_header_for_path(&self, path: &str) -> Option<String> {
-		let methods = self.routes.resources.allowed_methods_for_path(path);
-		if methods.is_empty() {
-			return None;
-		}
-		Some(allow_header_value(&methods))
-	}
-
-	fn api_allow_header(&self) -> String {
-		allow_header_value(&self.routes.resources.allowed_methods())
 	}
 
 	fn snapshot(&self) -> Result<Arc<RuntimeAssetSnapshot>, String> {
@@ -559,27 +385,6 @@ fn method_not_allowed_response(allow: &str) -> Result<Response<Bytes>, String> {
 	Ok(response)
 }
 
-fn public_asset_found_response(
-	body: Bytes,
-	content_length: u64,
-	cache_control: &'static str,
-	content_type: String,
-) -> Result<Response<Bytes>, String> {
-	let mut response = Response::new(body);
-	response
-		.headers_mut()
-		.insert(CACHE_CONTROL, HeaderValue::from_static(cache_control));
-	response.headers_mut().insert(
-		CONTENT_TYPE,
-		HeaderValue::from_str(&content_type).map_err(|err| err.to_string())?,
-	);
-	response.headers_mut().insert(
-		CONTENT_LENGTH,
-		HeaderValue::from_str(&content_length.to_string()).map_err(|err| err.to_string())?,
-	);
-	Ok(response)
-}
-
 fn allow_header_value(methods: &std::collections::BTreeSet<String>) -> String {
 	methods
 		.iter()
@@ -606,5 +411,5 @@ fn request_path_is_under_mount_root(path: &str, mount_root: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "init_tests.rs"]
+#[path = "init_tests/mod.rs"]
 mod init_tests;

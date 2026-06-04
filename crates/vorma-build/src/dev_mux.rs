@@ -20,20 +20,20 @@ pub(crate) struct DevMuxServer {
 #[derive(Clone, Debug)]
 pub(crate) struct DevMuxState {
 	snapshot: Arc<Mutex<DevMuxSnapshot>>,
-	vite_plugin_token: Arc<Mutex<Option<String>>>,
+	prepared: Arc<Mutex<Option<PreparedDevMux>>>,
 	client_manager: ClientManager,
 }
 
 #[derive(Debug)]
 pub(crate) struct DevMuxRuntime {
 	state: DevMuxState,
-	prepared: Option<PreparedDevMux>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PreparedDevMux {
 	pub(crate) port: u16,
 	pub(crate) dev_refresh_token: String,
+	pub(crate) vite_plugin_token: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -72,7 +72,7 @@ impl DevMuxState {
 	pub(crate) fn new() -> Self {
 		Self {
 			snapshot: Arc::new(Mutex::new(DevMuxSnapshot::default())),
-			vite_plugin_token: Arc::new(Mutex::new(None)),
+			prepared: Arc::new(Mutex::new(None)),
 			client_manager: ClientManager::new(),
 		}
 	}
@@ -85,35 +85,28 @@ impl DevMuxState {
 			.clone()
 	}
 
-	fn set_snapshot(&self, snapshot: DevMuxSnapshot) {
-		*self
-			.snapshot
+	fn prepared(&self) -> Option<PreparedDevMux> {
+		self.prepared
 			.lock()
-			.expect("dev mux snapshot lock poisoned") = snapshot;
-	}
-
-	fn vite_plugin_token(&self) -> Option<String> {
-		self.vite_plugin_token
-			.lock()
-			.expect("dev mux vite plugin token lock poisoned")
+			.expect("dev mux prepared lock poisoned")
 			.clone()
 	}
 
-	fn set_vite_plugin_token(&self, token: String) {
+	fn set_prepared(&self, prepared: PreparedDevMux) {
 		*self
-			.vite_plugin_token
+			.prepared
 			.lock()
-			.expect("dev mux vite plugin token lock poisoned") = Some(token);
+			.expect("dev mux prepared lock poisoned") = Some(prepared);
 	}
 
 	pub(crate) fn check_vite_plugin_token(
 		&self,
 		provided: Option<&str>,
 	) -> Result<(), VitePluginTokenError> {
-		let Some(token) = self.vite_plugin_token() else {
+		let Some(prepared) = self.prepared() else {
 			return Err(VitePluginTokenError::MissingInternalToken);
 		};
-		if provided == Some(token.as_str()) {
+		if provided == Some(prepared.vite_plugin_token.as_str()) {
 			return Ok(());
 		}
 		Err(VitePluginTokenError::InvalidToken)
@@ -176,7 +169,6 @@ impl Default for DevMuxRuntime {
 	fn default() -> Self {
 		Self {
 			state: DevMuxState::new(),
-			prepared: None,
 		}
 	}
 }
@@ -187,25 +179,22 @@ impl DevMuxRuntime {
 	}
 
 	pub(crate) fn prepare(&mut self) -> Result<u16, String> {
-		if let Some(prepared) = &self.prepared {
-			if self.state.vite_plugin_token().is_none() {
-				self.state.set_vite_plugin_token(random_id(32)?);
-			}
+		if let Some(prepared) = self.state.prepared() {
 			return Ok(prepared.port);
 		}
 
 		let port = get_random_free_port()?;
-		self.prepared = Some(PreparedDevMux {
+		self.state.set_prepared(PreparedDevMux {
 			port,
 			dev_refresh_token: random_id(16)?,
+			vite_plugin_token: random_id(32)?,
 		});
-		self.state.set_vite_plugin_token(random_id(32)?);
 		Ok(port)
 	}
 
-	pub(crate) fn prepared(&self) -> Result<&PreparedDevMux, String> {
-		self.prepared
-			.as_ref()
+	pub(crate) fn prepared(&self) -> Result<PreparedDevMux, String> {
+		self.state
+			.prepared()
 			.ok_or_else(|| "dev mux is not prepared".to_owned())
 	}
 
@@ -217,34 +206,31 @@ impl DevMuxRuntime {
 		Ok(self.prepared()?.port)
 	}
 
-	pub(crate) fn dev_refresh_token(&self) -> Result<&str, String> {
-		Ok(self.prepared()?.dev_refresh_token.as_str())
+	pub(crate) fn dev_refresh_token(&self) -> Result<String, String> {
+		Ok(self.prepared()?.dev_refresh_token)
 	}
 
 	#[cfg(test)]
 	pub(crate) fn vite_plugin_token(&self) -> Result<String, String> {
-		self.state
-			.vite_plugin_token()
-			.ok_or_else(|| "Vite plugin control token not set".to_owned())
+		Ok(self.prepared()?.vite_plugin_token)
 	}
 
 	pub(crate) fn require_vite_plugin_token(&self) -> Result<String, String> {
-		self.state
-			.vite_plugin_token()
-			.ok_or_else(|| "Vite plugin control token not set".to_owned())
+		Ok(self.prepared()?.vite_plugin_token)
 	}
 
 	pub(crate) fn dev_refresh_endpoint(&self) -> Result<String, String> {
 		Ok(crate::browser_sync::dev_refresh_endpoint(
-			self.dev_refresh_token()?,
+			&self.dev_refresh_token()?,
 		))
 	}
 
-	pub(crate) fn publish_generation(&self, generation: Option<DevMuxGeneration>) {
-		self.state.set_snapshot(DevMuxSnapshot {
-			generation,
-			vite_plugin_control_port: self.state.vite_plugin_control_port(),
-		});
+	pub(crate) fn publish_generation(&self, generation: DevMuxGeneration) {
+		self.state
+			.snapshot
+			.lock()
+			.expect("dev mux snapshot lock poisoned")
+			.generation = Some(generation);
 	}
 
 	pub(crate) fn clear_generation(&self) {
@@ -271,17 +257,14 @@ impl DevMuxRuntime {
 	#[cfg(test)]
 	pub(crate) fn for_test(port: i32, dev_refresh_token: &str, vite_plugin_token: &str) -> Self {
 		let state = DevMuxState::new();
-		if !vite_plugin_token.is_empty() {
-			state.set_vite_plugin_token(vite_plugin_token.to_owned());
-		}
-		let prepared = u16::try_from(port)
-			.ok()
-			.filter(|port| *port != 0)
-			.map(|port| PreparedDevMux {
+		if let Some(port) = u16::try_from(port).ok().filter(|port| *port != 0) {
+			state.set_prepared(PreparedDevMux {
 				port,
 				dev_refresh_token: dev_refresh_token.to_owned(),
+				vite_plugin_token: vite_plugin_token.to_owned(),
 			});
-		Self { state, prepared }
+		}
+		Self { state }
 	}
 }
 
@@ -404,7 +387,7 @@ mod tests {
 		let mut dev_mux = DevMuxRuntime::default();
 		let port = dev_mux.prepare().unwrap();
 		let token = dev_mux.vite_plugin_token().unwrap();
-		dev_mux.publish_generation(Some(DevMuxGeneration {
+		dev_mux.publish_generation(DevMuxGeneration {
 			config: config(),
 			view_modules: BTreeMap::from([(
 				"/".to_owned(),
@@ -415,7 +398,7 @@ mod tests {
 				},
 			)]),
 			public_filemap: BTreeMap::new(),
-		}));
+		});
 		let state = dev_mux.state();
 		let endpoint = dev_mux.dev_refresh_endpoint().unwrap();
 		let mut server = start_dev_mux_server(state, endpoint, port).unwrap();
@@ -435,11 +418,11 @@ mod tests {
 		let mut dev_mux = DevMuxRuntime::default();
 		let port = dev_mux.prepare().unwrap();
 		let token = dev_mux.vite_plugin_token().unwrap();
-		dev_mux.publish_generation(Some(DevMuxGeneration {
+		dev_mux.publish_generation(DevMuxGeneration {
 			config: config(),
 			view_modules: BTreeMap::new(),
 			public_filemap: BTreeMap::new(),
-		}));
+		});
 		let state = dev_mux.state();
 		let endpoint = dev_mux.dev_refresh_endpoint().unwrap();
 		let mut server = start_dev_mux_server(state, endpoint, port).unwrap();

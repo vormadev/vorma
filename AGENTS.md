@@ -225,3 +225,11 @@ Unless there's an actual conflict with a file or directory on disk, it's just cr
 - Never, ever commit machine-specific absolute paths (for example, `/Users/...`) into
   repository files.
 - Use repository-root-relative paths in docs and instructions.
+
+## When To Run Tests/Gates/Checks
+
+Use common sense around when to run tests/gates/checks. Do NOT run expensive
+tests/gates/checks between every micro-change; that just wastes both of our time and makes
+things take exponentially longer than they need to. Conversely, do not report a feature or
+inititiative as complete/done unless you have ran ALL appropriate tests/gates/checks that
+may be impacted by such change.

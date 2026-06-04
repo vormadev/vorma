@@ -25,10 +25,10 @@ use crate::htmlutil::{
 use crate::manifest::Manifest;
 #[cfg(test)]
 use crate::mux::NestedRouter;
-use crate::mux::{NestedTasksResults, RawRequest, RouteExecutionError, TaskRouteResult};
+use crate::mux::{RawRequest, RouteExecutionError, TaskRouteResult, ViewStackExecution};
 use crate::response::{
-	ProxyStatusPolicy, finalize_proxy_response, finalize_proxy_short_circuit_response,
-	insert_header, internal_server_error_response, json_response, plain_text_response,
+	ResponsePlan, ResponseStatusPolicy, finalize_response_plan, insert_header,
+	internal_server_error_response, json_response, plain_text_response,
 	response_with_client_build_id,
 };
 use crate::view_payload::{SsrPayload, ViewPayload, build_view_payload};
@@ -101,9 +101,9 @@ where
 		return view_not_found_response(input.expected_client_build_id);
 	};
 
-	let tasks_results = input
+	let view_stack = input
 		.views
-		.run_nested_tasks(
+		.execute_view_stack(
 			input.state,
 			input.exec_ctx,
 			input.request.clone(),
@@ -117,8 +117,7 @@ where
 		request: &input.request,
 		manifest: input.manifest,
 		document: input.document,
-		match_results: &match_results,
-		tasks_results: &tasks_results,
+		view_stack: &view_stack,
 	})
 }
 
@@ -127,8 +126,7 @@ pub(crate) struct ViewResponseResultsInput<'a, E> {
 	pub(crate) request: &'a RawRequest,
 	pub(crate) manifest: &'a Manifest,
 	pub(crate) document: &'a Document,
-	pub(crate) match_results: &'a vorma_matcher::NestedMatches,
-	pub(crate) tasks_results: &'a NestedTasksResults<E>,
+	pub(crate) view_stack: &'a ViewStackExecution<E>,
 }
 
 pub(crate) fn view_not_found_response(
@@ -147,17 +145,14 @@ where
 	E: ViewErrorClientMsg,
 {
 	let is_json = is_json_request(input.request.uri());
-	let (payload, merged_proxy) = build_view_payload(
-		input.manifest,
-		input.document,
-		input.match_results,
-		input.tasks_results,
-		!is_json,
-	)?;
+	let (payload, merged_effects) =
+		build_view_payload(input.manifest, input.document, input.view_stack, !is_json)?;
 
-	if merged_proxy.is_terminal_response() {
-		return finalize_proxy_short_circuit_response(
-			&merged_proxy,
+	if merged_effects.is_terminal_response() {
+		return finalize_response_plan(
+			ResponsePlan::ShortCircuit {
+				effects: &merged_effects,
+			},
 			input.expected_client_build_id,
 		);
 	}
@@ -177,15 +172,17 @@ where
 	};
 
 	let status_policy = if payload.outermost_server_err_idx.is_some() {
-		ProxyStatusPolicy::Suppress
+		ResponseStatusPolicy::Suppress
 	} else {
-		ProxyStatusPolicy::Apply
+		ResponseStatusPolicy::Apply
 	};
-	let mut response = finalize_proxy_response(
-		&merged_proxy,
-		response,
+	let mut response = finalize_response_plan(
+		ResponsePlan::Respond {
+			effects: &merged_effects,
+			response,
+			status_policy,
+		},
 		input.expected_client_build_id,
-		status_policy,
 	)?;
 	if !response.headers().contains_key(CACHE_CONTROL) {
 		response.headers_mut().insert(
@@ -364,32 +361,45 @@ pub(crate) struct ApiResponseInput<'a, E> {
 pub(crate) fn build_api_response<E>(
 	input: ApiResponseInput<'_, E>,
 ) -> Result<Response<Bytes>, String> {
-	let proxy = input.result.response_proxy();
+	let effects = input.result.response_effects();
 	if let Some(error) = input.result.error() {
-		if proxy.is_terminal_response() {
-			return finalize_proxy_short_circuit_response(proxy, input.expected_client_build_id);
+		if effects.is_terminal_response() {
+			return finalize_response_plan(
+				ResponsePlan::ShortCircuit { effects },
+				input.expected_client_build_id,
+			);
 		}
 
 		if matches!(error, RouteExecutionError::Input(input_error) if input_error.is_bad_request())
 		{
-			return finalize_proxy_response(
-				input.result.middleware_proxy(),
-				plain_text_response(StatusCode::BAD_REQUEST, Bytes::from(format!("{error}\n"))),
+			return finalize_response_plan(
+				ResponsePlan::Respond {
+					effects: input.result.middleware_effects(),
+					response: plain_text_response(
+						StatusCode::BAD_REQUEST,
+						Bytes::from(format!("{error}\n")),
+					),
+					status_policy: ResponseStatusPolicy::Suppress,
+				},
 				input.expected_client_build_id,
-				ProxyStatusPolicy::Suppress,
 			);
 		}
 
-		return finalize_proxy_response(
-			input.result.middleware_proxy(),
-			internal_server_error_response(),
+		return finalize_response_plan(
+			ResponsePlan::Respond {
+				effects: input.result.middleware_effects(),
+				response: internal_server_error_response(),
+				status_policy: ResponseStatusPolicy::Suppress,
+			},
 			input.expected_client_build_id,
-			ProxyStatusPolicy::Suppress,
 		);
 	}
 
-	let response = if proxy.is_terminal_response() {
-		finalize_proxy_short_circuit_response(proxy, input.expected_client_build_id)?
+	let response = if effects.is_terminal_response() {
+		return finalize_response_plan(
+			ResponsePlan::ShortCircuit { effects },
+			input.expected_client_build_id,
+		);
 	} else {
 		let data = input
 			.result
@@ -401,15 +411,13 @@ pub(crate) fn build_api_response<E>(
 		)
 	};
 
-	if proxy.is_terminal_response() {
-		return Ok(response);
-	}
-
-	finalize_proxy_response(
-		proxy,
-		response,
+	finalize_response_plan(
+		ResponsePlan::Respond {
+			effects,
+			response,
+			status_policy: ResponseStatusPolicy::Apply,
+		},
 		input.expected_client_build_id,
-		ProxyStatusPolicy::Apply,
 	)
 }
 
@@ -418,5 +426,5 @@ pub(crate) fn build_api_response<E>(
 /////////////////////////////////////////////////////////////////////
 
 #[cfg(test)]
-#[path = "handler_tests.rs"]
+#[path = "handler_tests/mod.rs"]
 mod handler_tests;

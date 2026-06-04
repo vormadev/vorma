@@ -1,27 +1,28 @@
 use std::collections::BTreeMap;
+mod public_output;
+mod vite_projection;
+
 use std::path::Path;
 
 use path_slash::PathExt;
-use vorma::__private::constants::PROD_TMP_VITE_MANIFEST_FILENAME;
 use vorma::__private::manifest::{ClientCoreAssets, ClientModule, Manifest};
-use walkdir::WalkDir;
 
+use crate::build_layout::RetainedViteManifest;
 use crate::config::{VormaCfg, relative_path};
 use crate::constants::DEV_LOOPBACK_HOST;
 use crate::generation::{LiveMetadata, StaticMetadata};
+use crate::manifest::public_output::{
+	collect_public_filepaths, validate_dev_manifest_public_file_outputs,
+	validate_prod_manifest_public_file_outputs,
+};
 use crate::ts_modules::TsViewModule;
 use crate::utils::write_json_to_file;
 use crate::viteutil::ViteManifest;
 
-const CLIENT_CORE_WASM_SOURCE_FILENAME: &str = "vorma_client_wasm_bg.wasm";
 const VORMA_PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct ManifestInput {
-	pub(crate) is_dev: bool,
-	pub(crate) vite_server_port: i32,
-	pub(crate) dev_mux_port: i32,
-	pub(crate) dev_refresh_token: String,
+pub(crate) struct ManifestGenerationData {
 	pub(crate) ts_modules: BTreeMap<String, TsViewModule>,
 	pub(crate) pub_fm: BTreeMap<String, String>,
 	pub(crate) critical_css: String,
@@ -29,20 +30,12 @@ pub(crate) struct ManifestInput {
 	pub(crate) root_document_hash_source: String,
 }
 
-impl ManifestInput {
+impl ManifestGenerationData {
 	pub(crate) fn from_generation_metadata(
-		is_dev: bool,
-		vite_server_port: i32,
-		dev_mux_port: i32,
-		dev_refresh_token: String,
 		live: &LiveMetadata,
 		static_metadata: &StaticMetadata,
 	) -> Self {
 		Self {
-			is_dev,
-			vite_server_port,
-			dev_mux_port,
-			dev_refresh_token,
 			ts_modules: live.view_modules.clone(),
 			pub_fm: static_metadata.public_filemap.clone(),
 			critical_css: static_metadata.critical_css.clone(),
@@ -52,329 +45,202 @@ impl ManifestInput {
 	}
 }
 
-pub(crate) fn write_manifest(
-	cfg: &VormaCfg<'_>,
-	input: &ManifestInput,
-) -> Result<Manifest, String> {
-	let manifest = prepare_manifest(cfg, input)?;
-	write_json_to_file(&manifest, cfg.manifest_json_out(input.is_dev))
-		.map_err(|err| format!("error writing vorma manifest json: {err}"))?;
-	if !input.is_dev {
-		cfg.remove_prod_tmp_vite_manifest()
-			.map_err(|err| format!("error removing temporary Vite manifest: {err}"))?;
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DevManifestInput {
+	pub(crate) vite_server_port: i32,
+	pub(crate) dev_mux_port: i32,
+	pub(crate) dev_refresh_token: String,
+	pub(crate) generation: ManifestGenerationData,
+}
+
+impl DevManifestInput {
+	pub(crate) fn from_generation_metadata(
+		vite_server_port: i32,
+		dev_mux_port: i32,
+		dev_refresh_token: String,
+		live: &LiveMetadata,
+		static_metadata: &StaticMetadata,
+	) -> Self {
+		Self {
+			vite_server_port,
+			dev_mux_port,
+			dev_refresh_token,
+			generation: ManifestGenerationData::from_generation_metadata(live, static_metadata),
+		}
 	}
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ProdManifestInput {
+	pub(crate) retained_vite_manifest: RetainedViteManifest,
+	pub(crate) generation: ManifestGenerationData,
+}
+
+impl ProdManifestInput {
+	pub(crate) fn from_generation_metadata(
+		retained_vite_manifest: RetainedViteManifest,
+		live: &LiveMetadata,
+		static_metadata: &StaticMetadata,
+	) -> Self {
+		Self {
+			retained_vite_manifest,
+			generation: ManifestGenerationData::from_generation_metadata(live, static_metadata),
+		}
+	}
+}
+
+pub(crate) fn write_dev_manifest(
+	cfg: &VormaCfg<'_>,
+	input: &DevManifestInput,
+) -> Result<Manifest, String> {
+	let manifest = prepare_dev_manifest(cfg, input)?;
+	write_json_to_file(&manifest, cfg.manifest_json_out(true))
+		.map_err(|err| format!("error writing vorma manifest json: {err}"))?;
 	Ok(manifest)
 }
 
-pub(crate) fn prepare_manifest(
+pub(crate) fn write_prod_manifest(
 	cfg: &VormaCfg<'_>,
-	input: &ManifestInput,
+	input: &ProdManifestInput,
 ) -> Result<Manifest, String> {
-	if input.is_dev && input.vite_server_port <= 0 {
+	let manifest = prepare_prod_manifest(cfg, input)?;
+	write_json_to_file(&manifest, cfg.manifest_json_out(false))
+		.map_err(|err| format!("error writing vorma manifest json: {err}"))?;
+	Ok(manifest)
+}
+
+pub(crate) fn prepare_dev_manifest(
+	cfg: &VormaCfg<'_>,
+	input: &DevManifestInput,
+) -> Result<Manifest, String> {
+	if input.vite_server_port <= 0 {
 		return Err("dev manifest requires Vite server port".to_owned());
 	}
 
 	let mut ts_views = BTreeMap::new();
+	let to_url = |p: &str| -> String {
+		format!(
+			"http://{}:{}/{}",
+			DEV_LOOPBACK_HOST,
+			input.vite_server_port,
+			Path::new(p).to_slash_lossy()
+		)
+	};
 
-	let (ts_entry_cm, client_core_assets) = if input.is_dev {
-		let to_url = |p: &str| -> String {
+	let ts_entry_rel = relative_path(cfg.js_package_manager_dir(), cfg.ts_entry())
+		.ok_or_else(|| "error getting relative path for TS entry".to_owned())?;
+	let ts_entry_cm = ClientModule {
+		url: to_url(&ts_entry_rel.to_string_lossy()),
+		dep_urls: Vec::new(),
+		css_bundle_urls: Vec::new(),
+	};
+
+	for (pattern, r) in &input.generation.ts_modules {
+		let ip_rel = relative_path(
+			cfg.js_package_manager_dir(),
+			cfg.root_path_string(&r.import_path),
+		)
+		.ok_or_else(|| {
 			format!(
-				"http://{}:{}/{}",
-				DEV_LOOPBACK_HOST,
-				input.vite_server_port,
-				Path::new(p).to_slash_lossy()
+				"error getting relative path for TS view (pattern: {}, import path: {})",
+				pattern, r.import_path,
 			)
-		};
-
-		let ts_entry_rel = relative_path(cfg.js_package_manager_dir(), cfg.ts_entry())
-			.ok_or_else(|| "error getting relative path for TS entry".to_owned())?;
-		let ts_entry_cm = ClientModule {
-			url: to_url(&ts_entry_rel.to_string_lossy()),
-			dep_urls: Vec::new(),
-			css_bundle_urls: Vec::new(),
-		};
-
-		for (pattern, r) in &input.ts_modules {
-			let ip_rel = relative_path(
-				cfg.js_package_manager_dir(),
-				cfg.root_path_string(&r.import_path),
-			)
-			.ok_or_else(|| {
-				format!(
-					"error getting relative path for TS view (pattern: {}, import path: {})",
-					pattern, r.import_path,
-				)
-			})?;
-			ts_views.insert(
-				pattern.clone(),
-				ClientModule {
-					url: to_url(&ip_rel.to_string_lossy()),
-					dep_urls: Vec::new(),
-					css_bundle_urls: Vec::new(),
-				},
-			);
-		}
-
-		(ts_entry_cm, None)
-	} else {
-		let vite_manifest = ViteManifest::read(cfg.prod_tmp_vite_manifest_out())
-			.map_err(|err| format!("error reading Vite manifest: {err}"))?;
-
-		let client_core_assets = cfg
-			.to_client_core_assets(&vite_manifest)
-			.map_err(|err| format!("error processing Vorma client core assets: {err}"))?;
-
-		let ts_entry_src = cfg.ts_entry();
-		let ts_entry_cm = cfg
-			.to_client_module(&vite_manifest, &ts_entry_src)
-			.map_err(|err| format!("error processing TS entry module for manifest: {err}"))?;
-
-		for (pattern, r) in &input.ts_modules {
-			ts_views.insert(
-				pattern.clone(),
-				cfg.to_client_module(&vite_manifest, &r.import_path)
-					.map_err(|err| {
-						format!(
-							"error processing TS view module for manifest (pattern: {}, import path: {}): {}",
-							pattern, r.import_path, err,
-						)
-					})?,
-			);
-		}
-
-		(ts_entry_cm, Some(client_core_assets))
-	};
-
-	let public_filepaths = collect_public_filepaths(cfg)?;
-	let vorma_version = VORMA_PACKAGE_VERSION.to_owned();
-
-	let mut manifest = Manifest {
-		vorma_version,
-		public_static_base_path: cfg.public_static_base_path(),
-		api_mount_root: cfg.api_mount_root(),
-		ui_variant: cfg.ui_variant(),
-		root_document_shell_hash: root_document_shell_hash(&input.root_document_hash_source),
-		public_filepaths,
-		public_filemap: input.pub_fm.clone(),
-		critical_css: input.critical_css.clone(),
-		search_schemas: input.search_schemas.clone(),
-		client_entry: ts_entry_cm,
-		client_core_assets,
-		client_views: ts_views,
-		..Manifest::default()
-	};
-
-	if input.is_dev {
-		manifest.dev_vite_server_port = input.vite_server_port;
-		manifest.dev_mux_port = input.dev_mux_port;
-		manifest.dev_refresh_token = input.dev_refresh_token.clone();
+		})?;
+		ts_views.insert(
+			pattern.clone(),
+			ClientModule {
+				url: to_url(&ip_rel.to_string_lossy()),
+				dep_urls: Vec::new(),
+				css_bundle_urls: Vec::new(),
+			},
+		);
 	}
 
-	validate_manifest_public_file_outputs(input.is_dev, &manifest)?;
+	let mut manifest =
+		prepare_manifest_from_client_modules(cfg, &input.generation, ts_entry_cm, None, ts_views)?;
+	manifest.dev_vite_server_port = input.vite_server_port;
+	manifest.dev_mux_port = input.dev_mux_port;
+	manifest.dev_refresh_token = input.dev_refresh_token.clone();
+
+	validate_dev_manifest_public_file_outputs(&manifest)?;
 
 	Ok(manifest)
 }
 
-impl VormaCfg<'_> {
-	pub(crate) fn to_client_module(
-		&self,
-		manifest: &ViteManifest,
-		import_path: &str,
-	) -> Result<ClientModule, String> {
-		let base = self.public_static_base_path();
+pub(crate) fn prepare_prod_manifest(
+	cfg: &VormaCfg<'_>,
+	input: &ProdManifestInput,
+) -> Result<Manifest, String> {
+	let vite_manifest = ViteManifest::read(input.retained_vite_manifest.path())
+		.map_err(|err| format!("error reading Vite manifest: {err}"))?;
 
-		let import_path = relative_path(
-			self.js_package_manager_dir(),
-			self.root_path_string(import_path),
-		)
-		.ok_or_else(|| "error getting relative import path".to_owned())?
-		.to_slash_lossy()
-		.into_owned();
+	let client_core_assets = cfg
+		.to_client_core_assets(&vite_manifest)
+		.map_err(|err| format!("error processing Vorma client core assets: {err}"))?;
 
-		let Some(own_chunk) = manifest.get(&import_path) else {
-			return Err(format!(
-				"error finding module in Vite manifest: {import_path}"
-			));
-		};
-		let own_file = vite_public_url(&base, &own_chunk.file, "module file")?;
+	let ts_entry_src = cfg.ts_entry();
+	let ts_entry_cm = cfg
+		.to_client_module(&vite_manifest, &ts_entry_src)
+		.map_err(|err| format!("error processing TS entry module for manifest: {err}"))?;
 
-		let deps_res = manifest.find_all_deps(&import_path)?;
-		let mod_urls = deps_res
-			.modules
-			.into_iter()
-			.map(|m| vite_public_url(&base, &m, "dependency module file"))
-			.collect::<Result<Vec<_>, _>>()?;
-		let css_bundle_urls = deps_res
-			.css_bundles
-			.into_iter()
-			.map(|m| vite_public_url(&base, &m, "CSS bundle file"))
-			.collect::<Result<Vec<_>, _>>()?;
-
-		Ok(ClientModule {
-			url: own_file,
-			dep_urls: mod_urls,
-			css_bundle_urls,
-		})
+	let mut ts_views = BTreeMap::new();
+	for (pattern, r) in &input.generation.ts_modules {
+		ts_views.insert(
+			pattern.clone(),
+			cfg.to_client_module(&vite_manifest, &r.import_path)
+				.map_err(|err| {
+					format!(
+						"error processing TS view module for manifest (pattern: {}, import path: {}): {}",
+						pattern, r.import_path, err,
+					)
+				})?,
+		);
 	}
 
-	pub(crate) fn to_client_core_assets(
-		&self,
-		manifest: &ViteManifest,
-	) -> Result<ClientCoreAssets, String> {
-		let base = self.public_static_base_path();
-		let mut wasm_file = String::new();
-		for (key, chunk) in manifest.iter() {
-			let src = if chunk.src.is_empty() {
-				key.as_str()
-			} else {
-				chunk.src.as_str()
-			};
-			if slash_basename(src) != CLIENT_CORE_WASM_SOURCE_FILENAME {
-				continue;
-			}
-			wasm_file =
-				validate_vite_output_path(&chunk.file, "Vorma client WASM file")?.to_owned();
-			break;
-		}
-		if wasm_file.is_empty() {
-			return Err("Vite manifest does not contain Vorma client WASM asset".to_owned());
-		}
+	let manifest = prepare_manifest_from_client_modules(
+		cfg,
+		&input.generation,
+		ts_entry_cm,
+		Some(client_core_assets),
+		ts_views,
+	)?;
 
-		for chunk in manifest.values() {
-			if !chunk.assets.iter().any(|asset| asset == &wasm_file) {
-				continue;
-			}
-			return Ok(ClientCoreAssets {
-				module_url: vite_public_url(&base, &chunk.file, "Vorma client module file")?,
-				wasm_url: vite_public_url(&base, &wasm_file, "Vorma client WASM file")?,
-			});
-		}
-		Err("Vite manifest does not contain Vorma client WASM wrapper module".to_owned())
-	}
+	validate_prod_manifest_public_file_outputs(&manifest)?;
+
+	Ok(manifest)
 }
 
-fn vite_public_url(base: &str, path: &str, label: &str) -> Result<String, String> {
-	Ok(format!("{base}{}", validate_vite_output_path(path, label)?))
-}
+fn prepare_manifest_from_client_modules(
+	cfg: &VormaCfg<'_>,
+	generation: &ManifestGenerationData,
+	client_entry: ClientModule,
+	client_core_assets: Option<ClientCoreAssets>,
+	client_views: BTreeMap<String, ClientModule>,
+) -> Result<Manifest, String> {
+	let public_filepaths = collect_public_filepaths(cfg)?;
+	let vorma_version = VORMA_PACKAGE_VERSION.to_owned();
 
-fn validate_vite_output_path<'a>(path: &'a str, label: &str) -> Result<&'a str, String> {
-	if path.is_empty() {
-		return Err(format!("Vite manifest {label} cannot be empty"));
-	}
-	if path.starts_with('/') {
-		return Err(format!(
-			"Vite manifest {label} must be a relative output path: {path:?}"
-		));
-	}
-	if path.contains('\\') {
-		return Err(format!(
-			"Vite manifest {label} must use slash separators: {path:?}"
-		));
-	}
-	if path
-		.split('/')
-		.any(|segment| segment.is_empty() || segment == "." || segment == "..")
-	{
-		return Err(format!(
-			"Vite manifest {label} contains an invalid path segment: {path:?}"
-		));
-	}
-	Ok(path)
-}
-
-fn collect_public_filepaths(cfg: &VormaCfg<'_>) -> Result<Vec<String>, String> {
-	let pub_out = cfg.pub_out();
-	let pub_out = Path::new(&pub_out);
-	let mut public_filepaths = Vec::new();
-
-	if !pub_out.exists() {
-		return Ok(public_filepaths);
-	}
-
-	for entry in WalkDir::new(pub_out) {
-		let entry = entry.map_err(|err| format!("error collecting public filepaths: {err}"))?;
-		if entry.file_type().is_dir() {
-			continue;
-		}
-		let rel = entry.path().strip_prefix(pub_out).map_err(|err| {
-			format!(
-				"error getting relative public filepath for {}: {err}",
-				entry.path().display()
-			)
-		})?;
-		if rel == Path::new(PROD_TMP_VITE_MANIFEST_FILENAME) {
-			continue;
-		}
-		public_filepaths.push(format!(
-			"{}{}",
-			cfg.public_static_base_path(),
-			rel.to_slash_lossy()
-		));
-	}
-
-	public_filepaths.sort();
-	Ok(public_filepaths)
-}
-
-fn validate_manifest_public_file_outputs(is_dev: bool, manifest: &Manifest) -> Result<(), String> {
-	let public_filepaths = manifest
-		.public_filepaths
-		.iter()
-		.map(String::as_str)
-		.collect::<std::collections::BTreeSet<_>>();
-
-	for url in manifest.public_filemap.values() {
-		if !public_filepaths.contains(url.as_str()) {
-			return Err(format!(
-				"manifest public filemap URL is not present in public output: {url}"
-			));
-		}
-	}
-
-	if is_dev {
-		return Ok(());
-	}
-	if manifest.client_core_assets.is_none() {
-		return Err("prod manifest missing Vorma client core assets".to_owned());
-	}
-
-	for url in manifest_client_asset_urls(manifest) {
-		if !public_filepaths.contains(url.as_str()) {
-			return Err(format!(
-				"manifest client asset URL is not present in public output: {url}"
-			));
-		}
-	}
-	Ok(())
-}
-
-fn manifest_client_asset_urls(manifest: &Manifest) -> Vec<&String> {
-	let mut urls = Vec::new();
-	push_client_module_urls(&mut urls, &manifest.client_entry);
-	if let Some(assets) = &manifest.client_core_assets {
-		urls.push(&assets.module_url);
-		urls.push(&assets.wasm_url);
-	}
-	for module in manifest.client_views.values() {
-		push_client_module_urls(&mut urls, module);
-	}
-	urls
-}
-
-fn push_client_module_urls<'a>(urls: &mut Vec<&'a String>, module: &'a ClientModule) {
-	urls.push(&module.url);
-	urls.extend(&module.dep_urls);
-	urls.extend(&module.css_bundle_urls);
+	Ok(Manifest {
+		vorma_version,
+		public_static_base_path: cfg.public_static_base_path(),
+		api_mount_root: cfg.api_mount_root(),
+		ui_variant: cfg.ui_variant(),
+		root_document_shell_hash: root_document_shell_hash(&generation.root_document_hash_source),
+		public_filepaths,
+		public_filemap: generation.pub_fm.clone(),
+		critical_css: generation.critical_css.clone(),
+		search_schemas: generation.search_schemas.clone(),
+		client_entry,
+		client_core_assets,
+		client_views,
+		..Manifest::default()
+	})
 }
 
 fn root_document_shell_hash(root_document_hash_source: &str) -> String {
 	blake3::hash(root_document_hash_source.trim().as_bytes())
 		.to_hex()
 		.to_string()
-}
-
-fn slash_basename(path: &str) -> &str {
-	path.rsplit('/').next().unwrap_or(path)
 }
 
 #[cfg(test)]
@@ -387,8 +253,31 @@ mod tests {
 	use vorma::{FrontendConfig, PathConfig, ServerConfig};
 
 	use crate::config::to_cfg;
+	use crate::manifest::vite_projection::CLIENT_CORE_WASM_SOURCE_FILENAME;
 	use crate::viteutil::ViteManifestChunk;
 	use vorma::Document;
+
+	fn dev_manifest_input(vite_server_port: i32) -> DevManifestInput {
+		DevManifestInput {
+			vite_server_port,
+			dev_mux_port: 3000,
+			dev_refresh_token: "refresh".to_owned(),
+			generation: ManifestGenerationData {
+				root_document_hash_source: "<html></html>".to_owned(),
+				..ManifestGenerationData::default()
+			},
+		}
+	}
+
+	fn prod_manifest_input(retained_vite_manifest: RetainedViteManifest) -> ProdManifestInput {
+		ProdManifestInput {
+			retained_vite_manifest,
+			generation: ManifestGenerationData {
+				root_document_hash_source: "<html></html>".to_owned(),
+				..ManifestGenerationData::default()
+			},
+		}
+	}
 
 	#[test]
 	fn to_client_module_translates_vite_manifest_deps_to_public_urls() {
@@ -585,26 +474,27 @@ mod tests {
 			..Config::default()
 		};
 		let cfg = to_cfg(&config).unwrap();
-		let input = ManifestInput {
-			is_dev: true,
+		let input = DevManifestInput {
 			vite_server_port: 5173,
 			dev_mux_port: 3000,
 			dev_refresh_token: "refresh".to_owned(),
-			root_document_hash_source: "\n<html></html>\n".to_owned(),
-			ts_modules: BTreeMap::from([(
-				"/item/:id".to_owned(),
-				TsViewModule {
-					pattern: "/item/:id".to_owned(),
-					import_path: "src/item.tsx".to_owned(),
-					deps: Vec::new(),
-				},
-			)]),
-			pub_fm: BTreeMap::from([("z.js".to_owned(), "/static/z.js".to_owned())]),
-			critical_css: "body{}".to_owned(),
-			search_schemas: BTreeMap::new(),
+			generation: ManifestGenerationData {
+				root_document_hash_source: "\n<html></html>\n".to_owned(),
+				ts_modules: BTreeMap::from([(
+					"/item/:id".to_owned(),
+					TsViewModule {
+						pattern: "/item/:id".to_owned(),
+						import_path: "src/item.tsx".to_owned(),
+						deps: Vec::new(),
+					},
+				)]),
+				pub_fm: BTreeMap::from([("z.js".to_owned(), "/static/z.js".to_owned())]),
+				critical_css: "body{}".to_owned(),
+				search_schemas: BTreeMap::new(),
+			},
 		};
 
-		let manifest = write_manifest(&cfg, &input).unwrap();
+		let manifest = write_dev_manifest(&cfg, &input).unwrap();
 
 		assert_eq!(
 			manifest.public_filepaths,
@@ -631,7 +521,7 @@ mod tests {
 	}
 
 	#[test]
-	fn prepare_manifest_rejects_dev_manifest_without_vite_port() {
+	fn prepare_dev_manifest_rejects_missing_vite_port() {
 		let dir = temp_dir("dev-manifest-without-vite-port");
 		fs::create_dir_all(dir.join(".vorma/static/public")).unwrap();
 		let config = Config {
@@ -652,17 +542,10 @@ mod tests {
 			..Config::default()
 		};
 		let cfg = to_cfg(&config).unwrap();
-		let input = ManifestInput {
-			is_dev: true,
-			vite_server_port: 0,
-			dev_mux_port: 3000,
-			dev_refresh_token: "refresh".to_owned(),
-			root_document_hash_source: "<html></html>".to_owned(),
-			..ManifestInput::default()
-		};
+		let input = dev_manifest_input(0);
 
 		assert_eq!(
-			prepare_manifest(&cfg, &input).unwrap_err(),
+			prepare_dev_manifest(&cfg, &input).unwrap_err(),
 			"dev manifest requires Vite server port"
 		);
 		assert!(!Path::new(&cfg.manifest_json_out(true)).exists());
@@ -687,24 +570,17 @@ mod tests {
 	fn write_manifest_uses_crate_package_version() {
 		let config = config(".");
 		let cfg = to_cfg(&config).unwrap();
-		let input = ManifestInput {
-			is_dev: true,
-			vite_server_port: 3000,
-			dev_mux_port: 3001,
-			dev_refresh_token: "refresh".to_owned(),
-			root_document_hash_source: "<html></html>".to_owned(),
-			..ManifestInput::default()
-		};
+		let input = dev_manifest_input(3000);
 
 		assert_eq!(
-			prepare_manifest(&cfg, &input).unwrap().vorma_version,
+			prepare_dev_manifest(&cfg, &input).unwrap().vorma_version,
 			VORMA_PACKAGE_VERSION
 		);
 	}
 
 	#[test]
-	fn prepare_manifest_prod_reads_vite_manifest_without_removing_tmp() {
-		let dir = temp_dir("prepare-manifest-prod-no-cleanup");
+	fn prepare_prod_manifest_reads_retained_vite_manifest() {
+		let dir = temp_dir("prepare-manifest-prod-retained-vite-manifest");
 		let public_dir = dir.join(".vorma/static/public");
 		fs::create_dir_all(public_dir.join("assets")).unwrap();
 		fs::write(public_dir.join("assets/entry.js"), "entry").unwrap();
@@ -736,26 +612,18 @@ mod tests {
 		)]);
 		insert_vorma_client_core_chunks(&mut vite_manifest);
 		let vite_manifest = ViteManifest::from(vite_manifest);
-		fs::write(
-			cfg.prod_tmp_vite_manifest_out(),
-			serde_json::to_vec(&vite_manifest).unwrap(),
-		)
-		.unwrap();
-		let input = ManifestInput {
-			is_dev: false,
-			root_document_hash_source: "<html></html>".to_owned(),
-			..ManifestInput::default()
-		};
+		let prod_vite_manifest = write_vite_manifest(&cfg, &vite_manifest);
+		let input = prod_manifest_input(prod_vite_manifest);
 
-		let manifest = prepare_manifest(&cfg, &input).unwrap();
+		let manifest = prepare_prod_manifest(&cfg, &input).unwrap();
 
 		assert_eq!(manifest.client_entry.url, "/static/assets/entry.js");
-		assert!(Path::new(&cfg.prod_tmp_vite_manifest_out()).exists());
+		assert!(cfg.build_layout().prod_vite_manifest_out().exists());
 		fs::remove_dir_all(dir).unwrap();
 	}
 
 	#[test]
-	fn write_manifest_prod_reads_vite_manifest_removes_tmp_and_writes_client_assets() {
+	fn write_manifest_prod_reads_retained_vite_manifest_and_writes_client_assets() {
 		let dir = temp_dir("write-manifest-prod");
 		let public_dir = dir.join(".vorma/static/public");
 		fs::create_dir_all(public_dir.join("assets")).unwrap();
@@ -825,33 +693,33 @@ mod tests {
 				},
 			),
 		]));
-		fs::write(
-			cfg.prod_tmp_vite_manifest_out(),
-			serde_json::to_vec(&vite_manifest).unwrap(),
-		)
-		.unwrap();
+		let prod_vite_manifest = write_vite_manifest(&cfg, &vite_manifest);
+		let tmp_vite_manifest_out = cfg.prod_tmp_vite_manifest_out();
+		fs::create_dir_all(Path::new(&tmp_vite_manifest_out).parent().unwrap()).unwrap();
+		fs::write(&tmp_vite_manifest_out, "{}").unwrap();
 
-		let input = ManifestInput {
-			is_dev: false,
-			root_document_hash_source: "<html></html>".to_owned(),
-			ts_modules: BTreeMap::from([(
-				"/item/:id".to_owned(),
-				TsViewModule {
-					pattern: "/item/:id".to_owned(),
-					import_path: "src/item.tsx".to_owned(),
-					deps: Vec::new(),
-				},
-			)]),
-			pub_fm: BTreeMap::from([(
-				"assets/entry.js".to_owned(),
-				"/static/assets/entry.js".to_owned(),
-			)]),
-			critical_css: "body{}".to_owned(),
-			search_schemas: BTreeMap::new(),
-			..ManifestInput::default()
+		let input = ProdManifestInput {
+			retained_vite_manifest: prod_vite_manifest,
+			generation: ManifestGenerationData {
+				root_document_hash_source: "<html></html>".to_owned(),
+				ts_modules: BTreeMap::from([(
+					"/item/:id".to_owned(),
+					TsViewModule {
+						pattern: "/item/:id".to_owned(),
+						import_path: "src/item.tsx".to_owned(),
+						deps: Vec::new(),
+					},
+				)]),
+				pub_fm: BTreeMap::from([(
+					"assets/entry.js".to_owned(),
+					"/static/assets/entry.js".to_owned(),
+				)]),
+				critical_css: "body{}".to_owned(),
+				search_schemas: BTreeMap::new(),
+			},
 		};
 
-		let manifest = write_manifest(&cfg, &input).unwrap();
+		let manifest = write_prod_manifest(&cfg, &input).unwrap();
 
 		assert_eq!(manifest.client_entry.url, "/static/assets/entry.js");
 		assert_eq!(
@@ -870,7 +738,8 @@ mod tests {
 			manifest.client_core_assets.unwrap().module_url,
 			"/static/assets/wasm-wrapper.js"
 		);
-		assert!(!Path::new(&cfg.prod_tmp_vite_manifest_out()).exists());
+		assert!(cfg.build_layout().prod_vite_manifest_out().exists());
+		assert!(Path::new(&tmp_vite_manifest_out).exists());
 		assert!(
 			!manifest
 				.public_filepaths
@@ -904,15 +773,21 @@ mod tests {
 			..Config::default()
 		};
 		let cfg = to_cfg(&config).unwrap();
-		let input = ManifestInput {
-			is_dev: true,
+		let input = DevManifestInput {
 			vite_server_port: 5173,
-			root_document_hash_source: "<html></html>".to_owned(),
-			pub_fm: BTreeMap::from([("missing.svg".to_owned(), "/static/missing.svg".to_owned())]),
-			..ManifestInput::default()
+			dev_mux_port: 3000,
+			dev_refresh_token: "refresh".to_owned(),
+			generation: ManifestGenerationData {
+				root_document_hash_source: "<html></html>".to_owned(),
+				pub_fm: BTreeMap::from([(
+					"missing.svg".to_owned(),
+					"/static/missing.svg".to_owned(),
+				)]),
+				..ManifestGenerationData::default()
+			},
 		};
 
-		let error = write_manifest(&cfg, &input).unwrap_err();
+		let error = write_dev_manifest(&cfg, &input).unwrap_err();
 
 		assert_eq!(
 			error,
@@ -953,18 +828,10 @@ mod tests {
 		)]);
 		insert_vorma_client_core_chunks(&mut vite_manifest);
 		let vite_manifest = ViteManifest::from(vite_manifest);
-		fs::write(
-			cfg.prod_tmp_vite_manifest_out(),
-			serde_json::to_vec(&vite_manifest).unwrap(),
-		)
-		.unwrap();
-		let input = ManifestInput {
-			is_dev: false,
-			root_document_hash_source: "<html></html>".to_owned(),
-			..ManifestInput::default()
-		};
+		let prod_vite_manifest = write_vite_manifest(&cfg, &vite_manifest);
+		let input = prod_manifest_input(prod_vite_manifest);
 
-		let error = write_manifest(&cfg, &input).unwrap_err();
+		let error = write_prod_manifest(&cfg, &input).unwrap_err();
 
 		assert_eq!(
 			error,
@@ -974,7 +841,7 @@ mod tests {
 	}
 
 	#[test]
-	fn write_manifest_prod_keeps_tmp_vite_manifest_when_final_manifest_write_fails() {
+	fn write_manifest_prod_keeps_retained_vite_manifest_when_final_manifest_write_fails() {
 		let dir = temp_dir("write-manifest-prod-write-fails");
 		let public_dir = dir.join(".vorma/static/public");
 		fs::create_dir_all(public_dir.join("assets")).unwrap();
@@ -1007,22 +874,14 @@ mod tests {
 		)]);
 		insert_vorma_client_core_chunks(&mut vite_manifest);
 		let vite_manifest = ViteManifest::from(vite_manifest);
-		fs::write(
-			cfg.prod_tmp_vite_manifest_out(),
-			serde_json::to_vec(&vite_manifest).unwrap(),
-		)
-		.unwrap();
+		let prod_vite_manifest = write_vite_manifest(&cfg, &vite_manifest);
 		fs::create_dir_all(cfg.manifest_json_out(false)).unwrap();
-		let input = ManifestInput {
-			is_dev: false,
-			root_document_hash_source: "<html></html>".to_owned(),
-			..ManifestInput::default()
-		};
+		let input = prod_manifest_input(prod_vite_manifest);
 
-		let error = write_manifest(&cfg, &input).unwrap_err();
+		let error = write_prod_manifest(&cfg, &input).unwrap_err();
 
 		assert!(error.contains("error writing vorma manifest json"));
-		assert!(Path::new(&cfg.prod_tmp_vite_manifest_out()).exists());
+		assert!(cfg.build_layout().prod_vite_manifest_out().exists());
 		fs::remove_dir_all(dir).unwrap();
 	}
 
@@ -1074,6 +933,13 @@ mod tests {
 		fs::create_dir_all(public_dir.join("assets")).unwrap();
 		fs::write(public_dir.join("assets/wasm-wrapper.js"), "wrapper").unwrap();
 		fs::write(public_dir.join("assets/vorma_client_wasm_bg.wasm"), "wasm").unwrap();
+	}
+
+	fn write_vite_manifest(cfg: &VormaCfg<'_>, manifest: &ViteManifest) -> RetainedViteManifest {
+		let out = cfg.build_layout().prod_vite_manifest_out();
+		fs::create_dir_all(out.parent().unwrap()).unwrap();
+		fs::write(&out, serde_json::to_vec(manifest).unwrap()).unwrap();
+		RetainedViteManifest::new(out)
 	}
 
 	fn temp_dir(name: &str) -> PathBuf {

@@ -1,23 +1,23 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::io;
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, Output};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::io::{AsyncRead, AsyncReadExt};
 use vorma::__private::Config;
 use vorma::__private::core::Contract;
 use vorma::__private::core::contract_for;
 use vorma::{DocumentBuildCtx, DocumentBuilder, Resources, Views};
 
 use crate::build_cancel::BuildCancel;
+use crate::command_runner::{
+	CommandRunError, CommandStderr, run_command_collecting_output_preserving_env,
+};
 use crate::config::{VormaCfg, to_cfg};
 use crate::constants::LIVE_STATE_MODE_ENV_KEY;
-use crate::process_wait::{ChildWaitError, current_thread_runtime, wait_child_or_cancel};
-use crate::supervisor::{clear_vorma_runtime_env, prepare_child_process};
+use crate::supervisor::clear_vorma_runtime_env;
 use crate::ts_gen::{LiveTsResult, to_live_ts_result};
 use crate::ts_modules::TsViewModule;
 use crate::ts_modules::get_dev_view_modules_from_contract;
@@ -72,93 +72,24 @@ pub(crate) fn read_live_state_from_build_entry_executable(
 	command
 		.current_dir(root_dir)
 		.env(ENV_KEY_IS_BUILD, "1")
-		.env(LIVE_STATE_MODE_ENV_KEY, "1")
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped());
-	prepare_child_process(&mut command);
-	let runtime = current_thread_runtime().map_err(|source| LiveStateError::CommandWait {
-		program: program.clone(),
-		source,
-	})?;
-	let output = runtime.block_on(async {
-		let mut command = tokio::process::Command::from(command);
-		let mut child = command
-			.spawn()
-			.map_err(|source| LiveStateError::CommandStart {
-				program: program.clone(),
-				source,
-			})?;
-		let stdout = child
-			.stdout
-			.take()
-			.ok_or_else(|| LiveStateError::CommandWait {
-				program: program.clone(),
-				source: io::Error::other("missing builder entry stdout pipe"),
-			})?;
-		let stderr = child
-			.stderr
-			.take()
-			.ok_or_else(|| LiveStateError::CommandWait {
-				program: program.clone(),
-				source: io::Error::other("missing builder entry stderr pipe"),
-			})?;
-		let stdout_thread = tokio::spawn(read_pipe(stdout));
-		let stderr_thread = tokio::spawn(read_pipe(stderr));
-		let status = match wait_child_or_cancel(&mut child, build_cancel).await {
-			Ok(status) => status,
-			Err(ChildWaitError::Cancelled) => {
-				let _ = join_live_state_pipe(stdout_thread, &program).await;
-				let _ = join_live_state_pipe(stderr_thread, &program).await;
-				return Err(LiveStateError::Cancelled {
-					program: program.clone(),
-				});
-			}
-			Err(ChildWaitError::Wait(source)) => {
-				return Err(LiveStateError::CommandWait {
-					program: program.clone(),
-					source,
-				});
-			}
-		};
-		let stdout = join_live_state_pipe(stdout_thread, &program).await?;
-		let stderr = join_live_state_pipe(stderr_thread, &program).await?;
-		Ok(Output {
-			status,
-			stdout,
-			stderr,
-		})
-	})?;
-
-	if !output.status.success() {
-		return Err(LiveStateError::CommandFailed { program, output });
-	}
-
+		.env(LIVE_STATE_MODE_ENV_KEY, "1");
+	let output =
+		run_command_collecting_output_preserving_env(command, build_cancel, CommandStderr::Collect)
+			.map_err(|err| live_state_error_from_command_error(program.clone(), err))?;
 	parse_live_state(&output.stdout)
 }
 
-async fn read_pipe<R>(mut reader: R) -> io::Result<Vec<u8>>
-where
-	R: AsyncRead + Send + Unpin + 'static,
-{
-	let mut output = Vec::new();
-	reader.read_to_end(&mut output).await?;
-	Ok(output)
-}
-
-async fn join_live_state_pipe(
-	join_handle: tokio::task::JoinHandle<io::Result<Vec<u8>>>,
-	program: &str,
-) -> Result<Vec<u8>, LiveStateError> {
-	join_handle
-		.await
-		.map_err(|_| LiveStateError::CommandWait {
-			program: program.to_owned(),
-			source: io::Error::other("builder entry pipe reader panicked"),
-		})?
-		.map_err(|source| LiveStateError::CommandWait {
-			program: program.to_owned(),
-			source,
-		})
+fn live_state_error_from_command_error(program: String, error: CommandRunError) -> LiveStateError {
+	match error {
+		CommandRunError::CommandStart { source } => {
+			LiveStateError::CommandStart { program, source }
+		}
+		CommandRunError::CommandWait { source } => LiveStateError::CommandWait { program, source },
+		CommandRunError::CommandFailed { output } => {
+			LiveStateError::CommandFailed { program, output }
+		}
+		CommandRunError::Cancelled => LiveStateError::Cancelled { program },
+	}
 }
 
 pub(crate) fn parse_live_state(bytes: &[u8]) -> Result<LiveState, LiveStateError> {
@@ -433,6 +364,12 @@ mod tests {
 		std::fs::write(
             &path,
             r#"#!/bin/sh
+if [ "$__VORMA_IS_BUILD" != "1" ] || [ "$__VORMA_LIVE_STATE_MODE" != "1" ]; then
+    cat <<'JSON'
+{"error":"missing live state env"}
+JSON
+    exit 0
+fi
 i=0
 while [ "$i" -lt 20000 ]; do
     printf 'stderr-line-%05d\n' "$i" >&2

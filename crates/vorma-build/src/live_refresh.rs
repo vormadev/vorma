@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::thread;
 
 use vorma::__private::Config;
 
 use crate::build_cancel::BuildCancel;
-use crate::config::{CargoBinTarget, VormaCfg};
+use crate::cargo_target::CargoBinTarget;
+use crate::config::VormaCfg;
 use crate::generation::{BuildArtifactMode, BuildArtifacts, LiveMetadata};
 use crate::live_state::{
 	LiveState, read_live_state_from_build_entry_executable, validate_live_state_protocol,
@@ -19,6 +21,23 @@ pub(crate) struct PreparedLiveGeneration {
 	pub(crate) live: LiveMetadata,
 	pub(crate) artifacts: BuildArtifacts,
 }
+
+#[derive(Clone, Debug)]
+struct ParallelBuildEntryLiveStateRead {
+	root_dir: String,
+	build_cancel: Arc<BuildCancel>,
+	thread: SharedBuildEntryLiveStateReadThread,
+}
+
+#[derive(Debug)]
+struct BuildEntryLiveStateReadOutput {
+	build_entry_executable: PathBuf,
+	live_state: LiveState,
+}
+
+type BuildEntryLiveStateReadThread =
+	thread::JoinHandle<Result<BuildEntryLiveStateReadOutput, String>>;
+type SharedBuildEntryLiveStateReadThread = Arc<Mutex<Option<BuildEntryLiveStateReadThread>>>;
 
 impl PreparedLiveGeneration {
 	pub(crate) fn from_prod(build_entry_executable: PathBuf, live_state: LiveState) -> Self {
@@ -82,60 +101,83 @@ pub(crate) fn prepare_dev_live_generation(
 	build_entry: &CargoBinTarget,
 	build_cancel: &Arc<BuildCancel>,
 ) -> Result<PreparedLiveGeneration, String> {
-	let root_dir = cfg.root_dir();
-	let live_state_handle = Arc::new(Mutex::new(None));
-	let live_state_handle_for_callback = Arc::clone(&live_state_handle);
-	let build_cancel_for_live_state = Arc::clone(build_cancel);
-	let root_dir_for_live_state = root_dir.clone();
+	let live_state_read =
+		ParallelBuildEntryLiveStateRead::new(cfg.root_dir(), Arc::clone(build_cancel));
+	let live_state_read_for_callback = live_state_read.clone();
 	let artifacts = match compile_dev_targets_with_build_entry_ready(
 		cfg,
 		build_entry,
 		build_cancel,
 		move |build_entry_executable| {
-			let root_dir = root_dir_for_live_state;
-			let build_cancel = build_cancel_for_live_state;
-			let executable_for_result = build_entry_executable.clone();
-			let handle = std::thread::spawn(move || {
-				let live_state = read_live_state_from_build_entry_executable(
-					&build_entry_executable,
-					&root_dir,
-					&build_cancel,
-				)
-				.map_err(|err| err.to_string())?;
-				Ok::<_, String>((executable_for_result, live_state))
-			});
-			*live_state_handle_for_callback
-				.lock()
-				.expect("live state handle lock poisoned") = Some(handle);
+			live_state_read_for_callback.start_after_build_entry_ready(build_entry_executable);
 		},
 	) {
 		Ok(artifacts) => artifacts,
 		Err(err) => {
-			if let Some(handle) = live_state_handle
-				.lock()
-				.expect("live state handle lock poisoned")
-				.take()
-			{
-				let _ = handle.join();
-			}
+			live_state_read.discard_after_cargo_error();
 			return Err(err.to_string());
 		}
 	};
-	let live_state_handle = live_state_handle
-		.lock()
-		.expect("live state handle lock poisoned")
-		.take()
-		.ok_or_else(|| "Cargo did not report the build entry executable".to_owned())?;
-	let (build_entry_executable, live_state) = live_state_handle
-		.join()
-		.map_err(|_| "live state thread panicked".to_owned())??;
-	validate_live_state_protocol(&live_state)
+	let live_state_read = live_state_read.finish_after_app_server_build()?;
+	validate_live_state_protocol(&live_state_read.live_state)
 		.map_err(|err| format!("invalid live state from dev build: {err}"))?;
 	Ok(PreparedLiveGeneration::from_dev(
-		build_entry_executable,
+		live_state_read.build_entry_executable,
 		artifacts,
-		live_state,
+		live_state_read.live_state,
 	))
+}
+
+impl ParallelBuildEntryLiveStateRead {
+	fn new(root_dir: String, build_cancel: Arc<BuildCancel>) -> Self {
+		Self {
+			root_dir,
+			build_cancel,
+			thread: Arc::new(Mutex::new(None)),
+		}
+	}
+
+	fn start_after_build_entry_ready(&self, build_entry_executable: PathBuf) {
+		let root_dir = self.root_dir.clone();
+		let build_cancel = Arc::clone(&self.build_cancel);
+		let executable_for_result = build_entry_executable.clone();
+		let thread = thread::spawn(move || {
+			let live_state = read_live_state_from_build_entry_executable(
+				&build_entry_executable,
+				&root_dir,
+				&build_cancel,
+			)
+			.map_err(|err| err.to_string())?;
+			Ok(BuildEntryLiveStateReadOutput {
+				build_entry_executable: executable_for_result,
+				live_state,
+			})
+		});
+		*self.thread.lock().expect("live state thread lock poisoned") = Some(thread);
+	}
+
+	fn discard_after_cargo_error(&self) {
+		if let Some(thread) = self
+			.thread
+			.lock()
+			.expect("live state thread lock poisoned")
+			.take()
+		{
+			let _ = thread.join();
+		}
+	}
+
+	fn finish_after_app_server_build(self) -> Result<BuildEntryLiveStateReadOutput, String> {
+		let thread = self
+			.thread
+			.lock()
+			.expect("live state thread lock poisoned")
+			.take()
+			.ok_or_else(|| "Cargo did not report the build entry executable".to_owned())?;
+		thread
+			.join()
+			.map_err(|_| "live state thread panicked".to_owned())?
+	}
 }
 
 #[cfg(test)]

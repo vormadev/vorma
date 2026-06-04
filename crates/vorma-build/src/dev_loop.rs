@@ -1,17 +1,10 @@
-use std::fs;
 use std::sync::mpsc::TryRecvError;
 
-use paranoid::local_lock::ProcessLock;
-use vorma::__private::Config;
-use vorma::__private::manifest::Manifest;
-
 use crate::browser_sync::ChangeType;
-use crate::config::to_cfg;
-use crate::generation::{CommittedGeneration, GenerationCandidate, StaticEffects};
-use crate::manifest::{ManifestInput, write_manifest};
+use crate::dev_lifecycle::DevLifecycle;
+use crate::generation::{GenerationCandidate, StaticEffects};
 use crate::session::BuildSession;
 use crate::signals::SignalThread;
-use crate::static_build::{StaticBuildInput, prepare_static_build, publish_static_outputs};
 use crate::work_queue::DevWork;
 
 pub(crate) fn run_dev_loop(
@@ -64,30 +57,20 @@ fn process_server_refresh(session: &mut BuildSession) -> Result<(), String> {
 	session
 		.runtime()
 		.broadcast_refresh(ChangeType::ShowRebuildingOverlay, "", "");
-	let stop_app_server = session.runtime_mut().begin_stop_app_server();
-	let prepared = prepare_stable_server_refresh_candidate(session);
-	session
-		.runtime_mut()
-		.finish_stop_app_server(stop_app_server, false);
-	match prepared {
+	match DevLifecycle::new(session).prepare_refresh_with_app_server_stopped() {
 		Ok(candidate) => {
-			let effects = candidate.static_effects.clone();
-			session.commit_generation(candidate);
-			let committed = session
-				.committed()
-				.cloned()
-				.ok_or_else(|| "committed generation not available".to_owned())?;
-			let manifest = crate::activation::activate_generation(
-				&committed,
-				crate::RunMode::Dev,
-				session.runtime_mut(),
-			)?
-			.ok_or_else(|| "dev activation returned cancelled production outcome".to_owned())?;
-			session.set_committed_manifest(manifest)?;
-			broadcast_static_effects(session.runtime(), &effects, committed.static_metadata());
+			let published = DevLifecycle::new(session)
+				.activate_generation(candidate)
+				.map_err(|err| err.to_string())?;
+			broadcast_static_effects(
+				session.runtime(),
+				&published.effects,
+				&published.static_metadata,
+			);
 			Ok(())
 		}
 		Err(err) => {
+			let err = err.to_string();
 			handle_build_error(session, "refresh", &err);
 			Ok(())
 		}
@@ -97,46 +80,9 @@ fn process_server_refresh(session: &mut BuildSession) -> Result<(), String> {
 pub(crate) fn prepare_stable_server_refresh_candidate(
 	session: &mut BuildSession,
 ) -> Result<GenerationCandidate, String> {
-	loop {
-		let bootstrap_config = session.bootstrap_config()?;
-		let candidate = crate::pipeline::prepare_generation_candidate(session)?;
-		if candidate.config == bootstrap_config {
-			return Ok(candidate);
-		}
-		apply_live_config_retry_transition(session, &bootstrap_config, &candidate.config)?;
-		session.set_bootstrap_config_override(candidate.config);
-	}
-}
-
-fn apply_live_config_retry_transition(
-	session: &mut BuildSession,
-	bootstrap_config: &Config,
-	next_config: &Config,
-) -> Result<(), String> {
-	let bootstrap_cfg = to_cfg(bootstrap_config)
-		.map_err(|err| format!("error converting bootstrap config: {err}"))?;
-	let next_cfg =
-		to_cfg(next_config).map_err(|err| format!("error converting live config: {err}"))?;
-	if bootstrap_cfg.dist_dir() != next_cfg.dist_dir() {
-		let mut next_dev_lock = ProcessLock::new(next_cfg.dev_lock_out());
-		next_dev_lock
-			.acquire()
-			.map_err(|err| format!("error acquiring dev lock: {err}"))?;
-		if let Some(mut old_dev_lock) = session.runtime_mut().replace_dev_lock(next_dev_lock) {
-			old_dev_lock
-				.release()
-				.map_err(|err| format!("error releasing old dev lock: {err}"))?;
-		}
-		match fs::remove_dir_all(bootstrap_cfg.vorma_out()) {
-			Ok(()) => {}
-			Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-			Err(err) => return Err(format!("failed to clean up old .vorma directory: {err}")),
-		}
-	}
-	session.runtime_mut().stop_vite_server(false);
-	session.runtime_mut().stop_watcher()?;
-	session.runtime().clear_dev_mux_generation();
-	Ok(())
+	DevLifecycle::new(session)
+		.prepare_refresh()
+		.map_err(|err| err.to_string())
 }
 
 fn process_static_build(
@@ -146,71 +92,21 @@ fn process_static_build(
 	session
 		.runtime()
 		.broadcast_refresh(ChangeType::ShowRebuildingOverlay, "", "");
-	let Some(committed) = session.committed().cloned() else {
-		handle_build_error(
-			session,
-			"static build",
-			"committed generation not available for static build",
-		);
-		return Ok(());
-	};
-	let build_cancel = session.runtime().build_cancel();
-	let prepared = match prepare_static_build(&StaticBuildInput {
-		config: committed.config(),
-		previous_static: Some(committed.static_metadata()),
-		build_cancel: build_cancel.clone(),
-		includes_client_revalidate,
-	}) {
-		Ok(prepared) => prepared,
-		Err(err) => {
-			handle_build_error(session, "static build", &err);
-			return Ok(());
-		}
-	};
-	let (static_metadata, effects) = match publish_static_outputs(
-		committed.config(),
-		committed.live(),
-		prepared,
-		&build_cancel,
-	) {
-		Ok(result) => result,
-		Err(err) => {
-			handle_build_error(session, "static build", &err);
-			return Ok(());
-		}
-	};
-	let committed = session
-		.committed_mut()
-		.ok_or_else(|| "committed generation not available".to_owned())?;
-	committed.replace_static_metadata(static_metadata);
-	let committed = committed.clone();
-	session.runtime_mut().restart_watcher(&committed)?;
-	let manifest = write_dev_manifest(&committed, session.runtime())?;
-	session.set_committed_manifest(manifest)?;
-	broadcast_static_effects(session.runtime(), &effects, committed.static_metadata());
+	let published =
+		match DevLifecycle::new(session).publish_static_update(includes_client_revalidate) {
+			Ok(published) => published,
+			Err(err) => {
+				let err = err.to_string();
+				handle_build_error(session, "static build", &err);
+				return Ok(());
+			}
+		};
+	broadcast_static_effects(
+		session.runtime(),
+		&published.effects,
+		&published.static_metadata,
+	);
 	Ok(())
-}
-
-fn write_dev_manifest(
-	committed: &CommittedGeneration,
-	runtime: &crate::runtime::DevRuntime,
-) -> Result<Manifest, String> {
-	let vite_server_port = runtime
-		.vite_server_port()
-		.ok_or_else(|| "Vite server port is not available for dev manifest".to_owned())?;
-	let cfg =
-		to_cfg(committed.config()).map_err(|err| format!("error converting config: {err}"))?;
-	write_manifest(
-		&cfg,
-		&ManifestInput::from_generation_metadata(
-			true,
-			i32::from(vite_server_port),
-			runtime.dev_mux_port_i32()?,
-			runtime.dev_refresh_token()?,
-			committed.live(),
-			committed.static_metadata(),
-		),
-	)
 }
 
 fn broadcast_static_effects(
@@ -276,22 +172,18 @@ fn check_fatal(session: &BuildSession) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
 	use std::fs;
 	use std::path::{Path, PathBuf};
 	use std::sync::atomic::Ordering;
 	use std::time::{SystemTime, UNIX_EPOCH};
 
-	use paranoid::local_lock::ProcessLock;
+	use vorma::__private::Config;
 	use vorma::{FrontendConfig, PathConfig, ServerConfig, TsGenConfig};
 
 	use crate::RunMode;
 	use crate::browser_sync::ChangeType;
-	use crate::config::{CargoBinTarget, to_cfg};
-	use crate::generation::{
-		BuildArtifactMode, BuildArtifacts, GenerationCandidate, LiveMetadata, StaticEffects,
-		StaticMetadata,
-	};
+	use crate::cargo_target::CargoBinTarget;
+	use crate::generation::{StaticEffects, StaticMetadata};
 	use crate::session::BuildSession;
 
 	use super::*;
@@ -339,34 +231,6 @@ mod tests {
 			cargo_package: "example-app".to_owned(),
 			cargo_bin: "example-build".to_owned(),
 		}
-	}
-
-	fn acquired_dev_lock(config: &Config) -> ProcessLock {
-		let cfg = to_cfg(config).unwrap();
-		let mut lock = ProcessLock::new(cfg.dev_lock_out());
-		lock.acquire().unwrap();
-		lock
-	}
-
-	fn committed_static_session(config: Config, static_metadata: StaticMetadata) -> BuildSession {
-		let mut session = BuildSession::new(config.clone(), build_entry(), RunMode::Dev);
-		session.commit_generation(GenerationCandidate {
-			config,
-			live: LiveMetadata {
-				root_document_hash_source: "document-hash-source".to_owned(),
-				..LiveMetadata::default()
-			},
-			static_metadata,
-			manifest: None,
-			artifacts: BuildArtifacts {
-				build_entry_executable: PathBuf::from("/tmp/example-build"),
-				mode: BuildArtifactMode::Dev {
-					app_server_executable: PathBuf::from("/tmp/example-server"),
-				},
-			},
-			static_effects: StaticEffects::default(),
-		});
-		session
 	}
 
 	#[test]
@@ -462,83 +326,25 @@ mod tests {
 	}
 
 	#[test]
-	fn live_config_retry_transition_keeps_dev_lock_when_dist_dir_is_unchanged() {
-		let root = temp_root("same-dist-lock");
-		let bootstrap = config(&root, "dist");
-		let mut next = config(&root, "dist");
-		next.frontend_config.entry_file = "src/client/next-entry.tsx".to_owned();
-		let mut session = BuildSession::new(bootstrap.clone(), build_entry(), RunMode::Dev);
-		session
-			.runtime_mut()
-			.hold_dev_lock(acquired_dev_lock(&bootstrap));
+	fn server_refresh_prepare_error_reports_build_error_without_committing_generation() {
+		let root = temp_root("refresh-prepare-error");
+		let mut bad_config = config(&root, "dist");
+		bad_config.frontend_config.public_static_src_dir = ".".to_owned();
+		let mut session = BuildSession::new(bad_config, build_entry(), RunMode::Dev);
+		let mut rx = session.runtime().add_client_for_test();
 
-		apply_live_config_retry_transition(&mut session, &bootstrap, &next).unwrap();
+		process_server_refresh(&mut session).unwrap();
 
-		assert!(session.runtime().has_dev_lock());
-		fs::remove_dir_all(root).unwrap();
-	}
-
-	#[test]
-	fn live_config_retry_transition_swaps_dev_lock_and_removes_old_vorma_on_dist_change() {
-		let root = temp_root("dist-lock-swap");
-		let bootstrap = config(&root, "dist-a");
-		let next = config(&root, "dist-b");
-		let bootstrap_cfg = to_cfg(&bootstrap).unwrap();
-		let old_vorma_out = PathBuf::from(bootstrap_cfg.vorma_out());
-		fs::create_dir_all(&old_vorma_out).unwrap();
-		fs::write(old_vorma_out.join("stale.txt"), "stale").unwrap();
-		let mut session = BuildSession::new(bootstrap.clone(), build_entry(), RunMode::Dev);
-		session
-			.runtime_mut()
-			.hold_dev_lock(acquired_dev_lock(&bootstrap));
-
-		apply_live_config_retry_transition(&mut session, &bootstrap, &next).unwrap();
-
-		assert!(session.runtime().has_dev_lock());
-		assert!(!old_vorma_out.exists());
-		fs::remove_dir_all(root).unwrap();
-	}
-
-	#[test]
-	fn static_build_failure_does_not_mutate_committed_generation() {
-		let root = temp_root("static-failure-no-commit");
-		fs::create_dir_all(root.join("public")).unwrap();
-		fs::write(root.join("public/app.css"), "body{}").unwrap();
-		fs::create_dir_all(root.join("src/client/vorma.gen.ts")).unwrap();
-		let config = config(&root, "dist");
-		let old_static = StaticMetadata {
-			public_filemap: BTreeMap::from([("old.css".to_owned(), "/static/old.css".to_owned())]),
-			critical_css: "old css".to_owned(),
-			..StaticMetadata::default()
-		};
-		let mut session = committed_static_session(config, old_static.clone());
-
-		process_static_build(&mut session, true).unwrap();
-
-		assert_eq!(session.committed().unwrap().static_metadata(), &old_static);
-		fs::remove_dir_all(root).unwrap();
-	}
-
-	#[test]
-	fn cancelled_static_build_does_not_mutate_committed_generation() {
-		let root = temp_root("static-cancel-no-commit");
-		fs::create_dir_all(root.join("public")).unwrap();
-		fs::write(root.join("public/app.css"), "body{}").unwrap();
-		let config = config(&root, "dist");
-		let old_static = StaticMetadata {
-			public_filemap: BTreeMap::from([("old.css".to_owned(), "/static/old.css".to_owned())]),
-			critical_css: "old css".to_owned(),
-			..StaticMetadata::default()
-		};
-		let mut session = committed_static_session(config, old_static.clone());
-		session
-			.runtime()
-			.build_cancel()
-			.store(true, Ordering::SeqCst);
-
-		process_static_build(&mut session, true).unwrap();
-
-		assert_eq!(session.committed().unwrap().static_metadata(), &old_static);
+		let overlay = rx.try_recv().unwrap();
+		assert_eq!(overlay.change_type, ChangeType::ShowRebuildingOverlay);
+		let build_error = rx.try_recv().unwrap();
+		assert_eq!(build_error.change_type, ChangeType::ShowBuildError);
+		assert!(
+			build_error
+				.build_error
+				.contains("frontend_config.public_static_src_dir cannot be .")
+		);
+		assert!(session.committed().is_none());
 		fs::remove_dir_all(root).unwrap();
 	}
 }

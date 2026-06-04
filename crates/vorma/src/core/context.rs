@@ -7,7 +7,7 @@ use vorma_tasks::ExecCtx;
 use crate::head;
 use crate::mux::{None, RequestCtx};
 use crate::request::HttpRequest;
-use crate::response::{CLIENT_ACCEPTS_REDIRECT_HEADER, Proxy};
+use crate::response::{CLIENT_ACCEPTS_REDIRECT_HEADER, ResponseEffects};
 
 /// Parameters exposed to middleware.
 #[derive(Clone, Copy, Debug)]
@@ -160,14 +160,14 @@ impl<S, E, I, P> ViewCtx<S, E, I, P> {
 
 /// Mutable response-effect handle.
 pub struct ResponseHandle<'a> {
-	proxy: Arc<Mutex<Proxy>>,
+	effects: Arc<Mutex<ResponseEffects>>,
 	request_headers: &'a http::HeaderMap,
 }
 
 impl ResponseHandle<'_> {
 	/// Set the handler response status.
 	pub fn set_status(&mut self, status: StatusCode) -> &mut Self {
-		self.proxy()
+		self.effects()
 			.set_status(status, std::option::Option::<String>::None);
 		self
 	}
@@ -178,25 +178,25 @@ impl ResponseHandle<'_> {
 			status.as_u16() >= 400,
 			"set_error_status requires an error status, got {status}"
 		);
-		self.proxy().set_status(status, Some(text.into()));
+		self.effects().set_status(status, Some(text.into()));
 		self
 	}
 
 	/// Set a response header, replacing prior values with the same name.
 	pub fn set_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
-		self.proxy().set_header(key, value);
+		self.effects().set_header(key, value);
 		self
 	}
 
 	/// Append a response header value.
 	pub fn append_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
-		self.proxy().add_header(key, value);
+		self.effects().add_header(key, value);
 		self
 	}
 
 	/// Set a response cookie.
 	pub fn set_cookie(&mut self, cookie: Cookie<'static>) -> &mut Self {
-		self.proxy().set_cookie(cookie);
+		self.effects().set_cookie(cookie);
 		self
 	}
 
@@ -212,14 +212,14 @@ impl ResponseHandle<'_> {
 		status: impl Into<Option<StatusCode>>,
 	) -> Result<&mut Self, String> {
 		let accepts_client_redirect = accepts_client_redirect(self.request_headers);
-		self.proxy()
+		self.effects()
 			.redirect(accepts_client_redirect, location.as_ref(), status.into())
 			.map_err(|err| err.to_string())?;
 		Ok(self)
 	}
 
-	fn proxy(&self) -> MutexGuard<'_, Proxy> {
-		self.proxy.lock().expect("response proxy lock poisoned")
+	fn effects(&self) -> MutexGuard<'_, ResponseEffects> {
+		self.effects.lock().expect("response effects lock poisoned")
 	}
 }
 
@@ -236,44 +236,44 @@ pub(super) fn accepts_client_redirect(headers: &http::HeaderMap) -> bool {
 fn response_handle_for<S, E, I>(inner: &RequestCtx<S, E, I>) -> ResponseHandle<'_> {
 	let request_headers = inner.request().headers();
 	ResponseHandle {
-		proxy: inner.response_proxy(),
+		effects: inner.response_effects(),
 		request_headers,
 	}
 }
 
 fn head_handle_for<S, E, I>(inner: &RequestCtx<S, E, I>) -> HeadHandle {
 	HeadHandle {
-		proxy: inner.response_proxy(),
+		effects: inner.response_effects(),
 	}
 }
 
 /// Mutable head-effect handle.
 pub struct HeadHandle {
-	proxy: Arc<Mutex<Proxy>>,
+	effects: Arc<Mutex<ResponseEffects>>,
 }
 
 impl HeadHandle {
 	/// Set the document title.
 	pub fn title(&mut self, title: impl Into<String>) -> &mut Self {
-		self.proxy().head_builder().title(title);
+		self.effects().head_builder().title(title);
 		self
 	}
 
 	/// Set the meta description.
 	pub fn description(&mut self, description: impl Into<String>) -> &mut Self {
-		self.proxy().head_builder().description(description);
+		self.effects().head_builder().description(description);
 		self
 	}
 
 	/// Add a favicon link.
 	pub fn icon(&mut self, href: impl Into<String>) -> &mut Self {
-		self.proxy().head_builder().icon(href);
+		self.effects().head_builder().icon(href);
 		self
 	}
 
 	/// Add a preload link.
 	pub fn preload(&mut self, href: impl Into<String>, r#as: impl Into<String>) -> &mut Self {
-		self.proxy().head_builder().preload(href, r#as);
+		self.effects().head_builder().preload(href, r#as);
 		self
 	}
 
@@ -283,7 +283,9 @@ impl HeadHandle {
 		name: impl Into<String>,
 		content: impl Into<String>,
 	) -> &mut Self {
-		self.proxy().head_builder().meta_name_content(name, content);
+		self.effects()
+			.head_builder()
+			.meta_name_content(name, content);
 		self
 	}
 
@@ -293,7 +295,7 @@ impl HeadHandle {
 		property: impl Into<String>,
 		content: impl Into<String>,
 	) -> &mut Self {
-		self.proxy()
+		self.effects()
 			.head_builder()
 			.meta_property_content(property, content);
 		self
@@ -301,7 +303,7 @@ impl HeadHandle {
 
 	/// Add a charset meta element.
 	pub fn meta_charset(&mut self, charset: impl Into<String>) -> &mut Self {
-		self.proxy().head_builder().meta_charset(charset);
+		self.effects().head_builder().meta_charset(charset);
 		self
 	}
 
@@ -310,18 +312,18 @@ impl HeadHandle {
 		&mut self,
 		defs: impl IntoIterator<Item = head::HtmlElementDef>,
 	) -> Result<&mut Self, String> {
-		self.proxy().head_builder().add(defs)?;
+		self.effects().head_builder().add(defs)?;
 		Ok(self)
 	}
 
 	/// Append another head builder's elements.
 	pub fn append(&mut self, other: &head::HeadBuilder) -> &mut Self {
-		self.proxy().head_builder().append(other);
+		self.effects().head_builder().append(other);
 		self
 	}
 
-	fn proxy(&self) -> MutexGuard<'_, Proxy> {
-		self.proxy.lock().expect("response proxy lock poisoned")
+	fn effects(&self) -> MutexGuard<'_, ResponseEffects> {
+		self.effects.lock().expect("response effects lock poisoned")
 	}
 }
 

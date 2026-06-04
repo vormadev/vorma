@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
+use std::fmt;
+use std::io;
 use std::sync::Arc;
 
 use vorma::__private::Config;
 
 use crate::build_cancel::BuildCancel;
-use crate::config::{VormaCfg, to_cfg};
+use crate::config::{ConfigError, VormaCfg, to_cfg};
 use crate::cssbundle;
 use crate::generation::{LiveMetadata, StaticEffects, StaticMetadata};
 use crate::staticproc;
@@ -25,15 +27,80 @@ pub(crate) struct PreparedStaticBuild {
 	pub(crate) effects: StaticEffects,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PublishedStaticOutputs {
+	pub(crate) metadata: StaticMetadata,
+	pub(crate) effects: StaticEffects,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum StaticPublishOutcome {
+	Published(PublishedStaticOutputs),
+	CancelledBeforePublish,
+	CancelledAfterPublish(PublishedStaticOutputs),
+}
+
+#[derive(Debug)]
+pub(crate) enum StaticBuildError {
+	Config {
+		phase: &'static str,
+		source: ConfigError,
+	},
+	Cancelled {
+		source: String,
+	},
+	PublicStaticFiles {
+		source: String,
+	},
+	CriticalCss {
+		source: cssbundle::Error,
+	},
+	PublicOutputReconcile {
+		source: io::Error,
+	},
+	TypeScriptWrite {
+		source: String,
+	},
+}
+
+impl fmt::Display for StaticBuildError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Config { phase, source } => {
+				write!(f, "error converting config for {phase}: {source}")
+			}
+			Self::Cancelled { source } => f.write_str(source),
+			Self::PublicStaticFiles { source } => {
+				write!(f, "error collecting public static files: {source}")
+			}
+			Self::CriticalCss { source } => write!(f, "error bundling critical CSS: {source}"),
+			Self::PublicOutputReconcile { source } => {
+				write!(f, "error reconciling public static output: {source}")
+			}
+			Self::TypeScriptWrite { source } => {
+				write!(f, "error writing generated TypeScript: {source}")
+			}
+		}
+	}
+}
+
+impl std::error::Error for StaticBuildError {}
+
 pub(crate) fn prepare_static_build(
 	input: &StaticBuildInput<'_>,
-) -> Result<PreparedStaticBuild, String> {
-	let cfg = to_cfg(input.config).map_err(|err| format!("error converting config: {err}"))?;
-	input.build_cancel.check("before preparing static build")?;
+) -> Result<PreparedStaticBuild, StaticBuildError> {
+	let cfg = to_cfg(input.config).map_err(|source| StaticBuildError::Config {
+		phase: "static build preparation",
+		source,
+	})?;
+	input
+		.build_cancel
+		.check("before preparing static build")
+		.map_err(|source| StaticBuildError::Cancelled { source })?;
 
 	let pub_files = cfg
 		.collect_physical_pub_files()
-		.map_err(|err| format!("error collecting public static files: {err}"))?;
+		.map_err(|source| StaticBuildError::PublicStaticFiles { source })?;
 	let public_filemap = cfg.to_pub_fm(&pub_files);
 	let critical_css_result = bundle_critical_css(&cfg, &public_filemap)?;
 	let css_files_to_watch = css_files_to_watch(&cfg, &critical_css_result);
@@ -72,27 +139,52 @@ pub(crate) fn publish_static_outputs(
 	live: &LiveMetadata,
 	prepared: PreparedStaticBuild,
 	build_cancel: &BuildCancel,
-) -> Result<(StaticMetadata, StaticEffects), String> {
-	let cfg = to_cfg(config).map_err(|err| format!("error converting config: {err}"))?;
-	build_cancel.check("before publishing static build outputs")?;
+) -> Result<StaticPublishOutcome, StaticBuildError> {
+	publish_static_outputs_with_after_write(config, live, prepared, build_cancel, || {})
+}
 
-	staticproc::reconcile(cfg.pub_out(), &prepared.pub_files).map_err(|err| err.to_string())?;
+fn publish_static_outputs_with_after_write(
+	config: &Config,
+	live: &LiveMetadata,
+	prepared: PreparedStaticBuild,
+	build_cancel: &BuildCancel,
+	after_outputs_written: impl FnOnce(),
+) -> Result<StaticPublishOutcome, StaticBuildError> {
+	let cfg = to_cfg(config).map_err(|source| StaticBuildError::Config {
+		phase: "static output publication",
+		source,
+	})?;
+	if build_cancel.is_cancelled() {
+		return Ok(StaticPublishOutcome::CancelledBeforePublish);
+	}
+
+	staticproc::reconcile(cfg.pub_out(), &prepared.pub_files)
+		.map_err(|source| StaticBuildError::PublicOutputReconcile { source })?;
 	crate::ts_gen::write_ts_gen_out_file(
 		&cfg,
 		&TsGenWriteInput {
 			live_ts_result: live.generated_ts.clone(),
 			static_ts_result: prepared.metadata.generated_ts.clone(),
 		},
-	)?;
+	)
+	.map_err(|source| StaticBuildError::TypeScriptWrite { source })?;
 
-	build_cancel.check("after publishing static build outputs")?;
-	Ok((prepared.metadata, prepared.effects))
+	after_outputs_written();
+
+	let published = PublishedStaticOutputs {
+		metadata: prepared.metadata,
+		effects: prepared.effects,
+	};
+	if build_cancel.is_cancelled() {
+		return Ok(StaticPublishOutcome::CancelledAfterPublish(published));
+	}
+	Ok(StaticPublishOutcome::Published(published))
 }
 
 fn bundle_critical_css(
 	cfg: &VormaCfg<'_>,
 	public_filemap: &std::collections::BTreeMap<String, String>,
-) -> Result<cssbundle::BundleOutput, String> {
+) -> Result<cssbundle::BundleOutput, StaticBuildError> {
 	let Some(entry) = cfg.critical_css_entry() else {
 		return Ok(cssbundle::BundleOutput::default());
 	};
@@ -101,7 +193,7 @@ fn bundle_critical_css(
 		entry_path: entry.into(),
 		public_url_map: public_filemap,
 	})
-	.map_err(|err| format!("error bundling critical CSS: {err}"))
+	.map_err(|source| StaticBuildError::CriticalCss { source })
 }
 
 fn css_files_to_watch(
@@ -120,6 +212,7 @@ fn css_files_to_watch(
 mod tests {
 	use std::fs;
 	use std::path::PathBuf;
+	use std::sync::atomic::Ordering;
 	use std::time::{SystemTime, UNIX_EPOCH};
 
 	use vorma::{FrontendConfig, PathConfig, ServerConfig, TsGenConfig};
@@ -184,15 +277,75 @@ mod tests {
 		assert!(!PathBuf::from(cfg.pub_out()).exists());
 		assert!(!PathBuf::from(cfg.ts_gen_out_file()).exists());
 		assert!(!PathBuf::from(cfg.manifest_json_out(true)).exists());
-		let (metadata, effects) =
-			publish_static_outputs(&config, &live, prepared, &cancel).unwrap();
+		let outcome = publish_static_outputs(&config, &live, prepared, &cancel).unwrap();
+		let StaticPublishOutcome::Published(published) = outcome else {
+			panic!("static outputs should publish");
+		};
 
-		assert!(metadata.public_filemap.contains_key("logo.svg"));
-		assert!(effects.public_filemap_changed);
+		assert!(published.metadata.public_filemap.contains_key("logo.svg"));
+		assert!(published.effects.public_filemap_changed);
 		assert!(PathBuf::from(cfg.pub_out()).exists());
 		assert!(root.join("src/client/vorma.gen.ts").exists());
 		assert!(!PathBuf::from(cfg.manifest_json_out(true)).exists());
 
+		fs::remove_dir_all(root).unwrap();
+	}
+
+	#[test]
+	fn static_publish_reports_cancel_before_writing_outputs() {
+		let root = temp_root("cancel-before-publish");
+		fs::write(root.join("public/logo.svg"), "<svg />").unwrap();
+		let config = config(root.clone());
+		let cfg = to_cfg(&config).unwrap();
+		let live = LiveMetadata::default();
+		let cancel = Arc::new(BuildCancel::default());
+		let prepared = prepare_static_build(&StaticBuildInput {
+			config: &config,
+			previous_static: None,
+			build_cancel: Arc::clone(&cancel),
+			includes_client_revalidate: false,
+		})
+		.unwrap();
+
+		cancel.store(true, Ordering::SeqCst);
+		let outcome = publish_static_outputs(&config, &live, prepared, &cancel).unwrap();
+
+		assert_eq!(outcome, StaticPublishOutcome::CancelledBeforePublish);
+		assert!(!PathBuf::from(cfg.pub_out()).exists());
+		assert!(!PathBuf::from(cfg.ts_gen_out_file()).exists());
+		fs::remove_dir_all(root).unwrap();
+	}
+
+	#[test]
+	fn static_publish_reports_cancel_after_writing_outputs() {
+		let root = temp_root("cancel-after-publish");
+		fs::write(root.join("public/logo.svg"), "<svg />").unwrap();
+		let config = config(root.clone());
+		let cfg = to_cfg(&config).unwrap();
+		let live = LiveMetadata::default();
+		let cancel = Arc::new(BuildCancel::default());
+		let prepared = prepare_static_build(&StaticBuildInput {
+			config: &config,
+			previous_static: None,
+			build_cancel: Arc::clone(&cancel),
+			includes_client_revalidate: false,
+		})
+		.unwrap();
+		let cancel_for_hook = Arc::clone(&cancel);
+
+		let outcome =
+			publish_static_outputs_with_after_write(&config, &live, prepared, &cancel, move || {
+				cancel_for_hook.store(true, Ordering::SeqCst);
+			})
+			.unwrap();
+		let StaticPublishOutcome::CancelledAfterPublish(published) = outcome else {
+			panic!("static outputs should report cancellation after publication");
+		};
+
+		assert!(published.metadata.public_filemap.contains_key("logo.svg"));
+		assert!(published.effects.public_filemap_changed);
+		assert!(PathBuf::from(cfg.pub_out()).exists());
+		assert!(PathBuf::from(cfg.ts_gen_out_file()).exists());
 		fs::remove_dir_all(root).unwrap();
 	}
 

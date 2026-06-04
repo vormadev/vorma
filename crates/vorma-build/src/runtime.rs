@@ -30,6 +30,13 @@ pub(crate) struct DevRuntime {
 	watcher: DevWatcher,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DevManifestRuntimeData {
+	pub(crate) vite_server_port: i32,
+	pub(crate) dev_mux_port: i32,
+	pub(crate) dev_refresh_token: String,
+}
+
 impl DevRuntime {
 	pub(crate) fn new() -> Self {
 		Self {
@@ -104,7 +111,7 @@ impl DevRuntime {
 		self.dev_mux.prepare()
 	}
 
-	pub(crate) fn publish_dev_mux_generation(&self, generation: Option<DevMuxGeneration>) {
+	pub(crate) fn publish_dev_mux_generation(&self, generation: DevMuxGeneration) {
 		self.dev_mux.publish_generation(generation);
 	}
 
@@ -139,7 +146,7 @@ impl DevRuntime {
 	}
 
 	pub(crate) fn dev_refresh_token(&self) -> Result<String, String> {
-		Ok(self.dev_mux.dev_refresh_token()?.to_owned())
+		self.dev_mux.dev_refresh_token()
 	}
 
 	pub(crate) fn vite_plugin_token(&self) -> Result<String, String> {
@@ -154,6 +161,34 @@ impl DevRuntime {
 	) {
 		self.dev_mux
 			.broadcast_refresh(change_type, critical_css, build_error);
+	}
+
+	pub(crate) fn prepare_dev_generation_runtime_for_manifest(
+		&mut self,
+		committed: &CommittedGeneration,
+	) -> Result<DevManifestRuntimeData, String> {
+		self.publish_dev_mux_generation(committed.dev_mux_generation());
+		self.restart_watcher(committed)
+			.map_err(|err| format!("error restarting filesystem watcher: {err}"))?;
+		if self.vite_server_running() {
+			self.send_vite_plugin_restart()
+				.map_err(|err| format!("error sending restart command to Vite plugin: {err}"))?;
+		}
+		let vite_server_port = self
+			.start_vite_server(committed)
+			.map_err(|err| format!("error starting Vite server: {err}"))?;
+		Ok(DevManifestRuntimeData {
+			vite_server_port: i32::from(vite_server_port),
+			dev_mux_port: self.dev_mux_port_i32()?,
+			dev_refresh_token: self.dev_refresh_token()?,
+		})
+	}
+
+	pub(crate) fn reset_after_live_config_retry(&mut self) -> Result<(), String> {
+		self.stop_vite_server(false);
+		self.stop_watcher()?;
+		self.clear_dev_mux_generation();
+		Ok(())
 	}
 
 	pub(crate) fn send_vite_plugin_restart(&self) -> Result<(), String> {

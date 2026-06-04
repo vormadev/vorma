@@ -216,7 +216,7 @@ async fn runtime_routes_register_views_and_resources() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.run_nested_tasks(
+		.execute_view_stack(
 			Arc::new(()),
 			exec_ctx(),
 			RawRequest::get("/users/123"),
@@ -226,7 +226,9 @@ async fn runtime_routes_register_views_and_resources() {
 		.await
 		.unwrap();
 	assert_eq!(
-		view_results.results()[0].data().and_then(Value::as_str),
+		view_results.view_results()[0]
+			.data()
+			.and_then(Value::as_str),
 		Some("123")
 	);
 
@@ -243,7 +245,7 @@ async fn runtime_routes_register_views_and_resources() {
 		.unwrap();
 	assert_eq!(api_result.data().and_then(Value::as_str), Some("456"));
 	assert_eq!(
-		api_result.response_proxy().status().0,
+		api_result.response_effects().status().0,
 		Some(http::StatusCode::CREATED)
 	);
 }
@@ -262,7 +264,7 @@ async fn macros_define_const_routes_with_inferred_typed_params() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.run_nested_tasks(
+		.execute_view_stack(
 			Arc::new(()),
 			boxed_exec_ctx(),
 			RawRequest::get("/stories/123"),
@@ -271,7 +273,10 @@ async fn macros_define_const_routes_with_inferred_typed_params() {
 		)
 		.await
 		.unwrap();
-	assert_eq!(view_results.results()[0].data().unwrap()["storyId"], "123");
+	assert_eq!(
+		view_results.view_results()[0].data().unwrap()["storyId"],
+		"123"
+	);
 
 	let api_result = routes
 		.resources
@@ -300,7 +305,7 @@ async fn macros_support_public_url_in_default_error_context() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.run_nested_tasks(
+		.execute_view_stack(
 			Arc::new(()),
 			boxed_exec_ctx(),
 			RawRequest::get("/assets"),
@@ -314,7 +319,7 @@ async fn macros_support_public_url_in_default_error_context() {
 		.unwrap();
 
 	assert_eq!(
-		view_results.results()[0].data().unwrap()["appCss"],
+		view_results.view_results()[0].data().unwrap()["appCss"],
 		"/static/app.css"
 	);
 }
@@ -353,7 +358,7 @@ async fn public_middlewares_wire_once_and_filter_from_request_context() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.run_nested_tasks(
+		.execute_view_stack(
 			Arc::new(()),
 			boxed_exec_ctx(),
 			RawRequest::get("/stories/123"),
@@ -363,8 +368,7 @@ async fn public_middlewares_wire_once_and_filter_from_request_context() {
 		.await
 		.unwrap();
 	let view_header = view_results
-		.middleware_proxy()
-		.unwrap()
+		.middleware_effects()
 		.header(&http::HeaderName::from_static("x-vorma-story"))
 		.unwrap();
 	assert_eq!(view_header.to_str().unwrap(), "123");
@@ -381,7 +385,7 @@ async fn public_middlewares_wire_once_and_filter_from_request_context() {
 		.unwrap()
 		.unwrap();
 	let api_header = api_result
-		.response_proxy()
+		.response_effects()
 		.header(&http::HeaderName::from_static("x-vorma-story"))
 		.unwrap();
 	assert_eq!(api_header.to_str().unwrap(), "456");

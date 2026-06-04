@@ -1,78 +1,136 @@
-use std::process::{Command, Stdio};
+use std::fmt;
+use std::io;
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use vorma::__private::constants::PROD_TMP_VITE_MANIFEST_FILENAME;
+use path_slash::PathExt;
 use vorma::__private::manifest::Manifest;
 
 use crate::RunMode;
-use crate::config::{VormaCfg, relative_path, to_cfg};
+use crate::build_layout::{RetainedViteManifest, promote_prod_tmp_vite_manifest};
+use crate::command_runner::{CommandRunError, run_command_inheriting_stdio};
+use crate::config::{ConfigError, VormaCfg, relative_path, to_cfg};
 use crate::constants::{VITE_PLUGIN_SERVER_PORT_ENV_KEY, VITE_PLUGIN_SERVER_TOKEN_ENV_KEY};
 use crate::generation::CommittedGeneration;
-use crate::manifest::{ManifestInput, write_manifest};
-use crate::process_wait::{ChildWaitError, current_thread_runtime, wait_child_or_cancel};
+use crate::manifest::{
+	DevManifestInput, ProdManifestInput, write_dev_manifest, write_prod_manifest,
+};
 use crate::runtime::DevRuntime;
-use crate::supervisor::{clear_vorma_runtime_env, prepare_child_process};
+use crate::supervisor::clear_vorma_runtime_env;
 
 pub(crate) fn activate_generation(
 	committed: &CommittedGeneration,
 	mode: RunMode,
 	runtime: &mut DevRuntime,
-) -> Result<Option<Manifest>, String> {
+) -> Result<ActivationOutcome, ActivationError> {
 	match mode {
 		RunMode::Build => activate_prod_generation(committed, runtime),
-		RunMode::Dev => activate_dev_generation(committed, runtime).map(Some),
+		RunMode::Dev => activate_dev_generation(committed, runtime)
+			.map(|manifest| ActivationOutcome::Published(Box::new(manifest))),
 	}
 }
 
-pub(crate) fn publish_dev_generation_to_mux(
-	committed: &CommittedGeneration,
-	runtime: &mut DevRuntime,
-) -> Result<(), String> {
-	runtime.ensure_dev_mux_server()?;
-	runtime.publish_dev_mux_generation(Some(committed.dev_mux_generation()));
-	Ok(())
+#[derive(Debug)]
+pub(crate) enum ActivationOutcome {
+	Published(Box<Manifest>),
+	Cancelled,
 }
+
+#[derive(Debug)]
+pub(crate) enum ActivationError {
+	Config {
+		phase: &'static str,
+		source: ConfigError,
+	},
+	DevRuntime {
+		phase: &'static str,
+		source: String,
+	},
+	ManifestWrite {
+		phase: &'static str,
+		source: String,
+	},
+	AppServerStart {
+		source: String,
+	},
+	ViteBuildCommand {
+		source: String,
+	},
+	ViteBuild {
+		source: CommandRunError,
+	},
+	RetainViteManifest {
+		source: io::Error,
+	},
+}
+
+impl fmt::Display for ActivationError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Config { phase, source } => {
+				write!(f, "error converting config for {phase}: {source}")
+			}
+			Self::DevRuntime { phase, source } => {
+				write!(f, "error preparing dev runtime for {phase}: {source}")
+			}
+			Self::ManifestWrite { phase, source } => {
+				write!(f, "error writing {phase} manifest: {source}")
+			}
+			Self::AppServerStart { source } => write!(f, "error starting app server: {source}"),
+			Self::ViteBuildCommand { source } => {
+				write!(f, "error preparing Vite production build command: {source}")
+			}
+			Self::ViteBuild { source } => {
+				write!(f, "error running Vite production build: {source}")
+			}
+			Self::RetainViteManifest { source } => {
+				write!(f, "error retaining Vite manifest: {source}")
+			}
+		}
+	}
+}
+
+impl std::error::Error for ActivationError {}
 
 fn activate_dev_generation(
 	committed: &CommittedGeneration,
 	runtime: &mut DevRuntime,
-) -> Result<Manifest, String> {
-	publish_dev_generation_to_mux(committed, runtime)?;
-	runtime
-		.restart_watcher(committed)
-		.map_err(|err| format!("error restarting filesystem watcher: {err}"))?;
-	if runtime.vite_server_running() {
-		runtime
-			.send_vite_plugin_restart()
-			.map_err(|err| format!("error sending restart command to Vite plugin: {err}"))?;
-	}
-	let vite_port = runtime
-		.start_vite_server(committed)
-		.map_err(|err| format!("error starting Vite server: {err}"))?;
-	let cfg =
-		to_cfg(committed.config()).map_err(|err| format!("error converting config: {err}"))?;
-	let manifest = write_manifest(
+) -> Result<Manifest, ActivationError> {
+	let dev_runtime = runtime
+		.prepare_dev_generation_runtime_for_manifest(committed)
+		.map_err(|source| ActivationError::DevRuntime {
+			phase: "dev manifest",
+			source,
+		})?;
+	let cfg = to_cfg(committed.config()).map_err(|source| ActivationError::Config {
+		phase: "dev activation",
+		source,
+	})?;
+	let manifest = write_dev_manifest(
 		&cfg,
-		&ManifestInput::from_generation_metadata(
-			true,
-			i32::from(vite_port),
-			runtime.dev_mux_port_i32()?,
-			runtime.dev_refresh_token()?,
+		&DevManifestInput::from_generation_metadata(
+			dev_runtime.vite_server_port,
+			dev_runtime.dev_mux_port,
+			dev_runtime.dev_refresh_token,
 			committed.live(),
 			committed.static_metadata(),
 		),
-	)?;
+	)
+	.map_err(|source| ActivationError::ManifestWrite {
+		phase: "dev",
+		source,
+	})?;
 	runtime
 		.start_app_server(committed)
-		.map_err(|err| format!("error starting app server: {err}"))?;
+		.map_err(|source| ActivationError::AppServerStart { source })?;
 	Ok(manifest)
 }
 
 fn activate_prod_generation(
 	committed: &CommittedGeneration,
 	runtime: &mut DevRuntime,
-) -> Result<Option<Manifest>, String> {
+) -> Result<ActivationOutcome, ActivationError> {
 	activate_prod_generation_with(committed, runtime, run_cmd)
 }
 
@@ -80,54 +138,112 @@ fn activate_prod_generation_with<F>(
 	committed: &CommittedGeneration,
 	runtime: &mut DevRuntime,
 	run_command: F,
-) -> Result<Option<Manifest>, String>
+) -> Result<ActivationOutcome, ActivationError>
 where
 	F: FnOnce(Command, Arc<crate::build_cancel::BuildCancel>) -> Result<(), CommandRunError>,
 {
-	let cfg =
-		to_cfg(committed.config()).map_err(|err| format!("error converting config: {err}"))?;
-	runtime.ensure_dev_mux_server()?;
-	runtime.publish_dev_mux_generation(Some(committed.dev_mux_generation()));
-	let command =
-		vite_prod_build_cmd(&cfg, runtime.dev_mux_port()?, &runtime.vite_plugin_token()?)?;
+	let cfg = publish_generation_for_vite_config(committed, runtime)?;
+	match run_vite_prod_build(&cfg, runtime, run_command)? {
+		ProdViteBuildOutcome::Cancelled => Ok(ActivationOutcome::Cancelled),
+		ProdViteBuildOutcome::Succeeded => {
+			let prod_vite_manifest = promote_prod_vite_manifest(&cfg)?;
+			let manifest = write_prod_generation_manifest(&cfg, committed, prod_vite_manifest)?;
+			Ok(ActivationOutcome::Published(Box::new(manifest)))
+		}
+	}
+}
+
+fn publish_generation_for_vite_config<'a>(
+	committed: &'a CommittedGeneration,
+	runtime: &mut DevRuntime,
+) -> Result<VormaCfg<'a>, ActivationError> {
+	let cfg = to_cfg(committed.config()).map_err(|source| ActivationError::Config {
+		phase: "Vite config publication",
+		source,
+	})?;
+	runtime
+		.ensure_dev_mux_server()
+		.map_err(|source| ActivationError::DevRuntime {
+			phase: "Vite config publication",
+			source,
+		})?;
+	runtime.publish_dev_mux_generation(committed.dev_mux_generation());
+	Ok(cfg)
+}
+
+fn run_vite_prod_build<F>(
+	cfg: &VormaCfg<'_>,
+	runtime: &mut DevRuntime,
+	run_command: F,
+) -> Result<ProdViteBuildOutcome, ActivationError>
+where
+	F: FnOnce(Command, Arc<crate::build_cancel::BuildCancel>) -> Result<(), CommandRunError>,
+{
+	let dev_mux_port = runtime
+		.dev_mux_port()
+		.map_err(|source| ActivationError::DevRuntime {
+			phase: "Vite production build",
+			source,
+		})?;
+	let vite_plugin_token =
+		runtime
+			.vite_plugin_token()
+			.map_err(|source| ActivationError::DevRuntime {
+				phase: "Vite production build",
+				source,
+			})?;
+	let command = vite_prod_build_cmd(cfg, dev_mux_port, &vite_plugin_token)?;
 	match run_command(command, runtime.build_cancel()) {
 		Ok(()) => {}
-		Err(CommandRunError::Cancelled) => return Ok(None),
-		Err(CommandRunError::Failed(err)) => {
-			return Err(format!("Error running Vite production build: {err}"));
+		Err(CommandRunError::Cancelled) => return Ok(ProdViteBuildOutcome::Cancelled),
+		Err(source) => {
+			return Err(ActivationError::ViteBuild { source });
 		}
 	}
 	if runtime.build_cancel().load(Ordering::SeqCst) {
-		return Ok(None);
+		return Ok(ProdViteBuildOutcome::Cancelled);
 	}
-	let manifest = write_manifest(
-		&cfg,
-		&ManifestInput::from_generation_metadata(
-			false,
-			0,
-			0,
-			String::new(),
-			committed.live(),
-			committed.static_metadata(),
-		),
-	)
-	.map_err(|err| format!("Error writing manifest: {err}"))?;
-	Ok(Some(manifest))
+	Ok(ProdViteBuildOutcome::Succeeded)
+}
+
+fn promote_prod_vite_manifest(cfg: &VormaCfg<'_>) -> Result<RetainedViteManifest, ActivationError> {
+	promote_prod_tmp_vite_manifest(cfg.build_layout())
+		.map_err(|source| ActivationError::RetainViteManifest { source })
+}
+
+fn write_prod_generation_manifest(
+	cfg: &VormaCfg<'_>,
+	committed: &CommittedGeneration,
+	prod_vite_manifest: RetainedViteManifest,
+) -> Result<Manifest, ActivationError> {
+	let input = ProdManifestInput::from_generation_metadata(
+		prod_vite_manifest,
+		committed.live(),
+		committed.static_metadata(),
+	);
+	write_prod_manifest(cfg, &input).map_err(|source| ActivationError::ManifestWrite {
+		phase: "production",
+		source,
+	})
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ProdViteBuildOutcome {
+	Succeeded,
+	Cancelled,
 }
 
 fn vite_prod_build_cmd(
 	cfg: &VormaCfg<'_>,
 	internal_dev_server_port: u16,
 	vite_plugin_token: &str,
-) -> Result<Command, String> {
+) -> Result<Command, ActivationError> {
 	let args = vite_prod_build_args(cfg)?;
 	let mut command = Command::new(&args[0]);
 	clear_vorma_runtime_env(&mut command);
 	command
 		.args(&args[1..])
 		.current_dir(cfg.js_package_manager_dir())
-		.stdout(Stdio::inherit())
-		.stderr(Stdio::inherit())
 		.env(
 			VITE_PLUGIN_SERVER_PORT_ENV_KEY,
 			internal_dev_server_port.to_string(),
@@ -136,9 +252,18 @@ fn vite_prod_build_cmd(
 	Ok(command)
 }
 
-fn vite_prod_build_args(cfg: &VormaCfg<'_>) -> Result<Vec<String>, String> {
-	let out_dir = relative_path(cfg.js_package_manager_dir(), cfg.pub_out())
-		.ok_or_else(|| "failed to get relative path for Vite outDir".to_owned())?;
+fn vite_prod_build_args(cfg: &VormaCfg<'_>) -> Result<Vec<String>, ActivationError> {
+	let out_dir = relative_path(cfg.js_package_manager_dir(), cfg.pub_out()).ok_or_else(|| {
+		ActivationError::ViteBuildCommand {
+			source: "failed to get relative path for Vite outDir".to_owned(),
+		}
+	})?;
+	let vite_manifest =
+		relative_path(cfg.pub_out(), cfg.prod_tmp_vite_manifest_out()).ok_or_else(|| {
+			ActivationError::ViteBuildCommand {
+				source: "failed to get relative path for Vite manifest".to_owned(),
+			}
+		})?;
 	let mut args = cfg.js_package_manager_cmd_base();
 	args.extend([
 		"vite".to_owned(),
@@ -148,7 +273,7 @@ fn vite_prod_build_args(cfg: &VormaCfg<'_>) -> Result<Vec<String>, String> {
 		"--assetsDir".to_owned(),
 		".".to_owned(),
 		"--manifest".to_owned(),
-		PROD_TMP_VITE_MANIFEST_FILENAME.to_owned(),
+		vite_manifest.to_slash_lossy().into_owned(),
 		"--emptyOutDir".to_owned(),
 		"false".to_owned(),
 	]);
@@ -159,31 +284,11 @@ fn vite_prod_build_args(cfg: &VormaCfg<'_>) -> Result<Vec<String>, String> {
 	Ok(args)
 }
 
-#[derive(Debug)]
-enum CommandRunError {
-	Cancelled,
-	Failed(String),
-}
-
 fn run_cmd(
-	mut command: Command,
+	command: Command,
 	build_cancel: Arc<crate::build_cancel::BuildCancel>,
 ) -> Result<(), CommandRunError> {
-	prepare_child_process(&mut command);
-	let runtime =
-		current_thread_runtime().map_err(|err| CommandRunError::Failed(err.to_string()))?;
-	runtime.block_on(async {
-		let mut command = tokio::process::Command::from(command);
-		let mut child = command
-			.spawn()
-			.map_err(|err| CommandRunError::Failed(err.to_string()))?;
-		match wait_child_or_cancel(&mut child, &build_cancel).await {
-			Ok(status) if status.success() => Ok(()),
-			Ok(status) => Err(CommandRunError::Failed(format!("status {status}"))),
-			Err(ChildWaitError::Cancelled) => Err(CommandRunError::Cancelled),
-			Err(ChildWaitError::Wait(err)) => Err(CommandRunError::Failed(err.to_string())),
-		}
-	})
+	run_command_inheriting_stdio(command, &build_cancel)
 }
 
 #[cfg(test)]
@@ -304,11 +409,9 @@ mod tests {
 				},
 			),
 		]));
-		fs::write(
-			cfg.prod_tmp_vite_manifest_out(),
-			serde_json::to_vec(&vite_manifest).unwrap(),
-		)
-		.unwrap();
+		let tmp = cfg.prod_tmp_vite_manifest_out();
+		fs::create_dir_all(Path::new(&tmp).parent().unwrap()).unwrap();
+		fs::write(tmp, serde_json::to_vec(&vite_manifest).unwrap()).unwrap();
 	}
 
 	#[test]
@@ -329,7 +432,7 @@ mod tests {
 				"--assetsDir",
 				".",
 				"--manifest",
-				PROD_TMP_VITE_MANIFEST_FILENAME,
+				"tmp/vorma_internal_tmp_vite_manifest.json",
 				"--emptyOutDir",
 				"false",
 			]
@@ -370,7 +473,7 @@ mod tests {
 				OsStr::new("--assetsDir"),
 				OsStr::new("."),
 				OsStr::new("--manifest"),
-				OsStr::new(PROD_TMP_VITE_MANIFEST_FILENAME),
+				OsStr::new("tmp/vorma_internal_tmp_vite_manifest.json"),
 				OsStr::new("--emptyOutDir"),
 				OsStr::new("false"),
 				OsStr::new("--config"),
@@ -409,6 +512,7 @@ mod tests {
 		write_tmp_vite_manifest(&cfg);
 		let manifest_out = cfg.manifest_json_out(false);
 		let tmp_manifest_out = cfg.prod_tmp_vite_manifest_out();
+		let vite_manifest_out = cfg.build_layout().prod_vite_manifest_out();
 		let committed = committed_generation(config);
 		let mut runtime = DevRuntime::new();
 
@@ -417,9 +521,10 @@ mod tests {
 		})
 		.unwrap();
 
-		assert!(result.is_none());
+		assert!(matches!(result, ActivationOutcome::Cancelled));
 		assert!(!Path::new(&manifest_out).exists());
 		assert!(Path::new(&tmp_manifest_out).exists());
+		assert!(!vite_manifest_out.exists());
 		fs::remove_dir_all(root).unwrap();
 	}
 
@@ -431,6 +536,7 @@ mod tests {
 		write_tmp_vite_manifest(&cfg);
 		let manifest_out = cfg.manifest_json_out(false);
 		let tmp_manifest_out = cfg.prod_tmp_vite_manifest_out();
+		let vite_manifest_out = cfg.build_layout().prod_vite_manifest_out();
 		let committed = committed_generation(config);
 		let mut runtime = DevRuntime::new();
 
@@ -440,9 +546,10 @@ mod tests {
 		})
 		.unwrap();
 
-		assert!(result.is_none());
+		assert!(matches!(result, ActivationOutcome::Cancelled));
 		assert!(!Path::new(&manifest_out).exists());
 		assert!(Path::new(&tmp_manifest_out).exists());
+		assert!(!vite_manifest_out.exists());
 		fs::remove_dir_all(root).unwrap();
 	}
 
@@ -454,17 +561,24 @@ mod tests {
 		write_tmp_vite_manifest(&cfg);
 		let manifest_out = cfg.manifest_json_out(false);
 		let tmp_manifest_out = cfg.prod_tmp_vite_manifest_out();
+		let vite_manifest_out = cfg.build_layout().prod_vite_manifest_out();
 		let committed = committed_generation(config);
 		let mut runtime = DevRuntime::new();
 
 		let error = activate_prod_generation_with(&committed, &mut runtime, |_cmd, _cancel| {
-			Err(CommandRunError::Failed("vite exploded".to_owned()))
+			Err(CommandRunError::CommandWait {
+				source: std::io::Error::other("vite exploded"),
+			})
 		})
 		.unwrap_err();
 
-		assert_eq!(error, "Error running Vite production build: vite exploded");
+		assert_eq!(
+			error.to_string(),
+			"error running Vite production build: wait for command: vite exploded"
+		);
 		assert!(!Path::new(&manifest_out).exists());
 		assert!(Path::new(&tmp_manifest_out).exists());
+		assert!(!vite_manifest_out.exists());
 		fs::remove_dir_all(root).unwrap();
 	}
 
@@ -476,21 +590,34 @@ mod tests {
 		write_prod_public_outputs_and_manifest(&cfg);
 		let manifest_out = cfg.manifest_json_out(false);
 		let tmp_manifest_out = cfg.prod_tmp_vite_manifest_out();
+		let tmp_manifest_dir = cfg.build_layout().prod_tmp_vite_manifest_dir();
+		let vite_manifest_out = cfg.build_layout().prod_vite_manifest_out();
 		let committed = committed_generation(config);
 		let mut runtime = DevRuntime::new();
 		let mut ran_vite = false;
 
-		let manifest = activate_prod_generation_with(&committed, &mut runtime, |_cmd, _cancel| {
+		let result = activate_prod_generation_with(&committed, &mut runtime, |_cmd, _cancel| {
 			ran_vite = true;
 			Ok(())
 		})
-		.unwrap()
-		.expect("successful prod activation should publish manifest");
+		.unwrap();
+		let ActivationOutcome::Published(manifest) = result else {
+			panic!("successful prod activation should publish manifest");
+		};
+		let manifest = *manifest;
 
 		assert!(ran_vite);
 		assert_eq!(manifest.client_entry.url, "/static/assets/entry.js");
+		assert!(
+			!manifest
+				.public_filepaths
+				.iter()
+				.any(|path| path.contains("vorma_internal_tmp_vite_manifest.json"))
+		);
 		assert!(Path::new(&manifest_out).exists());
 		assert!(!Path::new(&tmp_manifest_out).exists());
+		assert!(vite_manifest_out.exists());
+		assert!(!tmp_manifest_dir.exists());
 		fs::remove_dir_all(root).unwrap();
 	}
 }

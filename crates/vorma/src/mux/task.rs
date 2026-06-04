@@ -16,7 +16,7 @@ use super::error::RouteExecutionError;
 #[cfg(test)]
 use super::input::InputParser;
 use super::request::RawRequest;
-use crate::response::Proxy;
+use crate::response::ResponseEffects;
 
 type RouteTaskFuture<'a, E> =
 	Pin<Box<dyn Future<Output = Result<Value, RouteExecutionError<E>>> + Send + 'a>>;
@@ -58,39 +58,56 @@ where
 	})
 }
 
-pub(in crate::mux) struct ErasedTaskRun<E> {
+struct ErasedTaskRun<E> {
 	pub(in crate::mux) output: Result<Value, RouteExecutionError<E>>,
-	pub(in crate::mux) proxy: Proxy,
+	pub(in crate::mux) effects: ResponseEffects,
 }
 
 impl<E> ErasedTaskRun<E> {
-	pub(in crate::mux) fn into_parts(
+	fn into_parts(
 		self,
-	) -> (Option<Value>, Option<RouteExecutionError<E>>, Proxy) {
+	) -> (
+		Option<Value>,
+		Option<RouteExecutionError<E>>,
+		ResponseEffects,
+	) {
 		let (data, error) = match self.output {
 			Ok(data) => (Some(data), Option::None),
 			Err(error) => (Option::None, Some(error)),
 		};
-		(data, error, self.proxy)
+		(data, error, self.effects)
 	}
 }
 
-pub(in crate::mux) async fn run_erased_task<S, E>(
+pub(in crate::mux) struct HandlerExecution<E> {
+	pub(in crate::mux) data: Option<Value>,
+	pub(in crate::mux) error: Option<RouteExecutionError<E>>,
+	pub(in crate::mux) effects: ResponseEffects,
+}
+
+pub(in crate::mux) async fn run_handler_and_collect_effects<S, E>(
 	handler: Arc<dyn ErasedTask<S, E>>,
 	request: RawRequest,
 	base: RequestBase<S, E>,
-) -> ErasedTaskRun<E>
+) -> HandlerExecution<E>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	let response_proxy = base.response_proxy.clone();
+	let response_effects = base.response_effects.clone();
 	let output = handler.run(request, base).await;
-	let proxy = response_proxy
+	let mut effects = response_effects
 		.lock()
-		.expect("response proxy lock poisoned")
+		.expect("response effects lock poisoned")
 		.clone();
-	ErasedTaskRun { output, proxy }
+	record_bad_request_input_error(&mut effects, &output);
+	let (data, error, effects) = ErasedTaskRun { output, effects }.into_parts();
+	let effects = response_effects_for_task_output(error.is_some(), effects);
+	HandlerExecution {
+		data,
+		error,
+		effects,
+	}
 }
 
 pub(in crate::mux) async fn run_with_exec_cancellation<E, F, T>(
@@ -119,23 +136,26 @@ where
 	Ok(output)
 }
 
-pub(in crate::mux) fn record_bad_request_input_error<E>(
-	proxy: &mut Proxy,
+fn record_bad_request_input_error<E>(
+	effects: &mut ResponseEffects,
 	output: &Result<Value, RouteExecutionError<E>>,
 ) {
 	if let Err(RouteExecutionError::Input(error)) = output
 		&& error.is_bad_request()
-		&& !proxy.is_terminal_response()
+		&& !effects.is_terminal_response()
 	{
-		proxy.set_status(StatusCode::BAD_REQUEST, Some(error.to_string()));
+		effects.set_status(StatusCode::BAD_REQUEST, Some(error.to_string()));
 	}
 }
 
-pub(in crate::mux) fn proxy_for_task_output(has_error: bool, proxy: Proxy) -> Proxy {
-	if has_error && !proxy.is_terminal_response() {
-		return Proxy::new();
+pub(in crate::mux) fn response_effects_for_task_output(
+	has_error: bool,
+	effects: ResponseEffects,
+) -> ResponseEffects {
+	if has_error && !effects.is_terminal_response() {
+		return ResponseEffects::new();
 	}
-	proxy
+	effects
 }
 
 #[cfg(test)]
@@ -189,7 +209,7 @@ where
 				state: base.state,
 				exec_ctx: base.exec_ctx,
 				public_filemap: base.public_filemap,
-				response_proxy: base.response_proxy,
+				response_effects: base.response_effects,
 				request,
 				input: super::None,
 			})
@@ -244,7 +264,7 @@ where
 		state: base.state,
 		exec_ctx: base.exec_ctx,
 		public_filemap: base.public_filemap,
-		response_proxy: base.response_proxy,
+		response_effects: base.response_effects,
 		request,
 		input,
 	};

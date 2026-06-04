@@ -2287,7 +2287,7 @@ checksum = "65dd7eed29412da847b0f78bcec0ac98588165988a8cfe41d4ea1d429f8ccfff"
 
 [[package]]
 name = "vorma"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "base64",
  "blake3",
@@ -2320,7 +2320,7 @@ dependencies = [
 
 [[package]]
 name = "vorma-build"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "axum",
  "blake3",
@@ -2347,14 +2347,14 @@ dependencies = [
 
 [[package]]
 name = "vorma-client-wasm"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "vorma-matcher",
 ]
 
 [[package]]
 name = "vorma-framework-tests"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "axum",
  "bytes",
@@ -2372,7 +2372,7 @@ dependencies = [
 
 [[package]]
 name = "vorma-macros"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2382,11 +2382,11 @@ dependencies = [
 
 [[package]]
 name = "vorma-matcher"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 
 [[package]]
 name = "vorma-minimal-example"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "axum",
  "http-body-util",
@@ -2403,14 +2403,14 @@ dependencies = [
 
 [[package]]
 name = "vorma-tasks"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "vorma-xtask"
-version = "0.86.0-pre.1"
+version = "0.86.0-pre.2"
 
 [[package]]
 name = "walkdir"

@@ -92,7 +92,7 @@ impl CommittedGeneration {
 	}
 
 	pub(crate) fn config_view(&self) -> Result<ConfigView<'_>, String> {
-		ConfigView::new(&self.config)
+		ConfigView::new(&self.config).map_err(|err| err.to_string())
 	}
 
 	pub(crate) fn live(&self) -> &LiveMetadata {

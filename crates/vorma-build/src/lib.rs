@@ -1,15 +1,21 @@
 mod activation;
 mod browser_sync;
 mod build_cancel;
+mod build_layout;
+mod cargo_target;
+mod command_runner;
 mod config;
 mod constants;
 mod cssbundle;
+mod dev_lifecycle;
 mod dev_loop;
 mod dev_mux;
 mod dev_watcher;
 mod document_hash;
+mod frontend_toolchain;
 mod fswatcher;
 mod generation;
+mod generation_workspace;
 mod globset;
 mod live_refresh;
 mod live_state;
@@ -17,6 +23,7 @@ mod local_cargo;
 mod manifest;
 mod pipeline;
 mod process_wait;
+mod public_static_inputs;
 mod runtime;
 mod session;
 mod signals;
@@ -30,6 +37,7 @@ mod ts_modules;
 mod utils;
 mod vite_plugin;
 mod viteutil;
+mod watch_config;
 mod watch_plan;
 mod work_queue;
 
@@ -37,7 +45,7 @@ use std::process;
 
 use vorma::{AppConfig, ViewErrorClientMsg};
 
-use crate::config::CargoBinTarget;
+use crate::cargo_target::CargoBinTarget;
 use crate::session::BuildSession;
 use crate::signals::start_signal_thread;
 
@@ -104,7 +112,9 @@ where
 		return Ok(());
 	}
 	let candidate = match match command {
-		BuildCommand::Build => pipeline::prepare_generation_candidate(&mut session),
+		BuildCommand::Build => {
+			pipeline::prepare_generation_candidate(&mut session).map_err(|err| err.to_string())
+		}
 		BuildCommand::Dev => dev_loop::prepare_stable_server_refresh_candidate(&mut session),
 	} {
 		Ok(candidate) => candidate,
@@ -124,9 +134,9 @@ where
 		.cloned()
 		.ok_or_else(|| "committed generation not available".to_owned())?;
 
-	let manifest =
+	let activation =
 		match activation::activate_generation(&committed, command.mode(), session.runtime_mut()) {
-			Ok(manifest) => manifest,
+			Ok(activation) => activation,
 			Err(err) => {
 				if signal_thread.shutdown_requested()? {
 					return Ok(());
@@ -134,8 +144,9 @@ where
 				return Err(format!("Initialization error: {err}"));
 			}
 		};
-	let Some(manifest) = manifest else {
-		return Ok(());
+	let manifest = match activation {
+		activation::ActivationOutcome::Published(manifest) => *manifest,
+		activation::ActivationOutcome::Cancelled => return Ok(()),
 	};
 	session.set_committed_manifest(manifest)?;
 	if signal_thread.shutdown_requested()? {

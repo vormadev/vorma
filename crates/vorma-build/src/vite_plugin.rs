@@ -370,7 +370,7 @@ mod tests {
 	}
 
 	fn dev_mux_state_with_token(token: &str) -> DevMuxState {
-		DevMuxRuntime::for_test(0, "", token).state()
+		DevMuxRuntime::for_test(1, "refresh", token).state()
 	}
 
 	fn headers_with_token(token: &str) -> HeaderMap {

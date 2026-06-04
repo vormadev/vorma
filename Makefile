@@ -61,42 +61,45 @@ rust-gate: rust-fmt-check rust-lint rust-test rust-build rust-build-client-wasm 
 ####### TYPESCRIPT
 #####################################################################
 
+PNPM_INSTALL = pnpm install --config.confirmModulesPurge=false
+PNPM_EXEC = pnpm --config.confirmModulesPurge=false exec
+
 ts-install:
-	pnpm install --config.confirmModulesPurge=false
+	$(PNPM_INSTALL)
 
 ts-fmt:
-	pnpm exec oxfmt --config=oxfmt.config.ts --write .
+	$(PNPM_EXEC) oxfmt --config=oxfmt.config.ts --write .
 
 ts-fmt-check:
-	pnpm exec oxfmt --config=oxfmt.config.ts --check .
+	$(PNPM_EXEC) oxfmt --config=oxfmt.config.ts --check .
 
 ts-lint:
-	pnpm exec oxlint --config=oxlint.config.ts .
+	$(PNPM_EXEC) oxlint --config=oxlint.config.ts .
 
 ts-lint-fix:
-	pnpm exec oxlint --config=oxlint.config.ts --fix .
+	$(PNPM_EXEC) oxlint --config=oxlint.config.ts --fix .
 
 ts-typecheck: ts-build
-	pnpm exec tsgo -p packages/vorma/kit --pretty false
-	pnpm exec tsgo -p packages/vorma/core --pretty false
-	pnpm exec tsgo -p packages/vorma/ui/preact --pretty false
-	pnpm exec tsgo -p packages/vorma/ui/react --pretty false
-	pnpm exec tsgo -p packages/vorma/ui/remix --pretty false
-	pnpm exec tsgo -p packages/vorma/ui/solid --pretty false
-	pnpm exec tsgo -p packages/vorma/vite --pretty false
-	pnpm exec tsgo -p packages/vorma/tests --pretty false
-	pnpm exec tsgo -p packages/create-vorma --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/kit --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/core --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/ui/preact --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/ui/react --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/ui/remix --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/ui/solid --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/vite --pretty false
+	$(PNPM_EXEC) tsgo -p packages/vorma/tests --pretty false
+	$(PNPM_EXEC) tsgo -p packages/create-vorma --pretty false
 
 ts-test:
-	pnpm exec vitest run --reporter=dot
+	$(PNPM_EXEC) vitest run --reporter=dot
 
 ts-build: ts-install rust-build-client-wasm
-	pnpm exec tsdown
+	$(PNPM_EXEC) tsdown
 	mkdir -p packages/vorma/.dist/core
 	cp packages/vorma/core/client_wasm/vorma_client_wasm_bg.wasm \
 		packages/vorma/.dist/core/vorma_client_wasm_bg.wasm
 
-ts-gate: ts-fmt-check ts-lint ts-typecheck ts-test rust-build-client-wasm
+ts-gate: ts-install ts-fmt-check ts-lint ts-typecheck ts-test rust-build-client-wasm
 
 #####################################################################
 ####### RELEASES

@@ -76,9 +76,10 @@ pub(crate) struct DevProcesses {
 	unexpected_exits: Arc<Mutex<VecDeque<ChildProcessExit>>>,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ProcessStopRequest {
-	requested: bool,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ProcessStopRequest {
+	NotRunning,
+	Requested,
 }
 
 pub(crate) struct AppServerStartArgs {
@@ -121,13 +122,11 @@ impl DevProcesses {
 	}
 
 	pub(crate) fn begin_stop_app_server(&mut self) -> ProcessStopRequest {
-		ProcessStopRequest {
-			requested: self.app_server.begin_stop(),
-		}
+		self.app_server.begin_stop()
 	}
 
 	pub(crate) fn finish_stop_app_server(&mut self, stop: ProcessStopRequest, should_force: bool) {
-		if stop.requested {
+		if stop == ProcessStopRequest::Requested {
 			self.app_server.finish_stop(should_force);
 		}
 	}
@@ -279,12 +278,24 @@ fn vite_server_cmd(
 
 #[derive(Debug)]
 pub(crate) struct Supervisor {
-	port: u16,
-	process_id: Option<u32>,
-	done: Option<Receiver<()>>,
+	state: SupervisorState,
 	exit_err: Arc<std::sync::Mutex<Option<String>>>,
 	stopping: Arc<AtomicBool>,
 	process_stop_handle: ProcessStopHandle,
+}
+
+#[derive(Debug)]
+enum SupervisorState {
+	Stopped,
+	Running(RunningSupervisorProcess),
+	Stopping(RunningSupervisorProcess),
+}
+
+#[derive(Debug)]
+struct RunningSupervisorProcess {
+	port: u16,
+	process_id: u32,
+	done: Receiver<()>,
 }
 
 pub(crate) struct SvStartOpts<F, G>
@@ -310,9 +321,7 @@ pub(crate) enum SupervisorError {
 impl Supervisor {
 	pub(crate) fn new() -> Self {
 		Self {
-			port: 0,
-			process_id: None,
-			done: None,
+			state: SupervisorState::Stopped,
 			exit_err: Arc::new(std::sync::Mutex::new(None)),
 			stopping: Arc::new(AtomicBool::new(false)),
 			process_stop_handle: ProcessStopHandle::new(),
@@ -320,11 +329,17 @@ impl Supervisor {
 	}
 
 	pub(crate) fn is_running(&self) -> bool {
-		self.process_id.is_some()
+		matches!(
+			self.state,
+			SupervisorState::Running(_) | SupervisorState::Stopping(_)
+		)
 	}
 
 	pub(crate) fn port(&self) -> u16 {
-		self.port
+		match &self.state {
+			SupervisorState::Stopped => 0,
+			SupervisorState::Running(process) | SupervisorState::Stopping(process) => process.port,
+		}
 	}
 
 	pub(crate) fn process_stop_handle(&self) -> ProcessStopHandle {
@@ -336,7 +351,7 @@ impl Supervisor {
 		F: FnOnce(u16) -> Result<Command, String>,
 		G: FnOnce(String) + Send + 'static,
 	{
-		if self.process_id.is_some() {
+		if self.is_running() {
 			return Err(SupervisorError::AlreadyRunning);
 		}
 
@@ -353,9 +368,11 @@ impl Supervisor {
 		let build_cancel = Arc::clone(&opts.build_cancel);
 		let on_unexpected_exit = opts.on_unexpected_exit;
 
-		self.port = port;
-		self.process_id = Some(process_id);
-		self.done = Some(done_rx);
+		self.state = SupervisorState::Running(RunningSupervisorProcess {
+			port,
+			process_id,
+			done: done_rx,
+		});
 		self.process_stop_handle.store(process_id);
 		self.stopping.store(false, Ordering::SeqCst);
 		*self.exit_err.lock().expect("exit_err lock poisoned") = None;
@@ -390,53 +407,51 @@ impl Supervisor {
 	}
 
 	pub(crate) fn stop(&mut self, force: bool) {
-		if self.begin_stop() {
+		if self.begin_stop() == ProcessStopRequest::Requested {
 			self.finish_stop(force);
 		}
 	}
 
-	fn begin_stop(&mut self) -> bool {
-		let Some(process_id) = self.process_id else {
-			return false;
+	fn begin_stop(&mut self) -> ProcessStopRequest {
+		let state = std::mem::replace(&mut self.state, SupervisorState::Stopped);
+		let process = match state {
+			SupervisorState::Stopped => {
+				self.state = SupervisorState::Stopped;
+				return ProcessStopRequest::NotRunning;
+			}
+			SupervisorState::Running(process) => process,
+			SupervisorState::Stopping(process) => {
+				self.state = SupervisorState::Stopping(process);
+				return ProcessStopRequest::Requested;
+			}
 		};
 		self.stopping.store(true, Ordering::SeqCst);
-		request_stop(process_id);
-		true
+		request_stop(process.process_id);
+		self.state = SupervisorState::Stopping(process);
+		ProcessStopRequest::Requested
 	}
 
 	fn finish_stop(&mut self, force: bool) {
-		let Some(process_id) = self.process_id else {
-			return;
-		};
-		if force {
-			force_kill(process_id);
-			self.wait_until_done();
-		} else {
-			if !self.wait_until_done_timeout(SUPERVISOR_SHUTDOWN_GRACE_PERIOD) {
-				force_kill(process_id);
-				self.wait_until_done();
+		let state = std::mem::replace(&mut self.state, SupervisorState::Stopped);
+		let process = match state {
+			SupervisorState::Stopped => {
+				self.state = SupervisorState::Stopped;
+				return;
 			}
+			SupervisorState::Running(process) | SupervisorState::Stopping(process) => process,
+		};
+		let stopped_without_force =
+			!force && wait_until_done_timeout(&process.done, SUPERVISOR_SHUTDOWN_GRACE_PERIOD);
+		if !stopped_without_force {
+			force_kill(process.process_id);
+			wait_until_done(&process.done);
 		}
 
-		self.process_id = None;
-		self.done = None;
-		self.port = 0;
-		self.process_stop_handle.clear_if_current(process_id);
+		self.state = SupervisorState::Stopped;
+		self.process_stop_handle
+			.clear_if_current(process.process_id);
 		*self.exit_err.lock().expect("exit_err lock poisoned") = None;
 		self.stopping.store(false, Ordering::SeqCst);
-	}
-
-	fn wait_until_done(&mut self) {
-		if let Some(done) = &self.done {
-			let _ = done.recv();
-		}
-	}
-
-	fn wait_until_done_timeout(&mut self, timeout: Duration) -> bool {
-		if let Some(done) = &self.done {
-			return done.recv_timeout(timeout).is_ok();
-		}
-		true
 	}
 
 	fn exit_error(&self) -> Option<String> {
@@ -445,6 +460,14 @@ impl Supervisor {
 			.expect("exit_err lock poisoned")
 			.clone()
 	}
+}
+
+fn wait_until_done(done: &Receiver<()>) {
+	let _ = done.recv();
+}
+
+fn wait_until_done_timeout(done: &Receiver<()>, timeout: Duration) -> bool {
+	done.recv_timeout(timeout).is_ok()
 }
 
 impl Default for Supervisor {
@@ -734,9 +757,14 @@ mod tests {
 	}
 
 	#[test]
-	fn supervisor_start_rejects_already_running_process() {
+	fn supervisor_start_rejects_active_process() {
 		let mut sv = Supervisor::new();
-		sv.process_id = Some(123);
+		let (_done_tx, done_rx) = mpsc::channel();
+		sv.state = SupervisorState::Stopping(RunningSupervisorProcess {
+			port: 49152,
+			process_id: 123,
+			done: done_rx,
+		});
 
 		let err = sv
 			.start(SvStartOpts {

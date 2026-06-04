@@ -1,7 +1,8 @@
 use vorma::__private::Config;
 
 use crate::RunMode;
-use crate::config::{CargoBinTarget, ConfigView};
+use crate::cargo_target::CargoBinTarget;
+use crate::config::ConfigView;
 use vorma::__private::manifest::Manifest;
 
 use crate::generation::{CommittedGeneration, GenerationCandidate};
@@ -17,6 +18,13 @@ pub(crate) struct BuildSession {
 	runtime: DevRuntime,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BootstrapConfigSource {
+	RetryOverride,
+	CommittedGeneration,
+	InitialConfig,
+}
+
 impl BuildSession {
 	pub(crate) fn new(initial_config: Config, build_entry: CargoBinTarget, mode: RunMode) -> Self {
 		Self {
@@ -30,12 +38,29 @@ impl BuildSession {
 	}
 
 	pub(crate) fn bootstrap_config_view(&self) -> Result<ConfigView<'_>, String> {
-		let config = self
-			.bootstrap_config_override
-			.as_ref()
-			.or_else(|| self.committed.as_ref().map(CommittedGeneration::config))
-			.unwrap_or(&self.initial_config);
-		ConfigView::new(config)
+		let config = match self.bootstrap_config_source() {
+			BootstrapConfigSource::RetryOverride => self
+				.bootstrap_config_override
+				.as_ref()
+				.expect("retry override source requires retry override config"),
+			BootstrapConfigSource::CommittedGeneration => self
+				.committed
+				.as_ref()
+				.expect("committed generation source requires committed generation")
+				.config(),
+			BootstrapConfigSource::InitialConfig => &self.initial_config,
+		};
+		ConfigView::new(config).map_err(|err| err.to_string())
+	}
+
+	pub(crate) fn bootstrap_config_source(&self) -> BootstrapConfigSource {
+		if self.bootstrap_config_override.is_some() {
+			return BootstrapConfigSource::RetryOverride;
+		}
+		if self.committed.is_some() {
+			return BootstrapConfigSource::CommittedGeneration;
+		}
+		BootstrapConfigSource::InitialConfig
 	}
 
 	pub(crate) fn bootstrap_config(&self) -> Result<Config, String> {
@@ -137,8 +162,10 @@ mod tests {
 		let root = std::env::current_dir().unwrap();
 		let mut initial = config(root.clone());
 		initial.dist_dir = "dist-a".to_owned();
-		let mut next = config(root);
+		let mut next = config(root.clone());
 		next.dist_dir = "dist-b".to_owned();
+		let mut retry = config(root);
+		retry.dist_dir = "dist-c".to_owned();
 		let mut session = BuildSession::new(
 			initial,
 			CargoBinTarget {
@@ -148,13 +175,30 @@ mod tests {
 			RunMode::Dev,
 		);
 
+		assert_eq!(
+			session.bootstrap_config_source(),
+			BootstrapConfigSource::InitialConfig
+		);
 		assert!(
 			session
 				.bootstrap_config_view()
 				.unwrap()
 				.dist_dir()
-				.unwrap()
 				.ends_with("dist-a")
+		);
+
+		session.set_bootstrap_config_override(retry);
+
+		assert_eq!(
+			session.bootstrap_config_source(),
+			BootstrapConfigSource::RetryOverride
+		);
+		assert!(
+			session
+				.bootstrap_config_view()
+				.unwrap()
+				.dist_dir()
+				.ends_with("dist-c")
 		);
 
 		session.commit_generation(GenerationCandidate {
@@ -171,12 +215,15 @@ mod tests {
 			static_effects: StaticEffects::default(),
 		});
 
+		assert_eq!(
+			session.bootstrap_config_source(),
+			BootstrapConfigSource::CommittedGeneration
+		);
 		assert!(
 			session
 				.bootstrap_config_view()
 				.unwrap()
 				.dist_dir()
-				.unwrap()
 				.ends_with("dist-b")
 		);
 	}

@@ -6,14 +6,15 @@ use std::sync::{Arc, Mutex};
 
 use http::StatusCode;
 use vorma_matcher::Params;
-use vorma_tasks::{CancelToken, Error as TaskError, ExecCtx, Result as TaskResult};
+use vorma_tasks::{Error as TaskError, ExecCtx, Result as TaskResult};
 
-use crate::response::{Proxy, merge_proxy_responses};
+use crate::response::{ResponseEffects, merge_response_effects};
 
 use super::context::{None, RequestCtx};
 use super::error::Error;
+use super::ordered_parallel::{OrderedTaskContexts, run_ordered_parallel};
 use super::request::RawRequest;
-use super::task::{proxy_for_task_output, run_with_exec_cancellation};
+use super::task::{response_effects_for_task_output, run_with_exec_cancellation};
 
 type MiddlewareFuture<'a, E> = Pin<Box<dyn Future<Output = TaskResult<(), E>> + Send + 'a>>;
 
@@ -93,7 +94,7 @@ impl<S, E> MiddlewareInvocation<S, E> {
 
 struct MiddlewareOutput<E> {
 	index: usize,
-	proxy: Proxy,
+	effects: ResponseEffects,
 	error: Option<TaskError<E>>,
 }
 
@@ -104,7 +105,7 @@ where
 	fn clone(&self) -> Self {
 		Self {
 			index: self.index,
-			proxy: self.proxy.clone(),
+			effects: self.effects.clone(),
 			error: self.error.clone(),
 		}
 	}
@@ -118,89 +119,88 @@ pub(in crate::mux) async fn run_middleware_entries<S, E>(
 	params: Params,
 	splat_values: Vec<String>,
 	middleware_entries: Vec<MiddlewareInvocation<S, E>>,
-) -> Result<Proxy, Error>
+) -> Result<ResponseEffects, Error>
 where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
 	if middleware_entries.is_empty() {
-		return Ok(Proxy::new());
+		return Ok(ResponseEffects::new());
 	}
-	let middleware_exec_ctxs = (0..middleware_entries.len())
-		.map(|_| exec_ctx.child())
-		.collect::<Vec<_>>();
-	let cancel_middleware = Arc::new(
-		middleware_exec_ctxs
-			.iter()
-			.map(|exec_ctx| exec_ctx.cancel_token().clone())
-			.collect::<Vec<_>>(),
-	);
-	let mut handles = Vec::with_capacity(middleware_exec_ctxs.len());
-
-	for (index, (invocation, exec_ctx)) in middleware_entries
-		.into_iter()
-		.zip(middleware_exec_ctxs)
-		.enumerate()
-	{
-		let proxy = Arc::new(Mutex::new(Proxy::new()));
-		let ctx = RequestCtx {
-			matched_pattern: invocation.matched_pattern,
-			params: params.clone(),
-			splat_values: splat_values.clone(),
-			state: state.clone(),
-			exec_ctx: exec_ctx.clone(),
-			public_filemap: public_filemap.clone(),
-			response_proxy: proxy.clone(),
-			request: request.clone(),
-			input: None,
-		};
-		let middleware = invocation.entry.mw.clone();
-		let cancel_middleware = cancel_middleware.clone();
-		handles.push((
-			index,
-			tokio::spawn(async move {
+	let task_contexts = OrderedTaskContexts::sibling_children(&exec_ctx, middleware_entries.len());
+	let cancellation = task_contexts.cancellation();
+	let request = request.clone();
+	let run_outputs = run_ordered_parallel(middleware_entries, task_contexts, {
+		let state = state.clone();
+		let public_filemap = public_filemap.clone();
+		let params = params.clone();
+		let splat_values = splat_values.clone();
+		move |invocation, task_ctx| {
+			let state = state.clone();
+			let public_filemap = public_filemap.clone();
+			let params = params.clone();
+			let splat_values = splat_values.clone();
+			let request = request.clone();
+			async move {
+				let index = task_ctx.index();
+				let exec_ctx = task_ctx.exec_ctx();
+				let effects = Arc::new(Mutex::new(ResponseEffects::new()));
+				let ctx = RequestCtx {
+					matched_pattern: invocation.matched_pattern,
+					params,
+					splat_values,
+					state,
+					exec_ctx: exec_ctx.clone(),
+					public_filemap,
+					response_effects: effects.clone(),
+					request,
+					input: None,
+				};
+				let middleware = invocation.entry.mw.clone();
 				let ctx = ctx.clone_for_task(exec_ctx.clone(), None);
 				run_with_exec_cancellation(&exec_ctx, async move {
 					let output = middleware.run(ctx).await;
-					let proxy = proxy.lock().expect("response proxy lock poisoned").clone();
-					let should_cancel_later = output.is_err() || proxy.is_terminal_response();
+					let effects = effects
+						.lock()
+						.expect("response effects lock poisoned")
+						.clone();
+					let should_cancel_later = output.is_err() || effects.is_terminal_response();
 					if should_cancel_later {
-						cancel_later(&cancel_middleware, index);
+						task_ctx.cancel_later();
 					}
 					match output {
 						Ok(()) => MiddlewareOutput {
 							index,
-							proxy,
+							effects,
 							error: Option::None,
 						},
 						Err(error) => MiddlewareOutput {
 							index,
-							proxy: proxy_for_task_output(true, proxy),
+							effects: response_effects_for_task_output(true, effects),
 							error: Some(error),
 						},
 					}
 				})
 				.await
-			}),
-		));
-	}
+			}
+		}
+	})
+	.await?;
 
-	let mut outputs = Vec::with_capacity(handles.len());
+	let run_outputs = run_outputs.into_vec();
+	let mut outputs = Vec::with_capacity(run_outputs.len());
 	let mut errors = Vec::new();
-	for (index, handle) in handles {
-		let output = handle
-			.await
-			.map_err(|error| Error::TaskJoin(error.to_string()))?;
+	for (index, output) in run_outputs {
 		match output {
 			Ok(output) => {
 				if let Some(error) = output.error.clone() {
-					cancel_later(&cancel_middleware, output.index);
+					cancellation.cancel_later(output.index);
 					errors.push((output.index, error));
 				}
 				outputs.push(output);
 			}
 			Err(error) => {
-				cancel_later(&cancel_middleware, index);
+				cancellation.cancel_later(index);
 				errors.push((index, error));
 			}
 		}
@@ -208,20 +208,20 @@ where
 
 	outputs.sort_by_key(|output| output.index);
 	if let Some(first_terminal_index) = first_terminal_middleware_index(&outputs, &errors) {
-		let eligible_proxies = outputs
+		let eligible_effects = outputs
 			.iter()
 			.filter(|output| output.index <= first_terminal_index)
-			.map(|output| output.proxy.clone())
+			.map(|output| output.effects.clone())
 			.collect::<Vec<_>>();
-		let mut merged_terminal_proxy = merge_owned_proxy_responses(eligible_proxies);
-		if merged_terminal_proxy.is_terminal_response() {
-			return Ok(merged_terminal_proxy);
+		let mut merged_terminal_effects = merge_owned_response_effects(eligible_effects);
+		if merged_terminal_effects.is_terminal_response() {
+			return Ok(merged_terminal_effects);
 		}
-		set_internal_server_error(&mut merged_terminal_proxy);
-		return Ok(merged_terminal_proxy);
+		set_internal_server_error(&mut merged_terminal_effects);
+		return Ok(merged_terminal_effects);
 	}
-	Ok(merge_owned_proxy_responses(
-		outputs.into_iter().map(|output| output.proxy).collect(),
+	Ok(merge_owned_response_effects(
+		outputs.into_iter().map(|output| output.effects).collect(),
 	))
 }
 
@@ -229,9 +229,9 @@ fn first_terminal_middleware_index<E>(
 	outputs: &[MiddlewareOutput<E>],
 	errors: &[(usize, TaskError<E>)],
 ) -> Option<usize> {
-	let first_proxy_index = outputs
+	let first_terminal_effects_index = outputs
 		.iter()
-		.find(|output| output.proxy.is_terminal_response())
+		.find(|output| output.effects.is_terminal_response())
 		.map(|output| output.index);
 	let first_error_index = errors
 		.iter()
@@ -239,30 +239,24 @@ fn first_terminal_middleware_index<E>(
 		.map(|(index, _)| *index)
 		.min();
 
-	match (first_proxy_index, first_error_index) {
-		(Some(proxy_index), Some(error_index)) => Some(proxy_index.min(error_index)),
-		(Some(proxy_index), Option::None) => Some(proxy_index),
+	match (first_terminal_effects_index, first_error_index) {
+		(Some(effects_index), Some(error_index)) => Some(effects_index.min(error_index)),
+		(Some(effects_index), Option::None) => Some(effects_index),
 		(Option::None, Some(error_index)) => Some(error_index),
 		(Option::None, Option::None) => errors.iter().map(|(index, _)| *index).min(),
 	}
 }
 
-fn cancel_later(tokens: &[CancelToken], own_index: usize) {
-	for (index, token) in tokens.iter().enumerate() {
-		if index > own_index {
-			token.cancel();
-		}
-	}
-}
-
-fn set_internal_server_error(proxy: &mut Proxy) {
-	proxy.set_status(
+fn set_internal_server_error(effects: &mut ResponseEffects) {
+	effects.set_status(
 		StatusCode::INTERNAL_SERVER_ERROR,
 		Some("Internal Server Error".to_owned()),
 	);
 }
 
-pub(in crate::mux) fn merge_owned_proxy_responses(proxies: Vec<Proxy>) -> Proxy {
-	let refs = proxies.iter().map(Some).collect::<Vec<_>>();
-	merge_proxy_responses(&refs)
+pub(in crate::mux) fn merge_owned_response_effects(
+	effects_list: Vec<ResponseEffects>,
+) -> ResponseEffects {
+	let refs = effects_list.iter().map(Some).collect::<Vec<_>>();
+	merge_response_effects(&refs)
 }

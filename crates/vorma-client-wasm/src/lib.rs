@@ -1,89 +1,31 @@
-use std::sync::Mutex;
+mod abi;
+mod encoding;
+mod output;
+mod registry;
 
-use vorma_matcher::{Matcher, MatcherBuilder, Options};
-
-const STATUS_NO_MATCH: u32 = 0;
-const STATUS_MATCH: u32 = 1;
-const STATUS_ERROR: u32 = 2;
-
-static MATCHERS: Mutex<Vec<Option<MatcherSlot>>> = Mutex::new(Vec::new());
-static OUTPUT: Mutex<Vec<u8>> = Mutex::new(Vec::new());
-
-struct MatcherSlot {
-	builder: MatcherBuilder,
-	matcher: Option<Matcher>,
-}
+use abi::{STATUS_ERROR, STATUS_MATCH, STATUS_NO_MATCH};
+#[cfg(test)]
+use encoding::push_len;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn vorma_client_matcher_alloc(len: usize) -> *mut u8 {
-	let mut buffer = Vec::<u8>::with_capacity(len);
-	let ptr = buffer.as_mut_ptr();
-	std::mem::forget(buffer);
-	ptr
+	abi::alloc(len)
 }
 
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn vorma_client_matcher_dealloc(ptr: *mut u8, len: usize) {
-	if ptr.is_null() {
-		return;
-	}
-
-	unsafe {
-		drop(Vec::from_raw_parts(ptr, 0, len));
-	}
+	abi::dealloc(ptr, len);
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn vorma_client_matcher_new() -> u32 {
-	let Ok(builder) = Matcher::builder(Options {
-		explicit_index_segment_identifier: "_index".to_owned(),
-		..Options::default()
-	}) else {
-		return 0;
-	};
-
-	let mut matchers = MATCHERS
-		.lock()
-		.expect("client matcher registry should not be poisoned");
-	{
-		for (index, slot) in matchers.iter_mut().enumerate() {
-			if slot.is_none() {
-				*slot = Some(MatcherSlot::new(builder));
-				return match u32::try_from(index + 1) {
-					Ok(id) => id,
-					Err(_) => {
-						*slot = None;
-						0
-					}
-				};
-			}
-		}
-
-		matchers.push(Some(MatcherSlot::new(builder)));
-		match u32::try_from(matchers.len()) {
-			Ok(id) => id,
-			Err(_) => {
-				matchers.pop();
-				0
-			}
-		}
-	}
+	registry::new_matcher()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn vorma_client_matcher_free(matcher_id: u32) {
-	if matcher_id == 0 {
-		return;
-	}
-
-	let mut matchers = MATCHERS
-		.lock()
-		.expect("client matcher registry should not be poisoned");
-	let Some(slot) = matchers.get_mut((matcher_id - 1) as usize) else {
-		return;
-	};
-	*slot = None;
+	registry::free_matcher(matcher_id);
 }
 
 #[unsafe(no_mangle)]
@@ -92,21 +34,10 @@ pub extern "C" fn vorma_client_matcher_register_pattern(
 	ptr: *const u8,
 	len: usize,
 ) -> u32 {
-	let Some(pattern) = read_str(ptr, len) else {
+	let Some(pattern) = abi::read_str(ptr, len) else {
 		return STATUS_ERROR;
 	};
-	if !is_valid_vorma_route_pattern(pattern) {
-		return STATUS_ERROR;
-	}
-
-	with_matcher_slot_mut(matcher_id, |slot| {
-		if slot.register_pattern(pattern).is_ok() {
-			STATUS_MATCH
-		} else {
-			STATUS_ERROR
-		}
-	})
-	.unwrap_or(STATUS_ERROR)
+	registry::register_pattern(matcher_id, pattern).map_or(STATUS_ERROR, |_| STATUS_MATCH)
 }
 
 #[unsafe(no_mangle)]
@@ -115,149 +46,35 @@ pub extern "C" fn vorma_client_matcher_find_nested_matches(
 	ptr: *const u8,
 	len: usize,
 ) -> u32 {
-	let Some(path) = read_str(ptr, len) else {
-		set_output(Vec::new());
+	let Some(path) = abi::read_str(ptr, len) else {
+		output::set_output(Vec::new());
 		return STATUS_ERROR;
 	};
 
-	with_matcher_slot_mut(matcher_id, |slot| {
-		let matcher = slot.matcher();
-		let Some(matched) = matcher.find_nested_matches(path) else {
-			set_output(Vec::new());
-			return STATUS_NO_MATCH;
-		};
-
-		match encode_nested_match(&matched) {
-			Ok(out) => {
-				set_output(out);
-				STATUS_MATCH
-			}
-			Err(()) => {
-				set_output(Vec::new());
-				STATUS_ERROR
-			}
+	match registry::find_nested_matches(matcher_id, path) {
+		Ok(Some(out)) => {
+			output::set_output(out);
+			STATUS_MATCH
 		}
-	})
-	.unwrap_or_else(|| {
-		set_output(Vec::new());
-		STATUS_ERROR
-	})
+		Ok(None) => {
+			output::set_output(Vec::new());
+			STATUS_NO_MATCH
+		}
+		Err(()) => {
+			output::set_output(Vec::new());
+			STATUS_ERROR
+		}
+	}
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn vorma_client_matcher_output_ptr() -> *const u8 {
-	OUTPUT
-		.lock()
-		.expect("client matcher output should not be poisoned")
-		.as_ptr()
+	output::output_ptr()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn vorma_client_matcher_output_len() -> usize {
-	OUTPUT
-		.lock()
-		.expect("client matcher output should not be poisoned")
-		.len()
-}
-
-impl MatcherSlot {
-	fn new(builder: MatcherBuilder) -> Self {
-		Self {
-			builder,
-			matcher: None,
-		}
-	}
-
-	fn register_pattern(&mut self, pattern: &str) -> Result<(), String> {
-		self.builder.register_pattern(pattern)?;
-		self.matcher = None;
-		Ok(())
-	}
-
-	fn matcher(&mut self) -> &Matcher {
-		if self.matcher.is_none() {
-			self.matcher = Some(self.builder.clone().finish());
-		}
-
-		self.matcher
-			.as_ref()
-			.expect("client matcher should be built")
-	}
-}
-
-fn with_matcher_slot_mut<T>(matcher_id: u32, f: impl FnOnce(&mut MatcherSlot) -> T) -> Option<T> {
-	if matcher_id == 0 {
-		return None;
-	}
-
-	let mut matchers = MATCHERS
-		.lock()
-		.expect("client matcher registry should not be poisoned");
-	let slot = matchers.get_mut((matcher_id - 1) as usize)?;
-	let matcher = slot.as_mut()?;
-	Some(f(matcher))
-}
-
-fn set_output(output: Vec<u8>) {
-	*OUTPUT
-		.lock()
-		.expect("client matcher output should not be poisoned") = output;
-}
-
-fn read_str<'a>(ptr: *const u8, len: usize) -> Option<&'a str> {
-	if len == 0 {
-		return Some("");
-	}
-	if ptr.is_null() {
-		return None;
-	}
-
-	let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-	std::str::from_utf8(bytes).ok()
-}
-
-fn is_valid_vorma_route_pattern(pattern: &str) -> bool {
-	!pattern.is_empty() && pattern.starts_with('/')
-}
-
-fn push_u32(out: &mut Vec<u8>, value: u32) {
-	out.extend_from_slice(&value.to_le_bytes());
-}
-
-fn push_len(out: &mut Vec<u8>, value: usize) -> Result<(), ()> {
-	let value = u32::try_from(value).map_err(|_| ())?;
-	push_u32(out, value);
-	Ok(())
-}
-
-fn push_string(out: &mut Vec<u8>, value: &str) -> Result<(), ()> {
-	push_len(out, value.len())?;
-	out.extend_from_slice(value.as_bytes());
-	Ok(())
-}
-
-fn encode_nested_match(matched: &vorma_matcher::NestedMatches) -> Result<Vec<u8>, ()> {
-	let mut out = Vec::new();
-	let mut params = matched.params.iter().collect::<Vec<_>>();
-	params.sort_by(|left, right| left.0.cmp(right.0));
-
-	push_len(&mut out, params.len())?;
-	for (key, value) in params {
-		push_string(&mut out, key)?;
-		push_string(&mut out, value)?;
-	}
-
-	push_len(&mut out, matched.splat_values.len())?;
-	for value in &matched.splat_values {
-		push_string(&mut out, value)?;
-	}
-
-	push_len(&mut out, matched.matches.len())?;
-	for item in &matched.matches {
-		push_string(&mut out, item.pattern.original_pattern())?;
-	}
-
-	Ok(out)
+	output::output_len()
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ mod error;
 mod input;
 mod middleware;
 mod nested;
+mod ordered_parallel;
 mod request;
 mod task;
 
@@ -16,7 +17,7 @@ pub use error::{Error, InputError, RouteExecutionError};
 #[cfg(test)]
 pub use input::InputParser;
 pub(crate) use middleware::Middleware;
-pub use nested::{NestedOptions, NestedRouter, NestedTasksResults};
+pub use nested::{NestedOptions, NestedRouter, ViewStackExecution, ViewStackTerminalBoundary};
 pub use request::RawRequest;
 pub(crate) use task::erased_handler;
 pub use vorma_matcher::Params;

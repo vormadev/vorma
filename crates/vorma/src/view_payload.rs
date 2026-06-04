@@ -7,8 +7,8 @@ use crate::envutil::is_dev;
 use crate::error::ViewErrorClientMsg;
 use crate::htmlutil::Element;
 use crate::manifest::Manifest;
-use crate::mux::{NestedTasksResults, RouteExecutionError};
-use crate::response::{Proxy, merge_proxy_responses};
+use crate::mux::{RouteExecutionError, ViewStackExecution};
+use crate::response::{ResponseEffects, merge_response_effects};
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub(crate) struct SsrPayload {
@@ -64,32 +64,26 @@ fn is_false(value: &bool) -> bool {
 pub(crate) fn build_view_payload<E>(
 	manifest: &Manifest,
 	document: &Document,
-	match_results: &vorma_matcher::NestedMatches,
-	tasks_results: &NestedTasksResults<E>,
+	view_stack: &ViewStackExecution<E>,
 	include_prod_preloads: bool,
-) -> Result<(ViewPayload, Proxy), String>
+) -> Result<(ViewPayload, ResponseEffects), String>
 where
 	E: ViewErrorClientMsg,
 {
-	let terminal_idx = first_terminal_view_idx(tasks_results);
-	let matched_patterns = match_results
-		.matches
-		.iter()
-		.map(|matched| matched.pattern.original_pattern().to_owned())
-		.collect::<Vec<_>>();
-	let response_proxy_refs = response_proxy_refs_for_payload(tasks_results, terminal_idx);
-	let merged_proxy = merge_proxy_responses(&response_proxy_refs);
-	let proxy_short_circuited = merged_proxy.is_terminal_response();
-	let params = match_results
-		.params
+	let response_effects_refs = response_effects_refs_for_payload(view_stack);
+	let merged_effects = merge_response_effects(&response_effects_refs);
+	let effects_short_circuited = merged_effects.is_terminal_response();
+	let matched_patterns = view_stack.matched_patterns().to_vec();
+	let params = view_stack
+		.params()
 		.iter()
 		.map(|(key, value)| (key.clone(), value.clone()))
 		.collect();
-	let splat_values = match_results.splat_values.clone();
+	let splat_values = view_stack.splat_values().to_vec();
 
-	if proxy_short_circuited {
+	if effects_short_circuited {
 		let mut raw_head_els = Vec::new();
-		if let Some(head_builder) = merged_proxy.head_builder_ref() {
+		if let Some(head_builder) = merged_effects.head_builder_ref() {
 			raw_head_els.extend_from_slice(head_builder.elements());
 		}
 		let prepared_head = document.prepare_head(&raw_head_els);
@@ -103,7 +97,7 @@ where
 				rest_head_els: prepared_head.rest,
 				..ViewPayload::default()
 			},
-			merged_proxy,
+			merged_effects,
 		));
 	}
 
@@ -135,8 +129,9 @@ where
 	let mut outermost_server_err = String::new();
 	let mut outermost_server_err_idx = Option::None;
 
+	let terminal_view_index = terminal_view_index(view_stack);
 	for (idx, pattern) in matched_patterns.iter().enumerate() {
-		if terminal_idx.is_some_and(|terminal_idx| idx > terminal_idx) {
+		if terminal_view_index.is_some_and(|terminal_view_index| idx > terminal_view_index) {
 			break;
 		}
 		let route_mod = manifest
@@ -151,8 +146,8 @@ where
 			&route_mod.css_bundle_urls,
 		);
 
-		let result = tasks_results
-			.results()
+		let result = view_stack
+			.view_results()
 			.get(idx)
 			.ok_or_else(|| format!("missing view result for matched pattern: {pattern}"))?;
 		if let Some(error) = result.error() {
@@ -160,7 +155,7 @@ where
 			outermost_server_err_idx = Some(idx);
 			break;
 		}
-		if result.ran_task() && !proxy_short_circuited {
+		if result.ran_task() && !effects_short_circuited {
 			let data = result
 				.data()
 				.ok_or_else(|| format!("missing view data for executed view pattern: {pattern}"))?;
@@ -169,7 +164,7 @@ where
 	}
 
 	let mut raw_head_els = Vec::new();
-	if let Some(head_builder) = merged_proxy.head_builder_ref() {
+	if let Some(head_builder) = merged_effects.head_builder_ref() {
 		raw_head_els.extend_from_slice(head_builder.elements());
 	}
 
@@ -228,50 +223,38 @@ where
 		css_bundles,
 		views_data,
 	};
-	Ok((payload, merged_proxy))
+	Ok((payload, merged_effects))
 }
 
-fn first_terminal_view_idx<E>(tasks_results: &NestedTasksResults<E>) -> Option<usize> {
-	if tasks_results
-		.middleware_proxy()
-		.is_some_and(Proxy::is_terminal_response)
-	{
-		return Some(0);
+fn terminal_view_index<E>(view_stack: &ViewStackExecution<E>) -> Option<usize> {
+	match view_stack.terminal_boundary() {
+		Some(crate::mux::ViewStackTerminalBoundary::View { index }) => Some(index),
+		Some(crate::mux::ViewStackTerminalBoundary::Middleware) | Option::None => Option::None,
 	}
-
-	tasks_results
-		.results()
-		.iter()
-		.enumerate()
-		.find_map(|(idx, result)| {
-			if result.error().is_some()
-				|| result
-					.response_proxy()
-					.is_some_and(Proxy::is_terminal_response)
-			{
-				return Some(idx);
-			}
-			Option::None
-		})
 }
 
-fn response_proxy_refs_for_payload<E>(
-	tasks_results: &NestedTasksResults<E>,
-	terminal_idx: Option<usize>,
-) -> Vec<Option<&Proxy>> {
-	let mut proxies = Vec::new();
-	if let Some(proxy) = tasks_results.middleware_proxy() {
-		proxies.push(Some(proxy));
+fn response_effects_refs_for_payload<E>(
+	view_stack: &ViewStackExecution<E>,
+) -> Vec<Option<&ResponseEffects>> {
+	let mut effects_list = Vec::new();
+	effects_list.push(Some(view_stack.middleware_effects()));
+
+	if matches!(
+		view_stack.terminal_boundary(),
+		Some(crate::mux::ViewStackTerminalBoundary::Middleware)
+	) {
+		return effects_list;
 	}
 
-	for (idx, result) in tasks_results.results().iter().enumerate() {
-		if terminal_idx.is_some_and(|terminal_idx| idx > terminal_idx) {
+	let terminal_view_index = terminal_view_index(view_stack);
+	for (idx, result) in view_stack.view_results().iter().enumerate() {
+		if terminal_view_index.is_some_and(|terminal_view_index| idx > terminal_view_index) {
 			break;
 		}
-		proxies.push(result.response_proxy());
+		effects_list.push(result.response_effects());
 	}
 
-	proxies
+	effects_list
 }
 
 fn view_client_msg<E>(error: &RouteExecutionError<E>) -> String

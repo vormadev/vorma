@@ -11,20 +11,12 @@ const TS_GATE_TARGET: &str = "ts-gate";
 const E2E_TARGET: &str = "e2e";
 const GATE_STEPS: &[&str] = &[RUST_GATE_TARGET, TS_GATE_TARGET, E2E_TARGET];
 
-#[derive(Debug, Eq, PartialEq)]
-struct StepFailure {
-	name: &'static str,
-	log_path: PathBuf,
-	reason: String,
-}
-
 pub(crate) fn run() -> Result<i32, String> {
 	let log_dir = Path::new(DEFAULT_LOG_DIR);
 	fs::create_dir_all(log_dir)
 		.map_err(|error| format!("create gate log directory {}: {error}", log_dir.display()))?;
 
 	let step_count = GATE_STEPS.len();
-	let mut failures = Vec::new();
 
 	for (index, step_name) in GATE_STEPS.iter().copied().enumerate() {
 		let step_number = index + 1;
@@ -42,35 +34,17 @@ pub(crate) fn run() -> Result<i32, String> {
 					"gate [{step_number}/{step_count}] {step_name}: failed ({})",
 					log_path.display()
 				);
-				failures.push(StepFailure {
-					name: step_name,
-					log_path,
-					reason,
-				});
+				println!(
+					"gate: failed at step {step_number}/{step_count}: {step_name}: {reason} ({})",
+					log_path.display()
+				);
+				return Ok(1);
 			}
 		}
 	}
 
-	if failures.is_empty() {
-		println!("gate: all steps passed");
-		return Ok(0);
-	}
-
-	let failed_names = failures
-		.iter()
-		.map(|failure| failure.name)
-		.collect::<Vec<_>>()
-		.join(", ");
-	println!("gate: failed steps: {failed_names}");
-	for failure in failures {
-		println!(
-			"gate: {}: {} ({})",
-			failure.name,
-			failure.reason,
-			failure.log_path.display()
-		);
-	}
-	Ok(1)
+	println!("gate: all steps passed");
+	Ok(0)
 }
 
 fn step_log_path(log_dir: &Path, index: usize, step_name: &str) -> PathBuf {

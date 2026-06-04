@@ -13,7 +13,7 @@ use vorma_tasks::ExecCtx;
 use vorma_tasks::Result as TaskResult;
 
 use crate::config::normalize_api_mount_root;
-use crate::response::Proxy;
+use crate::response::ResponseEffects;
 
 #[cfg(test)]
 use super::context::None;
@@ -24,12 +24,12 @@ use super::error::{Error, RouteExecutionError};
 #[cfg(test)]
 use super::input::InputParser;
 use super::middleware::{
-	Middleware, MiddlewareInvocation, merge_owned_proxy_responses, run_middleware_entries,
+	Middleware, MiddlewareInvocation, merge_owned_response_effects, run_middleware_entries,
 };
 use super::request::{RawRequest, RouteMatch, route_match};
 #[cfg(test)]
 use super::task::typed_handler;
-use super::task::{ErasedTask, proxy_for_task_output, run_erased_task};
+use super::task::{ErasedTask, run_handler_and_collect_effects};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Options {
@@ -205,7 +205,7 @@ where
 			.ok_or_else(|| Error::RouteNotFound(route_match.original_pattern().to_owned()))?;
 
 		let middleware_entries = self.collect_middleware(route_match.original_pattern());
-		let middleware_proxy = self
+		let middleware_effects = self
 			.run_middleware(
 				&request,
 				&route_match,
@@ -216,19 +216,19 @@ where
 			)
 			.await?;
 
-		if middleware_proxy.is_terminal_response() {
+		if middleware_effects.is_terminal_response() {
 			return Ok(Some(TaskRouteResult {
 				#[cfg(test)]
 				route_match,
 				data: Option::None,
 				error: Option::None,
-				response_proxy: middleware_proxy.clone(),
-				middleware_proxy,
+				response_effects: middleware_effects.clone(),
+				middleware_effects,
 			}));
 		}
 
-		let proxy = Arc::new(Mutex::new(Proxy::new()));
-		let handler_run = run_erased_task(
+		let effects = Arc::new(Mutex::new(ResponseEffects::new()));
+		let handler_execution = run_handler_and_collect_effects(
 			route.handler.clone(),
 			request,
 			RequestBase {
@@ -238,21 +238,21 @@ where
 				state,
 				exec_ctx,
 				public_filemap,
-				response_proxy: proxy,
+				response_effects: effects,
 			},
 		)
 		.await;
-		let (data, error, handler_proxy) = handler_run.into_parts();
-		let handler_proxy = proxy_for_task_output(error.is_some(), handler_proxy);
-		let response_proxy =
-			merge_owned_proxy_responses(vec![middleware_proxy.clone(), handler_proxy]);
+		let response_effects = merge_owned_response_effects(vec![
+			middleware_effects.clone(),
+			handler_execution.effects,
+		]);
 		Ok(Some(TaskRouteResult {
 			#[cfg(test)]
 			route_match,
-			data,
-			error,
-			response_proxy,
-			middleware_proxy,
+			data: handler_execution.data,
+			error: handler_execution.error,
+			response_effects,
+			middleware_effects,
 		}))
 	}
 
@@ -286,7 +286,7 @@ where
 		exec_ctx: ExecCtx<E>,
 		public_filemap: Arc<BTreeMap<String, String>>,
 		middleware_entries: Vec<MiddlewareInvocation<S, E>>,
-	) -> Result<Proxy, Error> {
+	) -> Result<ResponseEffects, Error> {
 		run_middleware_entries(
 			request,
 			state,
@@ -359,8 +359,8 @@ pub struct TaskRouteResult<E> {
 	route_match: RouteMatch,
 	data: Option<Value>,
 	error: Option<RouteExecutionError<E>>,
-	response_proxy: Proxy,
-	middleware_proxy: Proxy,
+	response_effects: ResponseEffects,
+	middleware_effects: ResponseEffects,
 }
 
 impl<E> TaskRouteResult<E> {
@@ -377,11 +377,11 @@ impl<E> TaskRouteResult<E> {
 		self.error.as_ref()
 	}
 
-	pub fn response_proxy(&self) -> &Proxy {
-		&self.response_proxy
+	pub fn response_effects(&self) -> &ResponseEffects {
+		&self.response_effects
 	}
 
-	pub(crate) fn middleware_proxy(&self) -> &Proxy {
-		&self.middleware_proxy
+	pub(crate) fn middleware_effects(&self) -> &ResponseEffects {
+		&self.middleware_effects
 	}
 }

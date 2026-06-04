@@ -1,84 +1,73 @@
-use std::collections::BTreeMap;
-use std::fs;
+use std::fmt;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
 use path_slash::{PathBufExt, PathExt};
-use vorma::__private::constants::PUBLIC_STATIC_OUT_NAME_PREFIX;
 use vorma::__private::{Config, validate_public_static_base_against_api_mount};
 use vorma::TsExtraType;
 
-use crate::constants::GITIGNORE_CONTENT;
-use crate::utils::write_str_to_file;
+use crate::build_layout::BuildLayout;
+use crate::cargo_target::{CargoBinTarget, validate_cargo_bin_target};
+use crate::frontend_toolchain::FrontendToolchain;
+use crate::public_static_inputs::PublicStaticInputs;
+use crate::watch_config::{WatchConfig, WatchConfigError};
 
-const UI_VARIANT_REACT: &str = "react";
-const UI_VARIANT_PREACT: &str = "preact";
-const UI_VARIANT_REMIX: &str = "remix";
-const UI_VARIANT_SOLID: &str = "solid";
-const BASE_WATCH_PATTERNS: &[&str] = &[
-	"!.git",
-	"!node_modules",
-	"!target",
-	"!**/target",
-	"!.vorma",
-	"!**/.vorma",
-];
-const DEV_LOOPBACK_HOST: &str = "127.0.0.1";
-const MANIFEST_STATIC_OUT_DEV: &str = vorma::__private::manifest::MANIFEST_STATIC_OUT_DEV;
-const MANIFEST_STATIC_OUT_PROD: &str = vorma::__private::manifest::MANIFEST_STATIC_OUT_PROD;
-
-#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct CargoBinTarget {
-	pub(crate) cargo_package: String,
-	pub(crate) cargo_bin: String,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ConfigError {
+	kind: ConfigErrorKind,
+	message: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum UiVariant {
-	React,
-	Preact,
-	Remix,
-	Solid,
+pub(crate) enum ConfigErrorKind {
+	RootDir,
+	DistDir,
+	ServerConfig,
+	FrontendToolchain,
+	PublicStaticAndApiPaths,
+	WatchPatterns,
+	ServerWatchPatterns,
+	ClientRevalidateOnChangePatterns,
+	PublicStaticSourceDir,
+	TypeScriptOutputFile,
+	FrontendEntryFile,
+	CriticalCssEntry,
+	ViteConfigFile,
 }
 
-impl UiVariant {
-	fn parse(raw: &str) -> Result<Self, String> {
-		match raw.trim() {
-			UI_VARIANT_REACT => Ok(Self::React),
-			UI_VARIANT_PREACT => Ok(Self::Preact),
-			UI_VARIANT_REMIX => Ok(Self::Remix),
-			UI_VARIANT_SOLID => Ok(Self::Solid),
-			ui => Err(format!("invalid UI variant: {ui}")),
+impl ConfigError {
+	fn raw(kind: ConfigErrorKind, message: impl Into<String>) -> Self {
+		Self {
+			kind,
+			message: message.into(),
 		}
 	}
 
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::React => UI_VARIANT_REACT,
-			Self::Preact => UI_VARIANT_PREACT,
-			Self::Remix => UI_VARIANT_REMIX,
-			Self::Solid => UI_VARIANT_SOLID,
-		}
+	fn with_context(kind: ConfigErrorKind, context: &str, err: impl fmt::Display) -> Self {
+		Self::raw(kind, format!("error with {context}: {err}"))
 	}
+}
 
-	fn vite_dedupe_list(self) -> Vec<String> {
-		match self {
-			Self::React => vec!["react".to_owned(), "react-dom".to_owned()],
-			Self::Preact => vec![
-				"preact".to_owned(),
-				"preact/hooks".to_owned(),
-				"@preact/signals".to_owned(),
-				"preact/jsx-runtime".to_owned(),
-				"preact/compat".to_owned(),
-				"preact/test-utils".to_owned(),
-			],
-			Self::Remix => vec![
-				"remix".to_owned(),
-				"remix/ui".to_owned(),
-				"@remix-run/ui".to_owned(),
-			],
-			Self::Solid => vec!["solid-js".to_owned(), "solid-js/web".to_owned()],
-		}
+impl fmt::Display for ConfigError {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.write_str(&self.message)
+	}
+}
+
+impl std::error::Error for ConfigError {}
+
+impl Deref for ConfigError {
+	type Target = str;
+
+	fn deref(&self) -> &Self::Target {
+		&self.message
+	}
+}
+
+impl PartialEq<&str> for ConfigError {
+	fn eq(&self, other: &&str) -> bool {
+		self.message == *other
 	}
 }
 
@@ -86,17 +75,24 @@ impl UiVariant {
 pub(crate) struct ConfigView<'a> {
 	source: &'a Config,
 	root_dir: PathBuf,
-	ui_variant: UiVariant,
+	build_layout: BuildLayout,
+	frontend_toolchain: FrontendToolchain,
 	app_server: CargoBinTarget,
-	js_package_manager_cmd_base: Vec<String>,
+	watch_config: WatchConfig,
+	public_static_inputs: PublicStaticInputs,
 	public_static_base_path: String,
 	api_mount_root: String,
 }
 
 impl<'a> ConfigView<'a> {
-	pub(crate) fn new(source: &'a Config) -> Result<Self, String> {
+	pub(crate) fn new(source: &'a Config) -> Result<Self, ConfigError> {
 		let root_dir = validate_root_dir(&source.root_dir)
-			.map_err(|err| format!("error with root dir: {err}"))?;
+			.map_err(|err| ConfigError::with_context(ConfigErrorKind::RootDir, "root dir", err))?;
+		let build_layout = BuildLayout::new(
+			generated_output_path_from_root(&root_dir, &source.dist_dir, "dist_dir").map_err(
+				|err| ConfigError::with_context(ConfigErrorKind::DistDir, "dist dir", err),
+			)?,
+		);
 		let app_server = validate_cargo_bin_target(
 			&CargoBinTarget {
 				cargo_package: source.server_config.cargo_package.clone(),
@@ -104,55 +100,107 @@ impl<'a> ConfigView<'a> {
 			},
 			"server config",
 		)
-		.map_err(|err| format!("error with server config: {err}"))?;
-		let ui_variant = UiVariant::parse(&source.frontend_config.ui_variant)
-			.map_err(|err| format!("error with UI variant: {err}"))?;
-		let js_package_manager_cmd_base =
-			parse_required_command(&source.frontend_config.js_package_manager_base_cmd)
-				.map_err(|err| format!("error with JavaScript package-manager command: {err}"))?;
+		.map_err(|err| {
+			ConfigError::with_context(ConfigErrorKind::ServerConfig, "server config", err)
+		})?;
+		let frontend_toolchain = FrontendToolchain::from_config(&source.frontend_config)
+			.map_err(|err| ConfigError::raw(ConfigErrorKind::FrontendToolchain, err.to_string()))?;
 		let (public_static_base_path, api_mount_root) =
 			validate_public_static_base_against_api_mount(
 				&source.path_config.public_static_base,
 				&source.path_config.api_base,
 			)
-			.map_err(|err| format!("error with public static/API paths: {err}"))?;
+			.map_err(|err| {
+				ConfigError::with_context(
+					ConfigErrorKind::PublicStaticAndApiPaths,
+					"public static/API paths",
+					err,
+				)
+			})?;
+		let watch_config = WatchConfig::new(
+			&root_dir,
+			&build_layout.vorma_internal_root(),
+			&source.dev_watch_config,
+		)
+		.map_err(|err| match err {
+			WatchConfigError::Watch(err) => {
+				ConfigError::with_context(ConfigErrorKind::WatchPatterns, "watch patterns", err)
+			}
+			WatchConfigError::ServerWatch(err) => ConfigError::with_context(
+				ConfigErrorKind::ServerWatchPatterns,
+				"server watch patterns",
+				err,
+			),
+			WatchConfigError::ClientRevalidateOnChange(err) => ConfigError::with_context(
+				ConfigErrorKind::ClientRevalidateOnChangePatterns,
+				"client revalidate on change patterns",
+				err,
+			),
+		})?;
+		let public_static_inputs = PublicStaticInputs::new(
+			&root_dir,
+			&source.frontend_config.public_static_src_dir,
+			public_static_base_path.clone(),
+		)
+		.map_err(|err| {
+			ConfigError::with_context(
+				ConfigErrorKind::PublicStaticSourceDir,
+				"public static source dir",
+				err,
+			)
+		})?;
 
 		let view = Self {
 			source,
 			root_dir,
-			ui_variant,
+			build_layout,
+			frontend_toolchain,
 			app_server,
-			js_package_manager_cmd_base,
+			watch_config,
+			public_static_inputs,
 			public_static_base_path,
 			api_mount_root,
 		};
-		view.dist_dir()
-			.map_err(|err| format!("error with dist dir: {err}"))?;
-		view.ts_gen_out_file()
-			.map_err(|err| format!("error with TypeScript output file: {err}"))?;
-		view.ts_entry()
-			.map_err(|err| format!("error with frontend entry file: {err}"))?;
-		view.public_static_src_dir()
-			.map_err(|err| format!("error with public static source dir: {err}"))?;
-		view.critical_css_entry()
-			.map_err(|err| format!("error with critical CSS entry: {err}"))?;
-		let watch_patterns = view
-			.watch_patterns()
-			.map_err(|err| format!("error with watch patterns: {err}"))?;
-		crate::globset::compile(&watch_patterns)
-			.map_err(|err| format!("error with watch patterns: {err}"))?;
-		let server_watch_patterns = view
-			.server_watch_patterns()
-			.map_err(|err| format!("error with server watch patterns: {err}"))?;
-		crate::globset::compile(&server_watch_patterns)
-			.map_err(|err| format!("error with server watch patterns: {err}"))?;
-		let client_revalidate_patterns = view
-			.client_revalidate_on_change_patterns()
-			.map_err(|err| format!("error with client revalidate on change patterns: {err}"))?;
-		crate::globset::compile(&client_revalidate_patterns)
-			.map_err(|err| format!("error with client revalidate on change patterns: {err}"))?;
-		view.vite_config_file()
-			.map_err(|err| format!("error with Vite config file: {err}"))?;
+		view.ts_gen_out_file().map_err(|err| {
+			ConfigError::with_context(
+				ConfigErrorKind::TypeScriptOutputFile,
+				"TypeScript output file",
+				err,
+			)
+		})?;
+		view.ts_entry().map_err(|err| {
+			ConfigError::with_context(
+				ConfigErrorKind::FrontendEntryFile,
+				"frontend entry file",
+				err,
+			)
+		})?;
+		view.critical_css_entry().map_err(|err| {
+			ConfigError::with_context(ConfigErrorKind::CriticalCssEntry, "critical CSS entry", err)
+		})?;
+		let watch_patterns = view.watch_patterns();
+		crate::globset::compile(&watch_patterns).map_err(|err| {
+			ConfigError::with_context(ConfigErrorKind::WatchPatterns, "watch patterns", err)
+		})?;
+		let server_watch_patterns = view.server_watch_patterns();
+		crate::globset::compile(&server_watch_patterns).map_err(|err| {
+			ConfigError::with_context(
+				ConfigErrorKind::ServerWatchPatterns,
+				"server watch patterns",
+				err,
+			)
+		})?;
+		let client_revalidate_patterns = view.client_revalidate_on_change_patterns();
+		crate::globset::compile(&client_revalidate_patterns).map_err(|err| {
+			ConfigError::with_context(
+				ConfigErrorKind::ClientRevalidateOnChangePatterns,
+				"client revalidate on change patterns",
+				err,
+			)
+		})?;
+		view.vite_config_file().map_err(|err| {
+			ConfigError::with_context(ConfigErrorKind::ViteConfigFile, "Vite config file", err)
+		})?;
 		Ok(view)
 	}
 
@@ -165,11 +213,7 @@ impl<'a> ConfigView<'a> {
 	}
 
 	pub(crate) fn root_path(&self, path: impl AsRef<Path>) -> PathBuf {
-		let path = path.as_ref();
-		if path.is_absolute() {
-			return path.clean();
-		}
-		self.root_dir.join(path).clean()
+		root_path_from(&self.root_dir, path)
 	}
 
 	pub(crate) fn root_path_string(&self, path: &str) -> String {
@@ -178,8 +222,12 @@ impl<'a> ConfigView<'a> {
 			.into_owned()
 	}
 
-	pub(crate) fn dist_dir(&self) -> Result<PathBuf, String> {
-		self.generated_output_path(&self.source.dist_dir, "dist_dir")
+	pub(crate) fn build_layout(&self) -> &BuildLayout {
+		&self.build_layout
+	}
+
+	pub(crate) fn dist_dir(&self) -> PathBuf {
+		self.build_layout.dist_dir()
 	}
 
 	pub(crate) fn ts_gen_out_file(&self) -> Result<PathBuf, String> {
@@ -187,17 +235,6 @@ impl<'a> ConfigView<'a> {
 			&self.source.ts_gen_config.out_file,
 			"ts_gen_config.out_file",
 		)
-	}
-
-	pub(crate) fn public_static_src_dir(&self) -> Result<PathBuf, String> {
-		let path = self.required_root_path(
-			&self.source.frontend_config.public_static_src_dir,
-			"frontend_config.public_static_src_dir",
-		)?;
-		if path == self.root_dir {
-			return Err("frontend_config.public_static_src_dir must not be root_dir".to_owned());
-		}
-		Ok(path)
 	}
 
 	pub(crate) fn critical_css_entry(&self) -> Result<Option<PathBuf>, String> {
@@ -221,7 +258,7 @@ impl<'a> ConfigView<'a> {
 	}
 
 	pub(crate) fn ui_variant(&self) -> &'static str {
-		self.ui_variant.as_str()
+		self.frontend_toolchain.ui_variant()
 	}
 
 	pub(crate) fn app_server_cargo_target(&self) -> &CargoBinTarget {
@@ -229,7 +266,7 @@ impl<'a> ConfigView<'a> {
 	}
 
 	pub(crate) fn js_package_manager_cmd_base(&self) -> &[String] {
-		&self.js_package_manager_cmd_base
+		self.frontend_toolchain.js_package_manager_cmd_base()
 	}
 
 	pub(crate) fn js_package_manager_dir(&self) -> PathBuf {
@@ -259,99 +296,54 @@ impl<'a> ConfigView<'a> {
 		)
 	}
 
-	pub(crate) fn vorma_out(&self) -> Result<PathBuf, String> {
-		Ok(self.dist_dir()?.join(".vorma"))
+	pub(crate) fn vorma_out(&self) -> PathBuf {
+		self.build_layout.vorma_internal_root()
 	}
 
-	pub(crate) fn static_root(&self) -> Result<PathBuf, String> {
-		Ok(self.vorma_out()?.join("static"))
+	pub(crate) fn pub_out(&self) -> PathBuf {
+		self.build_layout.public_static_out()
 	}
 
-	pub(crate) fn pub_out(&self) -> Result<PathBuf, String> {
-		Ok(self.static_root()?.join("public"))
+	pub(crate) fn dev_cargo_target_dir(&self) -> PathBuf {
+		self.build_layout.dev_cargo_target_dir()
 	}
 
-	pub(crate) fn dev_cargo_target_dir(&self) -> Result<PathBuf, String> {
-		Ok(self.vorma_out()?.join("cargo").join("dev"))
+	pub(crate) fn dev_lock_out(&self) -> PathBuf {
+		self.build_layout.dev_lock_out()
 	}
 
-	pub(crate) fn dev_lock_out(&self) -> Result<PathBuf, String> {
-		Ok(self.vorma_out()?.join("dev.lock"))
+	pub(crate) fn gitignore_out(&self) -> PathBuf {
+		self.build_layout.gitignore_out()
 	}
 
-	pub(crate) fn gitignore_out(&self) -> Result<PathBuf, String> {
-		Ok(self.vorma_out()?.join(".gitignore"))
+	pub(crate) fn manifest_json_out(&self, is_dev: bool) -> PathBuf {
+		self.build_layout.manifest_json_out(is_dev)
 	}
 
-	pub(crate) fn manifest_json_out(&self, is_dev: bool) -> Result<PathBuf, String> {
-		let out = if is_dev {
-			MANIFEST_STATIC_OUT_DEV
-		} else {
-			MANIFEST_STATIC_OUT_PROD
-		};
-		Ok(self.static_root()?.join(out))
+	pub(crate) fn prod_tmp_vite_manifest_out(&self) -> PathBuf {
+		self.build_layout.prod_tmp_vite_manifest_out()
 	}
 
-	pub(crate) fn prod_tmp_vite_manifest_out(&self) -> Result<PathBuf, String> {
-		Ok(self
-			.pub_out()?
-			.join(vorma::__private::constants::PROD_TMP_VITE_MANIFEST_FILENAME))
+	pub(crate) fn watch_patterns(&self) -> Vec<String> {
+		self.watch_config.watch_patterns()
 	}
 
-	pub(crate) fn watch_patterns(&self) -> Result<Vec<String>, String> {
-		let mut patterns = self.watch_patterns_or_defaults(
-			&self.source.dev_watch_config.watch_patterns,
-			&["."],
-			"watch pattern",
-		)?;
-		for pattern in BASE_WATCH_PATTERNS {
-			patterns.push(self.watch_pattern(pattern, "base watch pattern")?);
-		}
-		patterns.push(format!(
-			"!./{}",
-			self.watch_relative_path(&self.vorma_out()?)
-		));
-		Ok(patterns)
+	pub(crate) fn server_watch_patterns(&self) -> Vec<String> {
+		self.watch_config.server_watch_patterns()
 	}
 
-	pub(crate) fn server_watch_patterns(&self) -> Result<Vec<String>, String> {
-		self.watch_patterns_or_defaults(
-			&self.source.dev_watch_config.on_change_recompile_server,
-			&["**/*.rs"],
-			"server watch pattern",
-		)
-	}
-
-	pub(crate) fn client_revalidate_on_change_patterns(&self) -> Result<Vec<String>, String> {
-		self.watch_patterns_or_defaults(
-			&self.source.dev_watch_config.on_change_client_revalidate,
-			&[],
-			"client revalidate watch pattern",
-		)
+	pub(crate) fn client_revalidate_on_change_patterns(&self) -> Vec<String> {
+		self.watch_config.client_revalidate_on_change_patterns()
 	}
 
 	pub(crate) fn vite_dedupe_list(&self) -> Vec<String> {
-		self.ui_variant.vite_dedupe_list()
+		self.frontend_toolchain.vite_dedupe_list()
 	}
 
 	pub(crate) fn vite_server_args(&self, vite_port: u16) -> Result<Vec<String>, String> {
-		let mut args = self.js_package_manager_cmd_base().to_vec();
-		args.extend([
-			"vite".to_owned(),
-			"--host".to_owned(),
-			DEV_LOOPBACK_HOST.to_owned(),
-			"--port".to_owned(),
-			vite_port.to_string(),
-			"--clearScreen".to_owned(),
-			"false".to_owned(),
-			"--strictPort".to_owned(),
-			"true".to_owned(),
-		]);
-		let cfg_file = self.vite_config_file()?;
-		if !cfg_file.is_empty() {
-			args.extend(["--config".to_owned(), cfg_file]);
-		}
-		Ok(args)
+		Ok(self
+			.frontend_toolchain
+			.vite_server_args(vite_port, self.vite_config_file()?))
 	}
 
 	pub(crate) fn cargo_build_args(
@@ -371,7 +363,7 @@ impl<'a> ConfigView<'a> {
 			"build".to_owned(),
 			"--message-format=json-render-diagnostics".to_owned(),
 			"--target-dir".to_owned(),
-			self.dev_cargo_target_dir()?.to_string_lossy().into_owned(),
+			self.dev_cargo_target_dir().to_string_lossy().into_owned(),
 			"-p".to_owned(),
 			build_entry.cargo_package.clone(),
 		];
@@ -394,76 +386,12 @@ impl<'a> ConfigView<'a> {
 			"build".to_owned(),
 			"--message-format=json-render-diagnostics".to_owned(),
 			"--target-dir".to_owned(),
-			self.dev_cargo_target_dir()?.to_string_lossy().into_owned(),
+			self.dev_cargo_target_dir().to_string_lossy().into_owned(),
 			"-p".to_owned(),
 			build_entry.cargo_package,
 			"--bin".to_owned(),
 			build_entry.cargo_bin,
 		])
-	}
-
-	fn watch_relative_path(&self, path: impl AsRef<Path>) -> String {
-		relative_path(&self.root_dir, path)
-			.map(|path| {
-				if path.as_os_str().is_empty() {
-					".".to_owned()
-				} else {
-					sys_norm(&path)
-				}
-			})
-			.unwrap_or_else(|| sys_norm(self.root_dir()))
-	}
-
-	fn watch_pattern(&self, pattern: &str, label: &str) -> Result<String, String> {
-		let pattern = pattern.trim();
-		if pattern.is_empty() {
-			return Err(format!("{label} cannot be empty"));
-		}
-		if let Some(included) = pattern.strip_prefix('!') {
-			return Ok(format!("!{}", self.watch_pattern(included, label)?));
-		}
-		if pattern.starts_with("**/") {
-			let root = self.watch_relative_path(self.root_dir());
-			if root.is_empty() || root == "." {
-				return Ok(pattern.to_owned());
-			}
-			return Ok(format!("{root}/{pattern}"));
-		}
-		let rooted = self.root_path_string(pattern);
-		let Some(relative) = relative_path(self.root_dir(), rooted) else {
-			return Err(format!("error calculating relative {label}"));
-		};
-		let relative = sys_norm(relative);
-		if relative.is_empty() {
-			return Ok(".".to_owned());
-		}
-		Ok(relative)
-	}
-
-	fn watch_patterns_or_defaults(
-		&self,
-		configured: &[String],
-		defaults: &[&str],
-		label: &str,
-	) -> Result<Vec<String>, String> {
-		if configured.is_empty() {
-			return defaults
-				.iter()
-				.map(|pattern| self.watch_pattern(pattern, label))
-				.collect();
-		}
-		configured
-			.iter()
-			.map(|pattern| self.watch_pattern(pattern, label))
-			.collect()
-	}
-
-	fn generated_output_path(&self, path: &str, label: &str) -> Result<PathBuf, String> {
-		let path = self.root_path(PathBuf::from_slash(path.trim()));
-		if !path.starts_with(&self.root_dir) {
-			return Err(format!("{label} must be inside root_dir"));
-		}
-		Ok(path)
 	}
 
 	fn required_generated_output_path(&self, path: &str, label: &str) -> Result<PathBuf, String> {
@@ -497,7 +425,7 @@ pub(crate) struct VormaCfg<'a> {
 	view: ConfigView<'a>,
 }
 
-pub(crate) fn to_cfg(config: &Config) -> Result<VormaCfg<'_>, String> {
+pub(crate) fn to_cfg(config: &Config) -> Result<VormaCfg<'_>, ConfigError> {
 	ConfigView::new(config).map(|view| VormaCfg { view })
 }
 
@@ -522,8 +450,12 @@ impl VormaCfg<'_> {
 		self.view.root_path_string(path)
 	}
 
+	pub(crate) fn build_layout(&self) -> &BuildLayout {
+		self.view.build_layout()
+	}
+
 	pub(crate) fn dist_dir(&self) -> String {
-		checked_path(self.view.dist_dir())
+		path_string(self.view.dist_dir())
 	}
 
 	pub(crate) fn ts_gen_out_file(&self) -> String {
@@ -531,19 +463,15 @@ impl VormaCfg<'_> {
 	}
 
 	pub(crate) fn watch_patterns(&self) -> Vec<String> {
-		checked(self.view.watch_patterns())
+		self.view.watch_patterns()
 	}
 
 	pub(crate) fn server_watch_patterns(&self) -> Vec<String> {
-		checked(self.view.server_watch_patterns())
+		self.view.server_watch_patterns()
 	}
 
 	pub(crate) fn client_revalidate_on_change_patterns(&self) -> Vec<String> {
-		checked(self.view.client_revalidate_on_change_patterns())
-	}
-
-	pub(crate) fn public_static_src_dir(&self) -> String {
-		checked_path(self.view.public_static_src_dir())
+		self.view.client_revalidate_on_change_patterns()
 	}
 
 	pub(crate) fn critical_css_entry(&self) -> Option<String> {
@@ -579,55 +507,40 @@ impl VormaCfg<'_> {
 	}
 
 	pub(crate) fn pub_src_pattern(&self) -> String {
-		to_catch_dir_pattern(self.public_static_src_dir())
+		self.view.public_static_inputs.source_catch_pattern()
 	}
 
 	pub(crate) fn collect_physical_pub_files(&self) -> Result<crate::staticproc::Files, String> {
-		crate::staticproc::collect_physical(
-			self.public_static_src_dir(),
-			PUBLIC_STATIC_OUT_NAME_PREFIX,
-		)
-		.map_err(|err| err.to_string())
+		self.view.public_static_inputs.collect_physical_files()
 	}
 
 	pub(crate) fn to_pub_fm(
 		&self,
 		pub_files: &crate::staticproc::Files,
-	) -> BTreeMap<String, String> {
-		pub_files
-			.iter()
-			.map(|(rel, file)| {
-				(
-					rel.clone(),
-					format!("{}{}", self.public_static_base_path(), file.out_name),
-				)
-			})
-			.collect()
+	) -> std::collections::BTreeMap<String, String> {
+		self.view.public_static_inputs.to_public_filemap(pub_files)
 	}
 
 	pub(crate) fn vorma_out(&self) -> String {
-		checked_path(self.view.vorma_out())
+		path_string(self.view.vorma_out())
 	}
 
 	pub(crate) fn pub_out(&self) -> String {
-		checked_path(self.view.pub_out())
+		path_string(self.view.pub_out())
 	}
 
 	pub(crate) fn dev_lock_out(&self) -> String {
-		checked_path(self.view.dev_lock_out())
+		path_string(self.view.dev_lock_out())
 	}
 
 	pub(crate) fn gitignore_out(&self) -> String {
-		checked_path(self.view.gitignore_out())
-	}
-
-	pub(crate) fn write_gitignore(&self) -> Result<(), String> {
-		write_str_to_file(GITIGNORE_CONTENT, self.gitignore_out())
-			.map_err(|err| format!("error writing .gitignore: {err}"))
+		path_string(self.view.gitignore_out())
 	}
 
 	pub(crate) fn vorma_out_abs_slash_pattern(&self) -> String {
-		abs_slash(to_catch_dir_pattern(self.vorma_out()))
+		let mut path = PathBuf::from(self.vorma_out());
+		path.push("**/*");
+		abs_slash(path)
 	}
 
 	pub(crate) fn gen_out_file_abs_slash(&self) -> String {
@@ -651,19 +564,11 @@ impl VormaCfg<'_> {
 	}
 
 	pub(crate) fn manifest_json_out(&self, is_dev: bool) -> String {
-		checked_path(self.view.manifest_json_out(is_dev))
+		path_string(self.view.manifest_json_out(is_dev))
 	}
 
 	pub(crate) fn prod_tmp_vite_manifest_out(&self) -> String {
-		checked_path(self.view.prod_tmp_vite_manifest_out())
-	}
-
-	pub(crate) fn remove_prod_tmp_vite_manifest(&self) -> Result<(), std::io::Error> {
-		match fs::remove_file(self.prod_tmp_vite_manifest_out()) {
-			Ok(()) => Ok(()),
-			Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-			Err(err) => Err(err),
-		}
+		path_string(self.view.prod_tmp_vite_manifest_out())
 	}
 
 	pub(crate) fn vite_server_args(&self, vite_port: u16) -> Vec<String> {
@@ -709,43 +614,28 @@ fn validate_root_dir(path: &Path) -> Result<PathBuf, String> {
 	Ok(root_dir)
 }
 
-fn parse_required_command(raw: &str) -> Result<Vec<String>, String> {
-	let args = raw
-		.split_whitespace()
-		.map(str::to_owned)
-		.collect::<Vec<_>>();
-	if args.is_empty() {
-		return Err("frontend_config.js_package_manager_base_cmd cannot be empty".to_owned());
+fn root_path_from(root_dir: &Path, path: impl AsRef<Path>) -> PathBuf {
+	let path = path.as_ref();
+	if path.is_absolute() {
+		return path.clean();
 	}
-	Ok(args)
+	root_dir.join(path).clean()
 }
 
-pub(crate) fn validate_cargo_bin_target(
-	target: &CargoBinTarget,
+fn generated_output_path_from_root(
+	root_dir: &Path,
+	path: &str,
 	label: &str,
-) -> Result<CargoBinTarget, String> {
-	let cargo_package = target.cargo_package.trim().to_owned();
-	if cargo_package.is_empty() {
-		return Err(format!("{label} cargo_package cannot be empty"));
+) -> Result<PathBuf, String> {
+	let path = root_path_from(root_dir, PathBuf::from_slash(path.trim()));
+	if !path.starts_with(root_dir) {
+		return Err(format!("{label} must be inside root_dir"));
 	}
-	let cargo_bin = target.cargo_bin.trim().to_owned();
-	if cargo_bin.is_empty() {
-		return Err(format!("{label} cargo_bin cannot be empty"));
-	}
-	Ok(CargoBinTarget {
-		cargo_package,
-		cargo_bin,
-	})
+	Ok(path)
 }
 
 pub(crate) fn relative_path(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Option<PathBuf> {
 	pathdiff::diff_paths(to, from)
-}
-
-fn to_catch_dir_pattern(path: impl AsRef<Path>) -> String {
-	let mut path = path.as_ref().to_path_buf();
-	path.push("**/*");
-	sys_norm(path)
 }
 
 pub(crate) fn sys_norm(path: impl AsRef<Path>) -> String {
@@ -843,27 +733,44 @@ mod tests {
 	}
 
 	#[test]
-	fn config_view_derives_output_paths_without_storing_layout_fields() {
+	fn config_view_derives_framework_owned_output_paths_from_build_layout() {
 		let root = temp_root("paths");
 		let config = config(root.clone());
 		let view = ConfigView::new(&config).unwrap();
 
-		assert_eq!(view.dist_dir().unwrap(), root.join("dist"));
-		assert_eq!(view.vorma_out().unwrap(), root.join("dist/.vorma"));
+		assert_eq!(view.dist_dir(), root.join("dist"));
+		assert_eq!(view.vorma_out(), root.join("dist/.vorma"));
 		assert_eq!(
-			view.pub_out().unwrap(),
-			root.join("dist/.vorma/static/public")
+			view.build_layout.static_root(),
+			root.join("dist/.vorma/static")
+		);
+		assert_eq!(view.pub_out(), root.join("dist/.vorma/static/public"));
+		assert_eq!(
+			view.manifest_json_out(true),
+			root.join("dist/.vorma/static")
+				.join(vorma::__private::manifest::MANIFEST_STATIC_OUT_DEV)
 		);
 		assert_eq!(
-			view.dev_lock_out().unwrap(),
-			root.join("dist/.vorma/dev.lock")
+			view.manifest_json_out(false),
+			root.join("dist/.vorma/static")
+				.join(vorma::__private::manifest::MANIFEST_STATIC_OUT_PROD)
 		);
 		assert_eq!(
-			view.gitignore_out().unwrap(),
-			root.join("dist/.vorma/.gitignore")
+			view.build_layout().prod_tmp_vite_manifest_dir(),
+			root.join("dist/.vorma/static/public/tmp")
 		);
 		assert_eq!(
-			view.dev_cargo_target_dir().unwrap(),
+			view.prod_tmp_vite_manifest_out(),
+			root.join("dist/.vorma/static/public/tmp/vorma_internal_tmp_vite_manifest.json")
+		);
+		assert_eq!(
+			view.build_layout().prod_vite_manifest_out(),
+			root.join("dist/.vorma/static/vite_manifest.json")
+		);
+		assert_eq!(view.dev_lock_out(), root.join("dist/.vorma/dev.lock"));
+		assert_eq!(view.gitignore_out(), root.join("dist/.vorma/.gitignore"));
+		assert_eq!(
+			view.dev_cargo_target_dir(),
 			root.join("dist/.vorma/cargo/dev")
 		);
 		assert_eq!(
@@ -950,7 +857,7 @@ mod tests {
 		let config = config(root.clone());
 		let view = ConfigView::new(&config).unwrap();
 
-		assert_eq!(view.server_watch_patterns().unwrap(), vec!["**/*.rs"]);
+		assert_eq!(view.server_watch_patterns(), vec!["**/*.rs"]);
 		fs::remove_dir_all(root).unwrap();
 	}
 
@@ -1119,7 +1026,7 @@ mod tests {
 		];
 		let view = ConfigView::new(&config).unwrap();
 
-		let patterns = view.watch_patterns().unwrap();
+		let patterns = view.watch_patterns();
 
 		assert!(patterns.iter().any(|pattern| pattern == "../shared"));
 		assert!(
