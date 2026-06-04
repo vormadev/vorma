@@ -1,6 +1,6 @@
 {
 	"name": "vorma",
-	"version": "0.86.0-pre.1",
+	"version": "0.86.0-pre.2",
 	"description": "Vorma is a full-featured metaframework for building highly dynamic and flexible web applications with Rust and Vite.",
 	"type": "module",
 	"sideEffects": false,
