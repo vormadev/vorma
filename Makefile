@@ -1,4 +1,6 @@
 FUZZ_RUNS ?= 4096
+E2E_CMD_BASE = cd tests/framework && cargo run -p vorma-framework-tests --bin framework-bombadil --
+XTASK_CMD_BASE = cargo run --manifest-path xtask/Cargo.toml --quiet --
 
 #####################################################################
 ####### GLOBAL
@@ -6,20 +8,13 @@ FUZZ_RUNS ?= 4096
 
 # Runs the generic framework browser/runtime coverage across supported adapters.
 e2e:
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-prod
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant react
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant preact
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev -variant solid
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant react
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant preact
-	cd tests/framework && \
-		cargo run -p vorma-framework-tests --bin framework-bombadil -- test-dev-changes -variant solid
+	$(E2E_CMD_BASE) test-prod
+	$(E2E_CMD_BASE) test-dev -variant react
+	$(E2E_CMD_BASE) test-dev -variant preact
+	$(E2E_CMD_BASE) test-dev -variant solid
+	$(E2E_CMD_BASE) test-dev-changes -variant react
+	$(E2E_CMD_BASE) test-dev-changes -variant preact
+	$(E2E_CMD_BASE) test-dev-changes -variant solid
 
 # Removes retained framework-test artifacts.
 clean-bombadil:
@@ -72,10 +67,9 @@ rust-doc:
 rust-bench:
 	cargo bench --workspace --no-run
 
-# Runs Rust fuzz targets through cargo-fuzz.
+# Runs Rust fuzz targets against copied corpora.
 rust-fuzz:
-	cd fuzz && cargo +nightly fuzz run matcher_patterns -- -runs=$(FUZZ_RUNS)
-	cd fuzz && cargo +nightly fuzz run client_wasm_protocol -- -runs=$(FUZZ_RUNS)
+	@FUZZ_RUNS=$(FUZZ_RUNS) $(XTASK_CMD_BASE) rust-fuzz
 
 # Packages publishable crates in dependency order.
 rust-package:
@@ -142,17 +136,7 @@ ts-gate: ts-install ts-fmt-check ts-lint ts-typecheck ts-test rust-build-client-
 #####################################################################
 
 gate:
-	@cargo run --manifest-path xtask/Cargo.toml --quiet
-
-ts-publish-pre:
-	test -n "$(version)" || { echo "version= is required"; exit 1; }
-	test -n "$(pre)" || { echo "pre= is required"; exit 1; }
-	pnpm version $(version)-pre.$(pre) --recursive --no-git-checks --no-git-tag-version --allow-same-version
-	git add . && git commit -m 'v$(version)-pre.$(pre)' --no-verify && git tag v$(version)-pre.$(pre)
-	pnpm publish --access public --recursive --tag pre
+	$(XTASK_CMD_BASE) gate
 
 ts-publish:
-	test -n "$(version)" || { echo "version= is required"; exit 1; }
-	pnpm version $(version) --recursive --no-git-checks --no-git-tag-version --allow-same-version
-	git add . && git commit -m 'v$(version)' --no-verify && git tag v$(version)
-	pnpm publish --access public --recursive
+	$(XTASK_CMD_BASE) ts-publish

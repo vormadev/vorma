@@ -17,7 +17,7 @@ edition = "2024"
 homepage = "https://vorma.dev"
 license = "MIT"
 repository = "https://github.com/vormadev/vorma"
-version = "0.86.0-pre.2"
+version = "0.86.0-pre.3"
 
 [workspace.dependencies]
 axum = "0.8"
@@ -62,11 +62,11 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 ureq = { version = "3", default-features = false }
 url = "2"
-vorma = { path = "crates/vorma", version = "0.86.0-pre.2" }
-vorma-build = { path = "crates/vorma-build", version = "0.86.0-pre.2" }
-vorma-macros = { path = "crates/vorma-macros", version = "0.86.0-pre.2" }
-vorma-matcher = { path = "crates/vorma-matcher", version = "0.86.0-pre.2" }
-vorma-tasks = { path = "crates/vorma-tasks", version = "0.86.0-pre.2" }
+vorma = { path = "crates/vorma", version = "0.86.0-pre.3" }
+vorma-build = { path = "crates/vorma-build", version = "0.86.0-pre.3" }
+vorma-macros = { path = "crates/vorma-macros", version = "0.86.0-pre.3" }
+vorma-matcher = { path = "crates/vorma-matcher", version = "0.86.0-pre.3" }
+vorma-tasks = { path = "crates/vorma-tasks", version = "0.86.0-pre.3" }
 walkdir = "2"
 
 [profile.wasm-release]

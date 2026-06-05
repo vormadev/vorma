@@ -30,8 +30,5 @@ cargo publish -p vorma-build
 
 # Publish npm packages
 npm login
-# If pre:
-make ts-publish-pre version=0.0.0 pre=0
-# Else if non-pre:
-make ts-publish version=0.0.0
+make ts-publish # infers version from Cargo.toml
 ```
