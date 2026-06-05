@@ -2,6 +2,7 @@ pub(crate) fn strip_trailing_slash(path: &str) -> &str {
 	path.strip_suffix('/').unwrap_or(path)
 }
 
+/// Split a path or pattern into slash-separated segments.
 pub fn parse_segments(path: &str) -> Vec<String> {
 	if path.is_empty() {
 		return Vec::new();

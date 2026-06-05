@@ -10,7 +10,10 @@
 		"esModuleInterop": true,
 		"noUncheckedIndexedAccess": true,
 		"verbatimModuleSyntax": true,
+		"jsx": "preserve",
+		"jsxImportSource": "solid-js",
 		"allowImportingTsExtensions": true
 	},
-	"exclude": ["node_modules", ".bombadil", "dist"]
+	"exclude": ["node_modules", ".bombadil", "dist"],
+	"__NOTE": "Set to solid because React/Preact don't need TSX here anyway."
 }

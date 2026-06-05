@@ -27,9 +27,13 @@ use crate::envutil::{is_build, is_dev};
 use crate::error::ViewErrorClientMsg;
 use crate::handler::refresh_script_inner_html;
 use crate::htmlutil::{Element, compute_content_sha256};
+use crate::manifest::{MANIFEST_STATIC_OUT_DEV, MANIFEST_STATIC_OUT_PROD};
 use crate::mux::RawRequest;
 use crate::response::{internal_server_error_response, plain_text_response};
 use crate::r#static::{ManifestMode, RuntimeAssetSnapshot, RuntimeAssets, static_out_dir};
+
+const VERCEL_SYSTEM_ENV_KEY: &str = "VERCEL";
+const VERCEL_ENVIRONMENT_ENV_KEY: &str = "VERCEL_ENV";
 
 /// Runtime service that serves Vorma static assets, resources, and views.
 pub struct RuntimeHost<S, E = Box<dyn std::error::Error + Send + Sync>> {
@@ -57,8 +61,10 @@ where
 			document,
 			request_body_limit,
 		} = app;
-		validate_runtime_config(&cfg)?;
-		let assets = default_runtime_assets(&cfg);
+		let assets = default_runtime_assets(&cfg)?;
+		if assets.is_none() {
+			validate_runtime_config(&cfg)?;
+		}
 		let initial_snapshot = assets
 			.as_ref()
 			.map(RuntimeAssets::snapshot)
@@ -243,16 +249,20 @@ where
 	}
 }
 
-fn default_runtime_assets(cfg: &Config) -> Option<RuntimeAssets> {
+fn default_runtime_assets(cfg: &Config) -> Result<Option<RuntimeAssets>, String> {
 	if is_build() {
-		return None;
+		return Ok(None);
 	}
 
-	let static_out = static_out_dir(config_path(&cfg.root_dir, &cfg.dist_dir));
 	if is_dev() {
-		return Some(RuntimeAssets::live_fs(static_out, ManifestMode::Dev));
+		let static_out = runtime_static_out_dir(cfg, ManifestMode::Dev)?;
+		return Ok(Some(RuntimeAssets::live_fs(static_out, ManifestMode::Dev)));
 	}
-	Some(RuntimeAssets::cached_fs(static_out, ManifestMode::Prod))
+	let static_out = runtime_static_out_dir(cfg, ManifestMode::Prod)?;
+	Ok(Some(RuntimeAssets::cached_fs(
+		static_out,
+		ManifestMode::Prod,
+	)))
 }
 
 fn config_path(root_dir: &Path, path: &str) -> PathBuf {
@@ -263,31 +273,106 @@ fn config_path(root_dir: &Path, path: &str) -> PathBuf {
 	root_dir.join(path).clean()
 }
 
+fn runtime_static_out_dir(cfg: &Config, mode: ManifestMode) -> Result<PathBuf, String> {
+	validate_runtime_root_dir_shape(&cfg.root_dir)?;
+	let configured_root_dir = cfg.root_dir.clean();
+	let configured_dist_dir = runtime_dist_dir(&configured_root_dir, &cfg.dist_dir)?;
+	let configured_static_out = static_out_dir(configured_dist_dir);
+	if mode == ManifestMode::Prod
+		&& vercel_runtime_env_is_present()
+		&& !runtime_manifest_path(&configured_static_out, mode).is_file()
+	{
+		return vercel_runtime_static_out_dir(cfg, &configured_static_out, mode);
+	}
+	validate_existing_runtime_root_dir(&configured_root_dir)?;
+	Ok(configured_static_out)
+}
+
+fn vercel_runtime_static_out_dir(
+	cfg: &Config,
+	configured_static_out: &Path,
+	mode: ManifestMode,
+) -> Result<PathBuf, String> {
+	let current_root_dir = std::env::current_dir().map_err(|err| {
+		format!("Vercel runtime current dir must be readable while resolving Vorma assets: {err}")
+	})?;
+	vercel_runtime_static_out_dir_from_current_root(
+		cfg,
+		configured_static_out,
+		mode,
+		current_root_dir,
+	)
+}
+
+fn vercel_runtime_static_out_dir_from_current_root(
+	cfg: &Config,
+	configured_static_out: &Path,
+	mode: ManifestMode,
+	current_root_dir: PathBuf,
+) -> Result<PathBuf, String> {
+	let current_root_dir = current_root_dir.clean();
+	validate_existing_runtime_root_dir(&current_root_dir)?;
+	let current_dist_dir = runtime_dist_dir(&current_root_dir, &cfg.dist_dir)?;
+	let current_static_out = static_out_dir(current_dist_dir);
+	if runtime_manifest_path(&current_static_out, mode).is_file() {
+		return Ok(current_static_out);
+	}
+	Err(format!(
+		"Vercel runtime Vorma manifest was not found at configured root {} or current dir {}",
+		runtime_manifest_path(configured_static_out, mode).display(),
+		runtime_manifest_path(&current_static_out, mode).display()
+	))
+}
+
+fn runtime_manifest_path(static_out: &Path, mode: ManifestMode) -> PathBuf {
+	static_out.join(match mode {
+		ManifestMode::Dev => MANIFEST_STATIC_OUT_DEV,
+		ManifestMode::Prod => MANIFEST_STATIC_OUT_PROD,
+	})
+}
+
+fn vercel_runtime_env_is_present() -> bool {
+	std::env::var_os(VERCEL_SYSTEM_ENV_KEY).is_some()
+		|| std::env::var_os(VERCEL_ENVIRONMENT_ENV_KEY).is_some()
+}
+
 fn validate_runtime_config(cfg: &Config) -> Result<(), String> {
-	if cfg.root_dir.as_os_str().is_empty() {
+	validate_runtime_root_dir_shape(&cfg.root_dir)?;
+	let root_dir = cfg.root_dir.clean();
+	validate_existing_runtime_root_dir(&root_dir)?;
+	runtime_dist_dir(&root_dir, &cfg.dist_dir)?;
+	Ok(())
+}
+
+fn validate_runtime_root_dir_shape(root_dir: &Path) -> Result<(), String> {
+	if root_dir.as_os_str().is_empty() {
 		return Err("root_dir cannot be empty".to_owned());
 	}
-	if !cfg.root_dir.is_absolute() {
+	if !root_dir.is_absolute() {
 		return Err("root_dir must be absolute".to_owned());
 	}
-	if !cfg.root_dir.exists() {
-		return Err(format!(
-			"root dir does not exist: {}",
-			cfg.root_dir.display()
-		));
+	Ok(())
+}
+
+fn validate_existing_runtime_root_dir(root_dir: &Path) -> Result<(), String> {
+	if !root_dir.exists() {
+		return Err(format!("root dir does not exist: {}", root_dir.display()));
 	}
-	if !cfg.root_dir.is_dir() {
+	if !root_dir.is_dir() {
 		return Err(format!(
 			"root dir is not a directory: {}",
-			cfg.root_dir.display()
+			root_dir.display()
 		));
 	}
-	let root_dir = cfg.root_dir.clean();
-	let dist_dir = config_path(&root_dir, &cfg.dist_dir);
-	if !dist_dir.starts_with(&root_dir) {
+	Ok(())
+}
+
+fn runtime_dist_dir(root_dir: &Path, dist_dir: &str) -> Result<PathBuf, String> {
+	let dist_dir = config_path(root_dir, dist_dir);
+	if !dist_dir.starts_with(root_dir) {
 		return Err("dist_dir must be inside root_dir".to_owned());
 	}
-	Ok(())
+	Ok(dist_dir)
 }
 
 fn raw_request(request: Request<Bytes>) -> RawRequest {

@@ -188,7 +188,7 @@ mod tests {
 				api_base: "/api/".to_owned(),
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				entry_file: "src/entry.tsx".to_owned(),
 				..crate::test_support::frontend_config()
 			},

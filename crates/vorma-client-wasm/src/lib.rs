@@ -1,3 +1,9 @@
+//! C-compatible browser WASM route matcher ABI for Vorma's TypeScript client.
+
+#![deny(missing_docs)]
+#![allow(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
+
 mod abi;
 mod encoding;
 mod output;
@@ -8,27 +14,32 @@ use abi::{STATUS_ERROR, STATUS_MATCH, STATUS_NO_MATCH};
 use encoding::push_len;
 
 #[unsafe(no_mangle)]
+/// Allocate WASM memory for a caller-provided byte buffer.
 pub extern "C" fn vorma_client_matcher_alloc(len: usize) -> *mut u8 {
 	abi::alloc(len)
 }
 
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
+/// Deallocate WASM memory previously returned by [`vorma_client_matcher_alloc`].
 pub extern "C" fn vorma_client_matcher_dealloc(ptr: *mut u8, len: usize) {
 	abi::dealloc(ptr, len);
 }
 
 #[unsafe(no_mangle)]
+/// Create a new client matcher and return its opaque id.
 pub extern "C" fn vorma_client_matcher_new() -> u32 {
 	registry::new_matcher()
 }
 
 #[unsafe(no_mangle)]
+/// Free a matcher id returned by [`vorma_client_matcher_new`].
 pub extern "C" fn vorma_client_matcher_free(matcher_id: u32) {
 	registry::free_matcher(matcher_id);
 }
 
 #[unsafe(no_mangle)]
+/// Register one UTF-8 pattern buffer with a matcher.
 pub extern "C" fn vorma_client_matcher_register_pattern(
 	matcher_id: u32,
 	ptr: *const u8,
@@ -41,6 +52,7 @@ pub extern "C" fn vorma_client_matcher_register_pattern(
 }
 
 #[unsafe(no_mangle)]
+/// Find nested matches for one UTF-8 path buffer and publish the encoded output.
 pub extern "C" fn vorma_client_matcher_find_nested_matches(
 	matcher_id: u32,
 	ptr: *const u8,
@@ -68,11 +80,13 @@ pub extern "C" fn vorma_client_matcher_find_nested_matches(
 }
 
 #[unsafe(no_mangle)]
+/// Pointer to the last encoded matcher output buffer.
 pub extern "C" fn vorma_client_matcher_output_ptr() -> *const u8 {
 	output::output_ptr()
 }
 
 #[unsafe(no_mangle)]
+/// Length of the last encoded matcher output buffer.
 pub extern "C" fn vorma_client_matcher_output_len() -> usize {
 	output::output_len()
 }

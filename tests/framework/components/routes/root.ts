@@ -1,3 +1,4 @@
+import { HmrProbe } from "#hmr-probe";
 import { ui } from "../../route_factory.ts";
 import {
 	client_build_tag,
@@ -30,6 +31,7 @@ export default ui.defineView({
 		const data = view_data_box(props);
 		const switch_result = text_state("");
 		const form_result = text_state("");
+		const hmr_state = text_state("initial");
 		const expected_deployment = text_state(
 			window.sessionStorage.getItem(expected_deployment_storage_key) ?? "",
 		);
@@ -461,6 +463,9 @@ export default ui.defineView({
 					}),
 				),
 			),
+			h(HmrProbe, {
+				state_box: hmr_state,
+			}),
 			dynamic(() => {
 				if (pathname() !== view_root_pattern) {
 					return null;

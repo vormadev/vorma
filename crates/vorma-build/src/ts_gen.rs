@@ -405,7 +405,7 @@ mod tests {
 				api_base: "api".to_owned(),
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -431,7 +431,7 @@ mod tests {
 				api_base: "api/\"quoted".to_owned(),
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -478,7 +478,7 @@ mod tests {
 			server_config: server_config(),
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -538,7 +538,7 @@ const __vorma_views = [\n\
 			server_config: server_config(),
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -577,7 +577,7 @@ const __vorma_views = [\n\
 			server_config: server_config(),
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: TsGenConfig {
@@ -604,7 +604,7 @@ const __vorma_views = [\n\
 			server_config: server_config(),
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: TsGenConfig {
@@ -631,7 +631,7 @@ const __vorma_views = [\n\
 			server_config: server_config(),
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -672,7 +672,7 @@ const __vorma_views = [\n\
 				..crate::test_support::ts_gen_config()
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			..Config::default()

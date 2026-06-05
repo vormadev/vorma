@@ -5,46 +5,63 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+/// One entry from a Vite manifest.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViteManifestChunk {
+	/// Source module path recorded by Vite.
 	#[serde(default)]
 	pub src: String,
+	/// Output file path.
 	#[serde(default)]
 	pub file: String,
+	/// CSS bundle output paths directly associated with this chunk.
 	#[serde(default)]
 	pub css: Vec<String>,
+	/// Asset output paths directly associated with this chunk.
 	#[serde(default)]
 	pub assets: Vec<String>,
+	/// Whether this chunk is an entry chunk.
 	#[serde(default)]
 	pub is_entry: bool,
+	/// Vite chunk name.
 	#[serde(default)]
 	pub name: String,
+	/// Whether this chunk is a dynamic entry chunk.
 	#[serde(default)]
 	pub is_dynamic_entry: bool,
+	/// Static imports referenced by this chunk.
 	#[serde(default)]
 	pub imports: Vec<String>,
+	/// Dynamic imports referenced by this chunk.
 	#[serde(default)]
 	pub dynamic_imports: Vec<String>,
 }
 
+/// Parsed Vite manifest keyed by source import path.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct ViteManifest(BTreeMap<String, ViteManifestChunk>);
 
+/// Transitive module and CSS dependencies for one Vite import path.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DepsResult {
+	/// Import path used as the dependency root.
 	pub import_path: String,
+	/// Ordered transitive module output paths.
 	pub modules: Vec<String>,
+	/// Ordered transitive CSS bundle output paths.
 	pub css_bundles: Vec<String>,
 }
 
 impl ViteManifest {
+	/// Read and parse a Vite manifest file.
 	pub fn read(manifest_path: impl AsRef<Path>) -> Result<Self, String> {
 		let data = fs::read(manifest_path).map_err(|err| err.to_string())?;
 		serde_json::from_slice(&data).map_err(|err| err.to_string())
 	}
 
+	/// Find the transitive static module and CSS dependencies for one import path.
 	pub fn find_all_deps(&self, import_path: &str) -> Result<DepsResult, String> {
 		let mut seen = BTreeSet::new();
 		let mut results = Vec::new();

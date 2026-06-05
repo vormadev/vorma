@@ -7,6 +7,13 @@ Always read `docs/maintainer/REMINDERS.md` at least once after each context comp
 Everything you work on should be written such that it would pass the standards set forth
 in `docs/maintainer/skills/thermo-nuclear-system-review/SKILL.md`.
 
+## Zero Tolerance For Tech Debt, Shims, or Back-Compat Code
+
+Never ever do something the short-term easiest way. Always do the correct way, even if
+it's harder or causes a breaking change. In the LLM age, there is zero tolerance for tech
+debt, for even one second. No shims. No back-compat code. Nothing like that. Just do it
+correctly from first principles from the first moment, period.
+
 ## Maintainer Tooling Should Be As Simple and Minimal As Possible
 
 Do not add unnecessary garbage like "help" args to maintainer-facing tooling. All

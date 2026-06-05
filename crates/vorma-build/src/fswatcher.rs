@@ -185,7 +185,8 @@ impl Watcher {
 	}
 
 	fn reduce_path(&mut self, raw_path: impl AsRef<Path>) -> Result<(Option<Evt>, bool), String> {
-		let path = sys_norm(raw_path.as_ref().to_string_lossy().as_ref());
+		let raw_path = sys_norm(raw_path.as_ref().to_string_lossy().as_ref());
+		let path = self.physical_path(&raw_path);
 		let logical_path = self.logical_path(&path);
 		let stat = match fs::metadata(&path) {
 			Ok(stat) => stat,
@@ -466,6 +467,31 @@ mod tests {
 
 		assert!(error.contains("error statting watched path"));
 		let _ = fs::remove_dir_all(root);
+	}
+
+	#[test]
+	fn reduce_path_roots_relative_event_paths_after_snapshot() {
+		let root = temp_abs_dir("reduce-path-relative-event");
+		let src = root.join("src");
+		let path = src.join("main.rs");
+		fs::create_dir_all(&src).unwrap();
+		fs::write(&path, "one").unwrap();
+		let mut watcher = Watcher::new(WatcherOptions {
+			root_dir: root.clone(),
+			watch_patterns: vec![".".to_owned()],
+			..WatcherOptions::default()
+		})
+		.unwrap();
+		watcher.desired_watch_dirs().unwrap();
+
+		std::thread::sleep(Duration::from_millis(2));
+		fs::write(&path, "two").unwrap();
+		let (evt, _) = watcher.reduce_path("src/main.rs").unwrap();
+		let evt = evt.unwrap();
+		assert_eq!(evt.path, "src/main.rs");
+		assert_eq!(evt.op, Op::Edit);
+
+		fs::remove_dir_all(root).unwrap();
 	}
 
 	#[test]

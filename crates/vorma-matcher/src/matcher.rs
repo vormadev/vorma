@@ -22,6 +22,7 @@ pub struct Matcher {
 }
 
 impl Matcher {
+	/// Create a builder that validates and registers patterns before matching.
 	pub fn builder(opts: Options) -> Result<MatcherBuilder, String> {
 		MatcherBuilder::new(opts)
 	}
@@ -44,18 +45,22 @@ impl Matcher {
 		}
 	}
 
+	/// Configured explicit index segment identifier.
 	pub fn explicit_index_segment_identifier(&self) -> &str {
 		&self.explicit_index_segment
 	}
 
+	/// Configured dynamic parameter prefix.
 	pub fn dynamic_param_prefix(&self) -> char {
 		self.dynamic_param_prefix
 	}
 
+	/// Configured splat segment identifier.
 	pub fn splat_segment_identifier(&self) -> char {
 		self.splat_segment_id
 	}
 
+	/// Find the best single pattern match for a concrete path.
 	pub fn find_best_match(&self, real_path: &str) -> Option<Match> {
 		if let Some(rr) = self.static_patterns.get(real_path) {
 			return Some(Match::from_registered(rr.clone(), 0));
@@ -96,6 +101,7 @@ impl Matcher {
 		Some(best)
 	}
 
+	/// Find the ordered nested pattern chain for a concrete path.
 	pub fn find_nested_matches(&self, real_path: &str) -> Option<NestedMatches> {
 		let real_path = strip_trailing_slash(real_path).to_string();
 		let real_segs = parse_segments(&real_path);

@@ -5,6 +5,7 @@
 //! retains successful results for later execution contexts created from the same
 //! [`Tasks`] runtime.
 
+#![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
 mod cancel;

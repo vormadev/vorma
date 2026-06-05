@@ -40,11 +40,6 @@ export default defineConfig([
 	},
 	{
 		...base,
-		entry: ["./packages/vorma/ui/remix/remix.tsx"],
-		outDir: "./packages/vorma/.dist/ui/remix/",
-	},
-	{
-		...base,
 		entry: ["./packages/vorma/vite/vite.ts"],
 		outDir: "./packages/vorma/.dist/vite/",
 		platform: "node",
@@ -78,16 +73,6 @@ export default defineConfig([
 		...base,
 		entry: ["./packages/vorma/kit/json/json.ts"],
 		outDir: "./packages/vorma/.dist/kit/json/",
-	},
-	{
-		...base,
-		entry: ["./packages/vorma/kit/lab/design/core/core.ts"],
-		outDir: "./packages/vorma/.dist/kit/lab/design/core/",
-	},
-	{
-		...base,
-		entry: ["./packages/vorma/kit/lab/design/components/remix/remix.ts"],
-		outDir: "./packages/vorma/.dist/kit/lab/design/components/remix/",
 	},
 	{
 		...base,

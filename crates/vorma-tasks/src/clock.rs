@@ -7,6 +7,7 @@ pub struct ClockInstant {
 }
 
 impl ClockInstant {
+	/// Create a timestamp from a duration since an arbitrary monotonic origin.
 	pub fn from_duration_since_origin(duration: Duration) -> Self {
 		Self {
 			nanos_since_origin: duration.as_nanos(),
@@ -29,6 +30,7 @@ impl ClockInstant {
 
 /// Monotonic clock used by [`crate::Tasks`] for TTL expiry.
 pub trait Clock: Send + Sync + 'static {
+	/// Return the current monotonic timestamp.
 	fn now(&self) -> ClockInstant;
 }
 
@@ -39,6 +41,7 @@ pub struct SystemClock {
 }
 
 impl SystemClock {
+	/// Create a system monotonic clock with a fresh origin.
 	pub fn new() -> Self {
 		Self {
 			origin: Instant::now(),

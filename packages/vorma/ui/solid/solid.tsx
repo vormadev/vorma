@@ -337,10 +337,14 @@ export function createVormaClient<A extends AppConfig>(
 
 		const entry_key_at_idx = createMemo(() => {
 			const e = entries();
-			return idx < e.length ? get_entry_key(e[idx]!) : "";
+			if (idx >= e.length) {
+				return "";
+			}
+			const entry = e[idx]!;
+			return get_entry_key(entry);
 		});
 
-		const remount_key_next = createMemo(() => {
+		const outlet_key_next = createMemo(() => {
 			const urls = import_urls();
 			const keys = entry_keys();
 			return `${urls[idx + 1]}|${keys[idx + 1]}`;
@@ -349,6 +353,15 @@ export function createVormaClient<A extends AppConfig>(
 		const component = createMemo(() => {
 			const s = slot();
 			return s.kind === "component" ? (s.component as ValidComponent) : undefined;
+		});
+
+		const component_render = createMemo(() => {
+			const Comp = component();
+			const key = entry_key_at_idx();
+			if (!Comp || !key) {
+				return undefined;
+			}
+			return { component: Comp, key };
 		});
 
 		const error_boundary = createMemo(() => {
@@ -367,7 +380,7 @@ export function createVormaClient<A extends AppConfig>(
 
 		const Outlet = (local?: Record<string, unknown>): JSX.Element => {
 			return (
-				<Show when={remount_key_next()} keyed>
+				<Show when={outlet_key_next()} keyed>
 					<RootOutlet {...props} {...local} idx={idx + 1} />
 				</Show>
 			);
@@ -375,17 +388,23 @@ export function createVormaClient<A extends AppConfig>(
 
 		return (
 			<>
-				<Show when={component()}>
-					<Show when={entry_key_at_idx()} keyed>
-						<Dynamic component={component()!} idx={idx} Outlet={Outlet} />
-					</Show>
+				<Show when={component_render()} keyed>
+					{(render) => {
+						return (
+							<Dynamic
+								component={render.component}
+								idx={idx}
+								Outlet={Outlet}
+							/>
+						);
+					}}
 				</Show>
 
-				<Show when={is_pass_through()}>{Outlet()}</Show>
+				{is_pass_through() ? Outlet() : null}
 
-				<Show when={error_boundary()}>
+				{error_boundary() ? (
 					<Dynamic component={error_boundary()!} error={error_value()} />
-				</Show>
+				) : null}
 			</>
 		);
 	}

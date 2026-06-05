@@ -5,6 +5,9 @@
 //! to generate manifests and TypeScript contracts, while [`RuntimeHost`] serves the
 //! runtime handler that users mount into their HTTP stack.
 
+#![deny(missing_docs)]
+#![cfg_attr(not(test), forbid(unsafe_code))]
+
 extern crate self as vorma;
 
 use std::net::{Ipv4Addr, SocketAddr};
@@ -38,7 +41,9 @@ mod view_payload;
 pub use api::{FormData, FormField, FormFile};
 #[doc(hidden)]
 pub use api::{ResourceInput, ViewInput};
-pub use config::{DevWatchConfig, FrontendConfig, PathConfig, ServerConfig, TsGenConfig};
+pub use config::{
+	DevWatchConfig, FrontendConfig, PathConfig, ServerConfig, TsGenConfig, UiVariant,
+};
 pub use cookie::Cookie as HttpCookie;
 pub use core::{
 	HeadHandle, Middleware, MiddlewareCtx, Middlewares, Params, Resource, ResourceCtx,

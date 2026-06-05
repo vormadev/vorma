@@ -1,6 +1,9 @@
 # Rust
 **/target/
 
+# Fuzzing
+fuzz/artifacts/
+
 # Node
 **/node_modules/
 **/.dist/

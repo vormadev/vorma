@@ -29,17 +29,17 @@ See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
 - `src/scenario.rs` owns the Rust view/resource topology and shared Vorma app config
   factory.
 - `components/routes/` owns the client view fixtures used by every adapter.
-- `runtime/` owns the React, Preact, Remix, and Solid adapter shims.
+- `runtime/` owns the React, Preact, and Solid adapter shims.
 - `shared/` owns browser instrumentation and shared CSS.
 - `specs/vorma.property.ts` contains the Bombadil properties and fixture-specific action
   generator.
 - `vite.*.config.ts` files select adapter-specific Vite configs while sharing the common
   config logic in `vite.shared.config.ts`.
 - `vorma.*.gen.ts` files are ignored generated type files.
-- `.dist.{react,preact,remix,solid}.a/` and `.dist.{react,preact,remix,solid}.b/` are
-  ignored production fixture deployment outputs.
-- `.dist.{react,preact,remix,solid}.dev.a/` is ignored dev-server fixture output.
-- `.bombadil/` is ignored test output. Keep it when inspecting failures.
+- `.dist.{react,preact,solid}.a/` and `.dist.{react,preact,solid}.b/` are ignored
+  production fixture deployment outputs.
+- `.dist.{react,preact,solid}.dev.a/` is ignored dev-server fixture output.
+- `.bombadil/` is ignored test output. Failed runs keep inspectable artifacts there.
 
 ## Artifacts
 
@@ -58,10 +58,12 @@ Bombadil writes run artifacts under `.bombadil/`:
 - `.bombadil/logs/prod-<variant>.log` for prod fixture server logs.
 - `.bombadil/logs/dev-<variant>.log` for dev fixture server logs.
 - `.bombadil/logs/test-<run-name>.log` for Bombadil browser run output.
-- `.bombadil/server-bin/<variant>/` for harness-owned production fixture server binaries.
+- `.bombadil/server-bin/<variant>/` for harness-owned production fixture server binaries
+  while a production run is active.
 - `.bombadil/cargo/prod/<variant>/` for harness-owned production fixture server Cargo
-  build output.
-- `.bombadil/vite-cache/<mode>-<variant>/` for per-adapter Vite caches.
+  build output while a production run is active.
+- `.bombadil/vite-cache/<mode>-<variant>/` for per-adapter Vite caches while a run is
+  active.
 
 The harness roots these paths at this directory via its crate manifest directory, not the
 shell cwd. It must not create or use `.vorma` as a scratch namespace; `.vorma` is owned by
@@ -73,16 +75,17 @@ Inspect artifacts from this directory:
 cargo run -p vorma-framework-tests --bin framework-bombadil -- inspect .bombadil/dev-react
 ```
 
-Each Bombadil test clears its own artifact directory before writing, so repeated runs do
-not accumulate stale screenshots and traces for the same run name. Server logs are
-truncated on each run. Remove all Bombadil artifacts with:
+Each Bombadil test clears its own artifact directory before writing. A successful Bombadil
+test removes its browser artifact directory after the run. Successful dev and prod runs
+also remove their heavy framework `.dist.*`, Cargo, server-binary, and Vite cache outputs.
+Failed runs keep their artifacts for inspection, and failure output points at the path to
+inspect. Server logs are truncated on each run and remain under `.bombadil/logs/`.
+
+Remove all Bombadil/framework generated artifacts from the repo root with:
 
 ```bash
-rm -rf .bombadil
+make clean-bombadil
 ```
-
-Bombadil failure output includes the artifact path to inspect, and server logs stay under
-`.bombadil/logs/`.
 
 ## Install
 
@@ -111,7 +114,7 @@ cargo run -p vorma-framework-tests --bin framework-bombadil -- serve-dev react
 cargo run -p vorma-framework-tests --bin framework-bombadil -- inspect .bombadil/dev-react
 ```
 
-Supported variants are `react`, `preact`, `remix`, and `solid`.
+Supported variants are `react`, `preact`, and `solid`.
 
 When `test-prod` runs without `-variant`, the harness builds production variants in
 parallel, then runs browser property suites serially. Parallel browser instrumentation can

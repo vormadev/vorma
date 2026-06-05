@@ -3103,6 +3103,7 @@ describe("HMR", () => {
 		expect(has_route_render_commit(commit)).toBe(true);
 		const state = route_render_commit_at(commit, 0);
 		expect(state.entries[0].module).toBe(new_mod);
+		expect(state.entries[0].hmr_version).toBe(1);
 	});
 
 	it("re-runs client loader only for opted-in patterns", async () => {

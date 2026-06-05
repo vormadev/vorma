@@ -183,7 +183,7 @@ pub fn app_config() -> vorma::Result<vorma::AppConfig<AppState>> {
 			api_base: "/api/".to_owned(),
 		},
 		frontend_config: vorma::FrontendConfig {
-			ui_variant: "react".to_owned(),
+			ui_variant: vorma::UiVariant::React,
 			js_package_manager_base_cmd: "pnpm exec".to_owned(),
 			js_package_manager_dir: ".".to_owned(),
 			vite_config_file: "vite.config.ts".to_owned(),

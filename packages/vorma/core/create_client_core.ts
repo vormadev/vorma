@@ -52,6 +52,7 @@ export type RouteRenderEntry = {
 	pattern: string;
 	input: unknown;
 	module_url: string;
+	hmr_version: number;
 	module: Record<string, unknown>;
 	view_data: unknown;
 	client_loader_data: unknown;
@@ -521,6 +522,7 @@ export function create_client_core(
 		pattern: string;
 		input: unknown;
 		module_url: string;
+		hmr_version: number;
 		module: Record<string, unknown>;
 		view_data: unknown;
 		client_loader_data: unknown;
@@ -760,6 +762,7 @@ export function create_client_core(
 	const search_schema_map: Record<string, unknown> = {};
 	const hmr_rerun_patterns = new Set<string>();
 	const module_cache = new Map<string, Record<string, unknown>>();
+	const hmr_version_map = new Map<string, number>();
 
 	const reload_page =
 		test_options?.reload ??
@@ -1279,6 +1282,8 @@ export function create_client_core(
 				pattern: route.pattern,
 				input: route.input,
 				module_url: route.module_url,
+				hmr_version:
+					hmr_version_map.get(normalize_module_url(route.module_url)) ?? 0,
 				module: modules.get(route.module_url) ?? {},
 				view_data: route.view_data,
 				client_loader_data: cl_res && "data" in cl_res ? cl_res.data : undefined,
@@ -1823,6 +1828,7 @@ export function create_client_core(
 					pattern: m.pattern,
 					input: m.input,
 					module_url: m.module_url,
+					hmr_version: m.hmr_version,
 					module: m.module,
 					view_data: m.view_data,
 					client_loader_data: m.client_loader_data,
@@ -2986,6 +2992,8 @@ export function create_client_core(
 			}
 			const url = normalize_module_url(raw_url);
 			module_cache.set(url, mod);
+			const hmr_version = (hmr_version_map.get(url) ?? 0) + 1;
+			hmr_version_map.set(url, hmr_version);
 			const idx = route_snapshot.route.matches.findIndex(
 				(m) => normalize_module_url(m.module_url) === url,
 			);
@@ -3046,7 +3054,7 @@ export function create_client_core(
 
 			const prev = route_snapshot;
 			const matches = route_snapshot.route.matches.map((m, i) =>
-				i === idx ? { ...m, module: mod, client_loader_data } : m,
+				i === idx ? { ...m, hmr_version, module: mod, client_loader_data } : m,
 			);
 			route_snapshot = {
 				position: route_snapshot.position,

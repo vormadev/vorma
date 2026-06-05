@@ -244,7 +244,7 @@ mod tests {
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				public_static_src_dir: "public".to_owned(),
 				..crate::test_support::frontend_config()
 			},
@@ -297,7 +297,7 @@ mod tests {
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				public_static_src_dir: "public".to_owned(),
 				..crate::test_support::frontend_config()
 			},
@@ -345,7 +345,7 @@ mod tests {
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				public_static_src_dir: "public".to_owned(),
 				..crate::test_support::frontend_config()
 			},

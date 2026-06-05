@@ -33,14 +33,17 @@ impl Pattern {
 		}
 	}
 
+	/// Pattern text as originally registered.
 	pub fn original_pattern(&self) -> &str {
 		&self.original_pattern
 	}
 
+	/// Canonical pattern text after matcher normalization.
 	pub fn normalized_pattern(&self) -> &str {
 		&self.normalized_pattern
 	}
 
+	/// Canonical segment metadata after matcher normalization.
 	pub fn normalized_segments(&self) -> Vec<Segment> {
 		self.normalized_segments
 			.iter()

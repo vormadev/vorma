@@ -28,3 +28,4 @@
   "pet features" or opinionated semantics required or requested by Vorma framework. If
   Vorma needs or wants special or more opinionated semantics, it must layer them on top of
   `vorma-matcher` or `vorma-tasks`, as applicable.
+- HMR code must be dev-gated via Vite so it isn't bundled into production binaries.

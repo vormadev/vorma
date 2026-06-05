@@ -3,7 +3,6 @@
 import type { ReadonlySignal } from "@preact/signals";
 import type { ComponentType as PreactComponentType } from "preact";
 import type { ComponentType as ReactComponentType } from "react";
-import type { RemixNode } from "remix/ui";
 import type { Accessor, Component as SolidComponent } from "solid-js";
 import type {
 	AppConfig,
@@ -50,22 +49,9 @@ import type {
 	WorkState,
 } from "vorma/__internal";
 import { MutationError, QueryError } from "vorma/__internal";
-import { createButton, createCodeBlock } from "vorma/kit/lab/design/components/remix";
-import {
-	createRecipe,
-	createRecipeStyleSystem,
-	type GeneratedSystem,
-	type RecipeStyle,
-	type RecipeStyleDefinitions,
-	type SingleRecipeStyleInput,
-} from "vorma/kit/lab/design/core";
 import { type Result } from "vorma/kit/result";
 import { createVormaClient as Preact__createVormaClient } from "vorma/preact";
 import { createVormaClient as React__createVormaClient } from "vorma/react";
-import {
-	createVormaClient as Remix__createVormaClient,
-	type RemixComponent,
-} from "vorma/remix";
 import { createVormaClient as Solid__createVormaClient } from "vorma/solid";
 
 type Assert<Condition extends true> = Condition;
@@ -176,7 +162,6 @@ const react = React__createVormaClient(vorma_app_config, {
 	},
 });
 const preact = Preact__createVormaClient(vorma_app_config);
-const remix = Remix__createVormaClient(vorma_app_config);
 const solid = Solid__createVormaClient(vorma_app_config);
 
 /////// Exported Type Assertions
@@ -592,6 +577,7 @@ function assert_exported_type_contracts(): void {
 		pattern: "/",
 		input: {},
 		module_url: "/mod.js",
+		hmr_version: 0,
 		module: {},
 		view_data: null,
 		client_loader_data: undefined,
@@ -599,6 +585,7 @@ function assert_exported_type_contracts(): void {
 	expect_type<string>(entry.pattern);
 	expect_type<unknown>(entry.input);
 	expect_type<string>(entry.module_url);
+	expect_type<number>(entry.hmr_version);
 	expect_type<Record<string, unknown>>(entry.module);
 	expect_type<unknown>(entry.view_data);
 	expect_type<unknown>(entry.client_loader_data);
@@ -1418,14 +1405,6 @@ function assert_public_runtime_contracts(): void {
 	}).boot();
 	expect_type<Promise<Result<void>>>(preact_boot_promise);
 
-	const remix_boot_promise = Remix__createVormaClient(vorma_app_config, {
-		render: async ({ RootOutlet, rootEl }) => {
-			expect_type<RemixComponent>(RootOutlet);
-			expect_type<HTMLElement>(rootEl);
-		},
-	}).boot();
-	expect_type<Promise<Result<void>>>(remix_boot_promise);
-
 	const solid_boot_promise = Solid__createVormaClient(vorma_app_config, {
 		render: async ({ RootOutlet, rootEl }) => {
 			expect_type<SolidComponent>(RootOutlet);
@@ -1613,124 +1592,6 @@ function assert_preact_adapter_contracts(): void {
 }
 void assert_preact_adapter_contracts;
 
-/////// Remix Adapter Type Safety
-
-function assert_remix_adapter_contracts(): void {
-	const route_props = null as unknown as ToViewComponentProps<App, "/users/:userID">;
-
-	// Remix data/state/sync APIs are view-scoped.
-	// @ts-expect-error Remix view data is view-scoped.
-	remix.useViewData(route_props);
-	// @ts-expect-error Remix pattern view data is view-scoped.
-	remix.usePatternViewData("/docs/*");
-	// @ts-expect-error Remix route state is view-scoped.
-	remix.useRouteState();
-	// @ts-expect-error Remix route state selectors are view-scoped.
-	remix.useRouteState((route: RouteState) => route.params);
-	// @ts-expect-error Remix work state is view-scoped.
-	remix.useWorkState();
-	// @ts-expect-error Remix work state selectors are view-scoped.
-	remix.useWorkState((work: WorkState) => work.apiRequests.length);
-	// @ts-expect-error Remix route sync is view-scoped.
-	remix.useRouteSync({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-		search: { page: 2, tab: "posts" },
-		enabled: true,
-		debounceMs: 250,
-		replace: true,
-		scrollToTop: false,
-	});
-
-	const client_loader_route_props = null as unknown as ToViewComponentProps<
-		App,
-		"/users/:userID",
-		number
-	>;
-	// @ts-expect-error Remix client loader data is view-scoped.
-	remix.useClientLoaderData(client_loader_route_props);
-	// @ts-expect-error Remix pattern client loader data is view-scoped.
-	remix.usePatternClientLoaderData<number>("/users/:userID");
-
-	// defineView accepts route-bound Remix UI component factories.
-	void remix.defineView({
-		pattern: "/users/:userID",
-		component: (_handle, v) => {
-			const handle_route_state = v.routeState();
-			expect_type<RouteState>(handle_route_state);
-
-			const handle_params = v.routeState((route) => {
-				return route.params;
-			});
-			expect_type<Record<string, string>>(handle_params);
-
-			const handle_work_state = v.workState();
-			expect_type<WorkState>(handle_work_state);
-
-			const handle_submission_count = v.workState((work) => {
-				return work.apiRequests.length;
-			});
-			expect_type<number>(handle_submission_count);
-
-			v.routeSync({
-				pattern: "/users/:userID",
-				params: { userID: "u-1" },
-				search: { page: 2, tab: "posts" },
-			});
-
-			const maybe_pattern_data = v.patternViewData("/docs/*");
-			expect_type<ToViewOutput<App, "/docs/*"> | undefined>(maybe_pattern_data);
-
-			const maybe_client_loader_data =
-				v.patternClientLoaderData<number>("/users/:userID");
-			expect_type<number | undefined>(maybe_client_loader_data);
-
-			return (props) => {
-				const data = v.viewData(props);
-				expect_type<ToViewOutput<App, "/users/:userID">>(data);
-
-				const client_loader_data = v.clientLoaderData(props);
-				expect_type<number>(client_loader_data);
-
-				return props.Outlet() as RemixNode;
-			};
-		},
-		errorBoundary: (_handle, v) => {
-			const work_state = v.workState();
-			expect_type<WorkState>(work_state);
-
-			return (props) => {
-				expect_type<unknown>(props.error);
-				return null;
-			};
-		},
-		clientLoader: async ({ serverPromise }) => {
-			const server_data = await serverPromise;
-			return server_data.viewData.userName.length;
-		},
-	});
-
-	void remix.defineView({
-		// @ts-expect-error defineView rejects unknown patterns.
-		pattern: "/not-a-route",
-		component: () => {
-			return () => {
-				return null;
-			};
-		},
-	});
-
-	// Link
-	void remix.Link({
-		pattern: "/users/:userID",
-		params: { userID: "u-1" },
-	});
-
-	// @ts-expect-error typed links require params for dynamic routes.
-	void remix.Link({ pattern: "/users/:userID" });
-}
-void assert_remix_adapter_contracts;
-
 /////// Solid Adapter Type Safety
 
 function assert_solid_adapter_contracts(): void {
@@ -1820,125 +1681,3 @@ function assert_solid_adapter_contracts(): void {
 	void solid.Link({ pattern: "/users/:userID" });
 }
 void assert_solid_adapter_contracts;
-
-/////// Design Component Type Safety
-
-function assert_design_component_contracts(): void {
-	const recipe_system = {
-		metadata: {
-			breakpoint: {
-				md: "48rem",
-			},
-		},
-		modes: {
-			light: {
-				variables: {},
-			},
-		},
-		token: {},
-		variablePrefix: "typecheck",
-	} satisfies GeneratedSystem<"light", {}, { breakpoint: { md: string } }>;
-
-	function create_component_style_system<const TRecipes extends RecipeStyleDefinitions>(
-		recipes: TRecipes & SingleRecipeStyleInput<TRecipes>,
-	) {
-		return createRecipeStyleSystem<typeof recipe_system, TRecipes>(
-			recipe_system,
-			recipes,
-		);
-	}
-
-	const button_recipe = {
-		defaultVariants: {
-			layout: "control",
-			size: "md",
-			variant: "primary",
-		},
-		slots: {
-			content: {},
-			loadingIndicator: {},
-			loadingIndicatorFrame: {},
-			root: {
-				base: {
-					display: "inline-flex",
-				},
-			},
-		},
-		variants: {
-			fluid: {
-				true: {
-					root: {
-						base: {
-							inlineSize: "100%",
-						},
-					},
-				},
-			},
-			layout: {
-				control: {
-					root: {
-						base: {
-							justifyContent: "center",
-						},
-					},
-				},
-			},
-			loading: {
-				true: {
-					content: {
-						base: {
-							opacity: 0,
-						},
-					},
-				},
-			},
-			size: {
-				md: {
-					root: {
-						base: {
-							minHeight: "2rem",
-						},
-					},
-				},
-			},
-			variant: {
-				primary: {
-					root: {
-						base: {
-							color: "white",
-						},
-					},
-				},
-			},
-		},
-	} as const;
-	const code_block_recipe = {
-		slots: {
-			caption: {},
-			code: {},
-			header: {},
-			pre: {},
-			root: {},
-			summary: {
-				base: {
-					fontWeight: 600,
-				},
-			},
-		},
-	} as const;
-
-	const Button = createButton(create_component_style_system({ button: button_recipe }));
-	expect_type<RemixComponent>(Button);
-
-	const code_block_style_system = create_component_style_system({
-		codeBlock: code_block_recipe,
-	});
-	const CodeBlock = createCodeBlock(code_block_style_system);
-	expect_type<RemixComponent>(CodeBlock);
-
-	const resolved = createRecipe(
-		code_block_style_system.token.recipe.codeBlock,
-	).resolve();
-	expect_type<RecipeStyle>(resolved.slots.summary.base);
-}
-void assert_design_component_contracts;

@@ -7,6 +7,7 @@ function make_entry(overrides: Partial<RouteRenderEntry> = {}): RouteRenderEntry
 		pattern: overrides.pattern ?? "/",
 		input: overrides.input,
 		module_url: overrides.module_url ?? "/mod.js",
+		hmr_version: overrides.hmr_version ?? 0,
 		module: overrides.module ?? {},
 		view_data: overrides.view_data ?? null,
 		client_loader_data: overrides.client_loader_data ?? undefined,

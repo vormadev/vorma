@@ -263,7 +263,7 @@ fn html_response(
 		vorma_body.push_str(&to_dev_scripts(
 			manifest.dev_vite_server_port,
 			&manifest.client_entry.url,
-			manifest.ui_variant == "react",
+			manifest.ui_variant == crate::UiVariant::React.as_str(),
 		)?);
 		vorma_body.push('\n');
 		vorma_body.push_str(&format!(

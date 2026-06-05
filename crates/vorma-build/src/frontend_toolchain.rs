@@ -1,11 +1,6 @@
-use vorma::FrontendConfig;
+use vorma::{FrontendConfig, UiVariant};
 
 use crate::constants::DEV_LOOPBACK_HOST;
-
-const UI_VARIANT_REACT: &str = "react";
-const UI_VARIANT_PREACT: &str = "preact";
-const UI_VARIANT_REMIX: &str = "remix";
-const UI_VARIANT_SOLID: &str = "solid";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct FrontendToolchain {
@@ -16,8 +11,7 @@ pub(crate) struct FrontendToolchain {
 impl FrontendToolchain {
 	pub(crate) fn from_config(config: &FrontendConfig) -> Result<Self, FrontendToolchainError> {
 		Ok(Self {
-			ui_variant: UiVariant::parse(&config.ui_variant)
-				.map_err(FrontendToolchainError::UiVariant)?,
+			ui_variant: config.ui_variant,
 			js_package_manager_cmd_base: parse_required_command(
 				&config.js_package_manager_base_cmd,
 			)
@@ -34,7 +28,7 @@ impl FrontendToolchain {
 	}
 
 	pub(crate) fn vite_dedupe_list(&self) -> Vec<String> {
-		self.ui_variant.vite_dedupe_list()
+		ui_variant_vite_dedupe_list(self.ui_variant)
 	}
 
 	pub(crate) fn vite_server_args(&self, vite_port: u16, vite_config_file: String) -> Vec<String> {
@@ -59,14 +53,12 @@ impl FrontendToolchain {
 
 #[derive(Debug)]
 pub(crate) enum FrontendToolchainError {
-	UiVariant(String),
 	JsPackageManagerCommand(String),
 }
 
 impl std::fmt::Display for FrontendToolchainError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::UiVariant(err) => write!(f, "error with UI variant: {err}"),
 			Self::JsPackageManagerCommand(err) => {
 				write!(f, "error with JavaScript package-manager command: {err}")
 			}
@@ -74,52 +66,18 @@ impl std::fmt::Display for FrontendToolchainError {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum UiVariant {
-	React,
-	Preact,
-	Remix,
-	Solid,
-}
-
-impl UiVariant {
-	fn parse(raw: &str) -> Result<Self, String> {
-		match raw.trim() {
-			UI_VARIANT_REACT => Ok(Self::React),
-			UI_VARIANT_PREACT => Ok(Self::Preact),
-			UI_VARIANT_REMIX => Ok(Self::Remix),
-			UI_VARIANT_SOLID => Ok(Self::Solid),
-			ui => Err(format!("invalid UI variant: {ui}")),
-		}
-	}
-
-	fn as_str(self) -> &'static str {
-		match self {
-			Self::React => UI_VARIANT_REACT,
-			Self::Preact => UI_VARIANT_PREACT,
-			Self::Remix => UI_VARIANT_REMIX,
-			Self::Solid => UI_VARIANT_SOLID,
-		}
-	}
-
-	fn vite_dedupe_list(self) -> Vec<String> {
-		match self {
-			Self::React => vec!["react".to_owned(), "react-dom".to_owned()],
-			Self::Preact => vec![
-				"preact".to_owned(),
-				"preact/hooks".to_owned(),
-				"@preact/signals".to_owned(),
-				"preact/jsx-runtime".to_owned(),
-				"preact/compat".to_owned(),
-				"preact/test-utils".to_owned(),
-			],
-			Self::Remix => vec![
-				"remix".to_owned(),
-				"remix/ui".to_owned(),
-				"@remix-run/ui".to_owned(),
-			],
-			Self::Solid => vec!["solid-js".to_owned(), "solid-js/web".to_owned()],
-		}
+fn ui_variant_vite_dedupe_list(ui_variant: UiVariant) -> Vec<String> {
+	match ui_variant {
+		UiVariant::React => vec!["react".to_owned(), "react-dom".to_owned()],
+		UiVariant::Preact => vec![
+			"preact".to_owned(),
+			"preact/hooks".to_owned(),
+			"@preact/signals".to_owned(),
+			"preact/jsx-runtime".to_owned(),
+			"preact/compat".to_owned(),
+			"preact/test-utils".to_owned(),
+		],
+		UiVariant::Solid => vec!["solid-js".to_owned(), "solid-js/web".to_owned()],
 	}
 }
 

@@ -18,6 +18,10 @@ declare module "#variant-runtime" {
 	}): void | Promise<void>;
 }
 
+declare module "#hmr-probe" {
+	export const HmrProbe: any;
+}
+
 declare module "#vorma-client" {
 	export const createVormaClient: any;
 }

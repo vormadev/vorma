@@ -4,6 +4,7 @@ description = "Vorma task runtime with execution-context memoization and optiona
 edition.workspace = true
 homepage.workspace = true
 license.workspace = true
+readme = "README.md"
 repository.workspace = true
 version.workspace = true
 

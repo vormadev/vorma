@@ -22,6 +22,8 @@ const BOMBADIL_ARTIFACTS_DIR: &str = ".bombadil";
 const BOMBADIL_LOGS_DIR: &str = ".bombadil/logs";
 const BOMBADIL_SERVER_BIN_DIR: &str = ".bombadil/server-bin";
 const BOMBADIL_SERVER_CARGO_DIR: &str = ".bombadil/cargo/prod";
+const BOMBADIL_VITE_CACHE_DIR: &str = ".bombadil/vite-cache";
+const FRAMEWORK_DIST_DIR_PREFIX: &str = ".dist";
 const DEV_MANIFEST_FILENAME: &str = "vorma.manifest.dev.json";
 const DEV_MARKER_PATH: &str = "src/dev_marker.rs";
 const DEV_MARKER_A: &str = "server-marker-a";
@@ -30,6 +32,12 @@ const DEV_CRITICAL_CSS_PATH: &str = "shared/styles/main.critical.css";
 const DEV_CRITICAL_CSS_MARKER: &str = "dev-change-critical-css-probe";
 const DEV_VIEW_MODULE_PATH: &str = "components/routes/root.ts";
 const DEV_VIEW_MODULE_MARKER: &str = "client-view-module-probe";
+const DEV_HMR_CHECK_SCRIPT_PATH: &str = "dev_hmr_check.mjs";
+const DEV_HMR_REACT_PROBE_PATH: &str = "runtime/react_hmr_probe.tsx";
+const DEV_HMR_PREACT_PROBE_PATH: &str = "runtime/preact_hmr_probe.tsx";
+const DEV_HMR_SOLID_PROBE_PATH: &str = "runtime/solid_hmr_probe.tsx";
+const DEV_HMR_MARKER_A: &str = "client-hmr-marker-a";
+const DEV_HMR_MARKER_B: &str = "client-hmr-marker-b";
 const VORMA_SPEC_PATH: &str = "./specs/vorma.property.ts";
 const BUILD_SKEW_SPEC_PATH: &str = "./specs/build_skew.property.ts";
 const LATENCY_SPEC_PATH: &str = "./specs/latency.property.ts";
@@ -38,10 +46,13 @@ const BOMBADIL_DEPLOYMENT_ENV_KEY: &str = "VORMA_BOMBADIL_DEPLOYMENT";
 const BOMBADIL_MODE_ENV_KEY: &str = "VORMA_BOMBADIL_MODE";
 const VARIANT_REACT: &str = "react";
 const VARIANT_PREACT: &str = "preact";
-const VARIANT_REMIX: &str = "remix";
 const VARIANT_SOLID: &str = "solid";
 const BOMBADIL_MODE_DEV: &str = "dev";
 const BOMBADIL_MODE_PROD: &str = "prod";
+const DEPLOYMENT_A_SUFFIX: &str = "a";
+const DEPLOYMENT_B_SUFFIX: &str = "b";
+const PACKAGE_MANAGER_NONINTERACTIVE_ENV_KEY: &str = "CI";
+const PACKAGE_MANAGER_NONINTERACTIVE_ENV_VALUE: &str = "true";
 
 #[derive(Clone)]
 struct VariantConfig {
@@ -90,10 +101,6 @@ fn main() {
 				name: VARIANT_SOLID,
 				port: 18082,
 			},
-			VariantConfig {
-				name: VARIANT_REMIX,
-				port: 18083,
-			},
 		],
 	};
 
@@ -121,7 +128,7 @@ impl RunConfig {
 			}
 			"serve-dev" => {
 				if args.len() != 2 {
-					return Err("usage: bombadil serve-dev <react|preact|remix|solid>".to_owned());
+					return Err("usage: bombadil serve-dev <react|preact|solid>".to_owned());
 				}
 				self.serve_dev(&args[1])
 			}
@@ -140,10 +147,15 @@ impl RunConfig {
 					.get(1)
 					.map(String::as_str)
 					.unwrap_or(BOMBADIL_ARTIFACTS_DIR);
-				Command::new("pnpm")
-					.current_dir(framework_root())
-					.args(["exec", "bombadil", "inspect", inspect_path])
-					.status()
+				let mut cmd = Command::new("pnpm");
+				set_noninteractive_package_manager_env(&mut cmd);
+				cmd.current_dir(framework_root()).args([
+					"exec",
+					"bombadil",
+					"inspect",
+					inspect_path,
+				]);
+				cmd.status()
 					.map_err(|error| error.to_string())
 					.and_then(status_result)
 			}
@@ -188,6 +200,7 @@ impl RunConfig {
 		server.current_dir(framework_root());
 		server.arg("dev");
 		runner.set_process_group(&mut server);
+		set_noninteractive_package_manager_env(&mut server);
 		server.env(BOMBADIL_VARIANT_ENV_KEY, runner.variant.name);
 		server.env(BOMBADIL_DEPLOYMENT_ENV_KEY, "A");
 		server.env(BOMBADIL_MODE_ENV_KEY, BOMBADIL_MODE_DEV);
@@ -292,7 +305,7 @@ impl VariantRunner {
 			self.run_bombadil_suite(&base_url, &format!("dev-{}", self.variant.name), "inline");
 		self.stop_dev_server(&mut child);
 		cleanup();
-		result
+		result.and_then(|_| self.clean_successful_dev_artifacts())
 	}
 
 	fn test_dev_changes(&self) -> Result<(), String> {
@@ -301,7 +314,7 @@ impl VariantRunner {
 		let result = self.test_dev_changes_inner(&log_path, &mut child);
 		self.stop_dev_server(&mut child);
 		cleanup();
-		result
+		result.and_then(|_| self.clean_successful_dev_artifacts())
 	}
 
 	fn start_logged_dev_server(
@@ -316,6 +329,7 @@ impl VariantRunner {
 		server.current_dir(framework_root());
 		server.arg("dev");
 		self.set_process_group(&mut server);
+		set_noninteractive_package_manager_env(&mut server);
 		server.env(BOMBADIL_VARIANT_ENV_KEY, self.variant.name);
 		server.env(BOMBADIL_DEPLOYMENT_ENV_KEY, "A");
 		server.env(BOMBADIL_MODE_ENV_KEY, BOMBADIL_MODE_DEV);
@@ -360,6 +374,7 @@ impl VariantRunner {
 			&format!("\n.{DEV_CRITICAL_CSS_MARKER} {{ color: rgb(1, 2, 3); }}\n"),
 		)?;
 		self.wait_for_manifest_critical_css(child, DEV_CRITICAL_CSS_MARKER)?;
+		self.run_dev_hmr_check(child, &base_url)?;
 
 		let root_view_url = self
 			.read_dev_manifest()?
@@ -379,6 +394,42 @@ impl VariantRunner {
 			DEV_VIEW_MODULE_MARKER,
 			"client view module refresh",
 		)
+	}
+
+	fn run_dev_hmr_check(&self, child: &mut Child, base_url: &str) -> Result<(), String> {
+		if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+			return Err(format!(
+				"{} dev server exited before browser HMR check: {status}",
+				self.variant.name,
+			));
+		}
+
+		let hmr_probe_path = match self.variant.name {
+			VARIANT_REACT => DEV_HMR_REACT_PROBE_PATH,
+			VARIANT_PREACT => DEV_HMR_PREACT_PROBE_PATH,
+			VARIANT_SOLID => DEV_HMR_SOLID_PROBE_PATH,
+			other => return Err(format!("unknown variant {other:?}")),
+		};
+		let mut cmd = Command::new("node");
+		cmd.args([
+			DEV_HMR_CHECK_SCRIPT_PATH,
+			base_url,
+			self.variant.name,
+			hmr_probe_path,
+			DEV_HMR_MARKER_A,
+			DEV_HMR_MARKER_B,
+		]);
+		let log_path = bombadil_logs_dir().join(format!("dev-hmr-{}.log", self.variant.name));
+		self.run_command_to_log(&mut cmd, &log_path)?;
+
+		if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+			return Err(format!(
+				"{} dev server exited during browser HMR check: {status}",
+				self.variant.name,
+			));
+		}
+		self.log("browser HMR check observed");
+		Ok(())
 	}
 
 	fn build_dev_binary(&self) -> Result<(PathBuf, impl FnOnce()), String> {
@@ -464,6 +515,7 @@ impl VariantRunner {
 		cmd.env(BOMBADIL_VARIANT_ENV_KEY, self.variant.name);
 		cmd.env(BOMBADIL_DEPLOYMENT_ENV_KEY, deployment);
 		cmd.env(BOMBADIL_MODE_ENV_KEY, BOMBADIL_MODE_PROD);
+		set_noninteractive_package_manager_env(&mut cmd);
 		let log_path = bombadil_logs_dir().join(format!(
 			"build-prod-{}-{}.log",
 			self.variant.name,
@@ -514,7 +566,7 @@ impl VariantRunner {
 				)
 			});
 		self.stop_server(&mut child);
-		result
+		result.and_then(|_| self.clean_successful_prod_artifacts())
 	}
 
 	fn log_path(&self, mode: &str) -> Result<PathBuf, String> {
@@ -603,24 +655,13 @@ impl VariantRunner {
 			"writing Bombadil artifacts to {}",
 			artifact_path.display(),
 		));
-		fs::remove_dir_all(&artifact_path)
-			.or_else(|error| {
-				if error.kind() == io::ErrorKind::NotFound {
-					return Ok(());
-				}
-				Err(error)
-			})
-			.map_err(|error| {
-				format!(
-					"error removing stale Bombadil artifacts at {}: {error}",
-					artifact_path.display(),
-				)
-			})?;
+		remove_dir_all_if_exists(&artifact_path, "stale Bombadil run artifacts")?;
 		let logs_dir = bombadil_logs_dir();
 		fs::create_dir_all(&logs_dir).map_err(|error| error.to_string())?;
 		let test_log_path = logs_dir.join(format!("test-{output_path}.log"));
 
 		let mut cmd = Command::new("pnpm");
+		set_noninteractive_package_manager_env(&mut cmd);
 		cmd.args([
 			"exec",
 			"bombadil",
@@ -638,13 +679,17 @@ impl VariantRunner {
 			"--output-path",
 		]);
 		cmd.arg(&artifact_path);
-		self.run_command_to_log(&mut cmd, &test_log_path).map_err(|error| {
-            format!(
-                "inspect artifacts with `cargo run -p vorma-framework-tests --bin framework-bombadil -- inspect {}`; read log at {}: {error}",
-                artifact_path.display(),
-                test_log_path.display(),
-            )
-        })
+		let result = self.run_command_to_log(&mut cmd, &test_log_path);
+		if result.is_ok() {
+			remove_dir_all_if_exists(&artifact_path, "successful Bombadil run artifacts")?;
+		}
+		result.map_err(|error| {
+			format!(
+				"inspect artifacts with `cargo run -p vorma-framework-tests --bin framework-bombadil -- inspect {}`; read log at {}: {error}",
+				artifact_path.display(),
+				test_log_path.display(),
+			)
+		})
 	}
 
 	fn run_command_to_log(&self, cmd: &mut Command, log_path: &Path) -> Result<(), String> {
@@ -742,11 +787,33 @@ impl VariantRunner {
 	}
 
 	fn dev_manifest_path(&self) -> PathBuf {
-		framework_root()
-			.join(format!(".dist.{}.dev.a", self.variant.name))
+		framework_dev_dist_dir(self.variant.name)
 			.join(".vorma")
 			.join("static")
 			.join(DEV_MANIFEST_FILENAME)
+	}
+
+	fn clean_successful_dev_artifacts(&self) -> Result<(), String> {
+		for path in [
+			framework_dev_dist_dir(self.variant.name),
+			bombadil_vite_cache_dir(BOMBADIL_MODE_DEV, self.variant.name),
+		] {
+			remove_dir_all_if_exists(&path, "successful dev generated artifacts")?;
+		}
+		Ok(())
+	}
+
+	fn clean_successful_prod_artifacts(&self) -> Result<(), String> {
+		for path in [
+			framework_prod_dist_dir(self.variant.name, DEPLOYMENT_A_SUFFIX),
+			framework_prod_dist_dir(self.variant.name, DEPLOYMENT_B_SUFFIX),
+			bombadil_server_bin_dir(self.variant.name),
+			bombadil_server_cargo_dir(self.variant.name),
+			bombadil_vite_cache_dir(BOMBADIL_MODE_PROD, self.variant.name),
+		] {
+			remove_dir_all_if_exists(&path, "successful production generated artifacts")?;
+		}
+		Ok(())
 	}
 
 	fn dev_url(&self, app_base_url: &str, raw_url: &str) -> String {
@@ -886,6 +953,35 @@ fn bombadil_server_cargo_dir(variant_name: &str) -> PathBuf {
 		.join(variant_name)
 }
 
+fn bombadil_vite_cache_dir(mode: &str, variant_name: &str) -> PathBuf {
+	framework_root()
+		.join(BOMBADIL_VITE_CACHE_DIR)
+		.join(format!("{mode}-{variant_name}"))
+}
+
+fn framework_prod_dist_dir(variant_name: &str, deployment_suffix: &str) -> PathBuf {
+	framework_root().join(format!(
+		"{FRAMEWORK_DIST_DIR_PREFIX}.{variant_name}.{deployment_suffix}"
+	))
+}
+
+fn framework_dev_dist_dir(variant_name: &str) -> PathBuf {
+	framework_root().join(format!(
+		"{FRAMEWORK_DIST_DIR_PREFIX}.{variant_name}.{BOMBADIL_MODE_DEV}.{DEPLOYMENT_A_SUFFIX}"
+	))
+}
+
+fn remove_dir_all_if_exists(path: &Path, label: &str) -> Result<(), String> {
+	fs::remove_dir_all(path)
+		.or_else(|error| {
+			if error.kind() == io::ErrorKind::NotFound {
+				return Ok(());
+			}
+			Err(error)
+		})
+		.map_err(|error| format!("error removing {label} at {}: {error}", path.display()))
+}
+
 fn parse_test_flags(args: &[String]) -> Result<(u64, Option<String>), String> {
 	let mut intensity = 1;
 	let mut variant = None;
@@ -918,6 +1014,13 @@ fn status_result(status: std::process::ExitStatus) -> Result<(), String> {
 		return Ok(());
 	}
 	Err(format!("process exited with status {status}"))
+}
+
+fn set_noninteractive_package_manager_env(cmd: &mut Command) {
+	cmd.env(
+		PACKAGE_MANAGER_NONINTERACTIVE_ENV_KEY,
+		PACKAGE_MANAGER_NONINTERACTIVE_ENV_VALUE,
+	);
 }
 
 struct HttpResponse {
@@ -1052,6 +1155,7 @@ mod tests {
 		for path in [
 			bombadil_server_bin_dir("react"),
 			bombadil_server_cargo_dir("react"),
+			bombadil_vite_cache_dir(BOMBADIL_MODE_DEV, "react"),
 		] {
 			assert!(path.is_absolute());
 			assert!(path.starts_with(framework_root().join(".bombadil")));
@@ -1063,5 +1167,21 @@ mod tests {
 				path.display(),
 			);
 		}
+	}
+
+	#[test]
+	fn framework_dist_artifacts_are_rooted_in_framework_fixture() {
+		for path in [
+			framework_prod_dist_dir("react", DEPLOYMENT_A_SUFFIX),
+			framework_prod_dist_dir("react", DEPLOYMENT_B_SUFFIX),
+			framework_dev_dist_dir("react"),
+		] {
+			assert!(path.is_absolute());
+			assert!(path.starts_with(framework_root()));
+			assert_eq!(path.parent(), Some(framework_root().as_path()));
+		}
+		assert!(framework_prod_dist_dir("react", DEPLOYMENT_A_SUFFIX).ends_with(".dist.react.a"));
+		assert!(framework_prod_dist_dir("react", DEPLOYMENT_B_SUFFIX).ends_with(".dist.react.b"));
+		assert!(framework_dev_dist_dir("react").ends_with(".dist.react.dev.a"));
 	}
 }

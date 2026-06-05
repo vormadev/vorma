@@ -11,6 +11,7 @@ pub struct CancelToken {
 }
 
 impl CancelToken {
+	/// Create a non-cancelled root token.
 	pub fn new() -> Self {
 		let (tx, _) = watch::channel(false);
 		Self {
@@ -22,12 +23,14 @@ impl CancelToken {
 		}
 	}
 
+	/// Cancel this token and notify waiters.
 	pub fn cancel(&self) {
 		if !self.inner.cancelled.swap(true, Ordering::SeqCst) {
 			let _ = self.inner.tx.send(true);
 		}
 	}
 
+	/// Whether this token or any parent token has been cancelled.
 	pub fn is_cancelled(&self) -> bool {
 		self.inner.cancelled.load(Ordering::SeqCst)
 			|| self
@@ -36,6 +39,7 @@ impl CancelToken {
 				.is_some_and(|parent| parent.is_cancelled())
 	}
 
+	/// Wait until this token or any parent token is cancelled.
 	pub async fn cancelled(&self) {
 		if self.is_cancelled() {
 			return;
@@ -53,6 +57,7 @@ impl CancelToken {
 		}
 	}
 
+	/// Create a child token that is cancelled when this token is cancelled.
 	pub fn child(&self) -> Self {
 		let (tx, _) = watch::channel(false);
 		Self {

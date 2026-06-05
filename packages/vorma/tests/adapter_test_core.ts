@@ -179,6 +179,18 @@ export type AdapterTestHarness = {
 		get_unmount_count: () => number;
 	};
 
+	create_hmr_stateful_component: (input: {
+		hmr_id: string;
+		version: string;
+		on_mount: () => void;
+		on_unmount: () => void;
+	}) => (props: TestRouteProps) => unknown;
+
+	create_hmr_version_component: (input: {
+		hmr_id: string;
+		version: string;
+	}) => (props: TestRouteProps) => unknown;
+
 	unwrap: <T>(value: T | (() => T)) => T;
 };
 
@@ -273,6 +285,15 @@ function dispatch_link_intent_prefetch(anchor: HTMLAnchorElement): void {
 			cancelable: true,
 		}),
 	);
+}
+
+async function apply_hmr_view_update(
+	url: string,
+	mod: Record<string, unknown>,
+): Promise<void> {
+	const update = window.__vorma_hmr_view_update;
+	expect(typeof update).toBe("function");
+	await update?.(url, mod);
 }
 
 /////// Test definitions
@@ -726,6 +747,198 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				);
 				expect(parent.get_mount_count()).toBe(1);
 				expect(parent.get_unmount_count()).toBe(0);
+			} finally {
+				cleanup();
+			}
+		});
+	});
+
+	///////////////////////////////////////////////////////////////////
+	/////// HMR
+	///////////////////////////////////////////////////////////////////
+
+	describe("HMR", () => {
+		it("updates the active view implementation without remounting it", async () => {
+			let client!: TestVormaClient;
+			let mount_count = 0;
+			let unmount_count = 0;
+			const on_mount = () => {
+				mount_count++;
+			};
+			const on_unmount = () => {
+				unmount_count++;
+			};
+			const component_v1 = harness.create_hmr_stateful_component({
+				hmr_id: "self",
+				version: "one",
+				on_mount,
+				on_unmount,
+			});
+
+			vi.doMock("/hmr-self.js", () => {
+				return {
+					default: harness.create_view({
+						client,
+						pattern: "/",
+						render: ({ props }) => {
+							return component_v1(props);
+						},
+					}),
+				};
+			});
+
+			seed_payload({
+				matched_patterns: ["/"],
+				views_data: [{}],
+				import_urls: ["/hmr-self.js"],
+			});
+			client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(harness.h(client.RootOutlet, { idx: 0 }));
+				await wait_for_dom(() => {
+					expect(container.querySelector("[data-version]")?.textContent).toBe(
+						"one",
+					);
+				});
+				expect(mount_count).toBe(1);
+
+				const button = container.querySelector("[data-set]") as HTMLElement;
+				button.click();
+				await wait_for_dom(() => {
+					expect(container.querySelector("[data-draft]")?.textContent).toBe(
+						"modified",
+					);
+				});
+
+				const component_v2 = harness.create_hmr_stateful_component({
+					hmr_id: "self",
+					version: "two",
+					on_mount,
+					on_unmount,
+				});
+				await apply_hmr_view_update("/hmr-self.js", {
+					default: harness.create_view({
+						client,
+						pattern: "/",
+						render: ({ props }) => {
+							return component_v2(props);
+						},
+					}),
+				});
+
+				await wait_for_dom(() => {
+					expect(container.querySelector("[data-version]")?.textContent).toBe(
+						"two",
+					);
+				});
+
+				expect(container.querySelector("[data-draft]")?.textContent).toBe(
+					"modified",
+				);
+				expect(mount_count).toBe(1);
+				expect(unmount_count).toBe(0);
+			} finally {
+				cleanup();
+			}
+		});
+
+		it("updates a child view implementation without remounting the parent view", async () => {
+			let client!: TestVormaClient;
+			let parent_mount_count = 0;
+			let parent_unmount_count = 0;
+			const parent = harness.create_hmr_stateful_component({
+				hmr_id: "parent",
+				version: "parent",
+				on_mount: () => {
+					parent_mount_count++;
+				},
+				on_unmount: () => {
+					parent_unmount_count++;
+				},
+			});
+			const child_v1 = harness.create_hmr_version_component({
+				hmr_id: "child",
+				version: "one",
+			});
+
+			vi.doMock("/hmr-parent.js", () => {
+				return {
+					default: harness.create_view({
+						client,
+						pattern: "/parent",
+						render: ({ props }) => {
+							return parent(props);
+						},
+					}),
+				};
+			});
+			vi.doMock("/hmr-child.js", () => {
+				return {
+					default: harness.create_view({
+						client,
+						pattern: "/parent/child",
+						render: ({ props }) => {
+							return child_v1(props);
+						},
+					}),
+				};
+			});
+
+			seed_payload({
+				matched_patterns: ["/parent", "/parent/child"],
+				views_data: [{}, {}],
+				import_urls: ["/hmr-parent.js", "/hmr-child.js"],
+			});
+			client = harness.create_client(TEST_CONFIG);
+
+			await client.boot();
+
+			const { container, render, cleanup } = harness.mount();
+			try {
+				render(harness.h(client.RootOutlet, { idx: 0 }));
+				await wait_for_dom(() => {
+					expect(
+						container.querySelector("[data-child-version]")?.textContent,
+					).toBe("one");
+				});
+				expect(parent_mount_count).toBe(1);
+
+				const button = container.querySelector("[data-set]") as HTMLElement;
+				button.click();
+				await wait_for_dom(() => {
+					expect(container.querySelector("[data-draft]")?.textContent).toBe(
+						"modified",
+					);
+				});
+
+				const child_v2 = harness.create_hmr_version_component({
+					hmr_id: "child",
+					version: "two",
+				});
+				await apply_hmr_view_update("/hmr-child.js", {
+					default: harness.create_view({
+						client,
+						pattern: "/parent/child",
+						render: ({ props }) => {
+							return child_v2(props);
+						},
+					}),
+				});
+
+				await wait_for_dom(() => {
+					expect(
+						container.querySelector("[data-child-version]")?.textContent,
+					).toBe("two");
+				});
+				expect(container.querySelector("[data-draft]")?.textContent).toBe(
+					"modified",
+				);
+				expect(parent_mount_count).toBe(1);
+				expect(parent_unmount_count).toBe(0);
 			} finally {
 				cleanup();
 			}

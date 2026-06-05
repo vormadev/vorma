@@ -1,3 +1,9 @@
+//! Build entry, dev server, Vite integration, and manifest generation for Vorma apps.
+
+#![deny(missing_docs)]
+#![allow(unsafe_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
+
 mod activation;
 mod browser_sync;
 mod build_cancel;
@@ -49,6 +55,7 @@ use crate::cargo_target::CargoBinTarget;
 use crate::session::BuildSession;
 use crate::signals::start_signal_thread;
 
+/// Cargo target identity for the Vorma build entry binary.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct BuildOptions {
 	// Build entry identity is startup/orchestrator state, not live app config. Do not
@@ -58,7 +65,9 @@ pub struct BuildOptions {
 	// build/dev process must be restarted. Treating this as live config would create a
 	// chicken/egg bug where the framework has to run the build entry in order to discover
 	// which build entry it should have run.
+	/// Cargo package name containing the build entry binary.
 	pub cargo_package: &'static str,
+	/// Cargo binary name for the build entry.
 	pub cargo_bin: &'static str,
 }
 
@@ -71,6 +80,7 @@ impl From<&BuildOptions> for CargoBinTarget {
 	}
 }
 
+/// Run the Vorma build entry in production-build or dev-server mode.
 pub fn run<S, E, F>(app_config: F, build_options: BuildOptions) -> Result<(), String>
 where
 	F: FnOnce() -> vorma::Result<AppConfig<S, E>>,
@@ -260,7 +270,7 @@ mod tests {
 					dist_dir: "../outside-dist".to_owned(),
 					path_config: PathConfig::default(),
 					frontend_config: FrontendConfig {
-						ui_variant: "react".to_owned(),
+						ui_variant: vorma::UiVariant::React,
 						js_package_manager_base_cmd: "pnpm exec".to_owned(),
 						js_package_manager_dir: ".".to_owned(),
 						entry_file: "src/client/entry.tsx".to_owned(),

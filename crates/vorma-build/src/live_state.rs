@@ -403,7 +403,7 @@ JSON
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: vorma::FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -456,7 +456,7 @@ JSON
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -529,7 +529,7 @@ JSON
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -573,7 +573,7 @@ JSON
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),
@@ -609,7 +609,7 @@ JSON
 			},
 			path_config: crate::test_support::path_config(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				..crate::test_support::frontend_config()
 			},
 			ts_gen_config: crate::test_support::ts_gen_config(),

@@ -28,8 +28,8 @@ pub struct DevWatchConfig {
 /// Frontend build and static asset configuration.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FrontendConfig {
-	/// UI variant label emitted into manifests and generated contracts.
-	pub ui_variant: String,
+	/// UI adapter emitted into manifests and generated contracts.
+	pub ui_variant: UiVariant,
 	/// Package-manager command prefix, such as `pnpm`.
 	pub js_package_manager_base_cmd: String,
 	/// Directory where JavaScript package-manager commands run.
@@ -42,6 +42,36 @@ pub struct FrontendConfig {
 	pub public_static_src_dir: String,
 	/// Critical CSS entry file.
 	pub critical_css_file: String,
+}
+
+/// Supported UI adapter.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiVariant {
+	/// React UI adapter.
+	#[default]
+	React,
+	/// Preact UI adapter.
+	Preact,
+	/// Solid UI adapter.
+	Solid,
+}
+
+impl UiVariant {
+	/// Stable lowercase adapter label used in generated manifests.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::React => "react",
+			Self::Preact => "preact",
+			Self::Solid => "solid",
+		}
+	}
+}
+
+impl std::fmt::Display for UiVariant {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(self.as_str())
+	}
 }
 
 /// Generated TypeScript output configuration.

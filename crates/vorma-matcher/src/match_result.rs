@@ -9,8 +9,11 @@ pub type Params = HashMap<String, String>;
 /// Best single route match.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Match {
+	/// Registered pattern that matched the path.
 	pub pattern: Pattern,
+	/// Captured dynamic parameter values.
 	pub params: Params,
+	/// Captured splat segment values.
 	pub splat_values: Vec<String>,
 	pub(crate) score: u16,
 }
@@ -60,6 +63,7 @@ impl Match {
 /// One matched ancestor or leaf pattern in a nested match chain.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NestedMatch {
+	/// Registered pattern that matched this nested position.
 	pub pattern: Pattern,
 	pub(crate) params: Params,
 	pub(crate) splat_values: Vec<String>,
@@ -74,10 +78,12 @@ impl NestedMatch {
 		}
 	}
 
+	/// Captured dynamic parameter values for this nested match.
 	pub fn params(&self) -> Params {
 		self.params.clone()
 	}
 
+	/// Captured splat segment values for this nested match.
 	pub fn splat_values(&self) -> Vec<String> {
 		self.splat_values.clone()
 	}
@@ -86,7 +92,10 @@ impl NestedMatch {
 /// Ordered nested match chain plus shared captures.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NestedMatches {
+	/// Captured dynamic parameter values shared across the nested chain.
 	pub params: Params,
+	/// Captured splat segment values shared across the nested chain.
 	pub splat_values: Vec<String>,
+	/// Ordered nested matches from outermost to innermost.
 	pub matches: Vec<NestedMatch>,
 }

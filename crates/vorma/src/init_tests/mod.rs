@@ -164,6 +164,62 @@ fn write_manifest(dist_dir: &Path) {
 	.unwrap();
 }
 
+#[test]
+fn vercel_runtime_static_out_dir_uses_current_dir_manifest_when_configured_manifest_is_missing() {
+	let configured_root = temp_dist_dir("vercel-configured-root-missing-manifest");
+	let current_root = temp_dist_dir("vercel-current-root-with-manifest");
+	write_manifest(&current_root);
+	let config = cfg(&configured_root);
+	let configured_static_out = configured_root.join(".vorma/static");
+
+	let got = vercel_runtime_static_out_dir_from_current_root(
+		&config,
+		&configured_static_out,
+		ManifestMode::Prod,
+		current_root.clone(),
+	)
+	.unwrap();
+
+	assert_eq!(got, current_root.join(".vorma/static").clean());
+	fs::remove_dir_all(configured_root).unwrap();
+	fs::remove_dir_all(current_root).unwrap();
+}
+
+#[test]
+fn vercel_runtime_static_out_dir_reports_configured_and_current_manifest_paths_when_missing() {
+	let configured_root = temp_dist_dir("vercel-configured-root-without-manifest");
+	let current_root = temp_dist_dir("vercel-current-root-without-manifest");
+	let config = cfg(&configured_root);
+	let configured_static_out = configured_root.join(".vorma/static");
+
+	let error = vercel_runtime_static_out_dir_from_current_root(
+		&config,
+		&configured_static_out,
+		ManifestMode::Prod,
+		current_root.clone(),
+	)
+	.unwrap_err();
+
+	assert!(
+		error.contains(
+			&configured_root
+				.join(".vorma/static/vorma.manifest.prod.json")
+				.display()
+				.to_string()
+		)
+	);
+	assert!(
+		error.contains(
+			&current_root
+				.join(".vorma/static/vorma.manifest.prod.json")
+				.display()
+				.to_string()
+		)
+	);
+	fs::remove_dir_all(configured_root).unwrap();
+	fs::remove_dir_all(current_root).unwrap();
+}
+
 fn write_manifest_with_api_mount_root(dist_dir: &Path, api_mount_root: &str) -> Manifest {
 	let mut manifest = manifest();
 	manifest.api_mount_root = api_mount_root.to_owned();

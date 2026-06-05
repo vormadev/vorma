@@ -339,7 +339,7 @@ mod tests {
 				api_base: "/api/".to_owned(),
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				js_package_manager_base_cmd: "pnpm exec".to_owned(),
 				js_package_manager_dir: ".".to_owned(),
 				entry_file: "src/client/entry.tsx".to_owned(),
@@ -447,7 +447,7 @@ mod tests {
 		let config = Config {
 			root_dir: root.clone(),
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				js_package_manager_base_cmd: "pnpm exec".to_owned(),
 				js_package_manager_dir: "frontend".to_owned(),
 				vite_config_file: "frontend/vite.config.ts".to_owned(),

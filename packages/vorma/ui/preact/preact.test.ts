@@ -122,4 +122,37 @@ define_adapter_tests({
 			},
 		};
 	},
+	create_hmr_stateful_component: ({ version, on_mount, on_unmount }) => {
+		return (props: any) => {
+			const mounted_ref = useRef(false);
+			if (!mounted_ref.current) {
+				mounted_ref.current = true;
+				on_mount();
+			}
+			useEffect(() => {
+				return () => {
+					on_unmount();
+				};
+			}, []);
+			const [draft, set_draft] = useState("initial");
+			return h(
+				"section",
+				{},
+				h("div", { "data-version": "true" }, version),
+				h("div", { "data-draft": "true" }, draft),
+				h("button", {
+					"data-set": "true",
+					onClick: () => {
+						return set_draft("modified");
+					},
+				}),
+				h(props.Outlet, {}),
+			);
+		};
+	},
+	create_hmr_version_component: ({ version }) => {
+		return () => {
+			return h("div", { "data-child-version": "true" }, version);
+		};
+	},
 });

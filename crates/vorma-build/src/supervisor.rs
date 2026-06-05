@@ -933,7 +933,7 @@ mod tests {
 				api_base: "/api/".to_owned(),
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				js_package_manager_dir: ".".to_owned(),
 				entry_file: "src/entry.tsx".to_owned(),
 				public_static_src_dir: root.join("public").to_string_lossy().into_owned(),

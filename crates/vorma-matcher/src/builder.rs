@@ -22,6 +22,7 @@ pub struct MatcherBuilder {
 }
 
 impl MatcherBuilder {
+	/// Create a pattern builder with explicit matcher options.
 	pub fn new(opts: Options) -> Result<Self, String> {
 		validate_options(&opts)?;
 		let using_explicit_index_segment = !opts.explicit_index_segment_identifier.is_empty();
@@ -38,18 +39,22 @@ impl MatcherBuilder {
 		})
 	}
 
+	/// Configured explicit index segment identifier.
 	pub fn explicit_index_segment_identifier(&self) -> &str {
 		&self.explicit_index_segment
 	}
 
+	/// Configured dynamic parameter prefix.
 	pub fn dynamic_param_prefix(&self) -> char {
 		self.dynamic_param_prefix
 	}
 
+	/// Configured splat segment identifier.
 	pub fn splat_segment_identifier(&self) -> char {
 		self.splat_segment_id
 	}
 
+	/// Validate and normalize one route pattern without registering it.
 	pub fn normalize_pattern(&self, original: &str) -> Result<Pattern, String> {
 		self.validate_pattern_text(original)?;
 
@@ -129,6 +134,7 @@ impl MatcherBuilder {
 		))
 	}
 
+	/// Validate, normalize, and register one route pattern.
 	pub fn register_pattern(&mut self, original: &str) -> Result<Pattern, String> {
 		let rp = self.normalize_pattern(original)?;
 
@@ -186,6 +192,7 @@ impl MatcherBuilder {
 		Ok(rp)
 	}
 
+	/// Finish registration and return an immutable matcher.
 	pub fn finish(self) -> Matcher {
 		Matcher::from_parts(
 			self.static_patterns,

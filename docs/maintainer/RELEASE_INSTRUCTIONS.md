@@ -8,6 +8,10 @@ Then run the following:
 # Run gate
 make gate
 
+# Run dependency policy checks
+cargo audit
+cargo deny check licenses bans sources advisories
+
 # Publish crates
 cargo publish -p vorma-matcher --dry-run
 cargo publish -p vorma-matcher

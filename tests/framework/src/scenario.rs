@@ -46,10 +46,9 @@ const DEPLOYMENT_ENV_KEY: &str = "VORMA_BOMBADIL_DEPLOYMENT";
 const MODE_ENV_KEY: &str = "VORMA_BOMBADIL_MODE";
 const PANIC_ENDPOINT_ENV_KEY: &str = "VORMA_BOMBADIL_ENABLE_PANIC_ENDPOINT";
 const EXIT_ENDPOINT_ENV_KEY: &str = "VORMA_BOMBADIL_ENABLE_EXIT_ENDPOINT";
-const VARIANT_REACT: &str = "react";
-const VARIANT_PREACT: &str = "preact";
-const VARIANT_REMIX: &str = "remix";
-const VARIANT_SOLID: &str = "solid";
+const VARIANT_REACT: &str = vorma::UiVariant::React.as_str();
+const VARIANT_PREACT: &str = vorma::UiVariant::Preact.as_str();
+const VARIANT_SOLID: &str = vorma::UiVariant::Solid.as_str();
 const DEPLOYMENT_A: &str = "A";
 const DEPLOYMENT_B: &str = "B";
 const MODE_DEV: &str = "dev";
@@ -69,7 +68,7 @@ vorma::app!(pub mod app for crate::scenario::AppState);
 
 #[derive(Clone, Copy)]
 pub struct Variant {
-	pub ui_variant: &'static str,
+	pub ui_variant: vorma::UiVariant,
 	pub dist_dir: &'static str,
 	pub ts_gen_out_file: &'static str,
 	pub dev_ts_gen_out_file: &'static str,
@@ -235,7 +234,7 @@ const DEPLOYMENT_B_VARIANT: DeploymentVariant = DeploymentVariant {
 };
 
 pub const REACT: Variant = Variant {
-	ui_variant: VARIANT_REACT,
+	ui_variant: vorma::UiVariant::React,
 	dist_dir: ".dist.react",
 	ts_gen_out_file: "vorma.react.gen.ts",
 	dev_ts_gen_out_file: "vorma.react.dev.gen.ts",
@@ -243,23 +242,15 @@ pub const REACT: Variant = Variant {
 };
 
 pub const PREACT: Variant = Variant {
-	ui_variant: VARIANT_PREACT,
+	ui_variant: vorma::UiVariant::Preact,
 	dist_dir: ".dist.preact",
 	ts_gen_out_file: "vorma.preact.gen.ts",
 	dev_ts_gen_out_file: "vorma.preact.dev.gen.ts",
 	vite_config_file: "vite.preact.config.ts",
 };
 
-pub const REMIX: Variant = Variant {
-	ui_variant: VARIANT_REMIX,
-	dist_dir: ".dist.remix",
-	ts_gen_out_file: "vorma.remix.gen.ts",
-	dev_ts_gen_out_file: "vorma.remix.dev.gen.ts",
-	vite_config_file: "vite.remix.config.ts",
-};
-
 pub const SOLID: Variant = Variant {
-	ui_variant: VARIANT_SOLID,
+	ui_variant: vorma::UiVariant::Solid,
 	dist_dir: ".dist.solid",
 	ts_gen_out_file: "vorma.solid.gen.ts",
 	dev_ts_gen_out_file: "vorma.solid.dev.gen.ts",
@@ -527,7 +518,7 @@ impl Variant {
 
 		println!(
 			"Starting {} framework test server at http://localhost:{}",
-			self.ui_variant,
+			self.ui_variant.as_str(),
 			addr.port(),
 		);
 		axum::serve(
@@ -559,7 +550,7 @@ impl Variant {
 				api_base: "/api/".to_owned(),
 			},
 			frontend_config: vorma::FrontendConfig {
-				ui_variant: self.ui_variant.to_owned(),
+				ui_variant: self.ui_variant,
 				js_package_manager_base_cmd: "pnpm".to_owned(),
 				js_package_manager_dir: ".".to_owned(),
 				vite_config_file: self.vite_config_file.to_owned(),
@@ -696,10 +687,9 @@ pub fn selected_variant() -> Variant {
 	match std::env::var(VARIANT_ENV_KEY).unwrap_or_default().as_str() {
 		VARIANT_REACT => REACT,
 		VARIANT_PREACT => PREACT,
-		VARIANT_REMIX => REMIX,
 		VARIANT_SOLID => SOLID,
 		_ => panic!(
-			"{VARIANT_ENV_KEY} must be one of: {VARIANT_REACT}, {VARIANT_PREACT}, {VARIANT_REMIX}, {VARIANT_SOLID}",
+			"{VARIANT_ENV_KEY} must be one of: {VARIANT_REACT}, {VARIANT_PREACT}, {VARIANT_SOLID}",
 		),
 	}
 }

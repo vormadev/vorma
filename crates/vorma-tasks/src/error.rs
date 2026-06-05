@@ -7,14 +7,29 @@ pub type Result<T, E> = std::result::Result<T, Error<E>>;
 /// Error returned while resolving a task.
 #[derive(Debug)]
 pub enum Error<E> {
+	/// Task body returned an application error.
 	Failed(Arc<E>),
+	/// Task resolution was cancelled before producing a value.
 	Cancelled,
-	Cycle { task: &'static str },
-	MissingOverride { task: &'static str },
-	TypeMismatch { task: &'static str },
+	/// Task resolution encountered a dependency cycle.
+	Cycle {
+		/// Type name of the task input being resolved.
+		task: &'static str,
+	},
+	/// Overrides were configured as required and this task had none.
+	MissingOverride {
+		/// Type name of the task input being resolved.
+		task: &'static str,
+	},
+	/// Cached output existed under this task/input key but had the wrong type.
+	TypeMismatch {
+		/// Type name of the task input being resolved.
+		task: &'static str,
+	},
 }
 
 impl<E> Error<E> {
+	/// Whether this error is cancellation.
 	pub fn is_cancelled(&self) -> bool {
 		matches!(self, Self::Cancelled)
 	}

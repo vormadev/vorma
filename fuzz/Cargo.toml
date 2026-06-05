@@ -1,0 +1,29 @@
+[package]
+name = "vorma-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vorma-client-wasm = { path = "../crates/vorma-client-wasm" }
+vorma-matcher = { path = "../crates/vorma-matcher" }
+
+[[bin]]
+name = "matcher_patterns"
+path = "fuzz_targets/matcher_patterns.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "client_wasm_protocol"
+path = "fuzz_targets/client_wasm_protocol.rs"
+test = false
+doc = false
+bench = false

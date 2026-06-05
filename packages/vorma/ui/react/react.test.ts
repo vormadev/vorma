@@ -125,4 +125,37 @@ define_adapter_tests({
 			},
 		};
 	},
+	create_hmr_stateful_component: ({ version, on_mount, on_unmount }) => {
+		return (props: any) => {
+			const mounted_ref = React.useRef(false);
+			if (!mounted_ref.current) {
+				mounted_ref.current = true;
+				on_mount();
+			}
+			React.useEffect(() => {
+				return () => {
+					on_unmount();
+				};
+			}, []);
+			const [draft, set_draft] = React.useState("initial");
+			return React.createElement(
+				"section",
+				{},
+				React.createElement("div", { "data-version": "true" }, version),
+				React.createElement("div", { "data-draft": "true" }, draft),
+				React.createElement("button", {
+					"data-set": "true",
+					onClick: () => {
+						return set_draft("modified");
+					},
+				}),
+				React.createElement(props.Outlet, {}),
+			);
+		};
+	},
+	create_hmr_version_component: ({ version }) => {
+		return () => {
+			return React.createElement("div", { "data-child-version": "true" }, version);
+		};
+	},
 });

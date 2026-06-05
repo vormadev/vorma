@@ -151,7 +151,7 @@ mod tests {
 				api_base: "/api/".to_owned(),
 			},
 			frontend_config: FrontendConfig {
-				ui_variant: "react".to_owned(),
+				ui_variant: vorma::UiVariant::React,
 				js_package_manager_base_cmd: "pnpm exec".to_owned(),
 				js_package_manager_dir: ".".to_owned(),
 				entry_file: "src/client/entry.tsx".to_owned(),

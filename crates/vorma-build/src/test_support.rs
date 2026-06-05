@@ -15,7 +15,7 @@ pub(crate) fn path_config() -> vorma::PathConfig {
 
 pub(crate) fn frontend_config() -> FrontendConfig {
 	FrontendConfig {
-		ui_variant: "react".to_owned(),
+		ui_variant: vorma::UiVariant::React,
 		js_package_manager_base_cmd: "pnpm exec".to_owned(),
 		js_package_manager_dir: ".".to_owned(),
 		entry_file: "src/entry.tsx".to_owned(),

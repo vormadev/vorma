@@ -9,6 +9,21 @@ import {
 } from "../../tests/adapter_test_core.ts";
 import { createVormaClient } from "./solid.tsx";
 
+const hmr_stateful_entries = new Map<
+	string,
+	{
+		component: (props: any) => unknown;
+		set_version: (version: string) => void;
+	}
+>();
+const hmr_version_entries = new Map<
+	string,
+	{
+		component: (props: any) => unknown;
+		set_version: (version: string) => void;
+	}
+>();
+
 define_adapter_tests({
 	create_client: (config, options) => {
 		return createVormaClient(config as any, options) as any;
@@ -77,6 +92,8 @@ define_adapter_tests({
 			},
 			cleanup: () => {
 				dispose?.();
+				hmr_stateful_entries.clear();
+				hmr_version_entries.clear();
 				container.remove();
 			},
 		};
@@ -121,5 +138,54 @@ define_adapter_tests({
 				return unmount_count;
 			},
 		};
+	},
+	create_hmr_stateful_component: ({ hmr_id, version, on_mount, on_unmount }) => {
+		const existing = hmr_stateful_entries.get(hmr_id);
+		if (existing) {
+			existing.set_version(version);
+			return existing.component;
+		}
+		const [read_version, set_version] = createSignal(version);
+		const component = (props: any) => {
+			on_mount();
+			onCleanup(() => {
+				on_unmount();
+			});
+			const [draft, set_draft] = createSignal("initial");
+			return h(
+				"section",
+				{},
+				h("div", { "data-version": true }, () => {
+					return read_version();
+				}),
+				h("div", { "data-draft": true }, () => {
+					return draft();
+				}),
+				h("button", {
+					"data-set": true,
+					onClick: () => {
+						return set_draft("modified");
+					},
+				}),
+				h(props.Outlet, {}),
+			);
+		};
+		hmr_stateful_entries.set(hmr_id, { component, set_version });
+		return component;
+	},
+	create_hmr_version_component: ({ hmr_id, version }) => {
+		const existing = hmr_version_entries.get(hmr_id);
+		if (existing) {
+			existing.set_version(version);
+			return existing.component;
+		}
+		const [read_version, set_version] = createSignal(version);
+		const component = () => {
+			return h("div", { "data-child-version": true }, () => {
+				return read_version();
+			});
+		};
+		hmr_version_entries.set(hmr_id, { component, set_version });
+		return component;
 	},
 });
