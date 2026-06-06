@@ -14,14 +14,19 @@ const STORE_CLEANUP_INTERVAL: usize = 64;
 
 pub(crate) struct Store<E> {
 	lookups: AtomicUsize,
-	slots: Mutex<HashMap<KeyFingerprint, Vec<Arc<Slot<E>>>>>,
+	state: Mutex<StoreState<E>>,
+	max_entries: Option<usize>,
 }
 
 impl<E> Store<E> {
-	pub(crate) fn new() -> Self {
+	pub(crate) fn new(max_entries: Option<usize>) -> Self {
 		Self {
 			lookups: AtomicUsize::new(0),
-			slots: Mutex::new(HashMap::new()),
+			state: Mutex::new(StoreState {
+				slots: HashMap::new(),
+				entry_count: 0,
+			}),
+			max_entries,
 		}
 	}
 
@@ -40,20 +45,49 @@ impl<E> Store<E> {
 				.lookups
 				.fetch_add(1, Ordering::Relaxed)
 				.is_multiple_of(STORE_CLEANUP_INTERVAL);
-		let mut slots = self.slots.lock().expect("task store lock poisoned");
+		let mut state = self.state.lock().expect("task store lock poisoned");
 		if cleanup_due {
-			stale_slots_removed += cleanup_expired_slots(&mut slots, now);
-		}
-		let bucket = slots.entry(key.fingerprint()).or_default();
-		if ttl.is_some() && !cleanup_due {
-			stale_slots_removed += retain_live_slots(bucket, now);
+			let removed = cleanup_expired_slots(&mut state.slots, now);
+			state.entry_count = state.entry_count.saturating_sub(removed);
+			stale_slots_removed += removed;
 		}
 
-		if let Some(slot) = bucket.iter().find(|slot| slot.matches(key)).cloned() {
-			return SlotLookup {
+		let fingerprint = key.fingerprint();
+		let mut bucket_removed = 0usize;
+		let mut remove_bucket = false;
+		let mut found_slot = None;
+		if let Some(bucket) = state.slots.get_mut(&fingerprint) {
+			if ttl.is_some() && !cleanup_due {
+				bucket_removed = retain_live_slots(bucket, now);
+			}
+			found_slot = bucket.iter().find(|slot| slot.matches(key)).cloned();
+			remove_bucket = bucket.is_empty();
+		}
+		state.entry_count = state.entry_count.saturating_sub(bucket_removed);
+		stale_slots_removed += bucket_removed;
+		if remove_bucket {
+			state.slots.remove(&fingerprint);
+		}
+
+		if let Some(slot) = found_slot {
+			return SlotLookup::Found {
 				slot,
 				stale_slots_removed,
 			};
+		}
+
+		if let Some(max_entries) = self.max_entries
+			&& state.entry_count >= max_entries
+		{
+			let removed = cleanup_expired_slots(&mut state.slots, now);
+			state.entry_count = state.entry_count.saturating_sub(removed);
+			stale_slots_removed += removed;
+			if state.entry_count >= max_entries {
+				return SlotLookup::CapacityBypass {
+					stale_slots_removed,
+					max_entries,
+				};
+			}
 		}
 
 		let slot = Arc::new(Slot {
@@ -61,12 +95,22 @@ impl<E> Store<E> {
 			state: Mutex::new(SlotState::Empty),
 			notify: Notify::new(),
 		});
-		bucket.push(slot.clone());
-		SlotLookup {
+		state
+			.slots
+			.entry(fingerprint)
+			.or_default()
+			.push(slot.clone());
+		state.entry_count += 1;
+		SlotLookup::Found {
 			slot,
 			stale_slots_removed,
 		}
 	}
+}
+
+struct StoreState<E> {
+	slots: HashMap<KeyFingerprint, Vec<Arc<Slot<E>>>>,
+	entry_count: usize,
 }
 
 fn cleanup_expired_slots<E>(
@@ -87,9 +131,15 @@ fn retain_live_slots<E>(bucket: &mut Vec<Arc<Slot<E>>>, now: ClockInstant) -> us
 	before - bucket.len()
 }
 
-pub(crate) struct SlotLookup<E> {
-	pub(crate) slot: Arc<Slot<E>>,
-	pub(crate) stale_slots_removed: usize,
+pub(crate) enum SlotLookup<E> {
+	Found {
+		slot: Arc<Slot<E>>,
+		stale_slots_removed: usize,
+	},
+	CapacityBypass {
+		stale_slots_removed: usize,
+		max_entries: usize,
+	},
 }
 
 pub(crate) struct Slot<E> {

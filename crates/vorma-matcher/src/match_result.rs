@@ -15,11 +15,11 @@ pub struct Match {
 	pub params: Params,
 	/// Captured splat segment values.
 	pub splat_values: Vec<String>,
-	pub(crate) score: u16,
+	pub(crate) score: u32,
 }
 
 impl Match {
-	pub(crate) fn from_registered(pattern: Pattern, score: u16) -> Self {
+	pub(crate) fn from_registered(pattern: Pattern, score: u32) -> Self {
 		Self {
 			pattern,
 			params: Params::new(),

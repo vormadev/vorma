@@ -2,12 +2,32 @@ use bytes::Bytes;
 use cookie::Cookie;
 use http::header::{CONTENT_TYPE, HeaderName, HeaderValue, LOCATION, SET_COOKIE};
 use http::{HeaderMap, Response, StatusCode, Uri};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::constants::X_VORMA_CLIENT_BUILD_ID;
 use crate::head;
 
 const CLIENT_REDIRECT_HEADER: HeaderName = HeaderName::from_static("x-client-redirect");
 pub(crate) const CLIENT_ACCEPTS_REDIRECT_HEADER: &str = "X-Accepts-Client-Redirect";
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ResponseEffectsCollector {
+	inner: Arc<Mutex<ResponseEffects>>,
+}
+
+impl ResponseEffectsCollector {
+	pub(crate) fn new() -> Self {
+		Self::default()
+	}
+
+	pub(crate) fn mutate(&self) -> MutexGuard<'_, ResponseEffects> {
+		self.inner.lock().expect("response effects lock poisoned")
+	}
+
+	pub(crate) fn snapshot(&self) -> ResponseEffects {
+		self.mutate().clone()
+	}
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct HeaderOp {
@@ -195,7 +215,64 @@ impl ResponseEffects {
 	}
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ResponseTerminalKind {
+	Error,
+	ServerRedirect,
+	ClientRedirect,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ResolvedResponseEffects {
+	effects: ResponseEffects,
+	terminal_kind: Option<ResponseTerminalKind>,
+}
+
+impl ResolvedResponseEffects {
+	fn new(effects: ResponseEffects) -> Self {
+		let terminal_kind = if effects.is_error() {
+			Some(ResponseTerminalKind::Error)
+		} else if effects.is_server_redirect() {
+			Some(ResponseTerminalKind::ServerRedirect)
+		} else if effects.is_client_redirect() {
+			Some(ResponseTerminalKind::ClientRedirect)
+		} else {
+			Option::None
+		};
+		Self {
+			effects,
+			terminal_kind,
+		}
+	}
+
+	pub(crate) fn effects(&self) -> &ResponseEffects {
+		&self.effects
+	}
+
+	pub(crate) fn terminal_kind(&self) -> Option<ResponseTerminalKind> {
+		self.terminal_kind
+	}
+
+	pub(crate) fn is_terminal(&self) -> bool {
+		self.terminal_kind.is_some()
+	}
+
+	pub(crate) fn into_effects(self) -> ResponseEffects {
+		self.effects
+	}
+}
+
+pub(crate) fn resolve_response_effects(
+	effects_list: &[Option<&ResponseEffects>],
+) -> ResolvedResponseEffects {
+	ResolvedResponseEffects::new(merge_response_effects_inner(effects_list))
+}
+
 pub(crate) fn merge_response_effects(effects_list: &[Option<&ResponseEffects>]) -> ResponseEffects {
+	resolve_response_effects(effects_list).into_effects()
+}
+
+fn merge_response_effects_inner(effects_list: &[Option<&ResponseEffects>]) -> ResponseEffects {
 	let mut merged = ResponseEffects::new();
 	let effects_list =
 		&effects_list[..response_effects_prefix_through_first_terminal(effects_list)];
@@ -289,34 +366,34 @@ pub(crate) enum ResponseStatusPolicy {
 	Suppress,
 }
 
-pub(crate) enum ResponsePlan<'a> {
+pub(crate) enum RouteHttpPlan<'a> {
 	ShortCircuit {
-		effects: &'a ResponseEffects,
+		resolved_effects: &'a ResolvedResponseEffects,
 	},
 	Respond {
-		effects: &'a ResponseEffects,
+		resolved_effects: &'a ResolvedResponseEffects,
 		response: Response<Bytes>,
 		status_policy: ResponseStatusPolicy,
 	},
 }
 
-pub(crate) fn finalize_response_plan(
-	plan: ResponsePlan<'_>,
+pub(crate) fn finalize_route_http_plan(
+	plan: RouteHttpPlan<'_>,
 	expected_client_build_id: &str,
 ) -> Result<Response<Bytes>, String> {
 	match plan {
-		ResponsePlan::ShortCircuit { effects } => finalize_response_with_effects(
-			effects,
-			response_effects_short_circuit_response(effects)?,
+		RouteHttpPlan::ShortCircuit { resolved_effects } => finalize_response_with_effects(
+			resolved_effects.effects(),
+			response_effects_short_circuit_response(resolved_effects)?,
 			expected_client_build_id,
 			ResponseStatusPolicy::Apply,
 		),
-		ResponsePlan::Respond {
-			effects,
+		RouteHttpPlan::Respond {
+			resolved_effects,
 			response,
 			status_policy,
 		} => finalize_response_with_effects(
-			effects,
+			resolved_effects.effects(),
 			response,
 			expected_client_build_id,
 			status_policy,
@@ -325,14 +402,19 @@ pub(crate) fn finalize_response_plan(
 }
 
 fn response_effects_short_circuit_response(
-	effects: &ResponseEffects,
+	resolved_effects: &ResolvedResponseEffects,
 ) -> Result<Response<Bytes>, String> {
+	let effects = resolved_effects.effects();
 	let (status, status_text) = effects.status();
 	let status = status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-	let mut response = if effects.is_error() {
-		plain_text_response(status, Bytes::from(format!("{status_text}\n")))
-	} else {
-		Response::new(Bytes::new())
+	let mut response = match resolved_effects.terminal_kind() {
+		Some(ResponseTerminalKind::Error) => {
+			plain_text_response(status, Bytes::from(format!("{status_text}\n")))
+		}
+		Some(ResponseTerminalKind::ServerRedirect | ResponseTerminalKind::ClientRedirect) => {
+			Response::new(Bytes::new())
+		}
+		Option::None => Response::new(Bytes::new()),
 	};
 	*response.status_mut() = status;
 	Ok(response)
@@ -460,7 +542,10 @@ fn validate_url(location: &str) -> bool {
 		return false;
 	}
 	if let Ok(url) = url::Url::parse(location) {
-		return matches!(url.scheme(), "http" | "https");
+		return matches!(url.scheme(), "http" | "https") && url.host_str().is_some();
+	}
+	if location.contains('\\') {
+		return false;
 	}
 	let Ok(uri) = location.parse::<Uri>() else {
 		return false;
@@ -503,6 +588,12 @@ mod tests {
 
 		assert!(effects.redirect(true, "", None).is_err());
 		assert!(effects.redirect(true, "javascript:alert(1)", None).is_err());
+		assert!(effects.redirect(true, "http://", None).is_err());
+		assert!(
+			effects
+				.redirect(true, r"\example.com\target", None)
+				.is_err()
+		);
 		assert!(
 			effects
 				.redirect(true, "//example.com/target", None)
@@ -707,14 +798,19 @@ mod tests {
 	}
 
 	#[test]
-	fn finalize_response_plan_short_circuit_applies_effects_once() {
+	fn finalize_route_http_plan_short_circuit_applies_effects_once() {
 		let mut effects = ResponseEffects::new();
 		effects.set_status(StatusCode::CONFLICT, Some("drifted".to_owned()));
 		effects.set_header(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+		let resolved_effects = ResolvedResponseEffects::new(effects);
 
-		let response =
-			finalize_response_plan(ResponsePlan::ShortCircuit { effects: &effects }, "build-id")
-				.unwrap();
+		let response = finalize_route_http_plan(
+			RouteHttpPlan::ShortCircuit {
+				resolved_effects: &resolved_effects,
+			},
+			"build-id",
+		)
+		.unwrap();
 
 		assert_eq!(response.status(), StatusCode::CONFLICT);
 		assert_eq!(

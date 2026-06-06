@@ -7,9 +7,9 @@ import type {
 	ToViewPattern,
 } from "./types.ts";
 
-const DYNAMIC_RUNE = ":";
-const SPLAT_RUNE = "*";
-const INDEX_SEGMENT = "_index";
+const dynamic_rune = ":";
+const splat_rune = "*";
+const index_segment = "_index";
 
 function strip_trailing_slash(path: string): string {
 	if (path === "/") {
@@ -34,13 +34,13 @@ function resolve_pattern_path(
 		.join("/");
 
 	const path_segments = segments.flatMap((seg) => {
-		if (seg === SPLAT_RUNE) {
+		if (seg === splat_rune) {
 			return splat_encoded.split("/").filter((s) => {
 				return s.length > 0;
 			});
 		}
-		if (seg.startsWith(DYNAMIC_RUNE)) {
-			return [encodeURIComponent(p[seg.slice(DYNAMIC_RUNE.length)] as string)];
+		if (seg.startsWith(dynamic_rune)) {
+			return [encodeURIComponent(p[seg.slice(dynamic_rune.length)] as string)];
 		}
 		return [seg];
 	});
@@ -58,7 +58,7 @@ export function resolve_path(
 	let path = resolve_pattern_path(pattern, params, splat_values);
 
 	if (type === "view") {
-		const suffix = `/${INDEX_SEGMENT}`;
+		const suffix = `/${index_segment}`;
 		if (path.endsWith(suffix)) {
 			path = path.slice(0, -suffix.length) || "/";
 		}

@@ -4,8 +4,8 @@ import {
 	LINK_PENDING_ANCESTOR_ATTR,
 	LINK_PENDING_EXACT_ATTR,
 } from "./constants.ts";
-import type { WorkState } from "./create_client_core.ts";
 import type { LinkPropsBase, RouteState } from "./types.ts";
+import type { WorkState } from "./work_state.ts";
 
 export type LinkRouteState = {
 	href: string;
@@ -57,7 +57,7 @@ export type LinkNavFns = {
 
 export const skip_work_indicator_link_prop = "skipWorkIndicator";
 
-const VORMA_KEYS = new Set([
+const vorma_link_prop_keys = new Set([
 	"attributeMatchRules",
 	"pattern",
 	"prefetch",
@@ -69,7 +69,7 @@ const VORMA_KEYS = new Set([
 	"visitOnPointerDown",
 ]);
 
-const COMPOSED_EVENT_KEYS = new Set([
+const composed_event_prop_keys = new Set([
 	"onClick",
 	"onPointerDown",
 	"onPointerEnter",
@@ -154,12 +154,15 @@ export function make_link_props(
 	if (is_external) {
 		return {
 			is_external: true,
-			anchor_props: strip_keys(props, VORMA_KEYS),
+			anchor_props: strip_keys(props, vorma_link_prop_keys),
 			onClick: consumer_click,
 		};
 	}
 
-	const anchor_props = strip_keys(strip_keys(props, VORMA_KEYS), COMPOSED_EVENT_KEYS);
+	const anchor_props = strip_keys(
+		strip_keys(props, vorma_link_prop_keys),
+		composed_event_prop_keys,
+	);
 	const attribute_match_rules =
 		props.attributeMatchRules as LinkPropsBase["attributeMatchRules"];
 	const link_state =
@@ -215,7 +218,7 @@ export function make_link_props(
 	let prefetch_timer: number | undefined;
 	const wants_prefetch = prefetch_mode === "intent";
 
-	const start_pf = (): void => {
+	const start_prefetch_timer = (): void => {
 		if (prefetch_timer !== undefined) {
 			clearTimeout(prefetch_timer);
 		}
@@ -225,7 +228,7 @@ export function make_link_props(
 		}, prefetch_delay);
 	};
 
-	const stop_pf = (): void => {
+	const stop_prefetch_timer = (): void => {
 		if (prefetch_timer !== undefined) {
 			clearTimeout(prefetch_timer);
 			prefetch_timer = undefined;
@@ -244,13 +247,7 @@ export function make_link_props(
 			if (ev.defaultPrevented) {
 				return;
 			}
-			if (get_is_modified_navigation_click(ev)) {
-				return;
-			}
-			if (!get_is_primary_navigation_click(ev)) {
-				return;
-			}
-			if (target_attr && target_attr !== "" && target_attr !== "_self") {
+			if (!get_allows_unmodified_primary_self_target_navigation(ev, target_attr)) {
 				return;
 			}
 
@@ -286,16 +283,11 @@ export function make_link_props(
 						if (pt !== "mouse" && pt !== "pen") {
 							return;
 						}
-						if (get_is_modified_navigation_click(ev)) {
-							return;
-						}
-						if (!get_is_primary_navigation_click(ev)) {
-							return;
-						}
 						if (
-							target_attr &&
-							target_attr !== "" &&
-							target_attr !== "_self"
+							!get_allows_unmodified_primary_self_target_navigation(
+								ev,
+								target_attr,
+							)
 						) {
 							return;
 						}
@@ -335,7 +327,7 @@ export function make_link_props(
 			wants_prefetch || consumer_pointer_enter
 				? (e: unknown) => {
 						if (wants_prefetch) {
-							start_pf();
+							start_prefetch_timer();
 						}
 						consumer_pointer_enter?.(e);
 					}
@@ -345,7 +337,7 @@ export function make_link_props(
 			wants_prefetch || consumer_focus
 				? (e: unknown) => {
 						if (wants_prefetch) {
-							start_pf();
+							start_prefetch_timer();
 						}
 						consumer_focus?.(e);
 					}
@@ -355,7 +347,7 @@ export function make_link_props(
 			wants_prefetch || consumer_pointer_leave
 				? (e: unknown) => {
 						if (wants_prefetch && !is_touch_active) {
-							stop_pf();
+							stop_prefetch_timer();
 						}
 						consumer_pointer_leave?.(e);
 					}
@@ -365,7 +357,7 @@ export function make_link_props(
 			wants_prefetch || consumer_blur
 				? (e: unknown) => {
 						if (wants_prefetch) {
-							stop_pf();
+							stop_prefetch_timer();
 						}
 						consumer_blur?.(e);
 					}
@@ -375,7 +367,7 @@ export function make_link_props(
 			wants_prefetch || consumer_touch_cancel
 				? (e: unknown) => {
 						if (wants_prefetch) {
-							stop_pf();
+							stop_prefetch_timer();
 						}
 						consumer_touch_cancel?.(e);
 					}
@@ -399,6 +391,23 @@ function get_is_modified_navigation_click(event: {
 
 function get_is_primary_navigation_click(event: { button?: number }): boolean {
 	return event.button === undefined || event.button === 0;
+}
+
+function get_allows_unmodified_primary_self_target_navigation(
+	event: {
+		metaKey?: boolean;
+		altKey?: boolean;
+		ctrlKey?: boolean;
+		shiftKey?: boolean;
+		button?: number;
+	},
+	target_attr: string | undefined,
+): boolean {
+	return (
+		!get_is_modified_navigation_click(event) &&
+		get_is_primary_navigation_click(event) &&
+		(!target_attr || target_attr === "_self")
+	);
 }
 
 type HrefDetails =

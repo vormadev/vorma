@@ -14,6 +14,7 @@ import type { JSX } from "preact/jsx-runtime";
 import {
 	apply_scroll,
 	create_adapter_base,
+	create_empty_work_state,
 	get_entry_key,
 	make_entry_id,
 	make_link_props,
@@ -103,12 +104,7 @@ export function createVormaClient<A extends AppConfig>(
 	const matched_patterns_signal = signal<string[]>([]);
 	const route_state_signal = signal<RouteState | null>(null);
 	const link_state_version_signal = signal(0);
-	const work_state_signal = signal<WorkState>({
-		navigation: null,
-		revalidation: null,
-		prefetch: null,
-		apiRequests: [],
-	});
+	const work_state_signal = signal<WorkState>(create_empty_work_state());
 
 	function get_route_snapshot(): RouteState {
 		const route = route_state_signal.value;
@@ -376,7 +372,7 @@ export function createVormaClient<A extends AppConfig>(
 		}
 	}
 
-	const RootOutletApp: ComponentType = () => {
+	const RootOutletComponent: ComponentType = () => {
 		return h(RootOutlet, {});
 	};
 
@@ -392,7 +388,7 @@ export function createVormaClient<A extends AppConfig>(
 			render: render_root
 				? () => {
 						return render_root({
-							RootOutlet: RootOutletApp,
+							RootOutlet: RootOutletComponent,
 							rootEl: core.getRootEl(),
 						});
 					}

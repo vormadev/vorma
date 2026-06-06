@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
 use std::fmt;
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
-use lightningcss::bundler::{Bundler, FileProvider};
+use lightningcss::bundler::{Bundler, FileProvider, ResolveResult, SourceProvider};
 use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions, StyleSheet};
 use lightningcss::values::url::Url as CssUrl;
 use lightningcss::visit_types;
@@ -20,6 +22,7 @@ pub(crate) struct BundleOutput {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BundleArgs<'a> {
 	pub(crate) entry_path: PathBuf,
+	pub(crate) source_root_dir: PathBuf,
 	pub(crate) public_url_map: &'a BTreeMap<String, String>,
 }
 
@@ -38,10 +41,13 @@ pub(crate) enum Error {
 }
 
 pub(crate) fn bundle(args: BundleArgs<'_>) -> Result<BundleOutput, Error> {
-	let provider = FileProvider::new();
+	let provider = RootedFileProvider::new(&args.source_root_dir)?;
+	let entry_path = provider
+		.canonical_source_path(&args.entry_path)
+		.map_err(|source| Error::Css(source.to_string()))?;
 	let mut bundler = Bundler::new(&provider, None, ParserOptions::default());
 	let mut stylesheet = bundler
-		.bundle(&args.entry_path)
+		.bundle(&entry_path)
 		.map_err(|error| Error::Css(error.to_string()))?;
 	let imports = stylesheet
 		.sources
@@ -65,6 +71,62 @@ pub(crate) fn bundle(args: BundleArgs<'_>) -> Result<BundleOutput, Error> {
 		.to_owned();
 
 	Ok(BundleOutput { css, imports })
+}
+
+struct RootedFileProvider {
+	inner: FileProvider,
+	canonical_root_dir: PathBuf,
+}
+
+impl RootedFileProvider {
+	fn new(root_dir: &Path) -> Result<Self, Error> {
+		let canonical_root_dir = fs::canonicalize(root_dir).map_err(|source| {
+			Error::Css(format!(
+				"error resolving critical CSS source root {}: {source}",
+				root_dir.display()
+			))
+		})?;
+		Ok(Self {
+			inner: FileProvider::new(),
+			canonical_root_dir,
+		})
+	}
+
+	fn canonical_source_path(&self, path: &Path) -> Result<PathBuf, io::Error> {
+		let canonical = fs::canonicalize(path)?;
+		if !canonical.starts_with(&self.canonical_root_dir) {
+			return Err(io::Error::new(
+				io::ErrorKind::InvalidInput,
+				format!(
+					"critical CSS source must stay inside root_dir: {}",
+					canonical.display()
+				),
+			));
+		}
+		Ok(canonical)
+	}
+}
+
+impl SourceProvider for RootedFileProvider {
+	type Error = io::Error;
+
+	fn read<'a>(&'a self, file: &Path) -> Result<&'a str, Self::Error> {
+		let canonical = self.canonical_source_path(file)?;
+		self.inner.read(&canonical)
+	}
+
+	fn resolve(
+		&self,
+		specifier: &str,
+		originating_file: &Path,
+	) -> Result<ResolveResult, Self::Error> {
+		match self.inner.resolve(specifier, originating_file)? {
+			ResolveResult::External(url) => Ok(ResolveResult::External(url)),
+			ResolveResult::File(path) => {
+				Ok(ResolveResult::File(self.canonical_source_path(&path)?))
+			}
+		}
+	}
 }
 
 fn rewrite_urls(
@@ -210,6 +272,7 @@ mod tests {
 
 		let output = bundle(BundleArgs {
 			entry_path: entry.clone(),
+			source_root_dir: root.clone(),
 			public_url_map: &BTreeMap::from([(
 				"logo.svg".to_owned(),
 				"/static/logo.abc.svg".to_owned(),
@@ -220,14 +283,20 @@ mod tests {
 		assert!(output.css.contains("body{margin:0}"));
 		assert!(output.css.contains("url(/static/logo.abc.svg?v=1#mark)"));
 		assert!(
-			output
-				.imports
-				.contains(&entry.to_string_lossy().into_owned())
+			output.imports.contains(
+				&fs::canonicalize(entry)
+					.unwrap()
+					.to_string_lossy()
+					.into_owned()
+			)
 		);
 		assert!(
-			output
-				.imports
-				.contains(&imported.to_string_lossy().into_owned())
+			output.imports.contains(
+				&fs::canonicalize(imported)
+					.unwrap()
+					.to_string_lossy()
+					.into_owned()
+			)
 		);
 
 		fs::remove_dir_all(root).unwrap();
@@ -242,6 +311,7 @@ mod tests {
 
 		let error = bundle(BundleArgs {
 			entry_path: entry,
+			source_root_dir: root.clone(),
 			public_url_map: &BTreeMap::new(),
 		})
 		.unwrap_err();
@@ -268,6 +338,7 @@ mod tests {
 
 		let output = bundle(BundleArgs {
 			entry_path: entry,
+			source_root_dir: root.clone(),
 			public_url_map: &BTreeMap::new(),
 		})
 		.unwrap();
@@ -287,6 +358,7 @@ mod tests {
 
 		let error = bundle(BundleArgs {
 			entry_path: entry,
+			source_root_dir: root.clone(),
 			public_url_map: &BTreeMap::new(),
 		})
 		.unwrap_err();
@@ -299,6 +371,58 @@ mod tests {
 		);
 
 		fs::remove_dir_all(root).unwrap();
+	}
+
+	#[test]
+	fn rejects_entry_outside_root_dir() {
+		let root = temp_dir("entry-outside-root");
+		let outside = temp_dir("entry-outside-root-outside");
+		fs::create_dir_all(&root).unwrap();
+		fs::create_dir_all(&outside).unwrap();
+		let entry = outside.join("critical.css");
+		fs::write(&entry, "body { margin: 0; }").unwrap();
+
+		let error = bundle(BundleArgs {
+			entry_path: entry,
+			source_root_dir: root.clone(),
+			public_url_map: &BTreeMap::new(),
+		})
+		.unwrap_err();
+
+		assert!(
+			error
+				.to_string()
+				.contains("critical CSS source must stay inside root_dir")
+		);
+
+		fs::remove_dir_all(root).unwrap();
+		fs::remove_dir_all(outside).unwrap();
+	}
+
+	#[test]
+	fn rejects_imports_outside_root_dir() {
+		let parent = temp_dir("import-outside-root");
+		let root = parent.join("app");
+		fs::create_dir_all(&root).unwrap();
+		let entry = root.join("critical.css");
+		let outside = parent.join("outside.css");
+		fs::write(&entry, r#"@import "../outside.css";"#).unwrap();
+		fs::write(&outside, "body { color: red; }").unwrap();
+
+		let error = bundle(BundleArgs {
+			entry_path: entry,
+			source_root_dir: root,
+			public_url_map: &BTreeMap::new(),
+		})
+		.unwrap_err();
+
+		assert!(
+			error
+				.to_string()
+				.contains("critical CSS source must stay inside root_dir")
+		);
+
+		fs::remove_dir_all(parent).unwrap();
 	}
 
 	fn temp_dir(name: &str) -> PathBuf {

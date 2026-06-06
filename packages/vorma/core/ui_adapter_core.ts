@@ -14,7 +14,6 @@ import {
 	type RouteRenderEntry,
 	type RouteRenderState,
 	type ScrollIntent,
-	type WorkState,
 } from "./create_client_core.ts";
 import {
 	type LinkNavFns,
@@ -45,6 +44,7 @@ import {
 	create_typed_prefetch,
 	create_typed_to_href,
 } from "./url.ts";
+import type { WorkState } from "./work_state.ts";
 
 type ClientMatcherFactory = () => Promise<ClientMatcher>;
 
@@ -93,14 +93,16 @@ export function set_client_matcher_factory_for_test(
 	};
 }
 
-// __TODO why is this generic called "App"? Shouldn't it be "Component" or something?
-export type AdapterRenderArgs<App> = {
-	RootOutlet: App;
+export type AdapterRenderArgs<RootOutletComponent> = {
+	RootOutlet: RootOutletComponent;
 	rootEl: HTMLElement;
 };
 
-export type AdapterClientOptions<App> = Omit<CoreClientOptions, "render"> & {
-	render?: (args: AdapterRenderArgs<App>) => void | Promise<void>;
+export type AdapterClientOptions<RootOutletComponent> = Omit<
+	CoreClientOptions,
+	"render"
+> & {
+	render?: (args: AdapterRenderArgs<RootOutletComponent>) => void | Promise<void>;
 };
 
 type AdapterBase<A extends AppConfig> = {

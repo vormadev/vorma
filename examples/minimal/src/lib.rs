@@ -408,7 +408,10 @@ mod tests {
 			"ui_variant": "react",
 			"root_document_shell_hash": "test-shell",
 			"public_filepaths": [
+				"/assets/entry.js",
+				"/assets/home.view.js",
 				"/assets/mark.svg",
+				"/assets/note.view.js",
 				"/assets/fonts/IoskeleyMono-400.woff2"
 			],
 			"public_filemap": {

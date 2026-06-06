@@ -216,7 +216,7 @@ async fn runtime_routes_register_views_and_resources() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.execute_view_stack(
+		.execute_view_matches(
 			Arc::new(()),
 			exec_ctx(),
 			RawRequest::get("/users/123"),
@@ -264,7 +264,7 @@ async fn macros_define_const_routes_with_inferred_typed_params() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.execute_view_stack(
+		.execute_view_matches(
 			Arc::new(()),
 			boxed_exec_ctx(),
 			RawRequest::get("/stories/123"),
@@ -305,7 +305,7 @@ async fn macros_support_public_url_in_default_error_context() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.execute_view_stack(
+		.execute_view_matches(
 			Arc::new(()),
 			boxed_exec_ctx(),
 			RawRequest::get("/assets"),
@@ -358,7 +358,7 @@ async fn public_middlewares_wire_once_and_filter_from_request_context() {
 		.unwrap();
 	let view_results = routes
 		.views
-		.execute_view_stack(
+		.execute_view_matches(
 			Arc::new(()),
 			boxed_exec_ctx(),
 			RawRequest::get("/stories/123"),

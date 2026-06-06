@@ -28,6 +28,9 @@ fuzz_target!(|data: &[u8]| {
 
 fn call_with_input<T>(input: &[u8], call: impl FnOnce(*const u8, usize) -> T) -> T {
 	let ptr = vorma_client_wasm::vorma_client_matcher_alloc(input.len());
+	if ptr.is_null() {
+		return call(ptr, input.len());
+	}
 	unsafe {
 		std::ptr::copy_nonoverlapping(input.as_ptr(), ptr, input.len());
 	}

@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use path_clean::PathClean;
@@ -22,8 +23,16 @@ impl PublicStaticInputs {
 			source_dir,
 			"frontend_config.public_static_src_dir",
 		)?;
+		if !source_dir.starts_with(root_dir) {
+			return Err("frontend_config.public_static_src_dir must be inside root_dir".to_owned());
+		}
 		if source_dir == root_dir {
 			return Err("frontend_config.public_static_src_dir must not be root_dir".to_owned());
+		}
+		if let Ok(metadata) = fs::symlink_metadata(&source_dir)
+			&& metadata.file_type().is_symlink()
+		{
+			return Err("frontend_config.public_static_src_dir must not be a symlink".to_owned());
 		}
 		Ok(Self {
 			source_dir,

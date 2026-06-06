@@ -29,6 +29,7 @@ pub(crate) enum ConfigErrorKind {
 	WatchPatterns,
 	ServerWatchPatterns,
 	ClientRevalidateOnChangePatterns,
+	JavaScriptPackageManagerDir,
 	PublicStaticSourceDir,
 	TypeScriptOutputFile,
 	FrontendEntryFile,
@@ -77,6 +78,7 @@ pub(crate) struct ConfigView<'a> {
 	root_dir: PathBuf,
 	build_layout: BuildLayout,
 	frontend_toolchain: FrontendToolchain,
+	js_package_manager_dir: PathBuf,
 	app_server: CargoBinTarget,
 	watch_config: WatchConfig,
 	public_static_inputs: PublicStaticInputs,
@@ -105,6 +107,18 @@ impl<'a> ConfigView<'a> {
 		})?;
 		let frontend_toolchain = FrontendToolchain::from_config(&source.frontend_config)
 			.map_err(|err| ConfigError::raw(ConfigErrorKind::FrontendToolchain, err.to_string()))?;
+		let js_package_manager_dir = root_contained_directory_path(
+			&root_dir,
+			&source.frontend_config.js_package_manager_dir,
+			"frontend_config.js_package_manager_dir",
+		)
+		.map_err(|err| {
+			ConfigError::with_context(
+				ConfigErrorKind::JavaScriptPackageManagerDir,
+				"JavaScript package-manager dir",
+				err,
+			)
+		})?;
 		let (public_static_base_path, api_mount_root) =
 			validate_public_static_base_against_api_mount(
 				&source.path_config.public_static_base,
@@ -155,6 +169,7 @@ impl<'a> ConfigView<'a> {
 			root_dir,
 			build_layout,
 			frontend_toolchain,
+			js_package_manager_dir,
 			app_server,
 			watch_config,
 			public_static_inputs,
@@ -242,7 +257,7 @@ impl<'a> ConfigView<'a> {
 		if entry.is_empty() || entry == "." {
 			return Ok(None);
 		}
-		self.required_root_path(
+		self.required_root_contained_file_path(
 			&self.source.frontend_config.critical_css_file,
 			"frontend_config.critical_css_file",
 		)
@@ -270,7 +285,7 @@ impl<'a> ConfigView<'a> {
 	}
 
 	pub(crate) fn js_package_manager_dir(&self) -> PathBuf {
-		self.root_path(&self.source.frontend_config.js_package_manager_dir)
+		self.js_package_manager_dir.clone()
 	}
 
 	pub(crate) fn vite_config_file(&self) -> Result<String, String> {
@@ -283,14 +298,17 @@ impl<'a> ConfigView<'a> {
 		{
 			return Ok(String::new());
 		}
-		let root_rel = self.root_path_string(&self.source.frontend_config.vite_config_file);
-		relative_path(self.js_package_manager_dir(), root_rel)
+		let vite_config_file = self.required_root_contained_file_path(
+			&self.source.frontend_config.vite_config_file,
+			"frontend_config.vite_config_file",
+		)?;
+		relative_path(self.js_package_manager_dir(), vite_config_file)
 			.map(|path| path.to_string_lossy().into_owned())
 			.ok_or_else(|| "error calculating relative path".to_owned())
 	}
 
 	pub(crate) fn ts_entry(&self) -> Result<PathBuf, String> {
-		self.required_root_path(
+		self.required_root_contained_file_path(
 			&self.source.frontend_config.entry_file,
 			"frontend_config.entry_file",
 		)
@@ -397,14 +415,22 @@ impl<'a> ConfigView<'a> {
 	fn required_generated_output_path(&self, path: &str, label: &str) -> Result<PathBuf, String> {
 		let path = self.required_config_path(path, label)?;
 		let path = self.root_path(path);
-		if !path.starts_with(&self.root_dir) {
-			return Err(format!("{label} must be inside root_dir"));
-		}
+		validate_path_inside_root(&path, &self.root_dir, label)?;
 		Ok(path)
 	}
 
 	fn required_root_path(&self, path: &str, label: &str) -> Result<PathBuf, String> {
 		Ok(self.root_path(self.required_config_path(path, label)?))
+	}
+
+	fn required_root_contained_file_path(
+		&self,
+		path: &str,
+		label: &str,
+	) -> Result<PathBuf, String> {
+		let path = self.required_root_path(path, label)?;
+		validate_path_inside_root(&path, &self.root_dir, label)?;
+		Ok(path)
 	}
 
 	fn required_config_path(&self, path: &str, label: &str) -> Result<PathBuf, String> {
@@ -628,10 +654,29 @@ fn generated_output_path_from_root(
 	label: &str,
 ) -> Result<PathBuf, String> {
 	let path = root_path_from(root_dir, PathBuf::from_slash(path.trim()));
+	validate_path_inside_root(&path, root_dir, label)?;
+	Ok(path)
+}
+
+fn root_contained_directory_path(
+	root_dir: &Path,
+	path: &str,
+	label: &str,
+) -> Result<PathBuf, String> {
+	let trimmed = path.trim();
+	if trimmed.is_empty() {
+		return Err(format!("{label} cannot be empty"));
+	}
+	let path = root_path_from(root_dir, PathBuf::from_slash(trimmed));
+	validate_path_inside_root(&path, root_dir, label)?;
+	Ok(path)
+}
+
+fn validate_path_inside_root(path: &Path, root_dir: &Path, label: &str) -> Result<(), String> {
 	if !path.starts_with(root_dir) {
 		return Err(format!("{label} must be inside root_dir"));
 	}
-	Ok(path)
+	Ok(())
 }
 
 pub(crate) fn relative_path(from: impl AsRef<Path>, to: impl AsRef<Path>) -> Option<PathBuf> {
@@ -958,6 +1003,76 @@ mod tests {
 			ConfigView::new(&public_config).unwrap_err(),
 			"error with public static source dir: frontend_config.public_static_src_dir cannot be ."
 		);
+		fs::remove_dir_all(root).unwrap();
+	}
+
+	#[test]
+	fn config_view_rejects_public_static_source_dir_outside_root_dir() {
+		let root = temp_root("public-static-source-outside-root");
+		let mut config = config(root.clone());
+		config.frontend_config.public_static_src_dir = "../public".to_owned();
+
+		let err = ConfigView::new(&config).unwrap_err();
+
+		assert_eq!(
+			err,
+			"error with public static source dir: frontend_config.public_static_src_dir must be inside root_dir"
+		);
+		fs::remove_dir_all(root).unwrap();
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn config_view_rejects_public_static_source_dir_symlink() {
+		let root = temp_root("public-static-source-symlink");
+		let outside = temp_root("public-static-source-symlink-outside");
+		std::os::unix::fs::symlink(&outside, root.join("public")).unwrap();
+		let config = config(root.clone());
+
+		let err = ConfigView::new(&config).unwrap_err();
+
+		assert_eq!(
+			err,
+			"error with public static source dir: frontend_config.public_static_src_dir must not be a symlink"
+		);
+		fs::remove_dir_all(root).unwrap();
+		fs::remove_dir_all(outside).unwrap();
+	}
+
+	#[test]
+	fn config_view_rejects_frontend_paths_outside_root_dir() {
+		let root = temp_root("frontend-paths-outside-root");
+
+		let mut package_manager_dir_config = config(root.clone());
+		package_manager_dir_config
+			.frontend_config
+			.js_package_manager_dir = "../frontend".to_owned();
+		assert_eq!(
+			ConfigView::new(&package_manager_dir_config).unwrap_err(),
+			"error with JavaScript package-manager dir: frontend_config.js_package_manager_dir must be inside root_dir"
+		);
+
+		let mut entry_config = config(root.clone());
+		entry_config.frontend_config.entry_file = "../entry.tsx".to_owned();
+		assert_eq!(
+			ConfigView::new(&entry_config).unwrap_err(),
+			"error with frontend entry file: frontend_config.entry_file must be inside root_dir"
+		);
+
+		let mut critical_css_config = config(root.clone());
+		critical_css_config.frontend_config.critical_css_file = "../critical.css".to_owned();
+		assert_eq!(
+			ConfigView::new(&critical_css_config).unwrap_err(),
+			"error with critical CSS entry: frontend_config.critical_css_file must be inside root_dir"
+		);
+
+		let mut vite_config = config(root.clone());
+		vite_config.frontend_config.vite_config_file = "../vite.config.ts".to_owned();
+		assert_eq!(
+			ConfigView::new(&vite_config).unwrap_err(),
+			"error with Vite config file: frontend_config.vite_config_file must be inside root_dir"
+		);
+
 		fs::remove_dir_all(root).unwrap();
 	}
 

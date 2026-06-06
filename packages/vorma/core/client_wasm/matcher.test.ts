@@ -71,4 +71,16 @@ describe("create_client_matcher", () => {
 			matcher.free();
 		}
 	});
+
+	it("rejects oversized matcher inputs before writing wasm memory", async () => {
+		const matcher = await create_client_matcher();
+		try {
+			matcher.register_pattern("/");
+			expect(() => {
+				matcher.find_nested_matches(`/${"a".repeat(64 * 1024)}`);
+			}).toThrow("Vorma client matcher input is too large");
+		} finally {
+			matcher.free();
+		}
+	});
 });

@@ -10,7 +10,7 @@ use vorma_tasks::{CancelToken, Error as TaskError, ExecCtx, Task, Tasks, TasksOp
 
 use crate::mux::{
 	InputError, InputParser, NestedOptions, NestedRouter, None, RawRequest, RequestCtx,
-	RouteExecutionError, Router, ViewStackTerminalBoundary,
+	RouteExecutionError, Router, ViewExecutionTerminalBoundary,
 };
 
 #[derive(Clone)]

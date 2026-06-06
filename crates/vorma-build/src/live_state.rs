@@ -20,7 +20,7 @@ use crate::constants::LIVE_STATE_MODE_ENV_KEY;
 use crate::supervisor::clear_vorma_runtime_env;
 use crate::ts_gen::{LiveTsResult, to_live_ts_result};
 use crate::ts_modules::TsViewModule;
-use crate::ts_modules::get_dev_view_modules_from_contract;
+use crate::ts_modules::{get_dev_view_modules_from_contract, validate_dev_view_modules_for_config};
 use vorma::__private::constants::ENV_KEY_IS_BUILD;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -121,6 +121,10 @@ pub(crate) fn parse_live_state(bytes: &[u8]) -> Result<LiveState, LiveStateError
 }
 
 pub(crate) fn validate_live_state_protocol(live_state: &LiveState) -> Result<(), String> {
+	let cfg = to_cfg(&live_state.vorma_config)
+		.map_err(|err| format!("builder entry output contains invalid config: {err}"))?;
+	validate_dev_view_modules_for_config(&cfg, &live_state.ts_modules)
+		.map_err(|err| format!("builder entry output contains invalid TS modules: {err}"))?;
 	if live_state.root_document_hash_source.trim().is_empty() {
 		return Err("builder entry output missing root_document_hash_source".to_owned());
 	}
@@ -146,7 +150,7 @@ fn get_live_state_from_contract(
 ) -> Result<LiveState, String> {
 	let ts_result = to_live_ts_result(cfg, contract)
 		.map_err(|err| format!("error generating TS types: {err}"))?;
-	let ts_modules = get_dev_view_modules_from_contract(contract)
+	let ts_modules = get_dev_view_modules_from_contract(cfg, contract)
 		.map_err(|err| format!("error getting TS modules: {err}"))?;
 	let search_schemas = contract
 		.views()
@@ -237,22 +241,44 @@ mod tests {
 	use std::sync::atomic::{AtomicBool, Ordering};
 	use vorma::__private::Config;
 	use vorma::__private::core::contract_for;
-	use vorma::{Document, DocumentBuilder, FrontendConfig, Resources, ServerConfig, Views};
+	use vorma::{
+		Document, DocumentBuilder, FrontendConfig, PathConfig, Resources, ServerConfig,
+		TsGenConfig, Views,
+	};
 
 	vorma::app!(mod live_state_app for ());
+
+	fn valid_config() -> Config {
+		Config {
+			root_dir: crate::test_support::root_dir(),
+			server_config: ServerConfig {
+				cargo_package: "example-app".to_owned(),
+				cargo_bin: "example-server".to_owned(),
+			},
+			path_config: PathConfig {
+				public_static_base: "/static/".to_owned(),
+				api_base: "/api/".to_owned(),
+			},
+			frontend_config: FrontendConfig {
+				ui_variant: vorma::UiVariant::React,
+				js_package_manager_base_cmd: "pnpm exec".to_owned(),
+				js_package_manager_dir: ".".to_owned(),
+				entry_file: "src/client/entry.tsx".to_owned(),
+				public_static_src_dir: "public".to_owned(),
+				..FrontendConfig::default()
+			},
+			ts_gen_config: TsGenConfig {
+				out_file: "src/client/vorma.gen.ts".to_owned(),
+				..TsGenConfig::default()
+			},
+			..Config::default()
+		}
+	}
 
 	#[test]
 	fn parse_live_state_reads_direct_json() {
 		let live_state = LiveState {
-			vorma_config: Config {
-				root_dir: crate::test_support::root_dir(),
-				server_config: ServerConfig {
-					cargo_package: "example-app".to_owned(),
-					cargo_bin: "example-server".to_owned(),
-				},
-				path_config: crate::test_support::path_config(),
-				..Config::default()
-			},
+			vorma_config: valid_config(),
 			ts_result: LiveTsResult {
 				routes_section: "routes".to_owned(),
 				..LiveTsResult::default()
@@ -280,15 +306,7 @@ mod tests {
 	#[test]
 	fn parse_live_state_reads_root_document_hash_source() {
 		let json = serde_json::to_vec(&LiveState {
-			vorma_config: Config {
-				root_dir: crate::test_support::root_dir(),
-				server_config: ServerConfig {
-					cargo_package: "example-app".to_owned(),
-					cargo_bin: "example-server".to_owned(),
-				},
-				path_config: crate::test_support::path_config(),
-				..Config::default()
-			},
+			vorma_config: valid_config(),
 			ts_result: LiveTsResult::default(),
 			ts_modules: BTreeMap::new(),
 			search_schemas: BTreeMap::new(),
@@ -317,15 +335,7 @@ mod tests {
 	#[test]
 	fn parse_live_state_rejects_empty_document_hash_source() {
 		let json = serde_json::to_vec(&LiveState {
-			vorma_config: Config {
-				root_dir: crate::test_support::root_dir(),
-				server_config: ServerConfig {
-					cargo_package: "example-app".to_owned(),
-					cargo_bin: "example-server".to_owned(),
-				},
-				path_config: crate::test_support::path_config(),
-				..Config::default()
-			},
+			vorma_config: valid_config(),
 			ts_result: LiveTsResult::default(),
 			ts_modules: BTreeMap::new(),
 			search_schemas: BTreeMap::new(),
@@ -339,6 +349,33 @@ mod tests {
 		assert_eq!(
 			error.to_string(),
 			"builder entry output missing root_document_hash_source",
+		);
+	}
+
+	#[test]
+	fn parse_live_state_rejects_view_module_outside_root_dir() {
+		let json = serde_json::to_vec(&LiveState {
+			vorma_config: valid_config(),
+			ts_result: LiveTsResult::default(),
+			ts_modules: BTreeMap::from([(
+				"/".to_owned(),
+				TsViewModule {
+					pattern: "/".to_owned(),
+					import_path: "../root.tsx".to_owned(),
+					deps: Vec::new(),
+				},
+			)]),
+			search_schemas: BTreeMap::new(),
+			root_document_hash_source: "document-hash-source".to_owned(),
+			..LiveState::default()
+		})
+		.unwrap();
+
+		let error = parse_live_state(&json).unwrap_err();
+
+		assert_eq!(
+			error.to_string(),
+			"builder entry output contains invalid TS modules: TS view import path must be inside root_dir for pattern: /"
 		);
 	}
 

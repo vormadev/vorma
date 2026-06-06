@@ -9,6 +9,8 @@ mod encoding;
 mod output;
 mod registry;
 
+#[cfg(test)]
+use abi::{MAX_INPUT_LEN, MAX_LIVE_ALLOCATIONS};
 use abi::{STATUS_ERROR, STATUS_MATCH, STATUS_NO_MATCH};
 #[cfg(test)]
 use encoding::push_len;
@@ -182,6 +184,52 @@ mod tests {
 
 		assert_eq!(push_len(&mut out, (u32::MAX as usize) + 1), Err(()));
 		assert!(out.is_empty());
+	}
+
+	#[test]
+	fn matcher_abi_rejects_oversized_input() {
+		let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+		let matcher_id = vorma_client_matcher_new();
+		let ptr = vorma_client_matcher_alloc(MAX_INPUT_LEN + 1);
+
+		assert!(ptr.is_null());
+		assert_eq!(
+			vorma_client_matcher_register_pattern(
+				matcher_id,
+				std::ptr::NonNull::<u8>::dangling().as_ptr(),
+				MAX_INPUT_LEN + 1,
+			),
+			STATUS_ERROR,
+		);
+
+		vorma_client_matcher_free(matcher_id);
+	}
+
+	#[test]
+	fn matcher_abi_dealloc_ignores_wrong_lengths() {
+		let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+		let ptr = vorma_client_matcher_alloc(8);
+
+		assert!(!ptr.is_null());
+		vorma_client_matcher_dealloc(ptr, 7);
+		vorma_client_matcher_dealloc(ptr, 8);
+	}
+
+	#[test]
+	fn matcher_abi_limits_live_allocations() {
+		let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+		let mut ptrs = Vec::new();
+		for _ in 0..MAX_LIVE_ALLOCATIONS {
+			let ptr = vorma_client_matcher_alloc(1);
+			assert!(!ptr.is_null());
+			ptrs.push(ptr);
+		}
+
+		assert!(vorma_client_matcher_alloc(1).is_null());
+
+		for ptr in ptrs {
+			vorma_client_matcher_dealloc(ptr, 1);
+		}
 	}
 
 	fn register_pattern(matcher_id: u32, pattern: &str) -> u32 {

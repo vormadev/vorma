@@ -6,71 +6,39 @@ import {
 	type ResolvedConfig as Vite_ResolvedConfig,
 	type UserConfig as Vite_UserConfig,
 } from "vite";
-
-/// Plugin contract
-
-const plugin_name = "vorma-vite-plugin";
-const env_key = "__VORMA_VITE_PLUGIN_SERVER_PORT";
-const token_env_key = "__VORMA_VITE_PLUGIN_SERVER_TOKEN";
-const token_header = "x-vorma-vite-plugin-token";
-const loopback_host = "127.0.0.1";
-const public_url_prefix = "@public/";
-const public_url_parse_base = "http://does-not-matter/";
+import {
+	cfg_changed_path,
+	type Config,
+	env_key,
+	loopback_host,
+	plugin_base_path,
+	plugin_name,
+	public_url_parse_base,
+	rpc_path,
+	type RpcRequest,
+	token_env_key,
+	token_header,
+} from "./plugin_contract.ts";
+import {
+	js_module_regex,
+	public_css_url_postcss_plugin,
+	resolve_public_js_urls,
+} from "./public_url_resolution.ts";
+import { escape_regex_literal } from "./text.ts";
 
 const server_endpoints = {
 	// POST -- tokenized RPC endpoint for config, public URL hashes, and control port.
 	rpc: () => {
-		return server_url("/rpc");
+		return server_url(rpc_path);
 	},
 };
 
 const vite_endpoints = {
 	// POST -- called by the Vorma dev server when the config changes.
-	cfg_changed: "/cfg-changed",
+	cfg_changed: cfg_changed_path,
 };
 
 const node_modules_refresh_exclude = /\/node_modules\//;
-
-type Config = {
-	PublicStaticBasePath: string;
-	EntryModule: string;
-	ViewModules: Array<string>;
-	IgnoredPatterns: Array<string>;
-	DedupeList: Array<string>;
-};
-
-type RpcRequest =
-	| { method: "cfg" }
-	| { method: "hash"; src_path: string }
-	| { method: "set_port"; port: number };
-
-/// Public URL resolution
-const pub_url_fn_name = "vormaPublicUrl";
-const regex_gap = `(?:\\s|//[^\\n]*\\n|/\\*[\\s\\S]*?\\*/)*`;
-const public_url_regex = new RegExp(
-	`${pub_url_fn_name}${regex_gap}\\(${regex_gap}(["'\`])(.*?)\\1${regex_gap}\\)`,
-	"g",
-);
-const public_css_url_regex = new RegExp(
-	`url\\(${regex_gap}(["']?)(${escape_regex_literal(public_url_prefix)}[^"')\\s]+)\\1${regex_gap}\\)`,
-	"g",
-);
-const js_module_regex = /\.[cm]?[jt]sx?($|\?)/;
-
-type PostCSSDeclaration = {
-	value: string;
-};
-
-type PostCSSRoot = {
-	walkDecls: (callback: (decl: PostCSSDeclaration) => void) => void;
-};
-
-type PostCSSPlugin = {
-	postcssPlugin: string;
-	Once: (root: PostCSSRoot) => Promise<void>;
-};
-
-type MarkResolvedPublicUrl = (public_url: string) => void;
 
 async function fetch_public_url(src_path: string, source: string): Promise<string> {
 	const res = await server_rpc({ method: "hash", src_path }, false);
@@ -79,76 +47,6 @@ async function fetch_public_url(src_path: string, source: string): Promise<strin
 	}
 	await check_ok(server_endpoints.rpc(), res);
 	return res.text();
-}
-
-async function resolve_public_css_urls(
-	css_value: string,
-	mark_resolved_public_url: MarkResolvedPublicUrl,
-): Promise<string> {
-	public_css_url_regex.lastIndex = 0;
-	if (!public_css_url_regex.test(css_value)) {
-		public_css_url_regex.lastIndex = 0;
-		return css_value;
-	}
-	public_css_url_regex.lastIndex = 0;
-
-	const matches: {
-		full: string;
-		asset_path: string;
-		lookup_path: string;
-		suffix: string;
-	}[] = [];
-	let m: RegExpExecArray | null;
-	while ((m = public_css_url_regex.exec(css_value)) !== null) {
-		const asset_path = m[2]!;
-		const parsed_public_url = new URL(
-			asset_path.slice(public_url_prefix.length),
-			public_url_parse_base,
-		);
-		matches.push({
-			full: m[0],
-			asset_path,
-			lookup_path: parsed_public_url.pathname.slice(1),
-			suffix: parsed_public_url.search + parsed_public_url.hash,
-		});
-	}
-
-	const resolved = await Promise.all(
-		matches.map(async ({ full, asset_path, lookup_path, suffix }) => {
-			return {
-				full,
-				hashed: (await fetch_public_url(lookup_path, asset_path)) + suffix,
-			};
-		}),
-	);
-
-	let result = css_value;
-	for (const { full, hashed } of resolved) {
-		mark_resolved_public_url(hashed);
-		result = result.replace(full, `url("${hashed}")`);
-	}
-	return result;
-}
-
-function public_css_url_postcss_plugin(
-	mark_resolved_public_url: MarkResolvedPublicUrl,
-): PostCSSPlugin {
-	return {
-		postcssPlugin: `${plugin_name}-public-url`,
-		async Once(root: PostCSSRoot) {
-			const work: Array<Promise<void>> = [];
-			root.walkDecls((decl) => {
-				work.push(
-					resolve_public_css_urls(decl.value, mark_resolved_public_url).then(
-						(value) => {
-							decl.value = value;
-						},
-					),
-				);
-			});
-			await Promise.all(work);
-		},
-	};
 }
 
 /// HMR preamble injected into view modules during dev.
@@ -228,7 +126,10 @@ export default function vorma(): Vite_Plugin {
 				css: {
 					postcss: {
 						plugins: [
-							public_css_url_postcss_plugin(mark_resolved_public_url),
+							public_css_url_postcss_plugin(
+								fetch_public_url,
+								mark_resolved_public_url,
+							),
 						],
 					},
 				},
@@ -265,31 +166,8 @@ export default function vorma(): Vite_Plugin {
 			// Public URL resolution
 			const is_js_module = js_module_regex.test(id);
 
-			if (is_js_module && public_url_regex.test(result)) {
-				// Reset lastIndex after the test pass.
-				public_url_regex.lastIndex = 0;
-
-				const matches: { full: string; asset_path: string }[] = [];
-				let m: RegExpExecArray | null;
-				while ((m = public_url_regex.exec(result)) !== null) {
-					matches.push({ full: m[0], asset_path: m[2]! });
-				}
-
-				const resolved = await Promise.all(
-					matches.map(async ({ full, asset_path }) => {
-						return {
-							full,
-							hashed: await fetch_public_url(
-								asset_path,
-								`${pub_url_fn_name}("${asset_path}")`,
-							),
-						};
-					}),
-				);
-
-				for (const { full, hashed } of resolved) {
-					result = result.replace(full, `"${hashed}"`);
-				}
+			if (is_js_module) {
+				result = await resolve_public_js_urls(result, fetch_public_url);
 			}
 
 			// HMR self-accept injection for view modules (dev only)
@@ -345,7 +223,7 @@ function server_url(path: string): string {
 	if (!port) {
 		throw new Error(`[${plugin_name}] ${env_key} is not set`);
 	}
-	return `http://${loopback_host}:${port}/vite-plugin${path}`;
+	return `http://${loopback_host}:${port}${plugin_base_path}${path}`;
 }
 
 async function server_rpc(request: RpcRequest, check_response = true): Promise<Response> {
@@ -394,8 +272,4 @@ function normalize_module_id(id: string): string {
 function module_id_filter_regex(id: string): RegExp {
 	const escaped_id = escape_regex_literal(normalize_module_id(id));
 	return new RegExp(`^${escaped_id}(?:\\?.*)?$`);
-}
-
-function escape_regex_literal(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

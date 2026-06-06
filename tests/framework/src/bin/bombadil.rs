@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 
@@ -172,7 +172,7 @@ impl RunConfig {
 			return self.for_each_selected_variant(variant_name, |runner| runner.test_prod());
 		}
 
-		self.for_each_variant(|runner| runner.build())?;
+		self.for_each_variant_serial(|runner| runner.build())?;
 		self.for_each_variant_serial(|runner| runner.test())
 	}
 
@@ -433,12 +433,7 @@ impl VariantRunner {
 	}
 
 	fn build_dev_binary(&self) -> Result<(PathBuf, impl FnOnce()), String> {
-		let temp_dir = std::env::temp_dir().join(format!(
-			"vorma-bombadil-dev-build-{}-{}",
-			self.variant.name,
-			std::process::id(),
-		));
-		fs::create_dir_all(&temp_dir).map_err(|error| error.to_string())?;
+		let temp_dir = create_unique_bombadil_temp_dir(self.variant.name)?;
 		let mut build_cmd = Command::new("cargo");
 		build_cmd.args([
 			"build",
@@ -648,7 +643,10 @@ impl VariantRunner {
 		instrument_javascript: &str,
 		spec_path: &str,
 	) -> Result<(), String> {
-		let time_limit = format!("{}s", seconds * self.config.intensity);
+		let total_seconds = seconds
+			.checked_mul(self.config.intensity)
+			.ok_or_else(|| "Bombadil time limit overflowed u64 seconds".to_owned())?;
+		let time_limit = format!("{total_seconds}s");
 		let artifact_path = bombadil_artifact_path(output_path);
 		self.log(&format!("testing {base_url}{path} for {time_limit}"));
 		self.log(&format!(
@@ -933,6 +931,27 @@ fn framework_root() -> PathBuf {
 	PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+fn create_unique_bombadil_temp_dir(variant_name: &str) -> Result<PathBuf, String> {
+	let nonce = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.map_err(|error| format!("system clock before Unix epoch: {error}"))?
+		.as_nanos();
+	for attempt in 0..32u8 {
+		let path = std::env::temp_dir().join(format!(
+			"vorma-bombadil-dev-build-{variant_name}-{}-{nonce}-{attempt}",
+			std::process::id(),
+		));
+		match fs::create_dir(&path) {
+			Ok(()) => return Ok(path),
+			Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+			Err(error) => return Err(format!("create temp directory {}: {error}", path.display())),
+		}
+	}
+	Err(format!(
+		"could not create unique Bombadil temp directory for {variant_name}",
+	))
+}
+
 fn bombadil_artifact_path(path: impl AsRef<Path>) -> PathBuf {
 	framework_root().join(BOMBADIL_ARTIFACTS_DIR).join(path)
 }
@@ -994,6 +1013,9 @@ fn parse_test_flags(args: &[String]) -> Result<(u64, Option<String>), String> {
 					return Err("-intensity requires a value".to_owned());
 				};
 				intensity = raw.parse::<u64>().map_err(|error| error.to_string())?;
+				if intensity == 0 {
+					return Err("-intensity must be at least 1".to_owned());
+				}
 			}
 			"-variant" => {
 				idx += 1;
@@ -1107,14 +1129,7 @@ fn print_file_to_stderr(path: &Path) {
 fn set_process_group(cmd: &mut Command) {
 	use std::os::unix::process::CommandExt;
 
-	unsafe {
-		cmd.pre_exec(|| {
-			if libc::setpgid(0, 0) == 0 {
-				return Ok(());
-			}
-			Err(io::Error::last_os_error())
-		});
-	}
+	cmd.process_group(0);
 }
 
 #[cfg(not(unix))]
@@ -1183,5 +1198,10 @@ mod tests {
 		assert!(framework_prod_dist_dir("react", DEPLOYMENT_A_SUFFIX).ends_with(".dist.react.a"));
 		assert!(framework_prod_dist_dir("react", DEPLOYMENT_B_SUFFIX).ends_with(".dist.react.b"));
 		assert!(framework_dev_dist_dir("react").ends_with(".dist.react.dev.a"));
+	}
+
+	#[test]
+	fn test_flags_reject_zero_intensity() {
+		assert!(parse_test_flags(&["-intensity".to_owned(), "0".to_owned()]).is_err());
 	}
 }

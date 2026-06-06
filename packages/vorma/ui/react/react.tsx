@@ -13,6 +13,7 @@ import {
 import {
 	apply_scroll,
 	create_adapter_base,
+	create_empty_work_state,
 	get_entry_key,
 	make_entry_id,
 	make_link_props,
@@ -107,12 +108,7 @@ export function createVormaClient<A extends AppConfig>(
 		history_state: undefined,
 	};
 	let route_store: RouteState | null = null;
-	let work_store: WorkState = {
-		navigation: null,
-		revalidation: null,
-		prefetch: null,
-		apiRequests: [],
-	};
+	let work_store: WorkState = create_empty_work_state();
 
 	const listeners = new Set<() => void>();
 	const route_listeners = new Set<() => void>();
@@ -463,7 +459,7 @@ export function createVormaClient<A extends AppConfig>(
 		}
 	}
 
-	const RootOutletApp: ComponentType = () => {
+	const RootOutletComponent: ComponentType = () => {
 		return <RootOutlet />;
 	};
 
@@ -479,7 +475,7 @@ export function createVormaClient<A extends AppConfig>(
 			render: render_root
 				? () => {
 						return render_root({
-							RootOutlet: RootOutletApp,
+							RootOutlet: RootOutletComponent,
 							rootEl: core.getRootEl(),
 						});
 					}

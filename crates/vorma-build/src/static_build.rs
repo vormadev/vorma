@@ -191,6 +191,7 @@ fn bundle_critical_css(
 
 	cssbundle::bundle(cssbundle::BundleArgs {
 		entry_path: entry.into(),
+		source_root_dir: cfg.root_dir().into(),
 		public_url_map: public_filemap,
 	})
 	.map_err(|source| StaticBuildError::CriticalCss { source })

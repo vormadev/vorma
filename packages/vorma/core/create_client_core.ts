@@ -13,7 +13,6 @@ import {
 	DATA_SCRIPT_ID,
 	HISTORY_KEY_FIELD,
 	HISTORY_USER_STATE_FIELD,
-	SCROLL_STORAGE_KEY,
 	SCROLL_STORAGE_RELOAD_KEY,
 	VERCEL_DPL_QUERY_PARAM_KEY,
 	VERCEL_X_DEPLOYMENT_ID,
@@ -26,6 +25,24 @@ import {
 import { apply_css_bundles, preload_css, wait_for_css } from "./css.ts";
 import { apply_head_and_title, type HeadEl } from "./head.ts";
 import { preload_modules } from "./modules.ts";
+import {
+	route_record_to_state,
+	route_snapshot_to_state,
+	route_to_render_state,
+	type HistoryPosition,
+	type RouteMatchRecord,
+	type RouteRecord,
+	type RouteRenderState,
+	type RouteSnapshot,
+} from "./route_state_projection.ts";
+import {
+	apply_scroll,
+	get_scroll_for_key,
+	get_scroll_pos,
+	save_scroll_for_key,
+	type ScrollIntent,
+	type ScrollState,
+} from "./scroll.ts";
 import type {
 	AppConfig,
 	BeforeRouteCommitFn,
@@ -36,56 +53,26 @@ import type {
 	RouteState,
 	RouteUpdateReason,
 } from "./types.ts";
+import {
+	create_work_indicator,
+	type WorkIndicator,
+	type WorkIndicatorOptions,
+} from "./work_indicator.ts";
+import { create_empty_work_state, type WorkState } from "./work_state.ts";
 
 /////////////////////////////////////////////////////////////////////
 /////// Public Types
 /////////////////////////////////////////////////////////////////////
 
-export type ScrollState = { x: number; y: number } | { hash: string };
+export type { RouteRenderEntry, RouteRenderState } from "./route_state_projection.ts";
+export {
+	apply_scroll,
+	MAX_SCROLL_ENTRIES,
+	type ScrollIntent,
+	type ScrollState,
+} from "./scroll.ts";
 
-export type ScrollIntent = {
-	scroll: ScrollState;
-	target_entry_id: string;
-};
-
-export type RouteRenderEntry = {
-	pattern: string;
-	input: unknown;
-	module_url: string;
-	hmr_version: number;
-	module: Record<string, unknown>;
-	view_data: unknown;
-	client_loader_data: unknown;
-};
-
-export type RouteRenderState = {
-	entries: RouteRenderEntry[];
-	error: RouteErrorState | null;
-	params: Record<string, string>;
-	splat_values: string[];
-	client_build_id: string;
-	history_state: unknown;
-};
-
-export type WorkState = {
-	navigation: null | {
-		href: string;
-		replace: boolean;
-		source: "navigate" | "popstate" | "redirect";
-	};
-	revalidation: null | {
-		status: "debouncing" | "running" | "retrying";
-		attempt: number;
-	};
-	prefetch: null | {
-		href: string;
-	};
-	apiRequests: Array<{
-		key: string;
-		method: string;
-		href: string;
-	}>;
-};
+export { create_empty_work_state, type WorkState } from "./work_state.ts";
 
 export type RevalidationReason = "manual" | "retry" | "apiRequest" | "windowFocus";
 
@@ -120,20 +107,7 @@ export type BuildSkewDetectedEvent = {
 	currentWorkState: WorkState;
 };
 
-export type WorkIndicator = {
-	track: <T>(promise: PromiseLike<T>) => Promise<T>;
-	isActive: () => boolean;
-};
-
-export type WorkIndicatorOptions = {
-	start: () => void;
-	stop: () => void;
-	startDelayMs?: number;
-	stopDelayMs?: number;
-	skipNavigations?: boolean;
-	skipApiRequests?: boolean;
-	skipRevalidations?: boolean;
-};
+export type { WorkIndicator, WorkIndicatorOptions } from "./work_indicator.ts";
 
 export type ClientOptions = {
 	render?: () => void | Promise<void>;
@@ -176,8 +150,13 @@ export type ViewDefinition = {
 	before_route_yield?: BeforeRouteYieldFn;
 };
 
+type ClientLoaderTrigger = "boot" | "navigation" | "revalidation" | "prefetch";
+type ClientLoaderPrefetchTrigger = Exclude<ClientLoaderTrigger, "boot">;
+type RouteClientLoaderTrigger = Exclude<ClientLoaderTrigger, "prefetch">;
+type ActiveRouteClientLoaderTrigger = Exclude<ClientLoaderTrigger, "boot" | "prefetch">;
+
 type ClientLoaderFn = (args: {
-	trigger: "boot" | "navigation" | "revalidation" | "prefetch";
+	trigger: ClientLoaderTrigger;
 	href: string;
 	historyState: unknown;
 	pattern: string;
@@ -207,6 +186,8 @@ type ClientLoaderServerState = {
 	};
 	viewData: unknown;
 };
+
+type ClientLoaderResult = { data: unknown } | { error: unknown } | undefined;
 
 type ApiResult<T> =
 	| {
@@ -268,7 +249,6 @@ export type ClientCore = {
 /////// Constants
 /////////////////////////////////////////////////////////////////////
 
-export const MAX_SCROLL_ENTRIES = 50;
 export const REFRESH_MAX_AGE_MS = 3333;
 export const MAX_REDIRECTS = 10;
 export const REVALIDATION_DEBOUNCE_MS = 8;
@@ -276,12 +256,12 @@ export const MAX_REVALIDATION_RETRIES = 8;
 export const REVALIDATION_BACKOFF_BASE_MS = 500;
 export const REVALIDATION_BACKOFF_CAP_MS = 30000;
 
-const REVALIDATION_OK: RevalidationResult = { ok: true };
-const REVALIDATION_BUILD_SKEW: RevalidationResult = {
+const revalidation_ok: RevalidationResult = { ok: true };
+const revalidation_build_skew: RevalidationResult = {
 	ok: false,
 	reason: "build_skew",
 };
-const REVALIDATION_EXHAUSTED: RevalidationResult = {
+const revalidation_exhausted: RevalidationResult = {
 	ok: false,
 	reason: "max_retries_exhausted",
 };
@@ -296,32 +276,6 @@ type TestOptions = {
 	hard_redirect?: (url: string) => void;
 	scroll_to?: (x: number, y: number) => void;
 };
-
-export function apply_scroll(
-	scroll: ScrollState | undefined,
-	test_options?: TestOptions,
-): void {
-	if (!scroll) {
-		return;
-	}
-	if ("hash" in scroll) {
-		const raw = scroll.hash.startsWith("#") ? scroll.hash.slice(1) : scroll.hash;
-		let id: string;
-		try {
-			id = decodeURIComponent(raw);
-		} catch {
-			id = raw;
-		}
-		document.getElementById(id)?.scrollIntoView();
-		return;
-	}
-	const scroll_to =
-		test_options?.scroll_to ??
-		((x: number, y: number) => {
-			window.scrollTo(x, y);
-		});
-	scroll_to(scroll.x, scroll.y);
-}
 
 export function make_entry_id(idx: number, pattern: string): string {
 	return `${idx}:${pattern}`;
@@ -356,138 +310,6 @@ function make_deferred<T>(): Deferred<T> {
 	return { promise, resolve };
 }
 
-type WorkIndicatorController = {
-	indicator: WorkIndicator;
-	configure: (options: WorkIndicatorOptions | undefined) => void;
-	set_vorma_active: (active: boolean) => void;
-};
-
-function create_work_indicator(): WorkIndicatorController {
-	let options: WorkIndicatorOptions | undefined;
-	let visible = false;
-	let show_timer: number | undefined;
-	let hide_timer: number | undefined;
-	const active_tokens = new Set<symbol>();
-	let release_vorma_work: (() => void) | undefined;
-
-	function clear_show_timer(): void {
-		if (show_timer === undefined) {
-			return;
-		}
-		clearTimeout(show_timer);
-		show_timer = undefined;
-	}
-
-	function clear_hide_timer(): void {
-		if (hide_timer === undefined) {
-			return;
-		}
-		clearTimeout(hide_timer);
-		hide_timer = undefined;
-	}
-
-	function sync(): void {
-		const current_options = options;
-		if (!current_options) {
-			clear_show_timer();
-			clear_hide_timer();
-			return;
-		}
-
-		if (active_tokens.size > 0) {
-			clear_hide_timer();
-			if (visible || show_timer !== undefined) {
-				return;
-			}
-			show_timer = window.setTimeout(() => {
-				show_timer = undefined;
-				const latest_options = options;
-				if (!latest_options || active_tokens.size === 0 || visible) {
-					return;
-				}
-				latest_options.start();
-				visible = true;
-			}, current_options.startDelayMs ?? 12);
-			return;
-		}
-
-		clear_show_timer();
-		if (!visible) {
-			return;
-		}
-		if (hide_timer !== undefined) {
-			return;
-		}
-		hide_timer = window.setTimeout(() => {
-			hide_timer = undefined;
-			const latest_options = options;
-			if (!latest_options || active_tokens.size > 0) {
-				return;
-			}
-			latest_options.stop();
-			visible = false;
-		}, current_options.stopDelayMs ?? 12);
-	}
-
-	function begin(): () => void {
-		const token = Symbol("v-work-indicator");
-		let released = false;
-		active_tokens.add(token);
-		sync();
-		return () => {
-			if (released) {
-				return;
-			}
-			released = true;
-			active_tokens.delete(token);
-			sync();
-		};
-	}
-
-	function configure(next_options: WorkIndicatorOptions | undefined): void {
-		const previous_options = options;
-		clear_show_timer();
-		clear_hide_timer();
-		if (visible && previous_options && previous_options !== next_options) {
-			previous_options.stop();
-			visible = false;
-		}
-		options = next_options;
-		sync();
-	}
-
-	function set_vorma_active(active: boolean): void {
-		if (active) {
-			if (!release_vorma_work) {
-				release_vorma_work = begin();
-			}
-			return;
-		}
-		if (!release_vorma_work) {
-			sync();
-			return;
-		}
-		release_vorma_work();
-		release_vorma_work = undefined;
-	}
-
-	return {
-		indicator: {
-			track: async <T>(promise: PromiseLike<T>): Promise<T> => {
-				const release = begin();
-				return Promise.resolve(promise).finally(() => {
-					release();
-				});
-			},
-			isActive: (): boolean => {
-				return active_tokens.size > 0;
-			},
-		},
-		configure,
-		set_vorma_active,
-	};
-}
-
 /////////////////////////////////////////////////////////////////////
 /////// Client Core
 /////////////////////////////////////////////////////////////////////
@@ -498,35 +320,6 @@ export function create_client_core(
 	test_options?: TestOptions,
 ): Result<ClientCore> {
 	/////// Internal Types
-
-	type HistoryPosition = {
-		href: string;
-		key: string;
-		state: unknown;
-	};
-
-	type RouteSnapshot = {
-		position: HistoryPosition;
-		route: RouteRecord;
-	};
-
-	type RouteRecord = {
-		params: Record<string, string>;
-		splat_values: string[];
-		matches: RouteMatchRecord[];
-		error: RouteErrorState | null;
-		client_build_id: string;
-	};
-
-	type RouteMatchRecord = {
-		pattern: string;
-		input: unknown;
-		module_url: string;
-		hmr_version: number;
-		module: Record<string, unknown>;
-		view_data: unknown;
-		client_loader_data: unknown;
-	};
 
 	type RouteRenderCommitReason =
 		| "initial"
@@ -594,8 +387,8 @@ export function create_client_core(
 		ac: AbortController;
 		seq: number;
 		data_promise: Promise<FetchResult>;
-		cl_prefetches: ClientLoaderPrefetch[];
-		cl_prefetches_ready: Promise<void>;
+		client_loader_prefetches: ClientLoaderPrefetch[];
+		client_loader_prefetches_ready: Promise<void>;
 	};
 
 	type ActiveFetch = FetchBase & {
@@ -691,8 +484,6 @@ export function create_client_core(
 				timer: ReturnType<typeof setTimeout>;
 		  };
 
-	type StoredScrollEntry = [string, { x: number; y: number }];
-
 	/*
 	Nine base facts:
 
@@ -742,7 +533,7 @@ export function create_client_core(
 		| undefined;
 	let deferred_submit_redirect: URL | null = null;
 	let last_activity_ts = Date.now();
-	let last_work_state: WorkState = empty_work_state();
+	let last_work_state: WorkState = create_empty_work_state();
 	let route_matcher: ClientMatcher | null = null;
 	const queued_route_patterns = new Set<string>();
 	const route_matcher_ready = create_client_matcher()
@@ -919,58 +710,6 @@ export function create_client_core(
 		);
 	}
 
-	/////// Scroll Storage
-
-	function get_scroll_pos(): { x: number; y: number } {
-		return { x: window.scrollX, y: window.scrollY };
-	}
-
-	function read_scroll_entries(): StoredScrollEntry[] {
-		try {
-			const raw = sessionStorage.getItem(SCROLL_STORAGE_KEY);
-			if (!raw) {
-				return [];
-			}
-			const parsed = JSON.parse(raw);
-			if (!Array.isArray(parsed)) {
-				return [];
-			}
-			return parsed.filter((e: unknown): e is StoredScrollEntry => {
-				return (
-					Array.isArray(e) &&
-					e.length === 2 &&
-					typeof e[0] === "string" &&
-					!!e[1] &&
-					typeof e[1] === "object" &&
-					Number.isFinite((e[1] as any).x) &&
-					Number.isFinite((e[1] as any).y)
-				);
-			});
-		} catch {
-			return [];
-		}
-	}
-
-	function save_scroll_for_key(key: string, pos: { x: number; y: number }): void {
-		const entries = read_scroll_entries().filter((e) => e[0] !== key);
-		entries.push([key, pos]);
-		if (entries.length > MAX_SCROLL_ENTRIES) {
-			entries.splice(0, entries.length - MAX_SCROLL_ENTRIES);
-		}
-		try {
-			sessionStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify(entries));
-		} catch {}
-	}
-
-	function get_scroll_for_key(key: string): { x: number; y: number } | undefined {
-		for (const [k, v] of read_scroll_entries()) {
-			if (k === key) {
-				return v;
-			}
-		}
-		return undefined;
-	}
-
 	function save_current_scroll(): void {
 		if (browser.key) {
 			save_scroll_for_key(browser.key, get_scroll_pos());
@@ -1024,7 +763,7 @@ export function create_client_core(
 
 	/////// Modules And Client Loader Prefetches
 
-	function make_cl_prefetch(input: {
+	function make_client_loader_prefetch(input: {
 		href: string;
 		history_state: unknown;
 		known_matches: ClientLoaderKnownMatch[];
@@ -1034,7 +773,7 @@ export function create_client_core(
 		route_input: unknown;
 		signal: AbortSignal;
 		splat_values: string[];
-		trigger: "navigation" | "revalidation" | "prefetch";
+		trigger: ClientLoaderPrefetchTrigger;
 	}): ClientLoaderPrefetch {
 		let resolve_server_state!: (v: ClientLoaderServerState) => void;
 		let reject_server_state!: (err: unknown) => void;
@@ -1123,14 +862,14 @@ export function create_client_core(
 	async function run_client_loaders(
 		routes: DecodedRoute[],
 		payload: DecodedPayload,
-		cl_prefetches: ClientLoaderPrefetch[],
-		trigger: "boot" | "navigation" | "revalidation",
+		client_loader_prefetches: ClientLoaderPrefetch[],
+		trigger: RouteClientLoaderTrigger,
 		href: string,
 		history_state: unknown,
 		signal: AbortSignal,
-	): Promise<Array<{ data: unknown } | { error: unknown } | undefined>> {
+	): Promise<ClientLoaderResult[]> {
 		const by_pattern = new Map<string, ClientLoaderPrefetch>();
-		for (const p of cl_prefetches) {
+		for (const p of client_loader_prefetches) {
 			by_pattern.set(p.pattern, p);
 		}
 		const err_idx = routes.findIndex((r) => r.server_error !== undefined);
@@ -1188,7 +927,7 @@ export function create_client_core(
 				}),
 			);
 		}
-		for (const p of cl_prefetches) {
+		for (const p of client_loader_prefetches) {
 			if (!retained_prefetches.has(p)) {
 				p.abort();
 			}
@@ -1208,7 +947,7 @@ export function create_client_core(
 		});
 
 		const settled = await Promise.allSettled(wrapped);
-		const out: Array<{ data: unknown } | { error: unknown } | undefined> = [];
+		const out: ClientLoaderResult[] = [];
 		for (const r of settled) {
 			if (r.status === "fulfilled") {
 				out.push(r.value !== undefined ? { data: r.value } : undefined);
@@ -1274,10 +1013,10 @@ export function create_client_core(
 	function build_route_record(
 		payload: DecodedPayload,
 		modules: Map<string, Record<string, unknown>>,
-		cl_results: Array<{ data: unknown } | { error: unknown } | undefined>,
+		client_loader_results: ClientLoaderResult[],
 	): RouteRecord {
 		const matches: RouteMatchRecord[] = payload.routes.map((route, i) => {
-			const cl_res = cl_results[i];
+			const client_loader_result = client_loader_results[i];
 			return {
 				pattern: route.pattern,
 				input: route.input,
@@ -1286,7 +1025,10 @@ export function create_client_core(
 					hmr_version_map.get(normalize_module_url(route.module_url)) ?? 0,
 				module: modules.get(route.module_url) ?? {},
 				view_data: route.view_data,
-				client_loader_data: cl_res && "data" in cl_res ? cl_res.data : undefined,
+				client_loader_data:
+					client_loader_result && "data" in client_loader_result
+						? client_loader_result.data
+						: undefined,
 			};
 		});
 		let error: RouteErrorState | null = null;
@@ -1300,14 +1042,19 @@ export function create_client_core(
 				source: "server",
 			};
 		} else {
-			const client_loader_error_idx = cl_results.findIndex((cl_res) => {
-				return cl_res !== undefined && "error" in cl_res;
-			});
+			const client_loader_error_idx = client_loader_results.findIndex(
+				(client_loader_result) => {
+					return (
+						client_loader_result !== undefined &&
+						"error" in client_loader_result
+					);
+				},
+			);
 			if (client_loader_error_idx !== -1) {
 				error = {
 					idx: client_loader_error_idx,
 					error: (
-						cl_results[client_loader_error_idx] as {
+						client_loader_results[client_loader_error_idx] as {
 							error: unknown;
 						}
 					).error,
@@ -1326,8 +1073,8 @@ export function create_client_core(
 
 	async function prepare_route(
 		payload: DecodedPayload,
-		cl_prefetches: ClientLoaderPrefetch[],
-		trigger: "navigation" | "revalidation",
+		client_loader_prefetches: ClientLoaderPrefetch[],
+		trigger: ActiveRouteClientLoaderTrigger,
 		href: string,
 		history_state: unknown,
 		signal: AbortSignal,
@@ -1336,10 +1083,10 @@ export function create_client_core(
 		if (!modules) {
 			return null;
 		}
-		const cl_results = await run_client_loaders(
+		const client_loader_results = await run_client_loaders(
 			payload.routes,
 			payload,
-			cl_prefetches,
+			client_loader_prefetches,
 			trigger,
 			href,
 			history_state,
@@ -1353,7 +1100,7 @@ export function create_client_core(
 			return null;
 		}
 		return {
-			route: build_route_record(payload, modules, cl_results),
+			route: build_route_record(payload, modules, client_loader_results),
 			apply_dom_side_effects: () => {
 				apply_head_and_title(
 					payload.title,
@@ -1464,8 +1211,8 @@ export function create_client_core(
 		prepare_ready?: Promise<void>,
 	): FetchBase & { prepare_ready: Promise<void>; intent: T } {
 		const ac = new AbortController();
-		const cl_prefetches: ClientLoaderPrefetch[] = [];
-		const cl_prefetches_ready = route_matcher_ready
+		const client_loader_prefetches: ClientLoaderPrefetch[] = [];
+		const client_loader_prefetches_ready = route_matcher_ready
 			.then(() => {
 				if (ac.signal.aborted) {
 					return;
@@ -1492,8 +1239,8 @@ export function create_client_core(
 				for (const pattern of match.patterns) {
 					const client_loader = client_loader_map[pattern];
 					if (client_loader) {
-						cl_prefetches.push(
-							make_cl_prefetch({
+						client_loader_prefetches.push(
+							make_client_loader_prefetch({
 								href: url.href,
 								history_state,
 								known_matches,
@@ -1557,8 +1304,8 @@ export function create_client_core(
 					};
 				}
 			})(),
-			cl_prefetches,
-			cl_prefetches_ready,
+			client_loader_prefetches,
+			client_loader_prefetches_ready,
 			prepare_ready: prepare_ready ?? Promise.resolve(),
 			intent,
 		};
@@ -1574,9 +1321,14 @@ export function create_client_core(
 		return active === f && !f.ac.signal.aborted;
 	}
 
-	// Core lifecycle for any fetch intent. The only place that drives
-	// fetch-to-publish: resolve response, follow redirects, prepare, publish.
-	async function run_active(f: ActiveFetch): Promise<void> {
+	function active_matches_expected_url(expected_url: URL | undefined): boolean {
+		return (
+			expected_url === undefined ||
+			matches_without_hash(new URL(browser.href), expected_url)
+		);
+	}
+
+	async function run_active(f: ActiveFetch, expected_url?: URL): Promise<void> {
 		active = f;
 		notify_work_update();
 
@@ -1585,6 +1337,9 @@ export function create_client_core(
 		try {
 			const result = await f.data_promise;
 			if (!can_commit(f)) {
+				return;
+			}
+			if (!active_matches_expected_url(expected_url)) {
 				return;
 			}
 
@@ -1623,25 +1378,30 @@ export function create_client_core(
 			const payload = decode_payload(result.data, f.url);
 			preload_modules(payload.deps);
 
-			await f.cl_prefetches_ready;
+			await f.client_loader_prefetches_ready;
 			if (!can_commit(f)) {
 				return;
 			}
 
-			await f.prepare_ready;
-			if (!can_commit(f)) {
-				return;
+			if (f.intent.kind === "nav") {
+				await f.prepare_ready;
+				if (!can_commit(f)) {
+					return;
+				}
 			}
 
 			const prepared = await prepare_route(
 				payload,
-				f.cl_prefetches,
+				f.client_loader_prefetches,
 				f.intent.kind === "reval" ? "revalidation" : "navigation",
 				f.url.href,
 				history_state_for_fetch(f.intent),
 				f.ac.signal,
 			);
 			if (!prepared || !can_commit(f)) {
+				return;
+			}
+			if (!active_matches_expected_url(expected_url)) {
 				return;
 			}
 
@@ -1816,61 +1576,6 @@ export function create_client_core(
 			do_publish();
 		}
 		return did_publish;
-	}
-
-	function route_to_render_state(
-		route: RouteRecord,
-		history_state: unknown,
-	): RouteRenderState {
-		return {
-			entries: route.matches.map((m) => {
-				return {
-					pattern: m.pattern,
-					input: m.input,
-					module_url: m.module_url,
-					hmr_version: m.hmr_version,
-					module: m.module,
-					view_data: m.view_data,
-					client_loader_data: m.client_loader_data,
-				};
-			}),
-			error: route.error,
-			params: route.params,
-			splat_values: route.splat_values,
-			client_build_id: route.client_build_id,
-			history_state,
-		};
-	}
-
-	function route_snapshot_to_state(snapshot: RouteSnapshot): RouteState {
-		return route_record_to_state(
-			snapshot.route,
-			snapshot.position.href,
-			snapshot.position.state,
-		);
-	}
-
-	function route_record_to_state(
-		route: RouteRecord,
-		href: string,
-		history_state: unknown,
-	): RouteState {
-		return {
-			href,
-			historyState: history_state,
-			clientBuildId: route.client_build_id,
-			params: route.params,
-			splatValues: route.splat_values,
-			matches: route.matches.map((m) => {
-				return {
-					pattern: m.pattern,
-					input: m.input,
-					viewData: m.view_data,
-					clientLoaderData: m.client_loader_data,
-				};
-			}),
-			error: route.error,
-		};
 	}
 
 	function to_route_update_reason(reason: RouteRenderCommitReason): RouteUpdateReason {
@@ -2144,7 +1849,7 @@ export function create_client_core(
 		const waiters = demand.waiters;
 		clear_refresh();
 		for (const w of waiters) {
-			w.resolve(REVALIDATION_OK);
+			w.resolve(revalidation_ok);
 		}
 	}
 
@@ -2156,7 +1861,7 @@ export function create_client_core(
 		const waiters = demand.waiters;
 		clear_refresh();
 		for (const w of waiters) {
-			w.resolve(REVALIDATION_BUILD_SKEW);
+			w.resolve(revalidation_build_skew);
 		}
 	}
 
@@ -2238,7 +1943,7 @@ export function create_client_core(
 		if (attempt >= MAX_REVALIDATION_RETRIES) {
 			clear_refresh();
 			for (const w of demand.waiters) {
-				w.resolve(REVALIDATION_EXHAUSTED);
+				w.resolve(revalidation_exhausted);
 			}
 			notify_work_update();
 			return;
@@ -2298,83 +2003,7 @@ export function create_client_core(
 			true,
 		);
 
-		// Guard: discard if URL path changes during flight (hash-only changes
-		// are OK; matches_without_hash on publish time handles it).
-		await run_active_with_url_guard(f, url);
-	}
-
-	async function run_active_with_url_guard(
-		f: ActiveFetch,
-		expected: URL,
-	): Promise<void> {
-		active = f;
-		notify_work_update();
-
-		try {
-			const result = await f.data_promise;
-			if (!can_commit(f)) {
-				return;
-			}
-			if (!matches_without_hash(new URL(browser.href), expected)) {
-				return;
-			}
-			if (result.kind === "build_skew") {
-				report_route_build_skew(f, result.response);
-				mark_refresh_build_skew();
-				return;
-			}
-			if (result.response) {
-				const did_detect_skew = report_route_build_skew(f, result.response);
-				if (did_detect_skew && result.kind === "redirect" && result.hard) {
-					mark_refresh_build_skew();
-					return;
-				}
-			}
-			if (result.kind === "error") {
-				return;
-			}
-			if (result.kind === "redirect") {
-				handle_redirect(f, result);
-				return;
-			}
-
-			const payload = decode_payload(result.data, f.url);
-			preload_modules(payload.deps);
-
-			await f.cl_prefetches_ready;
-			if (!can_commit(f)) {
-				return;
-			}
-
-			const prepared = await prepare_route(
-				payload,
-				f.cl_prefetches,
-				"revalidation",
-				f.url.href,
-				history_state_for_fetch(f.intent),
-				f.ac.signal,
-			);
-			if (!prepared || !can_commit(f)) {
-				return;
-			}
-			if (!matches_without_hash(new URL(browser.href), expected)) {
-				return;
-			}
-
-			const did_publish = await publish(f, prepared);
-			if (did_publish) {
-				last_activity_ts = Date.now();
-				mark_fresh(f);
-			}
-		} catch {
-			// swallow
-		} finally {
-			if (active === f) {
-				active = null;
-			}
-			notify_work_update();
-			maybe_revalidate();
-		}
+		await run_active(f, url);
 	}
 
 	/////// Prefetch
@@ -2402,7 +2031,7 @@ export function create_client_core(
 			const payload = decode_payload(result.data, f.url);
 			preload_modules(payload.deps);
 			const modules = await prepare_modules(payload, f.ac.signal);
-			await f.cl_prefetches_ready;
+			await f.client_loader_prefetches_ready;
 			if (!modules || f.ac.signal.aborted) {
 				if (prefetch === f) {
 					prefetch = null;
@@ -2411,14 +2040,14 @@ export function create_client_core(
 				return;
 			}
 			const by_pattern = new Map<string, ClientLoaderPrefetch>();
-			for (const p of f.cl_prefetches) {
+			for (const p of f.client_loader_prefetches) {
 				by_pattern.set(p.pattern, p);
 			}
 			const err_idx = payload.routes.findIndex((r) => {
 				return r.server_error !== undefined;
 			});
 			const known_matches = routes_to_known_matches(payload.routes);
-			const next_cl_prefetches: ClientLoaderPrefetch[] = [];
+			const next_client_loader_prefetches: ClientLoaderPrefetch[] = [];
 			const retained_prefetches = new Set<ClientLoaderPrefetch>();
 			for (let i = 0; i < payload.routes.length; i++) {
 				const route = payload.routes[i]!;
@@ -2429,7 +2058,7 @@ export function create_client_core(
 				}
 				if (existing) {
 					existing.resolve_server_state(build_server_state(payload.routes, i));
-					next_cl_prefetches.push(existing);
+					next_client_loader_prefetches.push(existing);
 					retained_prefetches.add(existing);
 					continue;
 				}
@@ -2437,7 +2066,7 @@ export function create_client_core(
 				if (!client_loader) {
 					continue;
 				}
-				const p = make_cl_prefetch({
+				const p = make_client_loader_prefetch({
 					href: f.url.href,
 					history_state: undefined,
 					known_matches,
@@ -2450,15 +2079,15 @@ export function create_client_core(
 					trigger: "prefetch",
 				});
 				p.resolve_server_state(build_server_state(payload.routes, i));
-				next_cl_prefetches.push(p);
+				next_client_loader_prefetches.push(p);
 				retained_prefetches.add(p);
 			}
-			for (const p of f.cl_prefetches) {
+			for (const p of f.client_loader_prefetches) {
 				if (!retained_prefetches.has(p)) {
 					p.abort();
 				}
 			}
-			f.cl_prefetches = next_cl_prefetches;
+			f.client_loader_prefetches = next_client_loader_prefetches;
 		} catch {
 			if (prefetch === f) {
 				prefetch = null;
@@ -2488,7 +2117,7 @@ export function create_client_core(
 		}
 		cancel_prefetch();
 
-		// Prefetch's prepare_ready resolves when modules + CL seeding are done.
+		// Prefetch's prepare_ready resolves when modules + client-loader seeding are done.
 		let resolve_prepare!: () => void;
 		const prepare_ready = new Promise<void>((r) => {
 			resolve_prepare = r;
@@ -2517,7 +2146,7 @@ export function create_client_core(
 		start = true,
 	): Promise<RevalidationResult> {
 		if (!sub.should_revalidate) {
-			return Promise.resolve(REVALIDATION_OK);
+			return Promise.resolve(revalidation_ok);
 		}
 		if (phase === "ready") {
 			const waiter = make_deferred<RevalidationResult>();
@@ -2528,7 +2157,7 @@ export function create_client_core(
 			return waiter.promise;
 		}
 		require_refresh("apiRequest", undefined, undefined, sub.skip_work_indicator);
-		return Promise.resolve(REVALIDATION_OK);
+		return Promise.resolve(revalidation_ok);
 	}
 
 	function settle_submission(
@@ -2587,7 +2216,7 @@ export function create_client_core(
 			return Promise.resolve({
 				success: false,
 				error: `submit only supports same-origin targets. Received: "${resolved.href}".`,
-				revalidationPromise: Promise.resolve(REVALIDATION_OK),
+				revalidationPromise: Promise.resolve(revalidation_ok),
 			});
 		}
 
@@ -2622,7 +2251,7 @@ export function create_client_core(
 			key: dedupe_key,
 			method,
 			href: resolved.href,
-			revalidation_promise: Promise.resolve(REVALIDATION_OK),
+			revalidation_promise: Promise.resolve(revalidation_ok),
 			settled: false,
 			should_revalidate,
 			skip_work_indicator: options?.skipWorkIndicator,
@@ -2898,15 +2527,6 @@ export function create_client_core(
 		return work;
 	}
 
-	function empty_work_state(): WorkState {
-		return {
-			navigation: null,
-			revalidation: null,
-			prefetch: null,
-			apiRequests: [],
-		};
-	}
-
 	function derive_work_state(): WorkState {
 		const active_fetch = active;
 		let revalidation: WorkState["revalidation"] = null;
@@ -3175,7 +2795,7 @@ export function create_client_core(
 			route: build_route_record(payload, modules, []),
 		};
 
-		const cl_results = await run_client_loaders(
+		const client_loader_results = await run_client_loaders(
 			payload.routes,
 			payload,
 			[],
@@ -3193,7 +2813,7 @@ export function create_client_core(
 			return R.err("Initial navigation produced no state");
 		}
 
-		const route = build_route_record(payload, modules, cl_results);
+		const route = build_route_record(payload, modules, client_loader_results);
 		route_snapshot = { position: browser, route };
 
 		apply_head_and_title(payload.title, payload.meta_head_els, payload.rest_head_els);

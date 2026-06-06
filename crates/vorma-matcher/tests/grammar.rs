@@ -219,3 +219,25 @@ fn builder_rejects_cross_pattern_collisions() {
 		);
 	}
 }
+
+#[test]
+fn deep_dynamic_paths_do_not_depend_on_call_stack_depth_or_u16_scores() {
+	let depth = 33_000usize;
+	let mut pattern = "/a".repeat(depth);
+	pattern.push_str("/:id");
+	let mut path = "/a".repeat(depth);
+	path.push_str("/tail");
+
+	let mut builder = MatcherBuilder::new(Options::default()).unwrap();
+	builder.register_pattern(&pattern).unwrap();
+	let matcher = builder.finish();
+
+	let found = matcher.find_best_match(&path).expect("expected best match");
+	assert_eq!(found.params, params(&[("id", "tail")]));
+
+	let nested = matcher
+		.find_nested_matches(&path)
+		.expect("expected nested match");
+	assert_eq!(nested.params, params(&[("id", "tail")]));
+	assert_eq!(nested.matches.len(), 1);
+}

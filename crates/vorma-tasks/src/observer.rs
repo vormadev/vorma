@@ -46,6 +46,11 @@ pub enum TaskEventKind {
 	CrossExecCtxCacheHit,
 	/// Value was not cached across execution contexts.
 	CrossExecCtxCacheMiss,
+	/// Shared caching was bypassed because the cross-execution-context cache is full.
+	CrossExecCtxCacheCapacityBypass {
+		/// Configured maximum number of cross-execution-context cache entries.
+		max_entries: usize,
+	},
 	/// Resolution waited for an in-flight cross-execution-context run.
 	CrossExecCtxInFlightWait,
 	/// Successful value was inserted into the cross-execution-context cache.

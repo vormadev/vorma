@@ -14,7 +14,6 @@ export type OutletSlot =
 const component_refs = new Map<
 	string,
 	{
-		impl: (props: any) => any;
 		wrapper: (props: any) => any;
 		holder: { current: (props: any) => any };
 	}
@@ -23,44 +22,46 @@ const component_refs = new Map<
 const error_refs = new Map<
 	string,
 	{
-		impl: (props: { error: unknown }) => any;
 		wrapper: (props: { error: unknown }) => any;
 		holder: { current: (props: { error: unknown }) => any };
 	}
 >();
 
+type StableFnEntry<F extends (props: any) => any> = {
+	wrapper: F;
+	holder: { current: F };
+};
+
+function get_stable_fn<F extends (props: any) => any>(
+	refs: Map<string, StableFnEntry<F>>,
+	key: string,
+	impl: F,
+): F {
+	let entry = refs.get(key);
+	if (!entry) {
+		const holder = { current: impl };
+		const wrapper = ((props: Parameters<F>[0]) => {
+			return holder.current(props);
+		}) as F;
+		entry = { wrapper, holder };
+		refs.set(key, entry);
+	}
+	entry.holder.current = impl;
+	return entry.wrapper;
+}
+
 function get_stable_component(
 	key: string,
 	impl: (props: any) => any,
 ): (props: any) => any {
-	let entry = component_refs.get(key);
-	if (!entry) {
-		const holder = { current: impl };
-		const wrapper = (props: any) => {
-			return holder.current(props);
-		};
-		entry = { impl, wrapper, holder };
-		component_refs.set(key, entry);
-	}
-	entry.holder.current = impl;
-	return entry.wrapper;
+	return get_stable_fn(component_refs, key, impl);
 }
 
 function get_stable_error_boundary(
 	key: string,
 	impl: (props: { error: unknown }) => any,
 ): (props: { error: unknown }) => any {
-	let entry = error_refs.get(key);
-	if (!entry) {
-		const holder = { current: impl };
-		const wrapper = (props: { error: unknown }) => {
-			return holder.current(props);
-		};
-		entry = { impl, wrapper, holder };
-		error_refs.set(key, entry);
-	}
-	entry.holder.current = impl;
-	return entry.wrapper;
+	return get_stable_fn(error_refs, key, impl);
 }
 
 export function resolve_outlet_slot(

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 #[cfg(test)]
 use std::sync::MutexGuard;
-use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use vorma_matcher::Params;
@@ -9,7 +9,9 @@ use vorma_tasks::ExecCtx;
 
 use crate::error::Error as VormaError;
 use crate::manifest::public_src_key;
+#[cfg(test)]
 use crate::response::ResponseEffects;
+use crate::response::ResponseEffectsCollector;
 
 use super::request::RawRequest;
 
@@ -23,7 +25,7 @@ pub struct RequestCtx<S, E, I = None> {
 	pub(in crate::mux) state: Arc<S>,
 	pub(in crate::mux) exec_ctx: ExecCtx<E>,
 	pub(in crate::mux) public_filemap: Arc<BTreeMap<String, String>>,
-	pub(in crate::mux) response_effects: Arc<Mutex<ResponseEffects>>,
+	pub(in crate::mux) response_effects: ResponseEffectsCollector,
 	pub(in crate::mux) request: RawRequest,
 	pub(in crate::mux) input: I,
 }
@@ -65,12 +67,10 @@ impl<S, E, I> RequestCtx<S, E, I> {
 
 	#[cfg(test)]
 	pub(crate) fn response_effects_mut(&self) -> MutexGuard<'_, ResponseEffects> {
-		self.response_effects
-			.lock()
-			.expect("response effects lock poisoned")
+		self.response_effects.mutate()
 	}
 
-	pub(crate) fn response_effects(&self) -> Arc<Mutex<ResponseEffects>> {
+	pub(crate) fn response_effects(&self) -> ResponseEffectsCollector {
 		self.response_effects.clone()
 	}
 
@@ -123,7 +123,7 @@ pub(crate) struct RequestBase<S, E> {
 	pub(in crate::mux) state: Arc<S>,
 	pub(in crate::mux) exec_ctx: ExecCtx<E>,
 	pub(in crate::mux) public_filemap: Arc<BTreeMap<String, String>>,
-	pub(in crate::mux) response_effects: Arc<Mutex<ResponseEffects>>,
+	pub(in crate::mux) response_effects: ResponseEffectsCollector,
 }
 
 impl<S, E, I> RequestCtx<S, E, I> {

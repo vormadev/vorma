@@ -24,7 +24,7 @@ export type RawMatcherExports = {
 let init_promise: Promise<RawMatcherExports> | null = null;
 
 const wasm_url = new URL("./vorma_client_wasm_bg.wasm", import.meta.url);
-const VITE_FS_URL_PREFIX = "/@fs/";
+const vite_fs_url_prefix = "/@fs/";
 
 async function instantiate_wasm(): Promise<RawMatcherExports> {
 	if (!import.meta.env || import.meta.env.MODE === "test") {
@@ -32,8 +32,8 @@ async function instantiate_wasm(): Promise<RawMatcherExports> {
 		const process = await import(/* @vite-ignore */ "node:process");
 		let file_url = wasm_url;
 		if (wasm_url.protocol !== "file:") {
-			const pathname = wasm_url.pathname.startsWith(VITE_FS_URL_PREFIX)
-				? wasm_url.pathname.slice(VITE_FS_URL_PREFIX.length - 1)
+			const pathname = wasm_url.pathname.startsWith(vite_fs_url_prefix)
+				? wasm_url.pathname.slice(vite_fs_url_prefix.length - 1)
 				: `.${wasm_url.pathname}`;
 			file_url = new URL(pathname, `file://${process.cwd()}/`);
 		}

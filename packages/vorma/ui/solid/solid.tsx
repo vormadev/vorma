@@ -16,6 +16,7 @@ import { Dynamic } from "solid-js/web";
 import {
 	apply_scroll,
 	create_adapter_base,
+	create_empty_work_state,
 	get_entry_key,
 	make_entry_id,
 	make_link_props,
@@ -109,12 +110,7 @@ export function createVormaClient<A extends AppConfig>(
 	});
 	const [link_state_version, set_link_state_version] = createSignal(0);
 	const [work_state, set_work_state] = createSignal<WorkState>(
-		{
-			navigation: null,
-			revalidation: null,
-			prefetch: null,
-			apiRequests: [],
-		},
+		create_empty_work_state(),
 		{ equals: jsonDeepEquals },
 	);
 
@@ -409,7 +405,7 @@ export function createVormaClient<A extends AppConfig>(
 		);
 	}
 
-	const RootOutletApp: Component = () => {
+	const RootOutletComponent: Component = () => {
 		return <RootOutlet />;
 	};
 
@@ -425,7 +421,7 @@ export function createVormaClient<A extends AppConfig>(
 			render: render_root
 				? () => {
 						return render_root({
-							RootOutlet: RootOutletApp,
+							RootOutlet: RootOutletComponent,
 							rootEl: core.getRootEl(),
 						});
 					}

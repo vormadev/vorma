@@ -9,7 +9,7 @@ use vorma::__private::manifest::Manifest;
 
 use crate::RunMode;
 use crate::build_layout::{RetainedViteManifest, promote_prod_tmp_vite_manifest};
-use crate::command_runner::{CommandRunError, run_command_inheriting_stdio};
+use crate::command_runner::{CommandRunError, run_command_inheriting_stdio_preserving_env};
 use crate::config::{ConfigError, VormaCfg, relative_path, to_cfg};
 use crate::constants::{VITE_PLUGIN_SERVER_PORT_ENV_KEY, VITE_PLUGIN_SERVER_TOKEN_ENV_KEY};
 use crate::generation::CommittedGeneration;
@@ -288,7 +288,7 @@ fn run_cmd(
 	command: Command,
 	build_cancel: Arc<crate::build_cancel::BuildCancel>,
 ) -> Result<(), CommandRunError> {
-	run_command_inheriting_stdio(command, &build_cancel)
+	run_command_inheriting_stdio_preserving_env(command, &build_cancel)
 }
 
 #[cfg(test)]

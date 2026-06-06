@@ -619,7 +619,9 @@ pub(crate) fn prepare_child_process(_cmd: &mut Command) {}
 pub(crate) fn clear_vorma_runtime_env(cmd: &mut Command) {
 	cmd.env_remove(ENV_KEY_IS_BUILD)
 		.env_remove(ENV_KEY_IS_DEV)
-		.env_remove(LIVE_STATE_MODE_ENV_KEY);
+		.env_remove(LIVE_STATE_MODE_ENV_KEY)
+		.env_remove(VITE_PLUGIN_SERVER_PORT_ENV_KEY)
+		.env_remove(VITE_PLUGIN_SERVER_TOKEN_ENV_KEY);
 }
 
 #[cfg(unix)]
@@ -810,6 +812,20 @@ mod tests {
 				.1,
 			None,
 		);
+		assert_eq!(
+			cmd.get_envs()
+				.find(|(k, _)| *k == VITE_PLUGIN_SERVER_PORT_ENV_KEY)
+				.unwrap()
+				.1,
+			None,
+		);
+		assert_eq!(
+			cmd.get_envs()
+				.find(|(k, _)| *k == VITE_PLUGIN_SERVER_TOKEN_ENV_KEY)
+				.unwrap()
+				.1,
+			None,
+		);
 	}
 
 	#[test]
@@ -891,7 +907,7 @@ mod tests {
 	}
 
 	#[test]
-	fn clear_vorma_runtime_env_removes_internal_mode_flags() {
+	fn clear_vorma_runtime_env_removes_internal_env_keys() {
 		let mut cmd = Command::new("example");
 
 		clear_vorma_runtime_env(&mut cmd);
@@ -913,6 +929,20 @@ mod tests {
 		assert_eq!(
 			cmd.get_envs()
 				.find(|(k, _)| *k == LIVE_STATE_MODE_ENV_KEY)
+				.unwrap()
+				.1,
+			None,
+		);
+		assert_eq!(
+			cmd.get_envs()
+				.find(|(k, _)| *k == VITE_PLUGIN_SERVER_PORT_ENV_KEY)
+				.unwrap()
+				.1,
+			None,
+		);
+		assert_eq!(
+			cmd.get_envs()
+				.find(|(k, _)| *k == VITE_PLUGIN_SERVER_TOKEN_ENV_KEY)
 				.unwrap()
 				.1,
 			None,

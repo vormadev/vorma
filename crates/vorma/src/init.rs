@@ -158,7 +158,15 @@ where
 			return Ok(response);
 		}
 
-		let request = raw_request(request);
+		let request = match raw_request(request) {
+			Ok(request) => request,
+			Err(_) => {
+				return Ok(plain_text_response(
+					StatusCode::BAD_REQUEST,
+					Bytes::from_static(b"Bad Request\n"),
+				));
+			}
+		};
 
 		if request_path_is_under_mount_root(request.path(), self.routes.resources.mount_root()) {
 			return self.handle_api_request(request).await;
@@ -375,9 +383,9 @@ fn runtime_dist_dir(root_dir: &Path, dist_dir: &str) -> Result<PathBuf, String> 
 	Ok(dist_dir)
 }
 
-fn raw_request(request: Request<Bytes>) -> RawRequest {
+fn raw_request(request: Request<Bytes>) -> Result<RawRequest, String> {
 	let (parts, body) = request.into_parts();
-	RawRequest::with_extensions(
+	RawRequest::try_with_extensions(
 		parts.method,
 		parts.uri,
 		parts.headers,

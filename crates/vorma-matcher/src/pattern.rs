@@ -81,10 +81,10 @@ pub(crate) struct InternalSegment {
 }
 
 impl InternalSegment {
-	pub(crate) fn best_match_rank(&self) -> u16 {
+	pub(crate) fn best_match_rank(&self) -> u32 {
 		match self.kind {
-			SegmentKind::Static | SegmentKind::Index => SCORE_STATIC as u16,
-			SegmentKind::Dynamic => SCORE_DYNAMIC as u16,
+			SegmentKind::Static | SegmentKind::Index => SCORE_STATIC as u32,
+			SegmentKind::Dynamic => SCORE_DYNAMIC as u32,
 			SegmentKind::Splat => 0,
 		}
 	}

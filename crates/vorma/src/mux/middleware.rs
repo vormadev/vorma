@@ -2,13 +2,13 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use http::StatusCode;
 use vorma_matcher::Params;
 use vorma_tasks::{Error as TaskError, ExecCtx, Result as TaskResult};
 
-use crate::response::{ResponseEffects, merge_response_effects};
+use crate::response::{ResponseEffects, ResponseEffectsCollector, merge_response_effects};
 
 use super::context::{None, RequestCtx};
 use super::error::Error;
@@ -144,7 +144,7 @@ where
 			async move {
 				let index = task_ctx.index();
 				let exec_ctx = task_ctx.exec_ctx();
-				let effects = Arc::new(Mutex::new(ResponseEffects::new()));
+				let effects = ResponseEffectsCollector::new();
 				let ctx = RequestCtx {
 					matched_pattern: invocation.matched_pattern,
 					params,
@@ -160,10 +160,7 @@ where
 				let ctx = ctx.clone_for_task(exec_ctx.clone(), None);
 				run_with_exec_cancellation(&exec_ctx, async move {
 					let output = middleware.run(ctx).await;
-					let effects = effects
-						.lock()
-						.expect("response effects lock poisoned")
-						.clone();
+					let effects = effects.snapshot();
 					let should_cancel_later = output.is_err() || effects.is_terminal_response();
 					if should_cancel_later {
 						task_ctx.cancel_later();

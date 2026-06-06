@@ -66,7 +66,7 @@ async fn nested_tasks_run_in_parallel_and_preserve_match_order() {
 	let (state, exec_ctx) = default_runtime();
 	let start = tokio::time::Instant::now();
 	let results = router
-		.execute_view_stack(
+		.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/parallel/123"),
@@ -137,7 +137,7 @@ async fn nested_middleware_terminal_effects_suppresses_matched_handlers() {
 	let matches = router.find_nested_matches("/items/123").unwrap().unwrap();
 	let (state, exec_ctx) = default_runtime();
 	let results = router
-		.execute_view_stack(
+		.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),
@@ -151,7 +151,7 @@ async fn nested_middleware_terminal_effects_suppresses_matched_handlers() {
 	assert_eq!(child_runs.load(Ordering::SeqCst), 0);
 	assert_eq!(
 		results.terminal_boundary(),
-		Some(ViewStackTerminalBoundary::Middleware)
+		Some(ViewExecutionTerminalBoundary::Middleware)
 	);
 	assert_eq!(results.matched_patterns(), ["/items", "/items/:id"]);
 	let middleware_effects = results.middleware_effects();
@@ -219,7 +219,7 @@ async fn nested_middleware_success_status_does_not_short_circuit_matched_handler
 	let matches = router.find_nested_matches("/items/123").unwrap().unwrap();
 	let (state, exec_ctx) = default_runtime();
 	let results = router
-		.execute_view_stack(
+		.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),
@@ -284,7 +284,7 @@ async fn nested_parent_error_cancels_descendants() {
 	let (state, exec_ctx) = default_runtime();
 	let results = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_view_stack(
+		router.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),
@@ -302,7 +302,7 @@ async fn nested_parent_error_cancels_descendants() {
 	));
 	assert_eq!(
 		results.terminal_boundary(),
-		Some(ViewStackTerminalBoundary::View { index: 0 })
+		Some(ViewExecutionTerminalBoundary::View { index: 0 })
 	);
 	assert!(matches!(
 		results.view_results()[1].error(),
@@ -343,7 +343,7 @@ async fn nested_parent_response_error_cancels_descendants() {
 	let (state, exec_ctx) = default_runtime();
 	let results = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_view_stack(
+		router.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),
@@ -407,7 +407,7 @@ async fn nested_parent_terminal_does_not_wait_for_uncancellable_child() {
 	let (state, exec_ctx) = default_runtime();
 	let results = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_view_stack(
+		router.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),
@@ -463,7 +463,7 @@ async fn nested_parent_bad_request_input_error_cancels_descendants() {
 	let (state, exec_ctx) = default_runtime();
 	let results = tokio::time::timeout(
 		Duration::from_millis(250),
-		router.execute_view_stack(
+		router.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),
@@ -516,7 +516,7 @@ async fn nested_handler_error_suppresses_own_success_effects_in_execution_result
 	let matches = router.find_nested_matches("/items/123").unwrap().unwrap();
 	let (state, exec_ctx) = default_runtime();
 	let results = router
-		.execute_view_stack(
+		.execute_view_matches(
 			state,
 			exec_ctx,
 			RawRequest::get("/items/123"),

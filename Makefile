@@ -1,5 +1,6 @@
 FUZZ_RUNS ?= 4096
 E2E_CMD_BASE = cd tests/framework && cargo run -p vorma-framework-tests --bin framework-bombadil --
+RUST_PACKAGE_TARGET_DIR = target/package-gate
 XTASK_CMD_BASE = cargo run --manifest-path xtask/Cargo.toml --quiet --
 
 #####################################################################
@@ -73,11 +74,12 @@ rust-fuzz:
 
 # Packages publishable crates in dependency order.
 rust-package:
-	cargo package -p vorma-matcher --allow-dirty
-	cargo package -p vorma-tasks --allow-dirty
-	cargo package -p vorma-macros --allow-dirty --no-verify
-	cargo package -p vorma --allow-dirty --no-verify
-	cargo package -p vorma-build --allow-dirty --no-verify
+	cargo clean --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma-matcher --allow-dirty --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma-tasks --allow-dirty --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma-macros --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma-build --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
 
 # Runs Rust tests and doctests.
 rust-test:
@@ -85,7 +87,7 @@ rust-test:
 	cargo test --workspace --doc
 
 # Runs the full Rust confidence gate.
-rust-gate: rust-fmt-check rust-policy rust-lint rust-test rust-build rust-doc rust-bench rust-build-client-wasm rust-fuzz rust-package
+rust-gate: rust-fmt-check rust-policy rust-lint rust-test rust-build rust-doc rust-bench rust-build-client-wasm rust-package rust-fuzz
 
 #####################################################################
 ####### TYPESCRIPT

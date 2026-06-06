@@ -96,10 +96,7 @@ where
 {
 	let response_effects = base.response_effects.clone();
 	let output = handler.run(request, base).await;
-	let mut effects = response_effects
-		.lock()
-		.expect("response effects lock poisoned")
-		.clone();
+	let mut effects = response_effects.snapshot();
 	record_bad_request_input_error(&mut effects, &output);
 	let (data, error, effects) = ErasedTaskRun { output, effects }.into_parts();
 	let effects = response_effects_for_task_output(error.is_some(), effects);

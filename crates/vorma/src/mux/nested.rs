@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 #[cfg(test)]
 use std::future::Future;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[cfg(test)]
 use serde::Serialize;
@@ -11,7 +11,7 @@ use vorma_tasks::ExecCtx;
 #[cfg(test)]
 use vorma_tasks::Result as TaskResult;
 
-use crate::response::ResponseEffects;
+use crate::response::{ResolvedResponseEffects, ResponseEffects, ResponseEffectsCollector};
 
 #[cfg(test)]
 use super::context::None;
@@ -191,14 +191,14 @@ where
 		Ok(self.inner.matcher.find_nested_matches(path))
 	}
 
-	pub async fn execute_view_stack(
+	pub async fn execute_view_matches(
 		&self,
 		state: Arc<S>,
 		exec_ctx: ExecCtx<E>,
 		request: RawRequest,
 		find_results: NestedMatches,
 		public_filemap: Arc<BTreeMap<String, String>>,
-	) -> Result<ViewStackExecution<E>, Error> {
+	) -> Result<ViewExecutionReport<E>, Error> {
 		let matches = find_results.matches;
 		let matched_patterns = matches
 			.iter()
@@ -213,7 +213,7 @@ where
 		for (matched, route) in matches.into_iter().zip(matched_routes) {
 			let pattern = matched.pattern.original_pattern().to_owned();
 			let index = view_results.len();
-			view_results.push(ViewExecutionResult {
+			view_results.push(ViewExecutionOutcome {
 				#[cfg(test)]
 				pattern: pattern.clone(),
 				data: Option::None,
@@ -247,13 +247,20 @@ where
 			for result in &mut view_results {
 				result.response_effects = Some(ResponseEffects::new());
 			}
-			return Ok(ViewStackExecution {
+			let resolved_response_effects = resolve_view_response_effects(
+				&middleware_effects,
+				&view_results,
+				Some(ViewExecutionTerminalBoundary::Middleware),
+			);
+			return Ok(ViewExecutionReport {
 				matched_patterns,
 				params,
 				splat_values,
+				#[cfg(test)]
 				middleware_effects,
 				view_results,
-				terminal_boundary: Some(ViewStackTerminalBoundary::Middleware),
+				terminal_boundary: Some(ViewExecutionTerminalBoundary::Middleware),
+				resolved_response_effects,
 			});
 		}
 		run_nested_bound(
@@ -270,13 +277,17 @@ where
 		)
 		.await?;
 		let terminal_boundary = terminal_view_boundary(&view_results);
-		Ok(ViewStackExecution {
+		let resolved_response_effects =
+			resolve_view_response_effects(&middleware_effects, &view_results, terminal_boundary);
+		Ok(ViewExecutionReport {
 			matched_patterns,
 			params,
 			splat_values,
+			#[cfg(test)]
 			middleware_effects,
 			view_results,
 			terminal_boundary,
+			resolved_response_effects,
 		})
 	}
 
@@ -349,16 +360,18 @@ struct NestedRunCtx<S, E> {
 	splat_values: Vec<String>,
 }
 
-pub struct ViewStackExecution<E> {
+pub struct ViewExecutionReport<E> {
 	matched_patterns: Vec<String>,
 	params: Params,
 	splat_values: Vec<String>,
+	#[cfg(test)]
 	middleware_effects: ResponseEffects,
-	view_results: Vec<ViewExecutionResult<E>>,
-	terminal_boundary: Option<ViewStackTerminalBoundary>,
+	view_results: Vec<ViewExecutionOutcome<E>>,
+	terminal_boundary: Option<ViewExecutionTerminalBoundary>,
+	resolved_response_effects: ResolvedResponseEffects,
 }
 
-impl<E> ViewStackExecution<E> {
+impl<E> ViewExecutionReport<E> {
 	pub fn matched_patterns(&self) -> &[String] {
 		&self.matched_patterns
 	}
@@ -371,26 +384,41 @@ impl<E> ViewStackExecution<E> {
 		&self.splat_values
 	}
 
-	pub fn view_results(&self) -> &[ViewExecutionResult<E>] {
+	#[cfg(test)]
+	pub fn view_results(&self) -> &[ViewExecutionOutcome<E>] {
 		&self.view_results
 	}
 
+	#[cfg(test)]
 	pub fn middleware_effects(&self) -> &ResponseEffects {
 		&self.middleware_effects
 	}
 
-	pub fn terminal_boundary(&self) -> Option<ViewStackTerminalBoundary> {
+	#[cfg(test)]
+	pub fn terminal_boundary(&self) -> Option<ViewExecutionTerminalBoundary> {
 		self.terminal_boundary
+	}
+
+	pub(crate) fn resolved_response_effects(&self) -> &ResolvedResponseEffects {
+		&self.resolved_response_effects
+	}
+
+	pub(crate) fn view_results_through_terminal(&self) -> &[ViewExecutionOutcome<E>] {
+		match self.terminal_boundary {
+			Some(ViewExecutionTerminalBoundary::Middleware) => &[],
+			Some(ViewExecutionTerminalBoundary::View { index }) => &self.view_results[..=index],
+			Option::None => &self.view_results,
+		}
 	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ViewStackTerminalBoundary {
+pub enum ViewExecutionTerminalBoundary {
 	Middleware,
 	View { index: usize },
 }
 
-pub struct ViewExecutionResult<E> {
+pub struct ViewExecutionOutcome<E> {
 	#[cfg(test)]
 	pattern: String,
 	data: Option<Value>,
@@ -399,7 +427,7 @@ pub struct ViewExecutionResult<E> {
 	ran_task: bool,
 }
 
-impl<E> ViewExecutionResult<E> {
+impl<E> ViewExecutionOutcome<E> {
 	#[cfg(test)]
 	pub fn pattern(&self) -> &str {
 		&self.pattern
@@ -445,7 +473,7 @@ where
 
 async fn run_nested_bound<S, E>(
 	ctx: NestedRunCtx<S, E>,
-	view_results: &mut [ViewExecutionResult<E>],
+	view_results: &mut [ViewExecutionOutcome<E>],
 	bound: Vec<NestedBoundTask<S, E>>,
 ) -> Result<(), Error>
 where
@@ -485,7 +513,7 @@ where
 	S: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	let effects = Arc::new(Mutex::new(ResponseEffects::new()));
+	let effects = ResponseEffectsCollector::new();
 	let exec_ctx = ctx.exec_ctx;
 	let handler = bound_task.handler;
 	let pattern = bound_task.pattern.clone();
@@ -537,22 +565,51 @@ where
 }
 
 fn terminal_view_boundary<E>(
-	view_results: &[ViewExecutionResult<E>],
-) -> Option<ViewStackTerminalBoundary> {
+	view_results: &[ViewExecutionOutcome<E>],
+) -> Option<ViewExecutionTerminalBoundary> {
 	view_results.iter().enumerate().find_map(|(index, result)| {
 		if result.error().is_some()
 			|| result
 				.response_effects()
 				.is_some_and(ResponseEffects::is_terminal_response)
 		{
-			return Some(ViewStackTerminalBoundary::View { index });
+			return Some(ViewExecutionTerminalBoundary::View { index });
 		}
 		Option::None
 	})
 }
 
+fn resolve_view_response_effects<E>(
+	middleware_effects: &ResponseEffects,
+	view_results: &[ViewExecutionOutcome<E>],
+	terminal_boundary: Option<ViewExecutionTerminalBoundary>,
+) -> ResolvedResponseEffects {
+	let mut effects_list = Vec::new();
+	effects_list.push(Some(middleware_effects));
+
+	if matches!(
+		terminal_boundary,
+		Some(ViewExecutionTerminalBoundary::Middleware)
+	) {
+		return crate::response::resolve_response_effects(&effects_list);
+	}
+
+	let terminal_view_index = match terminal_boundary {
+		Some(ViewExecutionTerminalBoundary::View { index }) => Some(index),
+		Some(ViewExecutionTerminalBoundary::Middleware) | Option::None => Option::None,
+	};
+	for (index, result) in view_results.iter().enumerate() {
+		if terminal_view_index.is_some_and(|terminal_view_index| index > terminal_view_index) {
+			break;
+		}
+		effects_list.push(result.response_effects());
+	}
+
+	crate::response::resolve_response_effects(&effects_list)
+}
+
 fn apply_nested_output<E>(
-	view_results: &mut [ViewExecutionResult<E>],
+	view_results: &mut [ViewExecutionOutcome<E>],
 	output: NestedTaskOutput<E>,
 ) -> Result<(), Error> {
 	let view_results_len = view_results.len();

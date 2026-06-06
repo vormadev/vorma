@@ -12,7 +12,9 @@ use crate::error::{Error, Result};
 use crate::key::{KeyData, PathKey, TaskId};
 use crate::observer::{TaskEvent, TaskEventKind, TaskEventOutcome, TaskObserver, TaskRunSource};
 use crate::overrides::{TaskOverride, TaskOverrides};
-use crate::store::{RunningGuard, Slot, SlotClaim, Store, StoredOutcome, decode_outcome};
+use crate::store::{
+	RunningGuard, Slot, SlotClaim, SlotLookup, Store, StoredOutcome, decode_outcome,
+};
 
 static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -166,6 +168,11 @@ pub struct TasksOptions<E = Box<dyn std::error::Error + Send + Sync>> {
 	pub observer: Option<Arc<dyn TaskObserver>>,
 	/// Typed task-body substitutions for test and dry-run runtimes.
 	pub overrides: Option<TaskOverrides<E>>,
+	/// Maximum number of entries retained by the cross-execution-context cache.
+	///
+	/// When this limit is reached, existing entries remain usable and new keys run
+	/// without shared caching.
+	pub max_cross_exec_ctx_cache_entries: usize,
 }
 
 impl<E> Tasks<E>
@@ -178,7 +185,7 @@ where
 			inner: Arc::new(TasksInner {
 				clock: options.clock,
 				observer: options.observer,
-				shared: Store::new(),
+				shared: Store::new(Some(options.max_cross_exec_ctx_cache_entries)),
 				overrides: options.overrides,
 			}),
 		}
@@ -200,7 +207,7 @@ where
 	pub fn exec_ctx(&self, cancel: CancelToken) -> ExecCtx<E> {
 		ExecCtx {
 			tasks: self.clone(),
-			local: Arc::new(Store::new()),
+			local: Arc::new(Store::new(None)),
 			cancel,
 			path: Arc::new(Vec::new()),
 		}
@@ -252,6 +259,7 @@ where
 			clock: Arc::new(SystemClock::new()),
 			observer: None,
 			overrides: None,
+			max_cross_exec_ctx_cache_entries: 4096,
 		}
 	}
 }
@@ -395,7 +403,10 @@ where
 			return Err(Error::Cancelled);
 		}
 
-		let local_slot = self.local.slot_for(&key, None, self.tasks.now()).slot;
+		let local_slot = match self.local.slot_for(&key, None, self.tasks.now()) {
+			SlotLookup::Found { slot, .. } => slot,
+			SlotLookup::CapacityBypass { .. } => unreachable!("local task store is unbounded"),
+		};
 		let local_guard = match local_slot.claim() {
 			SlotClaim::Ready(outcome) => {
 				self.tasks.observe(
@@ -444,37 +455,7 @@ where
 				Err(error) => return Err(error),
 			}
 		} else {
-			let child_ctx = task.child_ctx(self, &input);
-			let started_at = self.tasks.now();
-			self.tasks.observe(
-				task.inner.id,
-				task.inner.name,
-				TaskEventKind::RunStarted {
-					source: TaskRunSource::ExecCtx,
-				},
-			);
-			let outcome = tokio::select! {
-				result = task.call(child_ctx, input) => result,
-				_ = self.cancel.cancelled() => {
-					self.tasks.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
-					return Err(Error::Cancelled);
-				},
-			};
-			self.tasks.observe(
-				task.inner.id,
-				task.inner.name,
-				TaskEventKind::RunCompleted {
-					source: TaskRunSource::ExecCtx,
-					outcome: task_event_outcome(&outcome),
-					duration: self.tasks.now().saturating_duration_since(started_at),
-				},
-			);
-			if self.cancel.is_cancelled() {
-				self.tasks
-					.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
-				return Err(Error::Cancelled);
-			}
-			outcome
+			self.run_in_exec_ctx(task.clone(), input).await?
 		};
 
 		if outcome.is_cancelled() {
@@ -486,6 +467,48 @@ where
 		local_slot.finish(outcome.clone(), None);
 		local_guard.disarm();
 		decode_outcome::<O, E>(outcome, task.inner.name)
+	}
+
+	async fn run_in_exec_ctx<I, O>(
+		&self,
+		task: Task<I, O, E>,
+		input: I,
+	) -> Result<StoredOutcome<E>, E>
+	where
+		I: Clone + Eq + Hash + Send + Sync + 'static,
+		O: Send + Sync + 'static,
+	{
+		let child_ctx = task.child_ctx(self, &input);
+		let started_at = self.tasks.now();
+		self.tasks.observe(
+			task.inner.id,
+			task.inner.name,
+			TaskEventKind::RunStarted {
+				source: TaskRunSource::ExecCtx,
+			},
+		);
+		let outcome = tokio::select! {
+			result = task.call(child_ctx, input) => result,
+			_ = self.cancel.cancelled() => {
+				self.tasks.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+				return Err(Error::Cancelled);
+			},
+		};
+		self.tasks.observe(
+			task.inner.id,
+			task.inner.name,
+			TaskEventKind::RunCompleted {
+				source: TaskRunSource::ExecCtx,
+				outcome: task_event_outcome(&outcome),
+				duration: self.tasks.now().saturating_duration_since(started_at),
+			},
+		);
+		if self.cancel.is_cancelled() {
+			self.tasks
+				.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+			return Err(Error::Cancelled);
+		}
+		Ok(outcome)
 	}
 
 	async fn wait_for_local<O>(
@@ -539,16 +562,43 @@ where
 			.inner
 			.shared
 			.slot_for(key, Some(ttl), self.tasks.now());
-		let shared_slot = shared_lookup.slot;
-		if shared_lookup.stale_slots_removed > 0 {
-			self.tasks.observe(
-				task.inner.id,
-				task.inner.name,
-				TaskEventKind::CrossExecCtxStaleSlotRemoved {
-					count: shared_lookup.stale_slots_removed,
-				},
-			);
-		}
+		let shared_slot = match shared_lookup {
+			SlotLookup::Found {
+				slot,
+				stale_slots_removed,
+			} => {
+				if stale_slots_removed > 0 {
+					self.tasks.observe(
+						task.inner.id,
+						task.inner.name,
+						TaskEventKind::CrossExecCtxStaleSlotRemoved {
+							count: stale_slots_removed,
+						},
+					);
+				}
+				slot
+			}
+			SlotLookup::CapacityBypass {
+				stale_slots_removed,
+				max_entries,
+			} => {
+				if stale_slots_removed > 0 {
+					self.tasks.observe(
+						task.inner.id,
+						task.inner.name,
+						TaskEventKind::CrossExecCtxStaleSlotRemoved {
+							count: stale_slots_removed,
+						},
+					);
+				}
+				self.tasks.observe(
+					task.inner.id,
+					task.inner.name,
+					TaskEventKind::CrossExecCtxCacheCapacityBypass { max_entries },
+				);
+				return self.run_in_exec_ctx(task, input).await;
+			}
+		};
 
 		match shared_slot.claim() {
 			SlotClaim::Ready(outcome) => {

@@ -47,7 +47,17 @@ pub struct RawRequest {
 
 impl RawRequest {
 	pub fn new(method: Method, uri: Uri, headers: HeaderMap, body: Bytes) -> Self {
-		Self::with_extensions(method, uri, headers, body, Extensions::new())
+		Self::try_new(method, uri, headers, body)
+			.expect("request path should be valid UTF-8 after percent decoding")
+	}
+
+	pub fn try_new(
+		method: Method,
+		uri: Uri,
+		headers: HeaderMap,
+		body: Bytes,
+	) -> Result<Self, String> {
+		Self::try_with_extensions(method, uri, headers, body, Extensions::new())
 	}
 
 	pub fn with_extensions(
@@ -57,17 +67,29 @@ impl RawRequest {
 		body: Bytes,
 		extensions: Extensions,
 	) -> Self {
+		Self::try_with_extensions(method, uri, headers, body, extensions)
+			.expect("request path should be valid UTF-8 after percent decoding")
+	}
+
+	pub fn try_with_extensions(
+		method: Method,
+		uri: Uri,
+		headers: HeaderMap,
+		body: Bytes,
+		extensions: Extensions,
+	) -> Result<Self, String> {
 		let decoded_path = percent_decode_str(uri.path())
-			.decode_utf8_lossy()
+			.decode_utf8()
+			.map_err(|_| "request path must be valid UTF-8 after percent decoding".to_owned())?
 			.into_owned();
-		Self {
+		Ok(Self {
 			method,
 			uri,
 			decoded_path,
 			headers,
 			body,
 			extensions,
-		}
+		})
 	}
 
 	pub fn get(uri: impl AsRef<str>) -> Self {

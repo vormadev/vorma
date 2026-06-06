@@ -88,6 +88,18 @@ where
 	})
 }
 
+fn tasks_with_cache_capacity_observer<E, F>(max_entries: usize, observer: F) -> Tasks<E>
+where
+	E: Send + Sync + 'static,
+	F: vorma_tasks::TaskObserver,
+{
+	Tasks::new(TasksOptions {
+		max_cross_exec_ctx_cache_entries: max_entries,
+		observer: Some(Arc::new(observer)),
+		..TasksOptions::default()
+	})
+}
+
 fn event_log() -> (
 	Arc<Mutex<Vec<TaskEvent>>>,
 	impl Fn(TaskEvent) + Send + Sync + 'static,
@@ -840,6 +852,25 @@ async fn cross_exec_ctx_cache_retains_success_after_non_cancellation_error_retry
 	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
 	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
 	assert_eq!(runs.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn cross_exec_ctx_cache_capacity_bypasses_new_entries_without_eviction() {
+	let runs = Arc::new(AtomicUsize::new(0));
+	let task = counted_task(runs.clone(), Duration::from_secs(60));
+	let (events, observer) = event_log();
+	let tasks = tasks_with_cache_capacity_observer(1, observer);
+
+	assert_eq!(*task.run(&exec_ctx(&tasks), 1).await.unwrap(), 2);
+	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
+	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
+	assert_eq!(*task.run(&exec_ctx(&tasks), 1).await.unwrap(), 2);
+
+	assert_eq!(runs.load(Ordering::SeqCst), 3);
+	assert!(
+		event_kinds(&events)
+			.contains(&TaskEventKind::CrossExecCtxCacheCapacityBypass { max_entries: 1 })
+	);
 }
 
 #[tokio::test]

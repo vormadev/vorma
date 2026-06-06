@@ -299,7 +299,19 @@ impl File {
 
 		if is_physical {
 			src_path = self.src_dir.join(&self.src_path_rel);
-			let info = fs::metadata(&src_path)?;
+			let info = fs::symlink_metadata(&src_path)?;
+			if info.file_type().is_symlink() {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					format!("source file cannot be a symlink: {}", src_path.display()),
+				));
+			}
+			if !info.is_file() {
+				return Err(io::Error::new(
+					io::ErrorKind::InvalidInput,
+					format!("source path is not a file: {}", src_path.display()),
+				));
+			}
 			let mod_time = info.modified()?;
 			if self.mod_time != Some(mod_time) {
 				needs_hash = true;
@@ -559,6 +571,31 @@ mod tests {
 		std::os::unix::fs::symlink(&outside, src_dir.join("linked.txt")).unwrap();
 
 		let err = collect_physical(&src_dir, "vorma_out_").unwrap_err();
+
+		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+		assert!(err.to_string().contains("symlink"));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn physical_file_hash_rejects_symlink_files() {
+		let fixture = test_dir("physical_file_hash_rejects_symlink_files");
+		let src_dir = fixture.join("public");
+		let outside = fixture.join("secret.txt");
+		fs::create_dir_all(&src_dir).unwrap();
+		fs::write(&outside, "secret").unwrap();
+		std::os::unix::fs::symlink(&outside, src_dir.join("linked.txt")).unwrap();
+		let mut file = File {
+			src_dir,
+			src_path_rel: "linked.txt".to_owned(),
+			bytes: None,
+			out_name_prefix: "vorma_out_".to_owned(),
+			mod_time: None,
+			out_name: String::new(),
+			size: 0,
+		};
+
+		let err = file.hash().unwrap_err();
 
 		assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
 		assert!(err.to_string().contains("symlink"));

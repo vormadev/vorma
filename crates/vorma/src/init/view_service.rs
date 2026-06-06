@@ -49,15 +49,15 @@ where
 			snapshot.manifest_handle(),
 			request.clone(),
 		));
-		let view_stack = self.routes.views.execute_view_stack(
+		let view_report = self.routes.views.execute_view_matches(
 			self.state.clone(),
 			exec_ctx,
 			request.clone(),
 			match_results,
 			public_filemap,
 		);
-		let (document, view_stack) = match tokio::try_join!(document, async {
-			view_stack.await.map_err(|err| err.to_string())
+		let (document, view_report) = match tokio::try_join!(document, async {
+			view_report.await.map_err(|err| err.to_string())
 		}) {
 			Ok(results) => results,
 			Err(_) => {
@@ -69,7 +69,7 @@ where
 			request: &request,
 			manifest: snapshot.manifest(),
 			document: &document,
-			view_stack: &view_stack,
+			view_report: &view_report,
 		}) {
 			Ok(response) => Ok(response),
 			Err(_) => internal_server_error_with_client_build_id(snapshot.client_build_id()),

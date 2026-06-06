@@ -7,8 +7,8 @@ use crate::envutil::is_dev;
 use crate::error::ViewErrorClientMsg;
 use crate::htmlutil::Element;
 use crate::manifest::Manifest;
-use crate::mux::{RouteExecutionError, ViewStackExecution};
-use crate::response::{ResponseEffects, merge_response_effects};
+use crate::mux::{RouteExecutionError, ViewExecutionReport};
+use crate::response::{ResolvedResponseEffects, ResponseStatusPolicy};
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub(crate) struct SsrPayload {
@@ -57,6 +57,12 @@ pub(crate) struct ViewPayload {
 	pub(crate) views_data: Vec<serde_json::Value>,
 }
 
+pub(crate) struct ViewPayloadProjection {
+	pub(crate) payload: ViewPayload,
+	pub(crate) resolved_effects: ResolvedResponseEffects,
+	pub(crate) response_status_policy: ResponseStatusPolicy,
+}
+
 fn is_false(value: &bool) -> bool {
 	!*value
 }
@@ -64,31 +70,30 @@ fn is_false(value: &bool) -> bool {
 pub(crate) fn build_view_payload<E>(
 	manifest: &Manifest,
 	document: &Document,
-	view_stack: &ViewStackExecution<E>,
+	view_report: &ViewExecutionReport<E>,
 	include_prod_preloads: bool,
-) -> Result<(ViewPayload, ResponseEffects), String>
+) -> Result<ViewPayloadProjection, String>
 where
 	E: ViewErrorClientMsg,
 {
-	let response_effects_refs = response_effects_refs_for_payload(view_stack);
-	let merged_effects = merge_response_effects(&response_effects_refs);
-	let effects_short_circuited = merged_effects.is_terminal_response();
-	let matched_patterns = view_stack.matched_patterns().to_vec();
-	let params = view_stack
+	let resolved_effects = view_report.resolved_response_effects().clone();
+	let effects = resolved_effects.effects();
+	let matched_patterns = view_report.matched_patterns().to_vec();
+	let params = view_report
 		.params()
 		.iter()
 		.map(|(key, value)| (key.clone(), value.clone()))
 		.collect();
-	let splat_values = view_stack.splat_values().to_vec();
+	let splat_values = view_report.splat_values().to_vec();
 
-	if effects_short_circuited {
+	if resolved_effects.is_terminal() {
 		let mut raw_head_els = Vec::new();
-		if let Some(head_builder) = merged_effects.head_builder_ref() {
+		if let Some(head_builder) = effects.head_builder_ref() {
 			raw_head_els.extend_from_slice(head_builder.elements());
 		}
 		let prepared_head = document.prepare_head(&raw_head_els);
-		return Ok((
-			ViewPayload {
+		return Ok(ViewPayloadProjection {
+			payload: ViewPayload {
 				matched_patterns,
 				params,
 				splat_values,
@@ -97,8 +102,9 @@ where
 				rest_head_els: prepared_head.rest,
 				..ViewPayload::default()
 			},
-			merged_effects,
-		));
+			resolved_effects,
+			response_status_policy: ResponseStatusPolicy::Apply,
+		});
 	}
 
 	let search_schemas = matched_patterns
@@ -129,11 +135,11 @@ where
 	let mut outermost_server_err = String::new();
 	let mut outermost_server_err_idx = Option::None;
 
-	let terminal_view_index = terminal_view_index(view_stack);
+	let view_results = view_report.view_results_through_terminal();
 	for (idx, pattern) in matched_patterns.iter().enumerate() {
-		if terminal_view_index.is_some_and(|terminal_view_index| idx > terminal_view_index) {
+		let Some(result) = view_results.get(idx) else {
 			break;
-		}
+		};
 		let route_mod = manifest
 			.client_views
 			.get(pattern)
@@ -146,16 +152,12 @@ where
 			&route_mod.css_bundle_urls,
 		);
 
-		let result = view_stack
-			.view_results()
-			.get(idx)
-			.ok_or_else(|| format!("missing view result for matched pattern: {pattern}"))?;
 		if let Some(error) = result.error() {
 			outermost_server_err = view_client_msg(error);
 			outermost_server_err_idx = Some(idx);
 			break;
 		}
-		if result.ran_task() && !effects_short_circuited {
+		if result.ran_task() {
 			let data = result
 				.data()
 				.ok_or_else(|| format!("missing view data for executed view pattern: {pattern}"))?;
@@ -164,7 +166,7 @@ where
 	}
 
 	let mut raw_head_els = Vec::new();
-	if let Some(head_builder) = merged_effects.head_builder_ref() {
+	if let Some(head_builder) = effects.head_builder_ref() {
 		raw_head_els.extend_from_slice(head_builder.elements());
 	}
 
@@ -223,38 +225,16 @@ where
 		css_bundles,
 		views_data,
 	};
-	Ok((payload, merged_effects))
-}
-
-fn terminal_view_index<E>(view_stack: &ViewStackExecution<E>) -> Option<usize> {
-	match view_stack.terminal_boundary() {
-		Some(crate::mux::ViewStackTerminalBoundary::View { index }) => Some(index),
-		Some(crate::mux::ViewStackTerminalBoundary::Middleware) | Option::None => Option::None,
-	}
-}
-
-fn response_effects_refs_for_payload<E>(
-	view_stack: &ViewStackExecution<E>,
-) -> Vec<Option<&ResponseEffects>> {
-	let mut effects_list = Vec::new();
-	effects_list.push(Some(view_stack.middleware_effects()));
-
-	if matches!(
-		view_stack.terminal_boundary(),
-		Some(crate::mux::ViewStackTerminalBoundary::Middleware)
-	) {
-		return effects_list;
-	}
-
-	let terminal_view_index = terminal_view_index(view_stack);
-	for (idx, result) in view_stack.view_results().iter().enumerate() {
-		if terminal_view_index.is_some_and(|terminal_view_index| idx > terminal_view_index) {
-			break;
-		}
-		effects_list.push(result.response_effects());
-	}
-
-	effects_list
+	let response_status_policy = if payload.outermost_server_err_idx.is_some() {
+		ResponseStatusPolicy::Suppress
+	} else {
+		ResponseStatusPolicy::Apply
+	};
+	Ok(ViewPayloadProjection {
+		payload,
+		resolved_effects,
+		response_status_policy,
+	})
 }
 
 fn view_client_msg<E>(error: &RouteExecutionError<E>) -> String

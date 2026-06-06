@@ -1,7 +1,8 @@
 import { init_client_wasm, type RawMatcherExports } from "./load.ts";
 
-const STATUS_NO_MATCH = 0;
-const STATUS_MATCH = 1;
+const status_no_match = 0;
+const status_match = 1;
+const max_input_bytes = 64 * 1024;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -20,7 +21,13 @@ export type ClientMatcher = {
 
 function write_input(exports: RawMatcherExports, value: string): [number, number] {
 	const bytes = encoder.encode(value);
+	if (bytes.length > max_input_bytes) {
+		throw new Error("Vorma client matcher input is too large");
+	}
 	const ptr = exports.vorma_client_matcher_alloc(bytes.length);
+	if (ptr === 0) {
+		throw new Error("Vorma client matcher input allocation failed");
+	}
 	new Uint8Array(exports.memory.buffer, ptr, bytes.length).set(bytes);
 	return [ptr, bytes.length];
 }
@@ -111,7 +118,7 @@ export async function create_client_matcher(): Promise<ClientMatcher> {
 					len,
 				);
 			});
-			if (status !== STATUS_MATCH) {
+			if (status !== status_match) {
 				throw matcher_error("pattern registration", status);
 			}
 		},
@@ -126,10 +133,10 @@ export async function create_client_matcher(): Promise<ClientMatcher> {
 					len,
 				);
 			});
-			if (status === STATUS_NO_MATCH) {
+			if (status === status_no_match) {
 				return null;
 			}
-			if (status !== STATUS_MATCH) {
+			if (status !== status_match) {
 				throw matcher_error("path match", status);
 			}
 			return decode_match(read_output(exports));

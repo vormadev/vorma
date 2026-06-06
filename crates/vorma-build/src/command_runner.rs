@@ -22,11 +22,10 @@ pub(crate) enum CommandRunError {
 	Cancelled,
 }
 
-pub(crate) fn run_command_inheriting_stdio(
+pub(crate) fn run_command_inheriting_stdio_preserving_env(
 	mut command: Command,
 	build_cancel: &Arc<BuildCancel>,
 ) -> Result<(), CommandRunError> {
-	clear_vorma_runtime_env(&mut command);
 	prepare_child_process(&mut command);
 	command.stdout(Stdio::inherit()).stderr(Stdio::inherit());
 	let runtime =
@@ -174,3 +173,22 @@ impl std::fmt::Display for CommandRunError {
 }
 
 impl std::error::Error for CommandRunError {}
+
+#[cfg(test)]
+mod tests {
+	use crate::constants::VITE_PLUGIN_SERVER_PORT_ENV_KEY;
+
+	use super::*;
+
+	#[cfg(unix)]
+	#[test]
+	fn inheriting_stdio_preserving_env_keeps_explicit_internal_env() {
+		let script = format!("test \"${VITE_PLUGIN_SERVER_PORT_ENV_KEY}\" = \"4321\"");
+		let mut command = Command::new("sh");
+		command.args(["-c", &script]);
+		command.env(VITE_PLUGIN_SERVER_PORT_ENV_KEY, "4321");
+
+		run_command_inheriting_stdio_preserving_env(command, &Arc::new(BuildCancel::default()))
+			.unwrap();
+	}
+}

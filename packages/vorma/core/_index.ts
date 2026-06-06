@@ -11,6 +11,7 @@ export {
 export {
 	apply_scroll,
 	create_client_core,
+	create_empty_work_state,
 	make_entry_id,
 	type BuildSkewDetectedEvent,
 	type ClientCommit,

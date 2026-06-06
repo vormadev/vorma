@@ -76,10 +76,7 @@ impl Matcher {
 			}
 		}
 
-		let mut best: Option<Match> = None;
-		self.dfs_best(&self.root_node, &segments, 0, 0, &mut best, has_trailing);
-
-		let mut best = best?;
+		let mut best = self.find_best_dynamic_match(&segments, has_trailing)?;
 
 		if best.pattern.num_dynamic_param_segs > 0 {
 			let mut params = Params::with_capacity(best.pattern.num_dynamic_param_segs);
@@ -173,8 +170,7 @@ impl Matcher {
 					},
 				);
 			}
-			let mut params = Params::new();
-			self.dfs_nested(&self.root_node, &real_segs, 0, &mut params, &mut matches);
+			self.collect_nested_dynamic_matches(&real_segs, &mut matches);
 		}
 
 		if matches.contains_key("/*") {
@@ -195,142 +191,122 @@ impl Matcher {
 		flatten_and_sort(matches, &real_path, real_segs_len)
 	}
 
-	fn dfs_best(
+	fn find_best_dynamic_match(&self, segments: &[String], check_trailing: bool) -> Option<Match> {
+		let mut best = None;
+		let mut stack = vec![(&self.root_node, 0usize, 0u32)];
+		while let Some((node, depth, score)) = stack.pop() {
+			let at_normal_end = check_trailing && depth == segments.len().saturating_sub(1);
+
+			if !node.pattern.is_empty()
+				&& let Some(rp) = self.dynamic_patterns.get(&node.pattern)
+				&& (depth == segments.len() || node.node_type == NodeType::Splat || at_normal_end)
+			{
+				let candidate = Match::from_registered(rp.clone(), score);
+				if best
+					.as_ref()
+					.is_none_or(|current| candidate.better_than(current))
+				{
+					best = Some(candidate);
+				}
+			}
+
+			if depth >= segments.len() {
+				continue;
+			}
+
+			if let Some(child) = node.children.get(&segments[depth]) {
+				stack.push((child, depth + 1, score + SCORE_STATIC as u32));
+			}
+
+			for child in &node.dyn_children {
+				match child.node_type {
+					NodeType::Dynamic => {
+						if !segments[depth].is_empty() {
+							stack.push((child, depth + 1, score + SCORE_DYNAMIC as u32));
+						}
+					}
+					NodeType::Splat => {
+						if !child.pattern.is_empty()
+							&& let Some(rp) = self.dynamic_patterns.get(&child.pattern)
+						{
+							let candidate = Match::from_registered(rp.clone(), score);
+							if best
+								.as_ref()
+								.is_none_or(|current| candidate.better_than(current))
+							{
+								best = Some(candidate);
+							}
+						}
+					}
+					NodeType::Static => {}
+				}
+			}
+		}
+		best
+	}
+
+	fn collect_nested_dynamic_matches(
 		&self,
-		node: &SegmentNode,
 		segments: &[String],
-		depth: usize,
-		score: u16,
-		best: &mut Option<Match>,
-		check_trailing: bool,
+		matches: &mut HashMap<String, NestedMatch>,
 	) {
-		let at_normal_end = check_trailing && depth == segments.len().saturating_sub(1);
+		let mut stack = vec![(&self.root_node, 0usize, Params::new())];
+		while let Some((node, depth, params)) = stack.pop() {
+			if !node.pattern.is_empty()
+				&& let Some(rp) = self.dynamic_patterns.get(&node.pattern)
+				&& node.pattern != "/*"
+			{
+				let splat_values = if node.node_type == NodeType::Splat && depth < segments.len() {
+					segments[depth..].to_vec()
+				} else {
+					Vec::new()
+				};
 
-		if !node.pattern.is_empty()
-			&& let Some(rp) = self.dynamic_patterns.get(&node.pattern)
-			&& (depth == segments.len() || node.node_type == NodeType::Splat || at_normal_end)
-		{
-			let candidate = Match::from_registered(rp.clone(), score);
-			if best.as_ref().is_none_or(|b| candidate.better_than(b)) {
-				*best = Some(candidate);
-			}
-		}
+				matches.insert(
+					node.pattern.clone(),
+					NestedMatch {
+						pattern: rp.clone(),
+						params: params.clone(),
+						splat_values,
+					},
+				);
 
-		if depth >= segments.len() {
-			return;
-		}
-
-		if let Some(child) = node.children.get(&segments[depth]) {
-			self.dfs_best(
-				child,
-				segments,
-				depth + 1,
-				score + SCORE_STATIC as u16,
-				best,
-				check_trailing,
-			);
-			if best.is_some() && depth + 1 == segments.len() && !child.pattern.is_empty() {
-				return;
-			}
-		}
-
-		for child in &node.dyn_children {
-			match child.node_type {
-				NodeType::Dynamic => {
-					if !segments[depth].is_empty() {
-						self.dfs_best(
-							child,
-							segments,
-							depth + 1,
-							score + SCORE_DYNAMIC as u16,
-							best,
-							check_trailing,
+				if depth == segments.len() {
+					let idx_pattern = format!("{}/", node.pattern);
+					if let Some(irp) = self.dynamic_patterns.get(&idx_pattern) {
+						matches.insert(
+							idx_pattern,
+							NestedMatch {
+								pattern: irp.clone(),
+								params: params.clone(),
+								splat_values: Vec::new(),
+							},
 						);
 					}
 				}
-				NodeType::Splat => {
-					if !child.pattern.is_empty()
-						&& let Some(rp) = self.dynamic_patterns.get(&child.pattern)
-					{
-						let candidate = Match::from_registered(rp.clone(), score);
-						if best.as_ref().is_none_or(|b| candidate.better_than(b)) {
-							*best = Some(candidate);
-						}
-					}
-				}
-				NodeType::Static => {}
 			}
-		}
-	}
 
-	fn dfs_nested(
-		&self,
-		node: &SegmentNode,
-		segments: &[String],
-		depth: usize,
-		params: &mut Params,
-		matches: &mut HashMap<String, NestedMatch>,
-	) {
-		if !node.pattern.is_empty()
-			&& let Some(rp) = self.dynamic_patterns.get(&node.pattern)
-			&& node.pattern != "/*"
-		{
-			let params_copy = params.clone();
-			let splat_values = if node.node_type == NodeType::Splat && depth < segments.len() {
-				segments[depth..].to_vec()
-			} else {
-				Vec::new()
-			};
-
-			matches.insert(
-				node.pattern.clone(),
-				NestedMatch {
-					pattern: rp.clone(),
-					params: params_copy.clone(),
-					splat_values,
-				},
-			);
-
-			if depth == segments.len() {
-				let idx_pattern = format!("{}/", node.pattern);
-				if let Some(irp) = self.dynamic_patterns.get(&idx_pattern) {
-					matches.insert(
-						idx_pattern,
-						NestedMatch {
-							pattern: irp.clone(),
-							params: params_copy,
-							splat_values: Vec::new(),
-						},
-					);
-				}
+			if depth >= segments.len() {
+				continue;
 			}
-		}
 
-		if depth >= segments.len() {
-			return;
-		}
+			let seg = &segments[depth];
+			if let Some(child) = node.children.get(seg) {
+				stack.push((child, depth + 1, params.clone()));
+			}
 
-		let seg = &segments[depth];
-
-		if let Some(child) = node.children.get(seg) {
-			self.dfs_nested(child, segments, depth + 1, params, matches);
-		}
-
-		for child in &node.dyn_children {
-			match child.node_type {
-				NodeType::Dynamic => {
-					let old = params.insert(child.param_name.clone(), seg.clone());
-					self.dfs_nested(child, segments, depth + 1, params, matches);
-					if let Some(old) = old {
-						params.insert(child.param_name.clone(), old);
-					} else {
-						params.remove(&child.param_name);
+			for child in &node.dyn_children {
+				match child.node_type {
+					NodeType::Dynamic => {
+						let mut child_params = params.clone();
+						child_params.insert(child.param_name.clone(), seg.clone());
+						stack.push((child, depth + 1, child_params));
 					}
+					NodeType::Splat => {
+						stack.push((child, depth, params.clone()));
+					}
+					NodeType::Static => {}
 				}
-				NodeType::Splat => {
-					self.dfs_nested(child, segments, depth, params, matches);
-				}
-				NodeType::Static => {}
 			}
 		}
 	}

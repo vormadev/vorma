@@ -45,6 +45,22 @@ async fn runtime_host_serves_public_assets_from_percent_decoded_path() {
 }
 
 #[tokio::test]
+async fn runtime_host_rejects_invalid_percent_decoded_path_utf8() {
+	let dist_dir = temp_dist_dir("invalid-path-utf8");
+	write_manifest(&dist_dir);
+	let host = host(&dist_dir);
+
+	let response = host
+		.handle_request(empty_request(Method::GET, "/static/%FF.css"))
+		.await
+		.unwrap();
+
+	assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+	assert_eq!(response.body(), &Bytes::from_static(b"Bad Request\n"));
+	fs::remove_dir_all(dist_dir).unwrap();
+}
+
+#[tokio::test]
 async fn runtime_host_non_root_public_base_returns_404_for_unmanifested_assets() {
 	let dist_dir = temp_dist_dir("static-unmanifested-non-root");
 	write_manifest(&dist_dir);

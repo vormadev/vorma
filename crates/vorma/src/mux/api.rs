@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 #[cfg(test)]
 use std::future::Future;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use http::Method;
 #[cfg(test)]
@@ -13,7 +13,7 @@ use vorma_tasks::ExecCtx;
 use vorma_tasks::Result as TaskResult;
 
 use crate::config::normalize_api_mount_root;
-use crate::response::ResponseEffects;
+use crate::response::{ResponseEffects, ResponseEffectsCollector};
 
 #[cfg(test)]
 use super::context::None;
@@ -23,9 +23,7 @@ use super::context::RequestCtx;
 use super::error::{Error, RouteExecutionError};
 #[cfg(test)]
 use super::input::InputParser;
-use super::middleware::{
-	Middleware, MiddlewareInvocation, merge_owned_response_effects, run_middleware_entries,
-};
+use super::middleware::{Middleware, MiddlewareInvocation, run_middleware_entries};
 use super::request::{RawRequest, RouteMatch, route_match};
 #[cfg(test)]
 use super::task::typed_handler;
@@ -191,7 +189,7 @@ where
 		state: Arc<S>,
 		exec_ctx: ExecCtx<E>,
 		public_filemap: Arc<BTreeMap<String, String>>,
-	) -> Result<Option<TaskRouteResult<E>>, Error> {
+	) -> Result<Option<ResourceExecutionReport<E>>, Error> {
 		let Some(route_match) = self.find_best(request.method(), request.path()) else {
 			return Ok(Option::None);
 		};
@@ -217,17 +215,19 @@ where
 			.await?;
 
 		if middleware_effects.is_terminal_response() {
-			return Ok(Some(TaskRouteResult {
+			let resolved_middleware_effects =
+				crate::response::resolve_response_effects(&[Some(&middleware_effects)]);
+			return Ok(Some(ResourceExecutionReport {
 				#[cfg(test)]
 				route_match,
 				data: Option::None,
 				error: Option::None,
-				response_effects: middleware_effects.clone(),
-				middleware_effects,
+				resolved_response_effects: resolved_middleware_effects.clone(),
+				resolved_middleware_effects,
 			}));
 		}
 
-		let effects = Arc::new(Mutex::new(ResponseEffects::new()));
+		let effects = ResponseEffectsCollector::new();
 		let handler_execution = run_handler_and_collect_effects(
 			route.handler.clone(),
 			request,
@@ -242,17 +242,19 @@ where
 			},
 		)
 		.await;
-		let response_effects = merge_owned_response_effects(vec![
-			middleware_effects.clone(),
-			handler_execution.effects,
+		let resolved_middleware_effects =
+			crate::response::resolve_response_effects(&[Some(&middleware_effects)]);
+		let resolved_response_effects = crate::response::resolve_response_effects(&[
+			Some(&middleware_effects),
+			Some(&handler_execution.effects),
 		]);
-		Ok(Some(TaskRouteResult {
+		Ok(Some(ResourceExecutionReport {
 			#[cfg(test)]
 			route_match,
 			data: handler_execution.data,
 			error: handler_execution.error,
-			response_effects,
-			middleware_effects,
+			resolved_response_effects,
+			resolved_middleware_effects,
 		}))
 	}
 
@@ -354,16 +356,16 @@ struct RouteEntry<S, E> {
 	handler: Arc<dyn ErasedTask<S, E>>,
 }
 
-pub struct TaskRouteResult<E> {
+pub struct ResourceExecutionReport<E> {
 	#[cfg(test)]
 	route_match: RouteMatch,
 	data: Option<Value>,
 	error: Option<RouteExecutionError<E>>,
-	response_effects: ResponseEffects,
-	middleware_effects: ResponseEffects,
+	resolved_response_effects: crate::response::ResolvedResponseEffects,
+	resolved_middleware_effects: crate::response::ResolvedResponseEffects,
 }
 
-impl<E> TaskRouteResult<E> {
+impl<E> ResourceExecutionReport<E> {
 	#[cfg(test)]
 	pub(crate) fn route_match(&self) -> &RouteMatch {
 		&self.route_match
@@ -377,11 +379,16 @@ impl<E> TaskRouteResult<E> {
 		self.error.as_ref()
 	}
 
+	#[cfg(test)]
 	pub fn response_effects(&self) -> &ResponseEffects {
-		&self.response_effects
+		self.resolved_response_effects.effects()
 	}
 
-	pub(crate) fn middleware_effects(&self) -> &ResponseEffects {
-		&self.middleware_effects
+	pub(crate) fn resolved_response_effects(&self) -> &crate::response::ResolvedResponseEffects {
+		&self.resolved_response_effects
+	}
+
+	pub(crate) fn resolved_middleware_effects(&self) -> &crate::response::ResolvedResponseEffects {
+		&self.resolved_middleware_effects
 	}
 }

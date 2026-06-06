@@ -1,13 +1,13 @@
 use cookie::Cookie;
 use http::{HeaderName, HeaderValue, StatusCode};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::MutexGuard;
 use vorma_matcher::Params as MatcherParams;
 use vorma_tasks::ExecCtx;
 
 use crate::head;
 use crate::mux::{None, RequestCtx};
 use crate::request::HttpRequest;
-use crate::response::{CLIENT_ACCEPTS_REDIRECT_HEADER, ResponseEffects};
+use crate::response::{CLIENT_ACCEPTS_REDIRECT_HEADER, ResponseEffects, ResponseEffectsCollector};
 
 /// Parameters exposed to middleware.
 #[derive(Clone, Copy, Debug)]
@@ -160,7 +160,7 @@ impl<S, E, I, P> ViewCtx<S, E, I, P> {
 
 /// Mutable response-effect handle.
 pub struct ResponseHandle<'a> {
-	effects: Arc<Mutex<ResponseEffects>>,
+	effects: ResponseEffectsCollector,
 	request_headers: &'a http::HeaderMap,
 }
 
@@ -219,7 +219,7 @@ impl ResponseHandle<'_> {
 	}
 
 	fn effects(&self) -> MutexGuard<'_, ResponseEffects> {
-		self.effects.lock().expect("response effects lock poisoned")
+		self.effects.mutate()
 	}
 }
 
@@ -249,7 +249,7 @@ fn head_handle_for<S, E, I>(inner: &RequestCtx<S, E, I>) -> HeadHandle {
 
 /// Mutable head-effect handle.
 pub struct HeadHandle {
-	effects: Arc<Mutex<ResponseEffects>>,
+	effects: ResponseEffectsCollector,
 }
 
 impl HeadHandle {
@@ -323,7 +323,7 @@ impl HeadHandle {
 	}
 
 	fn effects(&self) -> MutexGuard<'_, ResponseEffects> {
-		self.effects.lock().expect("response effects lock poisoned")
+		self.effects.mutate()
 	}
 }
 

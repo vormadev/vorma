@@ -142,6 +142,7 @@ fn manifest() -> Manifest {
 		root_document_shell_hash: "shell".to_owned(),
 		public_filepaths: vec![
 			"/static/app.css".to_owned(),
+			"/static/entry.js".to_owned(),
 			"/static/favicon.ico".to_owned(),
 		],
 		public_filemap: BTreeMap::from([
@@ -233,6 +234,16 @@ fn write_manifest_with_api_mount_root(dist_dir: &Path, api_mount_root: &str) -> 
 
 fn manifest_with_view_assets() -> Manifest {
 	Manifest {
+		public_filepaths: vec![
+			"/static/app.css".to_owned(),
+			"/static/entry.css".to_owned(),
+			"/static/entry.js".to_owned(),
+			"/static/favicon.ico".to_owned(),
+			"/static/items.css".to_owned(),
+			"/static/items.js".to_owned(),
+			"/static/shared.css".to_owned(),
+			"/static/shared.js".to_owned(),
+		],
 		critical_css: "body { color: black; }".to_owned(),
 		client_entry: ClientModule {
 			url: "/static/entry.js".to_owned(),
@@ -286,6 +297,9 @@ fn write_root_base_view_manifest(dist_dir: &Path) {
 
 fn write_nested_view_manifest(dist_dir: &Path) {
 	let mut manifest = manifest_with_view_assets();
+	manifest
+		.public_filepaths
+		.push("/static/items-parent.js".to_owned());
 	manifest.client_views.insert(
 		"/items".to_owned(),
 		ClientModule {

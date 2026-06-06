@@ -25,9 +25,9 @@ use crate::htmlutil::{
 use crate::manifest::Manifest;
 #[cfg(test)]
 use crate::mux::NestedRouter;
-use crate::mux::{RawRequest, RouteExecutionError, TaskRouteResult, ViewStackExecution};
+use crate::mux::{RawRequest, ResourceExecutionReport, RouteExecutionError, ViewExecutionReport};
 use crate::response::{
-	ResponsePlan, ResponseStatusPolicy, finalize_response_plan, insert_header,
+	ResponseStatusPolicy, RouteHttpPlan, finalize_route_http_plan, insert_header,
 	internal_server_error_response, json_response, plain_text_response,
 	response_with_client_build_id,
 };
@@ -101,9 +101,9 @@ where
 		return view_not_found_response(input.expected_client_build_id);
 	};
 
-	let view_stack = input
+	let view_report = input
 		.views
-		.execute_view_stack(
+		.execute_view_matches(
 			input.state,
 			input.exec_ctx,
 			input.request.clone(),
@@ -117,7 +117,7 @@ where
 		request: &input.request,
 		manifest: input.manifest,
 		document: input.document,
-		view_stack: &view_stack,
+		view_report: &view_report,
 	})
 }
 
@@ -126,7 +126,7 @@ pub(crate) struct ViewResponseResultsInput<'a, E> {
 	pub(crate) request: &'a RawRequest,
 	pub(crate) manifest: &'a Manifest,
 	pub(crate) document: &'a Document,
-	pub(crate) view_stack: &'a ViewStackExecution<E>,
+	pub(crate) view_report: &'a ViewExecutionReport<E>,
 }
 
 pub(crate) fn view_not_found_response(
@@ -145,13 +145,14 @@ where
 	E: ViewErrorClientMsg,
 {
 	let is_json = is_json_request(input.request.uri());
-	let (payload, merged_effects) =
-		build_view_payload(input.manifest, input.document, input.view_stack, !is_json)?;
+	let projection =
+		build_view_payload(input.manifest, input.document, input.view_report, !is_json)?;
+	let payload = projection.payload;
 
-	if merged_effects.is_terminal_response() {
-		return finalize_response_plan(
-			ResponsePlan::ShortCircuit {
-				effects: &merged_effects,
+	if projection.resolved_effects.is_terminal() {
+		return finalize_route_http_plan(
+			RouteHttpPlan::ShortCircuit {
+				resolved_effects: &projection.resolved_effects,
 			},
 			input.expected_client_build_id,
 		);
@@ -171,16 +172,11 @@ where
 		)?
 	};
 
-	let status_policy = if payload.outermost_server_err_idx.is_some() {
-		ResponseStatusPolicy::Suppress
-	} else {
-		ResponseStatusPolicy::Apply
-	};
-	let mut response = finalize_response_plan(
-		ResponsePlan::Respond {
-			effects: &merged_effects,
+	let mut response = finalize_route_http_plan(
+		RouteHttpPlan::Respond {
+			resolved_effects: &projection.resolved_effects,
 			response,
-			status_policy,
+			status_policy: projection.response_status_policy,
 		},
 		input.expected_client_build_id,
 	)?;
@@ -355,26 +351,26 @@ fn json_for_script(value: impl Serialize) -> Result<String, String> {
 
 pub(crate) struct ApiResponseInput<'a, E> {
 	pub(crate) expected_client_build_id: &'a str,
-	pub(crate) result: &'a TaskRouteResult<E>,
+	pub(crate) result: &'a ResourceExecutionReport<E>,
 }
 
 pub(crate) fn build_api_response<E>(
 	input: ApiResponseInput<'_, E>,
 ) -> Result<Response<Bytes>, String> {
-	let effects = input.result.response_effects();
+	let resolved_effects = input.result.resolved_response_effects();
 	if let Some(error) = input.result.error() {
-		if effects.is_terminal_response() {
-			return finalize_response_plan(
-				ResponsePlan::ShortCircuit { effects },
+		if resolved_effects.is_terminal() {
+			return finalize_route_http_plan(
+				RouteHttpPlan::ShortCircuit { resolved_effects },
 				input.expected_client_build_id,
 			);
 		}
 
 		if matches!(error, RouteExecutionError::Input(input_error) if input_error.is_bad_request())
 		{
-			return finalize_response_plan(
-				ResponsePlan::Respond {
-					effects: input.result.middleware_effects(),
+			return finalize_route_http_plan(
+				RouteHttpPlan::Respond {
+					resolved_effects: input.result.resolved_middleware_effects(),
 					response: plain_text_response(
 						StatusCode::BAD_REQUEST,
 						Bytes::from(format!("{error}\n")),
@@ -385,9 +381,9 @@ pub(crate) fn build_api_response<E>(
 			);
 		}
 
-		return finalize_response_plan(
-			ResponsePlan::Respond {
-				effects: input.result.middleware_effects(),
+		return finalize_route_http_plan(
+			RouteHttpPlan::Respond {
+				resolved_effects: input.result.resolved_middleware_effects(),
 				response: internal_server_error_response(),
 				status_policy: ResponseStatusPolicy::Suppress,
 			},
@@ -395,9 +391,9 @@ pub(crate) fn build_api_response<E>(
 		);
 	}
 
-	let response = if effects.is_terminal_response() {
-		return finalize_response_plan(
-			ResponsePlan::ShortCircuit { effects },
+	let response = if resolved_effects.is_terminal() {
+		return finalize_route_http_plan(
+			RouteHttpPlan::ShortCircuit { resolved_effects },
 			input.expected_client_build_id,
 		);
 	} else {
@@ -411,9 +407,9 @@ pub(crate) fn build_api_response<E>(
 		)
 	};
 
-	finalize_response_plan(
-		ResponsePlan::Respond {
-			effects,
+	finalize_route_http_plan(
+		RouteHttpPlan::Respond {
+			resolved_effects,
 			response,
 			status_policy: ResponseStatusPolicy::Apply,
 		},

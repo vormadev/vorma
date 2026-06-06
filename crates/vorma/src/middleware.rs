@@ -12,7 +12,7 @@ use bytes::Bytes;
 use http::header::HeaderName;
 use http::header::{CACHE_CONTROL, CONTENT_LENGTH, ETAG, IF_NONE_MATCH, SET_COOKIE};
 use http::{Extensions, HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri};
-use http_body_util::{BodyExt, Either, Full};
+use http_body_util::{BodyExt, Either, Full, LengthLimitError, Limited};
 use tower_http::catch_panic::{CatchPanicLayer, DefaultResponseForPanic};
 use tower_http::compression::CompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -315,8 +315,15 @@ where
 			}
 
 			let (mut parts, body) = response.into_parts();
-			let bytes = match body.collect().await {
+			let bytes = match Limited::new(body, max_body_size as usize).collect().await {
 				Ok(collected) => collected.to_bytes(),
+				Err(error) if error.is::<LengthLimitError>() => {
+					let mut response = Response::new(Either::Right(Full::new(Bytes::from_static(
+						b"response body exceeded ETag limit",
+					))));
+					*response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+					return Ok(response);
+				}
 				Err(_error) => {
 					let mut response = Response::new(Either::Right(Full::new(Bytes::from_static(
 						b"response body error",
@@ -557,6 +564,9 @@ mod tests {
 	use http::Method;
 	use http::StatusCode;
 	use http::header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, SET_COOKIE};
+	use http_body::{Frame, SizeHint};
+	use std::pin::Pin;
+	use std::task::{Context, Poll};
 	use tower_layer::Layer;
 	use tower_service::Service;
 
@@ -823,6 +833,49 @@ mod tests {
 		}
 	}
 
+	#[derive(Clone)]
+	struct DishonestBodyService;
+
+	struct DishonestBody {
+		sent: bool,
+	}
+
+	impl http_body::Body for DishonestBody {
+		type Data = Bytes;
+		type Error = std::convert::Infallible;
+
+		fn poll_frame(
+			mut self: Pin<&mut Self>,
+			_cx: &mut Context<'_>,
+		) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+			if self.sent {
+				return Poll::Ready(None);
+			}
+			self.sent = true;
+			Poll::Ready(Some(Ok(Frame::data(Bytes::from_static(
+				b"larger than one byte",
+			)))))
+		}
+
+		fn size_hint(&self) -> SizeHint {
+			SizeHint::with_exact(1)
+		}
+	}
+
+	impl Service<Request<()>> for DishonestBodyService {
+		type Response = Response<DishonestBody>;
+		type Error = std::convert::Infallible;
+		type Future = std::future::Ready<Result<Self::Response, Self::Error>>;
+
+		fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+			Poll::Ready(Ok(()))
+		}
+
+		fn call(&mut self, _request: Request<()>) -> Self::Future {
+			std::future::ready(Ok(Response::new(DishonestBody { sent: false })))
+		}
+	}
+
 	async fn collect_response_body<B>(response: Response<B>) -> Bytes
 	where
 		B: http_body::Body<Data = Bytes>,
@@ -858,6 +911,20 @@ mod tests {
 		assert!(tag.starts_with('"'));
 		assert!(tag.ends_with('"'));
 		assert!(!tag.starts_with("W/"));
+	}
+
+	#[tokio::test]
+	async fn etag_enforces_limit_while_collecting_body() {
+		let request = Request::builder().method(Method::GET).body(()).unwrap();
+		let mut service = etag().max_body_size(1).layer(DishonestBodyService);
+
+		let response = service.call(request).await.unwrap();
+
+		assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+		assert_eq!(
+			collect_response_body(response).await,
+			Bytes::from_static(b"response body exceeded ETag limit")
+		);
 	}
 
 	#[tokio::test]

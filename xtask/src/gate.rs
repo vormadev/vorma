@@ -10,6 +10,17 @@ const RUST_GATE_TARGET: &str = "rust-gate";
 const TS_GATE_TARGET: &str = "ts-gate";
 const E2E_TARGET: &str = "e2e";
 const GATE_STEPS: &[&str] = &[RUST_GATE_TARGET, TS_GATE_TARGET, E2E_TARGET];
+const CARGO_RUN_ENV_KEYS: &[&str] = &[
+	"CARGO",
+	"CARGO_BIN_NAME",
+	"CARGO_CRATE_NAME",
+	"CARGO_MAKEFLAGS",
+	"CARGO_MANIFEST_DIR",
+	"CARGO_MANIFEST_PATH",
+	"MAKEFLAGS",
+	"OUT_DIR",
+];
+const CARGO_RUN_ENV_PREFIXES: &[&str] = &["CARGO_PKG_"];
 
 pub(crate) fn run() -> Result<i32, String> {
 	let log_dir = Path::new(DEFAULT_LOG_DIR);
@@ -60,17 +71,38 @@ fn run_step(step_name: &str, log_path: &Path) -> Result<(), String> {
 		.map_err(|error| format!("clone log file {}: {error}", log_path.display()))?;
 	let stderr = log_file;
 
-	let status = Command::new(MAKE_PROGRAM)
+	let mut command = Command::new(MAKE_PROGRAM);
+	command
 		.arg(MAKE_NO_PRINT_DIRECTORY_FLAG)
 		.arg(step_name)
 		.stdout(Stdio::from(stdout))
-		.stderr(Stdio::from(stderr))
+		.stderr(Stdio::from(stderr));
+	remove_cargo_run_env(&mut command);
+
+	let status = command
 		.status()
 		.map_err(|error| format!("spawn {step_name}: {error}"))?;
 	if status.success() {
 		Ok(())
 	} else {
 		Err(status.to_string())
+	}
+}
+
+fn remove_cargo_run_env(command: &mut Command) {
+	for key in CARGO_RUN_ENV_KEYS {
+		command.env_remove(key);
+	}
+	for (key, _) in std::env::vars_os() {
+		let Some(key) = key.to_str() else {
+			continue;
+		};
+		if CARGO_RUN_ENV_PREFIXES
+			.iter()
+			.any(|prefix| key.starts_with(prefix))
+		{
+			command.env_remove(key);
+		}
 	}
 }
 
