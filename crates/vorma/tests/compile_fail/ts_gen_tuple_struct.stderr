@@ -1,0 +1,5 @@
+error: TsGen derive currently supports named-field structs; use a manual Type implementation for this shape
+ --> tests/compile_fail/ts_gen_tuple_struct.rs:4:8
+  |
+4 | struct Pair(String, String);
+  |        ^^^^

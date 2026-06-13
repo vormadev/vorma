@@ -1,14 +1,22 @@
+# Workflow notes:
+# - `make gate` is the release gate: it runs rust-gate, ts-gate, and e2e as
+#   separate steps with per-step logs in logs.local/ (via xtask). Gates run
+#   formatters in WRITE mode on purpose — the gate normalizes the tree, then
+#   verifies it; lint/type/test steps are check-only.
+# - e2e consumes packages/vorma/.dist, so it depends on ts-build: ad-hoc
+#   `make e2e` can never run against a stale package build.
+
 FUZZ_RUNS ?= 4096
 E2E_CMD_BASE = cd tests/framework && cargo run -p vorma-framework-tests --bin framework-bombadil --
 RUST_PACKAGE_TARGET_DIR = target/package-gate
-XTASK_CMD_BASE = cargo run --manifest-path xtask/Cargo.toml --quiet --
+XTASK_CMD_BASE = cargo run -p xtask --quiet --
 
 #####################################################################
 ####### GLOBAL
 #####################################################################
 
 # Runs the generic framework browser/runtime coverage across supported adapters.
-e2e:
+e2e: ts-build
 	$(E2E_CMD_BASE) test-prod
 	$(E2E_CMD_BASE) test-dev -variant react
 	$(E2E_CMD_BASE) test-dev -variant preact
@@ -17,9 +25,20 @@ e2e:
 	$(E2E_CMD_BASE) test-dev-changes -variant preact
 	$(E2E_CMD_BASE) test-dev-changes -variant solid
 
+# Runs the shortest end-to-end pass that still proves the whole pipeline
+# (production build plus the react dev + dev-changes scenarios).
+e2e-smoke: ts-build
+	$(E2E_CMD_BASE) test-prod
+	$(E2E_CMD_BASE) test-dev -variant react
+	$(E2E_CMD_BASE) test-dev-changes -variant react
+
 # Removes retained framework-test artifacts.
 clean-bombadil:
 	rm -rf tests/framework/.bombadil tests/framework/.dist.*
+
+# Removes all local build/test/gate artifacts.
+clean: clean-bombadil
+	rm -rf logs.local $(RUST_PACKAGE_TARGET_DIR) packages/vorma/.dist packages/create-vorma/.dist
 
 #####################################################################
 ####### RUST
@@ -78,6 +97,7 @@ rust-package:
 	cargo package -p vorma-matcher --allow-dirty --target-dir $(RUST_PACKAGE_TARGET_DIR)
 	cargo package -p vorma-tasks --allow-dirty --target-dir $(RUST_PACKAGE_TARGET_DIR)
 	cargo package -p vorma-macros --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma-contract --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
 	cargo package -p vorma --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
 	cargo package -p vorma-build --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
 
@@ -87,7 +107,7 @@ rust-test:
 	cargo test --workspace --doc
 
 # Runs the full Rust confidence gate.
-rust-gate: rust-fmt-check rust-policy rust-lint rust-test rust-build rust-doc rust-bench rust-build-client-wasm rust-package rust-fuzz
+rust-gate: rust-fmt rust-policy rust-lint rust-test rust-build rust-doc rust-bench rust-build-client-wasm rust-package rust-fuzz
 
 #####################################################################
 ####### TYPESCRIPT
@@ -131,7 +151,8 @@ ts-build: ts-install rust-build-client-wasm
 	cp packages/vorma/core/client_wasm/vorma_client_wasm_bg.wasm \
 		packages/vorma/.dist/core/vorma_client_wasm_bg.wasm
 
-ts-gate: ts-install ts-fmt-check ts-lint ts-typecheck ts-test rust-build-client-wasm
+# rust-build-client-wasm and ts-build are reached through ts-typecheck.
+ts-gate: ts-install ts-fmt ts-lint ts-typecheck ts-test
 
 #####################################################################
 ####### RELEASES
@@ -142,3 +163,14 @@ gate:
 
 ts-publish:
 	$(XTASK_CMD_BASE) ts-publish
+
+#####################################################################
+####### PHONY
+#####################################################################
+
+.PHONY: e2e e2e-smoke clean clean-bombadil gate ts-publish \
+	rust-build rust-build-client-wasm rust-fmt rust-fmt-check rust-lint \
+	rust-lint-fix rust-policy rust-doc rust-bench rust-fuzz rust-package \
+	rust-test rust-gate \
+	ts-install ts-fmt ts-fmt-check ts-lint ts-lint-fix ts-typecheck \
+	ts-test ts-build ts-gate

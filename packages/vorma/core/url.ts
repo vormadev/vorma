@@ -86,16 +86,13 @@ export function to_typed_href(
 }
 
 export function build_resource_url(
-	api_mount_root: string,
 	pattern: string,
 	params?: Record<string, string>,
 	splat_values?: string[],
 	input?: unknown,
 ): URL {
 	const pathname = resolve_path("resource", pattern, params, splat_values);
-	const full =
-		strip_trailing_slash(api_mount_root) + (pathname === "/" ? "" : pathname);
-	const url = new URL(full, window.location.origin);
+	const url = new URL(pathname, window.location.origin);
 	if (input && typeof input === "object") {
 		url.search = serializeToSearchParams(input).toString();
 	}

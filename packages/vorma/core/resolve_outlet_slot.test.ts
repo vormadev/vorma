@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { RouteRenderEntry } from "./create_client_core.ts";
-import { get_entry_key, resolve_outlet_slot } from "./resolve_outlet_slot.ts";
+import { create_outlet_slot_resolver, get_entry_key } from "./resolve_outlet_slot.ts";
+
+const resolve_outlet_slot = create_outlet_slot_resolver();
 
 function make_entry(overrides: Partial<RouteRenderEntry> = {}): RouteRenderEntry {
 	return {
@@ -230,6 +232,50 @@ describe("resolve_outlet_slot", () => {
 		}
 	});
 
+	it("isolates stable component wrappers between resolver instances", () => {
+		const resolve_a = create_outlet_slot_resolver();
+		const resolve_b = create_outlet_slot_resolver();
+
+		const slot_a = resolve_a(
+			[make_component_entry("/shared", () => "client-a")],
+			null,
+			0,
+			undefined,
+		);
+		const slot_b = resolve_b(
+			[make_component_entry("/shared", () => "client-b")],
+			null,
+			0,
+			undefined,
+		);
+
+		expect(slot_a.kind).toBe("component");
+		expect(slot_b.kind).toBe("component");
+		if (slot_a.kind === "component" && slot_b.kind === "component") {
+			expect(slot_a.component).not.toBe(slot_b.component);
+			expect(slot_a.component({})).toBe("client-a");
+			expect(slot_b.component({})).toBe("client-b");
+		}
+
+		const slot_a_updated = resolve_a(
+			[make_component_entry("/shared", () => "client-a-updated")],
+			null,
+			0,
+			undefined,
+		);
+
+		expect(slot_a_updated.kind).toBe("component");
+		if (
+			slot_a.kind === "component" &&
+			slot_a_updated.kind === "component" &&
+			slot_b.kind === "component"
+		) {
+			expect(slot_a_updated.component).toBe(slot_a.component);
+			expect(slot_a.component({})).toBe("client-a-updated");
+			expect(slot_b.component({})).toBe("client-b");
+		}
+	});
+
 	it("returns stable error boundary wrapper identity for same pattern", () => {
 		const boundary_a = () => "boundary-a";
 		const boundary_b = () => "boundary-b";
@@ -253,6 +299,63 @@ describe("resolve_outlet_slot", () => {
 		expect(slot_b.kind).toBe("error");
 		if (slot_a.kind === "error" && slot_b.kind === "error") {
 			expect(slot_a.boundary).toBe(slot_b.boundary);
+			expect(slot_b.boundary({ error: "err" })).toBe("boundary-b");
+		}
+	});
+
+	it("isolates stable error boundary wrappers between resolver instances", () => {
+		const resolve_a = create_outlet_slot_resolver();
+		const resolve_b = create_outlet_slot_resolver();
+		const error = { idx: 0, error: "err", source: "server" as const };
+
+		const slot_a = resolve_a(
+			[
+				make_boundary_entry("/shared-error", {
+					error_boundary: () => "boundary-a",
+				}),
+			],
+			error,
+			0,
+			undefined,
+		);
+		const slot_b = resolve_b(
+			[
+				make_boundary_entry("/shared-error", {
+					error_boundary: () => "boundary-b",
+				}),
+			],
+			error,
+			0,
+			undefined,
+		);
+
+		expect(slot_a.kind).toBe("error");
+		expect(slot_b.kind).toBe("error");
+		if (slot_a.kind === "error" && slot_b.kind === "error") {
+			expect(slot_a.boundary).not.toBe(slot_b.boundary);
+			expect(slot_a.boundary({ error: "err" })).toBe("boundary-a");
+			expect(slot_b.boundary({ error: "err" })).toBe("boundary-b");
+		}
+
+		const slot_a_updated = resolve_a(
+			[
+				make_boundary_entry("/shared-error", {
+					error_boundary: () => "boundary-a-updated",
+				}),
+			],
+			error,
+			0,
+			undefined,
+		);
+
+		expect(slot_a_updated.kind).toBe("error");
+		if (
+			slot_a.kind === "error" &&
+			slot_a_updated.kind === "error" &&
+			slot_b.kind === "error"
+		) {
+			expect(slot_a_updated.boundary).toBe(slot_a.boundary);
+			expect(slot_a.boundary({ error: "err" })).toBe("boundary-a-updated");
 			expect(slot_b.boundary({ error: "err" })).toBe("boundary-b");
 		}
 	});

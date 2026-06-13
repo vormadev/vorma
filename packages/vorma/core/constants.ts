@@ -1,9 +1,13 @@
-export const VORMA_JSON_KEY = "vorma-json";
-export const DATA_SCRIPT_ID = "vorma-data-json";
-export const BUILD_ID_HEADER = "X-Vorma-Client-Build-Id";
-export const X_VORMA_BUILD_SKEW = "X-Vorma-Build-Skew";
-export const X_CLIENT_REDIRECT = "X-Client-Redirect";
-export const X_ACCEPTS_CLIENT_REDIRECT = "X-Accepts-Client-Redirect";
+// Wire-protocol constants are generated from the Rust definitions; see
+// wire_contracts.gen.ts. Re-exported here so import sites stay stable.
+export {
+	BUILD_ID_HEADER,
+	DATA_SCRIPT_ID,
+	VORMA_JSON_KEY,
+	X_ACCEPTS_CLIENT_REDIRECT,
+	X_CLIENT_REDIRECT,
+	X_VORMA_BUILD_SKEW,
+} from "./wire_contracts.gen.ts";
 
 export const VERCEL_X_DEPLOYMENT_ID = "x-deployment-id";
 export const VERCEL_DPL_QUERY_PARAM_KEY = "dpl";

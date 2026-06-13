@@ -1,31 +1,25 @@
 import type { RouteRenderEntry, ViewDefinition } from "./create_client_core.ts";
 import type { RouteErrorState } from "./types.ts";
 
+type ComponentFn = (props: any) => any;
+type ErrorBoundaryFn = (props: { error: unknown }) => any;
+
 export type OutletSlot =
-	| { kind: "component"; component: (props: any) => any }
+	| { kind: "component"; component: ComponentFn }
 	| {
 			kind: "error";
 			error: unknown;
-			boundary: (props: { error: unknown }) => any;
+			boundary: ErrorBoundaryFn;
 	  }
 	| { kind: "pass_through" }
 	| { kind: "empty" };
 
-const component_refs = new Map<
-	string,
-	{
-		wrapper: (props: any) => any;
-		holder: { current: (props: any) => any };
-	}
->();
-
-const error_refs = new Map<
-	string,
-	{
-		wrapper: (props: { error: unknown }) => any;
-		holder: { current: (props: { error: unknown }) => any };
-	}
->();
+export type OutletSlotResolver = (
+	entries: RouteRenderEntry[],
+	error: RouteErrorState | null,
+	idx: number,
+	default_error_boundary: ErrorBoundaryFn | undefined,
+) => OutletSlot;
 
 type StableFnEntry<F extends (props: any) => any> = {
 	wrapper: F;
@@ -50,51 +44,42 @@ function get_stable_fn<F extends (props: any) => any>(
 	return entry.wrapper;
 }
 
-function get_stable_component(
-	key: string,
-	impl: (props: any) => any,
-): (props: any) => any {
-	return get_stable_fn(component_refs, key, impl);
-}
+export function create_outlet_slot_resolver(): OutletSlotResolver {
+	const component_refs = new Map<string, StableFnEntry<ComponentFn>>();
+	const error_refs = new Map<string, StableFnEntry<ErrorBoundaryFn>>();
 
-function get_stable_error_boundary(
-	key: string,
-	impl: (props: { error: unknown }) => any,
-): (props: { error: unknown }) => any {
-	return get_stable_fn(error_refs, key, impl);
-}
-
-export function resolve_outlet_slot(
-	entries: RouteRenderEntry[],
-	error: RouteErrorState | null,
-	idx: number,
-	default_error_boundary: ((props: { error: unknown }) => any) | undefined,
-): OutletSlot {
-	if (idx >= entries.length) {
-		return { kind: "empty" };
-	}
-
-	if (error !== null && idx >= error.idx) {
-		const error_entry = entries[error.idx]!;
-		const def = error_entry.module.default as ViewDefinition | undefined;
-		const raw_boundary =
-			def?.error_boundary ?? default_error_boundary ?? fallback_error_boundary;
-		const boundary = get_stable_error_boundary(error_entry.pattern, raw_boundary);
-		return { kind: "error", error: error.error, boundary };
-	}
-
-	const entry = entries[idx]!;
-	const def = entry.module.default as ViewDefinition | undefined;
-
-	if (!def?.component) {
-		if (idx + 1 < entries.length) {
-			return { kind: "pass_through" };
+	return (
+		entries: RouteRenderEntry[],
+		error: RouteErrorState | null,
+		idx: number,
+		default_error_boundary: ErrorBoundaryFn | undefined,
+	): OutletSlot => {
+		if (idx >= entries.length) {
+			return { kind: "empty" };
 		}
-		return { kind: "empty" };
-	}
 
-	const component = get_stable_component(entry.pattern, def.component);
-	return { kind: "component", component };
+		if (error !== null && idx >= error.idx) {
+			const error_entry = entries[error.idx]!;
+			const def = error_entry.module.default as ViewDefinition | undefined;
+			const raw_boundary =
+				def?.error_boundary ?? default_error_boundary ?? fallback_error_boundary;
+			const boundary = get_stable_fn(error_refs, error_entry.pattern, raw_boundary);
+			return { kind: "error", error: error.error, boundary };
+		}
+
+		const entry = entries[idx]!;
+		const def = entry.module.default as ViewDefinition | undefined;
+
+		if (!def?.component) {
+			if (idx + 1 < entries.length) {
+				return { kind: "pass_through" };
+			}
+			return { kind: "empty" };
+		}
+
+		const component = get_stable_fn(component_refs, entry.pattern, def.component);
+		return { kind: "component", component };
+	};
 }
 
 export function get_entry_key(entry: RouteRenderEntry): string {

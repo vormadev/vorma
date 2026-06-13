@@ -9,3 +9,12 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+rustc-hash = { workspace = true }
+smallvec = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "matching"
+harness = false

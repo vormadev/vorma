@@ -1,0 +1,36 @@
+[package]
+name = "vorma-board-example"
+default-run = "board-build"
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+publish = false
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+axum.workspace = true
+getrandom.workspace = true
+rusqlite.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
+tower.workspace = true
+tower-http = { workspace = true, features = ["trace"] }
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+vorma.workspace = true
+vorma-build.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "board-build"
+path = "src/bin/build.rs"
+
+[[bin]]
+name = "board-server"
+path = "src/bin/server.rs"

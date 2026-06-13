@@ -39,25 +39,20 @@ describe("debounce", () => {
 		});
 	});
 
-	it("only the last call within the delay window executes", async () => {
+	it("settles every coalesced call with the last call result", async () => {
 		const spy = vi.fn((x: number) => {
 			return x * 2;
 		});
 		const debounced = debounce(spy, 100);
 
-		// first call
-		const _p1 = debounced(5);
-		// before it fires, call again
+		const p1 = debounced(5);
 		vi.advanceTimersByTime(50);
 		const p2 = debounced(6);
 
-		// advance past delay
 		vi.advanceTimersByTime(100);
 
-		// only the second promise should resolve
+		await expect(p1).resolves.toBe(12);
 		await expect(p2).resolves.toBe(12);
-
-		// ensure original call was cancelled
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(spy).toHaveBeenCalledWith(6);
 	});
@@ -91,14 +86,15 @@ describe("debounce", () => {
 		expect(spy).toHaveBeenCalledTimes(1);
 	});
 
-	it("cancels pending calls", () => {
+	it("rejects cancelled pending calls", async () => {
 		const spy = vi.fn();
 		const debounced = debounce(spy, 100);
 
-		void debounced();
+		const p = debounced();
 		debounced.cancel();
 		vi.advanceTimersByTime(100);
 
+		await expect(p).rejects.toThrow();
 		expect(spy).not.toHaveBeenCalled();
 	});
 });

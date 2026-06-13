@@ -1,85 +1,37 @@
-import type { ReadonlySignal } from "@preact/signals";
 import { jsonDeepEquals } from "vorma/kit/json";
 import { R, type Result } from "vorma/kit/result";
 import { create_typed_api_client } from "./api_client.ts";
 import { create_client_matcher, type ClientMatcher } from "./client_wasm/matcher.ts";
-import type {
-	ClientCore,
-	ClientOptions as CoreClientOptions,
-	ViewDefinition,
-} from "./create_client_core";
 import {
 	create_client_core,
 	type ClientCommit,
-	type RouteRenderEntry,
 	type RouteRenderState,
-	type ScrollIntent,
 } from "./create_client_core.ts";
-import {
-	type LinkNavFns,
-	type LinkRouteState,
-	type LinkWorkState,
-} from "./make_link_props.ts";
-import { get_entry_key } from "./resolve_outlet_slot.ts";
+import type { LinkNavFns, LinkRouteState, LinkWorkState } from "./link_types.ts";
+import { create_outlet_slot_resolver, get_entry_key } from "./resolve_outlet_slot.ts";
+import type { AppConfig, LinkPropsBase, ToApiDecorator } from "./types";
 import type {
-	AppConfig,
-	LinkPropsBase,
-	RouteErrorState,
-	RouteState,
-	RouteUpdateReason,
-	ToApiClient,
-	ToApiDecorator,
-	ToDefineViewArgs,
-	ToLinkProps,
-	ToNavigateArgs,
-	ToNavigationTarget,
-	ToRouteDestination,
-	ToRouteSyncArgs,
-	ToViewComponentProps,
-	ToViewOutput,
-	ToViewPattern,
-} from "./types";
+	AdapterBase,
+	ClientMatcherFactory,
+	DecomposedCommit,
+	DecomposedCommitFn,
+	DecomposedState,
+	LinkAttributeCandidate,
+} from "./ui_adapter_types.ts";
 import {
 	create_typed_navigate,
 	create_typed_prefetch,
 	create_typed_to_href,
 } from "./url.ts";
-import type { WorkState } from "./work_state.ts";
 
-type ClientMatcherFactory = () => Promise<ClientMatcher>;
-
-export type DecomposedState = {
-	// Always a new reference
-	entries: RouteRenderEntry[];
-	error: RouteErrorState | null;
-
-	// Stable per channel
-	views_data: unknown[];
-	client_loaders_data: unknown[];
-	matched_patterns: string[];
-	import_urls: string[];
-	entry_keys: string[];
-	params: Record<string, string>;
-	splat_values: string[];
-	client_build_id: string;
-	history_state: unknown;
-};
-
-export type DecomposedCommit = {
-	link_state_version?: number;
-	route?: RouteState;
-	route_reason?: RouteUpdateReason;
-	scroll_intent?: ScrollIntent;
-	state?: DecomposedState;
-	work?: WorkState;
-};
-
-export type DecomposedCommitFn = (commit: DecomposedCommit) => void;
-
-type LinkAttributeCandidate = {
-	url: URL;
-	matched_patterns: string[];
-};
+export type {
+	AdapterClientOptions,
+	AdapterRenderArgs,
+	DecomposedCommit,
+	DecomposedCommitFn,
+	DecomposedState,
+	VormaClient,
+} from "./ui_adapter_types.ts";
 
 let client_matcher_factory_for_test: ClientMatcherFactory | null = null;
 
@@ -92,45 +44,6 @@ export function set_client_matcher_factory_for_test(
 		client_matcher_factory_for_test = prev_factory;
 	};
 }
-
-export type AdapterRenderArgs<RootOutletComponent> = {
-	RootOutlet: RootOutletComponent;
-	rootEl: HTMLElement;
-};
-
-export type AdapterClientOptions<RootOutletComponent> = Omit<
-	CoreClientOptions,
-	"render"
-> & {
-	render?: (args: AdapterRenderArgs<RootOutletComponent>) => void | Promise<void>;
-};
-
-type AdapterBase<A extends AppConfig> = {
-	core: ClientCore;
-
-	nav_fns: LinkNavFns;
-
-	passthrough: Pick<
-		ClientCore,
-		"revalidate" | "getRouteState" | "getWorkState" | "workIndicator"
-	> & {
-		navigate: <P extends ToViewPattern<A>>(
-			args: ToNavigateArgs<A, P>,
-		) => Promise<{ didNavigate: boolean }>;
-
-		prefetch: <P extends ToViewPattern<A>>(target: ToNavigationTarget<A, P>) => void;
-
-		cancelPrefetch: <P extends ToViewPattern<A>>(
-			target: ToNavigationTarget<A, P>,
-		) => void;
-
-		toHref: <P extends ToViewPattern<A>>(
-			destination: ToRouteDestination<A, P>,
-		) => string;
-
-		apiClient: ToApiClient<A>;
-	};
-};
 
 export function create_adapter_base<A extends AppConfig>(
 	app_config: A,
@@ -252,6 +165,7 @@ export function create_adapter_base<A extends AppConfig>(
 		return R.err(core_res.err);
 	}
 	const core = core_res.val;
+	const resolve_outlet_slot = create_outlet_slot_resolver();
 
 	const nav_fns: LinkNavFns = {
 		navigate: (args) => {
@@ -284,15 +198,12 @@ export function create_adapter_base<A extends AppConfig>(
 	const cancel_prefetch = create_typed_prefetch<A>(core.stop_prefetch);
 	const to_href = create_typed_to_href<A>();
 
-	const api_client = create_typed_api_client<A>(
-		app_config.apiMountRoot,
-		core.submit_inner,
-		api_decorator,
-	);
+	const api_client = create_typed_api_client<A>(core.submit_inner, api_decorator);
 
 	return R.ok({
 		core,
 		nav_fns,
+		resolve_outlet_slot,
 		passthrough: {
 			navigate,
 			prefetch,
@@ -393,58 +304,3 @@ export function create_adapter_base<A extends AppConfig>(
 function stable<T>(prev: T, next: T): T {
 	return jsonDeepEquals(prev, next) ? prev : next;
 }
-
-type HookReturn<T, Mode extends "value" | "accessor" | "signal"> = Mode extends "accessor"
-	? () => T
-	: Mode extends "signal"
-		? ReadonlySignal<T>
-		: T;
-
-type StateSelector<State, Selected> = (state: State) => Selected;
-
-export type VormaClient<
-	A extends AppConfig,
-	Element,
-	AnchorProps extends object,
-	HookReturnMode extends "value" | "accessor" | "signal" = "value",
-> = AdapterBase<A>["passthrough"] & {
-	boot: () => Promise<Result<void>>;
-
-	defineView: <P extends ToViewPattern<A>, T = any>(
-		input: ToDefineViewArgs<A, P, T, Element>,
-	) => ViewDefinition;
-
-	RootOutlet: (props: { idx?: number } & Record<string, unknown>) => Element | null;
-
-	Link: <P extends ToViewPattern<A>>(
-		props: Omit<AnchorProps, "href"> & ToLinkProps<A, P>,
-	) => Element;
-
-	useRouteSync: <P extends ToViewPattern<A>>(args: ToRouteSyncArgs<A, P>) => void;
-
-	useRouteState: {
-		(): HookReturn<RouteState, HookReturnMode>;
-		<T>(selector: StateSelector<RouteState, T>): HookReturn<T, HookReturnMode>;
-	};
-
-	useWorkState: {
-		(): HookReturn<WorkState, HookReturnMode>;
-		<T>(selector: StateSelector<WorkState, T>): HookReturn<T, HookReturnMode>;
-	};
-
-	useViewData: <P extends ToViewPattern<A>>(
-		args: ToViewComponentProps<A, P>,
-	) => HookReturn<ToViewOutput<A, P>, HookReturnMode>;
-
-	usePatternViewData: <P extends ToViewPattern<A>>(
-		pattern: P,
-	) => HookReturn<ToViewOutput<A, P> | undefined, HookReturnMode>;
-
-	useClientLoaderData: <P extends ToViewPattern<A>, T>(
-		args: ToViewComponentProps<A, P, T>,
-	) => HookReturn<T, HookReturnMode>;
-
-	usePatternClientLoaderData: <T>(
-		pattern: ToViewPattern<A>,
-	) => HookReturn<T | undefined, HookReturnMode>;
-};

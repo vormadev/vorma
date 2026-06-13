@@ -50,7 +50,7 @@ pub extern "C" fn vorma_client_matcher_register_pattern(
 	let Some(pattern) = abi::read_str(ptr, len) else {
 		return STATUS_ERROR;
 	};
-	registry::register_pattern(matcher_id, pattern).map_or(STATUS_ERROR, |_| STATUS_MATCH)
+	registry::register_pattern(matcher_id, &pattern).map_or(STATUS_ERROR, |_| STATUS_MATCH)
 }
 
 #[unsafe(no_mangle)]
@@ -65,7 +65,7 @@ pub extern "C" fn vorma_client_matcher_find_nested_matches(
 		return STATUS_ERROR;
 	};
 
-	match registry::find_nested_matches(matcher_id, path) {
+	match registry::find_nested_matches(matcher_id, &path) {
 		Ok(Some(out)) => {
 			output::set_output(out);
 			STATUS_MATCH
@@ -198,6 +198,23 @@ mod tests {
 				matcher_id,
 				std::ptr::NonNull::<u8>::dangling().as_ptr(),
 				MAX_INPUT_LEN + 1,
+			),
+			STATUS_ERROR,
+		);
+
+		vorma_client_matcher_free(matcher_id);
+	}
+
+	#[test]
+	fn matcher_abi_rejects_unallocated_input_pointer() {
+		let _guard = TEST_LOCK.lock().expect("test lock poisoned");
+		let matcher_id = vorma_client_matcher_new();
+
+		assert_eq!(
+			vorma_client_matcher_register_pattern(
+				matcher_id,
+				std::ptr::NonNull::<u8>::dangling().as_ptr(),
+				1,
 			),
 			STATUS_ERROR,
 		);

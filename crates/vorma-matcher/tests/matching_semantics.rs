@@ -75,9 +75,9 @@ fn rewrite_single_pattern(
 }
 
 fn params(entries: &[(&str, &str)]) -> Params {
-	let mut out = HashMap::new();
+	let mut out = Params::default();
 	for (k, v) in entries {
-		out.insert((*k).to_string(), (*v).to_string());
+		out.insert(k, *v);
 	}
 	out
 }
@@ -150,7 +150,7 @@ fn best_match_cases() -> Vec<MatchCase> {
 			path: "/",
 			want_pattern: "/*",
 			want_params: None,
-			want_splat_values: &[""],
+			want_splat_values: &[],
 		},
 		MatchCase {
 			name: "trailing slash should not match following dynamic route",
@@ -185,12 +185,12 @@ fn best_match_cases() -> Vec<MatchCase> {
 			want_splat_values: &[],
 		},
 		MatchCase {
-			name: "with trailing slash, should match following catch-all",
+			name: "a bare trailing slash does not feed a following catch-all",
 			patterns: &["/", "/users/*", "/posts"],
 			path: "/users/",
-			want_pattern: "/users/*",
+			want_pattern: NOT_FOUND,
 			want_params: None,
-			want_splat_values: &[""],
+			want_splat_values: &[],
 		},
 		MatchCase {
 			name: "registered trailing slash -- exact match without trailing wins",
@@ -249,12 +249,12 @@ fn best_match_cases() -> Vec<MatchCase> {
 			want_splat_values: &[],
 		},
 		MatchCase {
-			name: "dynamic - trailing slash should match following catch-all",
+			name: "dynamic - a bare trailing slash does not feed a following catch-all",
 			patterns: &["/", "/:user/*", "/posts"],
 			path: "/bob/",
-			want_pattern: "/:user/*",
-			want_params: Some(params(&[("user", "bob")])),
-			want_splat_values: &[""],
+			want_pattern: NOT_FOUND,
+			want_params: None,
+			want_splat_values: &[],
 		},
 		MatchCase {
 			name: "registered trailing slash -- dynamic without trailing wins over catch-all",
@@ -406,7 +406,7 @@ fn find_best_match_matches_table_cases() {
 				rewrite_patterns(case.patterns, "", option_shape_for_rewrites(&opts)),
 			);
 
-			let m = m.finish();
+			let m = m.finish_flat();
 			let found = m.find_best_match(case.path);
 			let want_match = case.want_pattern != NOT_FOUND;
 			if !want_match {
@@ -473,7 +473,7 @@ fn find_best_match_additional_scenarios() {
 	for (name, opts, patterns, path) in cases {
 		let mut m = MatcherBuilder::new(opts).unwrap();
 		register_all(&mut m, patterns);
-		let m = m.finish();
+		let m = m.finish_flat();
 		assert!(m.find_best_match(path).is_none(), "{name}");
 	}
 }
@@ -486,11 +486,11 @@ fn best_match_splat_specificity_is_registration_order_independent() {
 		})
 		.unwrap();
 		register_all(&mut m, patterns);
-		let m = m.finish();
+		let m = m.finish_flat();
 		let found = m.find_best_match("/a/").expect("expected match");
-		assert_eq!(found.pattern.normalized_pattern(), "/:x/*");
-		assert_eq!(found.params, params(&[("x", "a")]));
-		assert_eq!(found.splat_values, str_vec(&[""]));
+		assert_eq!(found.pattern.normalized_pattern(), "/*");
+		assert!(found.params.is_empty());
+		assert_eq!(found.splat_values, str_vec(&["a"]));
 	}
 }
 
@@ -509,7 +509,7 @@ fn best_match_trailing_dynamic_beats_trailing_splat() {
 		})
 		.unwrap();
 		register_all(&mut m, patterns);
-		let m = m.finish();
+		let m = m.finish_flat();
 		let found = m.find_best_match("/a/").expect("expected match");
 		assert_eq!(found.pattern.normalized_pattern(), "/:y", "pattern set {i}");
 		assert_eq!(found.params, params(&[("y", "a")]), "pattern set {i}");
@@ -825,7 +825,7 @@ fn find_nested_matches_matches_fixture_cases() {
 			&mut m,
 			rewrite_patterns(NESTED_PATTERNS, "_index", option_shape_for_rewrites(&opts)),
 		);
-		let m = m.finish();
+		let m = m.finish_nested();
 
 		for tc in nested_scenarios() {
 			let results = m.find_nested_matches(tc.path);
@@ -1016,7 +1016,7 @@ fn find_nested_matches_additional_scenarios() {
 		})
 		.unwrap();
 		register_all(&mut m, tc.patterns);
-		let m = m.finish();
+		let m = m.finish_nested();
 		let results = m.find_nested_matches(tc.path);
 		assert_eq!(results.is_some(), tc.expect_match, "{}", tc.name);
 		if tc.expect_match && !tc.expected_matches.is_empty() {
@@ -1081,7 +1081,7 @@ fn nested_trailing_slash_behavior_is_stable() {
 	})
 	.unwrap();
 	register_all(&mut m, patterns);
-	let m = m.finish();
+	let m = m.finish_nested();
 
 	for (name, path, expected, unexpected) in cases {
 		let results = m
@@ -1117,7 +1117,7 @@ fn partial_matching_with_gaps_is_stable() {
 	let mut m = MatcherBuilder::new(opts.clone()).unwrap();
 	m.register_pattern("/bob").unwrap();
 	m.register_pattern("/bob/larry/susan/jeff").unwrap();
-	let m = m.finish();
+	let m = m.finish_nested();
 	let results = m
 		.find_nested_matches("/bob/larry/susan/jeff")
 		.expect("expected matches");
@@ -1131,7 +1131,7 @@ fn partial_matching_with_gaps_is_stable() {
 	let mut m = MatcherBuilder::new(opts).unwrap();
 	m.register_pattern("/bob").unwrap();
 	m.register_pattern("/bob/larry/susan/jeff").unwrap();
-	let m = m.finish();
+	let m = m.finish_nested();
 	assert!(m.find_nested_matches("/bob/larry").is_none());
 }
 
@@ -1139,10 +1139,52 @@ fn partial_matching_with_gaps_is_stable() {
 fn find_nested_matches_smoke() {
 	let mut m = MatcherBuilder::new(Options::default()).unwrap();
 	register_all(&mut m, ["", "/users", "/users/:id"]);
-	let m = m.finish();
+	let m = m.finish_nested();
 	let results = m.find_nested_matches("/users/123").expect("expected match");
 	assert_eq!(results.matches.len(), 3);
-	assert_eq!(results.params.get("id").map(String::as_str), Some("123"));
+	assert_eq!(results.params.get("id"), Some("123"));
+}
+
+/*
+The principle under pin: "/foo/bar" does not match "/foo" unless a
+"/foo/<something-that-matches-bar>" completes the chain. A prefix hit
+alone is not a match, so it cannot displace the catch-all: with only a
+dead prefix registered, the catch-all takes the path.
+*/
+#[test]
+fn catch_all_takes_paths_where_no_chain_completes() {
+	let mut m = MatcherBuilder::new(Options::default()).unwrap();
+	register_all(&mut m, ["", "/foo", "/*"]);
+	let m = m.finish_nested();
+
+	let results = m
+		.find_nested_matches("/foo/bar")
+		.expect("the catch-all must take a path no chain completes on");
+	let actual: Vec<String> = results
+		.matches
+		.iter()
+		.map(|matched| matched.pattern.normalized_pattern().to_string())
+		.collect();
+	assert_eq!(actual, str_vec(&["", "/*"]));
+	assert_eq!(results.splat_values, str_vec(&["foo", "bar"]));
+}
+
+// The other half of the same principle: with a completing child, the
+// chain through the prefix wins and the catch-all yields.
+#[test]
+fn chain_completion_through_a_prefix_beats_the_catch_all() {
+	let mut m = MatcherBuilder::new(Options::default()).unwrap();
+	register_all(&mut m, ["", "/foo", "/foo/:id", "/*"]);
+	let m = m.finish_nested();
+
+	let results = m.find_nested_matches("/foo/bar").expect("expected match");
+	let actual: Vec<String> = results
+		.matches
+		.iter()
+		.map(|matched| matched.pattern.normalized_pattern().to_string())
+		.collect();
+	assert_eq!(actual, str_vec(&["", "/foo", "/foo/:id"]));
+	assert_eq!(results.params.get("id"), Some("bar"));
 }
 
 #[test]
@@ -1156,7 +1198,7 @@ fn match_ordering_is_deterministic() {
 		.unwrap();
 		register_all(&mut m, ["/api/v1", "/api/:version"]);
 
-		let m = m.finish();
+		let m = m.finish_nested();
 		let results = m.find_nested_matches("/api/v1").expect("expected matches");
 		let order: Vec<String> = results
 			.matches
@@ -1190,7 +1232,7 @@ fn match_ordering_is_deterministic() {
 		.unwrap();
 		register_all(&mut m, ["/users/:id", "/users/*"]);
 
-		let m = m.finish();
+		let m = m.finish_nested();
 		let results = m
 			.find_nested_matches("/users/123")
 			.expect("expected matches");
@@ -1225,7 +1267,7 @@ fn match_ordering_is_deterministic() {
 		.unwrap();
 		register_all(&mut m, ["/a/b", "/a/:p", "/:x/b"]);
 
-		let m = m.finish();
+		let m = m.finish_nested();
 		let results = m.find_nested_matches("/a/b").expect("expected matches");
 		let order: Vec<String> = results
 			.matches
@@ -1267,7 +1309,7 @@ fn match_ordering_is_deterministic() {
 		.unwrap();
 		register_all(&mut m, patterns);
 
-		let m = m.finish();
+		let m = m.finish_nested();
 		let results = m.find_nested_matches("/a/a/a").expect("expected matches");
 		let actual_patterns: Vec<String> = results
 			.matches
@@ -1325,7 +1367,7 @@ fn match_ordering_is_deterministic() {
 		.unwrap();
 		register_all(&mut m, patterns);
 
-		let m = m.finish();
+		let m = m.finish_nested();
 		let results = m.find_nested_matches("/b/a").expect("expected matches");
 		let actual_patterns: Vec<String> = results
 			.matches
@@ -1944,6 +1986,9 @@ impl PropertyRouteCase {
 		source_index: &str,
 	) -> Option<PropertyModelMatch> {
 		let path = self.path();
+		if path.contains("//") {
+			return None;
+		}
 		let mut best = None;
 		for (i, pattern) in self.patterns().iter().enumerate() {
 			let model = property_model_pattern(pattern, i, opts, source_index);
@@ -1990,7 +2035,7 @@ impl PropertyRouteCase {
 				return PropertyMatchObservation::not_found();
 			}
 		}
-		let m = m.finish();
+		let m = m.finish_flat();
 		let Some(found) = m.find_best_match(&self.path()) else {
 			return PropertyMatchObservation::not_found();
 		};
@@ -1998,7 +2043,7 @@ impl PropertyRouteCase {
 			found: true,
 			pattern: found.pattern.normalized_pattern().to_string(),
 			params: found.params,
-			splat_values: found.splat_values,
+			splat_values: found.splat_values.iter().map(|s| s.to_string()).collect(),
 		}
 	}
 
@@ -2090,21 +2135,25 @@ impl PropertyRouteCase {
 				return PropertyNestedObservation::not_found();
 			}
 		}
-		let m = m.finish();
+		let m = m.finish_nested();
 		let Some(results) = m.find_nested_matches(&self.path()) else {
 			return PropertyNestedObservation::not_found();
 		};
 		PropertyNestedObservation {
 			found: true,
 			params: results.params,
-			splat_values: results.splat_values,
+			splat_values: results.splat_values.iter().map(|s| s.to_string()).collect(),
 			patterns: results
 				.matches
 				.iter()
 				.map(|m| m.pattern.normalized_pattern().to_string())
 				.collect(),
-			match_params: results.matches.iter().map(|m| m.params()).collect(),
-			match_splats: results.matches.iter().map(|m| m.splat_values()).collect(),
+			match_params: results.matches.iter().map(|m| m.params().clone()).collect(),
+			match_splats: results
+				.matches
+				.iter()
+				.map(|m| m.splat_values().iter().map(|s| s.to_string()).collect())
+				.collect(),
 		}
 	}
 
@@ -2162,6 +2211,9 @@ impl PropertyRouteCase {
 	}
 
 	fn nested_expectation(&self, opts: &Options, source_index: &str) -> PropertyNestedObservation {
+		if self.path().contains("//") {
+			return PropertyNestedObservation::not_found();
+		}
 		let real_path = property_strip_trailing_slash(&self.path());
 		let path_segments = property_path_segments(&real_path);
 		let patterns = self.patterns();
@@ -2171,11 +2223,17 @@ impl PropertyRouteCase {
 			for pattern in &patterns {
 				let model = property_model_pattern(pattern, 0, opts, source_index);
 				if model.normalized.is_empty() {
-					matches.insert("".to_string(), model.base_match(Params::new(), Vec::new()));
+					matches.insert(
+						"".to_string(),
+						model.base_match(Params::default(), Vec::new()),
+					);
 					continue;
 				}
 				if model.normalized == "/" {
-					matches.insert("/".to_string(), model.base_match(Params::new(), Vec::new()));
+					matches.insert(
+						"/".to_string(),
+						model.base_match(Params::default(), Vec::new()),
+					);
 				}
 			}
 			if !matches.contains_key("/") {
@@ -2184,7 +2242,7 @@ impl PropertyRouteCase {
 					if model.normalized == "/*" {
 						matches.insert(
 							"/*".to_string(),
-							model.base_match(Params::new(), Vec::new()),
+							model.base_match(Params::default(), Vec::new()),
 						);
 						break;
 					}
@@ -2216,7 +2274,7 @@ impl PropertyRouteCase {
 				if model.normalized == "/*" {
 					matches.insert(
 						"/*".to_string(),
-						model.base_match(Params::new(), path_segments.clone()),
+						model.base_match(Params::default(), path_segments.clone()),
 					);
 					continue;
 				}
@@ -2227,20 +2285,19 @@ impl PropertyRouteCase {
 					matches.insert(matched.normalized_pattern.clone(), matched);
 				}
 			}
+			// An index claims its parent path on its own shape; the
+			// parent pattern need not be registered.
 			for (normalized, model) in model_patterns {
 				if model.is_static || !model.last_segment_is_index() {
 					continue;
 				}
-				let parent_pattern = normalized.strip_suffix('/').unwrap_or(&normalized);
-				let Some(parent_match) = matches.get(parent_pattern) else {
-					continue;
-				};
-				if parent_match.segment_len != path_segments.len() {
+				let base_len = model.segments.len() - 1;
+				if path_segments.len() != base_len || !model.match_prefix(&path_segments) {
 					continue;
 				}
 				matches.insert(
 					normalized,
-					model.base_match(parent_match.params.clone(), Vec::new()),
+					model.base_match(model.params(&path_segments), Vec::new()),
 				);
 			}
 		}
@@ -2254,7 +2311,7 @@ impl PropertyMatchObservation {
 		Self {
 			found: false,
 			pattern: String::new(),
-			params: Params::new(),
+			params: Params::default(),
 			splat_values: Vec::new(),
 		}
 	}
@@ -2265,7 +2322,7 @@ impl PropertyNestedObservation {
 		Self {
 			found: false,
 			patterns: Vec::new(),
-			params: Params::new(),
+			params: Params::default(),
 			splat_values: Vec::new(),
 			match_params: Vec::new(),
 			match_splats: Vec::new(),
@@ -2362,13 +2419,22 @@ impl PropertyModelPattern {
 				return None;
 			}
 		}
-		Some(self.base_match(Params::new(), Vec::new()))
+		Some(self.base_match(Params::default(), Vec::new()))
 	}
 
 	fn match_dynamic(&self, path: &str) -> Option<PropertyModelMatch> {
-		let path_segments = property_path_segments(path);
-		let has_splat = self.last_segment_is_splat();
-		if has_splat {
+		let effective = property_strip_trailing_slash(path);
+		let had_trailing = effective.len() != path.len();
+		let path_segments = property_path_segments(&effective);
+
+		if effective.is_empty() {
+			if self.normalized == "/*" {
+				return Some(self.base_match(Params::default(), Vec::new()));
+			}
+			return None;
+		}
+
+		if self.last_segment_is_splat() {
 			let splat_idx = self.segments.len() - 1;
 			if path_segments.len() < self.segments.len() {
 				return None;
@@ -2382,20 +2448,19 @@ impl PropertyModelPattern {
 			));
 		}
 
-		if path_segments.len() == self.segments.len() && self.match_segments(&path_segments) {
+		if self.last_segment_is_index() {
+			if !had_trailing {
+				return None;
+			}
+			let base_len = self.segments.len() - 1;
+			if path_segments.len() != base_len || !self.match_prefix(&path_segments) {
+				return None;
+			}
 			return Some(self.base_match(self.params(&path_segments), Vec::new()));
 		}
 
-		if property_has_trailing_slash(path)
-			&& !path_segments.is_empty()
-			&& !self.last_segment_is_index()
-		{
-			let trimmed_segments = &path_segments[..path_segments.len() - 1];
-			if trimmed_segments.len() == self.segments.len()
-				&& self.match_segments(trimmed_segments)
-			{
-				return Some(self.base_match(self.params(trimmed_segments), Vec::new()));
-			}
+		if path_segments.len() == self.segments.len() && self.match_segments(&path_segments) {
+			return Some(self.base_match(self.params(&path_segments), Vec::new()));
 		}
 
 		None
@@ -2413,7 +2478,7 @@ impl PropertyModelPattern {
 			if !self.match_prefix(path_segments) {
 				return None;
 			}
-			return Some(self.base_match(Params::new(), Vec::new()));
+			return Some(self.base_match(Params::default(), Vec::new()));
 		}
 		if self.segments.len() > path_segments.len() {
 			return None;
@@ -2421,7 +2486,7 @@ impl PropertyModelPattern {
 		if !self.match_prefix(&path_segments[..self.segments.len()]) {
 			return None;
 		}
-		Some(self.base_match(Params::new(), Vec::new()))
+		Some(self.base_match(Params::default(), Vec::new()))
 	}
 
 	fn nested_dynamic_match(&self, path_segments: &[String]) -> Option<PropertyModelMatch> {
@@ -2470,11 +2535,11 @@ impl PropertyModelPattern {
 	}
 
 	fn params(&self, path_segments: &[String]) -> Params {
-		let mut params = Params::new();
+		let mut params = Params::default();
 		for (i, segment) in self.segments.iter().enumerate() {
 			if segment.kind == PropertySegmentKind::Dynamic {
 				params.insert(
-					segment.value.trim_start_matches(':').to_string(),
+					segment.value.trim_start_matches(':'),
 					path_segments[i].clone(),
 				);
 			}
@@ -2733,9 +2798,15 @@ fn property_flatten_nested_matches(
 ) -> PropertyNestedObservation {
 	if prune {
 		if matches.contains_key("/*") {
-			let has_empty = matches.contains_key("");
-			if (has_empty && matches.len() > 2) || (!has_empty && matches.len() > 1) {
+			let real_segment_len = property_path_segments(real_path).len();
+			let any_other_covers = matches.iter().any(|(key, matched)| {
+				key != "/*"
+					&& (matched.last_is_non_root_splat() || matched.segment_len >= real_segment_len)
+			});
+			if any_other_covers {
 				matches.remove("/*");
+			} else {
+				matches.retain(|key, _| key.is_empty() || key == "/*");
 			}
 		}
 		if matches.len() >= 2 {
@@ -2773,14 +2844,11 @@ fn property_flatten_nested_matches(
 	}
 
 	let last = results.last().unwrap();
-	if !last.last_is_non_root_splat() && last.normalized_pattern != "/*" {
-		if last.segment_len < real_segment_len {
-			return PropertyNestedObservation::not_found();
-		}
-		if last.segment_len == real_segment_len && last.dynamic_params > 0 && last.params.is_empty()
-		{
-			return PropertyNestedObservation::not_found();
-		}
+	if !last.last_is_non_root_splat()
+		&& last.normalized_pattern != "/*"
+		&& last.segment_len < real_segment_len
+	{
+		return PropertyNestedObservation::not_found();
 	}
 
 	PropertyNestedObservation {

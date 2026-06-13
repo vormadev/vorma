@@ -17,7 +17,6 @@ import {
 	get_entry_key,
 	make_entry_id,
 	make_link_props,
-	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
 	type AdapterClientOptions,
@@ -58,6 +57,7 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
+	ApiClientOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -244,7 +244,7 @@ export function createVormaClient<A extends AppConfig>(
 		throw new Error(`Failed to create Vorma client: ${adapter_base_res.err}`);
 	}
 
-	const { core, nav_fns, passthrough } = adapter_base_res.val;
+	const { core, nav_fns, passthrough, resolve_outlet_slot } = adapter_base_res.val;
 
 	function useRouteState(): RouteState;
 	function useRouteState<T>(selector: (route: RouteState) => T): T;
@@ -300,7 +300,10 @@ export function createVormaClient<A extends AppConfig>(
 		}, [target]);
 
 		useEffect(() => {
-			window.clearTimeout(timeout_ref.current);
+			if (timeout_ref.current !== undefined) {
+				window.clearTimeout(timeout_ref.current);
+				timeout_ref.current = undefined;
+			}
 
 			if (
 				!enabled ||
@@ -311,15 +314,22 @@ export function createVormaClient<A extends AppConfig>(
 			}
 
 			if (debounceMs > 0) {
-				timeout_ref.current = window.setTimeout(() => {
+				const timeout_id = window.setTimeout(() => {
+					if (timeout_ref.current === timeout_id) {
+						timeout_ref.current = undefined;
+					}
 					void passthrough.navigate({
 						href: canonical_href,
 						replace,
 						scrollToTop,
 					});
 				}, debounceMs);
+				timeout_ref.current = timeout_id;
 				return () => {
-					window.clearTimeout(timeout_ref.current);
+					window.clearTimeout(timeout_id);
+					if (timeout_ref.current === timeout_id) {
+						timeout_ref.current = undefined;
+					}
 				};
 			}
 

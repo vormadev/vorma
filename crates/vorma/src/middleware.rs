@@ -151,7 +151,6 @@ pub fn compression() -> CompressionLayer {
 /////////////////////////////////////////////////////////////////////
 
 const DEFAULT_ETAG_MAX_BODY_SIZE: u64 = 8 * 1024 * 1024;
-const CLIENT_BUILD_ID_HEADER: &str = "x-vorma-client-build-id";
 const NOT_MODIFIED_PAYLOAD_HEADERS: &[&str] = &[
 	"content-type",
 	"content-length",
@@ -415,7 +414,7 @@ fn cache_control_has_no_store(headers: &HeaderMap) -> bool {
 fn generate_etag(bytes: &Bytes, headers: &HeaderMap, strong: bool) -> HeaderValue {
 	let mut hasher = blake3::Hasher::new();
 	hasher.update(bytes);
-	if let Some(build_id) = headers.get(CLIENT_BUILD_ID_HEADER) {
+	if let Some(build_id) = headers.get(crate::CLIENT_BUILD_ID_HEADER_KEY) {
 		hasher.update(build_id.as_bytes());
 	}
 	let digest = hasher.finalize().to_hex();

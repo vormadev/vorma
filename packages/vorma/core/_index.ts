@@ -36,12 +36,9 @@ export {
 	type LinkRouteState,
 	type LinkWorkState,
 } from "./make_link_props.ts";
-export {
-	get_entry_key,
-	resolve_outlet_slot,
-	type OutletSlot,
-} from "./resolve_outlet_slot.ts";
+export { get_entry_key, type OutletSlot } from "./resolve_outlet_slot.ts";
 export type {
+	ApiClientOutput,
 	AppConfig,
 	BeforeRouteCommitFn,
 	BeforeRouteTransitionArgs,

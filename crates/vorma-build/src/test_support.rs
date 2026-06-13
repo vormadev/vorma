@@ -1,33 +1,28 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use vorma::{FrontendConfig, TsGenConfig};
+use vorma_contract::contracts::{RouteTypeContract, TypeRefContract};
 
-pub(crate) fn root_dir() -> PathBuf {
-	std::env::current_dir().unwrap()
+static TEST_TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn route_type_contract() -> RouteTypeContract {
+	RouteTypeContract::new(TypeRefContract::Unit, TypeRefContract::Unknown)
 }
 
-pub(crate) fn path_config() -> vorma::PathConfig {
-	vorma::PathConfig {
-		public_static_base: "/static/".to_owned(),
-		api_base: "/api/".to_owned(),
-	}
+pub(crate) fn unique_temp_root(prefix: &str) -> PathBuf {
+	let nanos = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.unwrap()
+		.as_nanos();
+	let sequence = TEST_TEMP_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
+	std::env::temp_dir().join(format!("{prefix}-{nanos}-{sequence}"))
 }
 
-pub(crate) fn frontend_config() -> FrontendConfig {
-	FrontendConfig {
-		ui_variant: vorma::UiVariant::React,
-		js_package_manager_base_cmd: "pnpm exec".to_owned(),
-		js_package_manager_dir: ".".to_owned(),
-		entry_file: "src/entry.tsx".to_owned(),
-		public_static_src_dir: "public".to_owned(),
-		critical_css_file: String::new(),
-		..FrontendConfig::default()
+pub(crate) fn unique_temp_root_with_dirs(prefix: &str, dirs: &[&str]) -> PathBuf {
+	let root = unique_temp_root(prefix);
+	for dir in dirs {
+		std::fs::create_dir_all(root.join(dir)).unwrap();
 	}
-}
-
-pub(crate) fn ts_gen_config() -> TsGenConfig {
-	TsGenConfig {
-		out_file: "src/vorma.gen.ts".to_owned(),
-		..TsGenConfig::default()
-	}
+	root
 }

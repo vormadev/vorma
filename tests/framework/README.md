@@ -10,8 +10,6 @@ traffic, and browser behavior.
 
 Bombadil is one runner here.
 
-See [../../TEST_README.md](../../TEST_README.md) for the repo-level testing map.
-
 ## Suite Ownership
 
 - Bombadil owns broad runtime behavior: browser navigation, view handlers, resources,

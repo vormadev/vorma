@@ -1,17 +1,20 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::sync::Arc;
 
-use crate::matcher::Matcher;
+use rustc_hash::FxHashMap;
+
+use crate::matcher::{FlatMatcher, MatcherEngine, NestedMatcher};
 use crate::options::Options;
 use crate::parse::parse_segments;
 use crate::pattern::{InternalSegment, Pattern, is_static};
-use crate::segment::{SCORE_DYNAMIC, SCORE_STATIC, SegmentKind};
+use crate::segment::SegmentKind;
 use crate::tree::SegmentNode;
 
 /// Validates and registers route patterns before producing an immutable matcher.
 #[derive(Clone, Debug)]
 pub struct MatcherBuilder {
-	static_patterns: HashMap<String, Pattern>,
-	dynamic_patterns: HashMap<String, Pattern>,
+	static_patterns: FxHashMap<String, Arc<Pattern>>,
+	dynamic_patterns: FxHashMap<String, Arc<Pattern>>,
 	root_node: SegmentNode,
 
 	explicit_index_segment: String,
@@ -28,8 +31,8 @@ impl MatcherBuilder {
 		let using_explicit_index_segment = !opts.explicit_index_segment_identifier.is_empty();
 		let slash_index_segment = format!("/{}", opts.explicit_index_segment_identifier);
 		Ok(Self {
-			static_patterns: HashMap::new(),
-			dynamic_patterns: HashMap::new(),
+			static_patterns: FxHashMap::default(),
+			dynamic_patterns: FxHashMap::default(),
 			root_node: SegmentNode::default(),
 			explicit_index_segment: opts.explicit_index_segment_identifier,
 			dynamic_param_prefix: opts.dynamic_param_prefix,
@@ -78,16 +81,14 @@ impl MatcherBuilder {
 
 		let raw_segments = parse_segments(&normalized);
 		let mut segments = Vec::with_capacity(raw_segments.len());
-		let mut num_dynamic = 0usize;
 
 		let mut seen_params = HashSet::new();
 		let raw_segment_count = raw_segments.len();
 
 		for (i, segment) in raw_segments.into_iter().enumerate() {
-			let segment_kind = self.classify_segment(&segment);
+			let segment_kind = self.classify_segment(segment);
 			let normalized_value = match segment_kind {
 				SegmentKind::Dynamic => {
-					num_dynamic += 1;
 					let param_name = &segment[self.dynamic_param_prefix.len_utf8()..];
 					validate_param_name(original, param_name)?;
 					if !seen_params.insert(param_name.to_owned()) {
@@ -98,7 +99,7 @@ impl MatcherBuilder {
 					format!(":{param_name}")
 				}
 				SegmentKind::Splat => "*".to_string(),
-				_ => segment,
+				_ => segment.to_owned(),
 			};
 			if segment_kind == SegmentKind::Splat && i + 1 != raw_segment_count {
 				return Err(format!(
@@ -130,7 +131,6 @@ impl MatcherBuilder {
 			final_pattern,
 			segments,
 			last_type,
-			num_dynamic,
 		))
 	}
 
@@ -141,7 +141,7 @@ impl MatcherBuilder {
 		for store in [&self.static_patterns, &self.dynamic_patterns] {
 			if let Some(existing) = store.get(rp.normalized_pattern()) {
 				if existing.original_pattern() == original {
-					return Ok(existing.clone());
+					return Ok(Pattern::clone(existing));
 				}
 				return Err(format!(
 					"normalized pattern collision: \"{}\" and \"{}\" both normalize to \"{}\"",
@@ -164,44 +164,44 @@ impl MatcherBuilder {
 			}
 		}
 
-		if is_static(&rp.normalized_segments) {
-			self.static_patterns
-				.insert(rp.normalized_pattern.clone(), rp.clone());
-			return Ok(rp);
-		}
+		let arc = Arc::new(rp.clone());
+		let store = if rp.is_static {
+			&mut self.static_patterns
+		} else {
+			&mut self.dynamic_patterns
+		};
+		store.insert(rp.normalized_pattern.clone(), Arc::clone(&arc));
 
-		self.dynamic_patterns
-			.insert(rp.normalized_pattern.clone(), rp.clone());
-
+		// Every pattern enters the tree — static chains included — so
+		// both matchers walk one structure and read candidates straight
+		// off the nodes.
 		let mut current = &mut self.root_node;
-		let mut node_score = 0i32;
 		for (i, seg) in rp.normalized_segments.iter().enumerate() {
 			let child = current.find_or_create_child(&seg.normalized_value);
-			match seg.kind {
-				SegmentKind::Dynamic => node_score += SCORE_DYNAMIC,
-				SegmentKind::Splat => {}
-				_ => node_score += SCORE_STATIC,
-			}
 			if i == rp.normalized_segments.len() - 1 {
-				child.pattern = rp.normalized_pattern.clone();
-				child.final_score = node_score;
+				child.registered = Some(Arc::clone(&arc));
 			}
 			current = child;
+		}
+		if rp.normalized_segments.is_empty() {
+			self.root_node.registered = Some(arc);
 		}
 
 		Ok(rp)
 	}
 
-	/// Finish registration and return an immutable matcher.
-	pub fn finish(self) -> Matcher {
-		Matcher::from_parts(
-			self.static_patterns,
-			self.dynamic_patterns,
-			self.root_node,
-			self.explicit_index_segment,
-			self.dynamic_param_prefix,
-			self.splat_segment_id,
-		)
+	/// Finish registration and return an immutable flat matcher.
+	pub fn finish_flat(self) -> FlatMatcher {
+		FlatMatcher::from_engine(self.into_engine())
+	}
+
+	/// Finish registration and return an immutable nested matcher.
+	pub fn finish_nested(self) -> NestedMatcher {
+		NestedMatcher::from_engine(self.into_engine())
+	}
+
+	pub(crate) fn into_engine(self) -> MatcherEngine {
+		MatcherEngine::from_parts(self.static_patterns, self.dynamic_patterns, self.root_node)
 	}
 
 	fn validate_pattern_text(&self, pattern: &str) -> Result<(), String> {

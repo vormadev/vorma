@@ -7,8 +7,8 @@ import {
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	assets_changed_path,
 	cfg_changed_path,
-	type Config,
 	env_key,
 	loopback_host,
 	plugin_base_path,
@@ -16,7 +16,8 @@ import {
 	type RpcRequest,
 	token_env_key,
 	token_header,
-} from "./plugin_contract.ts";
+	type VitePluginConfig,
+} from "./plugin_contract.gen.ts";
 import vorma from "./vite.ts";
 
 type RpcCall = {
@@ -30,12 +31,12 @@ type TestRpcServer = {
 
 const test_token = "test-token";
 
-const test_config: Config = {
-	PublicStaticBasePath: "/static/",
-	EntryModule: "src/main.tsx",
-	ViewModules: ["src/views/root.tsx", "src/views/users/[id].tsx"],
-	IgnoredPatterns: ["**/.vorma/**"],
-	DedupeList: ["react", "react-dom"],
+const test_config: VitePluginConfig = {
+	public_static_base_path: "/static/",
+	entry_module: "src/main.tsx",
+	view_modules: ["src/views/root.tsx", "src/views/users/[id].tsx"],
+	ignored_patterns: ["**/.vorma/**"],
+	dedupe_list: ["react", "react-dom"],
 };
 
 const test_hashes = {
@@ -70,8 +71,8 @@ describe("vorma Vite plugin", () => {
 		expect(dev_config.build.emptyOutDir).toBe(false);
 		expect(dev_config.build.modulePreload).toEqual({ polyfill: false });
 		expect(dev_config.build.rolldownOptions.input).toEqual([
-			test_config.EntryModule,
-			...test_config.ViewModules,
+			test_config.entry_module,
+			...test_config.view_modules,
 		]);
 		expect(dev_config.build.rolldownOptions.preserveEntrySignatures).toBe(
 			"exports-only",
@@ -82,8 +83,8 @@ describe("vorma Vite plugin", () => {
 			entryFileNames: "vorma_out_vite_[name]_[hash].js",
 		});
 		expect(dev_config.server.headers).toEqual({ "cache-control": "no-store" });
-		expect(dev_config.server.watch.ignored).toEqual(test_config.IgnoredPatterns);
-		expect(dev_config.resolve.dedupe).toEqual(test_config.DedupeList);
+		expect(dev_config.server.watch.ignored).toEqual(test_config.ignored_patterns);
+		expect(dev_config.resolve.dedupe).toEqual(test_config.dedupe_list);
 		expect(dev_config.oxc.jsxRefreshInclude.test("src/main.tsx")).toBe(true);
 		expect(
 			dev_config.oxc.jsxRefreshExclude.some((regex: RegExp) => {
@@ -92,7 +93,7 @@ describe("vorma Vite plugin", () => {
 		).toBe(true);
 
 		const build_config = await plugin.config({}, { command: "build" });
-		expect(build_config.base).toBe(test_config.PublicStaticBasePath);
+		expect(build_config.base).toBe(test_config.public_static_base_path);
 		expect(build_config.oxc).toBeUndefined();
 		expect(
 			rpc_server.calls.map((call) => {
@@ -109,7 +110,7 @@ describe("vorma Vite plugin", () => {
 		await plugin.config({}, { command: "serve" });
 		plugin.configResolved({ root });
 
-		const view_id = resolve(root, test_config.ViewModules[0]!);
+		const view_id = resolve(root, test_config.view_modules[0]!);
 		const transformed = await plugin.transform(
 			`const logo = vormaPublicUrl("img/logo.png");`,
 			view_id,
@@ -135,11 +136,127 @@ describe("vorma Vite plugin", () => {
 			`const logo = "${test_hashes["img/logo.png"]}";`,
 		);
 
+		const template_literal_transformed = await plugin.transform(
+			"const logo = vormaPublicUrl(`img/logo.png`);",
+			resolve(root, "src/template.ts"),
+		);
+		expect(template_literal_transformed).toBe(
+			`const logo = "${test_hashes["img/logo.png"]}";`,
+		);
+
+		const decoy_transformed = await plugin.transform(
+			[
+				`const text = 'vormaPublicUrl("img/logo.png")';`,
+				`// vormaPublicUrl("img/logo.png")`,
+				`const logo = vormaPublicUrl("img/logo.png");`,
+			].join("\n"),
+			resolve(root, "src/decoys.ts"),
+		);
+		expect(decoy_transformed).toBe(
+			[
+				`const text = 'vormaPublicUrl("img/logo.png")';`,
+				`// vormaPublicUrl("img/logo.png")`,
+				`const logo = "${test_hashes["img/logo.png"]}";`,
+			].join("\n"),
+		);
+
+		const tsx_transformed = await plugin.transform(
+			`const el = <img src={vormaPublicUrl("img/logo.png")} />;`,
+			resolve(root, "src/component.tsx"),
+		);
+		expect(tsx_transformed).toBe(
+			`const el = <img src={"${test_hashes["img/logo.png"]}"} />;`,
+		);
+
+		await expect(
+			plugin.transform(
+				`const logo = vormaPublicUrl(path);`,
+				resolve(root, "src/dynamic.ts"),
+			),
+		).rejects.toThrow("requires exactly one static string argument");
+		await expect(
+			plugin.transform(
+				"const logo = vormaPublicUrl(`img/${name}.png`);",
+				resolve(root, "src/dynamic-template.ts"),
+			),
+		).rejects.toThrow("requires exactly one static string argument");
+
 		const untouched = await plugin.transform(
 			`const logo = vormaPublicUrl("img/logo.png");`,
 			resolve(root, "src/style.css"),
 		);
 		expect(untouched).toBeNull();
+	});
+
+	it("does not append HMR preamble during build transforms", async () => {
+		await start_test_rpc_server();
+		const plugin = vorma() as any;
+		const root = "/test-root";
+
+		await plugin.config({}, { command: "build" });
+		plugin.configResolved({ root });
+
+		const view_id = resolve(root, test_config.view_modules[0]!);
+		const transformed = await plugin.transform(
+			`const logo = vormaPublicUrl("img/logo.png");`,
+			view_id,
+		);
+		expect(transformed).toBe(`const logo = "${test_hashes["img/logo.png"]}";`);
+	});
+
+	it("routes direct view module HMR through the view boundary and leaves dependencies to Vite", async () => {
+		await start_test_rpc_server();
+		const plugin = vorma() as any;
+		const root = "/test-root";
+		const timestamp = 12345;
+		const invalidated_modules: TestModuleNode[] = [];
+
+		await plugin.config({}, { command: "serve" });
+		plugin.configResolved({ root });
+
+		const view_module = test_module(
+			resolve(root, test_config.view_modules[0]!),
+			"/src/views/root.tsx",
+		);
+		const view_dependency = test_module(
+			resolve(root, "src/views/hmr-probe.tsx"),
+			"/src/views/hmr-probe.tsx",
+		);
+		const view_dependency_importer = test_module(
+			resolve(root, "src/views/hmr-probe-wrapper.tsx"),
+			"/src/views/hmr-probe-wrapper.tsx",
+		);
+		view_dependency.importers.add(view_dependency_importer);
+		view_dependency_importer.importers.add(view_module);
+
+		const ctx = {
+			modules: [view_dependency],
+			timestamp,
+			server: {
+				moduleGraph: {
+					invalidateModule(module_node: TestModuleNode) {
+						invalidated_modules.push(module_node);
+					},
+				},
+			},
+		};
+		expect(plugin.handleHotUpdate(ctx)).toBeUndefined();
+		expect(invalidated_modules).toEqual([]);
+
+		invalidated_modules.length = 0;
+		expect(plugin.handleHotUpdate({ ...ctx, modules: [view_module] })).toEqual([
+			view_module,
+		]);
+		expect(invalidated_modules).toEqual([view_module]);
+
+		invalidated_modules.length = 0;
+		expect(
+			plugin.handleHotUpdate({
+				...ctx,
+				modules: [test_module(resolve(root, "src/unrelated.ts"))],
+			}),
+		).toBeUndefined();
+		expect(invalidated_modules).toEqual([]);
 	});
 
 	it("rewrites CSS public URLs and marks the resolved outputs as external", async () => {
@@ -180,6 +297,9 @@ describe("vorma Vite plugin", () => {
 		plugin.configureServer({
 			async restart() {
 				restart_calls.push(undefined);
+				for (const listener of close_listeners) {
+					listener();
+				}
 			},
 			httpServer: {
 				on(event: string, listener: () => void) {
@@ -221,11 +341,126 @@ describe("vorma Vite plugin", () => {
 		});
 		expect(restart_calls).toHaveLength(1);
 
+		const second_forbidden = await fetch(control_url, {
+			method: "POST",
+			headers: { [token_header]: "wrong-token" },
+		});
+		expect(second_forbidden.status).toBe(403);
+
+		for (const listener of close_listeners) {
+			listener();
+		}
+	});
+
+	it("invalidates exactly the modules that referenced changed public assets", async () => {
+		const rpc_server = await start_test_rpc_server();
+		const plugin = vorma() as any;
+		const root = "/test-root";
+
+		await plugin.config({}, { command: "serve" });
+		plugin.configResolved({ root });
+
+		const consumer_id = resolve(root, "src/uses-logo.ts");
+		await plugin.transform(
+			`const logo = vormaPublicUrl("img/logo.png");`,
+			consumer_id,
+		);
+
+		const invalidate_calls: Array<string> = [];
+		const file_lookups: Array<string> = [];
+		const close_listeners: Array<() => void> = [];
+		const consumer_module = { id: consumer_id };
+		plugin.configureServer({
+			moduleGraph: {
+				getModulesByFile(file: string) {
+					file_lookups.push(file);
+					if (file === consumer_id) {
+						return new Set([consumer_module]);
+					}
+					return undefined;
+				},
+				invalidateModule(module_node: { id: string }) {
+					invalidate_calls.push(module_node.id);
+				},
+			},
+			async restart() {},
+			httpServer: {
+				on(event: string, listener: () => void) {
+					if (event === "close") {
+						close_listeners.push(listener);
+					}
+				},
+			},
+		});
+
+		await wait_for(() => {
+			return rpc_server.calls.some((call) => {
+				return call.request.method === "set_port";
+			});
+		});
+		const set_port_call = rpc_server.calls.find((call) => {
+			return call.request.method === "set_port";
+		});
+		if (!set_port_call || set_port_call.request.method !== "set_port") {
+			throw new Error("Vite control port was not published");
+		}
+		const invalidate_url = `http://${loopback_host}:${set_port_call.request.port}${assets_changed_path}`;
+
+		const forbidden = await fetch(invalidate_url, {
+			method: "POST",
+			headers: { [token_header]: "wrong-token" },
+			body: JSON.stringify(["img/logo.png"]),
+		});
+		expect(forbidden.status).toBe(403);
+		expect(invalidate_calls).toHaveLength(0);
+
+		const invalid_body = await fetch(invalidate_url, {
+			method: "POST",
+			headers: { [token_header]: test_token },
+			body: "not json",
+		});
+		expect(invalid_body.status).toBe(400);
+		expect(invalidate_calls).toHaveLength(0);
+
+		const unrelated = await fetch(invalidate_url, {
+			method: "POST",
+			headers: { [token_header]: test_token },
+			body: JSON.stringify(["img/other.png"]),
+		});
+		expect(unrelated.status).toBe(200);
+		expect(invalidate_calls).toHaveLength(0);
+
+		const ok = await fetch(invalidate_url, {
+			method: "POST",
+			headers: { [token_header]: test_token },
+			// The build sends source keys without a leading slash; a slashed
+			// path must hit the same consumers.
+			body: JSON.stringify(["/img/logo.png"]),
+		});
+		expect(ok.status).toBe(200);
+		expect(await ok.text()).toBe("ok");
+		expect(file_lookups).toEqual([consumer_id]);
+		expect(invalidate_calls).toEqual([consumer_id]);
+
 		for (const listener of close_listeners) {
 			listener();
 		}
 	});
 });
+
+type TestModuleNode = {
+	id: string;
+	url: string;
+	importers: Set<TestModuleNode>;
+};
+
+function test_module(id: string, url = id): TestModuleNode {
+	return {
+		id,
+		url,
+		importers: new Set(),
+	};
+}
 
 async function start_test_rpc_server(): Promise<TestRpcServer> {
 	const calls: RpcCall[] = [];

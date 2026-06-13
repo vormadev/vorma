@@ -1,28 +1,35 @@
 use std::fs;
-use std::io::{self, ErrorKind, Seek, SeekFrom};
+use std::io::{self, ErrorKind, Read, Seek, SeekFrom};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
 const DEV_SERVER_READY_PREFIX: &str = "App server ready: ";
-const DEV_SERVER_READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const PROD_SERVER_READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const PROD_SERVER_READY_STABILITY_INTERVAL: Duration = Duration::from_millis(10);
+const PROD_SERVER_READY_TIMEOUT: Duration = Duration::from_secs(5);
+const DEV_SERVER_READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const DEV_SERVER_READY_TIMEOUT: Duration = Duration::from_secs(90);
 const DEV_SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
-const DEV_CHANGE_POLL_INTERVAL: Duration = Duration::from_millis(250);
-const DEV_CHANGE_TIMEOUT: Duration = Duration::from_secs(300);
+const DEV_SERVER_SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const DEV_CHANGE_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const DEV_SERVER_REBUILD_TIMEOUT: Duration = Duration::from_secs(180);
+const DEV_CLIENT_MODULE_CHANGE_TIMEOUT: Duration = Duration::from_secs(60);
 const LOCALHOST_URL_PREFIX: &str = "http://localhost:";
 const LOOPBACK_URL_PREFIX: &str = "http://127.0.0.1:";
 const CHROME_LOCAL_PERMISSIONS: &str = "local-network-access,local-network,loopback-network";
 const BOMBADIL_ARTIFACTS_DIR: &str = ".bombadil";
 const BOMBADIL_LOGS_DIR: &str = ".bombadil/logs";
 const BOMBADIL_SERVER_BIN_DIR: &str = ".bombadil/server-bin";
+const BOMBADIL_DEV_CARGO_DIR: &str = ".bombadil/cargo/dev";
 const BOMBADIL_SERVER_CARGO_DIR: &str = ".bombadil/cargo/prod";
 const BOMBADIL_VITE_CACHE_DIR: &str = ".bombadil/vite-cache";
+const COMMAND_LOG_TAIL_BYTES: u64 = 16_000;
 const FRAMEWORK_DIST_DIR_PREFIX: &str = ".dist";
 const DEV_MANIFEST_FILENAME: &str = "vorma.manifest.dev.json";
 const DEV_MARKER_PATH: &str = "src/dev_marker.rs";
@@ -75,7 +82,6 @@ struct VariantRunner {
 #[derive(Deserialize)]
 struct DevManifest {
 	dev_vite_server_port: u16,
-	critical_css: String,
 	client_entry: DevClientModule,
 	client_views: std::collections::BTreeMap<String, DevClientModule>,
 }
@@ -195,6 +201,7 @@ impl RunConfig {
 			config: self.clone(),
 			variant,
 		};
+		runner.clean_dev_artifacts()?;
 		let (build_binary, cleanup) = runner.build_dev_binary()?;
 		let mut server = Command::new(build_binary);
 		server.current_dir(framework_root());
@@ -305,7 +312,7 @@ impl VariantRunner {
 			self.run_bombadil_suite(&base_url, &format!("dev-{}", self.variant.name), "inline");
 		self.stop_dev_server(&mut child);
 		cleanup();
-		result.and_then(|_| self.clean_successful_dev_artifacts())
+		result.and_then(|_| self.clean_dev_artifacts())
 	}
 
 	fn test_dev_changes(&self) -> Result<(), String> {
@@ -314,13 +321,14 @@ impl VariantRunner {
 		let result = self.test_dev_changes_inner(&log_path, &mut child);
 		self.stop_dev_server(&mut child);
 		cleanup();
-		result.and_then(|_| self.clean_successful_dev_artifacts())
+		result.and_then(|_| self.clean_dev_artifacts())
 	}
 
 	fn start_logged_dev_server(
 		&self,
 		log_label: &str,
 	) -> Result<(PathBuf, Child, impl FnOnce()), String> {
+		self.clean_dev_artifacts()?;
 		let log_path = self.log_path(log_label)?;
 		let log_file = fs::File::create(&log_path).map_err(|error| error.to_string())?;
 
@@ -360,6 +368,7 @@ impl VariantRunner {
 			&marker_url,
 			DEV_MARKER_A,
 			"initial server marker",
+			DEV_SERVER_REBUILD_TIMEOUT,
 		)?;
 
 		let _server_guard = replace_file_text(
@@ -367,13 +376,14 @@ impl VariantRunner {
 			DEV_MARKER_A,
 			DEV_MARKER_B,
 		)?;
-		self.wait_for_http_body_contains(child, &marker_url, DEV_MARKER_B, "server Rust rebuild")?;
-
-		let _css_guard = append_file_text(
-			&framework_root().join(DEV_CRITICAL_CSS_PATH),
-			&format!("\n.{DEV_CRITICAL_CSS_MARKER} {{ color: rgb(1, 2, 3); }}\n"),
+		self.wait_for_http_body_contains(
+			child,
+			&marker_url,
+			DEV_MARKER_B,
+			"server Rust rebuild",
+			DEV_SERVER_REBUILD_TIMEOUT,
 		)?;
-		self.wait_for_manifest_critical_css(child, DEV_CRITICAL_CSS_MARKER)?;
+
 		self.run_dev_hmr_check(child, &base_url)?;
 
 		let root_view_url = self
@@ -393,6 +403,7 @@ impl VariantRunner {
 			&root_view_url,
 			DEV_VIEW_MODULE_MARKER,
 			"client view module refresh",
+			DEV_CLIENT_MODULE_CHANGE_TIMEOUT,
 		)
 	}
 
@@ -418,6 +429,8 @@ impl VariantRunner {
 			hmr_probe_path,
 			DEV_HMR_MARKER_A,
 			DEV_HMR_MARKER_B,
+			DEV_CRITICAL_CSS_PATH,
+			DEV_CRITICAL_CSS_MARKER,
 		]);
 		let log_path = bombadil_logs_dir().join(format!("dev-hmr-{}.log", self.variant.name));
 		self.run_command_to_log(&mut cmd, &log_path)?;
@@ -428,12 +441,18 @@ impl VariantRunner {
 				self.variant.name,
 			));
 		}
-		self.log("browser HMR check observed");
+		self.log("browser critical CSS and HMR checks observed");
 		Ok(())
 	}
 
 	fn build_dev_binary(&self) -> Result<(PathBuf, impl FnOnce()), String> {
-		let temp_dir = create_unique_bombadil_temp_dir(self.variant.name)?;
+		let target_dir = bombadil_dev_cargo_dir(self.variant.name);
+		fs::create_dir_all(&target_dir).map_err(|error| {
+			format!(
+				"create dev Cargo target dir {}: {error}",
+				target_dir.display()
+			)
+		})?;
 		let mut build_cmd = Command::new("cargo");
 		build_cmd.args([
 			"build",
@@ -443,19 +462,13 @@ impl VariantRunner {
 			"framework-build",
 			"--target-dir",
 		]);
-		build_cmd.arg(&temp_dir);
+		build_cmd.arg(&target_dir);
 		let log_path = bombadil_logs_dir().join(format!("build-dev-{}.log", self.variant.name));
-		if let Err(error) = self.run_command_to_log(&mut build_cmd, &log_path) {
-			let _ = fs::remove_dir_all(&temp_dir);
-			return Err(error);
-		}
-		let build_binary = temp_dir
+		self.run_command_to_log(&mut build_cmd, &log_path)?;
+		let build_binary = target_dir
 			.join("debug")
 			.join(format!("framework-build{}", std::env::consts::EXE_SUFFIX));
-		let cleanup_dir = temp_dir.clone();
-		Ok((build_binary, move || {
-			let _ = fs::remove_dir_all(cleanup_dir);
-		}))
+		Ok((build_binary, || {}))
 	}
 
 	fn build(&self) -> Result<(), String> {
@@ -572,7 +585,8 @@ impl VariantRunner {
 
 	fn wait_until_ready(&self, server: &mut Child) -> Result<(), String> {
 		let url = format!("http://127.0.0.1:{}/", self.variant.port);
-		for _ in 0..50 {
+		let deadline = Instant::now() + PROD_SERVER_READY_TIMEOUT;
+		while Instant::now() < deadline {
 			if let Some(status) = server.try_wait().map_err(|error| error.to_string())? {
 				return Err(format!(
 					"{} server exited before ready with {status}",
@@ -580,7 +594,7 @@ impl VariantRunner {
 				));
 			}
 			if http_get_ok_enough(&url) {
-				thread::sleep(Duration::from_millis(50));
+				thread::sleep(PROD_SERVER_READY_STABILITY_INTERVAL);
 				if let Some(status) = server.try_wait().map_err(|error| error.to_string())? {
 					return Err(format!(
 						"{} server exited during ready probe with {status}",
@@ -589,7 +603,7 @@ impl VariantRunner {
 				}
 				return Ok(());
 			}
-			thread::sleep(Duration::from_millis(100));
+			thread::sleep(PROD_SERVER_READY_POLL_INTERVAL);
 		}
 		Err(format!("{} server did not become ready", self.variant.name))
 	}
@@ -700,8 +714,16 @@ impl VariantRunner {
 			log_file.try_clone().map_err(|error| error.to_string())?,
 		));
 		cmd.stderr(Stdio::from(log_file));
-		self.run_command(cmd)
-			.map_err(|error| format!("read log at {}: {error}", log_path.display()))
+		self.run_command(cmd).map_err(|error| {
+			let log_tail =
+				read_log_tail(log_path, COMMAND_LOG_TAIL_BYTES).unwrap_or_else(|tail_error| {
+					format!("<failed to read command log tail: {tail_error}>")
+				});
+			format!(
+				"read log at {}: {error}\n\n--- command log tail ---\n{log_tail}",
+				log_path.display(),
+			)
+		})
 	}
 
 	fn run_command(&self, cmd: &mut Command) -> Result<(), String> {
@@ -791,12 +813,12 @@ impl VariantRunner {
 			.join(DEV_MANIFEST_FILENAME)
 	}
 
-	fn clean_successful_dev_artifacts(&self) -> Result<(), String> {
+	fn clean_dev_artifacts(&self) -> Result<(), String> {
 		for path in [
 			framework_dev_dist_dir(self.variant.name),
 			bombadil_vite_cache_dir(BOMBADIL_MODE_DEV, self.variant.name),
 		] {
-			remove_dir_all_if_exists(&path, "successful dev generated artifacts")?;
+			remove_dir_all_if_exists(&path, "dev generated artifacts")?;
 		}
 		Ok(())
 	}
@@ -827,8 +849,9 @@ impl VariantRunner {
 		raw_url: &str,
 		needle: &str,
 		label: &str,
+		timeout: Duration,
 	) -> Result<(), String> {
-		let deadline = Instant::now() + DEV_CHANGE_TIMEOUT;
+		let deadline = Instant::now() + timeout;
 		let mut last_error = String::new();
 		while Instant::now() < deadline {
 			if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
@@ -858,38 +881,6 @@ impl VariantRunner {
 		Err(format!("{label} did not settle: {last_error}"))
 	}
 
-	fn wait_for_manifest_critical_css(
-		&self,
-		child: &mut Child,
-		needle: &str,
-	) -> Result<(), String> {
-		let deadline = Instant::now() + DEV_CHANGE_TIMEOUT;
-		let mut last_error = String::new();
-		while Instant::now() < deadline {
-			if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
-				return Err(format!(
-					"{} dev server exited during critical CSS refresh: {status}",
-					self.variant.name,
-				));
-			}
-
-			match self.read_dev_manifest() {
-				Ok(manifest) if manifest.critical_css.contains(needle) => {
-					self.log("critical CSS refresh observed");
-					return Ok(());
-				}
-				Ok(_) => {
-					last_error = format!("critical CSS did not contain {needle:?}");
-				}
-				Err(error) => {
-					last_error = error;
-				}
-			}
-			thread::sleep(DEV_CHANGE_POLL_INTERVAL);
-		}
-		Err(format!("critical CSS refresh did not settle: {last_error}"))
-	}
-
 	fn log(&self, message: &str) {
 		eprintln!("[{}] {message}", self.variant.name);
 	}
@@ -912,7 +903,7 @@ impl VariantRunner {
 			if server.try_wait().ok().flatten().is_some() {
 				return;
 			}
-			thread::sleep(Duration::from_millis(100));
+			thread::sleep(DEV_SERVER_SHUTDOWN_POLL_INTERVAL);
 		}
 		self.signal_process_group(server, libc::SIGKILL);
 		let _ = server.wait();
@@ -931,27 +922,6 @@ fn framework_root() -> PathBuf {
 	PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn create_unique_bombadil_temp_dir(variant_name: &str) -> Result<PathBuf, String> {
-	let nonce = SystemTime::now()
-		.duration_since(UNIX_EPOCH)
-		.map_err(|error| format!("system clock before Unix epoch: {error}"))?
-		.as_nanos();
-	for attempt in 0..32u8 {
-		let path = std::env::temp_dir().join(format!(
-			"vorma-bombadil-dev-build-{variant_name}-{}-{nonce}-{attempt}",
-			std::process::id(),
-		));
-		match fs::create_dir(&path) {
-			Ok(()) => return Ok(path),
-			Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
-			Err(error) => return Err(format!("create temp directory {}: {error}", path.display())),
-		}
-	}
-	Err(format!(
-		"could not create unique Bombadil temp directory for {variant_name}",
-	))
-}
-
 fn bombadil_artifact_path(path: impl AsRef<Path>) -> PathBuf {
 	framework_root().join(BOMBADIL_ARTIFACTS_DIR).join(path)
 }
@@ -963,6 +933,12 @@ fn bombadil_logs_dir() -> PathBuf {
 fn bombadil_server_bin_dir(variant_name: &str) -> PathBuf {
 	framework_root()
 		.join(BOMBADIL_SERVER_BIN_DIR)
+		.join(variant_name)
+}
+
+fn bombadil_dev_cargo_dir(variant_name: &str) -> PathBuf {
+	framework_root()
+		.join(BOMBADIL_DEV_CARGO_DIR)
 		.join(variant_name)
 }
 
@@ -1125,6 +1101,21 @@ fn print_file_to_stderr(path: &Path) {
 	let _ = io::copy(&mut file, &mut io::stderr());
 }
 
+fn read_log_tail(path: &Path, max_bytes: u64) -> Result<String, String> {
+	let mut file =
+		fs::File::open(path).map_err(|error| format!("open {}: {error}", path.display()))?;
+	let len = file
+		.metadata()
+		.map_err(|error| format!("stat {}: {error}", path.display()))?
+		.len();
+	file.seek(SeekFrom::Start(len.saturating_sub(max_bytes)))
+		.map_err(|error| format!("seek {}: {error}", path.display()))?;
+	let mut data = String::new();
+	file.read_to_string(&mut data)
+		.map_err(|error| format!("read {}: {error}", path.display()))?;
+	Ok(data)
+}
+
 #[cfg(unix)]
 fn set_process_group(cmd: &mut Command) {
 	use std::os::unix::process::CommandExt;
@@ -1169,6 +1160,7 @@ mod tests {
 	fn harness_server_artifacts_do_not_use_vorma_output_namespace() {
 		for path in [
 			bombadil_server_bin_dir("react"),
+			bombadil_dev_cargo_dir("react"),
 			bombadil_server_cargo_dir("react"),
 			bombadil_vite_cache_dir(BOMBADIL_MODE_DEV, "react"),
 		] {
@@ -1203,5 +1195,21 @@ mod tests {
 	#[test]
 	fn test_flags_reject_zero_intensity() {
 		assert!(parse_test_flags(&["-intensity".to_owned(), "0".to_owned()]).is_err());
+	}
+
+	#[test]
+	fn dev_change_probe_intervals_stay_below_local_latency_budget() {
+		assert!(PROD_SERVER_READY_POLL_INTERVAL <= Duration::from_millis(25));
+		assert!(PROD_SERVER_READY_STABILITY_INTERVAL <= Duration::from_millis(10));
+		assert!(DEV_SERVER_READY_POLL_INTERVAL <= Duration::from_millis(25));
+		assert!(DEV_SERVER_SHUTDOWN_POLL_INTERVAL <= Duration::from_millis(25));
+		assert!(DEV_CHANGE_POLL_INTERVAL <= Duration::from_millis(25));
+	}
+
+	#[test]
+	fn dev_change_timeouts_are_contract_specific() {
+		assert!(DEV_CLIENT_MODULE_CHANGE_TIMEOUT < DEV_SERVER_REBUILD_TIMEOUT);
+		assert!(DEV_SERVER_READY_TIMEOUT < DEV_SERVER_REBUILD_TIMEOUT);
+		assert!(DEV_SERVER_SHUTDOWN_TIMEOUT < DEV_CLIENT_MODULE_CHANGE_TIMEOUT);
 	}
 }

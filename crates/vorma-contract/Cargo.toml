@@ -1,0 +1,19 @@
+[package]
+name = "vorma-contract"
+description = "Vorma build/runtime boundary contracts: framework graph, execution plan, runtime manifest, document/type contracts, and the TypeScript type model."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+base64.workspace = true
+blake3.workspace = true
+data-encoding.workspace = true
+http.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2.workspace = true
+vorma-macros.workspace = true
+vorma-matcher.workspace = true

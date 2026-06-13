@@ -130,7 +130,7 @@ type TestCreateClientOptions = {
 	};
 
 type TestCreateClient = (
-	config: { apiMountRoot: string },
+	config: Record<string, never>,
 	options?: TestCreateClientOptions,
 ) => TestVormaClient;
 
@@ -196,7 +196,7 @@ export type AdapterTestHarness = {
 
 /////// Helpers
 
-export const TEST_CONFIG = { apiMountRoot: "/api/" } as any;
+export const TEST_CONFIG = {} as any;
 
 export function seed_payload(overrides: Record<string, unknown> = {}) {
 	const data = {
@@ -1602,7 +1602,20 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 
 		it("useRouteSync cancels a debounced navigation when the target returns to the current route", async () => {
 			const amount_pattern = "/amount/:amount";
-			const route_sync_delay_ms = 20;
+			/*
+			Deterministic on REAL timers, by ordering rather than margins:
+			adapters capture their effect schedulers (rAF / setTimeout) at
+			module init, so fake timers cannot reach them. Instead the
+			debounce is so large (60s) that no event-loop stall can fire
+			it, and each flush wait (150ms) is longer than every adapter's
+			scheduler delay (rAF ~16ms, preact's 100ms fallback) — real
+			timers fire in due-time order, so the flush is GUARANTEED to
+			land before the wait completes, no matter the load.
+			*/
+			const cancel_phase_delay_ms = 60_000;
+			const fire_phase_delay_ms = 10;
+			const effect_flush_wait_ms = 150;
+			let route_sync_delay_ms = cancel_phase_delay_ms;
 			let amount = "12";
 
 			window.history.replaceState({}, "", "/amount/12");
@@ -1648,6 +1661,11 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 					}),
 				);
 			};
+			const flush_effects = async () => {
+				await new Promise((resolve) => {
+					return setTimeout(resolve, effect_flush_wait_ms);
+				});
+			};
 			try {
 				render_sync();
 				expect(container.textContent).toBe("12");
@@ -1655,23 +1673,41 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 				amount = "1";
 				render_sync();
 				expect(container.textContent).toBe("1");
-				await new Promise((resolve) => {
-					return setTimeout(resolve, 0);
-				});
+				// The debounce is now SCHEDULED (flush landed), 60s from due.
+				await flush_effects();
 				expect(fetch_mock).not.toHaveBeenCalled();
 
 				amount = "12";
 				render_sync();
 				expect(container.textContent).toBe("12");
-				await new Promise((resolve) => {
-					return setTimeout(resolve, 0);
-				});
-				await new Promise((resolve) => {
-					return setTimeout(resolve, route_sync_delay_ms + 5);
-				});
+				// The cancelling effect's cleanup has cleared the timer.
+				await flush_effects();
 
 				expect(fetch_mock).not.toHaveBeenCalled();
 				expect(window.location.pathname).toBe("/amount/12");
+
+				/*
+				Positive control: with a short debounce and no cancellation,
+				the navigation MUST fire — proving the schedule/fire
+				machinery runs in this harness, so the absence assertions
+				above are meaningful rather than vacuous. Polled with a
+				deadline: waiting FOR an event tolerates any load.
+				*/
+				route_sync_delay_ms = fire_phase_delay_ms;
+				amount = "1";
+				render_sync();
+				for (let i = 0; i < 200 && fetch_mock.mock.calls.length === 0; i++) {
+					await new Promise((resolve) => {
+						return setTimeout(resolve, 25);
+					});
+				}
+				expect(fetch_mock).toHaveBeenCalledTimes(1);
+				const fetched = fetch_mock.mock.calls[0]?.[0];
+				const fetched_url =
+					fetched instanceof Request
+						? fetched.url
+						: String(fetched as string | URL);
+				expect(fetched_url).toContain("/amount/1");
 			} finally {
 				cleanup();
 			}
@@ -1691,8 +1727,14 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 							return harness.h("div", {}, "cl-test");
 						},
 						clientLoader: async ({ serverPromise }: any) => {
-							await serverPromise;
-							return { enhanced: true };
+							/*
+							serverPromise resolves with this view's OWN typed
+							server output at `viewData` (plus the full chain in
+							`matches`) — pinned because the port once dropped
+							the field from the public type.
+							*/
+							const server = await serverPromise;
+							return { enhanced: true, server_view_data: server.viewData };
 						},
 					}),
 				};
@@ -1710,7 +1752,10 @@ export function define_adapter_tests(harness: AdapterTestHarness) {
 			const { render, cleanup } = harness.mount();
 			try {
 				render(harness.h(client.RootOutlet, { idx: 0 }));
-				expect(harness.unwrap(captured)).toEqual({ enhanced: true });
+				expect(harness.unwrap(captured)).toEqual({
+					enhanced: true,
+					server_view_data: { raw: "data" },
+				});
 			} finally {
 				cleanup();
 			}

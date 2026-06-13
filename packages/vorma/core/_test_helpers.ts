@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import {
 	BUILD_ID_HEADER,
 	DATA_SCRIPT_ID,
@@ -340,7 +340,7 @@ export async function setup(
 		return orig_add(type, handler, ...rest);
 	}) as any;
 
-	const core_res = create_client_core({ apiMountRoot: "/api/" }, commit, {
+	const core_res = create_client_core({}, commit, {
 		hard_redirect,
 		reload,
 		scroll_to,
@@ -370,6 +370,11 @@ export function register_ccc_lifecycle(
 	before_each: (fn: () => void) => void,
 	after_each: (fn: () => void) => void,
 ) {
+	// Track every window listener added during a test (cores are often booted
+	// directly, without setup()), so no listener leaks into the next test.
+	let tracked_listeners: Array<[string, any]> = [];
+	let orig_add: typeof window.addEventListener | null = null;
+
 	before_each(() => {
 		vi.restoreAllMocks();
 		vi.resetModules();
@@ -377,9 +382,57 @@ export function register_ccc_lifecycle(
 		document.body.innerHTML = "";
 		window.history.replaceState({}, "", "/");
 		sessionStorage.clear();
+		tracked_listeners = [];
+		orig_add = window.addEventListener.bind(window);
+		window.addEventListener = ((type: string, handler: any, ...rest: any[]) => {
+			tracked_listeners.push([type, handler]);
+			return orig_add!(type, handler, ...rest);
+		}) as any;
 	});
 
 	after_each(() => {
+		if (orig_add) {
+			window.addEventListener = orig_add as any;
+			orig_add = null;
+		}
+		for (const [type, handler] of tracked_listeners) {
+			window.removeEventListener(type, handler);
+		}
+		tracked_listeners = [];
 		cleanup_listeners();
 	});
+}
+
+export const t_opts = () => {
+	return {
+		hard_redirect: vi.fn(),
+		reload: vi.fn(),
+		scroll_to: vi.fn(),
+	};
+};
+
+export async function wait_until(check: () => boolean, message: string): Promise<void> {
+	for (let i = 0; i < 50; i++) {
+		if (check()) {
+			return;
+		}
+		await tick();
+		await new Promise((resolve) => {
+			return setTimeout(resolve, 0);
+		});
+	}
+	throw new Error(message);
+}
+
+export async function expect_revalidation_promise_resolves_ok(
+	promise: Promise<unknown>,
+): Promise<void> {
+	const pending = Symbol("pending");
+	const result = await Promise.race([
+		promise,
+		tick().then(() => {
+			return pending;
+		}),
+	]);
+	expect(result).toEqual({ ok: true });
 }

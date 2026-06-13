@@ -1,11 +1,13 @@
 import { R, type Result } from "vorma/kit/result";
+import type { HeadElement } from "./wire_contracts.gen.ts";
 
-export type HeadEl = {
-	tag: string;
-	attributes_known_safe: Record<string, string>;
-	boolean_attributes?: string[] | null;
-	dangerous_inner_html?: string;
-};
+/**
+ * Wire head element, generated from the Rust `HeadElement` struct. The old
+ * hand-written shape had drifted (it required `tag`/`attributes_known_safe`,
+ * which the server omits when empty, and invented a nullable
+ * `boolean_attributes`).
+ */
+export type HeadEl = HeadElement;
 
 type HeadSection = "meta" | "rest";
 

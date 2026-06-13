@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use vorma_matcher::{Matcher, MatcherBuilder, Options};
+use vorma_matcher::{MatcherBuilder, NestedMatcher, Options};
 
 use crate::encoding::encode_nested_match;
 
@@ -8,11 +8,11 @@ static MATCHERS: Mutex<Vec<Option<MatcherSlot>>> = Mutex::new(Vec::new());
 
 struct MatcherSlot {
 	builder: MatcherBuilder,
-	matcher: Option<Matcher>,
+	matcher: Option<NestedMatcher>,
 }
 
 pub(crate) fn new_matcher() -> u32 {
-	let Ok(builder) = Matcher::builder(Options {
+	let Ok(builder) = MatcherBuilder::new(Options {
 		explicit_index_segment_identifier: "_index".to_owned(),
 		..Options::default()
 	}) else {
@@ -95,9 +95,9 @@ impl MatcherSlot {
 		Ok(())
 	}
 
-	fn matcher(&mut self) -> &Matcher {
+	fn matcher(&mut self) -> &NestedMatcher {
 		if self.matcher.is_none() {
-			self.matcher = Some(self.builder.clone().finish());
+			self.matcher = Some(self.builder.clone().finish_nested());
 		}
 
 		self.matcher

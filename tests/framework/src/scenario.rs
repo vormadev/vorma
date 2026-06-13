@@ -58,7 +58,6 @@ const DEPLOYMENT_PATH: &str = "/__bombadil/deployment";
 const PANIC_PATH: &str = "/__bombadil/panic";
 const EXIT_PATH: &str = "/__bombadil/exit";
 const SERVER_ENTRY_BIN: &str = "framework-serve";
-const BUILD_ENTRY_BIN: &str = "framework-build";
 const RENDER_ENTRY: &str = "vorma.entry.ts";
 #[allow(dead_code)]
 const VIEW_MODULE_ROOT: &str = "components/routes";
@@ -383,23 +382,21 @@ pub const FAIL: app::View = app::view! {
 	pattern: "/fail";
 	input: ();
 	output: EmptyData;
-	handler: |ctx| {
-		ctx.response().set_error_status(
-			vorma::HttpStatusCode::INTERNAL_SERVER_ERROR,
-			"Fixture view handler failed on purpose.",
-		);
+	handler: |_ctx| {
+		/*
+		Views have no status vocabulary: the segment errors, the page still
+		renders, and the boundary shows the explicit client message.
+		*/
 		Err::<EmptyData, _>(
-			(Box::new(vorma::ViewError {
-				client_msg: "Fixture view handler failed on purpose.".to_owned(),
-				err: None,
-			}) as vorma::BoxError).into(),
+			vorma::ViewExit::err("fixture view handler failed (server-side record)")
+				.with_client_msg("Fixture view handler failed on purpose."),
 		)
 	};
 };
 
 pub const COUNT_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
-	pattern: "/count";
+	pattern: "/api/count";
 	input: CountResourceInput;
 	output: CountResourceData;
 	handler: |ctx| {
@@ -413,19 +410,19 @@ pub const COUNT_RESOURCE: app::Resource = app::resource! {
 
 pub const ECHO_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::POST;
-	pattern: "/echo";
+	pattern: "/api/echo";
 	input: EchoResourceInput;
 	output: EchoResourceData;
 	handler: |ctx| {
 		if ctx.input().Message == ECHO_RESOURCE_FAIL_MESSAGE {
-			ctx.response().set_error_status(
-				vorma::HttpStatusCode::CONFLICT,
-				"Fixture resource failed on purpose.",
+			/*
+			A rejection is one returned value — no fabricated output data.
+			*/
+			return Err(
+				vorma::HttpExit::err("fixture echo rejected on purpose (server record)")
+					.with_status(vorma::HttpStatusCode::CONFLICT)
+					.with_client_msg("Fixture resource failed on purpose."),
 			);
-			return Ok(EchoResourceData {
-				Message: String::new(),
-				Deployment: ctx.state().deployment.data_suffix.to_owned(),
-			});
 		}
 		Ok(EchoResourceData {
 			Message: ctx.input().Message.clone(),
@@ -436,7 +433,7 @@ pub const ECHO_RESOURCE: app::Resource = app::resource! {
 
 pub const FORM_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::POST;
-	pattern: "/form";
+	pattern: "/api/form";
 	input: vorma::FormData;
 	output: FormResourceData;
 	handler: |ctx| {
@@ -446,7 +443,7 @@ pub const FORM_RESOURCE: app::Resource = app::resource! {
 
 pub const FORM_QUERY_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
-	pattern: "/form-query";
+	pattern: "/api/form-query";
 	input: vorma::FormData;
 	output: FormResourceData;
 	handler: |ctx| {
@@ -456,7 +453,7 @@ pub const FORM_QUERY_RESOURCE: app::Resource = app::resource! {
 
 pub const SERVER_MARKER_RESOURCE: app::Resource = app::resource! {
 	method: vorma::HttpMethod::GET;
-	pattern: "/server-marker";
+	pattern: "/api/server-marker";
 	input: ();
 	output: ServerMarkerData;
 	handler: |ctx| {
@@ -470,13 +467,7 @@ pub const SERVER_MARKER_RESOURCE: app::Resource = app::resource! {
 impl Variant {
 	pub fn build(self) -> Result<(), String> {
 		let deployment = selected_deployment();
-		vorma_build::run(
-			move || self.config(deployment),
-			vorma_build::BuildOptions {
-				cargo_package: env!("CARGO_PKG_NAME"),
-				cargo_bin: BUILD_ENTRY_BIN,
-			},
-		)
+		vorma_build::run(move || self.config(deployment))
 	}
 
 	pub async fn serve_from_disk(self) -> vorma::Result<()> {
@@ -523,12 +514,12 @@ impl Variant {
 		);
 		axum::serve(
 			tokio::net::TcpListener::bind(addr).await.map_err(|error| {
-				vorma::Error::runtime(format!("bind framework test server: {error}"))
+				vorma::Error::new(format!("bind framework test server: {error}"))
 			})?,
 			app,
 		)
 		.await
-		.map_err(|error| vorma::Error::runtime(format!("Application server failed: {error}")))
+		.map_err(|error| vorma::Error::new(format!("Application server failed: {error}")))
 	}
 
 	fn config(self, deployment: DeploymentVariant) -> vorma::Result<vorma::AppConfig<AppState>> {
@@ -540,15 +531,12 @@ impl Variant {
 
 		Ok(vorma::AppConfig {
 			root_dir: env!("CARGO_MANIFEST_DIR").into(),
-			server_config: vorma::ServerConfig {
+			server_target: vorma::ServerTarget {
 				cargo_package: env!("CARGO_PKG_NAME").to_owned(),
 				cargo_bin: SERVER_ENTRY_BIN.to_owned(),
 			},
 			dist_dir: self.deployment_dist_dir(deployment),
-			path_config: vorma::PathConfig {
-				public_static_base: "/".to_owned(),
-				api_base: "/api/".to_owned(),
-			},
+			public_static_base: "/".to_owned(),
 			frontend_config: vorma::FrontendConfig {
 				ui_variant: self.ui_variant,
 				js_package_manager_base_cmd: "pnpm".to_owned(),

@@ -118,14 +118,8 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-it("starts route fetches before matcher wasm is ready but waits to prestart client loaders", async () => {
+it("does not wait for matcher wasm before preparing a fetched route payload", async () => {
 	const matcher_ready = deferred<MockMatcher>();
-	const matcher = make_matcher((path) => {
-		if (path === "/users") {
-			return { params: {}, splat_values: [], patterns: ["/users"] };
-		}
-		return null;
-	});
 	vi.doMock("./client_wasm/matcher.ts", () => {
 		return {
 			create_client_matcher: vi.fn(() => {
@@ -160,7 +154,7 @@ it("starts route fetches before matcher wasm is ready but waits to prestart clie
 		import_urls: ["/users-module.js"],
 	});
 
-	const core_res = create_client_core({ apiMountRoot: "/api/" }, vi.fn(), {
+	const core_res = create_client_core({}, vi.fn(), {
 		hard_redirect: vi.fn(),
 		reload: vi.fn(),
 		scroll_to: vi.fn(),
@@ -182,15 +176,6 @@ it("starts route fetches before matcher wasm is ready but waits to prestart clie
 	}, "expected route fetch to start before matcher wasm resolves");
 
 	expect(captured_args).toBeNull();
-	expect(matcher.register_pattern).not.toHaveBeenCalled();
-
-	matcher_ready.resolve(matcher);
-	await wait_until(() => {
-		return captured_args !== null;
-	}, "expected client loader to prestart after matcher wasm resolves");
-
-	expect(matcher.register_pattern).toHaveBeenCalledWith("/users");
-	expect(captured_args.knownMatches).toEqual([{ pattern: "/users", input: {} }]);
 
 	fetch_result.resolve(
 		route_response({
@@ -199,7 +184,91 @@ it("starts route fetches before matcher wasm is ready but waits to prestart clie
 			import_urls: ["/users-module.js"],
 		}),
 	);
-	await nav;
+	await expect(nav).resolves.toEqual({ didNavigate: true });
+	expect(captured_args?.trigger).toBe("navigation");
+	expect(captured_args?.knownMatches).toEqual([{ pattern: "/users", input: {} }]);
+});
+
+it("waits for matcher wasm before prestarting known client loaders", async () => {
+	const matcher_ready = deferred<MockMatcher>();
+	vi.doMock("./client_wasm/matcher.ts", () => {
+		return {
+			create_client_matcher: vi.fn(() => {
+				return matcher_ready.promise;
+			}),
+		};
+	});
+
+	let loader_runs = 0;
+	vi.doMock("/users-module.js", () => {
+		return {
+			default: {
+				pattern: "/users",
+				component: () => {
+					return null;
+				},
+				client_loader: async (args: any) => {
+					if (args.trigger === "navigation") {
+						loader_runs++;
+						await args.serverPromise;
+					}
+					return { client: true };
+				},
+			},
+		};
+	});
+
+	const { create_client_core } = await import("./create_client_core.ts");
+	seed_payload({
+		matched_patterns: ["/users"],
+		views_data: [{ initial: true }],
+		import_urls: ["/users-module.js"],
+	});
+
+	const core_res = create_client_core({}, vi.fn(), {
+		hard_redirect: vi.fn(),
+		reload: vi.fn(),
+		scroll_to: vi.fn(),
+	});
+	if (!core_res.ok) {
+		throw new Error(`create_client_core failed with error: ${core_res.err}`);
+	}
+	const core = core_res.val;
+	await core.boot({});
+
+	const fetch_result = deferred<Response>();
+	const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+		return fetch_result.promise;
+	});
+
+	const nav = core.navigate("/users");
+	await wait_until(() => {
+		return fetch.mock.calls.length === 1;
+	}, "expected route fetch to start before matcher wasm resolves");
+	await tick();
+	expect(loader_runs).toBe(0);
+
+	matcher_ready.resolve(
+		make_matcher((path) => {
+			if (path === "/users") {
+				return { params: {}, splat_values: [], patterns: ["/users"] };
+			}
+			return null;
+		}),
+	);
+	await wait_until(() => {
+		return loader_runs === 1;
+	}, "expected client loader prestart once matcher wasm resolved, before the server response");
+
+	fetch_result.resolve(
+		route_response({
+			matched_patterns: ["/users"],
+			views_data: [{ next: true }],
+			import_urls: ["/users-module.js"],
+		}),
+	);
+	await expect(nav).resolves.toEqual({ didNavigate: true });
+	expect(loader_runs).toBe(1);
 });
 
 it("notifies links to recompute when the link matcher wasm resolves", async () => {
@@ -239,12 +308,9 @@ it("notifies links to recompute when the link matcher wasm resolves", async () =
 
 	const { create_adapter_base } = await import("./ui_adapter_core.ts");
 	const commits: Array<{ link_state_version?: number }> = [];
-	const adapter_res = create_adapter_base(
-		{ apiMountRoot: "/api/" } as any,
-		(commit) => {
-			commits.push(commit);
-		},
-	);
+	const adapter_res = create_adapter_base({} as any, (commit) => {
+		commits.push(commit);
+	});
 	if (!adapter_res.ok) {
 		throw new Error(`create_adapter_base failed with error: ${adapter_res.err}`);
 	}
@@ -319,7 +385,7 @@ it("does not register duplicate view patterns after matcher wasm is ready", asyn
 		import_urls: ["/users-module.js"],
 	});
 
-	const core_res = create_client_core({ apiMountRoot: "/api/" }, vi.fn(), {
+	const core_res = create_client_core({}, vi.fn(), {
 		hard_redirect: vi.fn(),
 		reload: vi.fn(),
 		scroll_to: vi.fn(),
@@ -363,7 +429,7 @@ it("does not register duplicate link patterns after matcher wasm is ready", asyn
 	});
 
 	const { create_adapter_base } = await import("./ui_adapter_core.ts");
-	const adapter_res = create_adapter_base({ apiMountRoot: "/api/" } as any, vi.fn());
+	const adapter_res = create_adapter_base({} as any, vi.fn());
 	if (!adapter_res.ok) {
 		throw new Error(`create_adapter_base failed with error: ${adapter_res.err}`);
 	}

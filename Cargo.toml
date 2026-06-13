@@ -1,12 +1,14 @@
 [workspace]
 members = [
 	"crates/vorma-build",
+	"crates/vorma-contract",
 	"crates/vorma-client-wasm",
 	"crates/vorma-macros",
 	"crates/vorma-matcher",
 	"crates/vorma",
 	"crates/vorma-tasks",
-	"examples/minimal",
+	"examples/board",
+	"examples/notes",
 	"tests/framework",
 	"xtask",
 ]
@@ -21,6 +23,9 @@ version = "0.86.0-pre.3"
 
 [workspace.dependencies]
 axum = "0.8"
+criterion = "0.7"
+rustc-hash = "2"
+smallvec = "1"
 base64 = "0.22"
 blake3 = "1"
 bytes = "1"
@@ -33,9 +38,17 @@ html-escape = "0.2"
 http = "1"
 http-body = "1"
 http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 libc = "0.2"
+rusqlite = { version = "0.32", features = ["bundled"] }
 lightningcss = "1.0.0-alpha.71"
-lru = "0.18"
+nix = { version = "0.29", default-features = false, features = [
+	"event",
+	"process",
+	"signal",
+] }
+trybuild = "1.0"
 mime = "0.3"
 mime_guess = "2"
 multer = "3"
@@ -64,6 +77,7 @@ ureq = { version = "3", default-features = false }
 url = "2"
 vorma = { path = "crates/vorma", version = "0.86.0-pre.3" }
 vorma-build = { path = "crates/vorma-build", version = "0.86.0-pre.3" }
+vorma-contract = { path = "crates/vorma-contract", version = "0.86.0-pre.3" }
 vorma-macros = { path = "crates/vorma-macros", version = "0.86.0-pre.3" }
 vorma-matcher = { path = "crates/vorma-matcher", version = "0.86.0-pre.3" }
 vorma-tasks = { path = "crates/vorma-tasks", version = "0.86.0-pre.3" }

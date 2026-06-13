@@ -1,15 +1,17 @@
+//! Public read-only HTTP request wrappers.
+
 use url::form_urlencoded;
 
-use crate::mux::RawRequest;
+use crate::execution_engine::RequestInput;
 
 /// Read-only HTTP request view exposed to Vorma handlers.
 #[derive(Clone, Copy, Debug)]
 pub struct HttpRequest<'a> {
-	inner: &'a RawRequest,
+	inner: &'a RequestInput,
 }
 
 impl<'a> HttpRequest<'a> {
-	pub(crate) fn new(inner: &'a RawRequest) -> Self {
+	pub(crate) fn new(inner: &'a RequestInput) -> Self {
 		Self { inner }
 	}
 
@@ -95,14 +97,21 @@ impl<'a> HttpSearchParams<'a> {
 
 #[cfg(test)]
 mod tests {
+	use http::Method;
+
 	use super::*;
 
 	#[test]
 	fn search_params_parse_repeated_and_encoded_query_values() {
-		let raw = RawRequest::get("/items?tag=rust&tag=vorma&empty=&q=a%20b");
-		let request = HttpRequest::new(&raw);
+		let request = RequestInput::new(Method::GET, "/items")
+			.with_query("tag=rust&tag=vorma&empty=&q=a%20b");
+		let request = HttpRequest::new(&request);
 		let params = request.search_params();
 
+		assert_eq!(
+			request.uri().to_string(),
+			"/items?tag=rust&tag=vorma&empty=&q=a%20b"
+		);
 		assert_eq!(params.get("tag"), Some("rust".to_owned()));
 		assert_eq!(
 			params.get_all("tag").collect::<Vec<_>>(),

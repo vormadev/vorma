@@ -1,0 +1,5 @@
+error: TsGen derive currently supports structs and unit-only enums
+ --> tests/compile_fail/ts_gen_union.rs:4:7
+  |
+4 | union Raw {
+  |       ^^^

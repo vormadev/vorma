@@ -1,22 +1,42 @@
+//! Public framework error type.
+/*
+The plain framework/setup error: config validation, helper failures
+(`bind_addr`, `public_url`), build-time faults. Handler EXITS are a
+different concept with different types (`ViewExit`/`HttpExit` in
+`exit.rs`); both convert from this type via `?`. Nothing here is ever
+client-visible.
+*/
+
 use std::error::Error as StdError;
 use std::fmt;
-use std::sync::Arc;
 
-/// Boxed application error type used by the default Vorma error parameter.
+/// Boxed error type for chained error sources.
 pub type BoxError = Box<dyn StdError + Send + Sync + 'static>;
 
-/// Simple framework error for app setup and runtime helper failures.
+/// Framework error carrying a display message and optional source.
 #[derive(Debug)]
 pub struct Error {
 	message: String,
+	source: Option<BoxError>,
 }
 
 impl Error {
-	/// Create a runtime/setup error with a display message.
-	pub fn runtime(message: impl Into<String>) -> Self {
+	/// Create an error from a display message.
+	pub fn new(message: impl Into<String>) -> Self {
 		Self {
 			message: message.into(),
+			source: None,
 		}
+	}
+
+	/// Attach a source error for diagnostics chains.
+	pub fn with_source(mut self, source: impl Into<BoxError>) -> Self {
+		self.source = Some(source.into());
+		self
+	}
+
+	pub(crate) fn into_message_and_source(self) -> (String, Option<BoxError>) {
+		(self.message, self.source)
 	}
 }
 
@@ -26,99 +46,45 @@ impl fmt::Display for Error {
 	}
 }
 
-impl StdError for Error {}
+impl StdError for Error {
+	fn source(&self) -> Option<&(dyn StdError + 'static)> {
+		self.source
+			.as_ref()
+			.map(|source| source.as_ref() as &dyn StdError)
+	}
+}
+
+/*
+Boxed errors convert with the box retained as source, so `?` on arbitrary
+library errors inside handlers keeps the diagnostics chain.
+*/
+impl From<BoxError> for Error {
+	fn from(source: BoxError) -> Self {
+		let message = source.to_string();
+		Self {
+			message,
+			source: Some(source),
+		}
+	}
+}
 
 impl From<crate::tsgen::Error> for Error {
 	fn from(error: crate::tsgen::Error) -> Self {
-		Self::runtime(error.to_string())
+		Self::new(error.to_string())
 	}
 }
-
-impl From<Error> for vorma_tasks::Error<BoxError> {
-	fn from(error: Error) -> Self {
-		Self::Failed(Arc::new(Box::new(error) as BoxError))
-	}
-}
-
-/// View error with an optional client-safe message.
-#[derive(Debug)]
-pub struct ViewError {
-	/// Message that may be sent to the browser/client.
-	pub client_msg: String,
-	/// Server-side source error.
-	pub err: Option<BoxError>,
-}
-
-impl fmt::Display for ViewError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if let Some(err) = &self.err {
-			return write!(f, "{err}");
-		}
-		if !self.client_msg.is_empty() {
-			return write!(f, "{}", self.client_msg);
-		}
-		write!(f, "unknown view error")
-	}
-}
-
-impl StdError for ViewError {
-	fn source(&self) -> Option<&(dyn StdError + 'static)> {
-		self.err.as_ref().map(|err| err.as_ref() as &dyn StdError)
-	}
-}
-
-/// Provides an optional client-safe message for handler errors.
-pub trait ViewErrorClientMsg {
-	/// Return a client-safe error message, if this error type carries one.
-	fn view_error_client_msg(&self) -> Option<&str> {
-		None
-	}
-}
-
-impl ViewErrorClientMsg for ViewError {
-	fn view_error_client_msg(&self) -> Option<&str> {
-		if self.client_msg.is_empty() {
-			return None;
-		}
-		Some(&self.client_msg)
-	}
-}
-
-impl ViewErrorClientMsg for Error {}
-
-impl ViewErrorClientMsg for BoxError {
-	fn view_error_client_msg(&self) -> Option<&str> {
-		self.downcast_ref::<ViewError>()
-			.and_then(ViewErrorClientMsg::view_error_client_msg)
-	}
-}
-
-impl ViewErrorClientMsg for String {}
-
-impl ViewErrorClientMsg for &'static str {}
 
 #[cfg(test)]
 mod tests {
-	use super::ViewError;
+	use super::*;
 
 	#[test]
-	fn view_error_display_matches_fallback_order() {
-		let err = ViewError {
-			client_msg: "client".to_owned(),
-			err: Some("server".into()),
-		};
-		assert_eq!(err.to_string(), "server");
+	fn error_carries_message_and_optional_source() {
+		let error = Error::new("db connection refused");
+		assert_eq!(error.to_string(), "db connection refused");
+		assert!(StdError::source(&error).is_none());
 
-		let err = ViewError {
-			client_msg: "client".to_owned(),
-			err: None,
-		};
-		assert_eq!(err.to_string(), "client");
-
-		let err = ViewError {
-			client_msg: String::new(),
-			err: None,
-		};
-		assert_eq!(err.to_string(), "unknown view error");
+		let error = Error::new("outer").with_source(std::io::Error::other("inner"));
+		assert_eq!(StdError::source(&error).unwrap().to_string(), "inner");
 	}
 }

@@ -1,3 +1,3 @@
 export function prettyJson(obj: any): string {
-	return JSON.stringify(obj, null, 2);
+	return JSON.stringify(obj, null, "\t");
 }

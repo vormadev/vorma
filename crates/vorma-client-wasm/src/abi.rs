@@ -14,6 +14,12 @@ struct Allocation {
 	len: usize,
 }
 
+impl Allocation {
+	fn matches(&self, ptr: *const u8, len: usize) -> bool {
+		self.ptr == ptr as usize && self.len == len
+	}
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AbiStatus {
 	NoMatch,
@@ -76,7 +82,7 @@ pub(crate) fn dealloc(ptr: *mut u8, len: usize) {
 		.expect("client matcher allocation registry should not be poisoned");
 	let Some(index) = allocations
 		.iter()
-		.position(|allocation| allocation.ptr == ptr as usize && allocation.len == len)
+		.position(|allocation| allocation.matches(ptr, len))
 	else {
 		return;
 	};
@@ -90,17 +96,25 @@ pub(crate) fn dealloc(ptr: *mut u8, len: usize) {
 	}
 }
 
-pub(crate) fn read_str<'a>(ptr: *const u8, len: usize) -> Option<&'a str> {
+pub(crate) fn read_str(ptr: *const u8, len: usize) -> Option<String> {
 	if len > MAX_INPUT_LEN {
 		return None;
 	}
 	if len == 0 {
-		return Some("");
+		return Some(String::new());
 	}
 	if ptr.is_null() {
 		return None;
 	}
 
+	let allocations = ALLOCATIONS
+		.lock()
+		.expect("client matcher allocation registry should not be poisoned");
+	allocations
+		.iter()
+		.any(|allocation| allocation.matches(ptr, len))
+		.then_some(())?;
+
 	let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
-	std::str::from_utf8(bytes).ok()
+	std::str::from_utf8(bytes).ok().map(str::to_owned)
 }

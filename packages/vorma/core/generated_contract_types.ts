@@ -22,7 +22,6 @@ export type ResourceBase = {
 /////// APP CONFIG
 
 export type AppConfig = {
-	apiMountRoot: string;
 	__vorma_views: readonly ViewBase[];
 	__vorma_resources: readonly ResourceBase[];
 };

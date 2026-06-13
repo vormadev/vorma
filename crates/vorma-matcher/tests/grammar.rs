@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use vorma_matcher::{MatcherBuilder, Options, Params, parse_segments};
 
 fn params(entries: &[(&str, &str)]) -> Params {
-	let mut out = HashMap::new();
+	let mut out = Params::default();
 	for (k, v) in entries {
-		out.insert((*k).to_string(), (*v).to_string());
+		out.insert(k, *v);
 	}
 	out
 }
@@ -181,7 +179,7 @@ fn builder_rejects_cross_pattern_collisions() {
 	assert_eq!(second.original_pattern(), first.original_pattern());
 	assert_eq!(second.normalized_pattern(), first.normalized_pattern());
 
-	let matcher = builder.finish();
+	let matcher = builder.finish_flat();
 	let found = matcher.find_best_match("/users/42").unwrap();
 	assert_eq!(found.params, params(&[("id", "42")]));
 
@@ -228,16 +226,97 @@ fn deep_dynamic_paths_do_not_depend_on_call_stack_depth_or_u16_scores() {
 	let mut path = "/a".repeat(depth);
 	path.push_str("/tail");
 
+	// The clone at this depth pins that builder cloning walks the route
+	// tree iteratively, like matching and dropping.
 	let mut builder = MatcherBuilder::new(Options::default()).unwrap();
 	builder.register_pattern(&pattern).unwrap();
-	let matcher = builder.finish();
+	let nested_matcher = builder.clone().finish_nested();
+	let matcher = builder.finish_flat();
 
 	let found = matcher.find_best_match(&path).expect("expected best match");
 	assert_eq!(found.params, params(&[("id", "tail")]));
 
-	let nested = matcher
+	let nested = nested_matcher
 		.find_nested_matches(&path)
 		.expect("expected nested match");
 	assert_eq!(nested.params, params(&[("id", "tail")]));
 	assert_eq!(nested.matches.len(), 1);
+}
+
+#[test]
+fn cloned_builders_produce_identical_matchers() {
+	let patterns = [
+		"",
+		"/",
+		"/users",
+		"/users/:id",
+		"/users/:id/posts",
+		"/files/*",
+		"/:x",
+		"/a/:y",
+		"/a/:y/",
+	];
+	let mut builder = MatcherBuilder::new(Options::default()).unwrap();
+	for pattern in patterns {
+		builder.register_pattern(pattern).unwrap();
+	}
+	let cloned = builder.clone();
+
+	let paths = [
+		"/",
+		"/users",
+		"/users/42",
+		"/users/42/posts",
+		"/files/a/b",
+		"/q",
+		"/a/b",
+		"/a/b/",
+		"/nope/nope/nope",
+	];
+
+	let flat_original = builder.clone().finish_flat();
+	let flat_cloned = cloned.clone().finish_flat();
+	for path in paths {
+		let original = flat_original.find_best_match(path);
+		let clone = flat_cloned.find_best_match(path);
+		match (original, clone) {
+			(None, None) => {}
+			(Some(original), Some(clone)) => {
+				assert_eq!(
+					original.pattern.normalized_pattern(),
+					clone.pattern.normalized_pattern(),
+					"{path}"
+				);
+				assert_eq!(original.params, clone.params, "{path}");
+				assert_eq!(original.splat_values, clone.splat_values, "{path}");
+			}
+			(original, clone) => panic!("{path}: original {original:?} vs clone {clone:?}"),
+		}
+	}
+
+	let nested_original = builder.finish_nested();
+	let nested_cloned = cloned.finish_nested();
+	for path in paths {
+		let original = nested_original.find_nested_matches(path);
+		let clone = nested_cloned.find_nested_matches(path);
+		match (original, clone) {
+			(None, None) => {}
+			(Some(original), Some(clone)) => {
+				let original_chain: Vec<String> = original
+					.matches
+					.iter()
+					.map(|m| m.pattern.normalized_pattern().to_string())
+					.collect();
+				let cloned_chain: Vec<String> = clone
+					.matches
+					.iter()
+					.map(|m| m.pattern.normalized_pattern().to_string())
+					.collect();
+				assert_eq!(original_chain, cloned_chain, "{path}");
+				assert_eq!(original.params, clone.params, "{path}");
+				assert_eq!(original.splat_values, clone.splat_values, "{path}");
+			}
+			(original, clone) => panic!("{path}: original {original:?} vs clone {clone:?}"),
+		}
+	}
 }

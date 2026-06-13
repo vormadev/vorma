@@ -1,0 +1,227 @@
+{
+	"description": "Golden vectors for the search-parameter wire contract shared by the Rust server-side query decoder (crates/vorma/src/input_decoder.rs) and the TypeScript serializer/parser (packages/vorma/kit/json/search_param_serializer.ts, search_param_parser.ts). Each vector pins one query-string encoding to the JSON value both sides must agree on. Rust consumes `input_type`/`type_defs` (serde-encoded TypeRefContract/TypeDefContract); the TypeScript suite consumes `query`/`expected` for serialize/parse round-trips.",
+	"vectors": [
+		{
+			"name": "record_scalars",
+			"input_type": { "Named": { "key": "Search", "name": "Search" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "Search",
+						"name": "Search",
+						"fields": [
+							{ "name": "q", "type_ref": "String", "optional": false },
+							{ "name": "page", "type_ref": "Integer", "optional": false },
+							{ "name": "active", "type_ref": "Bool", "optional": false }
+						]
+					}
+				}
+			],
+			"query": "q=ada&page=2&active=true",
+			"expected": { "q": "ada", "page": 2, "active": true }
+		},
+		{
+			"name": "optional_root_present",
+			"input_type": {
+				"Nullable": { "Named": { "key": "Search", "name": "Search" } }
+			},
+			"type_defs": [
+				{
+					"Record": {
+						"key": "Search",
+						"name": "Search",
+						"fields": [
+							{ "name": "q", "type_ref": "String", "optional": false }
+						]
+					}
+				}
+			],
+			"query": "q=ada",
+			"expected": { "q": "ada" }
+		},
+		{
+			"name": "optional_root_absent",
+			"input_type": {
+				"Nullable": { "Named": { "key": "Search", "name": "Search" } }
+			},
+			"type_defs": [
+				{
+					"Record": {
+						"key": "Search",
+						"name": "Search",
+						"fields": [
+							{ "name": "q", "type_ref": "String", "optional": false }
+						]
+					}
+				}
+			],
+			"query": "",
+			"expected": null
+		},
+		{
+			"name": "nested_record_dotted_paths",
+			"input_type": { "Named": { "key": "Envelope", "name": "Envelope" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "Envelope",
+						"name": "Envelope",
+						"fields": [
+							{
+								"name": "filter",
+								"type_ref": {
+									"Named": { "key": "Filter", "name": "Filter" }
+								},
+								"optional": false
+							}
+						]
+					}
+				},
+				{
+					"Record": {
+						"key": "Filter",
+						"name": "Filter",
+						"fields": [
+							{ "name": "q", "type_ref": "String", "optional": false },
+							{ "name": "page", "type_ref": "Integer", "optional": false }
+						]
+					}
+				}
+			],
+			"query": "filter.q=ada&filter.page=2",
+			"expected": { "filter": { "q": "ada", "page": 2 } }
+		},
+		{
+			"name": "map_dotted_entries",
+			"input_type": { "Named": { "key": "AttrsInput", "name": "AttrsInput" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "AttrsInput",
+						"name": "AttrsInput",
+						"fields": [
+							{
+								"name": "attrs",
+								"type_ref": { "Map": ["String", "String"] },
+								"optional": false
+							}
+						]
+					}
+				}
+			],
+			"query": "attrs.color=red&attrs.size=xl",
+			"expected": { "attrs": { "color": "red", "size": "xl" } }
+		},
+		{
+			"name": "empty_array_marker",
+			"input_type": { "Named": { "key": "TagsInput", "name": "TagsInput" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "TagsInput",
+						"name": "TagsInput",
+						"fields": [
+							{
+								"name": "tags",
+								"type_ref": { "Array": "String" },
+								"optional": false
+							}
+						]
+					}
+				}
+			],
+			"query": "tags=",
+			"expected": { "tags": [] }
+		},
+		{
+			"name": "array_repeated_keys",
+			"input_type": { "Named": { "key": "TagsInput", "name": "TagsInput" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "TagsInput",
+						"name": "TagsInput",
+						"fields": [
+							{
+								"name": "tags",
+								"type_ref": { "Array": "String" },
+								"optional": false
+							}
+						]
+					}
+				}
+			],
+			"query": "tags=a&tags=b",
+			"expected": { "tags": ["a", "b"] }
+		},
+		{
+			"name": "nullable_scalar_null_marker",
+			"input_type": { "Named": { "key": "MaybeInput", "name": "MaybeInput" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "MaybeInput",
+						"name": "MaybeInput",
+						"fields": [
+							{
+								"name": "q",
+								"type_ref": { "Nullable": "String" },
+								"optional": false
+							}
+						]
+					}
+				}
+			],
+			"query": "q=",
+			"expected": { "q": null }
+		},
+		{
+			"name": "string_enum_variant",
+			"input_type": { "Named": { "key": "SortInput", "name": "SortInput" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "SortInput",
+						"name": "SortInput",
+						"fields": [
+							{
+								"name": "sort",
+								"type_ref": {
+									"Named": { "key": "SortKey", "name": "SortKey" }
+								},
+								"optional": false
+							}
+						]
+					}
+				},
+				{
+					"StringEnum": {
+						"key": "SortKey",
+						"name": "SortKey",
+						"variants": ["asc", "desc"]
+					}
+				}
+			],
+			"query": "sort=asc",
+			"expected": { "sort": "asc" }
+		},
+		{
+			"name": "optional_field_omitted",
+			"input_type": { "Named": { "key": "OptInput", "name": "OptInput" } },
+			"type_defs": [
+				{
+					"Record": {
+						"key": "OptInput",
+						"name": "OptInput",
+						"fields": [
+							{ "name": "q", "type_ref": "String", "optional": false },
+							{ "name": "page", "type_ref": "Integer", "optional": true }
+						]
+					}
+				}
+			],
+			"query": "q=ada",
+			"expected": { "q": "ada" }
+		}
+	]
+}

@@ -1,0 +1,201 @@
+# TypeScript public API inventory — regenerated after the API campaign.
+# Method: package.json exports map of packages/vorma -> exported names
+# per entry point (types included).
+
+===== ./__internal (packages/vorma/core/_index.ts)
+  MutationError, QueryError, create_typed_api_client } from "./api_client.ts"
+  ClientMatcher, ClientMatcherNestedMatch } from "./client_wasm/matcher.ts"
+  BUILD_ID_HEADER,
+	DATA_SCRIPT_ID,
+	LINK_ACTIVE_ANCESTOR_ATTR,
+	LINK_ACTIVE_EXACT_ATTR,
+	LINK_PENDING_ANCESTOR_
+  apply_scroll,
+	create_client_core,
+	create_empty_work_state,
+	make_entry_id,
+	type BuildSkewDetectedEvent,
+	ty
+  make_link_props,
+	select_link_route_state,
+	select_link_work_state,
+	type LinkNavFns,
+	type LinkPropsResult,
+	
+  get_entry_key, type OutletSlot } from "./resolve_outlet_slot.ts"
+  AppConfig,
+	BeforeRouteCommitFn,
+	BeforeRouteTransitionArgs,
+	BeforeRouteYieldFn,
+	ClientLoaderKnownMatch,
+	Cl
+  create_adapter_base,
+	set_client_matcher_factory_for_test,
+	type AdapterClientOptions,
+	type AdapterRenderArgs
+  build_resource_url,
+	create_typed_navigate,
+	create_typed_prefetch,
+	create_typed_to_href,
+	resolve_body,
+	res
+  MutationError
+  QueryError
+  create_typed_api_client
+  BUILD_ID_HEADER
+  DATA_SCRIPT_ID
+  LINK_ACTIVE_ANCESTOR_ATTR
+  LINK_ACTIVE_EXACT_ATTR
+  LINK_PENDING_ANCESTOR_ATTR
+  LINK_PENDING_EXACT_ATTR
+  apply_scroll
+  create_client_core
+  create_empty_work_state
+  make_entry_id
+  type BuildSkewDetectedEvent
+  type ClientCommit
+  type ClientOptions
+  type CommitFn
+  type RevalidationReason
+  type RouteRenderEntry
+  type RouteRenderState
+  type ScrollIntent
+  type ScrollState
+  type ViewDefinition
+  type WorkIndicator
+  type WorkIndicatorOptions
+  type WorkState
+  make_link_props
+  select_link_route_state
+  select_link_work_state
+  type LinkNavFns
+  type LinkPropsResult
+  type LinkRouteState
+  type LinkWorkState
+  get_entry_key
+  type OutletSlot
+  create_adapter_base
+  set_client_matcher_factory_for_test
+  type AdapterClientOptions
+  type AdapterRenderArgs
+  type DecomposedCommit
+  type DecomposedCommitFn
+  type DecomposedState
+  type VormaClient
+  build_resource_url
+  create_typed_navigate
+  create_typed_prefetch
+  create_typed_to_href
+  resolve_body
+  resolve_path
+  to_typed_href
+
+===== ./react (packages/vorma/ui/react/react.tsx)
+  MutationError, QueryError } from "vorma/__internal"
+  BeforeRouteCommitFn,
+	BeforeRouteTransitionArgs,
+	BeforeRouteYieldFn,
+	BuildSkewDetectedEvent,
+	MutationResult
+  createVormaClient<A extends AppConfig>
+  MutationError
+  QueryError
+
+===== ./preact (packages/vorma/ui/preact/preact.tsx)
+  MutationError, QueryError } from "vorma/__internal"
+  BeforeRouteCommitFn,
+	BeforeRouteTransitionArgs,
+	BeforeRouteYieldFn,
+	BuildSkewDetectedEvent,
+	MutationResult
+  createVormaClient<A extends AppConfig>
+  MutationError
+  QueryError
+
+===== ./solid (packages/vorma/ui/solid/solid.tsx)
+  MutationError, QueryError } from "vorma/__internal"
+  BeforeRouteCommitFn,
+	BeforeRouteTransitionArgs,
+	BeforeRouteYieldFn,
+	BuildSkewDetectedEvent,
+	MutationResult
+  createVormaClient<A extends AppConfig>
+  MutationError
+  QueryError
+
+===== ./vite (packages/vorma/vite/vite.ts)
+  default function vorma
+
+===== ./kit/converters (packages/vorma/kit/converters/converters.ts)
+  Bytes = Uint8Array
+  Utf8 = string
+  Hex = string
+  Base64 = string
+  Base64Url = string
+  bytesToUtf8
+  bytesToHex
+  bytesToBase64
+  bytesToBase64Url
+  utf8ToBytes
+  utf8ToHex
+  utf8ToBase64
+  utf8ToBase64Url
+  hexToBytes
+  hexToUtf8
+  hexToBase64
+  hexToBase64Url
+  base64ToBytes
+  base64ToUtf8
+  base64ToHex
+  base64ToBase64Url
+  base64UrlToBytes
+  base64UrlToUtf8
+  base64UrlToHex
+  base64UrlToBase64
+
+===== ./kit/cookies (packages/vorma/kit/cookies/cookies.ts)
+  getClientCookie
+  setClientCookie
+
+===== ./kit/csrf (packages/vorma/kit/csrf/csrf.ts)
+  getCsrfToken
+
+===== ./kit/debounce (packages/vorma/kit/debounce/debounce.ts)
+  Debounced<T extends Fn> =
+  debounce<T extends Fn>
+
+===== ./kit/fmt (packages/vorma/kit/fmt/fmt.ts)
+  prettyJson
+
+===== ./kit/json (packages/vorma/kit/json/json.ts)
+  jsonDeepEquals } from "./deep_equals.ts"
+  parseSearchParams, type SearchParamSchema } from "./search_param_parser.ts"
+  serializeToSearchParams } from "./search_param_serializer.ts"
+  jsonStringifyStable } from "./stringify_stable.ts"
+  jsonDeepEquals
+  parseSearchParams
+  type SearchParamSchema
+  serializeToSearchParams
+  jsonStringifyStable
+
+===== ./kit/listeners (packages/vorma/kit/listeners/listeners.ts)
+  addOnWindowFocusListener
+
+===== ./kit/result (packages/vorma/kit/result/result.ts)
+  Result<T> =
+  R =
+
+===== ./kit/theme (packages/vorma/kit/theme/theme.ts)
+  THEMES =
+  Theme =
+  ResolvedTheme = Exclude<Theme, typeof THEMES.System>
+  getTheme
+  getThemeLocal
+  getResolvedTheme
+  getResolvedThemeLocal
+  setTheme
+  setThemeLocal
+  addThemeChangeListener
+  initLocal
+  getNextToggleValue
+

@@ -1,0 +1,24 @@
+{
+	"name": "vorma-board-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "cargo run && cargo build --release --bin board-server",
+		"dev": "cargo run dev",
+		"serve": "PORT=9090 ../../target/release/board-server"
+	},
+	"devDependencies": {
+		"@tanstack/react-query": "^5.90.0",
+		"@types/nprogress": "^0.2.3",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.1",
+		"jotai": "^2.15.0",
+		"nprogress": "^0.2.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4",
+		"typescript": "^6.0.3",
+		"vite": "^8.0.14",
+		"vorma": "workspace:*"
+	}
+}

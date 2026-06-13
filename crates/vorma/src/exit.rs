@@ -1,0 +1,294 @@
+//! Handler early-exit values: the only path to error and redirect outcomes.
+/*
+Views and resources have different exit semantics, so they get different
+types (user ruling): `ViewExit` has NO status concept — views are a
+framework-owned rendering protocol, not HTTP documents — while `HttpExit`
+(resources and middlewares: real HTTP boundaries) carries one. Both ride
+the `Err` channel because that is Rust's early-exit channel: rejection or
+redirect, there is no `O` to return, and nothing is ever fabricated or
+discarded.
+
+Client-visibility invariant: the server record (`err`) and `source` never
+leave the server. The ONLY client-visible text is `with_client_msg`;
+absent that, the client sees a framework generic.
+
+Redirect variants are framework-constructed (`ctx.redirect(...)`), never
+built by hand: the redirect must capture request facts (client-redirect
+preference) at the ctx, so a bare user-built variant would be a lie.
+*/
+
+use std::error::Error as StdError;
+use std::fmt;
+
+use http::StatusCode;
+
+use crate::error::BoxError;
+
+/// Early exit from a view handler: a segment error or a redirect.
+#[derive(Debug)]
+pub struct ViewExit {
+	kind: ExitKind,
+}
+
+/// Early exit from a resource or middleware handler: an HTTP error or a redirect.
+#[derive(Debug)]
+pub struct HttpExit {
+	kind: ExitKind,
+	status: Option<StatusCode>,
+}
+
+#[derive(Debug)]
+enum ExitKind {
+	Err {
+		err: String,
+		client_msg: Option<String>,
+		source: Option<BoxError>,
+	},
+	Redirect {
+		location: String,
+	},
+}
+
+impl ViewExit {
+	/// Exit with an error; `err` is the SERVER-side record (logs/diagnostics).
+	pub fn err(err: impl Into<String>) -> Self {
+		Self {
+			kind: ExitKind::new_err(err),
+		}
+	}
+
+	/// Set the client-visible error text (the segment error the UI renders).
+	pub fn with_client_msg(mut self, client_msg: impl Into<String>) -> Self {
+		self.kind.set_client_msg(client_msg);
+		self
+	}
+
+	/// Attach a source error for diagnostics chains.
+	pub fn with_source(mut self, source: impl Into<BoxError>) -> Self {
+		self.kind.set_source(source);
+		self
+	}
+
+	pub(crate) fn redirected(location: impl Into<String>) -> Self {
+		Self {
+			kind: ExitKind::Redirect {
+				location: location.into(),
+			},
+		}
+	}
+
+	pub(crate) fn is_redirect(&self) -> bool {
+		matches!(self.kind, ExitKind::Redirect { .. })
+	}
+
+	pub(crate) fn client_msg(&self) -> Option<&str> {
+		self.kind.client_msg()
+	}
+}
+
+impl HttpExit {
+	/// Exit with an error; `err` is the SERVER-side record (logs/diagnostics).
+	pub fn err(err: impl Into<String>) -> Self {
+		Self {
+			kind: ExitKind::new_err(err),
+			status: None,
+		}
+	}
+
+	/// Set the response status (defaults to 500 when unset).
+	pub fn with_status(mut self, status: StatusCode) -> Self {
+		self.status = Some(status);
+		self
+	}
+
+	/// Set the client-visible error text (the error envelope's message).
+	pub fn with_client_msg(mut self, client_msg: impl Into<String>) -> Self {
+		self.kind.set_client_msg(client_msg);
+		self
+	}
+
+	/// Attach a source error for diagnostics chains.
+	pub fn with_source(mut self, source: impl Into<BoxError>) -> Self {
+		self.kind.set_source(source);
+		self
+	}
+
+	pub(crate) fn redirected(location: impl Into<String>) -> Self {
+		Self {
+			kind: ExitKind::Redirect {
+				location: location.into(),
+			},
+			status: None,
+		}
+	}
+
+	pub(crate) fn is_redirect(&self) -> bool {
+		matches!(self.kind, ExitKind::Redirect { .. })
+	}
+
+	pub(crate) fn client_msg(&self) -> Option<&str> {
+		self.kind.client_msg()
+	}
+
+	pub(crate) fn status(&self) -> Option<StatusCode> {
+		self.status
+	}
+}
+
+impl ExitKind {
+	fn new_err(err: impl Into<String>) -> Self {
+		Self::Err {
+			err: err.into(),
+			client_msg: None,
+			source: None,
+		}
+	}
+
+	/*
+	Builders are no-ops on redirect variants; users cannot construct those
+	(framework-only), so the only way to hit the no-op is mutating a value
+	returned by ctx.redirect, which is returned immediately by convention.
+	*/
+	fn set_client_msg(&mut self, value: impl Into<String>) {
+		if let Self::Err { client_msg, .. } = self {
+			*client_msg = Some(value.into());
+		}
+	}
+
+	fn set_source(&mut self, value: impl Into<BoxError>) {
+		if let Self::Err { source, .. } = self {
+			*source = Some(value.into());
+		}
+	}
+
+	fn client_msg(&self) -> Option<&str> {
+		match self {
+			Self::Err { client_msg, .. } => client_msg.as_deref(),
+			Self::Redirect { .. } => None,
+		}
+	}
+
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Err { err, .. } => f.write_str(err),
+			Self::Redirect { location } => write!(f, "redirect to {location}"),
+		}
+	}
+
+	fn source(&self) -> Option<&(dyn StdError + 'static)> {
+		match self {
+			Self::Err { source, .. } => source
+				.as_ref()
+				.map(|source| source.as_ref() as &dyn StdError),
+			Self::Redirect { .. } => None,
+		}
+	}
+}
+
+impl fmt::Display for ViewExit {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.kind.fmt(f)
+	}
+}
+
+impl fmt::Display for HttpExit {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.kind.fmt(f)
+	}
+}
+
+impl StdError for ViewExit {
+	fn source(&self) -> Option<&(dyn StdError + 'static)> {
+		self.kind.source()
+	}
+}
+
+impl StdError for HttpExit {
+	fn source(&self) -> Option<&(dyn StdError + 'static)> {
+		self.kind.source()
+	}
+}
+
+impl From<crate::Error> for ViewExit {
+	fn from(error: crate::Error) -> Self {
+		let (message, source) = error.into_message_and_source();
+		let mut exit = Self::err(message);
+		if let Some(source) = source {
+			exit = exit.with_source(source);
+		}
+		exit
+	}
+}
+
+impl From<crate::Error> for HttpExit {
+	fn from(error: crate::Error) -> Self {
+		let (message, source) = error.into_message_and_source();
+		let mut exit = Self::err(message);
+		if let Some(source) = source {
+			exit = exit.with_source(source);
+		}
+		exit
+	}
+}
+
+impl From<BoxError> for ViewExit {
+	fn from(source: BoxError) -> Self {
+		Self::err(source.to_string()).with_source(source)
+	}
+}
+
+impl From<BoxError> for HttpExit {
+	fn from(source: BoxError) -> Self {
+		Self::err(source.to_string()).with_source(source)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn exits_default_to_server_side_only() {
+		let view = ViewExit::err("db lookup failed");
+		assert_eq!(view.to_string(), "db lookup failed");
+		assert_eq!(view.client_msg(), None);
+		assert!(!view.is_redirect());
+
+		let http = HttpExit::err("create rejected");
+		assert_eq!(http.status(), None);
+		assert_eq!(http.client_msg(), None);
+	}
+
+	#[test]
+	fn exit_builders_carry_client_facts_and_sources() {
+		let http = HttpExit::err("create note rejected: blank body")
+			.with_status(StatusCode::BAD_REQUEST)
+			.with_client_msg("note body is required")
+			.with_source(std::io::Error::other("inner"));
+
+		assert_eq!(http.status(), Some(StatusCode::BAD_REQUEST));
+		assert_eq!(http.client_msg(), Some("note body is required"));
+		assert_eq!(StdError::source(&http).unwrap().to_string(), "inner");
+		assert_eq!(http.to_string(), "create note rejected: blank body");
+	}
+
+	#[test]
+	fn framework_errors_convert_with_sources_chained() {
+		let exit: ViewExit = crate::Error::new("public url missing").into();
+		assert_eq!(exit.to_string(), "public url missing");
+		assert_eq!(exit.client_msg(), None);
+
+		let boxed: BoxError = Box::new(std::io::Error::other("io broke"));
+		let exit: HttpExit = boxed.into();
+		assert_eq!(exit.to_string(), "io broke");
+		assert!(StdError::source(&exit).is_some());
+	}
+
+	#[test]
+	fn redirect_variants_display_their_target_and_ignore_err_builders() {
+		let exit = ViewExit::redirected("/login").with_client_msg("ignored");
+		assert!(exit.is_redirect());
+		assert_eq!(exit.client_msg(), None);
+		assert_eq!(exit.to_string(), "redirect to /login");
+	}
+}

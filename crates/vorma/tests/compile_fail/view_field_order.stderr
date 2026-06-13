@@ -1,0 +1,5 @@
+error: expected `client_file` field
+ --> tests/compile_fail/view_field_order.rs:7:3
+  |
+7 |         pattern: "/",
+  |         ^^^^^^^

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it, vi } from "vitest";
-import { create_typed_api_client, MutationError } from "./api_client.ts";
+import { create_typed_api_client, MutationError, QueryError } from "./api_client.ts";
 import { API_IDENTITY_ARRAY_PREFIX } from "./constants.ts";
 
 type SubmitCall = {
@@ -36,10 +36,10 @@ function headers_of(call: SubmitCall): Headers {
 describe("query and mutate", () => {
 	it("defaults to GET and serializes input into URL search", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).query({
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { include: "posts" },
 		});
@@ -54,11 +54,11 @@ describe("query and mutate", () => {
 
 	it("uses explicit GET method", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).query({
 			method: "GET",
-			pattern: "/health",
+			pattern: "/api/health",
 		});
 
 		expect(calls).toHaveLength(1);
@@ -70,10 +70,10 @@ describe("query and mutate", () => {
 
 	it("handles splat values", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).query({
-			pattern: "/docs/*",
+			pattern: "/api/docs/*",
 			splatValues: ["guide", "intro"],
 			input: { format: "html" },
 		});
@@ -85,11 +85,11 @@ describe("query and mutate", () => {
 
 	it("serializes non-GET input as body", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).mutate({
 			method: "PATCH",
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { name: "Ada" },
 		});
@@ -104,11 +104,11 @@ describe("query and mutate", () => {
 
 	it("works without input for non-GET resources", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).mutate({
 			method: "POST",
-			pattern: "/logout",
+			pattern: "/api/logout",
 		});
 
 		expect(calls).toHaveLength(1);
@@ -120,11 +120,11 @@ describe("query and mutate", () => {
 
 	it("passes flattened Vorma options through", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).mutate({
 			method: "POST",
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { name: "Ada" },
 			dedupeKey: "save",
@@ -142,11 +142,11 @@ describe("query and mutate", () => {
 
 	it("passes skipWorkIndicator through for queries", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).query({
 			dedupeKey: "users:42",
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { include: "posts" },
 			skipWorkIndicator: true,
@@ -162,11 +162,11 @@ describe("query and mutate", () => {
 
 	it("passes flattened RequestInit fields through", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).mutate({
 			method: "POST",
-			pattern: "/sessions",
+			pattern: "/api/sessions",
 			input: { email: "a@b.com" },
 			credentials: "include",
 			headers: { "X-Trace": "1" },
@@ -177,11 +177,11 @@ describe("query and mutate", () => {
 	});
 	it("passes query semantics from query", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).query({
 			method: "POST",
-			pattern: "/rpc",
+			pattern: "/api/rpc",
 			input: { op: "quote" },
 		});
 
@@ -190,10 +190,10 @@ describe("query and mutate", () => {
 
 	it("passes mutation semantics from mutate", async () => {
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await (client as any).mutate({
-			pattern: "/health",
+			pattern: "/api/health",
 		});
 
 		expect(calls[0]!.options).toMatchObject({ resourceKind: "mutation" });
@@ -201,12 +201,12 @@ describe("query and mutate", () => {
 
 	it("mutateOrThrow returns data for successful mutation", async () => {
 		const { submit_fn } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await expect(
 			(client as any).mutateOrThrow({
 				method: "POST",
-				pattern: "/sessions",
+				pattern: "/api/sessions",
 				input: { email: "a@b.com", password: "pw" },
 			}),
 		).resolves.toEqual({});
@@ -224,12 +224,12 @@ describe("query and mutate", () => {
 				revalidationPromise: Promise.resolve({ ok: true as const }),
 			};
 		});
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		await expect(
 			(client as any).mutateOrThrow({
 				method: "POST",
-				pattern: "/sessions",
+				pattern: "/api/sessions",
 				input: { email: "a@b.com", password: "pw" },
 			}),
 		).rejects.toBeInstanceOf(MutationError);
@@ -237,7 +237,7 @@ describe("query and mutate", () => {
 		try {
 			await (client as any).mutateOrThrow({
 				method: "POST",
-				pattern: "/sessions",
+				pattern: "/api/sessions",
 				input: { email: "a@b.com", password: "pw" },
 			});
 		} catch (err) {
@@ -250,16 +250,71 @@ describe("query and mutate", () => {
 			}
 		}
 	});
+
+	it("queryOrThrow returns data for successful query", async () => {
+		const submit_fn = vi.fn(async () => {
+			return {
+				success: true as const,
+				data: { users: ["Ada"] },
+				response: new Response("", { status: 200 }),
+				revalidationPromise: Promise.resolve({ ok: true as const }),
+			};
+		});
+		const client = create_typed_api_client(submit_fn as any);
+
+		await expect(
+			(client as any).queryOrThrow({
+				pattern: "/api/users",
+			}),
+		).resolves.toEqual({ users: ["Ada"] });
+	});
+
+	it("queryOrThrow throws QueryError with preserved result", async () => {
+		const submit_fn = vi.fn(async () => {
+			return {
+				success: false as const,
+				error: "Not Found",
+				response: new Response("", {
+					status: 404,
+					statusText: "Not Found",
+				}),
+				revalidationPromise: Promise.resolve({ ok: true as const }),
+			};
+		});
+		const client = create_typed_api_client(submit_fn as any);
+
+		await expect(
+			(client as any).queryOrThrow({
+				pattern: "/api/users/:id",
+				params: { id: "404" },
+			}),
+		).rejects.toBeInstanceOf(QueryError);
+
+		try {
+			await (client as any).queryOrThrow({
+				pattern: "/api/users/:id",
+				params: { id: "404" },
+			});
+		} catch (err) {
+			expect(err).toBeInstanceOf(QueryError);
+			expect((err as QueryError).message).toBe("Not Found");
+			expect((err as QueryError).result.success).toBe(false);
+			if (err instanceof QueryError) {
+				expect(err.result.error).toBe("Not Found");
+				expect(err.result.response?.status).toBe(404);
+			}
+		}
+	});
 });
 
 describe("toIdentityArray", () => {
 	it("builds a stable resource identity array", () => {
 		const { submit_fn } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		const key = (client as any).toIdentityArray({
 			method: " post ",
-			pattern: " /users/:id ",
+			pattern: " /api/users/:id ",
 			params: { id: "42" },
 			splatValues: ["profile"],
 			input: { z: 1, a: { d: 4, c: 3 } },
@@ -267,9 +322,8 @@ describe("toIdentityArray", () => {
 
 		expect(key).toEqual([
 			API_IDENTITY_ARRAY_PREFIX,
-			"/api/",
 			"POST",
-			"/users/:id",
+			"/api/users/:id",
 			`{"id":"42"}`,
 			`["profile"]`,
 			`{"a":{"c":3,"d":4},"z":1}`,
@@ -278,17 +332,16 @@ describe("toIdentityArray", () => {
 
 	it("defaults method and missing optional identity parts", () => {
 		const { submit_fn } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any);
+		const client = create_typed_api_client(submit_fn as any);
 
 		const key = (client as any).toIdentityArray({
-			pattern: "/health",
+			pattern: "/api/health",
 		});
 
 		expect(key).toEqual([
 			API_IDENTITY_ARRAY_PREFIX,
-			"/api/",
 			"GET",
-			"/health",
+			"/api/health",
 			"null",
 			"[]",
 			"null",
@@ -300,11 +353,11 @@ describe("decorator", () => {
 	it("calls decorator with method and pattern", async () => {
 		const decorator = vi.fn().mockResolvedValue(undefined);
 		const { submit_fn } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any, decorator);
+		const client = create_typed_api_client(submit_fn as any, decorator);
 
 		await (client as any).mutate({
 			method: "PATCH",
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { name: "Ada" },
 			headers: { "X-Trace": "1" },
@@ -313,7 +366,7 @@ describe("decorator", () => {
 		expect(decorator).toHaveBeenCalledTimes(1);
 		expect(decorator.mock.calls[0]![0]).toMatchObject({
 			method: "PATCH",
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			input: { name: "Ada" },
 			requestInit: {
 				headers: { "X-Trace": "1" },
@@ -326,10 +379,10 @@ describe("decorator", () => {
 			headers: { Authorization: "Bearer token" },
 		});
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any, decorator);
+		const client = create_typed_api_client(submit_fn as any, decorator);
 
 		await (client as any).query({
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { q: "test" },
 		});
@@ -342,10 +395,10 @@ describe("decorator", () => {
 			headers: { "X-Default": "decorator", "X-Override": "decorator" },
 		});
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any, decorator);
+		const client = create_typed_api_client(submit_fn as any, decorator);
 
 		await (client as any).query({
-			pattern: "/users/:id",
+			pattern: "/api/users/:id",
 			params: { id: "42" },
 			input: { q: "test" },
 			headers: { "X-Override": "per-call" },
@@ -361,11 +414,11 @@ describe("decorator", () => {
 			credentials: "include",
 		});
 		const { submit_fn, calls } = mock_submit();
-		const client = create_typed_api_client("/api/", submit_fn as any, decorator);
+		const client = create_typed_api_client(submit_fn as any, decorator);
 
 		await (client as any).mutate({
 			method: "POST",
-			pattern: "/sessions",
+			pattern: "/api/sessions",
 			input: { email: "a@b.com" },
 		});
 

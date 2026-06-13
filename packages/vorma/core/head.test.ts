@@ -407,14 +407,14 @@ describe("boolean attributes", () => {
 		expect(els[0]!.getAttribute("src")).toBe("/app.js");
 	});
 
-	it("handles null boolean_attributes field gracefully", () => {
+	it("handles absent boolean_attributes field gracefully", () => {
 		setup_boundary("meta");
 		const { start, end } = setup_boundary("rest");
 
+		// The server omits empty fields entirely; absence is the wire-real case.
 		const el: HeadEl = {
 			tag: "script",
 			attributes_known_safe: { src: "/app.js" },
-			boolean_attributes: null,
 		};
 
 		apply_head_and_title(undefined, [], [el]);

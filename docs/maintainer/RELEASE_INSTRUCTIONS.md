@@ -22,6 +22,9 @@ cargo publish -p vorma-tasks
 cargo publish -p vorma-macros --dry-run
 cargo publish -p vorma-macros
 
+cargo publish -p vorma-contract --dry-run
+cargo publish -p vorma-contract
+
 cargo publish -p vorma --dry-run
 cargo publish -p vorma
 

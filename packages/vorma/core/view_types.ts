@@ -38,10 +38,22 @@ type ViewParents<A extends AppConfig, P extends string> =
 		? Extract<Parent, ToViewPattern<A>>
 		: never;
 
+/*
+A matched URL's query feeds EVERY matched view's input, so the typed
+search is the intersection of the whole chain's inputs. Views with no
+input contribute nothing — without the `undefined -> {}` normalization a
+plain layout would annihilate the intersection and type every child's
+search as `undefined`.
+*/
 type ViewInputWithParentViews<A extends AppConfig, P extends ToViewPattern<A>> = (
 	P | ViewParents<A, P> extends infer Pattern
 		? Pattern extends ToViewPattern<A>
-			? (input: ToViewInput<A, Pattern>) => void
+			? (
+					input: [ToViewInput<A, Pattern>] extends [undefined]
+						? // oxlint-disable-next-line no-empty-object-type -- identity for intersection
+							{}
+						: ToViewInput<A, Pattern>,
+				) => void
 			: never
 		: never
 ) extends (input: infer Input) => void

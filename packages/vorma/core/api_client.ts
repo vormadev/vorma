@@ -66,7 +66,6 @@ export class MutationError<T = never> extends ApiErrorBase<T> {
 }
 
 export function create_typed_api_client<A extends AppConfig>(
-	api_mount_root: string,
 	submit_fn: SubmitFn,
 	decorator?: ToApiDecorator<A>,
 ): ToApiClient<A> {
@@ -91,7 +90,6 @@ export function create_typed_api_client<A extends AppConfig>(
 		const api_pattern = normalize_api_pattern(pattern);
 		const is_get = normalized_method === "GET" || normalized_method === "HEAD";
 		const url = build_resource_url(
-			api_mount_root,
 			api_pattern,
 			params,
 			splatValues,
@@ -145,7 +143,6 @@ export function create_typed_api_client<A extends AppConfig>(
 			const api_pattern = normalize_api_pattern(pattern);
 			return [
 				API_IDENTITY_ARRAY_PREFIX,
-				api_mount_root,
 				normalized_method,
 				api_pattern,
 				stringify_identity_value(params ?? null),

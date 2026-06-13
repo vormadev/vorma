@@ -7,17 +7,19 @@ mod builder;
 mod match_result;
 mod matcher;
 mod options;
+mod overlap;
 mod parse;
 mod pattern;
 mod segment;
 mod tree;
 
 pub use builder::MatcherBuilder;
-pub use match_result::{Match, NestedMatch, NestedMatches, Params};
-pub use matcher::Matcher;
+pub use match_result::{Match, NestedMatch, NestedMatches, Params, SplatValues};
+pub use matcher::{FlatMatcher, NestedMatcher};
 pub use options::Options;
+pub use overlap::{Overlap, OverlapSide, find_overlap};
 pub use parse::parse_segments;
-pub use pattern::Pattern;
+pub use pattern::{Pattern, compare_specificity};
 pub use segment::{Segment, SegmentKind};
 
 /// Return `path` with a leading `/`.

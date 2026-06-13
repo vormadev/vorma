@@ -14,15 +14,14 @@ blake3.workspace = true
 data-encoding.workspace = true
 getrandom.workspace = true
 globset.workspace = true
-libc.workspace = true
+http.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 lightningcss = { workspace = true, features = ["bundler", "visitor"] }
-lru.workspace = true
 notify.workspace = true
 paranoid = { workspace = true, features = ["local-lock"] }
-path-clean.workspace = true
 path-slash.workspace = true
 pathdiff.workspace = true
-same-file.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tokio = { workspace = true, features = [
@@ -34,7 +33,22 @@ tokio = { workspace = true, features = [
 	"sync",
 	"time",
 ] }
-ureq.workspace = true
 url.workspace = true
 vorma.workspace = true
+vorma-contract.workspace = true
 walkdir.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+same-file.workspace = true
+tokio = { workspace = true, features = [
+	"io-util",
+	"macros",
+	"net",
+	"process",
+	"rt",
+	"sync",
+	"time",
+] }

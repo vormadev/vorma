@@ -1,7 +1,7 @@
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
 use syn::{Expr, Ident, LitStr, Pat, Result, Token, Type};
-use vorma_matcher::{Matcher, Options as MatcherOptions, SegmentKind};
+use vorma_matcher::{MatcherBuilder, Options as MatcherOptions, SegmentKind};
 
 pub(crate) struct ViewMacroInput {
 	client_file: LitStr,
@@ -78,7 +78,6 @@ pub(crate) fn expand_view(input: ViewMacroInput) -> Result<proc_macro2::TokenStr
 			|ctx| {
 				::vorma::__private::run_static_view::<
 					_,
-					_,
 					#input_type,
 					__VormaParams,
 					#output_type,
@@ -121,7 +120,6 @@ pub(crate) fn expand_resource(input: ResourceMacroInput) -> Result<proc_macro2::
 			::vorma::__private::type_resolver::<#output_type>,
 			|ctx| {
 				::vorma::__private::run_static_resource::<
-					_,
 					_,
 					#input_type,
 					__VormaParams,
@@ -195,7 +193,7 @@ fn next_field_is(input: ParseStream<'_>, expected: &str) -> bool {
 
 fn params_from_pattern(pattern: &LitStr) -> Result<Vec<Ident>> {
 	let pattern_value = pattern.value();
-	let matcher = Matcher::builder(MatcherOptions {
+	let matcher = MatcherBuilder::new(MatcherOptions {
 		dynamic_param_prefix: ':',
 		splat_segment_identifier: '*',
 		explicit_index_segment_identifier: "_index".to_owned(),
@@ -235,7 +233,7 @@ fn params_definition(params: &[Ident]) -> proc_macro2::TokenStream {
 		quote! {
 			#param: params
 				.get(#name)
-				.cloned()
+				.map(|value| value.to_string())
 				.ok_or_else(|| {
 					::vorma::__private::InputError::bad_request(
 						::std::format!("missing route param `{}`", #name),

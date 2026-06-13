@@ -70,32 +70,32 @@ pub(crate) fn expand_ts_gen(input: syn::DeriveInput) -> syn::Result<proc_macro2:
 		if !attrs.skip && !attrs.skip_serializing {
 			let optional = attrs.skip_serializing_if;
 			serialize_fields.push(quote! {
-				::vorma::FieldDef::new(
+				::vorma::tsgen::FieldDef::new(
 					#serialize_field_name_lit,
-					<#field_ty as ::vorma::Type>::type_ref_for(::vorma::TypePhase::Serialize),
+					<#field_ty as ::vorma::tsgen::Type>::type_ref_for(::vorma::tsgen::TypePhase::Serialize),
 					#optional,
 				)
 			});
 			collect_serialize.push(quote! {
-				<#field_ty as ::vorma::Type>::collect_type_defs_for(
-					::vorma::TypePhase::Serialize,
+				<#field_ty as ::vorma::tsgen::Type>::collect_type_defs_for(
+					::vorma::tsgen::TypePhase::Serialize,
 					registry,
 				)?;
 			});
 		}
 
 		if !attrs.skip && !attrs.skip_deserializing {
-			let optional = attrs.default || is_option_type(field_ty);
+			let optional = container.default || attrs.default || is_option_type(field_ty);
 			deserialize_fields.push(quote! {
-				::vorma::FieldDef::new(
+				::vorma::tsgen::FieldDef::new(
 					#deserialize_field_name_lit,
-					<#field_ty as ::vorma::Type>::type_ref_for(::vorma::TypePhase::Deserialize),
+					<#field_ty as ::vorma::tsgen::Type>::type_ref_for(::vorma::tsgen::TypePhase::Deserialize),
 					#optional,
 				)
 			});
 			collect_deserialize.push(quote! {
-				<#field_ty as ::vorma::Type>::collect_type_defs_for(
-					::vorma::TypePhase::Deserialize,
+				<#field_ty as ::vorma::tsgen::Type>::collect_type_defs_for(
+					::vorma::tsgen::TypePhase::Deserialize,
 					registry,
 				)?;
 			});
@@ -110,35 +110,35 @@ pub(crate) fn expand_ts_gen(input: syn::DeriveInput) -> syn::Result<proc_macro2:
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
 	Ok(quote! {
-		impl #impl_generics ::vorma::Type for #ident #ty_generics #where_clause {
-			fn type_ref() -> ::vorma::TypeRef {
-				::vorma::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
+		impl #impl_generics ::vorma::tsgen::Type for #ident #ty_generics #where_clause {
+			fn type_ref() -> ::vorma::tsgen::TypeRef {
+				::vorma::tsgen::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
 			}
 
 			fn collect_type_defs(
-				registry: &mut ::vorma::TypeRegistry,
-			) -> ::std::result::Result<(), ::vorma::__private::tsgen::Error> {
-				Self::collect_type_defs_for(::vorma::TypePhase::Serialize, registry)
+				registry: &mut ::vorma::tsgen::TypeRegistry,
+			) -> ::std::result::Result<(), ::vorma::tsgen::Error> {
+				Self::collect_type_defs_for(::vorma::tsgen::TypePhase::Serialize, registry)
 			}
 
-			fn type_ref_for(phase: ::vorma::TypePhase) -> ::vorma::TypeRef {
+			fn type_ref_for(phase: ::vorma::tsgen::TypePhase) -> ::vorma::tsgen::TypeRef {
 				match phase {
-					::vorma::TypePhase::Serialize => {
-						::vorma::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
+					::vorma::tsgen::TypePhase::Serialize => {
+						::vorma::tsgen::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
 					}
-					::vorma::TypePhase::Deserialize => {
-						::vorma::TypeRef::named_with_key(#deserialize_type_key, #type_name_lit)
+					::vorma::tsgen::TypePhase::Deserialize => {
+						::vorma::tsgen::TypeRef::named_with_key(#deserialize_type_key, #type_name_lit)
 					}
 				}
 			}
 
 			fn collect_type_defs_for(
-				phase: ::vorma::TypePhase,
-				registry: &mut ::vorma::TypeRegistry,
-			) -> ::std::result::Result<(), ::vorma::__private::tsgen::Error> {
+				phase: ::vorma::tsgen::TypePhase,
+				registry: &mut ::vorma::tsgen::TypeRegistry,
+			) -> ::std::result::Result<(), ::vorma::tsgen::Error> {
 				match phase {
-					::vorma::TypePhase::Serialize => {
-						let inserted = registry.try_define(::vorma::TypeDef::record_with_key(
+					::vorma::tsgen::TypePhase::Serialize => {
+						let inserted = registry.try_define(::vorma::tsgen::TypeDef::record_with_key(
 							#serialize_type_key,
 							#type_name_lit,
 							vec![#(#serialize_fields),*],
@@ -148,8 +148,8 @@ pub(crate) fn expand_ts_gen(input: syn::DeriveInput) -> syn::Result<proc_macro2:
 						}
 						#(#collect_serialize)*
 					}
-					::vorma::TypePhase::Deserialize => {
-						let inserted = registry.try_define(::vorma::TypeDef::record_with_key(
+					::vorma::tsgen::TypePhase::Deserialize => {
+						let inserted = registry.try_define(::vorma::tsgen::TypeDef::record_with_key(
 							#deserialize_type_key,
 							#type_name_lit,
 							vec![#(#deserialize_fields),*],
@@ -210,42 +210,42 @@ fn expand_ts_gen_enum(
 	}
 
 	Ok(quote! {
-		impl #impl_generics ::vorma::Type for #ident #ty_generics #where_clause {
-			fn type_ref() -> ::vorma::TypeRef {
-				::vorma::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
+		impl #impl_generics ::vorma::tsgen::Type for #ident #ty_generics #where_clause {
+			fn type_ref() -> ::vorma::tsgen::TypeRef {
+				::vorma::tsgen::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
 			}
 
 			fn collect_type_defs(
-				registry: &mut ::vorma::TypeRegistry,
-			) -> ::std::result::Result<(), ::vorma::__private::tsgen::Error> {
-				Self::collect_type_defs_for(::vorma::TypePhase::Serialize, registry)
+				registry: &mut ::vorma::tsgen::TypeRegistry,
+			) -> ::std::result::Result<(), ::vorma::tsgen::Error> {
+				Self::collect_type_defs_for(::vorma::tsgen::TypePhase::Serialize, registry)
 			}
 
-			fn type_ref_for(phase: ::vorma::TypePhase) -> ::vorma::TypeRef {
+			fn type_ref_for(phase: ::vorma::tsgen::TypePhase) -> ::vorma::tsgen::TypeRef {
 				match phase {
-					::vorma::TypePhase::Serialize => {
-						::vorma::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
+					::vorma::tsgen::TypePhase::Serialize => {
+						::vorma::tsgen::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
 					}
-					::vorma::TypePhase::Deserialize => {
-						::vorma::TypeRef::named_with_key(#deserialize_type_key, #type_name_lit)
+					::vorma::tsgen::TypePhase::Deserialize => {
+						::vorma::tsgen::TypeRef::named_with_key(#deserialize_type_key, #type_name_lit)
 					}
 				}
 			}
 
 			fn collect_type_defs_for(
-				phase: ::vorma::TypePhase,
-				registry: &mut ::vorma::TypeRegistry,
-			) -> ::std::result::Result<(), ::vorma::__private::tsgen::Error> {
+				phase: ::vorma::tsgen::TypePhase,
+				registry: &mut ::vorma::tsgen::TypeRegistry,
+			) -> ::std::result::Result<(), ::vorma::tsgen::Error> {
 				match phase {
-					::vorma::TypePhase::Serialize => {
-						registry.try_define(::vorma::TypeDef::string_enum_with_key(
+					::vorma::tsgen::TypePhase::Serialize => {
+						registry.try_define(::vorma::tsgen::TypeDef::string_enum_with_key(
 							#serialize_type_key,
 							#type_name_lit,
 							vec![#(#serialize_variants),*],
 						))?;
 					}
-					::vorma::TypePhase::Deserialize => {
-						registry.try_define(::vorma::TypeDef::string_enum_with_key(
+					::vorma::tsgen::TypePhase::Deserialize => {
+						registry.try_define(::vorma::tsgen::TypeDef::string_enum_with_key(
 							#deserialize_type_key,
 							#type_name_lit,
 							vec![#(#deserialize_variants),*],
@@ -280,44 +280,44 @@ fn expand_transparent_ts_gen_struct(
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
 	Ok(quote! {
-		impl #impl_generics ::vorma::Type for #ident #ty_generics #where_clause {
-			fn type_ref() -> ::vorma::TypeRef {
-				::vorma::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
+		impl #impl_generics ::vorma::tsgen::Type for #ident #ty_generics #where_clause {
+			fn type_ref() -> ::vorma::tsgen::TypeRef {
+				::vorma::tsgen::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
 			}
 
 			fn collect_type_defs(
-				registry: &mut ::vorma::TypeRegistry,
-			) -> ::std::result::Result<(), ::vorma::__private::tsgen::Error> {
-				Self::collect_type_defs_for(::vorma::TypePhase::Serialize, registry)
+				registry: &mut ::vorma::tsgen::TypeRegistry,
+			) -> ::std::result::Result<(), ::vorma::tsgen::Error> {
+				Self::collect_type_defs_for(::vorma::tsgen::TypePhase::Serialize, registry)
 			}
 
-			fn type_ref_for(phase: ::vorma::TypePhase) -> ::vorma::TypeRef {
+			fn type_ref_for(phase: ::vorma::tsgen::TypePhase) -> ::vorma::tsgen::TypeRef {
 				match phase {
-					::vorma::TypePhase::Serialize => {
-						::vorma::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
+					::vorma::tsgen::TypePhase::Serialize => {
+						::vorma::tsgen::TypeRef::named_with_key(#serialize_type_key, #type_name_lit)
 					}
-					::vorma::TypePhase::Deserialize => {
-						::vorma::TypeRef::named_with_key(#deserialize_type_key, #type_name_lit)
+					::vorma::tsgen::TypePhase::Deserialize => {
+						::vorma::tsgen::TypeRef::named_with_key(#deserialize_type_key, #type_name_lit)
 					}
 				}
 			}
 
 			fn collect_type_defs_for(
-				phase: ::vorma::TypePhase,
-				registry: &mut ::vorma::TypeRegistry,
-			) -> ::std::result::Result<(), ::vorma::__private::tsgen::Error> {
-				let inserted = registry.try_define(::vorma::TypeDef::alias_with_key(
+				phase: ::vorma::tsgen::TypePhase,
+				registry: &mut ::vorma::tsgen::TypeRegistry,
+			) -> ::std::result::Result<(), ::vorma::tsgen::Error> {
+				let inserted = registry.try_define(::vorma::tsgen::TypeDef::alias_with_key(
 					match phase {
-						::vorma::TypePhase::Serialize => #serialize_type_key,
-						::vorma::TypePhase::Deserialize => #deserialize_type_key,
+						::vorma::tsgen::TypePhase::Serialize => #serialize_type_key,
+						::vorma::tsgen::TypePhase::Deserialize => #deserialize_type_key,
 					},
 					#type_name_lit,
-					<#field_ty as ::vorma::Type>::type_ref_for(phase),
+					<#field_ty as ::vorma::tsgen::Type>::type_ref_for(phase),
 				))?;
 				if !inserted {
 					return Ok(());
 				}
-				<#field_ty as ::vorma::Type>::collect_type_defs_for(phase, registry)
+				<#field_ty as ::vorma::tsgen::Type>::collect_type_defs_for(phase, registry)
 			}
 		}
 	})
@@ -327,6 +327,7 @@ fn expand_transparent_ts_gen_struct(
 struct ContainerAttrs {
 	rename_all_serialize: Option<RenameRule>,
 	rename_all_deserialize: Option<RenameRule>,
+	default: bool,
 	transparent: bool,
 }
 
@@ -374,6 +375,7 @@ impl ContainerAttrs {
 						let value = meta.value()?;
 						let _: syn::LitStr = value.parse()?;
 					}
+					out.default = true;
 					return Ok(());
 				}
 				Err(meta.error("unsupported serde container attribute for TsGen derive"))

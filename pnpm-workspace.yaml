@@ -1,7 +1,8 @@
 packages:
     - "packages/vorma"
     - "packages/create-vorma"
-    - "examples/minimal"
+    - "examples/board"
+    - "examples/notes"
     - "tests/framework"
 allowBuilds:
     esbuild: false

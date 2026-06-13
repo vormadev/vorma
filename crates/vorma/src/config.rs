@@ -1,13 +1,19 @@
-use std::path::PathBuf;
+//! Public framework configuration and lowering into graph-owned build inputs.
+
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use vorma_matcher::ensure_leading_and_trailing_slash;
 
+use crate::framework_graph::{
+	BuildInputConfig, DevWatchConfig as GraphDevWatchConfig, FrameworkConfig, FrontendBuildInputs,
+	ServerBuildTarget,
+};
 use crate::tsgen::{TsDrafter, TsExtraType};
 
 /// Cargo target that produces the user app server.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ServerConfig {
+pub struct ServerTarget {
 	/// Cargo package name containing the app server binary.
 	pub cargo_package: String,
 	/// Cargo binary name for the app server.
@@ -89,76 +95,69 @@ pub struct TsGenConfig {
 	pub extra_ts: TsDrafter,
 }
 
-/// Public URL and API mount path configuration.
+/// Complete public framework configuration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct PathConfig {
-	/// Public static asset base path.
-	pub public_static_base: String,
-	/// API mount root. Empty/root values are invalid after normalization.
-	pub api_base: String,
-}
-
-impl Default for PathConfig {
-	fn default() -> Self {
-		Self {
-			public_static_base: String::new(),
-			api_base: "/api/".to_owned(),
-		}
-	}
-}
-
-#[doc(hidden)]
-pub fn normalize_api_mount_root(api_base: &str) -> Result<String, String> {
-	let api_base = api_base.trim();
-	if api_base.is_empty() || api_base == "/" {
-		return Err("api_base must be a non-root path prefix such as /api/".to_owned());
-	}
-	let normalized = ensure_leading_and_trailing_slash(api_base);
-	if normalized == "/" {
-		return Err("api_base must be a non-root path prefix such as /api/".to_owned());
-	}
-	Ok(normalized)
-}
-
-#[doc(hidden)]
-pub fn normalize_public_static_base(public_static_base: &str) -> String {
-	ensure_leading_and_trailing_slash(public_static_base.trim())
-}
-
-#[doc(hidden)]
-pub fn validate_public_static_base_against_api_mount(
-	public_static_base: &str,
-	api_base: &str,
-) -> Result<(String, String), String> {
-	let public_static_base = normalize_public_static_base(public_static_base);
-	let api_base = normalize_api_mount_root(api_base)?;
-	if public_static_base != "/" && public_static_base.starts_with(&api_base) {
-		return Err(format!(
-			"public_static_base {public_static_base:?} must not be under api_base {api_base:?}"
-		));
-	}
-	Ok((public_static_base, api_base))
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[doc(hidden)]
 pub struct Config {
+	/*
+	Path rule: `root_dir` is the one absolute anchor (PathBuf); every other
+	path-ish field in this config is a root-relative String fragment.
+	*/
+	/// Absolute application root used to resolve all relative config paths.
 	pub root_dir: PathBuf,
-	pub server_config: ServerConfig,
+	/// Build output directory, relative to [`Self::root_dir`] unless absolute.
 	pub dist_dir: String,
-	pub path_config: PathConfig,
+	/// Cargo package/bin identity of the app server binary.
+	pub server_target: ServerTarget,
+	/// Public static asset base URL path.
+	pub public_static_base: String,
+	/// Frontend entry, Vite, package-manager, static, and critical-CSS config.
 	pub frontend_config: FrontendConfig,
+	/// Generated TypeScript output and supplemental declaration config.
 	pub ts_gen_config: TsGenConfig,
+	/// Dev watcher include/classification patterns.
 	pub dev_watch_config: DevWatchConfig,
+}
+
+impl Config {
+	/// Lower public config into graph-owned runtime/build configuration.
+	pub fn framework_config(&self) -> Result<FrameworkConfig, ConfigError> {
+		let public_static_base = normalize_public_static_base(&self.public_static_base);
+		Ok(FrameworkConfig::new(public_static_base).with_build_inputs(
+			BuildInputConfig::new(
+				ServerBuildTarget::new(
+					self.server_target.cargo_package.clone(),
+					self.server_target.cargo_bin.clone(),
+				),
+				utf8_path(&self.root_dir)?,
+				self.dist_dir.clone(),
+				FrontendBuildInputs::new(
+					self.frontend_config.ui_variant.as_str(),
+					self.frontend_config.js_package_manager_base_cmd.clone(),
+					self.frontend_config.js_package_manager_dir.clone(),
+					self.frontend_config.vite_config_file.clone(),
+					self.frontend_config.entry_file.clone(),
+					self.frontend_config.public_static_src_dir.clone(),
+					self.frontend_config.critical_css_file.clone(),
+				),
+				self.ts_gen_config.out_file.clone(),
+				GraphDevWatchConfig::new(
+					self.dev_watch_config.watch_patterns.clone(),
+					self.dev_watch_config.on_change_recompile_server.clone(),
+					self.dev_watch_config.on_change_client_revalidate.clone(),
+				),
+			)
+			.with_generated_typescript_extra_source(self.ts_gen_config.extra_ts.to_string()),
+		))
+	}
 }
 
 impl Default for Config {
 	fn default() -> Self {
 		Self {
 			root_dir: PathBuf::new(),
-			server_config: ServerConfig::default(),
 			dist_dir: String::new(),
-			path_config: PathConfig::default(),
+			server_target: ServerTarget::default(),
+			public_static_base: String::new(),
 			frontend_config: FrontendConfig::default(),
 			ts_gen_config: TsGenConfig::default(),
 			dev_watch_config: DevWatchConfig::default(),
@@ -166,56 +165,93 @@ impl Default for Config {
 	}
 }
 
+/// Public config normalization error.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConfigError {
+	/// A path field could not be represented as UTF-8.
+	NonUtf8Path {
+		/// Field name.
+		field: &'static str,
+	},
+}
+
+impl std::fmt::Display for ConfigError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::NonUtf8Path { field } => write!(f, "{field} must be valid UTF-8"),
+		}
+	}
+}
+
+impl std::error::Error for ConfigError {}
+
+/// Normalize the public static base, allowing empty/root to mean `/`.
+#[doc(hidden)]
+pub fn normalize_public_static_base(public_static_base: &str) -> String {
+	ensure_leading_and_trailing_slash(public_static_base.trim())
+}
+
+fn utf8_path(path: &Path) -> Result<String, ConfigError> {
+	path.to_str()
+		.map(ToOwned::to_owned)
+		.ok_or(ConfigError::NonUtf8Path { field: "root_dir" })
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
-	#[test]
-	fn path_config_defaults_api_mount_under_api() {
-		let path_config = PathConfig::default();
-
-		assert_eq!(path_config.api_base, "/api/");
-	}
+	const TEST_PUBLIC_STATIC_BASE: &str = "static";
+	const TEST_ROOT_DIR: &str = "app";
 
 	#[test]
-	fn config_default_uses_safe_api_mount_root() {
-		let config = Config::default();
+	fn public_config_normalizes_mounts_before_graph_lowering() {
+		let config = Config {
+			root_dir: PathBuf::from(TEST_ROOT_DIR),
+			server_target: ServerTarget {
+				cargo_package: "server-package".to_owned(),
+				cargo_bin: "server-bin".to_owned(),
+			},
+			dist_dir: "dist".to_owned(),
+			public_static_base: TEST_PUBLIC_STATIC_BASE.to_owned(),
+			frontend_config: FrontendConfig {
+				js_package_manager_base_cmd: "pnpm".to_owned(),
+				js_package_manager_dir: ".".to_owned(),
+				vite_config_file: "vite.config.ts".to_owned(),
+				entry_file: "src/entry.tsx".to_owned(),
+				public_static_src_dir: "public".to_owned(),
+				critical_css_file: "src/critical.css".to_owned(),
+				ui_variant: UiVariant::React,
+			},
+			ts_gen_config: TsGenConfig {
+				out_file: "src/vorma.gen.ts".to_owned(),
+				extra_types: Vec::new(),
+				extra_ts: TsDrafter::new(),
+			},
+			dev_watch_config: DevWatchConfig {
+				watch_patterns: vec!["src/**/*.rs".to_owned()],
+				on_change_recompile_server: vec!["src/server.rs".to_owned()],
+				on_change_client_revalidate: vec!["src/views/**/*.tsx".to_owned()],
+			},
+		};
 
-		assert_eq!(config.path_config.api_base, "/api/");
-	}
+		let framework_config = config.framework_config().unwrap();
+		let build_inputs = framework_config.build_inputs().unwrap();
 
-	#[test]
-	fn api_mount_root_must_not_be_root() {
-		assert_eq!(normalize_api_mount_root("api").unwrap(), "/api/");
+		assert_eq!(framework_config.public_static_base(), "/static/");
+		assert_eq!(build_inputs.root_dir(), TEST_ROOT_DIR);
 		assert_eq!(
-			normalize_api_mount_root("").unwrap_err(),
-			"api_base must be a non-root path prefix such as /api/"
+			build_inputs.server_target().cargo_package(),
+			"server-package"
 		);
 		assert_eq!(
-			normalize_api_mount_root("/").unwrap_err(),
-			"api_base must be a non-root path prefix such as /api/"
+			build_inputs.frontend_inputs().js_package_manager_base_cmd(),
+			"pnpm"
 		);
-	}
-
-	#[test]
-	fn public_static_base_must_not_overlap_api_mount_root() {
+		assert_eq!(build_inputs.frontend_inputs().ui_variant(), "react");
 		assert_eq!(
-			validate_public_static_base_against_api_mount("static", "api").unwrap(),
-			("/static/".to_owned(), "/api/".to_owned())
+			build_inputs.dev_watch().client_revalidate_patterns(),
+			&["src/views/**/*.tsx".to_owned()]
 		);
-		assert_eq!(
-			validate_public_static_base_against_api_mount("", "api").unwrap(),
-			("/".to_owned(), "/api/".to_owned())
-		);
-		assert_eq!(
-			validate_public_static_base_against_api_mount("api/assets", "api").unwrap_err(),
-			"public_static_base \"/api/assets/\" must not be under api_base \"/api/\""
-		);
-		assert!(validate_public_static_base_against_api_mount("api-static", "api").is_ok());
-		assert_eq!(
-			validate_public_static_base_against_api_mount("api/v1/assets", "api/v1").unwrap_err(),
-			"public_static_base \"/api/v1/assets/\" must not be under api_base \"/api/v1/\""
-		);
-		assert!(validate_public_static_base_against_api_mount("api", "api/v1").is_ok());
 	}
 }

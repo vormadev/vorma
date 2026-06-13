@@ -1,0 +1,4 @@
+board.db
+board.db-shm
+board.db-wal
+node_modules

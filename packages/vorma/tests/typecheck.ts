@@ -69,7 +69,6 @@ function expect_type<Expected>(_value: Expected): void {
 /////// Test App Config
 
 const vorma_app_config = {
-	apiMountRoot: "/api/",
 	__vorma_views: [
 		{
 			pattern: "/",
@@ -491,7 +490,7 @@ function assert_exported_type_contracts(): void {
 		>,
 	);
 	expect_type<MutationError<ToMutationOutput<App, "GET", "/health">>>(
-		null as unknown as ToMutationError<App, { pattern: "/health" }>,
+		null as unknown as ToMutationError<App, { method: "GET"; pattern: "/health" }>,
 	);
 
 	// ScrollState
@@ -774,6 +773,7 @@ void assert_link_contracts;
 
 function assert_api_client_contracts(): void {
 	const health_identity = react.apiClient.toIdentityArray({
+		method: "GET",
 		pattern: "/health",
 	});
 	expect_type<unknown[]>(health_identity);
@@ -796,19 +796,25 @@ function assert_api_client_contracts(): void {
 		user_get_result,
 	);
 
-	// Valid GET-only resource with nullable input. Method can be omitted.
+	/*
+	GET is implicit only for queries: mutations always name their
+	method, including kind-overridden GET mutations.
+	*/
+	// @ts-expect-error mutations always pass method.
 	void react.apiClient.mutate({
 		pattern: "/health",
 	});
 
-	// Valid GET-only resource with nullable input (explicit null).
+	// Valid GET-kind mutation with nullable input (explicit null).
 	void react.apiClient.mutate({
+		method: "GET",
 		pattern: "/health",
 		input: null,
 	});
 
-	// Valid GET-only resource with flattened request options.
+	// Valid GET-kind mutation with flattened request options.
 	void react.apiClient.mutate({
+		method: "GET",
 		pattern: "/health",
 		dedupeKey: "health-check",
 		revalidate: false,
@@ -837,6 +843,7 @@ function assert_api_client_contracts(): void {
 	});
 
 	void react.apiClient.mutate({
+		method: "GET",
 		pattern: "/health",
 		// @ts-expect-error resource input root must be object, null, or undefined.
 		input: "invalid",
@@ -936,21 +943,26 @@ function assert_query_mutation_args_contracts(): void {
 	};
 	expect_type<{ includePosts: boolean }>(required_get_props.input);
 
-	// Optional GET input (omitted, null, undefined).
-	const optional_get_omitted: ToMutationArgs<App> = {
+	/*
+	GET is implicit only for queries: a kind-overridden GET MUTATION
+	still names its method (mutations are always explicit).
+	*/
+	// @ts-expect-error mutations always pass method, even GET-kind ones.
+	const get_mutation_method_omitted: ToMutationArgs<App> = {
 		pattern: "/health",
 	};
-	const optional_get_null: ToMutationArgs<App> = {
+	void get_mutation_method_omitted;
+	const get_mutation_explicit: ToMutationArgs<App> = {
+		method: "GET",
+		pattern: "/health",
+	};
+	const get_mutation_null_input: ToMutationArgs<App> = {
+		method: "GET",
 		pattern: "/health",
 		input: null,
 	};
-	const optional_get_undefined: ToMutationArgs<App> = {
-		pattern: "/health",
-		input: undefined,
-	};
-	void optional_get_omitted;
-	void optional_get_null;
-	void optional_get_undefined;
+	void get_mutation_explicit;
+	void get_mutation_null_input;
 
 	// @ts-expect-error non-empty GET input must be required.
 	const missing_get_input: ToQueryArgs<App> = {
@@ -1017,8 +1029,55 @@ function assert_query_mutation_args_contracts(): void {
 		input: { email: "a@b.com", password: "pw" },
 	};
 	const mutation_get_props: ToMutationArgs<App> = {
+		method: "GET",
 		pattern: "/health",
 	};
+
+	/*
+	Per-route narrowing: ToQueryArgs/ToMutationArgs<App, M, P> — same
+	(A, M, P) keying as the Input/Output family members. Two mutations
+	share "/users/:userID"; the narrowed types disambiguate them.
+	*/
+	type _narrowed_patch = Assert<
+		IsExact<
+			ToMutationArgs<App, "PATCH", "/users/:userID">["input"],
+			{ nickname: string }
+		>
+	>;
+	type _narrowed_post = Assert<
+		IsExact<
+			ToMutationArgs<App, "POST", "/users/:userID">["input"],
+			{ inviteEmail: string }
+		>
+	>;
+	type _narrowed_query_input = Assert<
+		IsExact<
+			ToQueryArgs<App, "GET", "/users/:userID">["input"],
+			{ includePosts: boolean }
+		>
+	>;
+	/*
+	"/users/:userID" hosts multiple methods, so even the GET query names
+	its method (per-pattern explicitness) — on the narrowed form too.
+	The fixture has no GET-only-pattern query, so narrowed-form method
+	OMISSION has no pinnable case here; the optional arm is the same
+	one the one-param union uses.
+	*/
+	const narrowed_query_explicit: ToQueryArgs<App, "GET", "/users/:userID"> = {
+		method: "GET",
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		input: { includePosts: true },
+	};
+	void narrowed_query_explicit;
+	// Mutations always name their method on the narrowed form.
+	const narrowed_mutation: ToMutationArgs<App, "PATCH", "/users/:userID"> = {
+		method: "PATCH",
+		pattern: "/users/:userID",
+		params: { userID: "u-1" },
+		input: { nickname: "ada" },
+	};
+	void narrowed_mutation;
 	void optional_post_omitted;
 	void optional_post_undefined;
 	void query_get_props;

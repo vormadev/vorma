@@ -127,13 +127,13 @@ describe("to_typed_href", () => {
 });
 
 describe("build_resource_url", () => {
-	it("prepends mount root to resolved path", () => {
-		const url = build_resource_url("/api/", "/users/:id", { id: "42" });
+	it("resolves the full-URL pattern as the path", () => {
+		const url = build_resource_url("/api/users/:id", { id: "42" });
 		expect(url.pathname).toBe("/api/users/42");
 	});
 
 	it("serializes input as search params", () => {
-		const url = build_resource_url("/api/", "/users/:id", { id: "42" }, undefined, {
+		const url = build_resource_url("/api/users/:id", { id: "42" }, undefined, {
 			include: "posts",
 			page: 2,
 		});
@@ -143,45 +143,33 @@ describe("build_resource_url", () => {
 	});
 
 	it("produces no search params when input is undefined", () => {
-		const url = build_resource_url("/api/", "/users/:id", { id: "42" });
+		const url = build_resource_url("/api/users/:id", { id: "42" });
 		expect(url.search).toBe("");
 	});
 
 	it("produces no search params when input is null", () => {
-		const url = build_resource_url(
-			"/api/",
-			"/users/:id",
-			{ id: "42" },
-			undefined,
-			null,
-		);
+		const url = build_resource_url("/api/users/:id", { id: "42" }, undefined, null);
 		expect(url.search).toBe("");
 	});
 
 	it("URL-encodes dynamic params", () => {
-		const url = build_resource_url("/api/", "/users/:id", { id: "a/b" });
+		const url = build_resource_url("/api/users/:id", { id: "a/b" });
 		expect(url.pathname).toBe("/api/users/a%2Fb");
 	});
 
 	it("handles splat values", () => {
-		const url = build_resource_url("/api/", "/docs/*", undefined, ["guide", "intro"]);
+		const url = build_resource_url("/api/docs/*", undefined, ["guide", "intro"]);
 		expect(url.pathname).toBe("/api/docs/guide/intro");
 	});
 
 	it("handles root pattern", () => {
-		const url = build_resource_url("/api/", "/");
-		expect(url.pathname).toBe("/api");
-	});
-
-	it("normalizes trailing slash on mount root", () => {
-		const url = build_resource_url("/api", "/users/:id", { id: "42" });
-		expect(url.pathname).toBe("/api/users/42");
+		const url = build_resource_url("/");
+		expect(url.pathname).toBe("/");
 	});
 
 	it("does not include any search params", () => {
 		const url = build_resource_url(
-			"/api/",
-			"/users/:id",
+			"/api/users/:id",
 			{ id: "42" },
 			undefined,
 			undefined,

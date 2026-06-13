@@ -15,20 +15,17 @@ bytes.workspace = true
 cookie.workspace = true
 data-encoding.workspace = true
 futures-util.workspace = true
-html-escape.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
 mime.workspace = true
 mime_guess.workspace = true
 multer.workspace = true
-path-clean.workspace = true
 percent-encoding.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-serde_urlencoded.workspace = true
 sha2.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "rt"] }
 tower-http = { workspace = true, features = [
 	"catch-panic",
 	"compression-br",
@@ -42,6 +39,11 @@ tower-http = { workspace = true, features = [
 tower-layer.workspace = true
 tower-service.workspace = true
 url.workspace = true
+vorma-contract.workspace = true
 vorma-macros.workspace = true
 vorma-matcher.workspace = true
 vorma-tasks.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+trybuild.workspace = true

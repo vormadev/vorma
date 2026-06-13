@@ -1,0 +1,48 @@
+.shell {
+	max-width: 52rem;
+	margin: 0 auto;
+	padding: 0 1rem 4rem;
+}
+.topbar {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 0.75rem 0;
+	border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+.topbar h1 {
+	font-size: 1.1rem;
+	margin: 0;
+}
+.topbar nav {
+	display: flex;
+	gap: 0.75rem;
+}
+.topbar form {
+	margin-left: auto;
+	display: flex;
+	gap: 0.5rem;
+}
+.story {
+	display: grid;
+	grid-template-columns: 2.5rem 1fr;
+	gap: 0.25rem 0.75rem;
+	padding: 0.5rem 0;
+}
+.story .points {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+.story .meta {
+	grid-column: 2;
+	font-size: 0.85rem;
+	opacity: 0.75;
+}
+.comment {
+	padding: 0.5rem 0 0.5rem 0.75rem;
+	border-left: 2px solid color-mix(in srgb, currentColor 20%, transparent);
+	margin: 0.5rem 0;
+}
+.error {
+	color: light-dark(#b00020, #ff6b6b);
+}

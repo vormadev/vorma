@@ -6,107 +6,107 @@
 //! runtime handler that users mount into their HTTP stack.
 
 #![deny(missing_docs)]
-#![cfg_attr(not(test), forbid(unsafe_code))]
+#![forbid(unsafe_code)]
 
 extern crate self as vorma;
 
-use std::net::{Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
-
-use crate::config::Config;
-
-mod api;
+mod app_assembly;
+mod asset_body_provider;
+mod asset_capabilities;
 mod config;
-mod constants;
-mod core;
-mod document;
+mod document_builder;
 mod envutil;
 mod error;
-mod handler;
+mod execution_engine;
+mod exit;
+mod facade;
+mod form_data;
+mod handler_context;
 mod head;
-mod htmlutil;
-mod init;
-mod manifest;
+mod input_decoder;
+pub mod kit;
+mod live_state_emit;
+/// Optional Tower middleware helpers for Vorma app servers.
 pub mod middleware;
-mod mux;
-#[cfg(test)]
-mod mux_tests;
+mod network;
+mod payload_projection;
+mod public_app;
 mod request;
-mod response;
-mod searchparams;
-mod r#static;
-mod tsgen;
-mod view_payload;
+mod resource_response;
+mod response_finalizer;
+mod route_input;
+mod runtime_app;
+mod runtime_assets;
+mod runtime_document;
+mod runtime_host;
+mod runtime_service;
+mod runtime_snapshot;
+mod search_params;
+mod static_route;
+#[cfg(test)]
+mod test_support;
+/// In-memory test harness for booting apps without build artifacts.
+pub mod testing;
+mod typed_handler;
+mod view_response;
 
-pub use api::{FormData, FormField, FormFile};
-#[doc(hidden)]
-pub use api::{ResourceInput, ViewInput};
-pub use config::{
-	DevWatchConfig, FrontendConfig, PathConfig, ServerConfig, TsGenConfig, UiVariant,
+pub(crate) use vorma_contract::{
+	constants, contracts, document_renderer, execution_plan, framework_graph, runtime_manifest,
 };
+
+/// Public TypeScript type model used by [`TsGen`] and `AppConfig` type exports.
+pub use vorma_contract::tsgen;
+
+/// Public framework configuration.
+pub use config::{DevWatchConfig, FrontendConfig, ServerTarget, TsGenConfig, UiVariant};
+/// Public HTTP/cookie convenience reexports.
 pub use cookie::Cookie as HttpCookie;
-pub use core::{
-	HeadHandle, Middleware, MiddlewareCtx, Middlewares, Params, Resource, ResourceCtx,
-	ResourceKind, Resources, ResponseHandle, View, ViewCtx, Views,
+/// Public document shell and runtime document builder API.
+pub use document_builder::{
+	Document, DocumentAttributes, DocumentBuildContext as DocumentBuildCtx, DocumentBuilder,
 };
-pub use document::{Document, DocumentAttributes, DocumentBuildCtx, DocumentBuilder};
-pub use error::{BoxError, Error, ViewError, ViewErrorClientMsg};
+/// Public framework error types.
+pub use error::{BoxError, Error};
+/// Public handler early-exit types.
+pub use exit::{HttpExit, ViewExit};
+/// Public form data input types.
+pub use form_data::{FormData, FormField, FormFile};
+/// Public resource route classification.
+pub use framework_graph::ResourceKind;
+/// Public low-level head/document element helpers.
 pub use head::{
 	HeadAttr, HeadBooleanAttribute, HeadBuilder, HeadInnerHtml, HeadSelfClosing, HeadTag,
 	HeadTextContent, HtmlElementDef,
 };
-pub use http::{
-	HeaderName as HttpHeaderName, HeaderValue as HttpHeaderValue, Method as HttpMethod,
-	StatusCode as HttpStatusCode,
-};
-pub use init::RuntimeHost;
+/// Public app declaration API.
+pub use public_app::{App, AppConfig, Middleware, Middlewares, Resource, Resources, View, Views};
+/// Public read-only HTTP request wrappers.
 pub use request::{HttpRequest, HttpSearchParams};
-pub use tsgen::{
-	Error as TsError, FieldDef, RawTsPart, Result as TsResult, TsDrafter, TsExtraType, Type,
-	TypeDef, TypePhase, TypeRef, TypeRegistry,
+/// Public runtime host service.
+pub use runtime_host::RuntimeHost;
+/// Response header carrying the expected Vorma client build ID.
+pub const CLIENT_BUILD_ID_HEADER_KEY: &str = response_finalizer::CLIENT_BUILD_ID_HEADER;
+/// Prefix added to hashed public static asset output filenames.
+pub const PUBLIC_STATIC_OUT_NAME_PREFIX: &str = constants::PUBLIC_STATIC_OUT_NAME_PREFIX;
+/// Default maximum request body size collected by Vorma handlers.
+pub const DEFAULT_REQUEST_BODY_LIMIT: usize = app_assembly::DEFAULT_REQUEST_BODY_LIMIT;
+/// Public HTTP type aliases.
+pub use http::{
+	HeaderMap as HttpHeaderMap, HeaderName as HttpHeaderName, HeaderValue as HttpHeaderValue,
+	Method as HttpMethod, StatusCode as HttpStatusCode,
 };
-pub use vorma_macros::TsGen;
 #[doc(hidden)]
-pub use vorma_macros::{__vorma_resource, __vorma_view};
-pub use vorma_tasks::{
-	CancelToken, Clock as TaskClock, ClockInstant as TaskClockInstant, Error as TaskError, ExecCtx,
-	PreparedTask, Result as TaskResult, SystemClock as SystemTaskClock, Task, TaskEvent,
-	TaskEventKind, TaskEventOutcome, TaskId, TaskObserver, TaskOverrideMode, TaskOverrides,
-	TaskRunSource, Tasks, TasksOptions,
+pub use route_input::{ResourceInput, ViewInput};
+/// Public route handler context types used by app declarations.
+pub use static_route::{MiddlewareCtx, Params, ResourceCtx, ViewCtx};
+/// Public typed handler context handles.
+pub use typed_handler::{
+	TypedHeadHandle as HeadHandle, TypedResourceResponseHandle as ResourceResponseHandle,
+	TypedResponseHandle as ResponseHandle,
 };
 
 /// Result type returned by Vorma public helpers.
 pub type Result<T> = std::result::Result<T, Error>;
-
-/// Helpers for constructing low-level HTML attributes in head/document builders.
-pub struct HtmlAttribute;
-
-impl HtmlAttribute {
-	/// Create a normal escaped HTML attribute definition.
-	pub fn attr(name: impl Into<String>, value: impl Into<String>) -> HtmlElementDef {
-		head::HeadAttr::new(name, value).into()
-	}
-
-	/// Create a `type="..."` attribute definition.
-	pub fn type_(value: impl Into<String>) -> HtmlElementDef {
-		Self::attr("type", value)
-	}
-}
-
-/// Helpers for explicitly trusted HTML fragments.
-pub struct SafeHtml;
-
-impl SafeHtml {
-	/// Create trusted style contents for a `<style>` element.
-	pub fn style_content(content: impl Into<String>) -> [HtmlElementDef; 1] {
-		[head::HeadInnerHtml(content.into()).into()]
-	}
-}
-
-/// Response header carrying the expected Vorma client build ID.
-pub const CLIENT_BUILD_ID_HEADER_KEY: &str = constants::X_VORMA_CLIENT_BUILD_ID;
-/// Prefix added to hashed public static asset output filenames.
-pub const PUBLIC_STATIC_OUT_NAME_PREFIX: &str = constants::PUBLIC_STATIC_OUT_NAME_PREFIX;
 
 /// Whether the current process is running as a Vorma build/live-state entry.
 pub fn is_build() -> bool {
@@ -118,367 +118,380 @@ pub fn is_dev() -> bool {
 	envutil::is_dev()
 }
 
-/// Complete app declaration consumed by both `vorma-build` and [`RuntimeHost`].
-pub struct AppConfig<S, E = Box<dyn std::error::Error + Send + Sync>> {
-	/// Absolute application root used to resolve all relative config paths.
-	pub root_dir: PathBuf,
-	/// Cargo package/bin identity for the user app server target.
-	pub server_config: ServerConfig,
-	/// Dist directory, relative to [`Self::root_dir`] unless absolute.
-	pub dist_dir: String,
-	/// Public static and API mount paths.
-	pub path_config: PathConfig,
-	/// Frontend entry, Vite, package-manager, static, and critical-CSS config.
-	pub frontend_config: FrontendConfig,
-	/// Generated TypeScript output and supplemental declaration config.
-	pub ts_gen_config: TsGenConfig,
-	/// Dev watcher include/classification patterns.
-	pub dev_watch_config: DevWatchConfig,
-	/// Application state shared by handlers.
-	pub state: S,
-	/// Registered nested views.
-	pub views: Views<S, E>,
-	/// Registered resources.
-	pub resources: Resources<S, E>,
-	/// Registered middleware.
-	pub middlewares: Middlewares<S, E>,
-	/// Task runtime options.
-	pub tasks_options: TasksOptions<E>,
-	/// Document shell/default-head builder.
-	pub document: DocumentBuilder,
-	/// Maximum request body bytes Vorma will collect for its own handlers.
-	pub request_body_limit: usize,
-}
-
-/// Normalized app ready to become a runtime host.
-pub struct App<S, E = Box<dyn std::error::Error + Send + Sync>> {
-	config: Config,
-	state: S,
-	views: Views<S, E>,
-	resources: Resources<S, E>,
-	middlewares: Middlewares<S, E>,
-	tasks_options: TasksOptions<E>,
-	document: DocumentBuilder,
-	request_body_limit: usize,
-}
-
-impl<S, E> App<S, E>
-where
-	S: Send + Sync + 'static,
-	E: Send + Sync + 'static,
-{
-	pub(crate) fn from_app_config(app_config: AppConfig<S, E>) -> Self {
-		let AppConfig {
-			root_dir,
-			server_config,
-			dist_dir,
-			path_config,
-			frontend_config,
-			ts_gen_config,
-			dev_watch_config,
-			state,
-			views,
-			resources,
-			middlewares,
-			tasks_options,
-			document,
-			request_body_limit,
-		} = app_config;
-		Self {
-			config: Config {
-				root_dir,
-				server_config,
-				dist_dir,
-				path_config,
-				frontend_config,
-				ts_gen_config,
-				dev_watch_config,
-			},
-			state,
-			views,
-			resources,
-			middlewares,
-			tasks_options,
-			document,
-			request_body_limit,
-		}
-	}
-
-	pub(crate) fn into_live_state_parts(
-		self,
-	) -> (Config, Views<S, E>, Resources<S, E>, DocumentBuilder) {
-		let Self {
-			config,
-			state: _,
-			views,
-			resources,
-			middlewares: _,
-			tasks_options: _,
-			document,
-			request_body_limit: _,
-		} = self;
-		(config, views, resources, document)
-	}
-}
-
-/// Default maximum request body size collected by Vorma handlers.
-pub const DEFAULT_REQUEST_BODY_LIMIT: usize = 16 * 1024 * 1024;
-
 /// Read `PORT` and return `0.0.0.0:<PORT>` for deployment-style app servers.
-pub fn bind_addr() -> Result<SocketAddr> {
-	bind_addr_from_port(
-		&std::env::var("PORT")
-			.map_err(|_| Error::runtime("PORT environment variable is required"))?,
-	)
+pub fn bind_addr() -> Result<std::net::SocketAddr> {
+	network::bind_addr()
+}
+/// Public TypeScript type derive macro.
+pub use vorma_macros::TsGen;
+#[doc(hidden)]
+pub use vorma_macros::{__vorma_resource, __vorma_view};
+/// Public task runtime API reexports.
+pub use vorma_tasks::{
+	CancelToken, Clock as TaskClock, ClockInstant as TaskClockInstant, Error as TaskError, ExecCtx,
+	PreparedTask, Result as TaskResult, SystemClock as SystemTaskClock, Task, TaskEvent,
+	TaskEventKind, TaskEventOutcome, TaskId, TaskObserver, TaskOverrideMode, TaskOverrides,
+	TaskRunSource, Tasks, TasksOptions,
+};
+
+/// Helpers for constructing low-level HTML attributes in head/document builders.
+pub struct HtmlAttribute;
+
+impl HtmlAttribute {
+	/// Create a normal escaped HTML attribute definition.
+	pub fn attr(name: impl Into<String>, value: impl Into<String>) -> HtmlElementDef {
+		head::HeadAttr::new(name, value).into()
+	}
+
+	/// Create a `type="..."` attribute definition.
+	pub fn r#type(value: impl Into<String>) -> HtmlElementDef {
+		Self::attr("type", value)
+	}
 }
 
-fn bind_addr_from_port(port: &str) -> Result<SocketAddr> {
-	let port = port
-		.parse::<u16>()
-		.map_err(|error| Error::runtime(format!("invalid PORT {port:?}: {error}")))?;
-	Ok(SocketAddr::from((Ipv4Addr::UNSPECIFIED, port)))
-}
+/// Helpers for explicitly trusted HTML fragments.
+pub struct SafeHtml;
 
-impl<S, E> App<S, E>
-where
-	S: Send + Sync + 'static,
-	E: ViewErrorClientMsg + Send + Sync + 'static,
-{
-	/// Build a runtime host from an app declaration.
-	pub fn from_config(app_config: AppConfig<S, E>) -> Result<RuntimeHost<S, E>> {
-		RuntimeHost::new(Self::from_app_config(app_config)).map_err(Error::runtime)
+impl SafeHtml {
+	/// Create trusted style contents for a `<style>` element.
+	pub fn style_content(content: impl Into<String>) -> HtmlElementDef {
+		head::HeadInnerHtml(content.into()).into()
+	}
+
+	/// Create trusted script contents for a `<script>` element.
+	pub fn script_content(content: impl Into<String>) -> HtmlElementDef {
+		head::HeadInnerHtml(content.into()).into()
 	}
 }
 
 /// Declare a typed local module of Vorma app aliases and declaration macros.
 #[macro_export]
 macro_rules! app {
-    ($vis:vis mod $module:ident for $state:ty) => {
-        $vis mod $module {
-            #[allow(dead_code)]
-            pub type State = $state;
-            #[allow(dead_code)]
-            pub type App = ::vorma::App<State>;
-            #[allow(dead_code)]
-            pub type Resource = ::vorma::Resource<State>;
-            #[allow(dead_code)]
-            pub type Resources = ::vorma::Resources<State>;
-            #[allow(dead_code)]
-            pub type ResourceCtx<I = (), P = ()> = ::vorma::ResourceCtx<State, ::vorma::BoxError, I, P>;
-            #[allow(dead_code)]
-            pub type DocumentBuildCtx = ::vorma::DocumentBuildCtx;
-            #[allow(dead_code)]
-            pub type DocumentBuilder = ::vorma::DocumentBuilder;
-            #[allow(dead_code)]
-            pub type MiddlewareCtx = ::vorma::MiddlewareCtx<State>;
-            #[allow(dead_code)]
-            pub type Middleware = ::vorma::Middleware<State>;
-            #[allow(dead_code)]
-            pub type Middlewares = ::vorma::Middlewares<State>;
-            #[allow(dead_code)]
-            pub type View = ::vorma::View<State>;
-            #[allow(dead_code)]
-            pub type ViewCtx<I = (), P = ()> = ::vorma::ViewCtx<State, ::vorma::BoxError, I, P>;
-            #[allow(dead_code)]
-            pub type Views = ::vorma::Views<State>;
+	($vis:vis mod $module:ident for $state:ty) => {
+		$vis mod $module {
+			#[allow(dead_code)]
+			pub type State = $state;
+			#[allow(dead_code)]
+			pub type App = $crate::App<State>;
+			#[allow(dead_code)]
+			pub type Resource = $crate::Resource<State>;
+			#[allow(dead_code)]
+			pub type Resources = $crate::Resources<State>;
+			#[allow(dead_code)]
+			pub type ResourceCtx<I = (), P = ()> =
+				$crate::ResourceCtx<State, I, P>;
+			#[allow(dead_code)]
+			pub type DocumentBuildCtx = $crate::DocumentBuildCtx;
+			#[allow(dead_code)]
+			pub type DocumentBuilder = $crate::DocumentBuilder;
+			#[allow(dead_code)]
+			pub type MiddlewareCtx = $crate::MiddlewareCtx<State>;
+			#[allow(dead_code)]
+			pub type Middleware = $crate::Middleware<State>;
+			#[allow(dead_code)]
+			pub type Middlewares = $crate::Middlewares<State>;
+			#[allow(dead_code)]
+			pub type View = $crate::View<State>;
+			#[allow(dead_code)]
+			pub type ViewCtx<I = (), P = ()> =
+				$crate::ViewCtx<State, I, P>;
+			#[allow(dead_code)]
+			pub type Views = $crate::Views<State>;
 
-            #[allow(unused_imports)]
-            pub use ::vorma::{
-                __vorma_resource as resource, __vorma_resources as resources,
-                __vorma_middlewares as middlewares, __vorma_view as view,
-                __vorma_views as views,
-            };
-        }
-    };
+			#[allow(unused_imports)]
+			pub use $crate::{
+				__vorma_middlewares as middlewares, __vorma_resource as resource,
+				__vorma_resources as resources, __vorma_view as view, __vorma_views as views,
+			};
+		}
+	};
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __vorma_views {
-    () => {
-        ::vorma::Views::new()
-    };
-    ($($view:expr),+ $(,)?) => {{
-        let mut views = ::vorma::Views::new();
-        $(
-            views.push($view);
-        )*
-        views
-    }};
+	() => {
+		$crate::Views::new()
+	};
+	($($view:expr),+ $(,)?) => {{
+		let mut views = $crate::Views::new();
+		$(
+			views.push($view);
+		)*
+		views
+	}};
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __vorma_resources {
-    () => {
-        ::vorma::Resources::new()
-    };
-    ($($resource:expr),+ $(,)?) => {{
-        let mut resources = ::vorma::Resources::new();
-        $(
-            resources.push($resource);
-        )*
-        resources
-    }};
+	() => {
+		$crate::Resources::new()
+	};
+	($($resource:expr),+ $(,)?) => {{
+		let mut resources = $crate::Resources::new();
+		$(
+			resources.push($resource);
+		)*
+		resources
+	}};
 }
 
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __vorma_middlewares {
-    () => {
-        ::vorma::Middlewares::new()
-    };
-    ($($middleware:expr),+ $(,)?) => {{
-        let mut middlewares = ::vorma::Middlewares::new();
-        $(
-            middlewares.push($middleware);
-        )*
-        middlewares
-    }};
-}
-
-#[doc(hidden)]
-pub mod __private {
-	pub use crate::config::{
-		Config, normalize_api_mount_root, normalize_public_static_base,
-		validate_public_static_base_against_api_mount,
+	() => {
+		$crate::Middlewares::new()
 	};
-
-	pub mod constants {
-		pub use crate::constants::{
-			ENV_KEY_IS_BUILD, ENV_KEY_IS_DEV, PROD_TMP_VITE_MANIFEST_FILENAME,
-			PUBLIC_STATIC_OUT_NAME_PREFIX,
-		};
-	}
-
-	pub mod document {
-		pub use crate::document::{
-			DocumentBuildIdentity, DocumentBuildIdentityAttribute, DocumentBuildIdentityElement,
-		};
-	}
-
-	pub mod core {
-		pub use crate::core::{
-			Contract, ResourceEntry, ViewEntry, contract_for, default_resource_kind,
-			params_for_pattern, pattern_is_splat, view_parents_for_patterns,
-		};
-	}
-
-	pub mod manifest {
-		pub use crate::manifest::{
-			ClientCoreAssets, ClientModule, MANIFEST_STATIC_OUT_DEV, MANIFEST_STATIC_OUT_PROD,
-			Manifest,
-		};
-	}
-
-	pub mod tsgen {
-		pub use crate::tsgen::*;
-	}
-
-	pub use crate::core::{
-		ErasedRequestCtx, ErasedRouteFuture, PathParams, RouteFuture, TypeResolver,
-		run_static_resource, run_static_view, search_schema_resolver, type_resolver,
-	};
-	pub use crate::mux::{InputError, Params};
-	pub use crate::{ResourceInput, ViewInput};
-
-	pub fn is_build() -> bool {
-		crate::envutil::is_build()
-	}
-
-	pub fn is_dev() -> bool {
-		crate::envutil::is_dev()
-	}
-
-	pub fn is_json_request(request: crate::HttpRequest<'_>) -> bool {
-		crate::handler::is_json_request(request.uri())
-	}
-
-	pub fn app_live_state_parts<S, E>(
-		app_config: crate::AppConfig<S, E>,
-	) -> (
-		Config,
-		crate::Views<S, E>,
-		crate::Resources<S, E>,
-		crate::DocumentBuilder,
-	)
-	where
-		S: Send + Sync + 'static,
-		E: Send + Sync + 'static,
-	{
-		crate::App::from_app_config(app_config).into_live_state_parts()
-	}
+	($($middleware:expr),+ $(,)?) => {{
+		let mut middlewares = $crate::Middlewares::new();
+		$(
+			middlewares.push($middleware);
+		)*
+		middlewares
+	}};
 }
 
 #[cfg(test)]
-mod public_api_tests {
-	use super::*;
+mod public_macro_tests {
+	use serde::{Deserialize, Serialize};
+
+	#[derive(Default)]
+	struct MacroState {
+		prefix: String,
+	}
+
+	crate::app!(mod macro_app for crate::public_macro_tests::MacroState);
+
+	#[derive(Clone, Debug, Deserialize, crate::TsGen)]
+	struct MacroInput {
+		name: String,
+	}
+
+	#[derive(Clone, Debug, PartialEq, Serialize, crate::TsGen)]
+	struct MacroOutput {
+		message: String,
+	}
+
+	const MACRO_VIEW: macro_app::View = macro_app::view! {
+		client_file: "src/client/views/macro.view.tsx";
+		pattern: "/macro/:id";
+		input: MacroInput;
+		output: MacroOutput;
+
+		handler: |ctx| {
+			ctx.head().title("Macro View");
+			let _ = ctx.exec_ctx().is_cancelled();
+			Ok(MacroOutput {
+				message: format!(
+					"{}{}:{}",
+					ctx.state().prefix,
+					ctx.param("id"),
+					ctx.input().name
+				),
+			})
+		};
+	};
+
+	const MACRO_RESOURCE: macro_app::Resource = macro_app::resource! {
+		kind: crate::ResourceKind::Mutation;
+		method: crate::HttpMethod::POST;
+		pattern: "/macro/:id";
+		input: MacroInput;
+		output: MacroOutput;
+
+		handler: |ctx| {
+			ctx.response().set_status(crate::HttpStatusCode::CREATED);
+			let _ = ctx.exec_ctx().is_cancelled();
+			Ok(MacroOutput {
+				message: format!(
+					"{}{}:{}",
+					ctx.state().prefix,
+					ctx.params().id,
+					ctx.input().name
+				),
+			})
+		};
+	};
+
+	const MACRO_FORM_DATA_RESOURCE: macro_app::Resource = macro_app::resource! {
+		kind: crate::ResourceKind::Mutation;
+		method: crate::HttpMethod::POST;
+		pattern: "/macro-form/:id";
+		input: crate::FormData;
+		output: MacroOutput;
+
+		handler: |ctx| {
+			ctx.response().set_status(crate::HttpStatusCode::CREATED);
+			Ok(MacroOutput {
+				message: format!(
+					"{}{}:{}",
+					ctx.state().prefix,
+					ctx.params().id,
+					ctx.input().text("name").unwrap_or("")
+				),
+			})
+		};
+	};
 
 	#[test]
-	fn golden_root_helpers_are_available() {
-		let cookie = HttpCookie::new("ping", "1");
-		assert_eq!(cookie.name(), "ping");
+	fn public_declaration_macros_lower_into_fresh_app_assembly() {
+		let app = crate::App::from_app_config(crate::AppConfig {
+			state: MacroState {
+				prefix: "macro-".to_owned(),
+			},
+			views: macro_app::views![MACRO_VIEW],
+			resources: macro_app::resources![MACRO_RESOURCE, MACRO_FORM_DATA_RESOURCE],
+			middlewares: macro_app::middlewares![macro_app::Middleware::new(|ctx| async move {
+				let _ = ctx.request().path();
+				let _ = ctx.exec_ctx().is_cancelled();
+				Ok::<(), crate::HttpExit>(())
+			})],
+			..crate::AppConfig::default()
+		})
+		.unwrap();
+		let assembly = app.into_assembly();
+		let declarations = assembly.facade().declarations();
 
-		let error = Error::runtime("boom");
-		assert_eq!(error.to_string(), "boom");
-		let task_error: TaskError<BoxError> = error.into();
-		assert!(matches!(task_error, TaskError::Failed(_)));
-		let _: TaskResult<(), BoxError> = Ok(());
-
-		let mut head = HeadBuilder::new();
-		head.script([HtmlAttribute::type_("application/json")]);
-		head.style(SafeHtml::style_content(":root{color-scheme:light dark}"));
-		assert_eq!(head.elements().len(), 2);
-
-		let _: Result<()> = Ok(());
+		assert_eq!(declarations.views().len(), 1);
+		assert_eq!(declarations.resources().len(), 2);
+		assert_eq!(declarations.middlewares().len(), 1);
 	}
 
 	#[test]
-	fn structured_ts_helpers_are_available_from_root() {
-		let mut drafter = TsDrafter::new();
-		drafter.export_type("Extra", "{ ok: true }").unwrap();
-		let _: TsResult<_> = drafter
-			.export_const("EXTRA_FLAGS", serde_json::json!({ "ok": true }))
-			.map_err(|err: TsError| err);
-		drafter
-			.export_const("EXTRA_FLAGS_2", serde_json::json!({ "ok": true }))
-			.unwrap();
-		assert!(drafter.to_string().contains("export type Extra"));
-		assert!(drafter.to_string().contains("export const EXTRA_FLAGS"));
+	fn hidden_build_graph_helper_compiles_public_app_config() {
+		let graph = crate::build_interface::app_build_graph(crate::AppConfig {
+			state: MacroState {
+				prefix: "build-".to_owned(),
+			},
+			views: macro_app::views![MACRO_VIEW],
+			resources: macro_app::resources![MACRO_RESOURCE, MACRO_FORM_DATA_RESOURCE],
+			middlewares: macro_app::middlewares![],
+			..crate::AppConfig::default()
+		})
+		.unwrap();
 
-		let type_ref = TypeRef::Raw(vec![
-			RawTsPart::Text("Promise<".to_owned()),
-			RawTsPart::TypeRef(TypeRef::String),
-			RawTsPart::Text(">".to_owned()),
-		]);
-		let def = TypeDef::alias("AsyncString", type_ref);
-		let mut registry = TypeRegistry::default();
+		assert_eq!(graph.views().len(), 1);
+		assert_eq!(graph.resources().len(), 2);
+	}
+}
 
-		assert!(registry.try_define(def).unwrap());
+/// Hidden internal contract consumed by `vorma-build`.
+#[doc(hidden)]
+/*
+The named contract between paired `vorma`/`vorma-build` versions: real,
+documented surface, but not for application code — apps declare through the
+public API and never need these. The two crates ship version-locked, so this
+interface carries no cross-version stability promise.
+*/
+/// Build-facing runtime interface consumed by `vorma-build`.
+pub mod build_interface {
+	/// Runtime asset capability contracts.
+	pub mod assets {
+		pub use crate::asset_body_provider::*;
+		pub use crate::asset_capabilities::*;
+		pub use crate::runtime_assets::*;
 	}
 
-	#[test]
-	fn task_support_helpers_are_available_from_root() {
-		let clock = SystemTaskClock::new();
-		let at: TaskClockInstant = TaskClock::now(&clock);
-
-		assert!(at <= TaskClock::now(&clock));
+	/// Hidden runtime document build contracts.
+	pub mod contracts {
+		pub use crate::document_builder::*;
 	}
 
-	#[test]
-	fn bind_addr_from_port_binds_unspecified_ipv4() {
-		let addr = super::bind_addr_from_port("8080").unwrap();
-
-		assert_eq!(addr.to_string(), "0.0.0.0:8080");
+	/// Public configuration lowering helpers.
+	pub mod config {
+		pub use crate::config::{Config, ConfigError, normalize_public_static_base};
 	}
 
-	#[test]
-	fn bind_addr_from_port_rejects_invalid_ports() {
-		assert_eq!(
-			super::bind_addr_from_port("not-a-port")
-				.unwrap_err()
-				.to_string(),
-			"invalid PORT \"not-a-port\": invalid digit found in string"
-		);
+	/// Scoped runtime/build mode helpers for build tooling.
+	pub mod env {
+		pub use crate::envutil::{with_build_mode, with_dev_mode};
 	}
+
+	/// Public facade used to compile declarations into graph and handlers.
+	pub mod facade {
+		pub use crate::app_assembly::*;
+		pub use crate::facade::*;
+	}
+
+	/// Public route input resolver contracts.
+	pub mod route_input {
+		pub use crate::route_input::*;
+		pub use crate::search_params::schema_for_type;
+	}
+
+	pub use crate::public_app::AppBuildContract;
+	pub use crate::route_input::{search_schema_resolver, type_resolver};
+	pub use crate::static_route::{
+		ErasedRequestCtx, ErasedRouteFuture, ErasedRouteHandler, InputError, PathParams,
+		RouteFuture, StaticResourceInput, run_static_resource, run_static_view,
+	};
+	pub use vorma_matcher::Params;
+
+	/// Compile public app config into the hidden build-facing contract.
+	pub fn app_build_contract<S>(app_config: crate::AppConfig<S>) -> crate::Result<AppBuildContract>
+	where
+		S: Send + Sync + 'static,
+	{
+		crate::App::from_app_config(app_config)?.into_build_contract()
+	}
+
+	/// Build live-state facts from an in-process app build contract.
+	pub async fn live_build_state_from_app_build_contract(
+		app: AppBuildContract,
+	) -> Result<
+		vorma_contract::live_state::LiveBuildState,
+		vorma_contract::live_state::LiveBuildStateError,
+	> {
+		use vorma_contract::live_state::{LiveBuildState, LiveBuildStateError};
+
+		let (graph, document_builder) = app.into_parts();
+		let root_document_hash_source = document_builder
+			.build_root_document_hash_source()
+			.await
+			.map_err(|source| LiveBuildStateError::RootDocumentHashSource {
+				message: source.to_string(),
+			})?;
+		Ok(LiveBuildState::from_graph(graph, root_document_hash_source))
+	}
+
+	/// Compile public app config into the canonical build graph.
+	pub fn app_build_graph<S>(
+		app_config: crate::AppConfig<S>,
+	) -> crate::Result<vorma_contract::framework_graph::FrameworkGraph>
+	where
+		S: Send + Sync + 'static,
+	{
+		Ok(app_build_contract(app_config)?.into_parts().0)
+	}
+
+	/// Immutable runtime snapshot contracts.
+	pub mod runtime {
+		pub use crate::execution_engine::*;
+		pub use crate::handler_context::*;
+		pub use crate::input_decoder::*;
+		pub use crate::payload_projection::*;
+		pub use crate::resource_response::*;
+		pub use crate::response_finalizer::*;
+		pub use crate::runtime_app::*;
+		pub use crate::runtime_document::*;
+		pub use crate::runtime_host::*;
+		pub use crate::runtime_service::*;
+		pub use crate::runtime_snapshot::*;
+		pub use crate::typed_handler::*;
+		pub use crate::view_response::*;
+	}
+}
+
+/*
+Macro ABI only: these exact paths are emitted by `vorma-macros` into
+application crates, so they must stay path-stable. Everything the build
+crate consumes lives in `build_interface` instead.
+*/
+#[doc(hidden)]
+pub mod __private {
+	pub use vorma_matcher::Params;
+
+	pub use crate::route_input::{search_schema_resolver, type_resolver};
+	pub use crate::static_route::{InputError, PathParams, run_static_resource, run_static_view};
 }

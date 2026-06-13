@@ -20,7 +20,6 @@ import {
 	get_entry_key,
 	make_entry_id,
 	make_link_props,
-	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
 	type AdapterClientOptions,
@@ -61,6 +60,7 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
+	ApiClientOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -158,7 +158,7 @@ export function createVormaClient<A extends AppConfig>(
 		throw new Error(`Failed to create Vorma client: ${adapter_base_res.err}`);
 	}
 
-	const { core, nav_fns, passthrough } = adapter_base_res.val;
+	const { core, nav_fns, passthrough, resolve_outlet_slot } = adapter_base_res.val;
 
 	function useRouteState(): Accessor<RouteState>;
 	function useRouteState<T>(selector: (route: RouteState) => T): Accessor<T>;
@@ -208,8 +208,14 @@ export function createVormaClient<A extends AppConfig>(
 		const canonical_href = createMemo(() => {
 			return passthrough.toHref(target as any);
 		});
+		let timeout_id: number | undefined;
 
 		createEffect(() => {
+			if (timeout_id !== undefined) {
+				window.clearTimeout(timeout_id);
+				timeout_id = undefined;
+			}
+
 			if (!enabled) {
 				return;
 			}
@@ -222,15 +228,22 @@ export function createVormaClient<A extends AppConfig>(
 			}
 
 			if (debounceMs > 0) {
-				const timeout_id = window.setTimeout(() => {
+				const next_timeout_id = window.setTimeout(() => {
+					if (timeout_id === next_timeout_id) {
+						timeout_id = undefined;
+					}
 					void passthrough.navigate({
 						href,
 						replace,
 						scrollToTop,
 					});
 				}, debounceMs);
+				timeout_id = next_timeout_id;
 				onCleanup(() => {
-					window.clearTimeout(timeout_id);
+					window.clearTimeout(next_timeout_id);
+					if (timeout_id === next_timeout_id) {
+						timeout_id = undefined;
+					}
 				});
 				return;
 			}

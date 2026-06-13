@@ -1,0 +1,5 @@
+error: generic TsGen derive is not supported yet; use a manual Type implementation for this shape
+ --> tests/compile_fail/ts_gen_generic.rs:4:15
+  |
+4 | struct Wrapper<T> {
+  |               ^^^

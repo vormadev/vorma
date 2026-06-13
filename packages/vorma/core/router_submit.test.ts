@@ -137,13 +137,40 @@ describe("submit", () => {
 			},
 		);
 		await wait_for(1);
-		call(0).resolve(new Response("", { status: 500, statusText: "Err" }));
+		call(0).resolve(
+			new Response('{"error":"database unavailable"}', {
+				status: 500,
+				headers: { "content-type": "application/json" },
+			}),
+		);
 		const result = await sub;
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe("Err");
+			// The server's explicit client text rides the JSON error envelope.
+			expect(result.error).toBe("database unavailable");
 			expect(result.response?.status).toBe(500);
+		}
+	});
+
+	it("falls back to a generic message for non-envelope error bodies", async () => {
+		const { core } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/some-resource",
+			{ method: "POST" },
+			{
+				revalidate: false,
+			},
+		);
+		await wait_for(1);
+		call(0).resolve(new Response("oops", { status: 500 }));
+		const result = await sub;
+
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error).toBe("Request failed (500)");
 		}
 	});
 
@@ -354,7 +381,7 @@ describe("submit", () => {
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe("Err");
+			expect(result.error).toBe("Request failed (500)");
 		}
 		expect(core.getClientBuildId()).toBe("build-1");
 		expect(on_build_skew).toHaveBeenCalledWith(
@@ -551,7 +578,7 @@ describe("submit", () => {
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe("Err");
+			expect(result.error).toBe("Request failed (500)");
 		}
 		expect(calls).toHaveLength(1);
 	});
@@ -618,7 +645,7 @@ describe("submit", () => {
 
 		expect(result.success).toBe(false);
 		if (!result.success) {
-			expect(result.error).toBe("Err");
+			expect(result.error).toBe("Request failed (500)");
 		}
 		expect(calls).toHaveLength(2);
 	});

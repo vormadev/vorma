@@ -26,7 +26,7 @@ pub(crate) fn encode_nested_match(matched: &vorma_matcher::NestedMatches) -> Res
 	}
 
 	push_len(&mut out, matched.splat_values.len())?;
-	for value in &matched.splat_values {
+	for value in matched.splat_values.iter() {
 		push_string(&mut out, value)?;
 	}
 

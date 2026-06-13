@@ -1,454 +1,639 @@
-use std::net::TcpListener;
-use std::sync::{Arc, Mutex};
-use std::thread;
+//! Stable loopback development mux for browser traffic and refresh events.
 
-use axum::Router;
-use axum::routing::{get, post};
+use std::net::{SocketAddr, TcpListener};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::thread::{self, JoinHandle};
 
-use crate::browser_sync::{ChangeType, ClientManager, ClientSubscription, RefreshPayload};
-use crate::constants::DEV_LOOPBACK_HOST;
-use crate::generation::DevMuxGeneration;
-use crate::supervisor::get_random_free_port;
-use crate::utils::random_id;
+use axum::body::Body;
+use axum::extract::State;
+use axum::extract::ws::WebSocketUpgrade;
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Request, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use axum::{Router, routing::any};
+use hyper::body::Incoming;
+use hyper::client::conn::http1;
+use hyper::upgrade;
+use hyper_util::rt::TokioIo;
+use tokio::net::TcpStream;
+use tokio::sync::oneshot;
 
+#[cfg(test)]
+use crate::dev_refresh::DevRefreshClientSubscription;
+use crate::dev_refresh::{
+	DevRefreshClients, DevRefreshError, DevRefreshOriginPolicy, RefreshPayload,
+	dev_refresh_endpoint, dev_refresh_socket,
+};
+use crate::vite_plugin_contract::VITE_PLUGIN_LOOPBACK_HOST;
+
+const HEADER_CONNECTION: &str = "connection";
+const HEADER_KEEP_ALIVE: &str = "keep-alive";
+const HEADER_PROXY_AUTHENTICATE: &str = "proxy-authenticate";
+const HEADER_PROXY_AUTHORIZATION: &str = "proxy-authorization";
+const HEADER_PROXY_CONNECTION: &str = "proxy-connection";
+const HEADER_TE: &str = "te";
+const HEADER_TRAILER: &str = "trailer";
+const HEADER_TRANSFER_ENCODING: &str = "transfer-encoding";
+const HEADER_UPGRADE: &str = "upgrade";
+
+/// Started stable dev mux server.
 #[derive(Debug)]
-pub(crate) struct DevMuxServer {
-	shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
-	thread: Option<thread::JoinHandle<Result<(), String>>>,
+pub struct DevMuxServer {
+	/*
+	Retained for test observation only: production callers already know the
+	port they asked the mux to bind.
+	*/
+	_port: u16,
+	clients: DevRefreshClients,
+	backend: DevMuxBackend,
+	shutdown: Option<oneshot::Sender<()>>,
+	thread: Option<JoinHandle<()>>,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct DevMuxState {
-	snapshot: Arc<Mutex<DevMuxSnapshot>>,
-	prepared: Arc<Mutex<Option<PreparedDevMux>>>,
-	client_manager: ClientManager,
+struct DevMuxState {
+	clients: DevRefreshClients,
+	origin_policy: DevRefreshOriginPolicy,
+	backend: DevMuxBackend,
 }
 
-#[derive(Debug)]
-pub(crate) struct DevMuxRuntime {
-	state: DevMuxState,
+#[derive(Clone, Debug)]
+struct DevMuxBackend {
+	active_app_server_port: Arc<AtomicU16>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct PreparedDevMux {
-	pub(crate) port: u16,
-	pub(crate) dev_refresh_token: String,
-	pub(crate) vite_plugin_token: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum VitePluginTokenError {
-	MissingInternalToken,
-	InvalidToken,
-}
-
-#[derive(Clone, Debug, Default)]
-pub(crate) struct DevMuxSnapshot {
-	pub(crate) generation: Option<DevMuxGeneration>,
-	pub(crate) vite_plugin_control_port: Option<u16>,
+struct ProxiedBackendResponse {
+	response: Response,
+	backend_upgrade: Option<upgrade::OnUpgrade>,
 }
 
 impl DevMuxServer {
-	pub(crate) fn stop(&mut self) -> Result<(), String> {
-		if let Some(shutdown_tx) = self.shutdown_tx.take() {
-			let _ = shutdown_tx.send(());
+	/// Bound browser-facing dev mux port.
+	#[cfg(test)]
+	pub fn port(&self) -> u16 {
+		self._port
+	}
+
+	/// Current active app-server backend port.
+	#[cfg(test)]
+	pub fn active_app_server_port(&self) -> u16 {
+		self.backend.active_app_server_port()
+	}
+
+	/// Switch browser traffic to a ready app-server backend.
+	pub fn set_active_app_server_port(&self, port: u16) -> Result<(), DevMuxError> {
+		self.backend.set_active_app_server_port(port)
+	}
+
+	/// Broadcast one payload to connected clients.
+	pub fn broadcast(&self, payload: RefreshPayload) {
+		self.clients.broadcast(payload);
+	}
+
+	/// Broadcast multiple payloads to connected clients.
+	pub fn broadcast_all(&self, payloads: impl IntoIterator<Item = RefreshPayload>) {
+		for payload in payloads {
+			self.broadcast(payload);
 		}
-		let Some(thread) = self.thread.take() else {
-			return Ok(());
-		};
-		thread
-			.join()
-			.map_err(|_| "internal dev server thread panicked".to_owned())?
+	}
+
+	/// Add an in-process test subscription.
+	#[cfg(test)]
+	pub fn add_test_client(&self) -> DevRefreshClientSubscription {
+		self.clients.add_client()
 	}
 }
 
 impl Drop for DevMuxServer {
 	fn drop(&mut self) {
-		let _ = self.stop();
-	}
-}
-
-impl DevMuxState {
-	pub(crate) fn new() -> Self {
-		Self {
-			snapshot: Arc::new(Mutex::new(DevMuxSnapshot::default())),
-			prepared: Arc::new(Mutex::new(None)),
-			client_manager: ClientManager::new(),
+		if let Some(shutdown) = self.shutdown.take() {
+			let _ = shutdown.send(());
 		}
-	}
-
-	#[cfg(test)]
-	pub(crate) fn snapshot(&self) -> DevMuxSnapshot {
-		self.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned")
-			.clone()
-	}
-
-	fn prepared(&self) -> Option<PreparedDevMux> {
-		self.prepared
-			.lock()
-			.expect("dev mux prepared lock poisoned")
-			.clone()
-	}
-
-	fn set_prepared(&self, prepared: PreparedDevMux) {
-		*self
-			.prepared
-			.lock()
-			.expect("dev mux prepared lock poisoned") = Some(prepared);
-	}
-
-	pub(crate) fn check_vite_plugin_token(
-		&self,
-		provided: Option<&str>,
-	) -> Result<(), VitePluginTokenError> {
-		let Some(prepared) = self.prepared() else {
-			return Err(VitePluginTokenError::MissingInternalToken);
-		};
-		if provided == Some(prepared.vite_plugin_token.as_str()) {
-			return Ok(());
-		}
-		Err(VitePluginTokenError::InvalidToken)
-	}
-
-	pub(crate) fn generation(&self) -> Result<DevMuxGeneration, String> {
-		self.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned")
-			.generation
-			.clone()
-			.ok_or_else(|| "dev generation not available".to_owned())
-	}
-
-	pub(crate) fn resolve_public_url(&self, src_path: &str) -> Result<Option<String>, String> {
-		let src_path = src_path.trim();
-		let clean = src_path.strip_prefix('/').unwrap_or(src_path);
-		let snapshot = self
-			.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned");
-		let generation = snapshot
-			.generation
-			.as_ref()
-			.ok_or_else(|| "dev generation not available".to_owned())?;
-		Ok(generation.public_filemap.get(clean).cloned())
-	}
-
-	pub(crate) fn clear_generation(&self) {
-		self.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned")
-			.generation = None;
-	}
-
-	pub(crate) fn vite_plugin_control_port(&self) -> Option<u16> {
-		self.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned")
-			.vite_plugin_control_port
-	}
-
-	pub(crate) fn set_vite_plugin_control_port(&self, port: u16) {
-		self.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned")
-			.vite_plugin_control_port = Some(port);
-	}
-
-	pub(crate) fn broadcast(&self, msg: RefreshPayload) {
-		self.client_manager.broadcast(msg);
-	}
-
-	pub(crate) fn add_client(&self) -> ClientSubscription {
-		self.client_manager.add()
-	}
-}
-
-impl Default for DevMuxRuntime {
-	fn default() -> Self {
-		Self {
-			state: DevMuxState::new(),
+		if let Some(thread) = self.thread.take() {
+			let _ = thread.join();
 		}
 	}
 }
 
-impl DevMuxRuntime {
-	pub(crate) fn state(&self) -> DevMuxState {
-		self.state.clone()
-	}
-
-	pub(crate) fn prepare(&mut self) -> Result<u16, String> {
-		if let Some(prepared) = self.state.prepared() {
-			return Ok(prepared.port);
+impl DevMuxBackend {
+	fn new(active_app_server_port: u16) -> Result<Self, DevMuxError> {
+		if active_app_server_port == 0 {
+			return Err(DevMuxError::InvalidAppServerPort);
 		}
-
-		let port = get_random_free_port()?;
-		self.state.set_prepared(PreparedDevMux {
-			port,
-			dev_refresh_token: random_id(16)?,
-			vite_plugin_token: random_id(32)?,
-		});
-		Ok(port)
-	}
-
-	pub(crate) fn prepared(&self) -> Result<PreparedDevMux, String> {
-		self.state
-			.prepared()
-			.ok_or_else(|| "dev mux is not prepared".to_owned())
-	}
-
-	pub(crate) fn port_i32(&self) -> Result<i32, String> {
-		Ok(i32::from(self.prepared()?.port))
-	}
-
-	pub(crate) fn port_u16(&self) -> Result<u16, String> {
-		Ok(self.prepared()?.port)
-	}
-
-	pub(crate) fn dev_refresh_token(&self) -> Result<String, String> {
-		Ok(self.prepared()?.dev_refresh_token)
-	}
-
-	#[cfg(test)]
-	pub(crate) fn vite_plugin_token(&self) -> Result<String, String> {
-		Ok(self.prepared()?.vite_plugin_token)
-	}
-
-	pub(crate) fn require_vite_plugin_token(&self) -> Result<String, String> {
-		Ok(self.prepared()?.vite_plugin_token)
-	}
-
-	pub(crate) fn dev_refresh_endpoint(&self) -> Result<String, String> {
-		Ok(crate::browser_sync::dev_refresh_endpoint(
-			&self.dev_refresh_token()?,
-		))
-	}
-
-	pub(crate) fn publish_generation(&self, generation: DevMuxGeneration) {
-		self.state
-			.snapshot
-			.lock()
-			.expect("dev mux snapshot lock poisoned")
-			.generation = Some(generation);
-	}
-
-	pub(crate) fn clear_generation(&self) {
-		self.state.clear_generation();
-	}
-
-	pub(crate) fn vite_plugin_control_port(&self) -> Option<u16> {
-		self.state.vite_plugin_control_port()
-	}
-
-	pub(crate) fn broadcast_refresh(
-		&self,
-		change_type: ChangeType,
-		critical_css: &str,
-		build_error: &str,
-	) {
-		self.state.broadcast(RefreshPayload {
-			change_type,
-			critical_css: critical_css.to_owned(),
-			build_error: build_error.to_owned(),
-		});
-	}
-
-	#[cfg(test)]
-	pub(crate) fn for_test(port: i32, dev_refresh_token: &str, vite_plugin_token: &str) -> Self {
-		let state = DevMuxState::new();
-		if let Some(port) = u16::try_from(port).ok().filter(|port| *port != 0) {
-			state.set_prepared(PreparedDevMux {
-				port,
-				dev_refresh_token: dev_refresh_token.to_owned(),
-				vite_plugin_token: vite_plugin_token.to_owned(),
-			});
-		}
-		Self { state }
-	}
-}
-
-pub(crate) fn start_dev_mux_server(
-	dev_mux_state: DevMuxState,
-	dev_refresh_endpoint: String,
-	port: u16,
-) -> Result<DevMuxServer, String> {
-	let std_listener =
-		TcpListener::bind((DEV_LOOPBACK_HOST, port)).map_err(|err| err.to_string())?;
-	std_listener
-		.set_nonblocking(true)
-		.map_err(|err| err.to_string())?;
-	let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-	let app = dev_router(dev_mux_state, &dev_refresh_endpoint);
-	let thread = thread::spawn(move || {
-		let runtime = tokio::runtime::Builder::new_current_thread()
-			.enable_all()
-			.build()
-			.map_err(|err| err.to_string())?;
-		runtime.block_on(async move {
-			let listener =
-				tokio::net::TcpListener::from_std(std_listener).map_err(|err| err.to_string())?;
-			axum::serve(listener, app)
-				.with_graceful_shutdown(async {
-					let _ = shutdown_rx.await;
-				})
-				.await
-				.map_err(|err| err.to_string())
+		Ok(Self {
+			active_app_server_port: Arc::new(AtomicU16::new(active_app_server_port)),
 		})
-	});
+	}
 
+	fn active_app_server_port(&self) -> u16 {
+		self.active_app_server_port.load(Ordering::SeqCst)
+	}
+
+	fn set_active_app_server_port(&self, port: u16) -> Result<(), DevMuxError> {
+		if port == 0 {
+			return Err(DevMuxError::InvalidAppServerPort);
+		}
+		self.active_app_server_port.store(port, Ordering::SeqCst);
+		Ok(())
+	}
+}
+
+/// Start a loopback dev mux server.
+pub fn start_loopback_dev_mux_server(
+	port: u16,
+	active_app_server_port: u16,
+	refresh_token: impl Into<String>,
+) -> Result<DevMuxServer, DevMuxError> {
+	if port == 0 {
+		return Err(DevMuxError::InvalidPort);
+	}
+	let origin_policy =
+		DevRefreshOriginPolicy::new(port).map_err(|source| DevMuxError::DevRefresh { source })?;
+	let refresh_token = refresh_token.into();
+	if refresh_token.is_empty() {
+		return Err(DevMuxError::EmptyRefreshToken);
+	}
+	let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, port)).map_err(|source| {
+		DevMuxError::Bind {
+			message: source.to_string(),
+		}
+	})?;
+	listener
+		.set_nonblocking(true)
+		.map_err(|source| DevMuxError::Bind {
+			message: source.to_string(),
+		})?;
+	let port = listener
+		.local_addr()
+		.map_err(|source| DevMuxError::Bind {
+			message: source.to_string(),
+		})?
+		.port();
+	let clients = DevRefreshClients::new();
+	let backend = DevMuxBackend::new(active_app_server_port)?;
+	let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+	let state = DevMuxState {
+		clients: clients.clone(),
+		origin_policy,
+		backend: backend.clone(),
+	};
+	let endpoint = dev_refresh_endpoint(&refresh_token);
+	let thread = thread::spawn(move || {
+		let _ = serve_loopback_dev_mux(listener, state, endpoint, shutdown_rx);
+	});
 	Ok(DevMuxServer {
-		shutdown_tx: Some(shutdown_tx),
+		_port: port,
+		clients,
+		backend,
+		shutdown: Some(shutdown_tx),
 		thread: Some(thread),
 	})
 }
 
-pub(crate) fn dev_router(dev_mux_state: DevMuxState, dev_refresh_endpoint: &str) -> Router {
-	Router::new()
-		.route(
-			"/vite-plugin/rpc",
-			post(crate::vite_plugin::vite_plugin_rpc_handler),
-		)
-		.route(
-			dev_refresh_endpoint,
-			get(crate::browser_sync::dev_refresh_handler),
-		)
-		.with_state(dev_mux_state)
+/// Dev mux server error.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DevMuxError {
+	/// Dev mux port cannot be zero.
+	InvalidPort,
+	/// App server port cannot be zero.
+	InvalidAppServerPort,
+	/// Dev refresh token cannot be empty.
+	EmptyRefreshToken,
+	/// Dev refresh origin policy failed.
+	DevRefresh {
+		/// Source refresh error.
+		source: DevRefreshError,
+	},
+	/// Dev mux server bind failed.
+	Bind {
+		/// Network error message.
+		message: String,
+	},
+}
+
+impl std::fmt::Display for DevMuxError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::InvalidPort => f.write_str("dev mux port cannot be zero"),
+			Self::InvalidAppServerPort => f.write_str("app server port cannot be zero"),
+			Self::EmptyRefreshToken => f.write_str("dev refresh token cannot be empty"),
+			Self::DevRefresh { source } => write!(f, "{source}"),
+			Self::Bind { message } => write!(f, "bind dev mux server: {message}"),
+		}
+	}
+}
+
+impl std::error::Error for DevMuxError {}
+
+fn serve_loopback_dev_mux(
+	listener: TcpListener,
+	state: DevMuxState,
+	dev_refresh_path: String,
+	shutdown_rx: oneshot::Receiver<()>,
+) -> Result<(), std::io::Error> {
+	let runtime = tokio::runtime::Builder::new_current_thread()
+		.enable_io()
+		.build()?;
+	runtime.block_on(async move {
+		let listener = tokio::net::TcpListener::from_std(listener)?;
+		let app = Router::new()
+			.route(&dev_refresh_path, get(dev_refresh_handler))
+			.fallback(any(dev_mux_proxy_handler))
+			.with_state(state);
+		axum::serve(listener, app)
+			.with_graceful_shutdown(async {
+				let _ = shutdown_rx.await;
+			})
+			.await
+	})
+}
+
+async fn dev_refresh_handler(
+	headers: HeaderMap,
+	ws: WebSocketUpgrade,
+	State(state): State<DevMuxState>,
+) -> Response {
+	let allowed = headers
+		.get(header::ORIGIN)
+		.and_then(|value| value.to_str().ok())
+		.is_some_and(|origin| state.origin_policy.allows_origin(origin));
+	if !allowed {
+		return StatusCode::FORBIDDEN.into_response();
+	}
+	ws.on_upgrade(move |socket| dev_refresh_socket(socket, state.clients))
+}
+
+async fn dev_mux_proxy_handler(
+	State(state): State<DevMuxState>,
+	mut request: Request<Body>,
+) -> Response {
+	let backend_port = state.backend.active_app_server_port();
+	if backend_port == 0 {
+		return proxy_error_response(
+			StatusCode::BAD_GATEWAY,
+			"dev mux app server port cannot be zero",
+		);
+	}
+	let is_upgrade = is_upgrade_request(request.headers());
+	let client_upgrade = is_upgrade.then(|| upgrade::on(&mut request));
+	prepare_proxy_request(&mut request, backend_port, is_upgrade);
+	let proxied = match proxy_request_to_active_app_server(backend_port, request, is_upgrade).await
+	{
+		Ok(proxied) => proxied,
+		Err(message) => return proxy_error_response(StatusCode::BAD_GATEWAY, message),
+	};
+	if is_upgrade
+		&& proxied.response.status() == StatusCode::SWITCHING_PROTOCOLS
+		&& let (Some(client_upgrade), Some(backend_upgrade)) =
+			(client_upgrade, proxied.backend_upgrade)
+	{
+		tokio::spawn(async move {
+			let Ok(client) = client_upgrade.await else {
+				return;
+			};
+			let Ok(backend) = backend_upgrade.await else {
+				return;
+			};
+			let mut client = TokioIo::new(client);
+			let mut backend = TokioIo::new(backend);
+			let _ = tokio::io::copy_bidirectional(&mut client, &mut backend).await;
+		});
+	}
+	proxied.response
+}
+
+async fn proxy_request_to_active_app_server(
+	backend_port: u16,
+	request: Request<Body>,
+	preserve_upgrade_headers: bool,
+) -> Result<ProxiedBackendResponse, String> {
+	let address: SocketAddr = format!("{VITE_PLUGIN_LOOPBACK_HOST}:{backend_port}")
+		.parse()
+		.map_err(|source| format!("parse app server address: {source}"))?;
+	let stream = TcpStream::connect(address)
+		.await
+		.map_err(|source| format!("connect app server: {source}"))?;
+	let (mut sender, connection) = http1::handshake(TokioIo::new(stream))
+		.await
+		.map_err(|source| format!("connect app server HTTP: {source}"))?;
+	tokio::spawn(async move {
+		let _ = connection.with_upgrades().await;
+	});
+	let mut response = sender
+		.send_request(request)
+		.await
+		.map_err(|source| format!("proxy app server request: {source}"))?;
+	let backend_upgrade = preserve_upgrade_headers.then(|| upgrade::on(&mut response));
+	Ok(ProxiedBackendResponse {
+		response: proxy_response(response, preserve_upgrade_headers),
+		backend_upgrade,
+	})
+}
+
+fn prepare_proxy_request(
+	request: &mut Request<Body>,
+	backend_port: u16,
+	preserve_upgrade_headers: bool,
+) {
+	let headers = request.headers_mut();
+	let header_names = headers.keys().cloned().collect::<Vec<_>>();
+	for name in header_names {
+		if should_drop_proxy_request_header(&name, preserve_upgrade_headers) {
+			headers.remove(name);
+		}
+	}
+	// Preserve the browser-facing Host so app code sees the same origin it
+	// would in production; fall back to the backend address when the inbound
+	// request carried no Host header (e.g. HTTP/2 authority form).
+	if !headers.contains_key(header::HOST) {
+		let host = HeaderValue::from_str(&format!("{VITE_PLUGIN_LOOPBACK_HOST}:{backend_port}"))
+			.expect("loopback host header is valid");
+		headers.insert(header::HOST, host);
+	}
+}
+
+fn proxy_response(
+	backend_response: hyper::Response<Incoming>,
+	preserve_upgrade_headers: bool,
+) -> Response {
+	let (parts, body) = backend_response.into_parts();
+	let mut response = Response::new(Body::new(body));
+	*response.status_mut() = parts.status;
+	*response.version_mut() = parts.version;
+	for (name, value) in parts.headers {
+		let Some(name) = name else {
+			continue;
+		};
+		if should_drop_proxy_response_header(&name, preserve_upgrade_headers) {
+			continue;
+		}
+		response.headers_mut().append(name, value);
+	}
+	response
+}
+
+fn proxy_error_response(status: StatusCode, message: impl Into<String>) -> Response {
+	let mut response = Response::new(Body::from(message.into()));
+	*response.status_mut() = status;
+	response
+}
+
+fn is_upgrade_request(headers: &HeaderMap) -> bool {
+	headers
+		.get(header::UPGRADE)
+		.is_some_and(|value| !value.as_bytes().is_empty())
+		&& headers
+			.get(header::CONNECTION)
+			.is_some_and(|value| ascii_header_value_contains_token(value.as_bytes(), "upgrade"))
+}
+
+fn should_drop_proxy_request_header(name: &HeaderName, preserve_upgrade_headers: bool) -> bool {
+	if preserve_upgrade_headers
+		&& (name.as_str().eq_ignore_ascii_case(HEADER_CONNECTION)
+			|| name.as_str().eq_ignore_ascii_case(HEADER_UPGRADE))
+	{
+		return false;
+	}
+	is_proxy_connection_header(name.as_str())
+}
+
+fn should_drop_proxy_response_header(name: &HeaderName, preserve_upgrade_headers: bool) -> bool {
+	if preserve_upgrade_headers
+		&& (name.as_str().eq_ignore_ascii_case(HEADER_CONNECTION)
+			|| name.as_str().eq_ignore_ascii_case(HEADER_UPGRADE))
+	{
+		return false;
+	}
+	is_proxy_connection_header(name.as_str())
+}
+
+fn is_proxy_connection_header(name: &str) -> bool {
+	matches!(
+		name.to_ascii_lowercase().as_str(),
+		HEADER_CONNECTION
+			| HEADER_KEEP_ALIVE
+			| HEADER_PROXY_AUTHENTICATE
+			| HEADER_PROXY_AUTHORIZATION
+			| HEADER_PROXY_CONNECTION
+			| HEADER_TE
+			| HEADER_TRAILER
+			| HEADER_TRANSFER_ENCODING
+			| HEADER_UPGRADE
+	)
+}
+
+fn ascii_header_value_contains_token(value: &[u8], token: &str) -> bool {
+	let Ok(value) = std::str::from_utf8(value) else {
+		return false;
+	};
+	value
+		.split(',')
+		.any(|part| part.trim().eq_ignore_ascii_case(token))
 }
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
 	use std::io::{Read, Write};
-	use std::net::TcpStream;
-	use std::time::Duration;
-
-	use vorma::__private::Config;
-	use vorma::{FrontendConfig, PathConfig, ServerConfig, TsGenConfig};
+	use std::net::TcpStream as StdTcpStream;
+	use std::sync::mpsc;
+	use std::thread;
+	use std::time::{Duration, Instant};
 
 	use super::*;
-	use crate::constants::VITE_PLUGIN_TOKEN_HEADER;
-	use crate::ts_modules::TsViewModule;
 
-	fn config() -> Config {
-		Config {
-			root_dir: std::env::current_dir().unwrap(),
-			dist_dir: "dist".to_owned(),
-			server_config: ServerConfig {
-				cargo_package: "example-app".to_owned(),
-				cargo_bin: "example-server".to_owned(),
-			},
-			path_config: PathConfig {
-				public_static_base: "/static/".to_owned(),
-				api_base: "/api/".to_owned(),
-			},
-			frontend_config: FrontendConfig {
-				ui_variant: vorma::UiVariant::React,
-				js_package_manager_base_cmd: "pnpm exec".to_owned(),
-				js_package_manager_dir: ".".to_owned(),
-				entry_file: "src/entry.tsx".to_owned(),
-				public_static_src_dir: "public".to_owned(),
-				..FrontendConfig::default()
-			},
-			ts_gen_config: TsGenConfig {
-				out_file: "src/vorma.gen.ts".to_owned(),
-				..TsGenConfig::default()
-			},
-			..Config::default()
+	const TEST_REFRESH_TOKEN: &str = "refresh-token";
+	const TEST_PROXY_PATH: &str = "/hello?name=vorma";
+
+	fn allocate_test_port() -> u16 {
+		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, 0)).unwrap();
+		listener.local_addr().unwrap().port()
+	}
+
+	fn spawn_backend_response(body: &'static str) -> (u16, thread::JoinHandle<()>) {
+		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, 0)).unwrap();
+		let port = listener.local_addr().unwrap().port();
+		let thread = thread::spawn(move || {
+			let (mut stream, _) = listener.accept().unwrap();
+			let mut request = [0_u8; 1024];
+			let read = stream.read(&mut request).unwrap();
+			let request = std::str::from_utf8(&request[..read]).unwrap();
+			assert!(request.starts_with("GET /hello?name=vorma HTTP/1.1\r\n"));
+			let response = format!(
+				"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+				body.len(),
+				body
+			);
+			stream.write_all(response.as_bytes()).unwrap();
+		});
+		(port, thread)
+	}
+
+	fn spawn_streaming_backend_response() -> (u16, mpsc::Receiver<()>, mpsc::Sender<()>) {
+		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, 0)).unwrap();
+		let port = listener.local_addr().unwrap().port();
+		let (first_chunk_tx, first_chunk_rx) = mpsc::channel();
+		let (release_tx, release_rx) = mpsc::channel();
+		thread::spawn(move || {
+			let (mut stream, _) = listener.accept().unwrap();
+			let mut request = [0_u8; 1024];
+			let _ = stream.read(&mut request).unwrap();
+			stream
+				.write_all(
+					b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nfirst\r\n",
+				)
+				.unwrap();
+			first_chunk_tx.send(()).unwrap();
+			release_rx.recv().unwrap();
+			stream.write_all(b"6\r\nsecond\r\n0\r\n\r\n").unwrap();
+		});
+		(port, first_chunk_rx, release_tx)
+	}
+
+	fn spawn_upgrade_backend_response() -> (u16, thread::JoinHandle<()>) {
+		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, 0)).unwrap();
+		let port = listener.local_addr().unwrap().port();
+		let thread = thread::spawn(move || {
+			let (mut stream, _) = listener.accept().unwrap();
+			let mut request = [0_u8; 1024];
+			let read = stream.read(&mut request).unwrap();
+			let request = std::str::from_utf8(&request[..read]).unwrap();
+			let lowercase_request = request.to_ascii_lowercase();
+			assert!(lowercase_request.contains("connection: upgrade\r\n"));
+			assert!(lowercase_request.contains("upgrade: test-protocol\r\n"));
+			stream
+				.write_all(
+					b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: test-protocol\r\n\r\n",
+				)
+				.unwrap();
+			let mut message = [0_u8; 4];
+			stream.read_exact(&mut message).unwrap();
+			assert_eq!(&message, b"ping");
+			stream.write_all(b"pong").unwrap();
+		});
+		(port, thread)
+	}
+
+	fn get_through_mux(port: u16, path: &str) -> String {
+		let deadline = Instant::now() + Duration::from_secs(1);
+		loop {
+			match StdTcpStream::connect((VITE_PLUGIN_LOOPBACK_HOST, port)) {
+				Ok(mut stream) => {
+					let request = format!(
+						"GET {path} HTTP/1.1\r\nHost: {VITE_PLUGIN_LOOPBACK_HOST}:{port}\r\nConnection: close\r\n\r\n"
+					);
+					stream.write_all(request.as_bytes()).unwrap();
+					let mut response = String::new();
+					stream.read_to_string(&mut response).unwrap();
+					return response.split("\r\n\r\n").nth(1).unwrap_or("").to_owned();
+				}
+				Err(error) if Instant::now() < deadline => {
+					let _ = error;
+					thread::sleep(Duration::from_millis(10));
+				}
+				Err(error) => panic!("connect dev mux: {error}"),
+			}
 		}
 	}
 
 	#[test]
-	fn prepare_dev_mux_assigns_refresh_and_plugin_tokens() {
-		let mut dev_mux = DevMuxRuntime::default();
-		let port = dev_mux.prepare().unwrap();
-
-		assert_eq!(dev_mux.port_i32().unwrap(), i32::from(port));
-		assert_eq!(dev_mux.dev_refresh_token().unwrap().len(), 16);
-		assert_eq!(dev_mux.vite_plugin_token().unwrap().len(), 32);
-		assert!(
-			dev_mux
-				.dev_refresh_token()
-				.unwrap()
-				.chars()
-				.all(|c| c.is_ascii_alphanumeric())
-		);
-		assert!(
-			dev_mux
-				.vite_plugin_token()
-				.unwrap()
-				.chars()
-				.all(|c| c.is_ascii_alphanumeric())
-		);
+	fn dev_mux_proxy_filters_headers_without_stripping_content_length() {
+		assert!(!should_drop_proxy_request_header(&header::HOST, false));
+		assert!(should_drop_proxy_request_header(&header::CONNECTION, false));
+		assert!(should_drop_proxy_request_header(&header::UPGRADE, false));
+		assert!(!should_drop_proxy_request_header(
+			&HeaderName::from_static("content-length"),
+			false
+		));
+		assert!(!should_drop_proxy_request_header(
+			&HeaderName::from_static("x-test"),
+			false
+		));
+		assert!(!should_drop_proxy_request_header(&header::CONNECTION, true));
+		assert!(!should_drop_proxy_request_header(&header::UPGRADE, true));
 	}
 
 	#[test]
-	fn dev_mux_server_serves_tokenized_vite_plugin_rpc_until_stopped() {
-		let mut dev_mux = DevMuxRuntime::default();
-		let port = dev_mux.prepare().unwrap();
-		let token = dev_mux.vite_plugin_token().unwrap();
-		dev_mux.publish_generation(DevMuxGeneration {
-			config: config(),
-			view_modules: BTreeMap::from([(
-				"/".to_owned(),
-				TsViewModule {
-					pattern: "/".to_owned(),
-					import_path: "src/root.tsx".to_owned(),
-					deps: Vec::new(),
-				},
-			)]),
-			public_filemap: BTreeMap::new(),
-		});
-		let state = dev_mux.state();
-		let endpoint = dev_mux.dev_refresh_endpoint().unwrap();
-		let mut server = start_dev_mux_server(state, endpoint, port).unwrap();
+	fn dev_mux_backend_switches_active_app_server_port() {
+		let backend = DevMuxBackend::new(3000).unwrap();
 
-		let response = http_post_rpc(port, &token, r#"{"method":"cfg"}"#);
-		let second_response = http_post_rpc(port, &token, r#"{"method":"cfg"}"#);
+		backend.set_active_app_server_port(3001).unwrap();
 
-		assert!(response.starts_with("HTTP/1.1 200 "));
-		assert!(response.contains("PublicStaticBasePath"));
-		assert!(second_response.starts_with("HTTP/1.1 200 "));
-		assert!(second_response.contains("PublicStaticBasePath"));
-		server.stop().unwrap();
+		assert_eq!(backend.active_app_server_port(), 3001);
 	}
 
 	#[test]
-	fn dev_mux_server_owns_published_generation_after_runtime_value_drops() {
-		let mut dev_mux = DevMuxRuntime::default();
-		let port = dev_mux.prepare().unwrap();
-		let token = dev_mux.vite_plugin_token().unwrap();
-		dev_mux.publish_generation(DevMuxGeneration {
-			config: config(),
-			view_modules: BTreeMap::new(),
-			public_filemap: BTreeMap::new(),
-		});
-		let state = dev_mux.state();
-		let endpoint = dev_mux.dev_refresh_endpoint().unwrap();
-		let mut server = start_dev_mux_server(state, endpoint, port).unwrap();
-		drop(dev_mux);
+	fn loopback_dev_mux_proxies_to_active_backend_and_switches() {
+		let (first_backend_port, first_backend_thread) = spawn_backend_response("first");
+		let mux = start_loopback_dev_mux_server(
+			allocate_test_port(),
+			first_backend_port,
+			TEST_REFRESH_TOKEN,
+		)
+		.unwrap();
 
-		let response =
-			http_post_rpc_with_timeout(port, &token, r#"{"method":"cfg"}"#, Duration::from_secs(1));
+		let first_body = get_through_mux(mux.port(), TEST_PROXY_PATH);
+		first_backend_thread.join().unwrap();
+		let (second_backend_port, second_backend_thread) = spawn_backend_response("second");
+		mux.set_active_app_server_port(second_backend_port).unwrap();
+		let second_body = get_through_mux(mux.port(), TEST_PROXY_PATH);
+		second_backend_thread.join().unwrap();
 
-		assert!(response.starts_with("HTTP/1.1 200 "));
-		server.stop().unwrap();
+		assert_eq!(mux.active_app_server_port(), second_backend_port);
+		assert_eq!(first_body, "first");
+		assert_eq!(second_body, "second");
 	}
 
-	fn http_post_rpc(port: u16, token: &str, body: &str) -> String {
-		http_post_rpc_with_timeout(port, token, body, Duration::from_secs(5))
-	}
-
-	fn http_post_rpc_with_timeout(port: u16, token: &str, body: &str, timeout: Duration) -> String {
-		let mut stream = TcpStream::connect((DEV_LOOPBACK_HOST, port)).unwrap();
-		stream.set_read_timeout(Some(timeout)).unwrap();
-		let req = format!(
-			"POST /vite-plugin/rpc HTTP/1.1\r\nHost: {DEV_LOOPBACK_HOST}:{port}\r\n{VITE_PLUGIN_TOKEN_HEADER}: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-			body.len()
+	#[test]
+	fn loopback_dev_mux_streams_chunked_backend_body_without_buffering_until_end() {
+		let (backend_port, first_chunk_rx, release_tx) = spawn_streaming_backend_response();
+		let mux =
+			start_loopback_dev_mux_server(allocate_test_port(), backend_port, TEST_REFRESH_TOKEN)
+				.unwrap();
+		let mut stream = StdTcpStream::connect((VITE_PLUGIN_LOOPBACK_HOST, mux.port())).unwrap();
+		stream
+			.set_read_timeout(Some(Duration::from_secs(1)))
+			.unwrap();
+		let request = format!(
+			"GET {TEST_PROXY_PATH} HTTP/1.1\r\nHost: {VITE_PLUGIN_LOOPBACK_HOST}:{}\r\nConnection: close\r\n\r\n",
+			mux.port()
 		);
-		stream.write_all(req.as_bytes()).unwrap();
-		let mut response = String::new();
-		stream.read_to_string(&mut response).unwrap();
-		response
+		stream.write_all(request.as_bytes()).unwrap();
+		first_chunk_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+		let mut response = [0_u8; 512];
+		let read = stream.read(&mut response).unwrap();
+		let response = std::str::from_utf8(&response[..read]).unwrap();
+
+		assert!(response.contains("first"));
+		assert!(!response.contains("second"));
+		release_tx.send(()).unwrap();
+	}
+
+	#[test]
+	fn loopback_dev_mux_proxies_upgrade_connections_bidirectionally() {
+		let (backend_port, backend_thread) = spawn_upgrade_backend_response();
+		let mux =
+			start_loopback_dev_mux_server(allocate_test_port(), backend_port, TEST_REFRESH_TOKEN)
+				.unwrap();
+		let mut stream = StdTcpStream::connect((VITE_PLUGIN_LOOPBACK_HOST, mux.port())).unwrap();
+		stream
+			.set_read_timeout(Some(Duration::from_secs(1)))
+			.unwrap();
+		let request = format!(
+			"GET /socket HTTP/1.1\r\nHost: {VITE_PLUGIN_LOOPBACK_HOST}:{}\r\nConnection: Upgrade\r\nUpgrade: test-protocol\r\n\r\n",
+			mux.port()
+		);
+		stream.write_all(request.as_bytes()).unwrap();
+		let mut response = [0_u8; 512];
+		let read = stream.read(&mut response).unwrap();
+		let response = std::str::from_utf8(&response[..read]).unwrap();
+		assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
+
+		stream.write_all(b"ping").unwrap();
+		let mut message = [0_u8; 4];
+		stream.read_exact(&mut message).unwrap();
+
+		assert_eq!(&message, b"pong");
+		backend_thread.join().unwrap();
 	}
 }

@@ -1,0 +1,6 @@
+error: serde(flatten) is deferred for TsGen derive; use a manual Type implementation for this shape
+  --> tests/compile_fail/ts_gen_flatten.rs:11:2
+   |
+11 | /     #[serde(flatten)]
+12 | |     inner: Inner,
+   | |________________^

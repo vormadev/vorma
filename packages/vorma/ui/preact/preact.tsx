@@ -10,6 +10,7 @@ import {
 	type ReadonlySignal,
 } from "@preact/signals";
 import { h, type ComponentType, type HTMLAttributes } from "preact";
+import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact/jsx-runtime";
 import {
 	apply_scroll,
@@ -18,7 +19,6 @@ import {
 	get_entry_key,
 	make_entry_id,
 	make_link_props,
-	resolve_outlet_slot,
 	select_link_route_state,
 	select_link_work_state,
 	type AdapterClientOptions,
@@ -59,6 +59,7 @@ export type {
 	ToApiDecoratorContext,
 	ToClientLoaderArgs,
 	ToLinkProps,
+	ApiClientOutput,
 	ToMutationArgs,
 	ToMutationError,
 	ToMutationInput,
@@ -177,7 +178,7 @@ export function createVormaClient<A extends AppConfig>(
 		throw new Error(`Failed to create Vorma client: ${adapter_base_res.err}`);
 	}
 
-	const { core, nav_fns, passthrough } = adapter_base_res.val;
+	const { core, nav_fns, passthrough, resolve_outlet_slot } = adapter_base_res.val;
 
 	function useRouteState(): ReadonlySignal<RouteState>;
 	function useRouteState<T>(selector: (route: RouteState) => T): ReadonlySignal<T>;
@@ -215,32 +216,42 @@ export function createVormaClient<A extends AppConfig>(
 			scrollToTop = false,
 			...target
 		} = args;
-		const href_signal = use_computed_signal(() => {
-			return passthrough.toHref(target as any);
-		});
+		const timeout_ref = useRef<number | undefined>(undefined);
+		const canonical_href = passthrough.toHref(target as any);
+		const route_href = route_state_signal.value?.href;
+		const pending_href = work_state_signal.value.navigation?.href;
 
-		useSignalEffect(() => {
-			if (!enabled) {
-				return;
+		useEffect(() => {
+			if (timeout_ref.current !== undefined) {
+				window.clearTimeout(timeout_ref.current);
+				timeout_ref.current = undefined;
 			}
 
-			const canonical_href = href_signal.value;
-			const route_href = route_state_signal.value?.href;
-			const pending_href = work_state_signal.value.navigation?.href;
-			if (canonical_href === route_href || canonical_href === pending_href) {
+			if (
+				!enabled ||
+				canonical_href === route_href ||
+				canonical_href === pending_href
+			) {
 				return;
 			}
 
 			if (debounceMs > 0) {
 				const timeout_id = window.setTimeout(() => {
+					if (timeout_ref.current === timeout_id) {
+						timeout_ref.current = undefined;
+					}
 					void passthrough.navigate({
 						href: canonical_href,
 						replace,
 						scrollToTop,
 					});
 				}, debounceMs);
+				timeout_ref.current = timeout_id;
 				return () => {
 					window.clearTimeout(timeout_id);
+					if (timeout_ref.current === timeout_id) {
+						timeout_ref.current = undefined;
+					}
 				};
 			}
 
@@ -249,7 +260,15 @@ export function createVormaClient<A extends AppConfig>(
 				replace,
 				scrollToTop,
 			});
-		});
+		}, [
+			canonical_href,
+			debounceMs,
+			enabled,
+			pending_href,
+			replace,
+			route_href,
+			scrollToTop,
+		]);
 	}
 
 	function useViewData<P extends ToViewPattern<A>>(

@@ -2,7 +2,8 @@
 
 Maintainer docs live at `docs/maintainer/*`.
 
-Always read `docs/maintainer/REMINDERS.md` at least once after each context compaction.
+Always read `docs/maintainer/REMINDERS.md` at least once after each context compaction, as
+well as whatever live notes/trackers are applicable to your given task.
 
 Everything you work on should be written such that it would pass the standards set forth
 in `docs/maintainer/skills/thermo-nuclear-system-review/SKILL.md`.

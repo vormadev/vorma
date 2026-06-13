@@ -112,7 +112,14 @@ type ApiClientArgsForResource<A extends AppConfig, Resource> = Resource extends 
 					pattern: P;
 					revalidate?: boolean;
 					skipWorkIndicator?: boolean;
-				} & ResourceMethodField<A, P, M> &
+				} & (ResolvedResourceKind<Resource> extends "mutation"
+						? /*
+						GET is implicit only for QUERIES. Mutations always name
+						their method — side-effectful calls stay self-documenting
+						even for a kind-overridden GET mutation.
+						*/
+							{ method: M }
+						: ResourceMethodField<A, P, M>) &
 					ConditionalResourceParams<Resource> &
 					ConditionalSplat<P> &
 					ResourceInputField<Input>
@@ -164,13 +171,32 @@ export type ApiClientOutput<
 			: never
 		: never;
 
-export type ToQueryArgs<A extends AppConfig> = ApiClientArgsByKind<A, "query">;
+/*
+One-param = the full args union; add method + pattern to narrow to one
+route's call args (same per-route keying as ToQueryInput/ToQueryOutput).
+The optional-method arm exists because GET is implicit for queries.
+*/
+export type ToQueryArgs<
+	A extends AppConfig,
+	M extends ToQueryMethod<A> = ToQueryMethod<A>,
+	P extends ToQueryPattern<A, M> = ToQueryPattern<A, M>,
+> = Extract<
+	ApiClientArgsByKind<A, "query">,
+	{ pattern: P; method: M } | { pattern: P; method?: M }
+>;
 
 export type ToQueryError<A extends AppConfig, Args extends ToQueryArgs<A>> = QueryError<
 	ApiClientOutput<A, Args>
 >;
 
-export type ToMutationArgs<A extends AppConfig> = ApiClientArgsByKind<A, "mutation">;
+/*
+Mutations always name their method, so the narrowing filter is exact.
+*/
+export type ToMutationArgs<
+	A extends AppConfig,
+	M extends ToMutationMethod<A> = ToMutationMethod<A>,
+	P extends ToMutationPattern<A, M> = ToMutationPattern<A, M>,
+> = Extract<ApiClientArgsByKind<A, "mutation">, { method: M; pattern: P }>;
 
 export type ToMutationError<
 	A extends AppConfig,

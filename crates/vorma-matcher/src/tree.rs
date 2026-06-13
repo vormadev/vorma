@@ -1,4 +1,8 @@
-use std::collections::HashMap;
+use std::sync::Arc;
+
+use rustc_hash::FxHashMap;
+
+use crate::pattern::Pattern;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum NodeType {
@@ -7,14 +11,84 @@ pub(crate) enum NodeType {
 	Splat,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct SegmentNode {
-	pub(crate) pattern: String,
+	// The pattern registered exactly at this tree position, if any. The
+	// walks read candidates straight off the node; no store lookup.
+	pub(crate) registered: Option<Arc<Pattern>>,
 	pub(crate) node_type: NodeType,
-	pub(crate) children: HashMap<String, SegmentNode>,
+	pub(crate) children: FxHashMap<String, SegmentNode>,
 	pub(crate) dyn_children: Vec<SegmentNode>,
 	pub(crate) param_name: String,
-	pub(crate) final_score: i32,
+}
+
+// Route trees can be arbitrarily deep, so neither cloning nor dropping
+// may recurse; both walk with explicit stacks.
+impl Clone for SegmentNode {
+	fn clone(&self) -> Self {
+		struct Record<'a> {
+			source: &'a SegmentNode,
+			static_children: Vec<(&'a str, usize)>,
+			dyn_children: Vec<usize>,
+		}
+
+		fn record(source: &SegmentNode) -> Record<'_> {
+			Record {
+				source,
+				static_children: Vec::new(),
+				dyn_children: Vec::new(),
+			}
+		}
+
+		let mut records = vec![record(self)];
+		let mut stack = vec![0usize];
+		while let Some(index) = stack.pop() {
+			let source = records[index].source;
+			for (key, child) in &source.children {
+				let child_index = records.len();
+				records.push(record(child));
+				records[index].static_children.push((key, child_index));
+				stack.push(child_index);
+			}
+			for child in &source.dyn_children {
+				let child_index = records.len();
+				records.push(record(child));
+				records[index].dyn_children.push(child_index);
+				stack.push(child_index);
+			}
+		}
+
+		// Children always carry larger record indexes than their parent,
+		// so a descending pass builds every child before its parent.
+		let mut clones: Vec<Option<SegmentNode>> = (0..records.len()).map(|_| None).collect();
+		for index in (0..records.len()).rev() {
+			let rec = &records[index];
+			let mut node = SegmentNode {
+				registered: rec.source.registered.clone(),
+				node_type: rec.source.node_type,
+				children: FxHashMap::with_capacity_and_hasher(
+					rec.static_children.len(),
+					Default::default(),
+				),
+				dyn_children: Vec::with_capacity(rec.dyn_children.len()),
+				param_name: rec.source.param_name.clone(),
+			};
+			for (key, child_index) in &rec.static_children {
+				let child = clones[*child_index]
+					.take()
+					.expect("child clones are built before their parent");
+				node.children.insert((*key).to_owned(), child);
+			}
+			for child_index in &rec.dyn_children {
+				let child = clones[*child_index]
+					.take()
+					.expect("child clones are built before their parent");
+				node.dyn_children.push(child);
+			}
+			clones[index] = Some(node);
+		}
+		clones[0].take().expect("the root clone is built last")
+	}
 }
 
 impl Default for SegmentNode {
@@ -26,12 +100,11 @@ impl Default for SegmentNode {
 impl SegmentNode {
 	fn new(node_type: NodeType) -> Self {
 		Self {
-			pattern: String::new(),
+			registered: None,
 			node_type,
-			children: HashMap::new(),
+			children: FxHashMap::default(),
 			dyn_children: Vec::new(),
 			param_name: String::new(),
-			final_score: 0,
 		}
 	}
 

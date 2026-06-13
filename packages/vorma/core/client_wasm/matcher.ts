@@ -5,7 +5,8 @@ const status_match = 1;
 const max_input_bytes = 64 * 1024;
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+const decoder = new TextDecoder("utf-8", { fatal: true });
+const malformed_output_message = "Malformed Vorma client matcher output";
 
 export type ClientMatcherNestedMatch = {
 	params: Record<string, string>;
@@ -32,7 +33,14 @@ function write_input(exports: RawMatcherExports, value: string): [number, number
 	return [ptr, bytes.length];
 }
 
+function malformed_output(): Error {
+	return new Error(malformed_output_message);
+}
+
 function read_u32(view: DataView, offset: number): [number, number] {
+	if (offset + 4 > view.byteLength) {
+		throw malformed_output();
+	}
 	return [view.getUint32(offset, true), offset + 4];
 }
 
@@ -40,7 +48,14 @@ function read_string(bytes: Uint8Array, offset: number): [string, number] {
 	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	let len: number;
 	[len, offset] = read_u32(view, offset);
-	return [decoder.decode(bytes.subarray(offset, offset + len)), offset + len];
+	if (len > bytes.length - offset) {
+		throw malformed_output();
+	}
+	try {
+		return [decoder.decode(bytes.subarray(offset, offset + len)), offset + len];
+	} catch {
+		throw malformed_output();
+	}
 }
 
 function read_output(exports: RawMatcherExports): Uint8Array {
@@ -83,6 +98,9 @@ function decode_match(bytes: Uint8Array): ClientMatcherNestedMatch | null {
 		let pattern: string;
 		[pattern, offset] = read_string(bytes, offset);
 		patterns.push(pattern);
+	}
+	if (offset !== bytes.length) {
+		throw malformed_output();
 	}
 	return { params, splat_values, patterns };
 }
