@@ -1,0 +1,17 @@
+os: macos
+arch: aarch64
+crate: vorma-matcher
+cpu: Apple M3 Max
+parse_segments/rotating_paths                        98916580      15.24 ns/op
+find_best_match_simple/static_pattern               254158425      7.234 ns/op
+find_best_match_simple/dynamic_pattern               12464180      123.1 ns/op
+find_best_match_simple/splat_pattern                 22623745      68.47 ns/op
+find_best_match_at_scale/small                       36316630      42.51 ns/op
+find_best_match_at_scale/medium                      21633065      71.67 ns/op
+find_best_match_at_scale/large                       21411105      72.50 ns/op
+find_best_match_at_scale/worst_case_deep_nested      12090755      123.2 ns/op
+find_nested_matches/static_patterns                  20938140      69.79 ns/op
+find_nested_matches/dynamic_patterns                  7426565      198.8 ns/op
+find_nested_matches/deep_nested_patterns              5641085      266.6 ns/op
+find_nested_matches/splat_patterns                    7324555      205.9 ns/op
+find_nested_matches/mixed_patterns                    7776215      193.6 ns/op

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+	"crates/vorma-bench",
 	"crates/vorma-build",
 	"crates/vorma-contract",
 	"crates/vorma-client-wasm",
@@ -23,7 +24,7 @@ version = "0.86.0-pre.3"
 
 [workspace.dependencies]
 axum = "0.8"
-criterion = "0.7"
+mimalloc = "0.1"
 rustc-hash = "2"
 smallvec = "1"
 base64 = "0.22"

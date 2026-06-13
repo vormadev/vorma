@@ -1,0 +1,17 @@
+os: macos
+arch: aarch64
+crate: vorma-tasks
+cpu: Apple M3 Max
+single_task                                          10450640      144.4 ns/op
+parallel_independent_tasks                            2534200      589.5 ns/op
+high_contention                                        113835      13193 ns/op
+task_with_dependencies                                5682450      263.4 ns/op
+allocations                                           8496160      175.3 ns/op
+parallel_scaling/tasks-1                              6892740      215.5 ns/op
+parallel_scaling/tasks-2                              3554380      427.9 ns/op
+parallel_scaling/tasks-5                              1514370      974.3 ns/op
+parallel_scaling/tasks-10                              815625       1842 ns/op
+parallel_scaling/tasks-20                              408420       3641 ns/op
+parallel_scaling/tasks-50                              163975       8731 ns/op
+context_cancellation                                   189110       8226 ns/op
+repeated_task_calls                                  64442985      23.30 ns/op

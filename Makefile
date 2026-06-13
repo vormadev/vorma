@@ -87,6 +87,21 @@ rust-doc:
 rust-bench:
 	cargo bench --workspace --no-run
 
+# Runs matcher benchmarks and records them in the crate's bench.results.txt.
+bench-matcher:
+	cargo bench -p vorma-matcher --bench matching --no-run
+	cargo bench -p vorma-matcher --bench matching 2>/dev/null | tee crates/vorma-matcher/bench.results.txt
+
+# Model-checks the task store's wait/notify protocol under loom,
+# exploring all thread interleavings the memory model allows.
+loom-tasks:
+	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 cargo test -p vorma-tasks --lib --release
+
+# Runs task-runtime benchmarks and records them in the crate's bench.results.txt.
+bench-tasks:
+	cargo bench -p vorma-tasks --bench tasks --no-run
+	cargo bench -p vorma-tasks --bench tasks 2>/dev/null | tee crates/vorma-tasks/bench.results.txt
+
 # Runs Rust fuzz targets against copied corpora.
 rust-fuzz:
 	@FUZZ_RUNS=$(FUZZ_RUNS) $(XTASK_CMD_BASE) rust-fuzz
@@ -107,7 +122,7 @@ rust-test:
 	cargo test --workspace --doc
 
 # Runs the full Rust confidence gate.
-rust-gate: rust-fmt rust-policy rust-lint rust-test rust-build rust-doc rust-bench rust-build-client-wasm rust-package rust-fuzz
+rust-gate: rust-fmt rust-policy rust-lint rust-test loom-tasks rust-build rust-doc rust-bench rust-build-client-wasm rust-package rust-fuzz
 
 #####################################################################
 ####### TYPESCRIPT
@@ -170,7 +185,7 @@ ts-publish:
 
 .PHONY: e2e e2e-smoke clean clean-bombadil gate ts-publish \
 	rust-build rust-build-client-wasm rust-fmt rust-fmt-check rust-lint \
-	rust-lint-fix rust-policy rust-doc rust-bench rust-fuzz rust-package \
+	rust-lint-fix rust-policy rust-doc rust-bench bench-matcher bench-tasks loom-tasks rust-fuzz rust-package \
 	rust-test rust-gate \
 	ts-install ts-fmt ts-fmt-check ts-lint ts-lint-fix ts-typecheck \
 	ts-test ts-build ts-gate

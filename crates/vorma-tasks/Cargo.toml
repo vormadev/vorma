@@ -9,7 +9,22 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+futures-util = { workspace = true }
+rustc-hash = { workspace = true }
+smallvec = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
+
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+mimalloc = { workspace = true }
+vorma-bench = { path = "../vorma-bench" }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+
+[[bench]]
+name = "tasks"
+harness = false

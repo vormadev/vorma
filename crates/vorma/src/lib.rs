@@ -8,6 +8,12 @@
 #![deny(missing_docs)]
 #![forbid(unsafe_code)]
 
+// Vorma apps run mimalloc by default (any crate in a binary's graph may
+// declare the global allocator). Opting out: default-features = false.
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 extern crate self as vorma;
 
 mod app_assembly;

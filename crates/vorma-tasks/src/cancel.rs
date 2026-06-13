@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tokio::sync::watch;
+use tokio::sync::Notify;
 
 /// Host-agnostic cancellation token for one execution context.
 #[derive(Clone)]
@@ -13,11 +13,10 @@ pub struct CancelToken {
 impl CancelToken {
 	/// Create a non-cancelled root token.
 	pub fn new() -> Self {
-		let (tx, _) = watch::channel(false);
 		Self {
 			inner: Arc::new(CancelInner {
 				cancelled: AtomicBool::new(false),
-				tx,
+				notify: Notify::new(),
 			}),
 			parent: None,
 		}
@@ -25,14 +24,14 @@ impl CancelToken {
 
 	/// Cancel this token and notify waiters.
 	pub fn cancel(&self) {
-		if !self.inner.cancelled.swap(true, Ordering::SeqCst) {
-			let _ = self.inner.tx.send(true);
+		if !self.inner.cancelled.swap(true, Ordering::AcqRel) {
+			self.inner.notify.notify_waiters();
 		}
 	}
 
 	/// Whether this token or any parent token has been cancelled.
 	pub fn is_cancelled(&self) -> bool {
-		self.inner.cancelled.load(Ordering::SeqCst)
+		self.inner.cancelled.load(Ordering::Acquire)
 			|| self
 				.parent
 				.as_ref()
@@ -41,29 +40,43 @@ impl CancelToken {
 
 	/// Wait until this token or any parent token is cancelled.
 	pub async fn cancelled(&self) {
-		if self.is_cancelled() {
-			return;
-		}
-
-		let mut rx = self.inner.tx.subscribe();
-		if let Some(parent) = &self.parent {
-			let parent_cancelled = Box::pin(parent.cancelled());
-			tokio::select! {
-				_ = wait_for_cancel(&mut rx) => {}
-				_ = parent_cancelled => {}
+		loop {
+			if self.inner.cancelled.load(Ordering::Acquire) {
+				return;
 			}
-		} else {
-			wait_for_cancel(&mut rx).await;
+
+			/*
+			Race-free wait: register interest first, re-check the flag,
+			then await. cancel() sets the flag before notifying, so a
+			cancellation between the check and the await still wakes
+			this registration.
+			*/
+			let notified = self.inner.notify.notified();
+			tokio::pin!(notified);
+			notified.as_mut().enable();
+			if self.inner.cancelled.load(Ordering::Acquire) {
+				return;
+			}
+
+			match &self.parent {
+				Some(parent) => {
+					let parent_cancelled = Box::pin(parent.cancelled());
+					tokio::select! {
+						_ = &mut notified => {}
+						_ = parent_cancelled => return,
+					}
+				}
+				None => notified.await,
+			}
 		}
 	}
 
 	/// Create a child token that is cancelled when this token is cancelled.
 	pub fn child(&self) -> Self {
-		let (tx, _) = watch::channel(false);
 		Self {
 			inner: Arc::new(CancelInner {
 				cancelled: AtomicBool::new(false),
-				tx,
+				notify: Notify::new(),
 			}),
 			parent: Some(Arc::new(self.clone())),
 		}
@@ -78,13 +91,5 @@ impl Default for CancelToken {
 
 struct CancelInner {
 	cancelled: AtomicBool,
-	tx: watch::Sender<bool>,
-}
-
-async fn wait_for_cancel(rx: &mut watch::Receiver<bool>) {
-	while !*rx.borrow_and_update() {
-		if rx.changed().await.is_err() {
-			return;
-		}
-	}
+	notify: Notify,
 }

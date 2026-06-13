@@ -4,7 +4,12 @@
 
 use std::hint::black_box;
 
-use criterion::{Criterion, criterion_group, criterion_main};
+// This crate does not link the vorma server crate, so the bench
+// binary declares the allocator vorma apps run by default.
+#[global_allocator]
+static GLOBAL_ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+use vorma_bench::Bench;
 use vorma_matcher::{FlatMatcher, MatcherBuilder, NestedMatcher, Options, parse_segments};
 
 // The nested fixture from the test suite, registered raw under default
@@ -146,70 +151,62 @@ fn best_match_paths(scale: &str) -> Vec<String> {
 	}
 }
 
-fn bench_parse_segments(c: &mut Criterion) {
-	let paths = [
+fn main() {
+	let mut bench = Bench::new(env!("CARGO_PKG_NAME"));
+
+	let parse_paths = [
 		"/",
 		"/api/v1/users",
 		"/api/v1/users/123/posts/456/comments",
 		"/files/documents/reports/quarterly/q3-2023.pdf",
 	];
-	let mut group = c.benchmark_group("parse_segments");
-	group.bench_function("rotating_paths", |b| {
-		let mut i = 0usize;
-		b.iter(|| {
-			let segments = parse_segments(black_box(paths[i % paths.len()]));
-			i += 1;
-			black_box(segments)
-		});
+	let mut i = 0usize;
+	bench.bench("parse_segments/rotating_paths", || {
+		let segments = parse_segments(black_box(parse_paths[i % parse_paths.len()]));
+		i += 1;
+		black_box(segments);
 	});
-	group.finish();
-}
 
-fn bench_find_best_match_simple(c: &mut Criterion) {
 	let matcher = best_match_matcher("medium");
-	let mut group = c.benchmark_group("find_best_match_simple");
 	for (name, path) in [
-		("static_pattern", "/api/v1/users"),
-		("dynamic_pattern", "/api/v1/users/123/posts/456"),
-		("splat_pattern", "/files/bucket1/deep/path/file.txt"),
+		("find_best_match_simple/static_pattern", "/api/v1/users"),
+		(
+			"find_best_match_simple/dynamic_pattern",
+			"/api/v1/users/123/posts/456",
+		),
+		(
+			"find_best_match_simple/splat_pattern",
+			"/files/bucket1/deep/path/file.txt",
+		),
 	] {
-		group.bench_function(name, |b| {
-			b.iter(|| black_box(matcher.find_best_match(black_box(path))));
+		bench.bench(name, || {
+			black_box(matcher.find_best_match(black_box(path)));
 		});
 	}
-	group.finish();
-}
 
-fn bench_find_best_match_at_scale(c: &mut Criterion) {
-	let mut group = c.benchmark_group("find_best_match_at_scale");
 	for scale in ["small", "medium", "large"] {
 		let matcher = best_match_matcher(scale);
 		let paths = best_match_paths(scale);
-		group.bench_function(scale, |b| {
-			let mut i = 0usize;
-			b.iter(|| {
-				let matched = matcher.find_best_match(black_box(&paths[i % paths.len()]));
-				i += 1;
-				black_box(matched)
-			});
+		let mut i = 0usize;
+		bench.bench(&format!("find_best_match_at_scale/{scale}"), || {
+			let matched = matcher.find_best_match(black_box(&paths[i % paths.len()]));
+			i += 1;
+			black_box(matched);
 		});
 	}
 	let matcher = best_match_matcher("large");
-	group.bench_function("worst_case_deep_nested", |b| {
-		b.iter(|| black_box(matcher.find_best_match(black_box("/api/v9/users/999/posts/999"))));
+	bench.bench("find_best_match_at_scale/worst_case_deep_nested", || {
+		black_box(matcher.find_best_match(black_box("/api/v9/users/999/posts/999")));
 	});
-	group.finish();
-}
 
-fn bench_find_nested_matches(c: &mut Criterion) {
 	let matcher = nested_matcher();
 	let cases: &[(&str, &[&str])] = &[
 		(
-			"static_patterns",
+			"find_nested_matches/static_patterns",
 			&["/", "/dashboard", "/dashboard/customers", "/tiger", "/lion"],
 		),
 		(
-			"dynamic_patterns",
+			"find_nested_matches/dynamic_patterns",
 			&[
 				"/dashboard/customers/123",
 				"/dashboard/customers/456/orders",
@@ -218,7 +215,7 @@ fn bench_find_nested_matches(c: &mut Criterion) {
 			],
 		),
 		(
-			"deep_nested_patterns",
+			"find_nested_matches/deep_nested_patterns",
 			&[
 				"/dashboard/customers/123/orders/456",
 				"/tiger/123/456/789",
@@ -227,7 +224,7 @@ fn bench_find_nested_matches(c: &mut Criterion) {
 			],
 		),
 		(
-			"splat_patterns",
+			"find_nested_matches/splat_patterns",
 			&[
 				"/does-not-exist",
 				"/dashboard/unknown/path",
@@ -236,7 +233,7 @@ fn bench_find_nested_matches(c: &mut Criterion) {
 			],
 		),
 		(
-			"mixed_patterns",
+			"find_nested_matches/mixed_patterns",
 			&[
 				"/",
 				"/dashboard",
@@ -255,25 +252,12 @@ fn bench_find_nested_matches(c: &mut Criterion) {
 			],
 		),
 	];
-	let mut group = c.benchmark_group("find_nested_matches");
 	for (name, paths) in cases {
-		group.bench_function(*name, |b| {
-			let mut i = 0usize;
-			b.iter(|| {
-				let matched = matcher.find_nested_matches(black_box(paths[i % paths.len()]));
-				i += 1;
-				black_box(matched)
-			});
+		let mut i = 0usize;
+		bench.bench(name, || {
+			let matched = matcher.find_nested_matches(black_box(paths[i % paths.len()]));
+			i += 1;
+			black_box(matched);
 		});
 	}
-	group.finish();
 }
-
-criterion_group!(
-	benches,
-	bench_parse_segments,
-	bench_find_best_match_simple,
-	bench_find_best_match_at_scale,
-	bench_find_nested_matches
-);
-criterion_main!(benches);

@@ -1,16 +1,22 @@
 use std::any::Any;
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::hash::Hash;
+use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::Notify;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+
+use crate::sync::{AtomicUsize, Mutex, Ordering};
 
 use crate::clock::ClockInstant;
 use crate::error::{Error, Result};
 use crate::key::{DynKey, KeyData, KeyFingerprint};
 
 const STORE_CLEANUP_INTERVAL: usize = 64;
+
+// Distinct inputs rarely collide on a fingerprint, so buckets hold
+// their single slot inline.
+type SlotBucket<E> = SmallVec<[Arc<Slot<E>>; 1]>;
 
 pub(crate) struct Store<E> {
 	lookups: AtomicUsize,
@@ -23,21 +29,25 @@ impl<E> Store<E> {
 		Self {
 			lookups: AtomicUsize::new(0),
 			state: Mutex::new(StoreState {
-				slots: HashMap::new(),
+				slots: FxHashMap::default(),
 				entry_count: 0,
 			}),
 			max_entries,
 		}
 	}
 
+	// Look up or create the slot for one task/input pair. The input is
+	// borrowed for the lookup and cloned only when a new slot must be
+	// created; `now` is consulted only for TTL stores.
 	pub(crate) fn slot_for<I>(
 		&self,
-		key: &KeyData<I>,
+		fingerprint: KeyFingerprint,
+		value: &I,
 		ttl: Option<Duration>,
-		now: ClockInstant,
+		now: impl Fn() -> ClockInstant,
 	) -> SlotLookup<E>
 	where
-		I: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+		I: Clone + Eq + Hash + Send + Sync + 'static,
 	{
 		let mut stale_slots_removed = 0usize;
 		let cleanup_due = ttl.is_some()
@@ -47,20 +57,22 @@ impl<E> Store<E> {
 				.is_multiple_of(STORE_CLEANUP_INTERVAL);
 		let mut state = self.state.lock().expect("task store lock poisoned");
 		if cleanup_due {
-			let removed = cleanup_expired_slots(&mut state.slots, now);
+			let removed = cleanup_expired_slots(&mut state.slots, now());
 			state.entry_count = state.entry_count.saturating_sub(removed);
 			stale_slots_removed += removed;
 		}
 
-		let fingerprint = key.fingerprint();
 		let mut bucket_removed = 0usize;
 		let mut remove_bucket = false;
 		let mut found_slot = None;
 		if let Some(bucket) = state.slots.get_mut(&fingerprint) {
 			if ttl.is_some() && !cleanup_due {
-				bucket_removed = retain_live_slots(bucket, now);
+				bucket_removed = retain_live_slots(bucket, now());
 			}
-			found_slot = bucket.iter().find(|slot| slot.matches(key)).cloned();
+			found_slot = bucket
+				.iter()
+				.find(|slot| slot.matches(fingerprint, value))
+				.cloned();
 			remove_bucket = bucket.is_empty();
 		}
 		state.entry_count = state.entry_count.saturating_sub(bucket_removed);
@@ -79,7 +91,7 @@ impl<E> Store<E> {
 		if let Some(max_entries) = self.max_entries
 			&& state.entry_count >= max_entries
 		{
-			let removed = cleanup_expired_slots(&mut state.slots, now);
+			let removed = cleanup_expired_slots(&mut state.slots, now());
 			state.entry_count = state.entry_count.saturating_sub(removed);
 			stale_slots_removed += removed;
 			if state.entry_count >= max_entries {
@@ -91,9 +103,10 @@ impl<E> Store<E> {
 		}
 
 		let slot = Arc::new(Slot {
-			key: Arc::new(key.clone()),
+			key: Arc::new(KeyData::from_parts(value.clone(), fingerprint)),
 			state: Mutex::new(SlotState::Empty),
-			notify: Notify::new(),
+			waiters: AtomicUsize::new(0),
+			signal: SlotSignal::new(),
 		});
 		state
 			.slots
@@ -109,12 +122,12 @@ impl<E> Store<E> {
 }
 
 struct StoreState<E> {
-	slots: HashMap<KeyFingerprint, Vec<Arc<Slot<E>>>>,
+	slots: FxHashMap<KeyFingerprint, SlotBucket<E>>,
 	entry_count: usize,
 }
 
 fn cleanup_expired_slots<E>(
-	slots: &mut HashMap<KeyFingerprint, Vec<Arc<Slot<E>>>>,
+	slots: &mut FxHashMap<KeyFingerprint, SlotBucket<E>>,
 	now: ClockInstant,
 ) -> usize {
 	let mut stale_slots_removed = 0usize;
@@ -125,7 +138,7 @@ fn cleanup_expired_slots<E>(
 	stale_slots_removed
 }
 
-fn retain_live_slots<E>(bucket: &mut Vec<Arc<Slot<E>>>, now: ClockInstant) -> usize {
+fn retain_live_slots<E>(bucket: &mut SlotBucket<E>, now: ClockInstant) -> usize {
 	let before = bucket.len();
 	bucket.retain(|slot| !slot.is_expired(now));
 	before - bucket.len()
@@ -145,20 +158,29 @@ pub(crate) enum SlotLookup<E> {
 pub(crate) struct Slot<E> {
 	key: Arc<dyn DynKey>,
 	state: Mutex<SlotState<E>>,
-	pub(crate) notify: Notify,
+	// Number of registered waiters; finish and abandon skip the notify
+	// handshake entirely when nobody is waiting.
+	waiters: AtomicUsize,
+	pub(crate) signal: SlotSignal,
 }
 
 impl<E> Slot<E> {
-	fn matches<I>(&self, key: &KeyData<I>) -> bool
+	fn matches<I>(&self, fingerprint: KeyFingerprint, value: &I) -> bool
 	where
-		I: Eq + std::hash::Hash + Send + Sync + 'static,
+		I: Eq + Hash + Send + Sync + 'static,
 	{
-		self.key.fingerprint() == key.fingerprint()
+		self.key.fingerprint() == fingerprint
 			&& self
 				.key
 				.as_any()
 				.downcast_ref::<I>()
-				.is_some_and(|existing| existing == key.value())
+				.is_some_and(|existing| existing == value)
+	}
+
+	// The slot's own key allocation, shared into execution paths for
+	// cycle detection.
+	pub(crate) fn shared_key(&self) -> Arc<dyn DynKey> {
+		self.key.clone()
 	}
 
 	fn is_expired(&self, now: ClockInstant) -> bool {
@@ -184,6 +206,16 @@ impl<E> Slot<E> {
 		}
 	}
 
+	// Register intent to wait before re-checking state; finish and
+	// abandon only notify registered waiters.
+	pub(crate) fn register_waiter(&self) {
+		self.waiters.fetch_add(1, Ordering::AcqRel);
+	}
+
+	pub(crate) fn unregister_waiter(&self) {
+		self.waiters.fetch_sub(1, Ordering::AcqRel);
+	}
+
 	pub(crate) fn finish(&self, outcome: StoredOutcome<E>, expires_at: Option<ClockInstant>) {
 		let mut state = self.state.lock().expect("slot state lock poisoned");
 		*state = SlotState::Done {
@@ -191,7 +223,9 @@ impl<E> Slot<E> {
 			expires_at,
 		};
 		drop(state);
-		self.notify.notify_waiters();
+		if self.waiters.load(Ordering::Acquire) > 0 {
+			self.signal.notify_registered();
+		}
 	}
 
 	pub(crate) fn abandon(&self) {
@@ -200,7 +234,9 @@ impl<E> Slot<E> {
 			*state = SlotState::Empty;
 		}
 		drop(state);
-		self.notify.notify_waiters();
+		if self.waiters.load(Ordering::Acquire) > 0 {
+			self.signal.notify_registered();
+		}
 	}
 }
 
@@ -263,6 +299,71 @@ impl<E> Drop for RunningGuard<E> {
 		if self.active {
 			self.slot.abandon();
 		}
+	}
+}
+
+/*
+The slot wake signal. In production it is tokio's Notify, used with the
+register-then-recheck pattern (Notified::enable before re-checking slot
+state). Under loom it is an epoch/condvar pair with the same wake
+semantics — notify wakes only waiters registered before the bump, and
+no permit is stored — so the loom models exercise the exact protocol
+the async code runs.
+*/
+#[cfg(not(loom))]
+pub(crate) struct SlotSignal {
+	notify: tokio::sync::Notify,
+}
+
+#[cfg(not(loom))]
+impl SlotSignal {
+	pub(crate) fn new() -> Self {
+		Self {
+			notify: tokio::sync::Notify::new(),
+		}
+	}
+
+	pub(crate) fn notified(&self) -> tokio::sync::futures::Notified<'_> {
+		self.notify.notified()
+	}
+
+	pub(crate) fn notify_registered(&self) {
+		self.notify.notify_waiters();
+	}
+}
+
+#[cfg(loom)]
+pub(crate) struct SlotSignal {
+	epoch: loom::sync::Mutex<u64>,
+	wake: loom::sync::Condvar,
+}
+
+#[cfg(loom)]
+impl SlotSignal {
+	pub(crate) fn new() -> Self {
+		Self {
+			epoch: loom::sync::Mutex::new(0),
+			wake: loom::sync::Condvar::new(),
+		}
+	}
+
+	// Mirror of Notified::enable: capture the current epoch; a later
+	// wait observes only notifications that bump past it.
+	pub(crate) fn register(&self) -> u64 {
+		*self.epoch.lock().expect("signal lock poisoned")
+	}
+
+	pub(crate) fn wait_past(&self, seen: u64) {
+		let mut epoch = self.epoch.lock().expect("signal lock poisoned");
+		while *epoch == seen {
+			epoch = self.wake.wait(epoch).expect("signal lock poisoned");
+		}
+	}
+
+	pub(crate) fn notify_registered(&self) {
+		let mut epoch = self.epoch.lock().expect("signal lock poisoned");
+		*epoch += 1;
+		self.wake.notify_all();
 	}
 }
 

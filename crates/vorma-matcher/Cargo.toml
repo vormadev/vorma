@@ -13,7 +13,8 @@ rustc-hash = { workspace = true }
 smallvec = { workspace = true }
 
 [dev-dependencies]
-criterion = { workspace = true }
+mimalloc = { workspace = true }
+vorma-bench = { path = "../vorma-bench" }
 
 [[bench]]
 name = "matching"

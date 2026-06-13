@@ -1,0 +1,12 @@
+[package]
+name = "vorma-bench"
+description = "Internal Go-style benchmark harness for vorma crates."
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+tokio = { workspace = true, features = ["rt"] }
