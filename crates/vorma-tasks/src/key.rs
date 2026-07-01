@@ -1,8 +1,6 @@
 use std::any::{Any, TypeId};
-use std::hash::{Hash, Hasher};
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::Arc;
-
-use rustc_hash::FxHasher;
 
 /// Opaque identity for one task definition inside the current process.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -15,6 +13,50 @@ pub(crate) struct KeyFingerprint {
 	hash: u64,
 }
 
+/*
+HashMap bucket placement for KeyFingerprint uses the fingerprint's own
+blake3-derived hash field directly instead of re-hashing the struct.
+The fingerprint is already collision-resistant, and slot equality is
+always verified through the full typed DynKey comparison — the outer
+hash only routes lookups to buckets.
+*/
+pub(crate) type FingerprintHashMap<V> =
+	std::collections::HashMap<KeyFingerprint, V, FingerprintHasherBuilder>;
+
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FingerprintHasherBuilder;
+
+impl BuildHasher for FingerprintHasherBuilder {
+	type Hasher = FingerprintHasher;
+
+	fn build_hasher(&self) -> Self::Hasher {
+		FingerprintHasher { hash: 0 }
+	}
+}
+
+pub(crate) struct FingerprintHasher {
+	hash: u64,
+}
+
+impl Hasher for FingerprintHasher {
+	fn finish(&self) -> u64 {
+		self.hash
+	}
+
+	fn write_u64(&mut self, value: u64) {
+		self.hash = value;
+	}
+
+	fn write(&mut self, _bytes: &[u8]) {
+		/*
+		KeyFingerprint derives Hash, which writes each field in order:
+		TaskId.0 (u64), TypeId (u64), hash (u64). The last write_u64
+		call is the blake3-derived hash field, which is the value we
+		want. Any preceding writes are overwritten.
+		*/
+	}
+}
+
 // Compute a key fingerprint from a borrowed input — no clone. Equality
 // of stored keys is always verified on the actual input value, so the
 // hash only routes lookups.
@@ -22,12 +64,39 @@ pub(crate) fn fingerprint_for<I>(task_id: TaskId, value: &I) -> KeyFingerprint
 where
 	I: Eq + Hash + 'static,
 {
-	let mut hasher = FxHasher::default();
+	let mut hasher = Blake3Hasher::new();
 	value.hash(&mut hasher);
+	let hash = hasher.finish();
+
 	KeyFingerprint {
 		task_id,
 		input_type: TypeId::of::<I>(),
-		hash: hasher.finish(),
+		hash,
+	}
+}
+
+struct Blake3Hasher {
+	inner: blake3::Hasher,
+}
+
+impl Blake3Hasher {
+	fn new() -> Self {
+		Self {
+			inner: blake3::Hasher::new(),
+		}
+	}
+}
+
+impl Hasher for Blake3Hasher {
+	fn finish(&self) -> u64 {
+		let hash = self.inner.finalize();
+		let mut bytes = [0u8; 8];
+		bytes.copy_from_slice(&hash.as_bytes()[..8]);
+		u64::from_le_bytes(bytes)
+	}
+
+	fn write(&mut self, bytes: &[u8]) {
+		self.inner.update(bytes);
 	}
 }
 

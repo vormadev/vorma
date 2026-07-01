@@ -5,8 +5,95 @@ Maintainer docs live at `docs/maintainer/*`.
 Always read `docs/maintainer/REMINDERS.md` at least once after each context compaction, as
 well as whatever live notes/trackers are applicable to your given task.
 
+`docs/maintainer/ARCHITECTURE.md` is the current architecture map. If you make an
+architecture-level change, update `ARCHITECTURE.md` in the same change so it does not
+drift from the code.
+
+Forward-looking maintainer work lives in `docs/maintainer/tickets/`. Read
+`docs/maintainer/tickets/README.md` before using tickets, and check
+`docs/maintainer/tickets/NEXT.md` when deciding what to do next. Agents may add tickets
+whenever future work or ideas come up, even when it is unrelated to the current task. Do
+not bury future work in chat or sprawling historical docs.
+
+Lean hard on the ticket system while working. If you discover future cleanup, follow-up
+work, design questions, possible improvements, or off-topic ideas that should not be lost,
+default to adding or updating a ticket immediately. Do not wait for a perfect
+backlog-grooming moment, and do not rely on the current conversation as durable memory.
+
 Everything you work on should be written such that it would pass the standards set forth
 in `docs/maintainer/skills/thermo-nuclear-system-review/SKILL.md`.
+
+## Examples And API Coverage
+
+Read `docs/maintainer/board-example/README.md` before changing public API surface or Board
+API coverage. `examples/board/README.md` is user-facing; do not put maintainer coverage or
+process notes in example READMEs.
+
+`examples/board` is the canonical user-facing teaching example and living API
+pressure-test app. Board must cover 100% of public Vorma APIs. Period. A careful human or
+agent who reads Board should come away understanding how to build serious Vorma apps.
+Board source comments should teach Vorma APIs: when to use them, why Board uses them, and
+what subtleties matter. Framework semantic tests belong in framework-owned test suites;
+Board tests, if present, must be good examples of testing a Vorma app. The durable
+maintainer contract lives in `docs/maintainer/board-example/README.md`.
+
+## User-Facing Documentation Strategy
+
+Rather than having traditional user-facing documentation, Vorma is documented and taught
+in the following ways (and the following ways only):
+
+- In-code rust-doc and jsdoc comments, which should exist for every public API
+- The `examples/board` tutorial app, which should exercise 100% of public APIs and include
+  helpful teaching and explanatory comments where appropriate.
+- Any generated/reference docs derived from source comments, exported types, and generated
+  contracts.
+- A small set of hand-written markdown docs on things that don't really get covered by the
+  code itself, like hosting via a Docker container or on Vercel Fluid, or the differences
+  between React/Preact/Solid adapters. This should be kept minimal and only cover things
+  of that nature that aren't naturally documentable in normal framework doc comments.
+  These are the "hand-written supplemental docs".
+
+Vorma's docs website (https://vorma.dev) should be a Vorma app that embeds an
+auto-generated API reference that includes rust-doc and jsdoc comments, and it should also
+literally embed the Board example app using https://trees.software. It should also include
+links to GitHub, npmx.dev, crates.io, docs.rs, and x.com, and light/dark mode. It should
+also include the "hand-written supplemental docs" and a basic blog.
+
+## Orchestrated Work And The Semantic-Change Protocol
+
+Sequenced release work is managed under `docs/maintainer/fable/` (roadmap, current state,
+durable learnings, and self-contained work packets). If you are executing a packet, its
+`INSTRUCTIONS.md` and the protocol in `docs/maintainer/fable/README.md` bind you. Read
+`docs/maintainer/fable/LEARNINGS.md` before touching the matcher, tasks, or engine crates
+regardless of what you are working on.
+
+Rules that bind all agents, packet or not:
+
+- **Never change observable semantics on your own judgment.** Matching results, cache
+  retention, cancellation behavior, error selection, panic behavior, execution model
+  (parallel vs concurrent), and public API shape are maintainer decisions. If you believe
+  current behavior is wrong: write the failing test that pins the behavior you believe is
+  correct, confirm it fails, and escalate with the evidence. Clear, objective bugs
+  (crashes, deadlocks, data loss) may be fixed once pinned — with the fix and pin
+  disclosed prominently — but anything requiring judgment gets escalated first.
+- **Stopping and reporting a blocker is success; improvising past a constraint is
+  failure.** An honest incomplete report beats a "done" built on silent judgment calls.
+- **Present findings with a position.** State the problem fully (context, options,
+  trade-offs), take a position from first principles, make one recommendation, and ask for
+  approval. Never present a menu without a recommendation, and never reference an open
+  question without restating it fully enough to be decided on the spot.
+- **General-purpose crates are judged by their own contract**, not by how the framework
+  happens to use them (`vorma-tasks` serves build systems and CLIs, not just requests).
+- **Benchmarks are recorded only through their `make bench-*` targets.** Never hand-edit a
+  `bench.results.txt`; always compare against the baselines in
+  `docs/maintainer/fable/STATE.md` and paste before/after in your report. Performance work
+  never bundles semantic changes with mechanical optimizations in one measured step.
+- **No third-party types in public API surfaces.** Internal use of performance crates is
+  fine and encouraged; public signatures expose std and vorma-owned types only (truly
+  ubiquitous interop crates like serde are the exception).
+- **Concurrency protocol code in `vorma-tasks` is loom-verified** (`make loom-tasks`).
+  Changes there keep the models green, add models for new transitions, and never add paths
+  the loom build cannot see.
 
 ## Zero Tolerance For Tech Debt, Shims, or Back-Compat Code
 

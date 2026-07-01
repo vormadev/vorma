@@ -41,6 +41,7 @@ use crate::execution_engine::{
 	HandlerExecutionError, HandlerFuture, HandlerInput, HandlerOutput, RuntimeHandler,
 };
 use crate::form_data::{DECODED_FORM_DATA_MISSING_MESSAGE, FormData};
+use crate::resource_body::{ResourceOutput, resource_output_with_effects};
 use crate::route_input::{ResourceInput, ViewInput};
 use crate::typed_handler::{TypedHandlerContext, handler_output_with_effects};
 use vorma_tasks::ExecCtx;
@@ -493,7 +494,7 @@ where
 	S: Send + Sync + 'static,
 	I: StaticResourceInput,
 	P: Clone + PathParams,
-	O: Serialize + Send + Sync + 'static,
+	O: ResourceOutput,
 {
 	Box::pin(async move {
 		let exec_ctx = ctx.exec_ctx.clone();
@@ -510,7 +511,7 @@ where
 				});
 			}
 		};
-		handler_output_with_effects(output, &effects)
+		resource_output_with_effects(output, &effects)
 			.map_err(|source| StaticRouteError::Handler { source })
 	})
 }

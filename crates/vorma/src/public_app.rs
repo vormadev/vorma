@@ -25,7 +25,7 @@ const MIDDLEWARE_HANDLER_ID_PREFIX: &str = "middleware:";
 pub struct AppConfig<S> {
 	/*
 	Canonical field order (and the order the example teaches): filesystem
-	anchors → cargo target → URL mounts → domain groups → app values →
+	anchors → cargo target → public URL base → domain groups → app values →
 	tunables. Path rule: `root_dir` is the one absolute anchor (PathBuf);
 	every other path-ish field is a root-relative String fragment.
 	*/
@@ -352,7 +352,7 @@ where
 		&self.method
 	}
 
-	/// Resource pattern relative to the configured API mount root.
+	/// Declared resource URL pattern.
 	pub fn pattern(&self) -> &str {
 		self.pattern
 	}

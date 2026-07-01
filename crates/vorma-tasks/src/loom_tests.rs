@@ -35,24 +35,30 @@ fn finish_slot(slot: &Slot<()>) {
 	slot.finish(StoredOutcome::Ok(std::sync::Arc::new(1u32)), None);
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WaitOutcome {
+	Ready,
+	Reopened,
+}
+
 // Production waiter shape, exactly as wait_for_local runs it: register
 // as a waiter, then per attempt capture the signal BEFORE re-checking
 // state, and only then wait.
-fn wait_until_done_register_first(slot: &Slot<()>) {
+fn wait_register_first(slot: &Slot<()>) -> WaitOutcome {
 	slot.register_waiter();
 	loop {
 		let seen = slot.signal.register();
 		match slot.claim() {
 			SlotClaim::Ready(_) => {
 				slot.unregister_waiter();
-				return;
+				return WaitOutcome::Ready;
 			}
 			SlotClaim::Run => {
-				// The runner abandoned; this waiter takes over and
-				// completes the work itself.
-				finish_slot(slot);
+				// The runner abandoned; production waiters report
+				// cancellation and leave future lookup to rerun.
+				slot.abandon();
 				slot.unregister_waiter();
-				return;
+				return WaitOutcome::Reopened;
 			}
 			SlotClaim::Wait => slot.signal.wait_past(seen),
 		}
@@ -114,7 +120,7 @@ fn register_first_ordering_never_loses_wakeups() {
 			loom::thread::spawn(move || finish_slot(&slot))
 		};
 
-		wait_until_done_register_first(&slot);
+		assert_eq!(wait_register_first(&slot), WaitOutcome::Ready);
 		assert!(matches!(slot.claim(), SlotClaim::Ready(_)));
 
 		runner.join().expect("runner thread completes");
@@ -134,7 +140,7 @@ fn claim_race_coalesces_to_one_runner() {
 				match slot.claim() {
 					SlotClaim::Run => finish_slot(&slot),
 					SlotClaim::Ready(_) => {}
-					SlotClaim::Wait => wait_until_done_register_first(&slot),
+					SlotClaim::Wait => assert_eq!(wait_register_first(&slot), WaitOutcome::Ready),
 				}
 				assert!(matches!(slot.claim(), SlotClaim::Ready(_)));
 			})
@@ -143,7 +149,7 @@ fn claim_race_coalesces_to_one_runner() {
 		match slot.claim() {
 			SlotClaim::Run => finish_slot(&slot),
 			SlotClaim::Ready(_) => {}
-			SlotClaim::Wait => wait_until_done_register_first(&slot),
+			SlotClaim::Wait => assert_eq!(wait_register_first(&slot), WaitOutcome::Ready),
 		}
 		assert!(matches!(slot.claim(), SlotClaim::Ready(_)));
 
@@ -151,11 +157,10 @@ fn claim_race_coalesces_to_one_runner() {
 	});
 }
 
-// A runner that abandons (the cancel-class outcome path) hands the slot
-// to a waiter, which reopens it, runs, and completes — no schedule
-// strands the waiter or loses the slot.
+// A runner that abandons wakes a waiter, which reopens the slot and
+// reports cancellation — no schedule strands the waiter.
 #[test]
-fn abandon_hands_the_slot_to_a_waiter() {
+fn abandon_wakes_waiter_and_reopens_slot() {
 	loom::model(|| {
 		let (_store, slot) = fresh_slot();
 		assert!(matches!(slot.claim(), SlotClaim::Run));
@@ -165,8 +170,8 @@ fn abandon_hands_the_slot_to_a_waiter() {
 			loom::thread::spawn(move || slot.abandon())
 		};
 
-		wait_until_done_register_first(&slot);
-		assert!(matches!(slot.claim(), SlotClaim::Ready(_)));
+		assert_eq!(wait_register_first(&slot), WaitOutcome::Reopened);
+		assert!(matches!(slot.claim(), SlotClaim::Run));
 
 		runner.join().expect("runner thread completes");
 	});
@@ -198,5 +203,67 @@ fn concurrent_lookups_share_one_slot() {
 			std::sync::Arc::ptr_eq(&mine, &theirs),
 			"one task/input pair must resolve to one slot"
 		);
+	});
+}
+
+// Single-flight removes a running slot before publishing its result:
+// existing waiters still observe the finish through their slot Arc, but
+// later lookups do not reuse the completed value.
+#[test]
+fn remove_then_finish_wakes_waiters_and_reopens_future_lookup() {
+	loom::model(|| {
+		let (store, slot) = fresh_slot();
+		assert!(matches!(slot.claim(), SlotClaim::Run));
+
+		let waiter = {
+			let slot = std::sync::Arc::clone(&slot);
+			loom::thread::spawn(move || assert_eq!(wait_register_first(&slot), WaitOutcome::Ready))
+		};
+
+		assert!(store.remove_slot(&slot));
+		finish_slot(&slot);
+		waiter.join().expect("waiter thread completes");
+
+		let lookup = store.slot_for(fingerprint_for(TaskId(1), &7u32), &7u32, None, || {
+			ClockInstant::from_duration_since_origin(Duration::ZERO)
+		});
+		let next_slot = match lookup {
+			SlotLookup::Found { slot, .. } => slot,
+			SlotLookup::CapacityBypass { .. } => unreachable!("store is unbounded"),
+		};
+		assert!(!std::sync::Arc::ptr_eq(&slot, &next_slot));
+		assert!(matches!(next_slot.claim(), SlotClaim::Run));
+	});
+}
+
+// Shared-cache cancellation and panic cleanup removes the running slot
+// before abandoning it: existing waiters still wake through their slot
+// Arc, while future lookups must allocate a fresh slot.
+#[test]
+fn remove_then_abandon_wakes_waiters_and_reopens_future_lookup() {
+	loom::model(|| {
+		let (store, slot) = fresh_slot();
+		assert!(matches!(slot.claim(), SlotClaim::Run));
+
+		let waiter = {
+			let slot = std::sync::Arc::clone(&slot);
+			loom::thread::spawn(move || {
+				assert_eq!(wait_register_first(&slot), WaitOutcome::Reopened)
+			})
+		};
+
+		assert!(store.remove_slot(&slot));
+		slot.abandon();
+		waiter.join().expect("waiter thread completes");
+
+		let lookup = store.slot_for(fingerprint_for(TaskId(1), &7u32), &7u32, None, || {
+			ClockInstant::from_duration_since_origin(Duration::ZERO)
+		});
+		let next_slot = match lookup {
+			SlotLookup::Found { slot, .. } => slot,
+			SlotLookup::CapacityBypass { .. } => unreachable!("store is unbounded"),
+		};
+		assert!(!std::sync::Arc::ptr_eq(&slot, &next_slot));
+		assert!(matches!(next_slot.claim(), SlotClaim::Run));
 	});
 }

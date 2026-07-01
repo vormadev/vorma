@@ -2610,32 +2610,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "vorma-notes-example"
-version = "0.86.0-pre.3"
-dependencies = [
- "axum",
- "http-body-util",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "vorma",
- "vorma-build",
-]
-
-[[package]]
 name = "vorma-tasks"
 version = "0.86.0-pre.3"
 dependencies = [
- "futures-util",
+ "blake3",
  "loom",
  "mimalloc",
- "rustc-hash",
  "smallvec",
  "tokio",
+ "trybuild",
  "vorma-bench",
 ]
 

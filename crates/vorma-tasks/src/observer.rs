@@ -25,6 +25,8 @@ pub struct TaskEvent {
 	pub at: ClockInstant,
 	/// Opaque task identity.
 	pub task_id: TaskId,
+	/// Declared task name.
+	pub task_name: &'static str,
 	/// Rust type name of the task input.
 	pub task_input_type: &'static str,
 	/// Event kind.

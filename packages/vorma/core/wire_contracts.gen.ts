@@ -11,6 +11,7 @@ export const DATA_SCRIPT_ID = "vorma-data-json";
 export const BUILD_ID_HEADER = "X-Vorma-Client-Build-Id";
 export const X_VORMA_BUILD_SKEW = "X-Vorma-Build-Skew";
 export const X_CLIENT_REDIRECT = "X-Client-Redirect";
+export const X_VORMA_RESOURCE_BODY = "x-vorma-resource-body";
 export const X_ACCEPTS_CLIENT_REDIRECT = "X-Accepts-Client-Redirect";
 
 export type HeadElement = {

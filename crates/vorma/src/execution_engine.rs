@@ -7,9 +7,9 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use futures_util::stream::{FuturesUnordered, StreamExt};
 use http::{Extensions, HeaderMap, Method, Uri};
 use serde_json::Value;
+use tokio::task::JoinSet;
 use url::form_urlencoded;
 use vorma_matcher::{Params, compare_specificity};
 use vorma_tasks::{CancelToken, ExecCtx, Tasks, TasksOptions};
@@ -980,13 +980,16 @@ async fn execute_invocation_phase(
 ) -> Result<Option<PhaseBoundary>, ExecutionError>
 where
 {
-	let mut pending = FuturesUnordered::new();
+	let mut pending = JoinSet::new();
+	let mut pending_positions = HashMap::with_capacity(phase_indexes.len());
 	for (phase_position, idx) in phase_indexes.iter().copied().enumerate() {
 		let (invocation, handler) = &prepared[idx];
+		let invocation = invocation.clone();
+		let handler = Arc::clone(handler);
 		let query_params = Arc::clone(route_query_params);
 		let asset_capabilities = asset_capabilities.clone();
 		let exec_ctx = execution_contexts[idx].clone();
-		pending.push(async move {
+		let abort_handle = pending.spawn(async move {
 			let input = HandlerInput {
 				request: Arc::clone(&invocation.request),
 				asset_capabilities,
@@ -997,14 +1000,33 @@ where
 				query_params,
 				decoded_input: invocation.decoded_input.clone(),
 			};
-			(phase_position, idx, handler.call(input, exec_ctx).await)
-		})
+			let output = handler.call(input, exec_ctx).await;
+			(phase_position, idx, output)
+		});
+		pending_positions.insert(abort_handle.id(), (phase_position, idx));
 	}
 	let mut outputs = std::iter::repeat_with(|| None)
 		.take(phase_indexes.len())
 		.collect::<Vec<_>>();
 	let mut next_to_commit = 0;
-	while let Some((phase_position, _global_idx, output)) = pending.next().await {
+	while let Some(joined) = pending.join_next_with_id().await {
+		let (phase_position, _global_idx, output) = match joined {
+			Ok((task_id, output)) => {
+				pending_positions.remove(&task_id);
+				output
+			}
+			Err(error) if error.is_panic() => std::panic::resume_unwind(error.into_panic()),
+			Err(error) => {
+				let (phase_position, idx) = pending_positions
+					.remove(&error.id())
+					.expect("joined phase task must have tracked position");
+				(
+					phase_position,
+					idx,
+					Err(HandlerExecutionError::new(error.to_string())),
+				)
+			}
+		};
 		outputs[phase_position] = Some(output);
 		while next_to_commit < outputs.len() {
 			let Some(output) = outputs[next_to_commit].take() else {
@@ -1158,13 +1180,14 @@ fn decode_query_params(query: Option<&str>) -> BTreeMap<String, Vec<String>> {
 #[cfg(test)]
 mod tests {
 	use std::collections::BTreeMap;
-	use std::sync::atomic::{AtomicUsize, Ordering};
+	use std::hash::{Hash, Hasher};
+	use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 	use std::sync::{Arc, Mutex};
-	use std::time::Duration;
+	use std::time::{Duration, Instant};
 
 	use http::StatusCode;
 	use tokio::sync::{Barrier, Notify, oneshot};
-	use vorma_tasks::{CancelToken, ExecCtx, Task};
+	use vorma_tasks::{CancelToken, ExecCtx};
 
 	use super::*;
 	use crate::contracts::{FieldDef, RouteTypeContract, TypeDef, TypeRefContract};
@@ -1198,22 +1221,47 @@ mod tests {
 		ExecutionEngine::new(plan, assets)
 	}
 
-	#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-	struct SharedInput;
+	#[derive(Clone)]
+	struct SharedInput {
+		runs: Arc<AtomicUsize>,
+	}
+
+	impl PartialEq for SharedInput {
+		fn eq(&self, other: &Self) -> bool {
+			Arc::ptr_eq(&self.runs, &other.runs)
+		}
+	}
+
+	impl Eq for SharedInput {}
+
+	impl Hash for SharedInput {
+		fn hash<H: Hasher>(&self, state: &mut H) {
+			(Arc::as_ptr(&self.runs) as usize).hash(state);
+		}
+	}
+
+	vorma_tasks::task! {
+		static SHARED_REQUEST_TASK: vorma::tasks::Task<SharedInput, String, crate::Error> =
+			memoized(|_ctx, input: SharedInput| async move {
+				input.runs.fetch_add(1, Ordering::SeqCst);
+				tokio::time::sleep(Duration::from_millis(20)).await;
+				Ok("shared".to_owned())
+			});
+	}
 
 	#[derive(Clone)]
 	struct SharedTaskHandler {
-		task: Task<SharedInput, String, crate::Error>,
+		runs: Arc<AtomicUsize>,
 		output: &'static str,
 	}
 
 	impl RuntimeHandler for SharedTaskHandler {
 		fn call(&self, _input: HandlerInput, exec_ctx: ExecCtx<crate::Error>) -> HandlerFuture {
-			let task = self.task.clone();
+			let runs = Arc::clone(&self.runs);
 			let output = self.output;
 			Box::pin(async move {
-				let _ = task
-					.run(&exec_ctx, SharedInput)
+				let _ = SHARED_REQUEST_TASK
+					.run(&exec_ctx, SharedInput { runs })
 					.await
 					.map_err(|source| HandlerExecutionError::new(source.to_string()))?;
 				Ok(HandlerOutput::data(serde_json::json!(output)))
@@ -1495,9 +1543,9 @@ mod tests {
 	async fn scope_patterns_match_urls_with_no_hidden_rewrites() {
 		/*
 		Scope patterns are URL patterns: a "/mod" splat scope does NOT
-		cover a resource whose URL carries the api mount, and an
-		"/api/mod" splat scope does. The two spaces stay separately
-		addressable — no stripping behind the author's back.
+		cover a resource whose concrete URL starts with "/api/mod", and
+		an "/api/mod" splat scope does. The two spaces stay separately
+		addressable: "/api" is just an app-authored URL segment here.
 		*/
 		let mut declarations = FrameworkDeclarations::default();
 		declarations.add_middleware(
@@ -1660,6 +1708,72 @@ mod tests {
 		);
 	}
 
+	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+	async fn middleware_invocations_spawn_for_cpu_bound_parallelism() {
+		let mut declarations = FrameworkDeclarations::default();
+		declarations.add_middleware(MiddlewareDeclaration::new(handler_id("first")));
+		declarations.add_middleware(MiddlewareDeclaration::new(handler_id("second")));
+		declarations.add_resource(ResourceDeclaration::new(
+			Method::GET,
+			"/api/ping",
+			None,
+			Some(serde_json::json!({})),
+			route_type_contract(),
+			handler_id("resource"),
+		));
+		let engine = test_engine(declarations);
+		let second_started = Arc::new(AtomicBool::new(false));
+		let mut handlers: HandlerRegistry = HandlerRegistry::default();
+		{
+			let second_started = Arc::clone(&second_started);
+			handlers.insert(handler_id("first"), move |_| {
+				let second_started = Arc::clone(&second_started);
+				async move {
+					let deadline = Instant::now() + Duration::from_millis(500);
+					while !second_started.load(Ordering::SeqCst) {
+						if Instant::now() >= deadline {
+							return Err(HandlerExecutionError::new(
+								"second middleware did not start in parallel",
+							));
+						}
+						std::thread::yield_now();
+					}
+					Ok(HandlerOutput::empty())
+				}
+			});
+		}
+		{
+			let second_started = Arc::clone(&second_started);
+			handlers.insert(handler_id("second"), move |_| {
+				let second_started = Arc::clone(&second_started);
+				async move {
+					second_started.store(true, Ordering::SeqCst);
+					Ok(HandlerOutput::empty())
+				}
+			});
+		}
+		handlers.insert(handler_id("resource"), move |_| async move {
+			Ok(HandlerOutput::data(serde_json::json!("resource")))
+		});
+
+		let report = engine
+			.execute(RequestInput::new(Method::GET, "/api/ping"), &handlers)
+			.await
+			.unwrap();
+
+		let RequestExecutionReport::Resource(report) = report else {
+			panic!("expected resource report");
+		};
+		assert_eq!(
+			report
+				.committed()
+				.iter()
+				.map(|commit| commit.handler_id().as_str())
+				.collect::<Vec<_>>(),
+			["first", "second", "resource"]
+		);
+	}
+
 	#[tokio::test]
 	async fn route_and_middleware_share_one_request_task_scope() {
 		let mut declarations = FrameworkDeclarations::default();
@@ -1674,27 +1788,18 @@ mod tests {
 		));
 		let engine = test_engine(declarations);
 		let runs = Arc::new(AtomicUsize::new(0));
-		let task_runs = Arc::clone(&runs);
-		let task = Task::new(Duration::ZERO, move |_ctx, _input: SharedInput| {
-			let task_runs = Arc::clone(&task_runs);
-			async move {
-				task_runs.fetch_add(1, Ordering::SeqCst);
-				tokio::time::sleep(Duration::from_millis(20)).await;
-				Ok("shared".to_owned())
-			}
-		});
 		let mut handlers = HandlerRegistry::default();
 		handlers.insert(
 			handler_id("middleware"),
 			SharedTaskHandler {
-				task: task.clone(),
+				runs: Arc::clone(&runs),
 				output: "middleware",
 			},
 		);
 		handlers.insert(
 			handler_id("resource"),
 			SharedTaskHandler {
-				task,
+				runs: Arc::clone(&runs),
 				output: "resource",
 			},
 		);

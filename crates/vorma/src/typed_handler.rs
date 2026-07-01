@@ -23,6 +23,7 @@ use crate::head::{
 	meta_property_content_element, preload_element, prepare_head_element, title_element,
 };
 use crate::input_decoder::DecodedRouteInput;
+use crate::resource_body::{ResourceOutput, resource_output_with_effects};
 use crate::response_finalizer::{ResponseEffects, accepts_client_redirect};
 
 /// Build a runtime handler from a typed public-style context handler.
@@ -51,7 +52,7 @@ pub fn form_data_runtime_handler<S, O, F, Fut>(
 ) -> FormDataRuntimeHandler<S, O, F>
 where
 	S: Send + Sync + 'static,
-	O: Serialize + Send + Sync + 'static,
+	O: ResourceOutput,
 	F: Fn(TypedHandlerContext<S, FormData>) -> Fut + Send + Sync + 'static,
 	Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
 {
@@ -62,8 +63,34 @@ where
 	}
 }
 
+/// Build a runtime handler from a typed public-style resource context handler.
+pub fn typed_resource_runtime_handler<S, I, O, F, Fut>(
+	state: Arc<S>,
+	handler: F,
+) -> TypedResourceRuntimeHandler<S, I, O, F>
+where
+	S: Send + Sync + 'static,
+	I: DeserializeOwned + Send + Sync + 'static,
+	O: ResourceOutput,
+	F: Fn(TypedHandlerContext<S, I>) -> Fut + Send + Sync + 'static,
+	Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
+{
+	TypedResourceRuntimeHandler {
+		state,
+		handler,
+		_marker: std::marker::PhantomData,
+	}
+}
+
 /// Runtime handler adapter that injects typed input and shared application state.
 pub struct TypedRuntimeHandler<S, I, O, F> {
+	state: Arc<S>,
+	handler: F,
+	_marker: std::marker::PhantomData<fn(I, O)>,
+}
+
+/// Runtime handler adapter for resource outputs.
+pub struct TypedResourceRuntimeHandler<S, I, O, F> {
 	state: Arc<S>,
 	handler: F,
 	_marker: std::marker::PhantomData<fn(I, O)>,
@@ -99,6 +126,36 @@ where
 	}
 }
 
+impl<S, I, O, F, Fut> RuntimeHandler for TypedResourceRuntimeHandler<S, I, O, F>
+where
+	S: Send + Sync + 'static,
+	I: DeserializeOwned + Send + Sync + 'static,
+	O: ResourceOutput,
+	F: Fn(TypedHandlerContext<S, I>) -> Fut + Send + Sync + 'static,
+	Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
+{
+	fn call(&self, input: HandlerInput, exec_ctx: ExecCtx<crate::Error>) -> HandlerFuture {
+		let context = match TypedHandlerContext::try_new(Arc::clone(&self.state), input, exec_ctx) {
+			Ok(context) => context,
+			Err(error) => return Box::pin(async { Err(error) }),
+		};
+		let effects = Arc::clone(&context.effects);
+		let future = (self.handler)(context);
+		Box::pin(async move {
+			let output = match future.await {
+				Ok(output) => output,
+				Err(error) => {
+					return Err(handler_error_with_effects(
+						HandlerExecutionError::from_application_error(&error),
+						&effects,
+					));
+				}
+			};
+			resource_output_with_effects(output, &effects)
+		})
+	}
+}
+
 /// Runtime handler adapter for `FormData` resource inputs.
 pub struct FormDataRuntimeHandler<S, O, F> {
 	state: Arc<S>,
@@ -109,7 +166,7 @@ pub struct FormDataRuntimeHandler<S, O, F> {
 impl<S, O, F, Fut> RuntimeHandler for FormDataRuntimeHandler<S, O, F>
 where
 	S: Send + Sync + 'static,
-	O: Serialize + Send + Sync + 'static,
+	O: ResourceOutput,
 	F: Fn(TypedHandlerContext<S, FormData>) -> Fut + Send + Sync + 'static,
 	Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
 {
@@ -142,7 +199,7 @@ where
 					));
 				}
 			};
-			handler_output_with_effects(output, &effects)
+			resource_output_with_effects(output, &effects)
 		})
 	}
 }

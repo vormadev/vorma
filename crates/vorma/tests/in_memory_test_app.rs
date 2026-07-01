@@ -36,6 +36,13 @@ struct HarnessResourceOutput {
 	greeting: String,
 }
 
+vorma::tasks::task! {
+	static HARNESS_TASK: vorma::tasks::Task<String, String, vorma::Error> =
+		memoized(|_ctx, id: String| async move {
+			Ok(format!("task-{id}"))
+		});
+}
+
 const HARNESS_VIEW: harness_app::View = harness_app::view! {
 	client_file: "src/client/views/harness.view.tsx";
 	pattern: "/contract/:id";
@@ -51,6 +58,25 @@ const HARNESS_VIEW: harness_app::View = harness_app::view! {
 		Ok(HarnessViewOutput {
 			message: format!("{}{}", ctx.state().prefix, ctx.param("id")),
 			query: ctx.input().q.clone(),
+		})
+	};
+};
+
+const HARNESS_TASK_VIEW: harness_app::View = harness_app::view! {
+	client_file: "src/client/views/harness-task.view.tsx";
+	pattern: "/task/:id";
+	input: ();
+	output: HarnessViewOutput;
+
+	handler: |ctx| {
+		let id = ctx.param("id").to_owned();
+		let message = HARNESS_TASK
+			.run(ctx.exec_ctx(), id)
+			.await
+			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
+		Ok(HarnessViewOutput {
+			message: (*message).clone(),
+			query: None,
 		})
 	};
 };
@@ -76,6 +102,12 @@ const HARNESS_RESOURCE: harness_app::Resource = harness_app::resource! {
 };
 
 fn app_config() -> vorma::AppConfig<HarnessState> {
+	app_config_with_tasks_options(vorma::tasks::TasksOptions::default())
+}
+
+fn app_config_with_tasks_options(
+	tasks_options: vorma::tasks::TasksOptions<vorma::Error>,
+) -> vorma::AppConfig<HarnessState> {
 	vorma::AppConfig {
 		root_dir: env!("CARGO_MANIFEST_DIR").into(),
 		server_target: vorma::ServerTarget {
@@ -101,7 +133,7 @@ fn app_config() -> vorma::AppConfig<HarnessState> {
 		state: HarnessState {
 			prefix: "harness-".to_owned(),
 		},
-		views: harness_app::views![HARNESS_VIEW],
+		views: harness_app::views![HARNESS_VIEW, HARNESS_TASK_VIEW],
 		resources: harness_app::resources![HARNESS_RESOURCE],
 		middlewares: harness_app::middlewares![harness_app::Middleware::new(|ctx| async move {
 			ctx.response().set_header(
@@ -110,7 +142,7 @@ fn app_config() -> vorma::AppConfig<HarnessState> {
 			);
 			Ok(())
 		})],
-		tasks_options: vorma::TasksOptions::default(),
+		tasks_options,
 		document: harness_app::DocumentBuilder::new(|_ctx| async move {
 			let mut document = vorma::Document::new();
 			document.html().lang("en");
@@ -146,6 +178,32 @@ async fn test_app_boots_in_memory_and_serves_view_json_payloads() {
 	);
 	assert_eq!(payload["views_data"][0]["message"], "harness-42");
 	assert_eq!(payload["views_data"][0]["query"], "ada");
+}
+
+#[tokio::test]
+async fn task_override_errors_surface_as_generic_view_payload_errors() {
+	let overrides = vorma::tasks::TaskOverrides::new(vorma::tasks::TaskOverrideMode::RunUnmatched)
+		.replace(&HARNESS_TASK, |_ctx, _input| async {
+			Err(vorma::Error::new("injected task failure").into())
+		});
+	let app = TestApp::from_config(app_config_with_tasks_options(vorma::tasks::TasksOptions {
+		overrides: Some(overrides),
+		..vorma::tasks::TasksOptions::default()
+	}))
+	.unwrap();
+
+	let response = app.get_view_payload("/task/42").await;
+
+	assert_eq!(response.status(), vorma::HttpStatusCode::OK);
+	let payload: serde_json::Value = serde_json::from_slice(response.body()).unwrap();
+	assert_eq!(
+		payload["matched_patterns"],
+		serde_json::json!(["/task/:id"])
+	);
+	assert_eq!(
+		payload["outermost_server_err"],
+		"An unexpected error occurred."
+	);
 }
 
 #[tokio::test]

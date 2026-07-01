@@ -1,13 +1,11 @@
 use std::fmt;
 use std::future::Future;
 use std::hash::Hash;
+use std::panic;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-
-use futures_util::stream::FuturesUnordered;
-use futures_util::stream::StreamExt;
 
 use crate::cancel::CancelToken;
 use crate::clock::{Clock, ClockInstant, SystemClock};
@@ -43,12 +41,14 @@ where
 }
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
-type TaskFn<I, O, E> = dyn Fn(ExecCtx<E>, I) -> BoxFuture<Result<O, E>> + Send + Sync;
-type PreparedTaskFn<E> = dyn FnOnce(ExecCtx<E>) -> BoxFuture<Result<(), E>> + Send;
+type TaskFn<I, O, E> = fn(ExecCtx<E>, I) -> BoxFuture<Result<O, E>>;
 
 /// Stable typed unit of async work.
-pub struct Task<I, O, E = Box<dyn std::error::Error + Send + Sync>> {
-	inner: Arc<TaskInner<I, O, E>>,
+pub struct Task<I: 'static, O: 'static, E: 'static = Box<dyn std::error::Error + Send + Sync>> {
+	id: &'static AtomicU64,
+	name: &'static str,
+	cache_policy: TaskCachePolicy,
+	f: TaskFn<I, O, E>,
 }
 
 impl<I, O, E> Task<I, O, E>
@@ -57,52 +57,30 @@ where
 	O: Send + Sync + 'static,
 	E: Send + Sync + 'static,
 {
-	/// Create a task.
-	///
-	/// `Duration::ZERO` disables cross-execution-context caching. A nonzero TTL retains
-	/// successful results across execution contexts created from the same [`Tasks`]
-	/// runtime.
-	pub fn new<F, Fut>(cross_exec_ctx_cache_ttl: Duration, f: F) -> Self
-	where
-		F: Fn(ExecCtx<E>, I) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<O, E>> + Send + 'static,
-	{
-		Self {
-			inner: Arc::new(TaskInner {
-				id: TaskId(NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed)),
-				cross_exec_ctx_cache_ttl,
-				name: std::any::type_name::<I>(),
-				f: Box::new(move |ctx, input| Box::pin(f(ctx, input))),
-			}),
+	/// Opaque identity for this task definition inside the current process.
+	pub fn id(&self) -> TaskId {
+		let id = self.id.load(Ordering::Acquire);
+		if id != 0 {
+			return TaskId(id);
+		}
+
+		let next_id = NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed);
+		match self
+			.id
+			.compare_exchange(0, next_id, Ordering::AcqRel, Ordering::Acquire)
+		{
+			Ok(_) => TaskId(next_id),
+			Err(existing) => TaskId(existing),
 		}
 	}
 
-	/// Opaque identity for this task definition inside the current process.
-	pub fn id(&self) -> TaskId {
-		self.inner.id
+	fn input_type(&self) -> &'static str {
+		std::any::type_name::<I>()
 	}
 
 	/// Run this task in an execution context.
 	pub async fn run(&self, ctx: &ExecCtx<E>, input: I) -> Result<Arc<O>, E> {
 		ctx.resolve(self, input).await
-	}
-
-	/// Bind input for later execution through [`ExecCtx::run_parallel`].
-	pub fn bind_input(&self, input: I) -> PreparedTask<E> {
-		self.bind_input_with_result(input, |_| {})
-	}
-
-	/// Bind input and a result sink for later execution through [`ExecCtx::run_parallel`].
-	pub fn bind_input_with_result<F>(&self, input: I, result: F) -> PreparedTask<E>
-	where
-		F: FnOnce(Arc<O>) + Send + 'static,
-	{
-		let task = self.clone();
-		PreparedTask::new(move |ctx| async move {
-			let output = task.run(&ctx, input).await?;
-			result(output);
-			Ok(())
-		})
 	}
 
 	async fn call(&self, ctx: ExecCtx<E>, input: I) -> StoredOutcome<E> {
@@ -111,56 +89,103 @@ where
 			TaskOverride::RunOriginal => self.call_original(ctx, input).await,
 			TaskOverride::Replace(replacement) => replacement.call(ctx, input).await,
 			TaskOverride::Missing => StoredOutcome::Err(Error::MissingOverride {
-				task: self.inner.name,
+				task_name: self.name,
 			}),
 		}
 	}
 
 	async fn call_original(&self, ctx: ExecCtx<E>, input: I) -> StoredOutcome<E> {
-		match (self.inner.f)(ctx, input).await {
+		match (self.f)(ctx, input).await {
 			Ok(output) => StoredOutcome::Ok(Arc::new(output)),
 			Err(error) => StoredOutcome::Err(error),
 		}
 	}
 }
 
-/// A task with input bound, ready for [`ExecCtx::run_parallel`].
-pub struct PreparedTask<E = Box<dyn std::error::Error + Send + Sync>> {
-	run: Box<PreparedTaskFn<E>>,
-}
-
-impl<E> PreparedTask<E>
-where
-	E: Send + Sync + 'static,
-{
-	fn new<F, Fut>(run: F) -> Self
-	where
-		F: FnOnce(ExecCtx<E>) -> Fut + Send + 'static,
-		Fut: Future<Output = Result<(), E>> + Send + 'static,
-	{
-		Self {
-			run: Box::new(move |ctx| Box::pin(run(ctx))),
-		}
-	}
-
-	async fn run(self, ctx: ExecCtx<E>) -> Result<(), E> {
-		(self.run)(ctx).await
-	}
-}
-
 impl<I, O, E> Clone for Task<I, O, E> {
 	fn clone(&self) -> Self {
-		Self {
-			inner: self.inner.clone(),
-		}
+		*self
 	}
 }
 
-struct TaskInner<I, O, E> {
-	id: TaskId,
-	cross_exec_ctx_cache_ttl: Duration,
-	name: &'static str,
-	f: Box<TaskFn<I, O, E>>,
+impl<I, O, E> Copy for Task<I, O, E> {}
+
+#[derive(Clone, Copy)]
+enum TaskCachePolicy {
+	Memoized,
+	ExtendedCache { ttl: Duration },
+	SingleFlight,
+}
+
+#[doc(hidden)]
+pub mod __macro_support {
+	use std::hash::Hash;
+	use std::sync::atomic::AtomicU64;
+	use std::time::Duration;
+
+	use super::{Task, TaskCachePolicy, TaskFn};
+
+	#[doc(hidden)]
+	pub const fn memoized<I, O, E>(
+		id: &'static AtomicU64,
+		name: &'static str,
+		f: TaskFn<I, O, E>,
+	) -> Task<I, O, E>
+	where
+		I: Clone + Eq + Hash + Send + Sync + 'static,
+		O: Send + Sync + 'static,
+		E: Send + Sync + 'static,
+	{
+		Task {
+			id,
+			name,
+			cache_policy: TaskCachePolicy::Memoized,
+			f,
+		}
+	}
+
+	#[doc(hidden)]
+	pub const fn extended_cache<I, O, E>(
+		id: &'static AtomicU64,
+		name: &'static str,
+		ttl: Duration,
+		f: TaskFn<I, O, E>,
+	) -> Task<I, O, E>
+	where
+		I: Clone + Eq + Hash + Send + Sync + 'static,
+		O: Send + Sync + 'static,
+		E: Send + Sync + 'static,
+	{
+		assert!(
+			!ttl.is_zero(),
+			"extended task cache TTL must be greater than zero"
+		);
+		Task {
+			id,
+			name,
+			cache_policy: TaskCachePolicy::ExtendedCache { ttl },
+			f,
+		}
+	}
+
+	#[doc(hidden)]
+	pub const fn single_flight<I, O, E>(
+		id: &'static AtomicU64,
+		name: &'static str,
+		f: TaskFn<I, O, E>,
+	) -> Task<I, O, E>
+	where
+		I: Clone + Eq + Hash + Send + Sync + 'static,
+		O: Send + Sync + 'static,
+		E: Send + Sync + 'static,
+	{
+		Task {
+			id,
+			name,
+			cache_policy: TaskCachePolicy::SingleFlight,
+			f,
+		}
+	}
 }
 
 /// Owns shared cross-execution-context task state.
@@ -231,11 +256,18 @@ where
 		self.inner.observer.is_some()
 	}
 
-	fn observe(&self, task_id: TaskId, task_input_type: &'static str, kind: TaskEventKind) {
+	fn observe(
+		&self,
+		task_id: TaskId,
+		task_name: &'static str,
+		task_input_type: &'static str,
+		kind: TaskEventKind,
+	) {
 		if let Some(observer) = &self.inner.observer {
 			observer.observe(TaskEvent {
 				at: self.now(),
 				task_id,
+				task_name,
 				task_input_type,
 				kind,
 			});
@@ -310,67 +342,6 @@ where
 		}
 	}
 
-	/// Run prepared tasks concurrently in a shared child execution context.
-	///
-	/// All prepared tasks share one execution context for memoization, and the first
-	/// failing sibling cancels the remaining siblings.
-	pub async fn run_parallel(
-		&self,
-		tasks: impl IntoIterator<Item = PreparedTask<E>>,
-	) -> Result<(), E> {
-		if self.cancel.is_cancelled() {
-			return Err(Error::Cancelled);
-		}
-
-		let tasks = tasks.into_iter().collect::<Vec<_>>();
-		match tasks.len() {
-			0 => return Ok(()),
-			1 => {
-				let mut tasks = tasks;
-				let task = tasks.pop().expect("length checked");
-				return task.run(self.child()).await;
-			}
-			_ => {}
-		}
-
-		/*
-		Siblings run concurrently on one poller rather than as spawned
-		runtime tasks: prepared work interleaves at await points, the
-		first failure cancels the rest, and no per-sibling scheduler
-		round-trip is paid.
-		*/
-		let shared = self.child();
-		let cancel = shared.cancel.clone();
-		let mut futures: FuturesUnordered<_> = tasks
-			.into_iter()
-			.map(|task| {
-				let ctx = shared.clone();
-				task.run(ctx)
-			})
-			.collect();
-
-		let mut first_error: Option<Error<E>> = None;
-		while let Some(result) = futures.next().await {
-			if let Err(error) = result {
-				let replace_first_error = first_error
-					.as_ref()
-					.is_none_or(|first| first.is_cancelled() && !error.is_cancelled());
-				if replace_first_error {
-					first_error = Some(error);
-				}
-				cancel.cancel();
-			}
-		}
-
-		if let Some(error) = first_error {
-			return Err(error);
-		}
-		if self.cancel.is_cancelled() {
-			return Err(Error::Cancelled);
-		}
-		Ok(())
-	}
-
 	fn child_for_task(&self, key: PathKey) -> Self {
 		Self {
 			tasks: self.tasks.clone(),
@@ -386,7 +357,7 @@ where
 	fn shared_run_child(&self, key: PathKey) -> Self {
 		Self {
 			tasks: self.tasks.clone(),
-			local: self.local.clone(),
+			local: Arc::new(Store::new(None)),
 			cancel: CancelToken::new(),
 			path: Some(Arc::new(PathNode {
 				key,
@@ -395,21 +366,26 @@ where
 		}
 	}
 
-	async fn resolve<I, O>(&self, task: &Task<I, O, E>, input: I) -> Result<Arc<O>, E>
+	pub(crate) async fn resolve<I, O>(&self, task: &Task<I, O, E>, input: I) -> Result<Arc<O>, E>
 	where
 		I: Clone + Eq + Hash + Send + Sync + 'static,
 		O: Send + Sync + 'static,
 	{
-		let fingerprint = fingerprint_for(task.inner.id, &input);
-		if path_contains(self.path.as_deref(), fingerprint, &input) {
-			return Err(Error::Cycle {
-				task: task.inner.name,
-			});
-		}
+		let task_id = task.id();
+		let task_name = task.name;
+		let task_input_type = task.input_type();
 		if self.cancel.is_cancelled() {
-			self.tasks
-				.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+			self.tasks.observe(
+				task_id,
+				task_name,
+				task_input_type,
+				TaskEventKind::Cancelled,
+			);
 			return Err(Error::Cancelled);
+		}
+		let fingerprint = fingerprint_for(task_id, &input);
+		if path_contains(self.path.as_deref(), fingerprint, &input) {
+			return Err(Error::Cycle { task_name });
 		}
 
 		let local_lookup = self
@@ -422,64 +398,72 @@ where
 		let local_guard = match local_slot.claim() {
 			SlotClaim::Ready(outcome) => {
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::ExecCtxMemoHit,
 				);
 				if self.cancel.is_cancelled() {
-					self.tasks
-						.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+					self.tasks.observe(
+						task_id,
+						task_name,
+						task_input_type,
+						TaskEventKind::Cancelled,
+					);
 					return Err(Error::Cancelled);
 				}
-				return decode_outcome::<O, E>(outcome, task.inner.name);
+				return decode_outcome::<O, E>(outcome, task_name);
 			}
 			SlotClaim::Wait => {
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::ExecCtxMemoWait,
 				);
 				return self
-					.wait_for_local::<O>(&local_slot, task.inner.id, task.inner.name)
+					.wait_for_local::<O>(&local_slot, task_id, task_name, task_input_type)
 					.await;
 			}
 			SlotClaim::Run => {
+				let guard = RunningGuard::new(self.local.clone(), local_slot.clone());
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::ExecCtxMemoMiss,
 				);
-				RunningGuard::new(local_slot.clone())
+				guard
 			}
 		};
 
-		let outcome = if !task.inner.cross_exec_ctx_cache_ttl.is_zero() {
-			match self
-				.resolve_shared(
-					task,
-					input,
-					fingerprint,
-					task.inner.cross_exec_ctx_cache_ttl,
-				)
-				.await
-			{
-				Ok(outcome) => outcome,
-				Err(error) => return Err(error),
+		let outcome = match task.cache_policy {
+			TaskCachePolicy::Memoized | TaskCachePolicy::SingleFlight => {
+				let path_key = PathKey::from_dyn(local_slot.shared_key());
+				self.run_in_exec_ctx(task, input, path_key).await?
 			}
-		} else {
-			let path_key = PathKey::from_dyn(local_slot.shared_key());
-			self.run_in_exec_ctx(task, input, path_key).await?
+			TaskCachePolicy::ExtendedCache { ttl } => {
+				match self.resolve_shared(task, input, fingerprint, ttl).await {
+					Ok(outcome) => outcome,
+					Err(error) => {
+						local_guard.remove_and_abandon();
+						return Err(error);
+					}
+				}
+			}
 		};
 
 		if outcome.is_cancelled() {
-			local_slot.abandon();
-			local_guard.disarm();
-			return decode_outcome::<O, E>(outcome, task.inner.name);
+			local_guard.remove_and_abandon();
+			return decode_outcome::<O, E>(outcome, task_name);
 		}
 
+		if matches!(task.cache_policy, TaskCachePolicy::SingleFlight) {
+			self.local.remove_slot(&local_slot);
+		}
 		local_slot.finish(outcome.clone(), None);
 		local_guard.disarm();
-		decode_outcome::<O, E>(outcome, task.inner.name)
+		decode_outcome::<O, E>(outcome, task_name)
 	}
 
 	async fn run_in_exec_ctx<I, O>(
@@ -492,50 +476,36 @@ where
 		I: Clone + Eq + Hash + Send + Sync + 'static,
 		O: Send + Sync + 'static,
 	{
+		let task_id = task.id();
+		let task_name = task.name;
+		let task_input_type = task.input_type();
 		let child_ctx = self.child_for_task(path_key);
 		let observing = self.tasks.has_observer();
 		let started_at = observing.then(|| self.tasks.now());
 		if observing {
 			self.tasks.observe(
-				task.inner.id,
-				task.inner.name,
+				task_id,
+				task_name,
+				task_input_type,
 				TaskEventKind::RunStarted {
 					source: TaskRunSource::ExecCtx,
 				},
 			);
 		}
 
-		/*
-		Fast path: poll the task body once before wiring up any
-		cancellation machinery. Bodies that complete immediately —
-		memoized dependencies, pure computation — never pay for a
-		cancellation subscription. Cancellation was checked just before
-		this, and a body that never suspends has no await point at
-		which prompt cancellation could matter.
-		*/
-		let call = task.call(child_ctx, input);
-		let mut call = std::pin::pin!(call);
-		let first_poll = {
-			let mut poll_ctx = std::task::Context::from_waker(std::task::Waker::noop());
-			Future::poll(call.as_mut(), &mut poll_ctx)
-		};
-		let outcome = match first_poll {
-			std::task::Poll::Ready(outcome) => outcome,
-			std::task::Poll::Pending => {
-				tokio::select! {
-					result = call.as_mut() => result,
-					_ = self.cancel.cancelled() => {
-						self.tasks.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
-						return Err(Error::Cancelled);
-					},
-				}
-			}
+		let outcome = tokio::select! {
+			result = task.call(child_ctx, input) => result,
+			_ = self.cancel.cancelled() => {
+				self.tasks.observe(task_id, task_name, task_input_type, TaskEventKind::Cancelled);
+				return Err(Error::Cancelled);
+			},
 		};
 
 		if observing && let Some(started_at) = started_at {
 			self.tasks.observe(
-				task.inner.id,
-				task.inner.name,
+				task_id,
+				task_name,
+				task_input_type,
 				TaskEventKind::RunCompleted {
 					source: TaskRunSource::ExecCtx,
 					outcome: task_event_outcome(&outcome),
@@ -544,11 +514,31 @@ where
 			);
 		}
 		if self.cancel.is_cancelled() {
-			self.tasks
-				.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+			self.tasks.observe(
+				task_id,
+				task_name,
+				task_input_type,
+				TaskEventKind::Cancelled,
+			);
 			return Err(Error::Cancelled);
 		}
 		Ok(outcome)
+	}
+
+	async fn wait_for_local<O>(
+		&self,
+		slot: &Arc<Slot<E>>,
+		task_id: TaskId,
+		task_name: &'static str,
+		task_input_type: &'static str,
+	) -> Result<Arc<O>, E>
+	where
+		O: Send + Sync + 'static,
+	{
+		let outcome = self
+			.wait_for_slot(slot, task_id, task_name, task_input_type)
+			.await?;
+		decode_outcome::<O, E>(outcome, task_name)
 	}
 
 	/*
@@ -557,21 +547,23 @@ where
 	first would leave a window — runner finishes and notifies between
 	the check and the await — that strands the waiter forever.
 	*/
-	async fn wait_for_local<O>(
+	async fn wait_for_slot(
 		&self,
 		slot: &Arc<Slot<E>>,
 		task_id: TaskId,
 		task_name: &'static str,
-	) -> Result<Arc<O>, E>
-	where
-		O: Send + Sync + 'static,
-	{
+		task_input_type: &'static str,
+	) -> Result<StoredOutcome<E>, E> {
 		slot.register_waiter();
 		let guard = WaiterGuard { slot };
 		loop {
 			if self.cancel.is_cancelled() {
-				self.tasks
-					.observe(task_id, task_name, TaskEventKind::Cancelled);
+				self.tasks.observe(
+					task_id,
+					task_name,
+					task_input_type,
+					TaskEventKind::Cancelled,
+				);
 				return Err(Error::Cancelled);
 			}
 			let notified = slot.signal.notified();
@@ -580,12 +572,16 @@ where
 			match slot.claim() {
 				SlotClaim::Ready(outcome) => {
 					if self.cancel.is_cancelled() {
-						self.tasks
-							.observe(task_id, task_name, TaskEventKind::Cancelled);
+						self.tasks.observe(
+							task_id,
+							task_name,
+							task_input_type,
+							TaskEventKind::Cancelled,
+						);
 						return Err(Error::Cancelled);
 					}
 					drop(guard);
-					return decode_outcome::<O, E>(outcome, task_name);
+					return Ok(outcome);
 				}
 				SlotClaim::Run => {
 					slot.abandon();
@@ -595,7 +591,7 @@ where
 					tokio::select! {
 						_ = &mut notified => {}
 						_ = self.cancel.cancelled() => {
-							self.tasks.observe(task_id, task_name, TaskEventKind::Cancelled);
+							self.tasks.observe(task_id, task_name, task_input_type, TaskEventKind::Cancelled);
 							return Err(Error::Cancelled);
 						},
 					}
@@ -615,6 +611,9 @@ where
 		I: Clone + Eq + Hash + Send + Sync + 'static,
 		O: Send + Sync + 'static,
 	{
+		let task_id = task.id();
+		let task_name = task.name;
+		let task_input_type = task.input_type();
 		let shared_lookup =
 			self.tasks
 				.inner
@@ -627,8 +626,9 @@ where
 			} => {
 				if stale_slots_removed > 0 {
 					self.tasks.observe(
-						task.inner.id,
-						task.inner.name,
+						task_id,
+						task_name,
+						task_input_type,
 						TaskEventKind::CrossExecCtxStaleSlotRemoved {
 							count: stale_slots_removed,
 						},
@@ -642,19 +642,21 @@ where
 			} => {
 				if stale_slots_removed > 0 {
 					self.tasks.observe(
-						task.inner.id,
-						task.inner.name,
+						task_id,
+						task_name,
+						task_input_type,
 						TaskEventKind::CrossExecCtxStaleSlotRemoved {
 							count: stale_slots_removed,
 						},
 					);
 				}
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::CrossExecCtxCacheCapacityBypass { max_entries },
 				);
-				let path_key = PathKey::new(task.inner.id, &input);
+				let path_key = PathKey::new(task_id, &input);
 				return self.run_in_exec_ctx(task, input, path_key).await;
 			}
 		};
@@ -662,45 +664,51 @@ where
 		match shared_slot.claim() {
 			SlotClaim::Ready(outcome) => {
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::CrossExecCtxCacheHit,
 				);
 				if self.cancel.is_cancelled() {
-					self.tasks
-						.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+					self.tasks.observe(
+						task_id,
+						task_name,
+						task_input_type,
+						TaskEventKind::Cancelled,
+					);
 					return Err(Error::Cancelled);
 				}
 				return Ok(outcome);
 			}
 			SlotClaim::Wait => {
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::CrossExecCtxInFlightWait,
 				);
 			}
 			SlotClaim::Run => {
+				let tasks = self.tasks.clone();
+				let guard = SharedRunningGuard::new(tasks.clone(), shared_slot.clone());
 				self.tasks.observe(
-					task.inner.id,
-					task.inner.name,
+					task_id,
+					task_name,
+					task_input_type,
 					TaskEventKind::CrossExecCtxCacheMiss,
 				);
-				let guard = RunningGuard::new(shared_slot.clone());
-				let task_for_spawn = task.clone();
+				let task_for_spawn = *task;
 				let input_for_spawn = input.clone();
 				let run_ctx = self.shared_run_child(PathKey::from_dyn(shared_slot.shared_key()));
-				let tasks = self.tasks.clone();
-				let task_id = task.inner.id;
-				let task_name = task.inner.name;
 				let shared_slot_for_run = shared_slot.clone();
-				tokio::spawn(async move {
+				let join = tokio::spawn(async move {
 					let observing = tasks.has_observer();
 					let started_at = observing.then(|| tasks.now());
 					if observing {
 						tasks.observe(
 							task_id,
 							task_name,
+							task_input_type,
 							TaskEventKind::RunStarted {
 								source: TaskRunSource::CrossExecCtx,
 							},
@@ -711,6 +719,7 @@ where
 						tasks.observe(
 							task_id,
 							task_name,
+							task_input_type,
 							TaskEventKind::RunCompleted {
 								source: TaskRunSource::CrossExecCtx,
 								outcome: task_event_outcome(&outcome),
@@ -719,9 +728,8 @@ where
 						);
 					}
 					if outcome.is_cancelled() {
-						shared_slot_for_run.abandon();
-						guard.disarm();
-						return;
+						guard.remove_and_abandon();
+						return outcome;
 					}
 					let expires_at = if outcome.is_ok() {
 						Some(tasks.now().saturating_add_duration(ttl))
@@ -729,52 +737,57 @@ where
 						Some(tasks.now())
 					};
 					if outcome.is_ok() {
-						tasks.observe(task_id, task_name, TaskEventKind::CrossExecCtxCacheInserted);
+						tasks.observe(
+							task_id,
+							task_name,
+							task_input_type,
+							TaskEventKind::CrossExecCtxCacheInserted,
+						);
 					}
-					shared_slot_for_run.finish(outcome, expires_at);
+					shared_slot_for_run.finish(outcome.clone(), expires_at);
 					guard.disarm();
+					outcome
 				});
+				return self
+					.wait_for_shared_runner(join, task_id, task_name, task_input_type)
+					.await;
 			}
 		}
 
-		shared_slot.register_waiter();
-		let guard = WaiterGuard { slot: &shared_slot };
-		loop {
-			if self.cancel.is_cancelled() {
-				self.tasks
-					.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
+		self.wait_for_slot(&shared_slot, task_id, task_name, task_input_type)
+			.await
+	}
+
+	async fn wait_for_shared_runner(
+		&self,
+		join: tokio::task::JoinHandle<StoredOutcome<E>>,
+		task_id: TaskId,
+		task_name: &'static str,
+		task_input_type: &'static str,
+	) -> Result<StoredOutcome<E>, E> {
+		let joined = tokio::select! {
+			result = join => result,
+			_ = self.cancel.cancelled() => {
+				self.tasks.observe(task_id, task_name, task_input_type, TaskEventKind::Cancelled);
 				return Err(Error::Cancelled);
-			}
-			let notified = shared_slot.signal.notified();
-			tokio::pin!(notified);
-			notified.as_mut().enable();
-			match shared_slot.claim() {
-				SlotClaim::Ready(outcome) => {
-					if self.cancel.is_cancelled() {
-						self.tasks.observe(
-							task.inner.id,
-							task.inner.name,
-							TaskEventKind::Cancelled,
-						);
-						return Err(Error::Cancelled);
-					}
-					drop(guard);
-					return Ok(outcome);
-				}
-				SlotClaim::Run => {
-					shared_slot.abandon();
+			},
+		};
+
+		match joined {
+			Ok(outcome) => {
+				if self.cancel.is_cancelled() {
+					self.tasks.observe(
+						task_id,
+						task_name,
+						task_input_type,
+						TaskEventKind::Cancelled,
+					);
 					return Err(Error::Cancelled);
 				}
-				SlotClaim::Wait => {
-					tokio::select! {
-						_ = &mut notified => {}
-						_ = self.cancel.cancelled() => {
-							self.tasks.observe(task.inner.id, task.inner.name, TaskEventKind::Cancelled);
-							return Err(Error::Cancelled);
-						},
-					}
-				}
+				Ok(outcome)
 			}
+			Err(error) if error.is_panic() => panic::resume_unwind(error.into_panic()),
+			Err(_) => Err(Error::Cancelled),
 		}
 	}
 }
@@ -807,6 +820,41 @@ struct WaiterGuard<'s, E> {
 impl<E> Drop for WaiterGuard<'_, E> {
 	fn drop(&mut self) {
 		self.slot.unregister_waiter();
+	}
+}
+
+struct SharedRunningGuard<E> {
+	tasks: Tasks<E>,
+	slot: Arc<Slot<E>>,
+	active: bool,
+}
+
+impl<E> SharedRunningGuard<E> {
+	fn new(tasks: Tasks<E>, slot: Arc<Slot<E>>) -> Self {
+		Self {
+			tasks,
+			slot,
+			active: true,
+		}
+	}
+
+	fn disarm(mut self) {
+		self.active = false;
+	}
+
+	fn remove_and_abandon(mut self) {
+		self.tasks.inner.shared.remove_slot(&self.slot);
+		self.slot.abandon();
+		self.active = false;
+	}
+}
+
+impl<E> Drop for SharedRunningGuard<E> {
+	fn drop(&mut self) {
+		if self.active {
+			self.tasks.inner.shared.remove_slot(&self.slot);
+			self.slot.abandon();
+		}
 	}
 }
 

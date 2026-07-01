@@ -12,7 +12,9 @@ declare global {
 	function vormaPublicUrl(k: VormaPublicUrlKey): string;
 }
 
-type VormaPublicUrlKey = never;
+const vormaPublicUrlKeys = ["mark.svg"] as const;
+
+type VormaPublicUrlKey = `${"" | "/"}${(typeof vormaPublicUrlKeys)[number]}`;
 
 const __vorma_resources = [
 	{
@@ -72,7 +74,7 @@ const __vorma_resources = [
 		params: ["story_id"],
 		pattern: "/api/stories/:story_id/attachment",
 		__i: null as unknown as undefined,
-		__o: null as unknown as undefined,
+		__o: null as unknown as Blob,
 	},
 ] as const;
 
@@ -145,6 +147,12 @@ const __vorma_views = [
 		__i: null as unknown as undefined,
 		__o: null as unknown as ModDiagnosticsPage,
 	},
+	{
+		parents: ["/"],
+		pattern: "/*",
+		__i: null as unknown as undefined,
+		__o: null as unknown as NotFoundPage,
+	},
 ] as const;
 
 export type Comment = {
@@ -189,8 +197,14 @@ export type FrontPage = {
 	has_more: boolean;
 };
 
+export type KeyboardShortcut = {
+	keys: string;
+	action: string;
+};
+
 export type LayoutData = {
 	app_name: string;
+	mark_url: string;
 	current_user: User | null;
 };
 
@@ -215,6 +229,13 @@ export type ModLogEntry = {
 export type ModPage = {
 	killed: Array<Story>;
 	log: Array<ModLogEntry>;
+};
+
+export type NotFoundPage = {
+	requested_path: string;
+	primary_source: string | null;
+	source_tags: Array<string>;
+	source_pair_count: number;
 };
 
 export type SearchInput = {
@@ -282,6 +303,15 @@ export type VoteOutput = {
 	points: number;
 };
 
-export const frontPageSize = 30;
+export const keyboard_shortcuts = [
+	{
+		action: "focus-search",
+		keys: "mod+k",
+	},
+] as const;
+
+export const front_page_size = 30;
+
+export const csrf_header = "x-board-csrf-token";
 
 export type ModAction = "kill" | "restore";

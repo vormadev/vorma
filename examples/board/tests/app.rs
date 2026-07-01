@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use vorma::testing::TestApp;
-use vorma_board_example::{Db, app_config_with, app_config_with_db};
+use vorma_board_example::{CSRF_ECHO_HEADER, CSRF_HEADER, Db, MARK_ASSET, app_config_with_db};
 
 static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
@@ -25,13 +25,27 @@ fn app() -> TestApp {
 
 fn app_with_db() -> (TestApp, Arc<Db>) {
 	let db = tmp_db();
-	let app = TestApp::from_config(app_config_with_db(Arc::clone(&db)).expect("config builds"))
+	let app = TestApp::builder(app_config_with_db(Arc::clone(&db)).expect("config builds"))
+		.with_public_asset(MARK_ASSET, &include_bytes!("../public/mark.svg")[..])
+		.build()
 		.expect("board app boots in memory");
 	(app, db)
 }
 
 fn json(body: &[u8]) -> serde_json::Value {
 	serde_json::from_slice(body).expect("json body")
+}
+
+fn view_payload_path(path_and_query: &str) -> String {
+	let separator = if path_and_query.contains('?') {
+		'&'
+	} else {
+		'?'
+	};
+	format!(
+		"{path_and_query}{separator}{}=_",
+		vorma::build_interface::runtime::VORMA_JSON_QUERY_KEY
+	)
 }
 
 fn cookie_pair(set_cookie_header: &str) -> (String, String) {
@@ -93,7 +107,7 @@ async fn login_then_layout_carries_the_session_user() {
 	let cookie = login(&app, "Ada").await;
 
 	let payload = app
-		.request(vorma::HttpMethod::GET, "/?vorma-json=_")
+		.request(vorma::HttpMethod::GET, &view_payload_path("/"))
 		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
@@ -106,12 +120,21 @@ async fn login_then_layout_carries_the_session_user() {
 #[tokio::test]
 async fn anonymous_layout_has_no_session_user() {
 	let app = app();
+	let mark_url = app.public_url(MARK_ASSET).expect("mark public url");
 	let payload = app.get_view_payload("/").await;
 
 	let body = json(payload.body());
+	assert_eq!(body["views_data"][0]["mark_url"], mark_url);
 	assert_eq!(
 		body["views_data"][0]["current_user"],
 		serde_json::Value::Null
+	);
+
+	let mark = app.get(&mark_url).await;
+	assert_eq!(mark.status(), vorma::HttpStatusCode::OK);
+	assert_eq!(
+		mark.body().as_ref(),
+		&include_bytes!("../public/mark.svg")[..]
 	);
 }
 
@@ -156,6 +179,46 @@ async fn submit_redirects_at_the_new_story_and_the_story_page_renders_it() {
 }
 
 #[tokio::test]
+async fn user_routes_redirect_to_canonical_lowercase_paths() {
+	let app = app();
+
+	let profile = app.get("/u/Ada").await;
+	assert!(profile.status().is_redirection());
+	assert_eq!(profile.headers()["location"], "/u/ada");
+
+	let comments = app.get("/u/Ada/comments").await;
+	assert!(comments.status().is_redirection());
+	assert_eq!(comments.headers()["location"], "/u/ada/comments");
+}
+
+#[tokio::test]
+async fn method_scoped_middleware_marks_mutating_requests_only() {
+	let app = app();
+
+	let post = app
+		.request(vorma::HttpMethod::POST, "/api/session")
+		.header(CSRF_HEADER, "board-token")
+		.body(
+			"application/json",
+			serde_json::json!({ "username": "ada" })
+				.to_string()
+				.into_bytes(),
+		)
+		.send()
+		.await;
+	assert_eq!(post.status(), vorma::HttpStatusCode::CREATED);
+	assert_eq!(post.headers()[CSRF_ECHO_HEADER], "board-token");
+
+	let get = app
+		.request(vorma::HttpMethod::GET, &view_payload_path("/"))
+		.header(CSRF_HEADER, "board-token")
+		.send()
+		.await;
+	assert_eq!(get.status(), vorma::HttpStatusCode::OK);
+	assert!(!get.headers().contains_key(CSRF_ECHO_HEADER));
+}
+
+#[tokio::test]
 async fn missing_story_renders_as_a_normal_page_state() {
 	let app = app();
 	let payload = app.get_view_payload("/s/999").await;
@@ -163,6 +226,28 @@ async fn missing_story_renders_as_a_normal_page_state() {
 	assert_eq!(payload.status(), vorma::HttpStatusCode::OK);
 	let body = json(payload.body());
 	assert_eq!(body["views_data"][1]["story"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn catch_all_view_is_a_normal_app_level_fallback() {
+	let app = app();
+	let payload = app
+		.get_view_payload("/missing/board/page?from=docs&from=nav")
+		.await;
+
+	assert_eq!(payload.status(), vorma::HttpStatusCode::OK);
+	let body = json(payload.body());
+	assert_eq!(body["matched_patterns"], serde_json::json!(["/", "/*"]));
+	assert_eq!(
+		body["views_data"][1]["requested_path"],
+		"/missing/board/page"
+	);
+	assert_eq!(body["views_data"][1]["primary_source"], "docs");
+	assert_eq!(
+		body["views_data"][1]["source_tags"],
+		serde_json::json!(["docs", "nav"])
+	);
+	assert_eq!(body["views_data"][1]["source_pair_count"], 2);
 }
 
 #[tokio::test]
@@ -237,7 +322,7 @@ async fn logout_clears_the_session_cookie_and_the_session_row() {
 
 	// The old token no longer resolves a user even if replayed.
 	let payload = app
-		.request(vorma::HttpMethod::GET, "/?vorma-json=_")
+		.request(vorma::HttpMethod::GET, &view_payload_path("/"))
 		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
@@ -419,7 +504,7 @@ async fn mod_area_is_gated_and_kill_restore_round_trips() {
 
 	// The mod queue lists it, with the action logged.
 	let queue = app
-		.request(vorma::HttpMethod::GET, "/mod?vorma-json=_")
+		.request(vorma::HttpMethod::GET, &view_payload_path("/mod"))
 		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
@@ -492,7 +577,10 @@ async fn diagnostics_segment_fails_alone_while_parents_render() {
 	let cookie = login(&app, "ada").await;
 
 	let payload = app
-		.request(vorma::HttpMethod::GET, "/mod/diagnostics?vorma-json=_")
+		.request(
+			vorma::HttpMethod::GET,
+			&view_payload_path("/mod/diagnostics"),
+		)
 		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
@@ -541,12 +629,23 @@ async fn attachments_upload_with_the_story_and_download_back() {
 
 	let download = app.get("/api/stories/1/attachment").await;
 	assert_eq!(download.status(), vorma::HttpStatusCode::OK);
+	assert_eq!(download.headers()["content-type"], "text/plain");
 	assert!(
 		download.headers()["content-disposition"]
 			.to_str()
 			.expect("ascii")
 			.contains("notes.txt")
 	);
+	assert_eq!(download.body().as_ref(), b"hello attachment");
+
+	let head = app
+		.request(vorma::HttpMethod::HEAD, "/api/stories/1/attachment")
+		.send()
+		.await;
+	assert_eq!(head.status(), vorma::HttpStatusCode::OK);
+	assert_eq!(head.headers()["content-type"], "text/plain");
+	assert_eq!(head.headers()["content-length"], "16");
+	assert!(head.body().is_empty());
 
 	let none = app.get("/api/stories/2/attachment").await;
 	assert_eq!(none.status(), vorma::HttpStatusCode::NOT_FOUND);
@@ -594,45 +693,5 @@ async fn user_pages_nest_profile_and_comment_tabs() {
 	assert_eq!(
 		json(unknown.body())["views_data"][1]["profile"],
 		serde_json::Value::Null
-	);
-}
-
-#[tokio::test]
-async fn task_override_injects_a_story_load_failure() {
-	let db = tmp_db();
-	let overrides = vorma::TaskOverrides::new(vorma::TaskOverrideMode::RunUnmatched).replace(
-		&vorma_board_example::repo::STORY_BY_ID,
-		/*
-		Ledger F-1 again: override bodies also hand-wrap their errors
-		in TaskError::Failed.
-		*/
-		|_ctx, _input| async {
-			Err(vorma::TaskError::Failed(std::sync::Arc::new(
-				vorma::Error::new("injected story-load failure (test)"),
-			)))
-		},
-	);
-	let app = TestApp::from_config(
-		app_config_with(
-			db,
-			vorma::TasksOptions {
-				overrides: Some(overrides),
-				..vorma::TasksOptions::default()
-			},
-		)
-		.expect("config builds"),
-	)
-	.expect("board app boots in memory");
-
-	/*
-	The injected failure carries no client message, so the wire shows
-	the generic text — never the server-side record.
-	*/
-	let payload = app.get_view_payload("/s/1").await;
-	assert_eq!(payload.status(), vorma::HttpStatusCode::OK);
-	let body = json(payload.body());
-	assert_eq!(
-		body["outermost_server_err"],
-		"An unexpected error occurred."
 	);
 }

@@ -1,14 +1,19 @@
-//! View declarations: layout, front page, story page.
+//! Typed view declarations.
+//!
+//! Views are route segments. Each view returns serializable data for its client module
+//! and can also contribute document head metadata. Vorma runs matching sibling/parent
+//! view handlers in parallel and sends the ordered view-data array to the browser.
 
 use serde::{Deserialize, Serialize};
 
 use crate::repo::{self, Comment, DbInput, DocsPage, ModLogEntry, Story, User, UserProfile};
 use crate::store::AppState;
-use crate::{APP_NAME, app};
+use crate::{APP_NAME, MARK_ASSET, app};
 
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
 pub struct LayoutData {
 	app_name: String,
+	mark_url: String,
 	current_user: Option<User>,
 }
 
@@ -31,10 +36,10 @@ pub struct StoryPage {
 	comments: Vec<Comment>,
 }
 
-/// Root layout: shell facts plus the session user.
 /*
-USER_FOR_SESSION here re-runs the task the preload middleware already
-started — same task, same input, one database read per request.
+The root layout is the persistent shell. It asks for the current user even though
+middleware already preloads that task: same task plus same input inside one request means
+one database read, shared by middleware, layout, and resources.
 */
 pub const LAYOUT: app::View = app::view! {
 	client_file: "src/client/views/layout.view.tsx";
@@ -43,12 +48,18 @@ pub const LAYOUT: app::View = app::view! {
 	output: LayoutData;
 	handler: |ctx| {
 		ctx.head().title(APP_NAME);
+		/*
+		View handlers can also resolve public assets. Use this when the
+		browser component needs the final URL as part of its typed view data.
+		*/
+		let mark_url = ctx.public_url(MARK_ASSET)?;
 		let current_user =
 			crate::session::current_user(ctx.state(), ctx.request().headers(), ctx.exec_ctx())
 				.await
 				.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
 		Ok(LayoutData {
 			app_name: APP_NAME.to_owned(),
+			mark_url,
 			current_user,
 		})
 	};
@@ -60,6 +71,10 @@ pub const FRONT: app::View = app::view! {
 	input: FrontInput;
 	output: FrontPage;
 	handler: |ctx| {
+		/*
+		Typed input comes from query/search decoding. The Rust type is the source of
+		the generated TypeScript input type for this view.
+		*/
 		let page = ctx.input().page.unwrap_or(1).max(1);
 		let stories = repo::STORIES_PAGE
 			.run(ctx.exec_ctx(), db_input(ctx.state(), page))
@@ -83,8 +98,9 @@ pub const STORY: app::View = app::view! {
 	handler: |ctx| {
 		let Ok(story_id) = ctx.param("story_id").parse::<i64>() else {
 			/*
-			Bad id is a rendered not-found state, same as a missing row:
-			views are a rendering protocol.
+			A malformed route param is a rendered state here, not an HTTP error:
+			views describe UI segments. Reserve HTTP status semantics for
+			resources and middleware.
 			*/
 			ctx.head().title("Story not found");
 			return Ok(StoryPage {
@@ -93,28 +109,15 @@ pub const STORY: app::View = app::view! {
 			});
 		};
 
-		/*
-		Prewarm both reads in parallel through the task runtime's own
-		combinator, then take the typed results from the request-scope
-		dedupe — the follow-up runs are cache hits, not re-executions.
-		*/
-		ctx.exec_ctx()
-			.run_parallel([
-				repo::STORY_BY_ID.bind_input(db_input(ctx.state(), story_id)),
-				repo::COMMENTS_FOR_STORY.bind_input(db_input(ctx.state(), story_id)),
-			])
+		let mut batch = vorma::tasks::ParallelBatch::new();
+		let story = batch.add(repo::STORY_BY_ID, db_input(ctx.state(), story_id));
+		let comments = batch.add(repo::COMMENTS_FOR_STORY, db_input(ctx.state(), story_id));
+		let outputs = batch
+			.run(ctx.exec_ctx())
 			.await
 			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
-		let story = (*repo::STORY_BY_ID
-			.run(ctx.exec_ctx(), db_input(ctx.state(), story_id))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
-		.clone();
-		let comments = (*repo::COMMENTS_FOR_STORY
-			.run(ctx.exec_ctx(), db_input(ctx.state(), story_id))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
-		.clone();
+		let story = (*outputs.take(story)).clone();
+		let comments = (*outputs.take(comments)).clone();
 
 		match &story {
 			Some(story) if !story.killed => {
@@ -129,8 +132,7 @@ pub const STORY: app::View = app::view! {
 				ctx.head().title("Story not found");
 			}
 		}
-		// A killed story renders the not-found treatment but keeps its
-		// comment count private: clear both.
+		// A killed story renders the not-found treatment and hides its comment count.
 		if story.as_ref().is_some_and(|story| story.killed) {
 			return Ok(StoryPage {
 				story: None,
@@ -154,7 +156,10 @@ pub struct SubmitPage {
 	signed_in: bool,
 }
 
-/// Submit form host; the gate is UX-side here (the POST itself 401s).
+/// Submit form host.
+///
+/// This view only decides what to render. The POST resource still performs the real
+/// authorization check, because resources are the HTTP boundary.
 pub const SUBMIT: app::View = app::view! {
 	client_file: "src/client/views/submit.view.tsx";
 	pattern: "/submit";
@@ -177,31 +182,42 @@ pub struct UserPage {
 	stories: Vec<Story>,
 }
 
-/// Profile parent: owns the profile facts; tabs nest beneath it.
+/// Profile parent view.
+///
+/// Parent views own data shared by nested children. The comments tab below renders in the
+/// parent's outlet without refetching the profile facts.
 pub const USER: app::View = app::view! {
 	client_file: "src/client/views/user.view.tsx";
 	pattern: "/u/:username";
 	input: ();
 	output: UserPage;
 	handler: |ctx| {
-		let username = ctx.param("username").to_ascii_lowercase();
-		ctx.exec_ctx()
-			.run_parallel([
-				repo::USER_PROFILE.bind_input(db_input(ctx.state(), username.clone())),
-				repo::STORIES_BY_AUTHOR.bind_input(db_input(ctx.state(), username.clone())),
-			])
+		let raw_username = ctx.param("username");
+		let username = raw_username.to_ascii_lowercase();
+		if raw_username != username {
+			/*
+			View redirects are for route canonicalization before rendering.
+			They differ from resource redirects only in the exit type: views
+			do not own HTTP error statuses, but they can still redirect.
+			*/
+			let raw_prefix = format!("/u/{raw_username}");
+			let canonical_prefix = format!("/u/{username}");
+			let location = ctx
+				.request()
+				.path()
+				.replacen(&raw_prefix, &canonical_prefix, 1);
+			return ctx.redirect(location);
+		}
+		let mut batch = vorma::tasks::ParallelBatch::new();
+		let profile = batch.add(repo::USER_PROFILE, db_input(ctx.state(), username.clone()));
+		let stories =
+			batch.add(repo::STORIES_BY_AUTHOR, db_input(ctx.state(), username.clone()));
+		let outputs = batch
+			.run(ctx.exec_ctx())
 			.await
 			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
-		let profile = (*repo::USER_PROFILE
-			.run(ctx.exec_ctx(), db_input(ctx.state(), username.clone()))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
-		.clone();
-		let stories = (*repo::STORIES_BY_AUTHOR
-			.run(ctx.exec_ctx(), db_input(ctx.state(), username.clone()))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
-		.clone();
+		let profile = (*outputs.take(profile)).clone();
+		let stories = (*outputs.take(stories)).clone();
 
 		match &profile {
 			Some(profile) => {
@@ -243,9 +259,8 @@ pub struct DocsIndexPage {
 }
 
 /*
-Splat patterns match one-or-more segments, never their bare root, so
-the docs section is a nested pair: "/docs" is the index/sidebar parent
-and the splat child renders individual pages inside its outlet.
+Splat patterns match one-or-more segments, never their bare root. Use a parent route for
+the section root and a splat child route for arbitrary nested pages.
 */
 pub const DOCS_INDEX_VIEW: app::View = app::view! {
 	client_file: "src/client/views/docs.view.tsx";
@@ -287,6 +302,45 @@ pub const DOCS_PAGE_VIEW: app::View = app::view! {
 	};
 };
 
+#[derive(Clone, Debug, Serialize, vorma::TsGen)]
+pub struct NotFoundPage {
+	requested_path: String,
+	primary_source: Option<String>,
+	source_tags: Vec<String>,
+	source_pair_count: usize,
+}
+
+/*
+The root catch-all is a normal view, not an HTTP error. If it matches, Vorma found a
+route and renders the app with status 200; the UI can still explain that Board has no
+page for the requested URL. This fallback also reads the raw search params as
+unstructured route-adjacent metadata; ordinary route state should still prefer typed view
+input.
+*/
+pub const NOT_FOUND: app::View = app::view! {
+	client_file: "src/client/views/not_found.view.tsx";
+	pattern: "/*";
+	input: ();
+	output: NotFoundPage;
+	handler: |ctx| {
+		ctx.head().title(format!("Page not found | {APP_NAME}"));
+		let request = ctx.request();
+		let search_params = request.search_params();
+		let primary_source = search_params.get("from");
+		let source_tags = search_params.get_all("from").collect();
+		let source_pair_count = search_params
+			.iter()
+			.filter(|(name, _value)| name == "from")
+			.count();
+		Ok(NotFoundPage {
+			requested_path: request.path().to_owned(),
+			primary_source,
+			source_tags,
+			source_pair_count,
+		})
+	};
+};
+
 #[derive(Clone, Debug, Default, Deserialize, vorma::TsGen)]
 pub struct SearchPageInput {
 	#[serde(default)]
@@ -298,8 +352,11 @@ pub struct SearchPage {
 	q: String,
 }
 
-/// Search shell: the QUERY itself runs client-side via the search
-/// resource (useApiQuery's home); the view carries the URL state.
+/// Search shell.
+///
+/// The server view owns the shareable URL state. The client view calls the typed search
+/// resource with `useApiQuery`, which is the usual shape for interactive search results
+/// that should refetch as the user edits the query.
 pub const SEARCH: app::View = app::view! {
 	client_file: "src/client/views/search.view.tsx";
 	pattern: "/search";
@@ -319,7 +376,10 @@ pub struct ModPage {
 	log: Vec<ModLogEntry>,
 }
 
-/// Mod queue parent (the scoped middleware gates everything under /mod).
+/// Mod queue parent.
+///
+/// The scoped middleware protects both this browser route and the matching `/api/mod/*`
+/// resources. The view can focus on data loading because the gate is centralized.
 pub const MOD: app::View = app::view! {
 	client_file: "src/client/views/mod.view.tsx";
 	pattern: "/mod";
@@ -327,23 +387,15 @@ pub const MOD: app::View = app::view! {
 	output: ModPage;
 	handler: |ctx| {
 		ctx.head().title(format!("Moderation | {APP_NAME}"));
-		ctx.exec_ctx()
-			.run_parallel([
-				repo::KILLED_STORIES.bind_input(db_input(ctx.state(), ())),
-				repo::MOD_LOG.bind_input(db_input(ctx.state(), ())),
-			])
+		let mut batch = vorma::tasks::ParallelBatch::new();
+		let killed = batch.add(repo::KILLED_STORIES, db_input(ctx.state(), ()));
+		let log = batch.add(repo::MOD_LOG, db_input(ctx.state(), ()));
+		let outputs = batch
+			.run(ctx.exec_ctx())
 			.await
 			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
-		let killed = (*repo::KILLED_STORIES
-			.run(ctx.exec_ctx(), db_input(ctx.state(), ()))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
-		.clone();
-		let log = (*repo::MOD_LOG
-			.run(ctx.exec_ctx(), db_input(ctx.state(), ()))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
-		.clone();
+		let killed = (*outputs.take(killed)).clone();
+		let log = (*outputs.take(log)).clone();
 		Ok(ModPage { killed, log })
 	};
 };
@@ -351,8 +403,10 @@ pub const MOD: app::View = app::view! {
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
 pub struct ModDiagnosticsPage {}
 
-/// Deliberately failing segment: the mod queue (parent) still renders;
-/// only this slot shows its error boundary with the explicit message.
+/// Deliberately failing child segment.
+///
+/// This gives the example app a visible route-error-boundary path: the `/mod` parent still
+/// renders, while only the diagnostics outlet shows its client-visible message.
 pub const MOD_DIAGNOSTICS: app::View = app::view! {
 	client_file: "src/client/views/mod_diagnostics.view.tsx";
 	pattern: "/mod/diagnostics";
@@ -360,7 +414,7 @@ pub const MOD_DIAGNOSTICS: app::View = app::view! {
 	output: ModDiagnosticsPage;
 	handler: |_ctx| {
 		Err(vorma::ViewExit::err(
-			"diagnostics backend intentionally unwired (census F12 segment-error demo)",
+			"diagnostics backend intentionally unwired",
 		)
 		.with_client_msg("Diagnostics are not available in the demo."))
 	};

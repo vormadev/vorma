@@ -411,6 +411,7 @@ pub(crate) fn validate_type_ref(
 		| TypeRefContract::Number
 		| TypeRefContract::Integer
 		| TypeRefContract::FormData
+		| TypeRefContract::Blob
 		| TypeRefContract::StringLiteral(_) => Ok(()),
 	}
 }

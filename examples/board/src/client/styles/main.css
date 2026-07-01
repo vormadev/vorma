@@ -6,9 +6,20 @@
 .topbar {
 	display: flex;
 	align-items: center;
+	flex-wrap: wrap;
 	gap: 1rem;
 	padding: 0.75rem 0;
 	border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+.brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+.mark {
+	width: 1.5rem;
+	height: 1.5rem;
+	border-radius: 4px;
 }
 .topbar h1 {
 	font-size: 1.1rem;
@@ -16,12 +27,96 @@
 }
 .topbar nav {
 	display: flex;
+	align-items: center;
 	gap: 0.75rem;
+}
+.topbar kbd {
+	margin-left: 0.35rem;
+	font-size: 0.75rem;
 }
 .topbar form {
 	margin-left: auto;
 	display: flex;
 	gap: 0.5rem;
+}
+.section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+	margin: 1.5rem 0 1rem;
+}
+.section-header h2 {
+	margin: 0;
+}
+.tabs,
+.actions {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+.runtime-panel {
+	display: grid;
+	gap: 0.35rem;
+	padding: 0.75rem 0;
+	border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+	font-size: 0.9rem;
+}
+.stack {
+	display: grid;
+	gap: 0.75rem;
+}
+.stack label,
+label.stack {
+	display: grid;
+	gap: 0.35rem;
+}
+input,
+textarea,
+button {
+	font: inherit;
+}
+pre {
+	max-width: 100%;
+	overflow: auto;
+	padding: 0.75rem;
+	border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+	border-radius: 4px;
+}
+input,
+textarea {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 34rem;
+	padding: 0.45rem 0.55rem;
+	border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+	border-radius: 4px;
+	background: Canvas;
+	color: CanvasText;
+}
+button {
+	width: max-content;
+	padding: 0.35rem 0.65rem;
+	border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+	border-radius: 4px;
+	background: color-mix(in srgb, CanvasText 8%, Canvas);
+	color: CanvasText;
+	cursor: pointer;
+}
+button:disabled {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+.split {
+	display: grid;
+	grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+	gap: 2rem;
+	align-items: start;
+}
+.split aside {
+	position: sticky;
+	top: 1rem;
 }
 .story {
 	display: grid;
@@ -45,4 +140,23 @@
 }
 .error {
 	color: light-dark(#b00020, #ff6b6b);
+}
+.doc p {
+	line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+	.split {
+		grid-template-columns: 1fr;
+	}
+	.split aside {
+		position: static;
+	}
+	.section-header {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+	.topbar form {
+		margin-left: 0;
+	}
 }

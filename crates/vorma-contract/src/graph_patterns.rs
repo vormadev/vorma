@@ -20,7 +20,9 @@ pub(crate) fn view_parents_for_patterns(pattern: &str, all_patterns: &[String]) 
 	let mut parents = all_patterns
 		.iter()
 		.filter(|candidate| {
-			candidate.as_str() != pattern && route_scope_contains(candidate, pattern)
+			candidate.as_str() != pattern
+				&& can_be_view_parent(candidate)
+				&& route_scope_contains(candidate, pattern)
 		})
 		.cloned()
 		.collect::<Vec<_>>();
@@ -36,6 +38,12 @@ pub(crate) fn view_parents_for_patterns(pattern: &str, all_patterns: &[String]) 
 		left_depth.cmp(&right_depth).then_with(|| left.cmp(right))
 	});
 	parents
+}
+
+fn can_be_view_parent(pattern: &str) -> bool {
+	!route_pattern_segments(pattern)
+		.last()
+		.is_some_and(|segment| is_splat_segment(segment))
 }
 
 pub(crate) fn route_scope_contains(scope_pattern: &str, pattern: &str) -> bool {

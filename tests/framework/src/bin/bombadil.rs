@@ -178,8 +178,8 @@ impl RunConfig {
 			return self.for_each_selected_variant(variant_name, |runner| runner.test_prod());
 		}
 
-		self.for_each_variant_serial(|runner| runner.build())?;
-		self.for_each_variant_serial(|runner| runner.test())
+		self.for_each_variant(|runner| runner.build())?;
+		self.for_each_variant(|runner| runner.test())
 	}
 
 	fn test_dev(&self, variant_name: Option<&str>) -> Result<(), String> {
@@ -187,10 +187,18 @@ impl RunConfig {
 	}
 
 	fn test_dev_changes(&self, variant_name: Option<&str>) -> Result<(), String> {
-		let Some(variant_name) = variant_name else {
-			return Err("test-dev-changes requires -variant".to_owned());
-		};
-		self.for_each_selected_variant(Some(variant_name), |runner| runner.test_dev_changes())
+		/*
+		Dev-changes modifies shared source files (dev_marker.rs,
+		root.ts, main.critical.css) and restores them via guards, so
+		variants must run serially even when no single variant is
+		selected. Running them in one process invocation still saves
+		two of three dev binary builds.
+		*/
+		if let Some(variant_name) = variant_name {
+			return self
+				.for_each_selected_variant(Some(variant_name), |runner| runner.test_dev_changes());
+		}
+		self.for_each_variant_serial(|runner| runner.test_dev_changes())
 	}
 
 	fn serve_dev(&self, name: &str) -> Result<(), String> {
@@ -446,7 +454,7 @@ impl VariantRunner {
 	}
 
 	fn build_dev_binary(&self) -> Result<(PathBuf, impl FnOnce()), String> {
-		let target_dir = bombadil_dev_cargo_dir(self.variant.name);
+		let target_dir = bombadil_dev_cargo_dir();
 		fs::create_dir_all(&target_dir).map_err(|error| {
 			format!(
 				"create dev Cargo target dir {}: {error}",
@@ -463,7 +471,7 @@ impl VariantRunner {
 			"--target-dir",
 		]);
 		build_cmd.arg(&target_dir);
-		let log_path = bombadil_logs_dir().join(format!("build-dev-{}.log", self.variant.name));
+		let log_path = bombadil_logs_dir().join("build-dev.log");
 		self.run_command_to_log(&mut build_cmd, &log_path)?;
 		let build_binary = target_dir
 			.join("debug")
@@ -482,7 +490,7 @@ impl VariantRunner {
 		fs::create_dir_all(&bin_dir).map_err(|error| error.to_string())?;
 
 		self.log("building server binary");
-		let target_dir = bombadil_server_cargo_dir(self.variant.name);
+		let target_dir = bombadil_server_cargo_dir();
 		let mut cmd = Command::new("cargo");
 		cmd.args([
 			"build",
@@ -494,8 +502,6 @@ impl VariantRunner {
 			"--target-dir",
 		]);
 		cmd.arg(&target_dir);
-		cmd.env(BOMBADIL_VARIANT_ENV_KEY, self.variant.name);
-		cmd.env(BOMBADIL_MODE_ENV_KEY, BOMBADIL_MODE_PROD);
 		let log_path =
 			bombadil_logs_dir().join(format!("build-prod-{}-server.log", self.variant.name));
 		self.run_command_to_log(&mut cmd, &log_path)?;
@@ -519,7 +525,9 @@ impl VariantRunner {
 			"vorma-framework-tests",
 			"--bin",
 			"framework-build",
+			"--target-dir",
 		]);
+		cmd.arg(bombadil_dev_cargo_dir());
 		cmd.env(BOMBADIL_VARIANT_ENV_KEY, self.variant.name);
 		cmd.env(BOMBADIL_DEPLOYMENT_ENV_KEY, deployment);
 		cmd.env(BOMBADIL_MODE_ENV_KEY, BOMBADIL_MODE_PROD);
@@ -828,7 +836,6 @@ impl VariantRunner {
 			framework_prod_dist_dir(self.variant.name, DEPLOYMENT_A_SUFFIX),
 			framework_prod_dist_dir(self.variant.name, DEPLOYMENT_B_SUFFIX),
 			bombadil_server_bin_dir(self.variant.name),
-			bombadil_server_cargo_dir(self.variant.name),
 			bombadil_vite_cache_dir(BOMBADIL_MODE_PROD, self.variant.name),
 		] {
 			remove_dir_all_if_exists(&path, "successful production generated artifacts")?;
@@ -936,16 +943,12 @@ fn bombadil_server_bin_dir(variant_name: &str) -> PathBuf {
 		.join(variant_name)
 }
 
-fn bombadil_dev_cargo_dir(variant_name: &str) -> PathBuf {
-	framework_root()
-		.join(BOMBADIL_DEV_CARGO_DIR)
-		.join(variant_name)
+fn bombadil_dev_cargo_dir() -> PathBuf {
+	framework_root().join(BOMBADIL_DEV_CARGO_DIR)
 }
 
-fn bombadil_server_cargo_dir(variant_name: &str) -> PathBuf {
-	framework_root()
-		.join(BOMBADIL_SERVER_CARGO_DIR)
-		.join(variant_name)
+fn bombadil_server_cargo_dir() -> PathBuf {
+	framework_root().join(BOMBADIL_SERVER_CARGO_DIR)
 }
 
 fn bombadil_vite_cache_dir(mode: &str, variant_name: &str) -> PathBuf {
@@ -1160,8 +1163,8 @@ mod tests {
 	fn harness_server_artifacts_do_not_use_vorma_output_namespace() {
 		for path in [
 			bombadil_server_bin_dir("react"),
-			bombadil_dev_cargo_dir("react"),
-			bombadil_server_cargo_dir("react"),
+			bombadil_dev_cargo_dir(),
+			bombadil_server_cargo_dir(),
 			bombadil_vite_cache_dir(BOMBADIL_MODE_DEV, "react"),
 		] {
 			assert!(path.is_absolute());

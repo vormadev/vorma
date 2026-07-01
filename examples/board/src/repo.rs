@@ -3,37 +3,27 @@
 READS are `Task`s: the dedupe key is (task identity, typed input), so a
 request that needs the same fact twice — middleware preloading the
 current user, the story page loading story/comments/author in
-parallel — pays for one database read. TTLs are cache POLICY per domain
-operation: `Duration::ZERO` (request-scoped dedupe only) is the default
-for anything a user can mutate; only deliberately stale-tolerant reads
-get a nonzero TTL.
+parallel — pays for one database read. Default task caching stays inside
+one execution context; only deliberately stale-tolerant reads opt into an
+extended cache.
 
 WRITES are plain async fns — mutations must never dedupe.
 */
 
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
-use vorma::Task;
 
 use crate::store::{Db, db_err};
 
-/*
-FINDING (ledger F-1): task bodies must return Result<O, TaskError<E>>,
-so every fallible body hand-wraps its error. This helper exists ONLY to
-absorb that friction — with From<E> on TaskError, `?` would just work
-and this would be `blocking` alone.
-*/
-async fn blocking_task<T, F>(db: Arc<Db>, f: F) -> Result<T, vorma::TaskError<vorma::Error>>
+async fn blocking_task<T, F>(db: Arc<Db>, f: F) -> Result<T, vorma::tasks::Error<vorma::Error>>
 where
 	T: Send + 'static,
 	F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
 {
-	blocking(db, f)
-		.await
-		.map_err(|error| vorma::TaskError::Failed(std::sync::Arc::new(error)))
+	blocking(db, f).await.map_err(Into::into)
 }
 
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
@@ -122,10 +112,10 @@ fn story_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Story> {
 
 pub const FRONT_PAGE_SIZE: i64 = 30;
 
-/// Score-ranked front page, one page at a time.
-pub static STORIES_PAGE: LazyLock<Task<DbInput<i64>, Vec<Story>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<i64>| async move {
+// Score-ranked front page, one page at a time.
+vorma::tasks::task! {
+	pub static STORIES_PAGE: vorma::tasks::Task<DbInput<i64>, Vec<Story>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<i64>| async move {
 			let page = arg.input.max(1);
 			blocking_task(arg.db, move |conn| {
 				let mut statement = conn.prepare(&format!(
@@ -143,12 +133,12 @@ pub static STORIES_PAGE: LazyLock<Task<DbInput<i64>, Vec<Story>, vorma::Error>> 
 				rows.collect()
 			})
 			.await
-		})
-	});
+		});
+}
 
-pub static STORY_BY_ID: LazyLock<Task<DbInput<i64>, Option<Story>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<i64>| async move {
+vorma::tasks::task! {
+	pub static STORY_BY_ID: vorma::tasks::Task<DbInput<i64>, Option<Story>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<i64>| async move {
 			let id = arg.input;
 			blocking_task(arg.db, move |conn| {
 				conn.query_row(
@@ -162,12 +152,12 @@ pub static STORY_BY_ID: LazyLock<Task<DbInput<i64>, Option<Story>, vorma::Error>
 				.optional()
 			})
 			.await
-		})
-	});
+		});
+}
 
-pub static COMMENTS_FOR_STORY: LazyLock<Task<DbInput<i64>, Vec<Comment>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<i64>| async move {
+vorma::tasks::task! {
+	pub static COMMENTS_FOR_STORY: vorma::tasks::Task<DbInput<i64>, Vec<Comment>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<i64>| async move {
 			let story_id = arg.input;
 			blocking_task(arg.db, move |conn| {
 				let mut statement = conn.prepare(
@@ -188,14 +178,14 @@ pub static COMMENTS_FOR_STORY: LazyLock<Task<DbInput<i64>, Vec<Comment>, vorma::
 				rows.collect()
 			})
 			.await
-		})
-	});
+		});
+}
 
-/// Session token -> user, the per-request preload shared by middleware
-/// and every handler that asks again.
-pub static USER_FOR_SESSION: LazyLock<Task<DbInput<String>, Option<User>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<String>| async move {
+// Session token -> user, the per-request preload shared by middleware
+// and every handler that asks again.
+vorma::tasks::task! {
+	pub static USER_FOR_SESSION: vorma::tasks::Task<DbInput<String>, Option<User>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<String>| async move {
 			let token = arg.input;
 			blocking_task(arg.db, move |conn| {
 				conn.query_row(
@@ -213,8 +203,8 @@ pub static USER_FOR_SESSION: LazyLock<Task<DbInput<String>, Option<User>, vorma:
 				.optional()
 			})
 			.await
-		})
-	});
+		});
+}
 
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
 pub struct UserProfile {
@@ -240,9 +230,9 @@ pub struct ModLogEntry {
 	pub created_at: i64,
 }
 
-pub static USER_PROFILE: LazyLock<Task<DbInput<String>, Option<UserProfile>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<String>| async move {
+vorma::tasks::task! {
+	pub static USER_PROFILE: vorma::tasks::Task<DbInput<String>, Option<UserProfile>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<String>| async move {
 			let username = arg.input;
 			blocking_task(arg.db, move |conn| {
 				conn.query_row(
@@ -260,12 +250,12 @@ pub static USER_PROFILE: LazyLock<Task<DbInput<String>, Option<UserProfile>, vor
 				.optional()
 			})
 			.await
-		})
-	});
+		});
+}
 
-pub static STORIES_BY_AUTHOR: LazyLock<Task<DbInput<String>, Vec<Story>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<String>| async move {
+vorma::tasks::task! {
+	pub static STORIES_BY_AUTHOR: vorma::tasks::Task<DbInput<String>, Vec<Story>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<String>| async move {
 			let username = arg.input;
 			blocking_task(arg.db, move |conn| {
 				let mut statement = conn.prepare(&format!(
@@ -275,12 +265,12 @@ pub static STORIES_BY_AUTHOR: LazyLock<Task<DbInput<String>, Vec<Story>, vorma::
 				rows.collect()
 			})
 			.await
-		})
-	});
+		});
+}
 
-pub static COMMENTS_BY_AUTHOR: LazyLock<Task<DbInput<String>, Vec<Comment>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<String>| async move {
+vorma::tasks::task! {
+	pub static COMMENTS_BY_AUTHOR: vorma::tasks::Task<DbInput<String>, Vec<Comment>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<String>| async move {
 			let username = arg.input;
 			blocking_task(arg.db, move |conn| {
 				let mut statement = conn.prepare(
@@ -299,60 +289,54 @@ pub static COMMENTS_BY_AUTHOR: LazyLock<Task<DbInput<String>, Vec<Comment>, vorm
 				rows.collect()
 			})
 			.await
-		})
-	});
+		});
+}
 
 /*
 Docs pages are seeded content that only changes on redeploy or
 seed-data edits: a deliberately stale-tolerant nonzero TTL, the one
 place this app wants cross-request task caching.
 */
-pub static DOCS_PAGE: LazyLock<Task<DbInput<String>, Option<DocsPage>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(
-			Duration::from_secs(30),
-			|_ctx, arg: DbInput<String>| async move {
-				let slug = arg.input;
-				blocking_task(arg.db, move |conn| {
-					conn.query_row(
-						"SELECT slug, title, body FROM docs_pages WHERE slug = ?1",
-						params![slug],
-						|row| {
-							Ok(DocsPage {
-								slug: row.get(0)?,
-								title: row.get(1)?,
-								body: row.get(2)?,
-							})
-						},
-					)
-					.optional()
-				})
-				.await
-			},
-		)
-	});
-
-pub static DOCS_INDEX: LazyLock<Task<DbInput<()>, Vec<DocsPage>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(
-			Duration::from_secs(30),
-			|_ctx, arg: DbInput<()>| async move {
-				blocking_task(arg.db, move |conn| {
-					let mut statement =
-						conn.prepare("SELECT slug, title, body FROM docs_pages ORDER BY slug")?;
-					let rows = statement.query_map([], |row| {
+vorma::tasks::task! {
+	pub static DOCS_PAGE: vorma::tasks::Task<DbInput<String>, Option<DocsPage>, vorma::Error> =
+		extended_cache(Duration::from_secs(30), |_ctx, arg: DbInput<String>| async move {
+			let slug = arg.input;
+			blocking_task(arg.db, move |conn| {
+				conn.query_row(
+					"SELECT slug, title, body FROM docs_pages WHERE slug = ?1",
+					params![slug],
+					|row| {
 						Ok(DocsPage {
 							slug: row.get(0)?,
 							title: row.get(1)?,
 							body: row.get(2)?,
 						})
-					})?;
-					rows.collect()
-				})
-				.await
-			},
-		)
-	});
+					},
+				)
+				.optional()
+			})
+			.await
+		});
+}
+
+vorma::tasks::task! {
+	pub static DOCS_INDEX: vorma::tasks::Task<DbInput<()>, Vec<DocsPage>, vorma::Error> =
+		extended_cache(Duration::from_secs(30), |_ctx, arg: DbInput<()>| async move {
+			blocking_task(arg.db, move |conn| {
+				let mut statement =
+					conn.prepare("SELECT slug, title, body FROM docs_pages ORDER BY slug")?;
+				let rows = statement.query_map([], |row| {
+					Ok(DocsPage {
+						slug: row.get(0)?,
+						title: row.get(1)?,
+						body: row.get(2)?,
+					})
+				})?;
+				rows.collect()
+			})
+			.await
+		});
+}
 
 #[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub struct SearchKey {
@@ -360,9 +344,9 @@ pub struct SearchKey {
 	pub page: i64,
 }
 
-pub static SEARCH_STORIES: LazyLock<Task<DbInput<SearchKey>, Vec<Story>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<SearchKey>| async move {
+vorma::tasks::task! {
+	pub static SEARCH_STORIES: vorma::tasks::Task<DbInput<SearchKey>, Vec<Story>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<SearchKey>| async move {
 			let SearchKey { q, page } = arg.input;
 			let page = page.max(1);
 			blocking_task(arg.db, move |conn| {
@@ -377,12 +361,12 @@ pub static SEARCH_STORIES: LazyLock<Task<DbInput<SearchKey>, Vec<Story>, vorma::
 				rows.collect()
 			})
 			.await
-		})
-	});
+		});
+}
 
-pub static KILLED_STORIES: LazyLock<Task<DbInput<()>, Vec<Story>, vorma::Error>> = LazyLock::new(
-	|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<()>| async move {
+vorma::tasks::task! {
+	pub static KILLED_STORIES: vorma::tasks::Task<DbInput<()>, Vec<Story>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<()>| async move {
 			blocking_task(arg.db, move |conn| {
 				let mut statement = conn.prepare(&format!(
 					"SELECT {STORY_COLUMNS} FROM stories s 					JOIN users u ON u.id = s.author_id 					WHERE s.killed = 1 ORDER BY s.created_at DESC LIMIT 100"
@@ -391,13 +375,12 @@ pub static KILLED_STORIES: LazyLock<Task<DbInput<()>, Vec<Story>, vorma::Error>>
 				rows.collect()
 			})
 			.await
-		})
-	},
-);
+		});
+}
 
-pub static MOD_LOG: LazyLock<Task<DbInput<()>, Vec<ModLogEntry>, vorma::Error>> = LazyLock::new(
-	|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<()>| async move {
+vorma::tasks::task! {
+	pub static MOD_LOG: vorma::tasks::Task<DbInput<()>, Vec<ModLogEntry>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<()>| async move {
 			blocking_task(arg.db, move |conn| {
 				let mut statement = conn.prepare(
 					"SELECT m.id, u.username, m.story_id, m.action, m.created_at 					FROM mod_log m JOIN users u ON u.id = m.moderator_id 					ORDER BY m.created_at DESC, m.id DESC LIMIT 100",
@@ -414,9 +397,8 @@ pub static MOD_LOG: LazyLock<Task<DbInput<()>, Vec<ModLogEntry>, vorma::Error>> 
 				rows.collect()
 			})
 			.await
-		})
-	},
-);
+		});
+}
 
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
 pub struct Attachment {
@@ -426,9 +408,9 @@ pub struct Attachment {
 	pub body: Vec<u8>,
 }
 
-pub static ATTACHMENT_FOR_STORY: LazyLock<Task<DbInput<i64>, Option<Attachment>, vorma::Error>> =
-	LazyLock::new(|| {
-		Task::new(Duration::ZERO, |_ctx, arg: DbInput<i64>| async move {
+vorma::tasks::task! {
+	pub static ATTACHMENT_FOR_STORY: vorma::tasks::Task<DbInput<i64>, Option<Attachment>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<i64>| async move {
 			let story_id = arg.input;
 			blocking_task(arg.db, move |conn| {
 				conn.query_row(
@@ -445,10 +427,12 @@ pub static ATTACHMENT_FOR_STORY: LazyLock<Task<DbInput<i64>, Option<Attachment>,
 				.optional()
 			})
 			.await
-		})
-	});
+		});
+}
 
-// ---- writes: plain async fns, never deduped ----
+/////// Writes
+
+// Writes are plain async functions, never task-deduped.
 
 pub async fn login(db: Arc<Db>, username: String, token: String) -> vorma::Result<User> {
 	blocking(db, move |conn| {

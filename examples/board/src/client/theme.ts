@@ -1,5 +1,10 @@
 import { atom, getDefaultStore } from "jotai";
-import { initTheme } from "vorma/kit/theme";
+import { initTheme, type ResolvedTheme, type Theme } from "vorma/kit/theme";
+
+type ThemeAtomState = {
+	theme: Theme;
+	resolved: ResolvedTheme;
+};
 
 const {
 	getTheme,
@@ -14,18 +19,18 @@ jotai owns the React-visible state; the kit owns storage, classes, and
 cross-tab broadcast. The listener keeps the atom current for ANY source
 of change — this tab, another tab, or the OS flipping its color scheme.
 */
-export const themeAtom = atom({
+export const theme_atom = atom<ThemeAtomState>({
 	theme: getTheme(),
 	resolved: getResolvedTheme(),
 });
 
 addThemeChangeListener((e) => {
-	getDefaultStore().set(themeAtom, {
+	getDefaultStore().set(theme_atom, {
 		theme: e.detail.theme,
 		resolved: e.detail.resolved_theme,
 	});
 });
 
-export function toggleTheme() {
+export function toggle_theme() {
 	setTheme(getNextToggleValue(getTheme()));
 }

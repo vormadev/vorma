@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::execution_engine::{HandlerRole, RouteExecutionReport};
 use crate::response_finalizer::ViewPayload;
 use crate::runtime_manifest::RuntimeManifest;
+use serde_json::Value;
 
 /// Build a browser view payload from a completed view execution report.
 pub fn project_view_payload(
@@ -57,7 +58,7 @@ pub fn project_view_payload(
 		.committed()
 		.iter()
 		.filter(|commit| commit.role() == HandlerRole::View)
-		.filter_map(|commit| commit.output().data_value().cloned())
+		.map(|commit| commit.output().data_value().cloned().unwrap_or(Value::Null))
 		.collect();
 	Ok(ViewPayload {
 		matched_patterns: report.matched_patterns().to_vec(),
@@ -252,6 +253,30 @@ mod tests {
 			]
 		);
 		assert_eq!(payload.title.unwrap().dangerous_inner_html, "Story");
+	}
+
+	#[tokio::test]
+	async fn payload_projection_preserves_empty_view_output_slots() {
+		let engine = engine_for_story_views();
+		let mut handlers: HandlerRegistry = HandlerRegistry::default();
+		handlers.insert(handler_id("root"), |_| async { Ok(HandlerOutput::empty()) });
+		handlers.insert(handler_id("story"), |_| async {
+			Ok(HandlerOutput::data(serde_json::json!({"story": 2})))
+		});
+		let report = engine
+			.execute(RequestInput::new(Method::GET, "/stories/42"), &handlers)
+			.await
+			.unwrap();
+		let RequestExecutionReport::View(report) = report else {
+			panic!("expected view report");
+		};
+
+		let payload = project_view_payload(&story_manifest(), &report).unwrap();
+
+		assert_eq!(
+			payload.views_data,
+			[serde_json::Value::Null, serde_json::json!({"story": 2})]
+		);
 	}
 
 	#[tokio::test]

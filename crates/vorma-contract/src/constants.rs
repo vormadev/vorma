@@ -16,3 +16,5 @@ pub const VORMA_ROOT_EL_ID: &str = "vorma-root";
 pub const VORMA_DATA_JSON_SCRIPT_EL_ID: &str = "vorma-data-json";
 /// Platform `FormData` TypeScript type name used by generated contracts.
 pub const FORM_DATA_TYPE_NAME: &str = "FormData";
+/// Platform `Blob` TypeScript type name used by generated contracts.
+pub const BLOB_TYPE_NAME: &str = "Blob";

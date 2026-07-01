@@ -1,4 +1,4 @@
-use vorma::TaskClock;
+use vorma::tasks::Clock;
 
 #[test]
 fn root_head_helpers_are_usable_externally() {
@@ -68,14 +68,14 @@ fn root_ts_helpers_are_usable_externally() {
 
 #[test]
 fn root_task_helpers_are_usable_externally() {
-	let clock = vorma::SystemTaskClock::new();
-	let _: vorma::TaskClockInstant = clock.now();
+	let clock = vorma::tasks::SystemClock::new();
+	let _: vorma::tasks::ClockInstant = clock.now();
 
-	let task_error: vorma::TaskError<vorma::Error> = vorma::Error::new("boom").into();
-	assert!(matches!(task_error, vorma::TaskError::Failed(_)));
+	let task_error: vorma::tasks::Error<vorma::Error> = vorma::Error::new("boom").into();
+	assert!(matches!(task_error, vorma::tasks::Error::Failed(_)));
 
-	let _: vorma::TaskResult<(), vorma::Error> = Ok(());
-	let _: vorma::TasksOptions<vorma::Error> = vorma::TasksOptions::default();
+	let _: vorma::tasks::Result<(), vorma::Error> = Ok(());
+	let _: vorma::tasks::TasksOptions<vorma::Error> = vorma::tasks::TasksOptions::default();
 }
 
 #[allow(dead_code)]

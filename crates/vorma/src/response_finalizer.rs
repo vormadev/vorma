@@ -187,7 +187,7 @@ impl ResponseEffects {
 		if let Some(index) = self
 			.cookies
 			.iter()
-			.position(|existing| existing.name() == cookie.name())
+			.position(|existing| existing.has_same_identity(&cookie))
 		{
 			self.cookies.remove(index);
 		}
@@ -353,6 +353,10 @@ impl ResponseCookie {
 
 	fn header_value(&self) -> &str {
 		&self.header_value
+	}
+
+	fn has_same_identity(&self, other: &Self) -> bool {
+		self.name == other.name && self.domain == other.domain && self.path == other.path
 	}
 }
 
@@ -686,21 +690,57 @@ mod tests {
 	}
 
 	#[test]
-	fn finalizer_merges_cookies_by_name_with_later_values() {
+	fn finalizer_merges_cookies_by_name_domain_and_path_with_later_values() {
 		let mut first = ResponseEffects::default();
-		first.set_cookie(Cookie::build(("session", "old")).path("/").build());
-		first.set_cookie(Cookie::build(("theme", "dark")).build());
+		first.set_cookie(Cookie::build(("session", "root-old")).path("/").build());
 		let mut second = ResponseEffects::default();
-		second.set_cookie(Cookie::build(("session", "new")).path("/").build());
+		first.set_cookie(
+			Cookie::build(("session", "domain-old"))
+				.domain("example.com")
+				.build(),
+		);
+		second.set_cookie(Cookie::build(("session", "root-new")).path("/").build());
 		second.set_cookie(Cookie::build(("session", "nested")).path("/nested").build());
+		second.set_cookie(
+			Cookie::build(("session", "domain-new"))
+				.domain("example.com")
+				.build(),
+		);
 
 		first.merge_from(&second);
 
-		assert_eq!(first.cookies().len(), 2);
-		assert_eq!(first.cookies()[0].name(), "theme");
-		assert_eq!(first.cookies()[1].name(), "session");
-		assert_eq!(first.cookies()[1].value(), "nested");
-		assert_eq!(first.cookies()[1].path(), Some("/nested"));
+		assert_eq!(
+			first
+				.cookies()
+				.iter()
+				.map(|cookie| (
+					cookie.name(),
+					cookie.value(),
+					cookie.domain(),
+					cookie.path()
+				))
+				.collect::<Vec<_>>(),
+			[
+				("session", "root-new", None, Some("/")),
+				("session", "nested", None, Some("/nested")),
+				("session", "domain-new", Some("example.com"), None),
+			]
+		);
+
+		let response = finalize_response(Bytes::new(), &first, "build-id").unwrap();
+		assert_eq!(
+			response
+				.headers()
+				.get_all(SET_COOKIE)
+				.iter()
+				.map(|value| value.to_str().unwrap())
+				.collect::<Vec<_>>(),
+			[
+				"session=root-new; Path=/",
+				"session=nested; Path=/nested",
+				"session=domain-new; Domain=example.com",
+			]
+		);
 	}
 
 	#[test]

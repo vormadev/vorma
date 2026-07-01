@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Vorma Board mark">
+	<rect width="48" height="48" rx="8" fill="#111" />
+	<path d="M12 14h24v5H18v7h16v5H18v3h19v5H12z" fill="#fff" />
+</svg>

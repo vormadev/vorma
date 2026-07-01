@@ -22,6 +22,7 @@ import {
 	VERCEL_X_DEPLOYMENT_ID,
 	X_CLIENT_REDIRECT,
 	X_VORMA_BUILD_SKEW,
+	X_VORMA_RESOURCE_BODY,
 } from "./constants.ts";
 
 register_ccc_lifecycle(beforeEach, afterEach);
@@ -87,6 +88,37 @@ describe("submit", () => {
 		const result = await sub;
 
 		expect(result).toMatchObject({ success: true, data: "plain-text-ok" });
+	});
+
+	it("returns success with Blob for marked resource body responses", async () => {
+		const { core } = await setup();
+		const { call, wait_for } = mock_fetch();
+
+		const sub = core.submit_inner(
+			"/api/download",
+			{ method: "GET" },
+			{
+				revalidate: false,
+			},
+		);
+		await wait_for(1);
+		call(0).resolve(
+			new Response("file-bytes", {
+				headers: {
+					"Content-Type": "text/plain",
+					[X_VORMA_RESOURCE_BODY]: "1",
+				},
+			}),
+		);
+		const result = await sub;
+
+		expect(result.success).toBe(true);
+		if (!result.success) {
+			throw new Error(result.error);
+		}
+		expect(result.data).toBeInstanceOf(Blob);
+		expect((result.data as Blob).type).toBe("text/plain");
+		expect(await (result.data as Blob).text()).toBe("file-bytes");
 	});
 
 	it("returns success with undefined data for 204 responses", async () => {

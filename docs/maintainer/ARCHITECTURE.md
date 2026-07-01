@@ -1,8 +1,8 @@
-# Vorma Architecture (post-collapse)
+# Vorma Architecture
 
-Maintainer-facing map of the system as it stands after the single-binary collapse. Written
-as review: where something reads awkwardly here, it is either justified inline or recorded
-as a finding in [CURRENT_PLAN_3.md](CURRENT_PLAN_3.md).
+Maintainer-facing map of the current system. Keep this file updated in the same change as
+architecture-level edits so later agents do not have to reconstruct current truth from
+historical plans.
 
 ## Crate and package layout
 
@@ -124,11 +124,12 @@ env-gated and compiled out of the prod path where possible.
 
 ## Client core
 
-`packages/vorma/core` decomposed into focused modules (revalidation scheduler, work
+`packages/vorma/core` is decomposed into focused modules (revalidation scheduler, work
 projection, redirects, wire payload, client loaders, route modules, submissions, history
-position, head, css). The companion mega-suite `create_client_core.test.ts` still mirrors
-the old monolith and is tracked for decomposition alongside the source split
-(CURRENT_PLAN_3).
+position, head, css). The old monolithic companion test suite has been decomposed into
+focused suites such as `core_boot.test.ts`, `core_client_loaders.test.ts`,
+`core_navigation.test.ts`, `core_revalidation_and_work.test.ts`,
+`core_scroll_and_history.test.ts`, and the lower-level module tests beside them.
 
 ## Known asymmetries (deliberate)
 
@@ -137,4 +138,5 @@ the old monolith and is tracked for decomposition alongside the source split
 - The OS watch-root set is session-static; a brand-new watch ROOT (e.g. a config change
   pointing at a new directory) needs a dev restart — same reach as Go, guarded by the
   explicit config-transition error.
-- `runtime_*` module prefix in `vorma` is parked pending a user ruling.
+- The `runtime_*` module prefix in `vorma` is deliberate: it keeps crate-private runtime
+  layers visually grouped and distinct from the public app-declaration surface.

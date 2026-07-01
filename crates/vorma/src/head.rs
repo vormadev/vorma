@@ -442,10 +442,6 @@ pub(crate) fn prepare_head_element(
 	})
 }
 
-pub(crate) fn prepare_static_head_element(element: DocumentElementContract) -> HeadElement {
-	prepare_head_element(element).expect("static head element contract is valid")
-}
-
 /*
 Shared head-element vocabulary used by handler contexts and view-response
 head merging.

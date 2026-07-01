@@ -3,14 +3,13 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rustc_hash::FxHashMap;
 use smallvec::SmallVec;
 
 use crate::sync::{AtomicUsize, Mutex, Ordering};
 
 use crate::clock::ClockInstant;
 use crate::error::{Error, Result};
-use crate::key::{DynKey, KeyData, KeyFingerprint};
+use crate::key::{DynKey, FingerprintHashMap, KeyData, KeyFingerprint};
 
 const STORE_CLEANUP_INTERVAL: usize = 64;
 
@@ -29,7 +28,7 @@ impl<E> Store<E> {
 		Self {
 			lookups: AtomicUsize::new(0),
 			state: Mutex::new(StoreState {
-				slots: FxHashMap::default(),
+				slots: FingerprintHashMap::default(),
 				entry_count: 0,
 			}),
 			max_entries,
@@ -50,14 +49,21 @@ impl<E> Store<E> {
 		I: Clone + Eq + Hash + Send + Sync + 'static,
 	{
 		let mut stale_slots_removed = 0usize;
+		let ttl_now = ttl.map(|_| now());
 		let cleanup_due = ttl.is_some()
 			&& self
 				.lookups
 				.fetch_add(1, Ordering::Relaxed)
 				.is_multiple_of(STORE_CLEANUP_INTERVAL);
-		let mut state = self.state.lock().expect("task store lock poisoned");
+		let mut state = self
+			.state
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner());
 		if cleanup_due {
-			let removed = cleanup_expired_slots(&mut state.slots, now());
+			let removed = cleanup_expired_slots(
+				&mut state.slots,
+				ttl_now.expect("TTL store should read the clock before cleanup"),
+			);
 			state.entry_count = state.entry_count.saturating_sub(removed);
 			stale_slots_removed += removed;
 		}
@@ -67,7 +73,10 @@ impl<E> Store<E> {
 		let mut found_slot = None;
 		if let Some(bucket) = state.slots.get_mut(&fingerprint) {
 			if ttl.is_some() && !cleanup_due {
-				bucket_removed = retain_live_slots(bucket, now());
+				bucket_removed = retain_live_slots(
+					bucket,
+					ttl_now.expect("TTL store should read the clock before bucket cleanup"),
+				);
 			}
 			found_slot = bucket
 				.iter()
@@ -91,7 +100,10 @@ impl<E> Store<E> {
 		if let Some(max_entries) = self.max_entries
 			&& state.entry_count >= max_entries
 		{
-			let removed = cleanup_expired_slots(&mut state.slots, now());
+			let removed = cleanup_expired_slots(
+				&mut state.slots,
+				ttl_now.expect("TTL store should read the clock before capacity cleanup"),
+			);
 			state.entry_count = state.entry_count.saturating_sub(removed);
 			stale_slots_removed += removed;
 			if state.entry_count >= max_entries {
@@ -119,15 +131,34 @@ impl<E> Store<E> {
 			stale_slots_removed,
 		}
 	}
+
+	pub(crate) fn remove_slot(&self, slot: &Arc<Slot<E>>) -> bool {
+		let fingerprint = slot.key.fingerprint();
+		let mut state = self
+			.state
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner());
+		let Some(bucket) = state.slots.get_mut(&fingerprint) else {
+			return false;
+		};
+		let before = bucket.len();
+		bucket.retain(|existing| !Arc::ptr_eq(existing, slot));
+		let removed = before - bucket.len();
+		if bucket.is_empty() {
+			state.slots.remove(&fingerprint);
+		}
+		state.entry_count = state.entry_count.saturating_sub(removed);
+		removed > 0
+	}
 }
 
 struct StoreState<E> {
-	slots: FxHashMap<KeyFingerprint, SlotBucket<E>>,
+	slots: FingerprintHashMap<SlotBucket<E>>,
 	entry_count: usize,
 }
 
 fn cleanup_expired_slots<E>(
-	slots: &mut FxHashMap<KeyFingerprint, SlotBucket<E>>,
+	slots: &mut FingerprintHashMap<SlotBucket<E>>,
 	now: ClockInstant,
 ) -> usize {
 	let mut stale_slots_removed = 0usize;
@@ -184,7 +215,10 @@ impl<E> Slot<E> {
 	}
 
 	fn is_expired(&self, now: ClockInstant) -> bool {
-		let state = self.state.lock().expect("slot state lock poisoned");
+		let state = self
+			.state
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner());
 		match &*state {
 			SlotState::Done {
 				expires_at: Some(expires_at),
@@ -195,7 +229,10 @@ impl<E> Slot<E> {
 	}
 
 	pub(crate) fn claim(&self) -> SlotClaim<E> {
-		let mut state = self.state.lock().expect("slot state lock poisoned");
+		let mut state = self
+			.state
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner());
 		match &*state {
 			SlotState::Done { outcome, .. } => SlotClaim::Ready(outcome.clone()),
 			SlotState::Running => SlotClaim::Wait,
@@ -217,7 +254,10 @@ impl<E> Slot<E> {
 	}
 
 	pub(crate) fn finish(&self, outcome: StoredOutcome<E>, expires_at: Option<ClockInstant>) {
-		let mut state = self.state.lock().expect("slot state lock poisoned");
+		let mut state = self
+			.state
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner());
 		*state = SlotState::Done {
 			outcome,
 			expires_at,
@@ -229,7 +269,10 @@ impl<E> Slot<E> {
 	}
 
 	pub(crate) fn abandon(&self) {
-		let mut state = self.state.lock().expect("slot state lock poisoned");
+		let mut state = self
+			.state
+			.lock()
+			.unwrap_or_else(|poison| poison.into_inner());
 		if matches!(*state, SlotState::Running) {
 			*state = SlotState::Empty;
 		}
@@ -280,16 +323,27 @@ impl<E> Clone for StoredOutcome<E> {
 }
 
 pub(crate) struct RunningGuard<E> {
+	store: Arc<Store<E>>,
 	slot: Arc<Slot<E>>,
 	active: bool,
 }
 
 impl<E> RunningGuard<E> {
-	pub(crate) fn new(slot: Arc<Slot<E>>) -> Self {
-		Self { slot, active: true }
+	pub(crate) fn new(store: Arc<Store<E>>, slot: Arc<Slot<E>>) -> Self {
+		Self {
+			store,
+			slot,
+			active: true,
+		}
 	}
 
 	pub(crate) fn disarm(mut self) {
+		self.active = false;
+	}
+
+	pub(crate) fn remove_and_abandon(mut self) {
+		self.store.remove_slot(&self.slot);
+		self.slot.abandon();
 		self.active = false;
 	}
 }
@@ -297,6 +351,7 @@ impl<E> RunningGuard<E> {
 impl<E> Drop for RunningGuard<E> {
 	fn drop(&mut self) {
 		if self.active {
+			self.store.remove_slot(&self.slot);
 			self.slot.abandon();
 		}
 	}
@@ -377,7 +432,7 @@ where
 	match outcome {
 		StoredOutcome::Ok(value) => value
 			.downcast::<O>()
-			.map_err(|_| Error::TypeMismatch { task: task_name }),
+			.map_err(|_| Error::TypeMismatch { task_name }),
 		StoredOutcome::Err(error) => Err(error),
 	}
 }

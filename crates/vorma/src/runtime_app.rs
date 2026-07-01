@@ -60,13 +60,15 @@ impl<'a> RuntimeAppRequest<'a> {
 	/// Create a runtime app request from an HTTP request with a percent-decoded path.
 	pub fn try_from_http_request(request: Request<Bytes>) -> Result<Self, RuntimeAppRequestError> {
 		let (parts, body) = request.into_parts();
+		let method = parts.method;
 		let decoded_path = percent_decode_str(parts.uri.path())
 			.decode_utf8()
 			.map_err(|_| RuntimeAppRequestError::InvalidRequestPathUtf8 {
+				method: method.clone(),
 				path: parts.uri.path().to_owned(),
 			})?
 			.into_owned();
-		let request = RequestInput::from_http_uri(parts.method, parts.uri, decoded_path)
+		let request = RequestInput::from_http_uri(method, parts.uri, decoded_path)
 			.with_headers(parts.headers)
 			.with_extensions(parts.extensions)
 			.with_body(body);
@@ -89,6 +91,8 @@ impl<'a> RuntimeAppRequest<'a> {
 pub enum RuntimeAppRequestError {
 	/// Request path was not valid UTF-8 after percent decoding.
 	InvalidRequestPathUtf8 {
+		/// Rejected request method.
+		method: Method,
 		/// Rejected raw path.
 		path: String,
 	},
@@ -239,8 +243,8 @@ impl CommittedRuntimeApp {
 	{
 		let request = match RuntimeAppRequest::try_from_http_request(request) {
 			Ok(request) => request.with_view_html_input(view_html),
-			Err(RuntimeAppRequestError::InvalidRequestPathUtf8 { .. }) => {
-				return Ok(bad_request_response());
+			Err(RuntimeAppRequestError::InvalidRequestPathUtf8 { method, .. }) => {
+				return suppress_head_response_if_needed(bad_request_response(), &method);
 			}
 		};
 		self.handle_request(request, asset_provider).await
@@ -260,8 +264,8 @@ impl CommittedRuntimeApp {
 	{
 		let request = match RuntimeAppRequest::try_from_http_request(request) {
 			Ok(request) => request.with_view_html_input(view_html),
-			Err(RuntimeAppRequestError::InvalidRequestPathUtf8 { .. }) => {
-				return Ok(bad_request_response());
+			Err(RuntimeAppRequestError::InvalidRequestPathUtf8 { method, .. }) => {
+				return suppress_head_response_if_needed(bad_request_response(), &method);
 			}
 		};
 		self.handle_request_with_document_provider(request, asset_provider, document_provider)
@@ -336,7 +340,11 @@ impl CommittedRuntimeApp {
 					.map_err(|source| RuntimeAppError::Resource { source })
 			}
 			RequestExecutionReport::MethodNotAllowed(methods) => {
-				finalize_method_not_allowed_response(&methods, self.snapshot.client_build_id())
+				finalize_method_not_allowed_response(
+					&methods,
+					self.snapshot.client_build_id(),
+					request.request().method(),
+				)
 			}
 			RequestExecutionReport::View(report) => {
 				if json_view_requested {
@@ -472,6 +480,7 @@ fn json_view_client_build_id(query: Option<&str>) -> Option<String> {
 fn finalize_method_not_allowed_response(
 	methods: &[Method],
 	client_build_id: &str,
+	method: &Method,
 ) -> Result<Response<Bytes>, RuntimeAppError> {
 	let mut effects = ResponseEffects::default();
 	effects.set_status(StatusCode::METHOD_NOT_ALLOWED);
@@ -485,7 +494,7 @@ fn finalize_method_not_allowed_response(
 	response
 		.headers_mut()
 		.insert(CONTENT_TYPE, HeaderValue::from_static(TEXT_CONTENT_TYPE));
-	Ok(response)
+	suppress_head_response_if_needed(response, method)
 }
 
 fn allow_header_value(methods: &[Method]) -> Result<HeaderValue, RuntimeAppError> {
@@ -1376,6 +1385,13 @@ mod tests {
 			)
 			.await
 			.unwrap();
+		let head_method_response = path_method_app
+			.handle_request(
+				RuntimeAppRequest::new(RequestInput::new(Method::HEAD, "/api/other")),
+				&asset_provider(),
+			)
+			.await
+			.unwrap();
 
 		assert_eq!(
 			method_without_route_response.status(),
@@ -1428,6 +1444,38 @@ mod tests {
 			path_specific_method_response.body(),
 			&Bytes::from_static(METHOD_NOT_ALLOWED_BODY)
 		);
+		assert_eq!(
+			head_method_response.status(),
+			StatusCode::METHOD_NOT_ALLOWED
+		);
+		assert_eq!(head_method_response.headers()[ALLOW], "POST");
+		assert_eq!(
+			head_method_response.headers()[CONTENT_LENGTH],
+			HeaderValue::from_str(&METHOD_NOT_ALLOWED_BODY.len().to_string()).unwrap()
+		);
+		assert!(head_method_response.body().is_empty());
+	}
+
+	#[tokio::test]
+	async fn runtime_app_direct_http_head_bad_path_suppresses_bad_request_body() {
+		let app = runtime_app(Arc::new(AtomicUsize::new(0)));
+		let request = Request::builder()
+			.method(Method::HEAD)
+			.uri("/%FF")
+			.body(Bytes::new())
+			.unwrap();
+
+		let response = app
+			.handle_http_request(request, ViewHtmlResponseInput::new(""), &asset_provider())
+			.await
+			.unwrap();
+
+		assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+		assert_eq!(
+			response.headers()[CONTENT_LENGTH],
+			HeaderValue::from_str(&BAD_REQUEST_BODY.len().to_string()).unwrap()
+		);
+		assert!(response.body().is_empty());
 	}
 
 	#[tokio::test]

@@ -9,7 +9,6 @@ members = [
 	"crates/vorma",
 	"crates/vorma-tasks",
 	"examples/board",
-	"examples/notes",
 	"tests/framework",
 	"xtask",
 ]

@@ -1,6 +1,10 @@
 import { is_abort_error } from "./abort_error.ts";
 import type { ApiResult, Submission } from "./client_core_types.ts";
-import { VERCEL_X_DEPLOYMENT_ID, X_ACCEPTS_CLIENT_REDIRECT } from "./constants.ts";
+import {
+	VERCEL_X_DEPLOYMENT_ID,
+	X_ACCEPTS_CLIENT_REDIRECT,
+	X_VORMA_RESOURCE_BODY,
+} from "./constants.ts";
 import { make_deferred } from "./deferred.ts";
 import { classify_redirect_target, detect_redirect } from "./redirects.ts";
 import { revalidation_ok } from "./revalidation_scheduler.ts";
@@ -291,12 +295,16 @@ export function create_submissions(deps: SubmissionsDeps) {
 
 			let data: unknown;
 			if (res.status !== 204) {
-				const ct = res.headers.get("Content-Type");
-				if (ct?.toLowerCase().includes("json")) {
-					data = await res.json();
+				if (res.headers.get(X_VORMA_RESOURCE_BODY) === "1") {
+					data = await res.blob();
 				} else {
-					const t = await res.text();
-					data = t.length > 0 ? t : undefined;
+					const ct = res.headers.get("Content-Type");
+					if (ct?.toLowerCase().includes("json")) {
+						data = await res.json();
+					} else {
+						const t = await res.text();
+						data = t.length > 0 ? t : undefined;
+					}
 				}
 			}
 

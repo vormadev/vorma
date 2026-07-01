@@ -11,6 +11,8 @@ pub const CLIENT_BUILD_ID_HEADER: &str = "X-Vorma-Client-Build-Id";
 pub const BUILD_SKEW_HEADER: &str = "X-Vorma-Build-Skew";
 /// Response header carrying a browser-handled redirect target.
 pub const CLIENT_REDIRECT_HEADER: &str = "X-Client-Redirect";
+/// Response header marking a typed raw resource body.
+pub const RESOURCE_BODY_HEADER: &str = "x-vorma-resource-body";
 /// Request header indicating that the browser runtime accepts client redirects.
 pub const CLIENT_ACCEPTS_REDIRECT_HEADER: &str = "X-Accepts-Client-Redirect";
 /// Query key carrying the current route client build identifier.

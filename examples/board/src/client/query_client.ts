@@ -1,7 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
 
 /*
-One client for the whole app; lives alone so app.tsx (provider) and
-api.ts (hooks) can both import it without a module cycle.
+React Query expects one long-lived client for the app. Keeping it in its
+own file lets `app.tsx` install the provider while `api.ts` defines
+typed hooks, without either module importing the other through a cycle.
 */
-export const queryClient = new QueryClient();
+export const query_client = new QueryClient();

@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use vorma_matcher::{Matcher, Options};
+use vorma_matcher::{MatcherBuilder, Options};
 
 const MAX_PATTERNS: usize = 32;
 const MAX_PATHS: usize = 32;
@@ -11,7 +11,7 @@ fuzz_target!(|data: &[u8]| {
 		return;
 	};
 
-	let Ok(mut builder) = Matcher::builder(Options::default()) else {
+	let Ok(mut builder) = MatcherBuilder::new(Options::default()) else {
 		return;
 	};
 
@@ -20,9 +20,10 @@ fuzz_target!(|data: &[u8]| {
 		let _ = builder.register_pattern(pattern);
 	}
 
-	let matcher = builder.finish();
+	let flat_matcher = builder.clone().finish_flat();
+	let nested_matcher = builder.finish_nested();
 	for path in lines.take(MAX_PATHS) {
-		let _ = matcher.find_best_match(path);
-		let _ = matcher.find_nested_matches(path);
+		let _ = flat_matcher.find_best_match(path);
+		let _ = nested_matcher.find_nested_matches(path);
 	}
 });

@@ -52,5 +52,11 @@ vorma-matcher.workspace = true
 vorma-tasks.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio = { workspace = true, features = [
+	"macros",
+	"rt",
+	"rt-multi-thread",
+	"sync",
+	"time",
+] }
 trybuild.workspace = true

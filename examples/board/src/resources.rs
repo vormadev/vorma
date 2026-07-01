@@ -1,4 +1,7 @@
-//! Resource declarations: the JSON API (login, logout, submit, vote).
+//! Typed resource declarations.
+//!
+//! Resources are Board's HTTP API. Most return JSON envelopes through generated
+//! TypeScript types; `STORY_ATTACHMENT` shows the non-JSON raw-body path.
 
 use serde::{Deserialize, Serialize};
 use vorma::HttpExit;
@@ -58,6 +61,10 @@ pub const LOGIN: app::Resource = app::resource! {
 	handler: |ctx| {
 		let username = ctx.input().username.trim().to_ascii_lowercase();
 		if username.is_empty() || username.len() > 32 {
+			/*
+			`HttpExit::err` records the server-side diagnostic. `with_client_msg`
+			is the explicit text allowed to cross the wire to the browser.
+			*/
 			return Err(HttpExit::err(format!(
 				"login rejected: bad username {username:?}"
 			))
@@ -104,6 +111,11 @@ pub const SUBMIT_STORY: app::Resource = app::resource! {
 	output: ();
 
 	handler: |ctx| {
+		/*
+		`FormData` is the typed input for multipart/browser form posts. It keeps text
+		fields and uploaded files in one generated-client endpoint without pretending
+		the request body is JSON.
+		*/
 		let user = require_user(
 			ctx.state(),
 			ctx.request().headers(),
@@ -155,7 +167,10 @@ pub const SUBMIT_STORY: app::Resource = app::resource! {
 			)
 			.await?;
 		}
-		ctx.redirect(format!("/s/{story_id}"))
+		ctx.redirect_with_status(
+			format!("/s/{story_id}"),
+			vorma::HttpStatusCode::SEE_OTHER,
+		)
 	};
 };
 
@@ -202,11 +217,14 @@ pub const VOTE_STORY: app::Resource = app::resource! {
 	};
 };
 
-/// Session user or a 401 rejection — the resource-side auth gate.
+/// Session user or a 401 rejection.
+///
+/// Helpers like this keep auth checks identical across resources. Middleware handles
+/// route-wide gates; resources still validate their own mutation/query boundary.
 async fn require_user(
 	state: &crate::store::AppState,
 	headers: &vorma::HttpHeaderMap,
-	exec_ctx: &vorma::ExecCtx<vorma::Error>,
+	exec_ctx: &vorma::tasks::ExecCtx<vorma::Error>,
 ) -> Result<User, HttpExit> {
 	match session::current_user(state, headers, exec_ctx).await {
 		Ok(Some(user)) => Ok(user),
@@ -301,9 +319,9 @@ pub const SEARCH: app::Resource = app::resource! {
 };
 
 /*
-Mod actions live under /mod on purpose: the scoped middleware
-(patterns: /mod + the /mod splat) gates these RESOURCES exactly like
-the mod views — one declaration covers both.
+Mod browser views live under `/mod`, while these mutation endpoints live under
+the matching API prefix. Middleware scopes are URL patterns, so the middleware declares
+both URL spaces explicitly instead of assuming a browser route implies an API route.
 */
 pub const KILL_STORY: app::Resource = app::resource! {
 	kind: vorma::ResourceKind::Mutation;
@@ -369,14 +387,17 @@ pub const RESTORE_STORY: app::Resource = app::resource! {
 	};
 };
 
-/// Attachment download: a non-JSON resource response (typed output is
-/// the raw bytes path — content-type comes from the stored file).
+/// Attachment download.
+///
+/// `ResourceBody` is the raw-response output type. Use it when the endpoint should return
+/// bytes with a real content type, while still keeping the endpoint in the generated
+/// client contract as a typed `Blob` result.
 pub const STORY_ATTACHMENT: app::Resource = app::resource! {
 	kind: vorma::ResourceKind::Query;
 	method: vorma::HttpMethod::GET;
 	pattern: "/api/stories/:story_id/attachment";
 	input: ();
-	output: ();
+	output: vorma::ResourceBody;
 
 	handler: |ctx| {
 		let story_id = parse_story_id(ctx.param("story_id"))?;
@@ -400,7 +421,9 @@ pub const STORY_ATTACHMENT: app::Resource = app::resource! {
 			))
 			.map_err(|error| HttpExit::err(error.to_string()))?,
 		);
-		Ok(())
+		let content_type = vorma::HttpHeaderValue::from_str(&attachment.content_type)
+			.map_err(|error| HttpExit::err(error.to_string()))?;
+		Ok(vorma::ResourceBody::new(content_type, attachment.body))
 	};
 };
 

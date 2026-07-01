@@ -1,0 +1,24 @@
+error[E0080]: evaluation panicked: extended task cache TTL must be greater than zero
+  --> tests/ui/extended_cache_zero.rs:5:1
+   |
+ 5 | / vorma_tasks::task! {
+ 6 | |     static ZERO_TTL_TASK: vorma_tasks::Task<(), (), TestError> =
+ 7 | |         extended_cache(Duration::ZERO, |_ctx, _input: ()| async move {
+ 8 | |             Ok(())
+ 9 | |         });
+10 | | }
+   | |_^ evaluation of `ZERO_TTL_TASK` failed inside this call
+   |
+note: inside `vorma_tasks::__task_macro::extended_cache::<(), (), &str>`
+  --> $RUST/core/src/panic.rs
+   |
+   |           $crate::panicking::panic_fmt($crate::const_format_args!($($t)+));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the failure occurred here
+   |
+  ::: src/task.rs
+   |
+   | /         assert!(
+   | |             !ttl.is_zero(),
+   | |             "extended task cache TTL must be greater than zero"
+   | |         );
+   | |_________- in this macro invocation

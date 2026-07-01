@@ -1,0 +1,7 @@
+error[E0433]: cannot find module or crate `not_a_crate` in this scope
+ --> tests/ui/task_macro_rejects_unresolved_task_type_path.rs:4:26
+  |
+4 |     static WRONG_NAMESPACE: not_a_crate::Task<(), (), TestError> =
+  |                             ^^^^^^^^^^^ use of unresolved module or unlinked crate `not_a_crate`
+  |
+  = help: if you wanted to use a crate named `not_a_crate`, use `cargo add not_a_crate` to add it to your `Cargo.toml`

@@ -559,7 +559,7 @@ impl Variant {
 			views: views(),
 			resources: resources(),
 			middlewares: middlewares(),
-			tasks_options: vorma::TasksOptions::default(),
+			tasks_options: vorma::tasks::TasksOptions::default(),
 			document: document(),
 			request_body_limit: REQUEST_BODY_LIMIT,
 		})

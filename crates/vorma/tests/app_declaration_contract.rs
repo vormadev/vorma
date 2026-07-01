@@ -109,7 +109,7 @@ fn app_config() -> vorma::AppConfig<ContractState> {
 			);
 			Ok(())
 		})],
-		tasks_options: vorma::TasksOptions::default(),
+		tasks_options: vorma::tasks::TasksOptions::default(),
 		document: contract_app::DocumentBuilder::new(|ctx| async move {
 			let mut document = vorma::Document::new();
 			document.html().lang("en");

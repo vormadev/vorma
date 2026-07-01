@@ -111,6 +111,13 @@ const vorma_app_config = {
 		},
 		{
 			method: "GET" as const,
+			pattern: "/files/:fileID",
+			params: ["fileID"] as const,
+			__i: null as unknown as undefined,
+			__o: null as unknown as Blob,
+		},
+		{
+			method: "GET" as const,
 			pattern: "/health",
 			kind: "mutation" as const,
 			__i: null as unknown as null,
@@ -153,7 +160,7 @@ type App = typeof vorma_app_config;
 const react = React__createVormaClient(vorma_app_config, {
 	apiDecorator: async (context) => {
 		if (context.method === "GET") {
-			expect_type<"/users/:userID" | "/health">(context.pattern);
+			expect_type<"/users/:userID" | "/files/:fileID" | "/health">(context.pattern);
 			return { headers: [["x-get-api", "1"]] };
 		}
 		expect_type<"PATCH" | "POST">(context.method);
@@ -177,10 +184,10 @@ function assert_exported_type_contracts(): void {
 	// Query methods and patterns
 	type _query_methods = Assert<IsExact<ToQueryMethod<App>, "GET" | "POST">>;
 	type _query_patterns = Assert<
-		IsExact<ToQueryPattern<App>, "/users/:userID" | "/sessions">
+		IsExact<ToQueryPattern<App>, "/users/:userID" | "/files/:fileID" | "/sessions">
 	>;
 	type _get_query_patterns = Assert<
-		IsExact<ToQueryPattern<App, "GET">, "/users/:userID">
+		IsExact<ToQueryPattern<App, "GET">, "/users/:userID" | "/files/:fileID">
 	>;
 	type _post_query_patterns = Assert<IsExact<ToQueryPattern<App, "POST">, "/sessions">>;
 
@@ -234,6 +241,9 @@ function assert_exported_type_contracts(): void {
 			{ id: string; posts: number }
 		>
 	>;
+	type _get_o_files = Assert<
+		IsExact<ToQueryOutput<App, "GET", "/files/:fileID">, Blob>
+	>;
 	type _post_i_sessions = Assert<
 		IsExact<
 			ToQueryInput<App, "POST", "/sessions">,
@@ -272,7 +282,7 @@ function assert_exported_type_contracts(): void {
 	type _decorator_ctx_get = Assert<
 		IsExact<
 			Extract<ToApiDecoratorContext<App>, { method: "GET" }>["pattern"],
-			"/users/:userID" | "/health"
+			"/users/:userID" | "/files/:fileID" | "/health"
 		>
 	>;
 	type _decorator_ctx_post = Assert<
@@ -795,6 +805,11 @@ function assert_api_client_contracts(): void {
 	expect_type<Promise<QueryResult<ToQueryOutput<App, "GET", "/users/:userID">>>>(
 		user_get_result,
 	);
+	const file_get_result = react.apiClient.queryOrThrow({
+		pattern: "/files/:fileID",
+		params: { fileID: "f-1" },
+	});
+	expect_type<Promise<Blob>>(file_get_result);
 
 	/*
 	GET is implicit only for queries: mutations always name their

@@ -123,33 +123,6 @@ importers:
         specifier: workspace:*
         version: link:../../packages/vorma
 
-  examples/notes:
-    devDependencies:
-      '@types/react':
-        specifier: ^19.2.14
-        version: 19.2.17
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.17)
-      '@vitejs/plugin-react':
-        specifier: ^6.0.1
-        version: 6.0.2(vite@8.0.16(@types/node@25.9.2))
-      react:
-        specifier: ^19.2.4
-        version: 19.2.7
-      react-dom:
-        specifier: ^19.2.4
-        version: 19.2.7(react@19.2.7)
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-      vite:
-        specifier: ^8.0.14
-        version: 8.0.16(@types/node@25.9.2)
-      vorma:
-        specifier: workspace:*
-        version: link:../../packages/vorma
-
   packages/create-vorma:
     dependencies:
       '@clack/prompts':

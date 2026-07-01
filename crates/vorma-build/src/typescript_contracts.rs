@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
-use vorma_contract::constants::FORM_DATA_TYPE_NAME;
+use vorma_contract::constants::{BLOB_TYPE_NAME, FORM_DATA_TYPE_NAME};
 use vorma_contract::contracts::{FieldDef, RawTsPart, TypeDef, TypeRefContract};
 
 use crate::projection_compiler::{ProjectionBundle, ResourceContract, ViewPayloadContract};
@@ -352,6 +352,7 @@ fn render_type_ref(type_ref: &TypeRefContract) -> Result<String, TypeScriptContr
 			render_type_ref(value)?
 		)),
 		TypeRefContract::FormData => Ok(FORM_DATA_TYPE_NAME.to_owned()),
+		TypeRefContract::Blob => Ok(BLOB_TYPE_NAME.to_owned()),
 		TypeRefContract::Nullable(inner) => Ok(format!("{} | null", render_type_ref(inner)?)),
 		TypeRefContract::Union(types) => {
 			if types.is_empty() {
@@ -582,6 +583,26 @@ mod tests {
 				.source()
 				.contains("__i: null as unknown as FormData,")
 		);
+	}
+
+	#[test]
+	fn generated_contracts_render_blob_resource_outputs() {
+		let mut declarations = FrameworkDeclarations::default();
+		declarations.add_resource(ResourceDeclaration::new(
+			Method::GET,
+			"/download",
+			None,
+			None,
+			RouteTypeContract::new(TypeRefContract::Unit, TypeRefContract::Blob),
+			handler_id("download"),
+		));
+		let graph = FrameworkGraph::compile(declarations).unwrap();
+		let bundle = ProjectionBundle::compile(&graph);
+		let public_filemap = BTreeMap::new();
+
+		let generated = render_typescript_contracts(&bundle, &public_filemap).unwrap();
+
+		assert!(generated.source().contains("__o: null as unknown as Blob,"));
 	}
 
 	#[test]

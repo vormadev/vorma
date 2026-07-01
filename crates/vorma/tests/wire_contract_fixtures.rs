@@ -223,7 +223,7 @@ fn app_config() -> vorma::AppConfig<FixtureState> {
 		],
 		resources: fixture_app::resources![SEARCH_RESOURCE, STORY_MUTATION, BROKEN_RESOURCE],
 		middlewares: fixture_app::middlewares![],
-		tasks_options: vorma::TasksOptions::default(),
+		tasks_options: vorma::tasks::TasksOptions::default(),
 		document: fixture_app::DocumentBuilder::new(|_ctx| async move {
 			let mut document = vorma::Document::new();
 			document.html().lang("en");

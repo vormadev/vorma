@@ -1,0 +1,1828 @@
+# Rust public API inventory — regenerated from current tree
+# Regenerated 2026-06-23 by mechanical source scan.
+# Method: public Rust declarations in crates/vorma, vorma-build, vorma-macros,
+# vorma-contract, vorma-tasks, and vorma-matcher. Excludes pub(crate)/pub(super).
+# This is a conservative inventory input, not API adjudication.
+
+===== crates/vorma/src/app_assembly.rs
+14:pub const DEFAULT_REQUEST_BODY_LIMIT: usize = 16 * 1024 * 1024;
+17:pub struct AppAssembly<S> {
+28:	pub fn new(config: FrameworkConfig, state: S) -> Self {
+33:	pub fn from_config(config: &Config, state: S) -> Result<Self, ConfigError> {
+43:	pub fn new_with_tasks(config: FrameworkConfig, state: S, tasks: Tasks<crate::Error>) -> Self {
+55:	pub fn from_config_with_tasks(
+68:	pub fn facade(&self) -> &StatefulAppFacade<S> {
+73:	pub fn facade_mut(&mut self) -> &mut StatefulAppFacade<S> {
+78:	pub fn document_builder(&self) -> &DocumentBuilder {
+83:	pub fn set_static_document(&mut self, document: Document) -> &mut Self {
+90:	pub fn set_runtime_document_builder(&mut self, document_builder: DocumentBuilder) -> &mut Self {
+96:	pub fn request_body_limit(&self) -> usize {
+101:	pub fn set_request_body_limit(&mut self, request_body_limit: usize) -> &mut Self {
+107:	pub fn compile(self) -> Result<CompiledAppAssembly, FacadeError> {
+117:pub struct CompiledAppAssembly {
+125:	pub fn facade(&self) -> &CompiledAppFacade {
+130:	pub fn document_builder(&self) -> &DocumentBuilder {
+135:	pub fn request_body_limit(&self) -> usize {
+140:	pub fn into_graph_and_handlers(self) -> (FrameworkGraph, HandlerRegistry) {
+145:	pub fn into_build_parts(self) -> (FrameworkGraph, DocumentBuilder) {
+151:	pub fn into_runtime_host<P>(
+
+===== crates/vorma/src/asset_body_provider.rs
+16:pub type PublicAssetBodyFuture =
+20:pub trait PublicAssetBodyProvider: Send + Sync {
+37:pub struct PublicAssetBody {
+44:	pub fn new(body: Bytes) -> Self {
+52:	pub fn with_content_type(mut self, content_type: HeaderValue) -> Self {
+58:	pub fn body(&self) -> &Bytes {
+63:	pub fn content_type(&self) -> Option<&HeaderValue> {
+70:pub struct PublicAssetBodyError {
+76:	pub fn new(message: impl Into<String>) -> Self {
+83:	pub fn message(&self) -> &str {
+90:pub struct PublicAssetDirectory {
+103:	pub fn new(root: impl Into<PathBuf>) -> Result<Self, PublicAssetDirectoryError> {
+116:	pub fn root(&self) -> &Path {
+155:pub enum PublicAssetDirectoryError {
+
+===== crates/vorma/src/asset_capabilities.rs
+11:pub struct AssetCapabilities {
+24:	pub fn new(
+58:	pub fn public_url(&self, src_path: &str) -> Result<&str, PublicUrlError> {
+70:	pub fn asset_for_request_path(&self, request_path: &str) -> Option<PublicAsset> {
+89:pub enum PublicUrlError {
+114:pub struct PublicAsset {
+121:	pub fn fs_path(&self) -> &str {
+126:	pub fn cache_control(&self) -> &'static str {
+133:pub enum AssetCapabilityError {
+211:pub fn public_source_path_key(src_path: &str) -> Option<&str> {
+
+===== crates/vorma/src/config.rs
+16:pub struct ServerTarget {
+25:pub struct DevWatchConfig {
+36:pub struct FrontendConfig {
+56:pub enum UiVariant {
+68:	pub const fn as_str(self) -> &'static str {
+85:pub struct TsGenConfig {
+100:pub struct Config {
+123:	pub fn framework_config(&self) -> Result<FrameworkConfig, ConfigError> {
+170:pub enum ConfigError {
+190:pub fn normalize_public_static_base(public_static_base: &str) -> String {
+
+===== crates/vorma/src/document_builder.rs
+28:pub struct Document {
+38:	pub fn new() -> Self {
+54:	pub fn html(&mut self) -> DocumentAttributes<'_> {
+61:	pub fn body(&mut self) -> DocumentAttributes<'_> {
+68:	pub fn head(&mut self) -> &mut crate::HeadBuilder {
+73:	pub fn head_dedupe_rules(&mut self) -> &mut crate::HeadBuilder {
+97:	pub fn __build_identity(&self) -> Result<DocumentBuildIdentity<'_>, String> {
+146:pub struct DocumentAttributes<'a> {
+152:	pub fn attribute(&mut self, name: impl Into<String>, value: impl Into<String>) -> &mut Self {
+158:	pub fn known_safe_attribute(
+168:	pub fn boolean_attribute(&mut self, name: impl Into<String>) -> &mut Self {
+174:	pub fn lang(&mut self, value: impl Into<String>) -> &mut Self {
+179:	pub fn id(&mut self, value: impl Into<String>) -> &mut Self {
+184:	pub fn class(&mut self, value: impl Into<String>) -> &mut Self {
+189:	pub fn data(&mut self, name: impl AsRef<str>, value: impl Into<String>) -> &mut Self {
+205:pub struct DocumentBuildIdentity<'a> {
+220:pub struct DocumentBuildIdentityAttribute<'a> {
+244:pub struct DocumentBuildIdentityElement<'a> {
+277:pub struct DocumentBuildContext {
+284:	pub fn build() -> Self {
+299:	pub fn request(&self) -> crate::HttpRequest<'_> {
+304:	pub fn public_url(&self, src_path: &str) -> Result<String, String> {
+321:pub struct DocumentBuilder {
+327:	pub fn new<F, Fut>(build: F) -> Self
+339:	pub async fn build(&self, context: DocumentBuildContext) -> Result<Document, String> {
+353:	pub async fn build_root_document_hash_source(&self) -> Result<String, DocumentBuilderError> {
+486:pub struct DocumentBuilderError {
+492:	pub fn new(message: impl Into<String>) -> Self {
+499:	pub fn message(&self) -> &str {
+
+===== crates/vorma/src/envutil.rs
+14:pub fn is_build() -> bool {
+19:pub fn is_dev() -> bool {
+24:pub fn with_build_mode<R>(body: impl FnOnce() -> R) -> R {
+29:pub fn with_dev_mode<R>(body: impl FnOnce() -> R) -> R {
+
+===== crates/vorma/src/error.rs
+14:pub type BoxError = Box<dyn StdError + Send + Sync + 'static>;
+18:pub struct Error {
+25:	pub fn new(message: impl Into<String>) -> Self {
+33:	pub fn with_source(mut self, source: impl Into<BoxError>) -> Self {
+
+===== crates/vorma/src/execution_engine.rs
+27:pub type HandlerFuture =
+31:pub trait RuntimeHandler: Send + Sync {
+47:pub struct HandlerRegistry {
+63:	pub fn new(tasks: Tasks<crate::Error>) -> Self {
+71:	pub fn insert<H>(&mut self, id: HandlerId, handler: H)
+117:pub struct RequestInput {
+129:	pub fn new(method: Method, path: impl Into<String>) -> Self {
+156:	pub fn with_query(mut self, query: impl Into<String>) -> Self {
+164:	pub fn with_headers(mut self, headers: HeaderMap) -> Self {
+170:	pub fn with_extensions(mut self, extensions: Extensions) -> Self {
+176:	pub fn with_body(mut self, body: Bytes) -> Self {
+182:	pub fn method(&self) -> &Method {
+187:	pub fn uri(&self) -> &Uri {
+192:	pub fn path(&self) -> &str {
+197:	pub fn query(&self) -> Option<&str> {
+202:	pub fn headers(&self) -> &HeaderMap {
+207:	pub fn extensions(&self) -> &Extensions {
+212:	pub fn extension<T: Send + Sync + 'static>(&self) -> Option<&T> {
+217:	pub fn body(&self) -> &Bytes {
+233:pub enum HandlerRole {
+244:pub struct HandlerInput {
+257:	pub fn request(&self) -> &RequestInput {
+262:	pub fn public_url(&self, src_path: &str) -> Result<&str, PublicUrlError> {
+267:	pub fn role(&self) -> HandlerRole {
+272:	pub fn pattern(&self) -> &str {
+277:	pub fn params(&self) -> &Params {
+282:	pub fn splat_values(&self) -> &vorma_matcher::SplatValues {
+287:	pub fn query_params(&self) -> &BTreeMap<String, Vec<String>> {
+292:	pub fn decoded_input(&self) -> &DecodedRouteInput {
+299:pub struct HandlerOutput {
+307:	pub fn empty() -> Self {
+312:	pub fn data(data: Value) -> Self {
+321:	pub fn body(body: Bytes) -> Self {
+330:	pub fn with_effects(mut self, effects: ResponseEffects) -> Self {
+336:	pub fn effects(&self) -> &ResponseEffects {
+341:	pub fn data_value(&self) -> Option<&Value> {
+346:	pub fn body_value(&self) -> Option<&Bytes> {
+353:pub struct HandlerExecutionError {
+362:	pub fn new(message: impl Into<String>) -> Self {
+372:	pub fn from_application_error(error: &AppError) -> Self {
+377:	pub fn with_status(mut self, status: http::StatusCode) -> Self {
+383:	pub fn from_task_error(error: vorma_tasks::Error<AppError>) -> Self {
+391:	pub fn with_client_message(
+404:	pub fn with_effects(mut self, effects: ResponseEffects) -> Self {
+410:	pub fn message(&self) -> &str {
+415:	pub fn client_message(&self) -> Option<&str> {
+420:	pub fn status(&self) -> Option<http::StatusCode> {
+425:	pub fn effects(&self) -> &ResponseEffects {
+432:pub enum RequestTarget {
+447:pub struct ExecutionEngine {
+454:	pub fn new(plan: ExecutionPlan, assets: AssetCapabilities) -> Self {
+459:	pub fn asset_capabilities(&self) -> &AssetCapabilities {
+472:	pub fn classify(&self, method: &Method, path: &str) -> RequestTarget {
+526:	pub async fn execute(
+575:pub enum RequestExecutionReport {
+590:pub struct RouteExecutionReport {
+604:	pub fn matched_patterns(&self) -> &[String] {
+609:	pub fn params(&self) -> &Params {
+614:	pub fn splat_values(&self) -> &vorma_matcher::SplatValues {
+619:	pub fn suppress_body(&self) -> bool {
+624:	pub fn committed(&self) -> &[HandlerCommit] {
+629:	pub fn suppressed(&self) -> &[SuppressedHandler] {
+634:	pub fn server_error(&self) -> Option<&RouteServerError> {
+639:	pub fn effects(&self) -> &ResponseEffects {
+644:	pub fn terminal_handler_id(&self) -> Option<&HandlerId> {
+651:pub struct RouteServerError {
+661:	pub fn handler_id(&self) -> &HandlerId {
+666:	pub fn pattern(&self) -> &str {
+671:	pub fn view_index(&self) -> usize {
+676:	pub fn client_message(&self) -> &str {
+683:pub struct SuppressedHandler {
+691:	pub fn handler_id(&self) -> &HandlerId {
+696:	pub fn role(&self) -> HandlerRole {
+701:	pub fn pattern(&self) -> &str {
+708:pub struct HandlerCommit {
+717:	pub fn handler_id(&self) -> &HandlerId {
+722:	pub fn role(&self) -> HandlerRole {
+727:	pub fn pattern(&self) -> &str {
+732:	pub fn output(&self) -> &HandlerOutput {
+739:pub enum ExecutionError {
+
+===== crates/vorma/src/exit.rs
+29:pub struct ViewExit {
+35:pub struct HttpExit {
+54:	pub fn err(err: impl Into<String>) -> Self {
+61:	pub fn with_client_msg(mut self, client_msg: impl Into<String>) -> Self {
+67:	pub fn with_source(mut self, source: impl Into<BoxError>) -> Self {
+91:	pub fn err(err: impl Into<String>) -> Self {
+99:	pub fn with_status(mut self, status: StatusCode) -> Self {
+105:	pub fn with_client_msg(mut self, client_msg: impl Into<String>) -> Self {
+111:	pub fn with_source(mut self, source: impl Into<BoxError>) -> Self {
+
+===== crates/vorma/src/facade.rs
+32:pub struct AppFacade {
+41:pub struct ResourceRouteSpec {
+52:	pub fn new(
+84:	pub fn new(config: FrameworkConfig) -> Self {
+89:	pub fn new_with_tasks(config: FrameworkConfig, tasks: Tasks<crate::Error>) -> Self {
+100:	pub fn declarations(&self) -> &FrameworkDeclarations {
+105:	pub fn handlers(&self) -> &HandlerRegistry {
+110:	pub fn set_document(&mut self, document: DocumentContract) -> &mut Self {
+116:	pub fn add_type_def(&mut self, type_def: TypeDef) -> Result<&mut Self, FacadeError> {
+122:	pub fn add_static_asset(&mut self, asset: StaticAssetDeclaration) -> &mut Self {
+128:	pub fn add_static_asset_paths(
+137:	pub fn add_middleware<H>(
+157:	pub fn add_view<H>(
+171:	pub fn add_view_route<H>(
+196:	pub fn add_resource<H>(
+210:	pub fn add_resource_route<H>(
+222:	pub fn compile(self) -> Result<CompiledAppFacade, FacadeError> {
+278:pub struct StatefulAppFacade<S> {
+288:	pub fn new(config: FrameworkConfig, state: S) -> Self {
+293:	pub fn new_with_tasks(config: FrameworkConfig, state: S, tasks: Tasks<crate::Error>) -> Self {
+301:	pub fn state(&self) -> &Arc<S> {
+306:	pub fn declarations(&self) -> &FrameworkDeclarations {
+311:	pub fn set_document(&mut self, document: DocumentContract) -> &mut Self {
+317:	pub fn add_type_def(&mut self, type_def: TypeDef) -> Result<&mut Self, FacadeError> {
+323:	pub fn add_static_asset_paths(
+333:	pub fn add_typed_middleware<F, Fut>(
+354:	pub fn add_runtime_middleware<H>(
+370:	pub fn add_runtime_view_route<H>(
+394:	pub fn add_runtime_resource_route<H>(
+407:	pub fn add_view_route<I, O, F, Fut>(
+436:	pub fn add_resource_route<I, O, F, Fut>(
+468:	pub fn add_form_data_resource<O, F, Fut>(
+498:	pub fn add_typed_view_route<I, O, F, Fut>(
+525:	pub fn add_typed_resource_route<I, O, F, Fut>(
+544:	pub fn add_form_data_resource_route<O, F, Fut>(
+562:	pub fn compile(self) -> Result<CompiledAppFacade, FacadeError> {
+585:pub struct CompiledAppFacade {
+592:	pub fn graph(&self) -> &FrameworkGraph {
+597:	pub fn handlers(&self) -> &HandlerRegistry {
+602:	pub fn into_graph_and_handlers(self) -> (FrameworkGraph, HandlerRegistry) {
+607:	pub fn into_runtime_app(
+616:	pub fn into_runtime_host<P>(
+635:pub enum FacadeRuntimeHostError {
+668:pub enum FacadeError {
+
+===== crates/vorma/src/form_data.rs
+20:pub struct FormField {
+35:	pub fn name(&self) -> &str {
+40:	pub fn value(&self) -> &str {
+47:pub struct FormFile {
+71:	pub fn name(&self) -> &str {
+76:	pub fn file_name(&self) -> Option<&str> {
+81:	pub fn content_type(&self) -> Option<&str> {
+86:	pub fn body(&self) -> &Bytes {
+91:	pub fn into_body(self) -> Bytes {
+98:pub struct FormData {
+122:	pub fn content_type(&self) -> &str {
+127:	pub fn body(&self) -> &Bytes {
+132:	pub fn into_body(self) -> Bytes {
+137:	pub fn fields(&self) -> &[FormField] {
+142:	pub fn files(&self) -> &[FormFile] {
+147:	pub fn field(&self, name: &str) -> Option<&FormField> {
+152:	pub fn text(&self, name: &str) -> Option<&str> {
+157:	pub fn fields_named<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a FormField> + 'a {
+162:	pub fn texts<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a str> + 'a {
+167:	pub fn file(&self, name: &str) -> Option<&FormFile> {
+172:	pub fn files_named<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a FormFile> + 'a {
+179:pub enum FormDataDecodeError {
+232:pub async fn decode_form_data(
+
+===== crates/vorma/src/head.rs
+14:pub struct HeadTag(pub &'static str);
+18:pub struct HeadAttr {
+25:pub struct HeadBooleanAttribute(pub String);
+29:pub struct HeadInnerHtml(pub String);
+33:pub struct HeadTextContent(pub String);
+37:pub struct HeadSelfClosing(pub bool);
+41:pub enum HtmlElementDef {
+58:	pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+66:	pub fn known_safe(mut self) -> Self {
+110:pub struct HeadBuilder {
+116:	pub fn new() -> Self {
+123:	pub fn add(
+132:	pub fn append(&mut self, other: &HeadBuilder) -> &mut Self {
+138:	pub fn elements(&self) -> &[DocumentElementContract] {
+143:	pub fn self_closing(&self) -> HeadSelfClosing {
+148:	pub fn dangerous_inner_html(&self, content: impl Into<String>) -> HeadInnerHtml {
+153:	pub fn text_content(&self, content: impl Into<String>) -> HeadTextContent {
+158:	pub fn attr_exists(&self, name: impl Into<String>) -> HeadAttr {
+163:	pub fn title(&mut self, title: impl Into<String>) -> &mut Self {
+173:	pub fn description(&mut self, desc: impl Into<String>) -> &mut Self {
+180:	pub fn meta(&mut self, defs: impl IntoIterator<Item = impl Into<HtmlElementDef>>) -> &mut Self {
+191:	pub fn link(&mut self, defs: impl IntoIterator<Item = impl Into<HtmlElementDef>>) -> &mut Self {
+202:	pub fn script(
+216:	pub fn style(
+230:	pub fn attr(&self, name: impl Into<String>, value: impl Into<String>) -> HeadAttr {
+235:	pub fn bool_attr(&self, name: impl Into<String>) -> HeadBooleanAttribute {
+240:	pub fn property(&self, prop: impl Into<String>) -> HeadAttr {
+245:	pub fn name(&self, name: impl Into<String>) -> HeadAttr {
+250:	pub fn content(&self, content: impl Into<String>) -> HeadAttr {
+255:	pub fn rel(&self, rel: impl Into<String>) -> HeadAttr {
+260:	pub fn href(&self, href: impl Into<String>) -> HeadAttr {
+265:	pub fn src(&self, src: impl Into<String>) -> HeadAttr {
+270:	pub fn r#type(&self, t: impl Into<String>) -> HeadAttr {
+275:	pub fn charset(&self, charset: impl Into<String>) -> HeadAttr {
+280:	pub fn r#as(&self, r#as: impl Into<String>) -> HeadAttr {
+285:	pub fn cross_origin(&self, co: impl Into<String>) -> HeadAttr {
+290:	pub fn icon(&mut self, href: impl Into<String>) -> &mut Self {
+297:	pub fn preload(&mut self, href: impl Into<String>, r#as: impl Into<String>) -> &mut Self {
+305:	pub fn meta_property_content(
+315:	pub fn meta_name_content(
+325:	pub fn meta_charset(&mut self, charset: impl Into<String>) -> &mut Self {
+
+===== crates/vorma/src/input_decoder.rs
+16:pub struct DecodedRouteInput {
+23:	pub fn new(value: Value) -> Self {
+31:	pub fn form_data(form_data: FormData) -> Self {
+39:	pub fn value(&self) -> &Value {
+44:	pub fn parsed_form_data(&self) -> Option<&FormData> {
+56:pub fn decode_view_input(
+70:pub async fn decode_resource_input(
+112:pub enum InputDecodeError {
+
+===== crates/vorma/src/kit/mod.rs
+3:pub mod theme;
+
+===== crates/vorma/src/kit/theme.rs
+20:pub fn script<'a>(key_prefix: impl Into<Option<&'a str>>) -> HtmlElementDef {
+
+===== crates/vorma/src/lib.rs
+32:pub mod kit;
+35:pub mod middleware;
+55:pub mod testing;
+64:pub use vorma_contract::tsgen;
+67:pub use config::{DevWatchConfig, FrontendConfig, ServerTarget, TsGenConfig, UiVariant};
+69:pub use cookie::Cookie as HttpCookie;
+71:pub use document_builder::{
+75:pub use error::{BoxError, Error};
+77:pub use exit::{HttpExit, ViewExit};
+79:pub use form_data::{FormData, FormField, FormFile};
+81:pub use framework_graph::ResourceKind;
+83:pub use head::{
+88:pub use public_app::{App, AppConfig, Middleware, Middlewares, Resource, Resources, View, Views};
+90:pub use request::{HttpRequest, HttpSearchParams};
+92:pub use resource_body::{ResourceBody, ResourceOutput};
+94:pub use runtime_host::RuntimeHost;
+96:pub const CLIENT_BUILD_ID_HEADER_KEY: &str = response_finalizer::CLIENT_BUILD_ID_HEADER;
+98:pub const PUBLIC_STATIC_OUT_NAME_PREFIX: &str = constants::PUBLIC_STATIC_OUT_NAME_PREFIX;
+100:pub const DEFAULT_REQUEST_BODY_LIMIT: usize = app_assembly::DEFAULT_REQUEST_BODY_LIMIT;
+102:pub use http::{
+107:pub use route_input::{ResourceInput, ViewInput};
+109:pub use static_route::{MiddlewareCtx, Params, ResourceCtx, ViewCtx};
+111:pub use typed_handler::{
+117:pub type Result<T> = std::result::Result<T, Error>;
+120:pub fn is_build() -> bool {
+125:pub fn is_dev() -> bool {
+130:pub fn bind_addr() -> Result<std::net::SocketAddr> {
+134:pub use vorma_macros::TsGen;
+136:pub use vorma_macros::{__vorma_resource, __vorma_view};
+139:pub mod tasks {
+140:	pub use vorma_tasks::{
+149:pub struct HtmlAttribute;
+153:	pub fn attr(name: impl Into<String>, value: impl Into<String>) -> HtmlElementDef {
+158:	pub fn r#type(value: impl Into<String>) -> HtmlElementDef {
+164:pub struct SafeHtml;
+168:	pub fn style_content(content: impl Into<String>) -> HtmlElementDef {
+173:	pub fn script_content(content: impl Into<String>) -> HtmlElementDef {
+179:#[macro_export]
+180:macro_rules! app {
+184:			pub type State = $state;
+186:			pub type App = $crate::App<State>;
+188:			pub type Resource = $crate::Resource<State>;
+190:			pub type Resources = $crate::Resources<State>;
+192:			pub type ResourceCtx<I = (), P = ()> =
+195:			pub type DocumentBuildCtx = $crate::DocumentBuildCtx;
+197:			pub type DocumentBuilder = $crate::DocumentBuilder;
+199:			pub type MiddlewareCtx = $crate::MiddlewareCtx<State>;
+201:			pub type Middleware = $crate::Middleware<State>;
+203:			pub type Middlewares = $crate::Middlewares<State>;
+205:			pub type View = $crate::View<State>;
+207:			pub type ViewCtx<I = (), P = ()> =
+210:			pub type Views = $crate::Views<State>;
+213:			pub use $crate::{
+222:#[macro_export]
+223:macro_rules! __vorma_views {
+237:#[macro_export]
+238:macro_rules! __vorma_resources {
+252:#[macro_export]
+253:macro_rules! __vorma_middlewares {
+432:pub mod build_interface {
+434:	pub mod assets {
+435:		pub use crate::asset_body_provider::*;
+436:		pub use crate::asset_capabilities::*;
+437:		pub use crate::runtime_assets::*;
+441:	pub mod contracts {
+442:		pub use crate::document_builder::*;
+446:	pub mod config {
+447:		pub use crate::config::{Config, ConfigError, normalize_public_static_base};
+451:	pub mod env {
+452:		pub use crate::envutil::{with_build_mode, with_dev_mode};
+456:	pub mod facade {
+457:		pub use crate::app_assembly::*;
+458:		pub use crate::facade::*;
+462:	pub mod route_input {
+463:		pub use crate::route_input::*;
+464:		pub use crate::search_params::schema_for_type;
+467:	pub use crate::public_app::AppBuildContract;
+468:	pub use crate::route_input::{search_schema_resolver, type_resolver};
+469:	pub use crate::static_route::{
+473:	pub use vorma_matcher::Params;
+476:	pub fn app_build_contract<S>(app_config: crate::AppConfig<S>) -> crate::Result<AppBuildContract>
+484:	pub async fn live_build_state_from_app_build_contract(
+503:	pub fn app_build_graph<S>(
+513:	pub mod runtime {
+514:		pub use crate::execution_engine::*;
+515:		pub use crate::input_decoder::*;
+516:		pub use crate::payload_projection::*;
+517:		pub use crate::resource_response::*;
+518:		pub use crate::response_finalizer::*;
+519:		pub use crate::runtime_app::*;
+520:		pub use crate::runtime_document::*;
+521:		pub use crate::runtime_host::*;
+522:		pub use crate::runtime_service::*;
+523:		pub use crate::runtime_snapshot::*;
+524:		pub use crate::typed_handler::*;
+525:		pub use crate::view_response::*;
+535:pub mod __private {
+536:	pub use vorma_matcher::Params;
+538:	pub use crate::route_input::{search_schema_resolver, type_resolver};
+539:	pub use crate::static_route::{InputError, PathParams, run_static_resource, run_static_view};
+
+===== crates/vorma/src/middleware.rs
+32:pub struct RequestIdLayer;
+35:pub fn request_id() -> RequestIdLayer {
+49:pub struct SensitiveHeadersLayer;
+52:pub fn sensitive_headers() -> SensitiveHeadersLayer {
+66:pub struct SensitiveHeadersService<S> {
+112:pub fn panic_recovery() -> CatchPanicLayer<DefaultResponseForPanic> {
+121:pub fn request_body_limit(bytes: usize) -> RequestBodyLimitLayer {
+126:pub fn handler_timeout(seconds: u64) -> TimeoutLayer {
+131:pub fn request_body_timeout(seconds: u64) -> RequestBodyTimeoutLayer {
+136:pub fn response_body_timeout(seconds: u64) -> ResponseBodyTimeoutLayer {
+145:pub fn compression() -> CompressionLayer {
+170:pub struct EtagLayer {
+177:pub fn etag() -> EtagLayer {
+187:	pub fn strong(mut self) -> Self {
+193:	pub fn max_body_size(mut self, bytes: usize) -> Self {
+199:	pub fn skip<F>(mut self, predicate: F) -> Self
+232:pub struct EtagRequest<'a> {
+241:	pub fn method(&self) -> &'a Method {
+246:	pub fn uri(&self) -> &'a Uri {
+251:	pub fn headers(&self) -> &'a HeaderMap {
+256:	pub fn extensions(&self) -> &'a Extensions {
+263:pub struct EtagService<S> {
+487:pub struct SecureHeadersLayer;
+490:pub fn secure_headers() -> SecureHeadersLayer {
+504:pub struct SecureHeadersService<S> {
+
+===== crates/vorma/src/network.rs
+8:pub fn bind_addr() -> crate::Result<SocketAddr> {
+
+===== crates/vorma/src/payload_projection.rs
+11:pub fn project_view_payload(
+93:pub enum PayloadProjectionError {
+
+===== crates/vorma/src/public_app.rs
+25:pub struct AppConfig<S> {
+63:pub struct App<S> {
+71:pub struct AppBuildContract {
+78:	pub fn graph(&self) -> &crate::framework_graph::FrameworkGraph {
+83:	pub fn document_builder(&self) -> &DocumentBuilder {
+88:	pub fn into_parts(self) -> (crate::framework_graph::FrameworkGraph, DocumentBuilder) {
+156:	pub fn from_config(app_config: AppConfig<S>) -> crate::Result<crate::RuntimeHost<S>> {
+207:pub struct Middleware<S> {
+218:	pub fn new<F, Fut, O>(handler: F) -> Self
+240:	pub fn with_patterns<I>(mut self, patterns: I) -> Self
+250:	pub fn with_methods<I>(mut self, methods: I) -> Self
+260:pub struct View<S> {
+275:	pub const fn from_static(
+294:	pub fn pattern(&self) -> &str {
+299:	pub fn client_file(&self) -> &str {
+317:pub struct Resource<S> {
+332:	pub const fn from_static(
+351:	pub fn method(&self) -> &http::Method {
+356:	pub fn pattern(&self) -> &str {
+361:	pub fn kind(&self) -> Option<ResourceKind> {
+380:pub struct Middlewares<S> {
+389:	pub fn new() -> Self {
+396:	pub fn push(&mut self, middleware: Middleware<S>) -> &mut Self {
+416:pub struct Views<S> {
+425:	pub fn new() -> Self {
+430:	pub fn push(&mut self, view: View<S>) -> &mut Self {
+445:pub struct Resources<S> {
+454:	pub fn new() -> Self {
+461:	pub fn push(&mut self, resource: Resource<S>) -> &mut Self {
+
+===== crates/vorma/src/request.rs
+9:pub struct HttpRequest<'a> {
+19:	pub fn method(&self) -> &http::Method {
+24:	pub fn uri(&self) -> &http::Uri {
+29:	pub fn path(&self) -> &str {
+34:	pub fn query(&self) -> Option<&str> {
+39:	pub fn search_params(&self) -> HttpSearchParams<'_> {
+46:	pub fn headers(&self) -> &http::HeaderMap {
+51:	pub fn body(&self) -> &bytes::Bytes {
+56:	pub fn extensions(&self) -> &http::Extensions {
+61:	pub fn extension<T>(&self) -> Option<&T>
+71:pub struct HttpSearchParams<'a> {
+77:	pub fn get(&self, name: &str) -> Option<String> {
+82:	pub fn get_all<'b>(&'b self, name: &'b str) -> impl Iterator<Item = String> + 'b {
+92:	pub fn iter(&self) -> impl Iterator<Item = (String, String)> + '_ {
+
+===== crates/vorma/src/resource_body.rs
+16:pub struct ResourceBody {
+23:	pub fn new(content_type: HeaderValue, body: impl Into<Bytes>) -> Self {
+31:	pub fn content_type(&self) -> &HeaderValue {
+36:	pub fn body(&self) -> &Bytes {
+48:pub trait ResourceOutput: sealed::ResourceOutputSealed + Send + Sync + 'static {}
+67:	pub trait ResourceOutputSealed {
+
+===== crates/vorma/src/resource_response.rs
+15:pub fn finalize_resource_report(
+63:pub enum ResourceResponseError {
+
+===== crates/vorma/src/response_finalizer.rs
+14:pub use vorma_contract::wire::{
+25:pub const JSON_CONTENT_TYPE: &str = "application/json; charset=utf-8";
+27:pub const TEXT_CONTENT_TYPE: &str = "text/plain; charset=utf-8";
+29:pub const BUILD_SKEW_RESPONSE_BODY: &[u8] = br#"{"ok":true}"#;
+31:pub const INTERNAL_SERVER_ERROR_STATUS_TEXT: &str = "Internal Server Error";
+38:pub struct ResponseEffects {
+72:	pub fn set_status(&mut self, status: StatusCode) {
+85:	pub fn set_status_with_text(&mut self, status: StatusCode, status_text: impl Into<String>) {
+98:	pub fn redirect(
+122:	pub fn client_redirect(
+144:	pub fn redirect_with_client_preference(
+163:	pub fn set_header(&mut self, key: HeaderName, value: HeaderValue) {
+172:	pub fn add_header(&mut self, key: HeaderName, value: HeaderValue) {
+181:	pub fn set_cookie(&mut self, cookie: Cookie<'static>) {
+198:	pub fn set_title(&mut self, title: HeadElement) {
+203:	pub fn add_meta_head_element(&mut self, element: HeadElement) {
+208:	pub fn add_rest_head_element(&mut self, element: HeadElement) {
+224:	pub fn is_terminal(&self) -> bool {
+233:	pub fn is_terminal_error(&self) -> bool {
+238:	pub fn merge_from(&mut self, other: &Self) {
+273:	pub fn status(&self) -> Option<StatusCode> {
+278:	pub fn status_text(&self) -> Option<&str> {
+283:	pub fn location(&self) -> Option<&str> {
+288:	pub fn client_redirect_location(&self) -> Option<&str> {
+293:	pub fn title(&self) -> Option<&HeadElement> {
+298:	pub fn meta_head_elements(&self) -> &[HeadElement] {
+303:	pub fn rest_head_elements(&self) -> &[HeadElement] {
+308:	pub fn cookies(&self) -> &[ResponseCookie] {
+315:pub struct ResponseCookie {
+335:	pub fn name(&self) -> &str {
+340:	pub fn value(&self) -> &str {
+345:	pub fn domain(&self) -> Option<&str> {
+350:	pub fn path(&self) -> Option<&str> {
+365:pub enum ResponseEffectsError {
+379:pub fn finalize_response(
+427:pub fn accepts_client_redirect(headers: &HeaderMap) -> bool {
+438:pub fn finalize_terminal_response(
+453:pub fn suppress_response_body_preserving_content_length(
+465:pub fn finalize_view_json_response(
+482:pub fn finalize_view_html_response(
+499:pub fn ssr_payload_json(payload: &SsrPayload) -> Result<String, FinalizerError> {
+522:pub fn finalize_view_build_skew_response(
+550:pub enum FinalizerError {
+
+===== crates/vorma/src/route_input.rs
+12:pub type TypeResolver = fn(TypePhase, &mut TypeRegistry) -> Result<TypeRefContract, String>;
+15:pub type SearchSchemaResolver = fn() -> Result<Value, String>;
+18:pub trait ViewInput: DeserializeOwned + Type + Send + Sync + 'static {}
+23:pub trait ResourceInput: Send + Sync + 'static {}
+30:pub struct RouteContractFacts {
+38:pub fn route_contract_from_resolvers(
+52:pub fn type_resolver<T>(
+64:pub fn search_schema_resolver<T>() -> Result<Value, String>
+
+===== crates/vorma/src/runtime_app.rs
+40:pub struct RuntimeAppRequest<'a> {
+47:	pub fn new(request: RequestInput) -> Self {
+55:	pub fn with_view_html_input(mut self, view_html: ViewHtmlResponseInput<'a>) -> Self {
+61:	pub fn try_from_http_request(request: Request<Bytes>) -> Result<Self, RuntimeAppRequestError> {
+79:	pub fn request(&self) -> &RequestInput {
+84:	pub fn view_html(&self) -> ViewHtmlResponseInput<'a> {
+91:pub enum RuntimeAppRequestError {
+102:pub struct CommittedRuntimeApp {
+109:	pub fn new(snapshot: RuntimeSnapshot, handlers: HandlerRegistry) -> Self {
+114:	pub fn snapshot(&self) -> &RuntimeSnapshot {
+119:	pub fn handlers(&self) -> &HandlerRegistry {
+124:	pub async fn handle_request<P>(
+161:	pub async fn handle_request_with_document_provider<P, D>(
+235:	pub async fn handle_http_request<P>(
+254:	pub async fn handle_http_request_with_document_provider<P, D>(
+423:pub enum RuntimeAppError {
+
+===== crates/vorma/src/runtime_assets.rs
+15:pub const VORMA_OUT_DIR: &str = ".vorma";
+17:pub const STATIC_OUT_DIR: &str = "static";
+19:pub const PUBLIC_OUT_DIR: &str = "public";
+21:pub const MANIFEST_STATIC_OUT_DEV: &str = "vorma.manifest.dev.json";
+23:pub const MANIFEST_STATIC_OUT_PROD: &str = "vorma.manifest.prod.json";
+27:pub enum ManifestMode {
+36:	pub const fn manifest_filename(self) -> &'static str {
+46:pub struct RuntimeAssetBundle {
+60:	pub fn load(config: &Config, mode: ManifestMode) -> Result<Self, RuntimeAssetLoadError> {
+142:	pub fn static_out_dir(&self) -> &Path {
+147:	pub fn manifest_path(&self) -> &Path {
+152:	pub fn manifest(&self) -> &RuntimeManifest {
+157:	pub fn public_asset_directory(&self) -> &PublicAssetDirectory {
+162:	pub fn into_manifest_and_public_asset_directory(
+170:pub fn static_out_dir(dist_dir: impl AsRef<Path>) -> PathBuf {
+176:pub enum RuntimeAssetLoadError {
+
+===== crates/vorma/src/runtime_document.rs
+17:pub type RuntimeDocumentFuture =
+21:pub trait RuntimeDocumentProvider: Send + Sync {
+38:pub struct RuntimeDocumentInput {
+46:	pub fn new(
+59:	pub fn request(&self) -> &RequestInput {
+64:	pub fn manifest(&self) -> &RuntimeManifest {
+69:	pub fn public_url(&self, src_path: &str) -> Result<String, RuntimeDocumentError> {
+79:pub struct RuntimeDocumentError {
+85:	pub fn new(message: impl Into<String>) -> Self {
+92:	pub fn message(&self) -> &str {
+113:pub struct StaticRuntimeDocumentProvider {
+119:	pub fn new(document: DocumentContract) -> Self {
+124:	pub fn document(&self) -> &DocumentContract {
+
+===== crates/vorma/src/runtime_host.rs
+36:pub struct RuntimeHost<S> {
+75:	pub fn public_url(&self, src_path: &str) -> crate::Result<String> {
+88:	pub fn client_build_id(&self) -> crate::Result<String> {
+96:	pub fn critical_css_content_sha256(&self) -> crate::Result<String> {
+104:	pub fn dev_refresh_script_content_sha256(&self) -> crate::Result<String> {
+119:	pub async fn handle_request(&self, request: Request<Bytes>) -> Result<Response<Bytes>, String> {
+196:pub struct CommittedRuntimeHost<P> {
+208:	pub fn new(
+230:	pub fn with_view_html(mut self, view_html: ViewHtmlResponseInput<'static>) -> Self {
+236:	pub fn with_document_provider<D>(mut self, document_provider: D) -> Self
+245:	pub fn client_build_id(&self) -> &str {
+250:	pub fn critical_css_content_sha256(&self) -> &str {
+255:	pub fn dev_refresh_script_content_sha256(&self) -> &str {
+260:	pub fn snapshot(&self) -> &RuntimeSnapshot {
+265:	pub fn service(&self) -> &CommittedRuntimeService<P> {
+270:	pub fn into_service(self) -> CommittedRuntimeService<P> {
+288:pub enum RuntimeHostError {
+
+===== crates/vorma/src/runtime_service.rs
+29:pub struct CommittedRuntimeService<P> {
+42:	pub fn new(app: CommittedRuntimeApp, asset_provider: P, request_body_limit: usize) -> Self {
+55:	pub fn with_view_html(mut self, view_html: ViewHtmlResponseInput<'static>) -> Self {
+61:	pub fn with_document_provider<D>(mut self, document_provider: D) -> Self
+70:	pub fn app(&self) -> &CommittedRuntimeApp {
+75:	pub fn request_body_limit(&self) -> usize {
+80:	pub async fn handle_request(&self, request: Request<Bytes>) -> Response<Bytes> {
+
+===== crates/vorma/src/runtime_snapshot.rs
+22:pub struct RuntimeSnapshotInput {
+29:	pub fn new(graph: FrameworkGraph, manifest: RuntimeManifest) -> Self {
+34:	pub fn graph(&self) -> &FrameworkGraph {
+39:	pub fn manifest(&self) -> &RuntimeManifest {
+46:pub struct RuntimeSnapshot {
+55:	pub fn compile(input: RuntimeSnapshotInput) -> Result<Self, RuntimeSnapshotError> {
+78:	pub fn graph(&self) -> &FrameworkGraph {
+83:	pub fn manifest(&self) -> &RuntimeManifest {
+88:	pub fn client_build_id(&self) -> &str {
+93:	pub fn engine(&self) -> &ExecutionEngine {
+98:	pub fn asset_capabilities(&self) -> &AssetCapabilities {
+103:	pub async fn execute(
+115:pub enum RuntimeSnapshotError {
+
+===== crates/vorma/src/search_params.rs
+10:pub fn schema_for_type<T: Type>() -> Result<Value, String> {
+
+===== crates/vorma/src/static_route.rs
+14:pub struct Params<'a> {
+20:	pub fn get(&self, key: &str) -> Option<&'a str> {
+25:	pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a str)> {
+30:	pub fn len(&self) -> usize {
+35:	pub fn is_empty(&self) -> bool {
+51:pub type RouteFuture<O, X> = Pin<Box<dyn Future<Output = Result<O, X>> + Send + 'static>>;
+55:pub type ErasedRouteFuture =
+60:pub struct ErasedRequestCtx<S> {
+85:pub type ErasedRouteHandler<S> = fn(ErasedRequestCtx<S>) -> ErasedRouteFuture;
+89:pub trait PathParams: Sized + Send + Sync + 'static {
+103:pub struct InputError {
+109:	pub fn bad_request(message: impl Into<String>) -> Self {
+125:pub struct MiddlewareCtx<S> {
+136:	pub fn params(&self) -> Params<'_> {
+143:	pub fn param(&self, key: &str) -> &str {
+148:	pub fn splat_values(&self) -> &vorma_matcher::SplatValues {
+153:	pub fn state(&self) -> &S {
+158:	pub fn request(&self) -> crate::HttpRequest<'_> {
+163:	pub fn exec_ctx(&self) -> &ExecCtx<crate::Error> {
+168:	pub fn public_url(&self, src_path: &str) -> crate::Result<String> {
+175:	pub fn response(&self) -> crate::ResponseHandle<'_> {
+180:	pub fn redirect<O>(&self, location: impl AsRef<str>) -> Result<O, crate::HttpExit> {
+185:	pub fn redirect_with_status<O>(
+198:	pub fn head(&self) -> crate::HeadHandle {
+206:pub enum StaticRouteError {
+235:pub struct ResourceCtx<S, I, P = ()> {
+251:	pub fn state(&self) -> &S {
+256:	pub fn input(&self) -> &I {
+261:	pub fn params(&self) -> &P {
+266:	pub fn param(&self, key: &str) -> &str {
+271:	pub fn splat_values(&self) -> &vorma_matcher::SplatValues {
+276:	pub fn request(&self) -> crate::HttpRequest<'_> {
+281:	pub fn exec_ctx(&self) -> &ExecCtx<crate::Error> {
+286:	pub fn public_url(&self, src_path: &str) -> crate::Result<String> {
+293:	pub fn response(&self) -> crate::ResourceResponseHandle<'_> {
+298:	pub fn redirect<O>(&self, location: impl AsRef<str>) -> Result<O, crate::HttpExit> {
+303:	pub fn redirect_with_status<O>(
+317:pub struct ViewCtx<S, I, P = ()> {
+333:	pub fn state(&self) -> &S {
+338:	pub fn input(&self) -> &I {
+343:	pub fn params(&self) -> &P {
+348:	pub fn param(&self, key: &str) -> &str {
+353:	pub fn splat_values(&self) -> &vorma_matcher::SplatValues {
+358:	pub fn request(&self) -> crate::HttpRequest<'_> {
+363:	pub fn exec_ctx(&self) -> &ExecCtx<crate::Error> {
+368:	pub fn public_url(&self, src_path: &str) -> crate::Result<String> {
+375:	pub fn response(&self) -> crate::ResponseHandle<'_> {
+380:	pub fn redirect<O>(&self, location: impl AsRef<str>) -> Result<O, crate::ViewExit> {
+385:	pub fn redirect_with_status<O>(
+398:	pub fn head(&self) -> crate::HeadHandle {
+409:pub trait StaticResourceInput: ResourceInput + Sized {
+456:pub fn run_static_view<S, I, P, O>(
+489:pub fn run_static_resource<S, I, P, O>(
+521:pub fn static_route_runtime_handler<S>(
+533:pub fn middleware_runtime_handler<S, F, Fut, O>(
+548:pub struct StaticRouteRuntimeHandler<S> {
+570:pub struct MiddlewareRuntimeHandler<S, F> {
+
+===== crates/vorma/src/testing.rs
+72:pub const TEST_CLIENT_BUILD_ID: &str = "vorma-test-build";
+75:pub struct TestApp {
+81:	pub fn from_config<S>(app_config: AppConfig<S>) -> crate::Result<Self>
+89:	pub fn builder<S>(app_config: AppConfig<S>) -> TestAppBuilder<S>
+100:	pub async fn handle_request(&self, request: Request<Bytes>) -> Response<Bytes> {
+109:	pub async fn get(&self, path_and_query: &str) -> Response<Bytes> {
+123:	pub async fn get_view_payload(&self, path_and_query: &str) -> Response<Bytes> {
+144:	pub async fn request_json<B>(
+164:	pub fn request(&self, method: Method, path_and_query: &str) -> TestRequest<'_> {
+175:	pub fn client_build_id(&self) -> &str {
+180:	pub fn public_url(&self, src_path: &str) -> crate::Result<String> {
+191:pub struct TestRequest<'a> {
+201:	pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+207:	pub fn cookie(self, name: impl AsRef<str>, value: impl AsRef<str>) -> Self {
+213:	pub fn body(mut self, content_type: impl Into<String>, body: impl Into<Vec<u8>>) -> Self {
+225:	pub async fn send(self) -> Response<Bytes> {
+240:pub struct TestAppBuilder<S> {
+251:	pub fn with_public_asset(
+261:	pub fn build(self) -> crate::Result<TestApp> {
+
+===== crates/vorma/src/typed_handler.rs
+30:pub fn typed_runtime_handler<S, I, O, F, Fut>(
+49:pub fn form_data_runtime_handler<S, O, F, Fut>(
+67:pub fn typed_resource_runtime_handler<S, I, O, F, Fut>(
+86:pub struct TypedRuntimeHandler<S, I, O, F> {
+93:pub struct TypedResourceRuntimeHandler<S, I, O, F> {
+160:pub struct FormDataRuntimeHandler<S, O, F> {
+208:pub struct TypedHandlerContext<S, I> {
+251:	pub fn state(&self) -> &S {
+256:	pub fn input(&self) -> &I {
+261:	pub fn handler_input(&self) -> &HandlerInput {
+266:	pub fn exec_ctx(&self) -> &ExecCtx<crate::Error> {
+276:	pub fn request(&self) -> crate::HttpRequest<'_> {
+281:	pub fn pattern(&self) -> &str {
+286:	pub fn param(&self, key: &str) -> Option<&str> {
+291:	pub fn splat_values(&self) -> &vorma_matcher::SplatValues {
+296:	pub fn query_params(&self) -> &BTreeMap<String, Vec<String>> {
+301:	pub fn decoded_input(&self) -> &DecodedRouteInput {
+306:	pub fn public_url(&self, src_path: &str) -> Result<String, PublicUrlError> {
+311:	pub fn response(&self) -> TypedResponseHandle<'_> {
+319:	pub fn resource_response(&self) -> TypedResourceResponseHandle<'_> {
+337:	pub fn head(&self) -> TypedHeadHandle {
+345:pub struct TypedResponseHandle<'a> {
+352:	pub fn set_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
+361:	pub fn append_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
+370:	pub fn set_cookie(&mut self, cookie: Cookie<'static>) -> &mut Self {
+386:pub struct TypedResourceResponseHandle<'a> {
+396:	pub fn set_status(&mut self, status: StatusCode) -> &mut Self {
+411:	pub fn set_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
+417:	pub fn append_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
+423:	pub fn set_cookie(&mut self, cookie: Cookie<'static>) -> &mut Self {
+452:pub struct TypedHeadHandle {
+458:	pub fn title(&mut self, title: impl Into<String>) -> &mut Self {
+463:	pub fn description(&mut self, description: impl Into<String>) -> &mut Self {
+468:	pub fn icon(&mut self, href: impl Into<String>) -> &mut Self {
+473:	pub fn preload(&mut self, href: impl Into<String>, r#as: impl Into<String>) -> &mut Self {
+478:	pub fn meta_name_content(
+487:	pub fn meta_property_content(
+496:	pub fn meta_charset(&mut self, charset: impl Into<String>) -> &mut Self {
+501:	pub fn add(
+513:	pub fn append(&mut self, other: &crate::HeadBuilder) -> &mut Self {
+542:pub enum TypedHandlerContextError {
+
+===== crates/vorma/src/view_response.rs
+34:pub const SSR_PAYLOAD_SCRIPT_ID: &str = crate::constants::VORMA_DATA_JSON_SCRIPT_EL_ID;
+36:pub const CSS_BUNDLE_ATTR: &str = "data-vorma-css-bundle";
+64:pub struct ViewHtmlResponseInput<'a> {
+72:	pub fn new(body_markup: impl Into<Cow<'a, str>>) -> Self {
+81:	pub fn with_is_dev(mut self, is_dev: bool) -> Self {
+87:	pub fn with_deployment_id(mut self, deployment_id: impl Into<Cow<'a, str>>) -> Self {
+93:	pub fn body_markup(&self) -> &str {
+98:	pub fn is_dev(&self) -> bool {
+103:	pub fn deployment_id(&self) -> &str {
+109:pub fn finalize_view_report_json_response(
+129:pub fn finalize_view_report_html_response(
+196:pub enum ViewResponseError {
+
+===== crates/vorma-build/src/app_server_build.rs
+24:pub fn build_app_server_and_read_live_state_until_cancelled(
+57:pub fn app_server_build_command(
+183:pub enum AppServerBuildError {
+
+===== crates/vorma-build/src/app_server_process.rs
+13:pub const APP_SERVER_PORT_ENV_KEY: &str = "PORT";
+17:pub struct AppServerDevInput {
+23:	pub fn new(port: u16) -> Self {
+28:	pub fn port(&self) -> u16 {
+35:pub struct PrebuiltAppServer {
+43:	pub fn new(
+56:	pub fn matches_plan_server_target(&self, plan: &BuildProjectionPlan) -> bool {
+69:pub fn start_app_server_dev_with_prebuilt(
+85:pub fn app_server_dev_executable_command(
+109:pub fn start_app_server_dev(
+121:pub fn app_server_dev_command(
+155:pub enum AppServerProcessError {
+
+===== crates/vorma-build/src/build_output.rs
+23:pub struct BuildOutputWriteReport {
+33:	pub fn manifest_path(&self) -> &Path {
+39:	pub fn generated_typescript_path(&self) -> &Path {
+45:	pub fn manifest_bytes(&self) -> usize {
+51:	pub fn generated_typescript_bytes(&self) -> usize {
+58:pub struct TypeScriptOutputWriteReport {
+66:	pub fn path(&self) -> &Path {
+72:	pub fn bytes(&self) -> usize {
+78:pub fn write_typescript_contracts(
+88:pub fn write_generation_candidate_outputs(
+119:pub struct GenerationOutputPaths {
+127:	pub fn manifest_path(&self) -> &Path {
+132:	pub fn generated_typescript_path(&self) -> &Path {
+138:pub fn generation_candidate_output_paths(
+162:pub enum BuildOutputWriteError {
+
+===== crates/vorma-build/src/build_plan.rs
+11:pub struct BuildProjectionPlan {
+22:	pub fn compile(bundle: &ProjectionBundle) -> Result<Self, BuildPlanError> {
+71:	pub fn workspace(&self) -> &BuildWorkspacePlan {
+76:	pub fn server_target(&self) -> &ServerTargetPlan {
+81:	pub fn vite_inputs(&self) -> &ViteInputPlan {
+86:	pub fn static_inputs(&self) -> &StaticInputPlan {
+91:	pub fn generated_typescript(&self) -> &GeneratedTypeScriptPlan {
+96:	pub fn dev_watch(&self) -> &BuildDevWatchPlan {
+103:pub struct BuildWorkspacePlan {
+110:	pub fn root_dir(&self) -> &str {
+115:	pub fn dist_dir(&self) -> &str {
+122:pub struct ServerTargetPlan {
+129:	pub fn cargo_package(&self) -> &str {
+134:	pub fn cargo_bin(&self) -> &str {
+141:pub struct ViteInputPlan {
+154:	pub fn ui_variant(&self) -> &str {
+159:	pub fn js_package_manager_base_cmd(&self) -> &str {
+164:	pub fn js_package_manager_dir(&self) -> &str {
+169:	pub fn vite_config_file(&self) -> &str {
+174:	pub fn entry_file(&self) -> &str {
+179:	pub fn public_static_base(&self) -> &str {
+184:	pub fn view_client_files(&self) -> &[String] {
+189:	pub fn dedupe_list(&self) -> &'static [&'static str] {
+208:pub struct StaticInputPlan {
+216:	pub fn public_static_source_dir(&self) -> &str {
+221:	pub fn critical_css_file(&self) -> &str {
+227:	pub fn declared_assets(&self) -> &[StaticAssetContract] {
+234:pub struct GeneratedTypeScriptPlan {
+240:	pub fn output_file(&self) -> &str {
+247:pub struct BuildDevWatchPlan {
+253:	pub fn entries(&self) -> &[BuildDevWatchEntry] {
+262:	pub fn extended_with_critical_css_imports(&self, imports: &[String]) -> Self {
+347:pub struct BuildDevWatchEntry {
+354:	pub fn source_path(&self) -> &str {
+359:	pub fn intent(&self) -> BuildDevWatchIntent {
+366:pub enum BuildDevWatchIntent {
+383:pub enum BuildPlanError {
+
+===== crates/vorma-build/src/dev_build.rs
+72:pub struct DevGenerationStartConfig {
+82:	pub fn new(
+101:pub struct DevBuildReport {
+113:	pub fn prebuild_typescript(&self) -> &TypeScriptOutputWriteReport {
+119:	pub fn output_publish(&self) -> &DevOutputPublishReport {
+125:	pub fn vite_server_port(&self) -> u16 {
+131:	pub fn vite_plugin_control_port(&self) -> u16 {
+137:	pub fn app_server_port(&self) -> u16 {
+142:	pub fn dev_mux_port(&self) -> u16 {
+181:pub struct DevGenerationUpdateReport {
+190:	pub fn output_publish(&self) -> &DevOutputPublishReport {
+195:	pub fn refresh_payloads(&self) -> &[RefreshPayload] {
+201:	pub fn retired_app_server_termination_error(&self) -> Option<&str> {
+360:pub enum DevDiskRollbackError {
+393:pub struct StartedDevGeneration {
+419:	pub fn critical_css_import_paths(&self) -> &[String] {
+430:	pub fn watch_child_exits(
+446:	pub fn committed_generation(&self) -> &CommittedGeneration {
+451:	pub fn report(&self) -> &DevBuildReport {
+457:	pub fn vite_process_id(&self) -> Option<u32> {
+463:	pub fn vite_plugin_rpc_server_port(&self) -> u16 {
+469:	pub fn subscribe_refresh_payloads(&self) -> DevRefreshClientSubscription {
+474:	pub fn broadcast_rebuilding(&self) {
+483:	pub fn broadcast_build_error(&self, message: impl Into<String>) {
+489:	pub fn broadcast_client_revalidation(&self) {
+497:	pub fn activate_next_live_state_generation(
+513:	pub fn activate_next_live_state_generation_until_cancelled(
+825:pub async fn start_and_activate_dev_generation_on_loopback(
+856:pub async fn start_and_activate_dev_generation(
+1337:pub enum DevBuildError {
+
+===== crates/vorma-build/src/dev_generation.rs
+32:pub struct DevRuntimeInputs {
+40:	pub fn new(
+53:	pub fn vite_server_port(&self) -> i32 {
+58:	pub fn dev_mux_port(&self) -> i32 {
+63:	pub fn dev_refresh_token(&self) -> &str {
+70:pub struct PreparedDevGeneration {
+80:	pub fn public_static_outputs(&self) -> &PreparedPublicStaticOutputs {
+85:	pub fn projection_bundle(&self) -> &ProjectionBundle {
+90:	pub fn build_plan(&self) -> &BuildProjectionPlan {
+95:	pub fn typescript_contracts(&self) -> &GeneratedTypeScriptContracts {
+100:	pub fn artifacts(&self) -> &CompletedBuildArtifacts {
+107:pub struct DevOutputPublishReport {
+115:	pub fn public_static(&self) -> &PublicStaticPublishReport {
+121:	pub fn generation_outputs(&self) -> &BuildOutputWriteReport {
+289:pub enum DevGenerationError {
+
+===== crates/vorma-build/src/dev_mux.rs
+42:pub struct DevMuxServer {
+74:	pub fn port(&self) -> u16 {
+80:	pub fn active_app_server_port(&self) -> u16 {
+85:	pub fn set_active_app_server_port(&self, port: u16) -> Result<(), DevMuxError> {
+90:	pub fn broadcast(&self, payload: RefreshPayload) {
+95:	pub fn broadcast_all(&self, payloads: impl IntoIterator<Item = RefreshPayload>) {
+103:	pub fn add_test_client(&self) -> DevRefreshClientSubscription {
+143:pub fn start_loopback_dev_mux_server(
+196:pub enum DevMuxError {
+
+===== crates/vorma-build/src/dev_refresh.rs
+16:pub const DEV_REFRESH_EVENTS_PATH_PREFIX: &str = "/vorma-dev-refresh-";
+21:pub struct RefreshPayload {
+29:	pub fn new(
+42:	pub fn change_type(&self) -> ChangeType {
+48:	pub fn critical_css(&self) -> &str {
+54:	pub fn build_error(&self) -> &str {
+61:pub enum ChangeType {
+83:pub fn refresh_payloads_from_effects(
+115:pub struct DevRefreshClients {
+122:	pub fn new() -> Self {
+130:	pub fn broadcast(&self, payload: RefreshPayload) {
+150:	pub fn add_client(&self) -> DevRefreshClientSubscription {
+179:pub struct DevRefreshClientSubscription {
+187:	pub async fn recv(&mut self) -> Option<RefreshPayload> {
+193:	pub fn try_recv(&mut self) -> Result<RefreshPayload, mpsc::error::TryRecvError> {
+206:pub struct DevRefreshOriginPolicy {
+212:	pub fn new(browser_origin_port: u16) -> Result<Self, DevRefreshError> {
+222:	pub fn allows_origin(&self, origin: &str) -> bool {
+238:pub enum DevRefreshError {
+
+===== crates/vorma-build/src/dev_vite.rs
+12:pub struct ViteDevServerInput {
+20:	pub fn new(
+33:	pub fn vite_server_port(&self) -> u16 {
+38:	pub fn plugin_server_port(&self) -> u16 {
+43:	pub fn plugin_server_token(&self) -> &str {
+49:pub fn start_vite_dev_server(
+61:pub fn vite_dev_server_command(
+86:pub enum DevViteError {
+
+===== crates/vorma-build/src/dev_watcher.rs
+17:pub struct DevFileWatchPlan {
+26:	pub fn compile(
+59:	pub fn watch_roots(&self) -> &[PathBuf] {
+64:	pub fn classify_path(&self, path: impl AsRef<Path>) -> DevFileChange {
+198:pub struct DevFileChange {
+205:	pub fn intents(&self) -> &BTreeSet<BuildDevWatchIntent> {
+210:	pub fn is_empty(&self) -> bool {
+215:	pub fn requires_vorma_generation(&self) -> bool {
+222:	pub fn requires_app_server_generation(&self) -> bool {
+229:	pub fn requires_client_revalidation(&self) -> bool {
+235:	pub fn requires_static_output_generation(&self) -> bool {
+246:	pub fn requires_only_client_revalidation(&self) -> bool {
+269:pub struct StartedDevFileWatcher {
+283:pub struct DevFileWatchPlanHandle {
+289:	pub fn replace(&self, plan: DevFileWatchPlan) {
+296:	pub fn plan_handle(&self) -> DevFileWatchPlanHandle {
+310:	pub fn recv(&self) -> Result<DevFileChange, DevWatcherError> {
+323:	pub fn recv_settled(
+344:pub fn start_dev_file_watcher(
+386:pub enum DevWatcherError {
+
+===== crates/vorma-build/src/entrypoint.rs
+69:pub fn run<S, F>(app_config: F) -> Result<(), String>
+78:pub fn build_production<S, F>(app_config: F) -> Result<ProductionBuildReport, BuildEntrypointError>
+98:pub fn start_dev_server<S, F>(app_config: F) -> Result<StartedDevGeneration, BuildEntrypointError>
+593:pub enum BuildEntrypointError {
+
+===== crates/vorma-build/src/generation_epoch.rs
+23:pub struct GenerationCandidate {
+36:	pub fn new(
+64:	pub fn from_precomputed_projections(
+90:	pub async fn from_app_build_contract(
+105:	pub async fn from_app_build_contract_with_precomputed_projections(
+130:	pub fn from_live_graph_with_precomputed_projections(
+152:	pub fn build_plan(&self) -> &BuildProjectionPlan {
+157:	pub fn typescript_contracts(&self) -> &GeneratedTypeScriptContracts {
+162:	pub fn manifest(&self) -> &RuntimeManifest {
+167:	pub fn commit(self, effects: GenerationEffects) -> CommittedGeneration {
+183:pub struct GenerationEffects {
+194:	pub fn derive(previous: Option<&CommittedGeneration>, candidate: &GenerationCandidate) -> Self {
+218:	pub fn browser_refresh_effects(&self, generation_id: u64) -> BrowserRefreshEffects {
+230:pub struct BrowserRefreshEffects {
+240:	pub fn generation_id(&self) -> u64 {
+245:	pub fn public_assets_changed(&self) -> bool {
+250:	pub fn critical_css_changed(&self) -> bool {
+255:	pub fn client_revalidate_required(&self) -> bool {
+262:pub struct CommittedGeneration {
+276:	pub fn id(&self) -> u64 {
+281:	pub fn graph(&self) -> &FrameworkGraph {
+286:	pub fn projections(&self) -> &ProjectionBundle {
+291:	pub fn build_plan(&self) -> &BuildProjectionPlan {
+297:	pub fn typescript_contracts(&self) -> &GeneratedTypeScriptContracts {
+302:	pub fn artifacts(&self) -> &GenerationArtifacts {
+307:	pub fn manifest(&self) -> &RuntimeManifest {
+313:	pub fn effects(&self) -> &GenerationEffects {
+319:	pub fn runtime_snapshot_input(&self) -> RuntimeSnapshotInput {
+325:	pub fn runtime_snapshot(&self) -> Result<RuntimeSnapshot, RuntimeSnapshotError> {
+330:	pub fn browser_refresh_effects(&self) -> BrowserRefreshEffects {
+337:pub enum GenerationError {
+385:pub struct EpochSupervisor {
+402:	pub fn committed(&self) -> Option<&CommittedGeneration> {
+408:	pub fn build_next_candidate(
+418:	pub async fn build_next_app_candidate(
+427:	pub async fn build_next_app_candidate_with_precomputed_projections(
+447:	pub fn build_next_live_graph_candidate_with_precomputed_projections(
+469:	pub fn activate_next_complete_candidate(
+480:	pub async fn activate_next_complete_app_candidate(
+490:	pub fn activate(&mut self, candidate: GenerationCandidate) -> &CommittedGeneration {
+
+===== crates/vorma-build/src/generation_inputs.rs
+19:pub struct PreparedBuildInputs {
+30:	pub fn bundle(&self) -> &ProjectionBundle {
+35:	pub fn plan(&self) -> &BuildProjectionPlan {
+40:	pub fn typescript_contracts(&self) -> &GeneratedTypeScriptContracts {
+45:	pub fn public_static_outputs(&self) -> &PreparedPublicStaticOutputs {
+50:	pub fn critical_css(&self) -> &CriticalCssBundle {
+55:	pub fn vite_plugin_config(&self) -> &VitePluginConfig {
+61:pub fn prepare_build_inputs(
+68:pub fn prepare_build_inputs_from_graph(
+95:pub enum BuildInputError {
+
+===== crates/vorma-build/src/lib.rs
+45:pub use entrypoint::run;
+
+===== crates/vorma-build/src/live_state_command.rs
+17:pub fn read_live_build_state_from_executable(
+27:pub fn read_live_build_state_from_executable_until_cancelled(
+41:pub fn live_state_executable_command(
+81:pub enum LiveStateCommandError {
+
+===== crates/vorma-build/src/live_state.rs
+3:pub use vorma_contract::live_state::*;
+
+===== crates/vorma-build/src/output_lock.rs
+24:pub const OUTPUT_LAYOUT_LOCK_FILE_NAME: &str = "build.lock";
+27:pub struct OutputLayoutLock {
+34:	pub fn acquire_for_workspace_output_layout(
+45:	pub fn lock_path(&self) -> &Path {
+58:	pub fn reacquire_if_output_layout_moved(
+80:	pub fn release(mut self) -> Result<(), OutputLayoutLockError> {
+124:pub enum OutputLayoutLockError {
+
+===== crates/vorma-build/src/process_ready.rs
+15:pub fn wait_for_loopback_http_ready(
+26:pub fn wait_for_loopback_http_ready_until_cancelled(
+67:pub enum ProcessReadyError {
+
+===== crates/vorma-build/src/process_runner.rs
+26:pub struct BuildProcessCancel {
+38:	pub fn new() -> Self {
+49:	pub fn cancel(&self) {
+55:	pub fn is_cancelled(&self) -> bool {
+72:pub struct BuildProcessCommand {
+82:	pub fn new(
+97:	pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+103:	pub fn program(&self) -> &str {
+108:	pub fn args(&self) -> &[String] {
+113:	pub fn current_dir(&self) -> &Path {
+118:	pub fn env(&self) -> &BTreeMap<String, String> {
+124:pub trait BuildProcessRunner {
+185:pub struct BuildProcessOutput {
+194:	pub fn new(
+209:	pub fn status_success(&self) -> bool {
+214:	pub fn status(&self) -> &str {
+219:	pub fn stdout(&self) -> &[u8] {
+224:	pub fn stderr(&self) -> &[u8] {
+230:pub trait StartedBuildProcess {
+255:pub struct StdBuildProcessRunner;
+520:pub enum BuildProcessError {
+
+===== crates/vorma-build/src/production_build.rs
+28:pub struct ProductionBuildReport {
+36:	pub fn prebuild_typescript(&self) -> &TypeScriptOutputWriteReport {
+42:	pub fn output_publish(&self) -> &ProductionOutputPublishReport {
+48:pub async fn build_and_activate_production_generation_on_loopback(
+62:pub async fn build_and_activate_production_generation<'a>(
+115:pub enum ProductionBuildError {
+
+===== crates/vorma-build/src/production_generation.rs
+46:pub struct ProductionOutputPublishReport {
+54:	pub fn public_static(&self) -> &PublicStaticPublishReport {
+60:	pub fn generation_outputs(&self) -> &BuildOutputWriteReport {
+136:pub enum ProductionGenerationError {
+
+===== crates/vorma-build/src/production_vite.rs
+15:pub const VITE_PRODUCTION_MANIFEST_TEMP_DIR: &str = "tmp";
+17:pub const VITE_PRODUCTION_MANIFEST_FILENAME: &str = "vite_manifest.json";
+21:pub struct ViteProductionBuildInput {
+28:	pub fn new(plugin_server_port: u16, plugin_server_token: impl Into<String>) -> Self {
+36:	pub fn plugin_server_port(&self) -> u16 {
+41:	pub fn plugin_server_token(&self) -> &str {
+47:pub fn run_vite_production_build(
+61:pub fn vite_production_build_command(
+94:pub fn production_vite_manifest_temp_path(
+105:pub enum ProductionViteError {
+
+===== crates/vorma-build/src/projection_compiler.rs
+16:pub struct ProjectionBundle {
+31:	pub fn compile(graph: &FrameworkGraph) -> Self {
+91:	pub fn public_static_base(&self) -> &str {
+96:	pub fn ui_variant(&self) -> &str {
+101:	pub fn build_inputs(&self) -> Option<&BuildInputConfig> {
+107:	pub fn document(&self) -> &DocumentContract {
+112:	pub fn type_defs(&self) -> &[TypeDef] {
+117:	pub fn generated_typescript_extra_source(&self) -> &str {
+123:	pub fn view_payload_patterns(&self) -> impl Iterator<Item = &str> + '_ {
+128:	pub fn view_payloads(&self) -> &[ViewPayloadContract] {
+133:	pub fn resource_contracts(&self) -> &[ResourceContract] {
+138:	pub fn view_modules(&self) -> &[ViewModuleContract] {
+143:	pub fn static_assets(&self) -> &[StaticAssetContract] {
+149:	pub fn dev_watch_plan(&self) -> DevWatchPlan {
+166:	pub fn runtime_manifest(
+290:pub struct DevWatchPlan {
+297:	pub fn source_paths(&self) -> &[String] {
+304:pub struct ViewPayloadContract {
+314:	pub fn pattern(&self) -> &str {
+319:	pub fn parent_patterns(&self) -> &[String] {
+324:	pub fn params(&self) -> &[String] {
+329:	pub fn search_schema(&self) -> &Value {
+334:	pub fn type_contract(&self) -> &RouteTypeContract {
+341:pub struct ResourceContract {
+353:	pub fn method(&self) -> &str {
+358:	pub fn pattern(&self) -> &str {
+364:	pub fn kind(&self) -> ResourceKind {
+369:	pub fn kind_override(&self) -> Option<ResourceKind> {
+374:	pub fn default_kind(&self) -> ResourceKind {
+379:	pub fn params(&self) -> &[String] {
+385:	pub fn input_schema(&self) -> Option<&Value> {
+390:	pub fn type_contract(&self) -> &RouteTypeContract {
+397:pub struct ViewModuleContract {
+404:	pub fn pattern(&self) -> &str {
+409:	pub fn client_file(&self) -> &str {
+416:pub struct StaticAssetContract {
+423:	pub fn source_path(&self) -> &str {
+428:	pub fn public_path(&self) -> &str {
+435:pub struct CompletedBuildArtifacts {
+447:	pub fn new(
+465:	pub fn with_client_entry(mut self, client_entry: ClientModuleArtifacts) -> Self {
+471:	pub fn with_client_core_assets(mut self, client_core_assets: ClientCoreArtifacts) -> Self {
+477:	pub fn with_dev_metadata(mut self, dev_metadata: DevManifestMetadata) -> Self {
+483:	pub async fn into_generation_artifacts(
+512:	pub fn into_generation_artifacts_with_root_document_hash_source(
+541:pub struct GenerationArtifacts {
+554:	pub fn new(
+574:	pub async fn from_document_builder(
+596:	pub fn with_client_entry(mut self, client_entry: ClientModuleArtifacts) -> Self {
+603:	pub fn with_client_core_assets(mut self, client_core_assets: ClientCoreArtifacts) -> Self {
+609:	pub fn critical_css(&self) -> &str {
+614:	pub fn root_document_hash_source(&self) -> &str {
+619:	pub fn public_filepaths(&self) -> &[String] {
+624:	pub fn public_filemap(&self) -> &BTreeMap<String, String> {
+629:	pub fn view_module_outputs(&self) -> &BTreeMap<String, ClientModuleArtifacts> {
+634:	pub fn client_core_assets(&self) -> Option<&ClientCoreArtifacts> {
+639:	pub fn dev_metadata(&self) -> Option<&DevManifestMetadata> {
+646:pub struct DevManifestMetadata {
+654:	pub fn new(
+667:	pub fn vite_server_port(&self) -> i32 {
+672:	pub fn dev_mux_port(&self) -> i32 {
+677:	pub fn dev_refresh_token(&self) -> &str {
+684:pub enum GenerationArtifactError {
+706:pub struct ClientModuleArtifacts {
+714:	pub fn new(
+727:	pub fn import_url(&self) -> &str {
+732:	pub fn dep_urls(&self) -> &[String] {
+737:	pub fn css_bundle_urls(&self) -> &[String] {
+744:pub struct ClientCoreArtifacts {
+751:	pub fn new(module_url: impl Into<String>, wasm_url: impl Into<String>) -> Self {
+759:	pub fn module_url(&self) -> &str {
+764:	pub fn wasm_url(&self) -> &str {
+771:pub enum ProjectionError {
+
+===== crates/vorma-build/src/static_outputs.rs
+30:pub struct PreparedPublicStaticOutputs {
+38:	pub fn files(&self) -> &[PreparedPublicStaticFile] {
+43:	pub fn public_filepaths(&self) -> &[String] {
+48:	pub fn public_filemap(&self) -> &BTreeMap<String, String> {
+55:pub struct PreparedPublicStaticFile {
+65:	pub fn source_path(&self) -> &str {
+70:	pub fn source_fs_path(&self) -> &Path {
+75:	pub fn output_name(&self) -> &str {
+81:	pub fn public_path(&self) -> &str {
+88:pub struct PublicStaticPublishReport {
+96:pub struct CriticalCssBundle {
+103:	pub fn css(&self) -> &str {
+108:	pub fn imports(&self) -> &[String] {
+131:	pub fn public_output_dir(&self) -> &Path {
+137:	pub fn written_files(&self) -> &[PathBuf] {
+143:	pub fn retained_stale_files(&self) -> &[PathBuf] {
+149:pub fn prepare_public_static_outputs(
+227:pub fn publish_public_static_outputs(
+265:pub fn bundle_critical_css(
+311:pub fn public_static_output_dir(
+323:pub enum PublicStaticOutputError {
+
+===== crates/vorma-build/src/tokens.rs
+8:pub fn generate_vite_plugin_token() -> Result<String, TokenGenerationError> {
+13:pub fn generate_dev_refresh_token() -> Result<String, TokenGenerationError> {
+29:pub struct TokenGenerationError {
+
+===== crates/vorma-build/src/typescript_contracts.rs
+12:pub const CLIENT_SEED_IDENTIFIER: &str = "vormaClientSeed";
+14:pub const PRIVATE_RESOURCE_CONTRACTS_IDENTIFIER: &str = "__vorma_resources";
+16:pub const PRIVATE_VIEW_CONTRACTS_IDENTIFIER: &str = "__vorma_views";
+19:pub const RESOURCE_CONTRACTS_TYPE_NAME: &str = "VormaResourceContracts";
+22:pub const VIEW_CONTRACTS_TYPE_NAME: &str = "VormaViewContracts";
+31:pub struct GeneratedTypeScriptContracts {
+37:	pub fn source(&self) -> &str {
+43:pub fn render_typescript_contracts(
+89:pub enum TypeScriptContractError {
+
+===== crates/vorma-build/src/vite_command.rs
+87:pub enum ViteCommandError {
+
+===== crates/vorma-build/src/vite_manifest.rs
+15:pub const CLIENT_CORE_WASM_SOURCE_FILENAME: &str = "vorma_client_wasm_bg.wasm";
+20:pub struct ViteManifestChunk {
+53:pub struct ViteManifest(BTreeMap<String, ViteManifestChunk>);
+57:	pub fn from_json_slice(bytes: &[u8]) -> Result<Self, ViteManifestError> {
+64:	pub fn read(path: impl AsRef<Path>) -> Result<Self, ViteManifestError> {
+74:	pub fn find_all_deps(&self, import_path: &str) -> Result<ViteDeps, ViteManifestError> {
+142:pub struct ViteDeps {
+153:pub struct ViteBuildArtifacts {
+162:	pub fn public_filepaths(&self) -> &[String] {
+167:	pub fn client_entry(&self) -> &ClientModuleArtifacts {
+172:	pub fn client_core_assets(&self) -> &ClientCoreArtifacts {
+177:	pub fn view_module_outputs(&self) -> &BTreeMap<String, ClientModuleArtifacts> {
+183:pub fn project_vite_manifest(
+217:pub enum ViteManifestError {
+
+===== crates/vorma-build/src/vite_plugin_contract.rs
+12:pub const VITE_PLUGIN_SERVER_PORT_ENV_KEY: &str = "__VORMA_VITE_PLUGIN_SERVER_PORT";
+14:pub const VITE_PLUGIN_SERVER_TOKEN_ENV_KEY: &str = "__VORMA_VITE_PLUGIN_SERVER_TOKEN";
+16:pub const VITE_PLUGIN_TOKEN_HEADER: &str = "x-vorma-vite-plugin-token";
+18:pub const VITE_PLUGIN_LOOPBACK_HOST: &str = "127.0.0.1";
+20:pub const VITE_PLUGIN_BASE_PATH: &str = "/vite-plugin";
+22:pub const VITE_PLUGIN_RPC_PATH: &str = "/rpc";
+24:pub const VITE_PLUGIN_CONFIG_CHANGED_PATH: &str = "/cfg-changed";
+26:pub const VITE_PLUGIN_ASSETS_CHANGED_PATH: &str = "/assets-changed";
+28:pub const VITE_PLUGIN_PUBLIC_URL_PREFIX: &str = "@public/";
+35:pub struct VitePluginConfig {
+50:	pub fn from_build_plan(plan: &BuildProjectionPlan) -> Result<Self, VitePluginConfigError> {
+87:pub enum VitePluginRpcRequest {
+104:pub enum VitePluginConfigError {
+
+===== crates/vorma-build/src/vite_plugin_control.rs
+12:pub trait VitePluginControlClient {
+31:pub struct LoopbackVitePluginControlClient;
+99:pub enum VitePluginControlError {
+
+===== crates/vorma-build/src/vite_plugin_rpc.rs
+27:pub const VITE_PLUGIN_RPC_BODY_LIMIT: usize = 64 * 1024;
+33:pub struct VitePluginRpcServerHandle {
+42:	pub fn new(port: u16) -> Self {
+51:	pub fn with_shutdown(port: u16, shutdown: oneshot::Sender<()>, thread: JoinHandle<()>) -> Self {
+60:	pub fn port(&self) -> u16 {
+77:pub trait VitePluginRpcServer {
+87:pub struct VitePluginServerError {
+93:	pub fn new(message: impl Into<String>) -> Self {
+110:pub struct LoopbackVitePluginRpcServer;
+143:pub struct VitePluginRpcState {
+173:	pub fn new(
+189:	pub fn from_prepared_build_inputs(
+201:	pub fn update_generation_contract(
+224:	pub fn control_port(&self) -> Option<u16> {
+232:	pub fn record_control_port(&self, port: u16) {
+240:	pub fn handle_rpc(&self, headers: &HeaderMap, body: &[u8]) -> VitePluginRpcResponse {
+383:pub struct VitePluginRpcResponse {
+391:	pub fn status(&self) -> StatusCode {
+396:	pub fn content_type(&self) -> &'static str {
+401:	pub fn body(&self) -> &[u8] {
+
+===== crates/vorma-macros/src/lib.rs
+13:#[proc_macro]
+14:pub fn __vorma_view(input: TokenStream) -> TokenStream {
+22:#[proc_macro]
+23:pub fn __vorma_resource(input: TokenStream) -> TokenStream {
+31:#[proc_macro_derive(TsGen, attributes(serde))]
+32:pub fn derive_ts_gen(input: TokenStream) -> TokenStream {
+
+===== crates/vorma-contract/src/constants.rs
+4:pub const ENV_KEY_IS_BUILD: &str = "__VORMA_IS_BUILD";
+6:pub const ENV_KEY_IS_DEV: &str = "__VORMA_IS_DEV";
+8:pub const ENV_VALUE_ENABLED: &str = "true";
+10:pub const DEV_HEALTH_PATH: &str = "/.vorma/healthz";
+12:pub const PUBLIC_STATIC_OUT_NAME_PREFIX: &str = "vorma_out_";
+14:pub const VORMA_ROOT_EL_ID: &str = "vorma-root";
+16:pub const VORMA_DATA_JSON_SCRIPT_EL_ID: &str = "vorma-data-json";
+18:pub const FORM_DATA_TYPE_NAME: &str = "FormData";
+20:pub const BLOB_TYPE_NAME: &str = "Blob";
+
+===== crates/vorma-contract/src/contracts.rs
+13:pub fn to_tab_indented_json_string<T: Serialize>(value: &T) -> serde_json::Result<String> {
+25:pub struct RouteTypeContract {
+32:	pub fn new(input: TypeRefContract, output: TypeRefContract) -> Self {
+37:	pub fn input(&self) -> &TypeRefContract {
+42:	pub fn output(&self) -> &TypeRefContract {
+49:pub enum TypeRefContract {
+91:	pub fn named(name: impl Into<String>) -> Self {
+97:	pub fn named_with_key(key: impl Into<String>, name: impl Into<String>) -> Self {
+105:	pub fn array(inner: TypeRefContract) -> Self {
+110:	pub fn map(key: TypeRefContract, value: TypeRefContract) -> Self {
+115:	pub fn nullable(inner: TypeRefContract) -> Self {
+120:	pub fn union(types: Vec<TypeRefContract>) -> Self {
+125:	pub fn string_literal(value: impl Into<String>) -> Self {
+130:	pub fn raw(ts: impl Into<String>) -> Self {
+137:pub enum RawTsPart {
+146:pub enum TypeDef {
+187:	pub fn key(&self) -> &str {
+197:	pub fn name(&self) -> &str {
+207:	pub fn alias(name: impl Into<String>, target: TypeRefContract) -> Self {
+213:	pub fn alias_with_key(
+226:	pub fn record(name: impl Into<String>, fields: Vec<FieldDef>) -> Self {
+232:	pub fn record_with_key(
+245:	pub fn string_enum(
+254:	pub fn string_enum_with_key(
+267:	pub fn raw(name: impl Into<String>, body: impl Into<String>) -> Self {
+279:pub struct FieldDef {
+287:	pub fn required<T: crate::tsgen::Type>(name: impl Into<String>) -> Self {
+292:	pub fn required_for<T: crate::tsgen::Type>(
+300:	pub fn optional<T: crate::tsgen::Type>(name: impl Into<String>) -> Self {
+305:	pub fn optional_for<T: crate::tsgen::Type>(
+313:	pub fn new(name: impl Into<String>, type_ref: TypeRefContract, optional: bool) -> Self {
+322:	pub fn name(&self) -> &str {
+327:	pub fn type_ref(&self) -> &TypeRefContract {
+332:	pub fn is_optional(&self) -> bool {
+339:pub struct DocumentContract {
+349:	pub fn new(
+366:	pub fn html_attributes(&self) -> &[DocumentAttributeContract] {
+371:	pub fn body_attributes(&self) -> &[DocumentAttributeContract] {
+376:	pub fn head_defaults(&self) -> &[DocumentElementContract] {
+381:	pub fn head_dedupe_rules(&self) -> &[DocumentElementContract] {
+386:	pub fn body_prefix(&self) -> &[DocumentElementContract] {
+393:pub struct DocumentAttributeContract {
+402:	pub fn new(
+417:	pub fn name(&self) -> &str {
+422:	pub fn value(&self) -> &str {
+427:	pub fn known_safe(&self) -> bool {
+432:	pub fn boolean(&self) -> bool {
+439:pub struct DocumentElementContract {
+451:	pub fn new(tag: impl Into<String>) -> Self {
+459:	pub fn with_attributes(mut self, attributes: BTreeMap<String, String>) -> Self {
+465:	pub fn with_known_safe_attributes(mut self, attributes: BTreeMap<String, String>) -> Self {
+471:	pub fn with_boolean_attributes(mut self, attributes: Vec<String>) -> Self {
+477:	pub fn with_text_content(mut self, text_content: impl Into<String>) -> Self {
+483:	pub fn with_dangerous_inner_html(mut self, dangerous_inner_html: impl Into<String>) -> Self {
+489:	pub fn with_self_closing(mut self, self_closing: bool) -> Self {
+495:	pub fn tag(&self) -> &str {
+500:	pub fn attributes(&self) -> &BTreeMap<String, String> {
+505:	pub fn attributes_known_safe(&self) -> &BTreeMap<String, String> {
+510:	pub fn boolean_attributes(&self) -> &[String] {
+515:	pub fn text_content(&self) -> &str {
+520:	pub fn dangerous_inner_html(&self) -> &str {
+525:	pub fn self_closing(&self) -> bool {
+
+===== crates/vorma-contract/src/document_renderer.rs
+18:pub struct DocumentRenderInput<'a> {
+25:	pub fn new(head_markup: &'a str, body_markup: &'a str) -> Self {
+33:	pub fn head_markup(&self) -> &'a str {
+38:	pub fn body_markup(&self) -> &'a str {
+44:pub fn render_document(
+70:pub fn render_document_element(
+79:pub fn trusted_element_parts(
+138:pub struct TrustedElementParts {
+153:pub enum DocumentRenderError {
+
+===== crates/vorma-contract/src/execution_plan.rs
+23:pub struct ExecutionPlan {
+34:	pub fn compile(graph: &FrameworkGraph) -> Result<Self, PlanError> {
+118:	pub fn matching_middleware_ids(&self, method: &Method, path: &str) -> Vec<HandlerId> {
+136:	pub fn type_defs(&self) -> &[TypeDef] {
+141:	pub fn match_resource(&self, method: &Method, path: &str) -> Option<ResourceMatch> {
+187:	pub fn allowed_resource_methods(&self, path: &str) -> Vec<Method> {
+203:	pub fn match_views(&self, path: &str) -> Option<ViewMatches> {
+272:pub struct ResourceMatch {
+283:	pub fn method(&self) -> &Method {
+288:	pub fn matched_pattern(&self) -> &Pattern {
+293:	pub fn pattern(&self) -> &str {
+298:	pub fn params(&self) -> &Params {
+303:	pub fn splat_values(&self) -> &SplatValues {
+308:	pub fn head_fallback_to_get(&self) -> bool {
+313:	pub fn handler_id(&self) -> &HandlerId {
+318:	pub fn input_type(&self) -> &TypeRefContract {
+325:pub struct ViewExecutionNode {
+331:	pub fn pattern(&self) -> &str {
+336:	pub fn handler_id(&self) -> &HandlerId {
+341:	pub fn input_type(&self) -> &TypeRefContract {
+348:pub struct ViewMatches {
+357:	pub fn nodes(&self) -> &[ViewExecutionNode] {
+362:	pub fn leaf_pattern(&self) -> &Pattern {
+367:	pub fn patterns(&self) -> Vec<&str> {
+372:	pub fn params(&self) -> &Params {
+377:	pub fn splat_values(&self) -> &SplatValues {
+384:pub enum PlanError {
+
+===== crates/vorma-contract/src/framework_graph.rs
+15:pub struct HandlerId(String);
+19:	pub fn new(value: impl Into<String>) -> Result<Self, HandlerIdError> {
+29:	pub fn as_str(&self) -> &str {
+36:pub enum HandlerIdError {
+43:pub enum ResourceKind {
+52:	pub fn as_str(self) -> &'static str {
+62:pub struct FrameworkConfig {
+69:	pub fn new(public_static_base: impl Into<String>) -> Self {
+77:	pub fn with_build_inputs(mut self, build_inputs: BuildInputConfig) -> Self {
+83:	pub fn public_static_base(&self) -> &str {
+88:	pub fn build_inputs(&self) -> Option<&BuildInputConfig> {
+101:pub struct BuildInputConfig {
+113:	pub fn new(
+133:	pub fn with_generated_typescript_extra_source(
+142:	pub fn server_target(&self) -> &ServerBuildTarget {
+147:	pub fn root_dir(&self) -> &str {
+152:	pub fn dist_dir(&self) -> &str {
+157:	pub fn frontend_inputs(&self) -> &FrontendBuildInputs {
+162:	pub fn generated_typescript_file(&self) -> &str {
+167:	pub fn generated_typescript_extra_source(&self) -> &str {
+172:	pub fn dev_watch(&self) -> &DevWatchConfig {
+179:pub struct ServerBuildTarget {
+186:	pub fn new(cargo_package: impl Into<String>, cargo_bin: impl Into<String>) -> Self {
+194:	pub fn cargo_package(&self) -> &str {
+199:	pub fn cargo_bin(&self) -> &str {
+206:pub struct FrontendBuildInputs {
+218:	pub fn new(
+239:	pub fn ui_variant(&self) -> &str {
+244:	pub fn js_package_manager_base_cmd(&self) -> &str {
+249:	pub fn js_package_manager_dir(&self) -> &str {
+254:	pub fn vite_config_file(&self) -> &str {
+259:	pub fn entry_file(&self) -> &str {
+264:	pub fn public_static_source_dir(&self) -> &str {
+269:	pub fn critical_css_file(&self) -> &str {
+276:pub struct DevWatchConfig {
+284:	pub fn new(
+297:	pub fn watch_patterns(&self) -> &[String] {
+302:	pub fn server_recompile_patterns(&self) -> &[String] {
+307:	pub fn client_revalidate_patterns(&self) -> &[String] {
+314:pub struct FrameworkDeclarations {
+326:	pub fn new(config: FrameworkConfig) -> Self {
+339:	pub fn add_middleware(&mut self, middleware: MiddlewareDeclaration) {
+344:	pub fn add_view(&mut self, view: ViewDeclaration) {
+349:	pub fn add_resource(&mut self, resource: ResourceDeclaration) {
+354:	pub fn add_static_asset(&mut self, asset: StaticAssetDeclaration) {
+359:	pub fn set_document(&mut self, document: DocumentContract) {
+364:	pub fn add_type_def(&mut self, type_def: TypeDef) {
+369:	pub fn config(&self) -> &FrameworkConfig {
+374:	pub fn document(&self) -> &DocumentContract {
+379:	pub fn type_defs(&self) -> &[TypeDef] {
+384:	pub fn middlewares(&self) -> &[MiddlewareDeclaration] {
+389:	pub fn views(&self) -> &[ViewDeclaration] {
+394:	pub fn resources(&self) -> &[ResourceDeclaration] {
+399:	pub fn static_assets(&self) -> &[StaticAssetDeclaration] {
+411:pub struct MiddlewareDeclaration {
+419:	pub fn new(handler_id: HandlerId) -> Self {
+428:	pub fn with_patterns<I>(mut self, patterns: I) -> Self
+438:	pub fn with_methods<I>(mut self, methods: I) -> Self
+447:	pub fn patterns(&self) -> &[String] {
+452:	pub fn methods(&self) -> &[http::Method] {
+457:	pub fn handler_id(&self) -> &HandlerId {
+464:pub struct ViewDeclaration {
+474:	pub fn new(
+491:	pub fn pattern(&self) -> &str {
+496:	pub fn client_file(&self) -> &str {
+501:	pub fn search_schema(&self) -> &Value {
+506:	pub fn type_contract(&self) -> &RouteTypeContract {
+511:	pub fn handler_id(&self) -> &HandlerId {
+518:pub struct ResourceDeclaration {
+529:	pub fn new(
+548:	pub fn method(&self) -> &Method {
+553:	pub fn pattern(&self) -> &str {
+558:	pub fn kind(&self) -> Option<ResourceKind> {
+563:	pub fn input_schema(&self) -> Option<&Value> {
+568:	pub fn type_contract(&self) -> &RouteTypeContract {
+573:	pub fn handler_id(&self) -> &HandlerId {
+580:pub struct StaticAssetDeclaration {
+587:	pub fn new(source_path: impl Into<String>, public_path: impl Into<String>) -> Self {
+595:	pub fn source_path(&self) -> &str {
+600:	pub fn public_path(&self) -> &str {
+607:pub struct GraphConfig {
+614:	pub fn public_static_base(&self) -> &str {
+619:	pub fn build_inputs(&self) -> Option<&BuildInputConfig> {
+626:pub struct MiddlewareNode {
+634:	pub fn patterns(&self) -> &[String] {
+639:	pub fn methods(&self) -> &[http::Method] {
+644:	pub fn handler_id(&self) -> &HandlerId {
+651:pub struct ViewNode {
+663:	pub fn pattern(&self) -> &str {
+668:	pub fn parent_patterns(&self) -> &[String] {
+673:	pub fn params(&self) -> &[String] {
+678:	pub fn client_file(&self) -> &str {
+683:	pub fn search_schema(&self) -> &Value {
+688:	pub fn type_contract(&self) -> &RouteTypeContract {
+693:	pub fn handler_id(&self) -> &HandlerId {
+700:pub struct ResourceNode {
+713:	pub fn method(&self) -> &Method {
+718:	pub fn pattern(&self) -> &str {
+723:	pub fn kind(&self) -> Option<ResourceKind> {
+728:	pub fn default_kind(&self) -> ResourceKind {
+733:	pub fn input_schema(&self) -> Option<&Value> {
+738:	pub fn type_contract(&self) -> &RouteTypeContract {
+743:	pub fn params(&self) -> &[String] {
+748:	pub fn handler_id(&self) -> &HandlerId {
+755:pub struct StaticAssetNode {
+762:	pub fn source_path(&self) -> &str {
+767:	pub fn public_path(&self) -> &str {
+774:pub struct FrameworkGraph {
+786:	pub fn compile(declarations: FrameworkDeclarations) -> Result<Self, GraphError> {
+864:	pub fn config(&self) -> &GraphConfig {
+869:	pub fn document(&self) -> &DocumentContract {
+874:	pub fn type_defs(&self) -> &[TypeDef] {
+879:	pub fn middlewares(&self) -> &[MiddlewareNode] {
+884:	pub fn views(&self) -> &[ViewNode] {
+889:	pub fn resources(&self) -> &[ResourceNode] {
+894:	pub fn static_assets(&self) -> &[StaticAssetNode] {
+901:pub enum GraphError {
+
+===== crates/vorma-contract/src/lib.rs
+21:pub mod constants;
+23:pub mod contracts;
+25:pub mod document_renderer;
+27:pub mod execution_plan;
+29:pub mod framework_graph;
+35:pub mod live_state;
+37:pub mod runtime_manifest;
+39:pub mod tsgen;
+41:pub mod wire;
+
+===== crates/vorma-contract/src/live_state.rs
+20:pub const LIVE_BUILD_STATE_PROTOCOL: u32 = 3;
+23:pub const LIVE_BUILD_STATE_ENV_KEY: &str = "__VORMA_LIVE_BUILD_STATE";
+25:pub const LIVE_BUILD_STATE_ENV_VALUE: &str = "1";
+29:pub struct LiveBuildState {
+38:	pub fn from_graph(graph: FrameworkGraph, root_document_hash_source: impl Into<String>) -> Self {
+47:	pub fn framework_graph(&self) -> Result<FrameworkGraph, LiveBuildStateError> {
+52:	pub fn server_build_target(&self) -> Option<&ServerBuildTarget> {
+60:	pub fn root_document_hash_source(&self) -> &str {
+65:	pub fn to_json_bytes(&self) -> Result<Vec<u8>, LiveBuildStateError> {
+72:	pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, LiveBuildStateError> {
+113:	pub fn error_json_bytes(message: impl Into<String>) -> Result<Vec<u8>, LiveBuildStateError> {
+283:pub enum LiveBuildStateError {
+
+===== crates/vorma-contract/src/runtime_manifest.rs
+16:pub const CRITICAL_CSS_STYLE_ELEMENT_ID: &str = "vorma-critical-css";
+22:pub struct RuntimeManifest {
+49:	pub fn new(
+93:	pub fn with_client_entry(mut self, client_entry: ClientModule) -> Self {
+100:	pub fn with_client_core_assets(mut self, client_core_assets: Option<ClientCoreAssets>) -> Self {
+107:	pub fn with_dev_metadata(
+121:	pub fn with_ui_variant(mut self, ui_variant: impl Into<String>) -> Self {
+128:	pub fn with_root_document_shell_hash(
+138:	pub fn with_vorma_version(mut self, vorma_version: impl Into<String>) -> Self {
+157:	pub fn from_json_slice(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+176:	pub fn to_json_vec(&self) -> Result<Vec<u8>, serde_json::Error> {
+181:	pub fn to_client_build_id(&self) -> Result<String, serde_json::Error> {
+191:	pub fn client_build_id(&self) -> &str {
+196:	pub fn vorma_version(&self) -> &str {
+201:	pub fn dev_vite_server_port(&self) -> i32 {
+206:	pub fn dev_mux_port(&self) -> i32 {
+211:	pub fn dev_refresh_token(&self) -> &str {
+216:	pub fn public_static_base(&self) -> &str {
+221:	pub fn ui_variant(&self) -> &str {
+226:	pub fn root_document_shell_hash(&self) -> &str {
+231:	pub fn critical_css(&self) -> &str {
+236:	pub fn critical_css_element(&self) -> DocumentElementContract {
+246:	pub fn critical_css_content_sha256(&self) -> Result<String, DocumentRenderError> {
+253:	pub fn search_schemas(&self) -> &BTreeMap<String, Value> {
+258:	pub fn public_filepaths(&self) -> &[String] {
+263:	pub fn public_filemap(&self) -> &BTreeMap<String, String> {
+268:	pub fn view_modules(&self) -> &[RuntimeViewModule] {
+273:	pub fn client_entry(&self) -> &ClientModule {
+278:	pub fn client_core_assets(&self) -> Option<&ClientCoreAssets> {
+283:	pub fn view_module(&self, pattern: &str) -> Option<&RuntimeViewModule> {
+290:	pub fn public_url(&self, src_path: &str) -> Option<&str> {
+299:pub struct ClientModule {
+307:	pub fn new(
+320:	pub fn url(&self) -> &str {
+325:	pub fn dep_urls(&self) -> &[String] {
+330:	pub fn css_bundle_urls(&self) -> &[String] {
+337:pub struct ClientCoreAssets {
+344:	pub fn new(module_url: impl Into<String>, wasm_url: impl Into<String>) -> Self {
+352:	pub fn module_url(&self) -> &str {
+357:	pub fn wasm_url(&self) -> &str {
+364:pub struct RuntimeViewModule {
+373:	pub fn new(
+388:	pub fn pattern(&self) -> &str {
+393:	pub fn import_url(&self) -> &str {
+398:	pub fn dep_urls(&self) -> &[String] {
+403:	pub fn css_bundle_urls(&self) -> &[String] {
+
+===== crates/vorma-contract/src/tsgen.rs
+9:pub use crate::contracts::{FieldDef, RawTsPart, TypeDef, TypeRefContract as TypeRef};
+13:pub struct Error {
+19:	pub fn new(message: impl Into<String>) -> Self {
+35:pub type Result<T> = std::result::Result<T, Error>;
+39:pub enum TypePhase {
+48:pub struct TsExtraType {
+55:	pub fn of<T>() -> Result<Self>
+63:	pub fn of_for<T>(phase: TypePhase) -> Result<Self>
+76:	pub fn __type_ref(&self) -> &TypeRef {
+81:	pub fn __type_defs(&self) -> &[TypeDef] {
+88:pub struct TsDrafter {
+94:	pub fn new() -> Self {
+99:	pub fn export_const(
+108:	pub fn const_(&mut self, name: impl Into<String>, value: impl Serialize) -> Result<&mut Self> {
+113:	pub fn export_type(
+122:	pub fn type_(
+131:	pub fn export_string_enum(
+150:	pub fn export_string_enum_object(
+171:	pub fn raw(&mut self, content: impl Into<String>) -> &mut Self {
+177:	pub fn is_empty(&self) -> bool {
+232:pub struct TypeRegistry {
+238:	pub fn define(&mut self, def: TypeDef) {
+244:	pub fn try_define(&mut self, def: TypeDef) -> Result<bool> {
+263:	pub fn into_defs(self) -> Vec<TypeDef> {
+269:pub trait Type: Send + Sync + 'static {
+320:macro_rules! integer_type {
+336:macro_rules! number_type {
+
+===== crates/vorma-contract/src/wire.rs
+9:pub const CLIENT_BUILD_ID_HEADER: &str = "X-Vorma-Client-Build-Id";
+11:pub const BUILD_SKEW_HEADER: &str = "X-Vorma-Build-Skew";
+13:pub const CLIENT_REDIRECT_HEADER: &str = "X-Client-Redirect";
+15:pub const RESOURCE_BODY_HEADER: &str = "x-vorma-resource-body";
+17:pub const CLIENT_ACCEPTS_REDIRECT_HEADER: &str = "X-Accepts-Client-Redirect";
+19:pub const VORMA_JSON_QUERY_KEY: &str = "vorma-json";
+23:pub struct HeadElement {
+43:pub struct ViewPayload {
+87:pub struct SsrPayload {
+
+===== crates/vorma-tasks/src/cancel.rs
+8:pub struct CancelToken {
+15:	pub fn new() -> Self {
+26:	pub fn cancel(&self) {
+33:	pub fn is_cancelled(&self) -> bool {
+42:	pub async fn cancelled(&self) {
+75:	pub fn child(&self) -> Self {
+
+===== crates/vorma-tasks/src/clock.rs
+5:pub struct ClockInstant {
+11:	pub fn from_duration_since_origin(duration: Duration) -> Self {
+32:pub trait Clock: Send + Sync + 'static {
+39:pub struct SystemClock {
+45:	pub fn new() -> Self {
+
+===== crates/vorma-tasks/src/error.rs
+5:pub type Result<T, E> = std::result::Result<T, Error<E>>;
+9:pub enum Error<E> {
+33:	pub fn is_cancelled(&self) -> bool {
+
+===== crates/vorma-tasks/src/key.rs
+7:pub struct TaskId(pub(crate) u64);
+
+===== crates/vorma-tasks/src/lib.rs
+35:pub use cancel::CancelToken;
+36:pub use clock::{Clock, ClockInstant, SystemClock};
+37:pub use error::{Error, Result};
+38:pub use key::TaskId;
+40:pub use observer::{TaskEvent, TaskEventKind, TaskEventOutcome, TaskObserver, TaskRunSource};
+42:pub use overrides::{TaskOverrideMode, TaskOverrides};
+44:pub use parallel::{ParallelBatch, ParallelBatchOutputHandle, ParallelBatchOutputs};
+47:pub use task::__macro_support as __task_macro;
+49:pub use task::{ExecCtx, Task, Tasks, TasksOptions};
+52:#[macro_export]
+53:macro_rules! task {
+
+===== crates/vorma-tasks/src/observer.rs
+7:pub trait TaskObserver: Send + Sync + 'static {
+23:pub struct TaskEvent {
+38:pub enum TaskEventKind {
+83:pub enum TaskRunSource {
+92:pub enum TaskEventOutcome {
+
+===== crates/vorma-tasks/src/overrides.rs
+19:pub enum TaskOverrideMode {
+27:pub struct TaskOverrides<E = Box<dyn std::error::Error + Send + Sync>> {
+38:	pub fn new(mode: TaskOverrideMode) -> Self {
+47:	pub fn replace<I, O, F, Fut>(mut self, task: &Task<I, O, E>, f: F) -> Self
+
+===== crates/vorma-tasks/src/parallel.rs
+18:pub struct ParallelBatch<E = Box<dyn std::error::Error + Send + Sync>> {
+28:	pub fn new() -> Self {
+36:	pub fn add<I, O>(&mut self, task: Task<I, O, E>, input: I) -> ParallelBatchOutputHandle<O>
+65:	pub async fn run(self, ctx: &ExecCtx<E>) -> Result<ParallelBatchOutputs, E> {
+128:pub struct ParallelBatchOutputHandle<O: 'static> {
+135:pub struct ParallelBatchOutputs {
+146:	pub fn take<O>(&self, handle: ParallelBatchOutputHandle<O>) -> Arc<O>
+
+===== crates/vorma-tasks/src/task.rs
+47:pub struct Task<I: 'static, O: 'static, E: 'static = Box<dyn std::error::Error + Send + Sync>> {
+61:	pub fn id(&self) -> TaskId {
+82:	pub async fn run(&self, ctx: &ExecCtx<E>, input: I) -> Result<Arc<O>, E> {
+121:pub mod __macro_support {
+129:	pub const fn memoized<I, O, E>(
+148:	pub const fn extended_cache<I, O, E>(
+172:	pub const fn single_flight<I, O, E>(
+192:pub struct Tasks<E = Box<dyn std::error::Error + Send + Sync>> {
+197:pub struct TasksOptions<E = Box<dyn std::error::Error + Send + Sync>> {
+216:	pub fn new(options: TasksOptions<E>) -> Self {
+240:	pub fn exec_ctx(&self, cancel: CancelToken) -> ExecCtx<E> {
+314:pub struct ExecCtx<E = Box<dyn std::error::Error + Send + Sync>> {
+326:	pub fn cancel_token(&self) -> &CancelToken {
+331:	pub fn is_cancelled(&self) -> bool {
+336:	pub fn child(&self) -> Self {
+
+===== crates/vorma-matcher/src/builder.rs
+15:pub struct MatcherBuilder {
+29:	pub fn new(opts: Options) -> Result<Self, String> {
+46:	pub fn explicit_index_segment_identifier(&self) -> &str {
+51:	pub fn dynamic_param_prefix(&self) -> char {
+56:	pub fn splat_segment_identifier(&self) -> char {
+61:	pub fn normalize_pattern(&self, original: &str) -> Result<Pattern, String> {
+138:	pub fn register_pattern(&mut self, original: &str) -> Result<Pattern, String> {
+194:	pub fn finish_flat(self) -> FlatMatcher {
+199:	pub fn finish_nested(self) -> NestedMatcher {
+
+===== crates/vorma-matcher/src/lib.rs
+16:pub use builder::MatcherBuilder;
+17:pub use match_result::{Match, NestedMatch, NestedMatches, Params, SplatValues};
+18:pub use matcher::{FlatMatcher, NestedMatcher};
+19:pub use options::Options;
+20:pub use overlap::{Overlap, OverlapSide, find_overlap};
+21:pub use parse::parse_segments;
+22:pub use pattern::{Pattern, compare_specificity};
+23:pub use segment::{Segment, SegmentKind};
+26:pub fn ensure_leading_slash(path: &str) -> String {
+35:pub fn ensure_trailing_slash(path: &str) -> String {
+44:pub fn strip_leading_slash(path: &str) -> &str {
+53:pub fn strip_trailing_slash(path: &str) -> &str {
+62:pub fn ensure_leading_and_trailing_slash(path: &str) -> String {
+
+===== crates/vorma-matcher/src/match_result.rs
+15:pub struct Params {
+23:	pub fn get(&self, key: &str) -> Option<&str> {
+28:	pub fn contains_key(&self, key: &str) -> bool {
+33:	pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+40:	pub fn len(&self) -> usize {
+45:	pub fn is_empty(&self) -> bool {
+50:	pub fn insert(&mut self, key: &str, value: impl Into<String>) {
+86:pub struct SplatValues {
+113:	pub fn get(&self, index: usize) -> Option<&str> {
+120:	pub fn iter(&self) -> impl Iterator<Item = &str> {
+127:	pub fn len(&self) -> usize {
+132:	pub fn is_empty(&self) -> bool {
+137:	pub fn join(&self, separator: &str) -> String {
+152:	pub fn to_vec(&self) -> Vec<String> {
+177:pub struct Match {
+198:pub struct NestedMatch {
+207:	pub fn params(&self) -> &Params {
+212:	pub fn splat_values(&self) -> &SplatValues {
+219:pub struct NestedMatches {
+
+===== crates/vorma-matcher/src/matcher.rs
+20:pub struct FlatMatcher {
+34:	pub fn find_best_match(&self, real_path: &str) -> Option<Match> {
+46:pub struct NestedMatcher {
+60:	pub fn find_nested_matches(&self, real_path: &str) -> Option<NestedMatches> {
+125:	pub fn find_best_match(&self, real_path: &str) -> Option<Match> {
+176:	pub fn find_nested_matches(&self, real_path: &str) -> Option<NestedMatches> {
+
+===== crates/vorma-matcher/src/options.rs
+3:pub struct Options {
+
+===== crates/vorma-matcher/src/overlap.rs
+57:pub struct Overlap {
+66:	pub fn example_path(&self) -> &str {
+71:	pub fn left_pattern(&self) -> &str {
+76:	pub fn right_pattern(&self) -> &str {
+84:	pub trait Sealed {
+95:pub trait OverlapSide: sealed::Sealed {}
+143:pub fn find_overlap(left: &impl OverlapSide, right: &impl OverlapSide) -> Option<Overlap> {
+
+===== crates/vorma-matcher/src/parse.rs
+55:pub fn parse_segments(path: &str) -> Vec<&str> {
+
+===== crates/vorma-matcher/src/pattern.rs
+8:pub struct Pattern {
+69:	pub fn original_pattern(&self) -> &str {
+74:	pub fn normalized_pattern(&self) -> &str {
+79:	pub fn normalized_segments(&self) -> Vec<Segment> {
+147:pub fn compare_specificity(a: &Pattern, b: &Pattern) -> Ordering {
+
+===== crates/vorma-matcher/src/segment.rs
+6:pub struct Segment {
+15:pub enum SegmentKind {
+28:	pub fn as_str(self) -> &'static str {

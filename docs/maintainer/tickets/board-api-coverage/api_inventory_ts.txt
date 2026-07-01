@@ -1,0 +1,299 @@
+# TypeScript public API inventory — regenerated from current tree
+# Regenerated 2026-06-23 from packages/vorma/package.json exports and source entrypoints.
+# This is a conservative export inventory input, not API adjudication.
+
+===== ./__internal (packages/vorma/core/_index.ts)
+  AdapterClientOptions
+  AdapterRenderArgs
+  ApiClientOutput
+  AppConfig
+  apply_scroll
+  BeforeRouteCommitFn
+  BeforeRouteTransitionArgs
+  BeforeRouteYieldFn
+  BUILD_ID_HEADER
+  build_resource_url
+  BuildSkewDetectedEvent
+  ClientCommit
+  ClientLoaderKnownMatch
+  ClientLoaderServerState
+  ClientMatcher
+  ClientMatcherNestedMatch
+  ClientOptions
+  CommitFn
+  create_adapter_base
+  create_client_core
+  create_empty_work_state
+  create_typed_api_client
+  create_typed_navigate
+  create_typed_prefetch
+  create_typed_to_href
+  DATA_SCRIPT_ID
+  DecomposedCommit
+  DecomposedCommitFn
+  DecomposedState
+  get_entry_key
+  LINK_ACTIVE_ANCESTOR_ATTR
+  LINK_ACTIVE_EXACT_ATTR
+  LINK_PENDING_ANCESTOR_ATTR
+  LINK_PENDING_EXACT_ATTR
+  LinkNavFns
+  LinkPropsResult
+  LinkRouteState
+  LinkWorkState
+  make_entry_id
+  make_link_props
+  MutationError
+  MutationResult
+  OutletSlot
+  QueryError
+  QueryResult
+  resolve_body
+  resolve_path
+  RevalidationReason
+  RevalidationResult
+  RouteErrorState
+  RouteMatchState
+  RouteRenderEntry
+  RouteRenderState
+  RouteState
+  RouteUpdateReason
+  ScrollIntent
+  ScrollState
+  select_link_route_state
+  select_link_work_state
+  set_client_matcher_factory_for_test
+  to_typed_href
+  ToApiClient
+  ToApiDecorator
+  ToApiDecoratorContext
+  ToClientLoaderArgs
+  ToDefineViewArgs
+  ToLinkProps
+  ToMutationArgs
+  ToMutationError
+  ToMutationInput
+  ToMutationMethod
+  ToMutationOutput
+  ToMutationPattern
+  ToNavigateArgs
+  ToNavigationTarget
+  ToQueryArgs
+  ToQueryError
+  ToQueryInput
+  ToQueryMethod
+  ToQueryOutput
+  ToQueryPattern
+  ToRouteDestination
+  ToRouteSyncArgs
+  ToViewComponentProps
+  ToViewInput
+  ToViewOutput
+  ToViewPattern
+  ViewDefinition
+  VormaClient
+  WorkIndicator
+  WorkIndicatorOptions
+  WorkState
+
+===== ./react (packages/vorma/ui/react/react.tsx)
+  ApiClientOutput
+  AppConfig as VormaClientSeed
+  BeforeRouteCommitFn
+  BeforeRouteTransitionArgs
+  BeforeRouteYieldFn
+  BuildSkewDetectedEvent
+  createVormaClient
+  MutationError
+  MutationResult
+  QueryError
+  QueryResult
+  RevalidationReason
+  RevalidationResult
+  RouteErrorState
+  RouteState
+  RouteUpdateReason
+  ToApiClient
+  ToApiDecorator
+  ToApiDecoratorContext
+  ToClientLoaderArgs
+  ToLinkProps
+  ToMutationArgs
+  ToMutationError
+  ToMutationInput
+  ToMutationMethod
+  ToMutationOutput
+  ToMutationPattern
+  ToNavigateArgs
+  ToNavigationTarget
+  ToQueryArgs
+  ToQueryError
+  ToQueryInput
+  ToQueryMethod
+  ToQueryOutput
+  ToQueryPattern
+  ToRouteDestination
+  ToRouteSyncArgs
+  ToViewComponentProps
+  ToViewInput
+  ToViewOutput
+  ToViewPattern
+  WorkIndicator
+  WorkIndicatorOptions
+  WorkState
+
+===== ./preact (packages/vorma/ui/preact/preact.tsx)
+  ApiClientOutput
+  AppConfig as VormaClientSeed
+  BeforeRouteCommitFn
+  BeforeRouteTransitionArgs
+  BeforeRouteYieldFn
+  BuildSkewDetectedEvent
+  createVormaClient
+  MutationError
+  MutationResult
+  QueryError
+  QueryResult
+  RevalidationReason
+  RevalidationResult
+  RouteErrorState
+  RouteState
+  RouteUpdateReason
+  ToApiClient
+  ToApiDecorator
+  ToApiDecoratorContext
+  ToClientLoaderArgs
+  ToLinkProps
+  ToMutationArgs
+  ToMutationError
+  ToMutationInput
+  ToMutationMethod
+  ToMutationOutput
+  ToMutationPattern
+  ToNavigateArgs
+  ToNavigationTarget
+  ToQueryArgs
+  ToQueryError
+  ToQueryInput
+  ToQueryMethod
+  ToQueryOutput
+  ToQueryPattern
+  ToRouteDestination
+  ToRouteSyncArgs
+  ToViewComponentProps
+  ToViewInput
+  ToViewOutput
+  ToViewPattern
+  WorkIndicator
+  WorkIndicatorOptions
+  WorkState
+
+===== ./solid (packages/vorma/ui/solid/solid.tsx)
+  ApiClientOutput
+  AppConfig as VormaClientSeed
+  BeforeRouteCommitFn
+  BeforeRouteTransitionArgs
+  BeforeRouteYieldFn
+  BuildSkewDetectedEvent
+  createVormaClient
+  MutationError
+  MutationResult
+  QueryError
+  QueryResult
+  RevalidationReason
+  RevalidationResult
+  RouteErrorState
+  RouteState
+  RouteUpdateReason
+  ToApiClient
+  ToApiDecorator
+  ToApiDecoratorContext
+  ToClientLoaderArgs
+  ToLinkProps
+  ToMutationArgs
+  ToMutationError
+  ToMutationInput
+  ToMutationMethod
+  ToMutationOutput
+  ToMutationPattern
+  ToNavigateArgs
+  ToNavigationTarget
+  ToQueryArgs
+  ToQueryError
+  ToQueryInput
+  ToQueryMethod
+  ToQueryOutput
+  ToQueryPattern
+  ToRouteDestination
+  ToRouteSyncArgs
+  ToViewComponentProps
+  ToViewInput
+  ToViewOutput
+  ToViewPattern
+  WorkIndicator
+  WorkIndicatorOptions
+  WorkState
+
+===== ./vite (packages/vorma/vite/vite.ts)
+  default function vorma
+
+===== ./kit/converters (packages/vorma/kit/converters/converters.ts)
+  Base64
+  base64ToBase64Url
+  base64ToBytes
+  base64ToHex
+  base64ToUtf8
+  Base64Url
+  base64UrlToBase64
+  base64UrlToBytes
+  base64UrlToHex
+  base64UrlToUtf8
+  Bytes
+  bytesToBase64
+  bytesToBase64Url
+  bytesToHex
+  bytesToUtf8
+  Hex
+  hexToBase64
+  hexToBase64Url
+  hexToBytes
+  hexToUtf8
+  Utf8
+  utf8ToBase64
+  utf8ToBase64Url
+  utf8ToBytes
+  utf8ToHex
+
+===== ./kit/cookies (packages/vorma/kit/cookies/cookies.ts)
+  getClientCookie
+  setClientCookie
+
+===== ./kit/csrf (packages/vorma/kit/csrf/csrf.ts)
+  getCsrfToken
+
+===== ./kit/debounce (packages/vorma/kit/debounce/debounce.ts)
+  debounce
+  Debounced
+
+===== ./kit/fmt (packages/vorma/kit/fmt/fmt.ts)
+  prettyJson
+
+===== ./kit/json (packages/vorma/kit/json/json.ts)
+  jsonDeepEquals
+  jsonStringifyStable
+  parseSearchParams
+  SearchParamSchema
+  serializeToSearchParams
+
+===== ./kit/listeners (packages/vorma/kit/listeners/listeners.ts)
+  addOnWindowFocusListener
+
+===== ./kit/result (packages/vorma/kit/result/result.ts)
+  R
+  Result
+
+===== ./kit/theme (packages/vorma/kit/theme/theme.ts)
+  initTheme
+  ResolvedTheme
+  Theme
+  THEMES

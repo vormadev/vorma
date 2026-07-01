@@ -1,9 +1,10 @@
 /*
-App-owned formatting on platform APIs — deliberately NOT a framework
-concern (and kit/* is out of scope for this app by ruling).
+Formatting helpers are plain app code. Vorma does not try to own display
+choices like relative timestamps or hostname cleanup; keep those close to
+the product surface that needs them.
 */
 
-const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
 	["year", 365 * 24 * 3600],
 	["month", 30 * 24 * 3600],
 	["day", 24 * 3600],
@@ -11,19 +12,19 @@ const UNITS: Array<[Intl.RelativeTimeFormatUnit, number]> = [
 	["minute", 60],
 ];
 
-const relative = new Intl.RelativeTimeFormat("en", { numeric: "always" });
+const relative_time_format = new Intl.RelativeTimeFormat("en", { numeric: "always" });
 
-export function timeAgo(unixSeconds: number): string {
-	const delta = Math.floor(Date.now() / 1000) - unixSeconds;
-	for (const [unit, seconds] of UNITS) {
+export function time_ago(unix_seconds: number): string {
+	const delta = Math.floor(Date.now() / 1000) - unix_seconds;
+	for (const [unit, seconds] of units) {
 		if (delta >= seconds) {
-			return relative.format(-Math.floor(delta / seconds), unit);
+			return relative_time_format.format(-Math.floor(delta / seconds), unit);
 		}
 	}
 	return "just now";
 }
 
-export function domainOf(url: string): string | null {
+export function domain_of(url: string): string | null {
 	try {
 		return new URL(url).hostname.replace(/^www\./, "");
 	} catch {

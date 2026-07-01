@@ -13,18 +13,18 @@ pub enum Error<E> {
 	Cancelled,
 	/// Task resolution encountered a dependency cycle.
 	Cycle {
-		/// Type name of the task input being resolved.
-		task: &'static str,
+		/// Declared task name being resolved.
+		task_name: &'static str,
 	},
 	/// Overrides were configured as required and this task had none.
 	MissingOverride {
-		/// Type name of the task input being resolved.
-		task: &'static str,
+		/// Declared task name being resolved.
+		task_name: &'static str,
 	},
 	/// Cached output existed under this task/input key but had the wrong type.
 	TypeMismatch {
-		/// Type name of the task input being resolved.
-		task: &'static str,
+		/// Declared task name being resolved.
+		task_name: &'static str,
 	},
 }
 
@@ -40,9 +40,9 @@ impl<E> Clone for Error<E> {
 		match self {
 			Self::Failed(error) => Self::Failed(error.clone()),
 			Self::Cancelled => Self::Cancelled,
-			Self::Cycle { task } => Self::Cycle { task },
-			Self::MissingOverride { task } => Self::MissingOverride { task },
-			Self::TypeMismatch { task } => Self::TypeMismatch { task },
+			Self::Cycle { task_name } => Self::Cycle { task_name },
+			Self::MissingOverride { task_name } => Self::MissingOverride { task_name },
+			Self::TypeMismatch { task_name } => Self::TypeMismatch { task_name },
 		}
 	}
 }
@@ -58,12 +58,14 @@ impl<E> fmt::Display for Error<E> {
 		match self {
 			Self::Failed(_) => f.write_str("task failed"),
 			Self::Cancelled => f.write_str("task cancelled"),
-			Self::Cycle { task } => write!(f, "task cycle detected while resolving {task}"),
-			Self::MissingOverride { task } => {
-				write!(f, "task override required before resolving {task}")
+			Self::Cycle { task_name } => {
+				write!(f, "task cycle detected while resolving {task_name}")
 			}
-			Self::TypeMismatch { task } => {
-				write!(f, "cached task output had the wrong type for {task}")
+			Self::MissingOverride { task_name } => {
+				write!(f, "task override required before resolving {task_name}")
+			}
+			Self::TypeMismatch { task_name } => {
+				write!(f, "cached task output had the wrong type for {task_name}")
 			}
 		}
 	}

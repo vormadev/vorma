@@ -1331,6 +1331,13 @@ mod tests {
 			route_type_contract(),
 			handler_id("not.found.view"),
 		));
+		declarations.add_view(ViewDeclaration::new(
+			"/about",
+			"about.tsx",
+			serde_json::json!({}),
+			route_type_contract(),
+			handler_id("about.view"),
+		));
 		declarations.add_resource(ResourceDeclaration::new(
 			Method::GET,
 			"/api/items",
@@ -1340,7 +1347,10 @@ mod tests {
 			handler_id("items.resource"),
 		));
 
-		FrameworkGraph::compile(declarations).unwrap();
+		let graph = FrameworkGraph::compile(declarations).unwrap();
+
+		assert_eq!(graph.views()[1].parent_patterns(), ["/"]);
+		assert_eq!(graph.views()[2].parent_patterns(), ["/"]);
 	}
 
 	#[test]

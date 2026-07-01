@@ -5,6 +5,7 @@ use vorma::HttpCookie;
 use crate::app;
 use crate::repo::{self, DbInput, User};
 use crate::store::AppState;
+use crate::{CSRF_ECHO_HEADER, CSRF_HEADER};
 
 pub const SESSION_COOKIE: &str = "board_session";
 
@@ -57,7 +58,7 @@ pub fn removal_cookie() -> HttpCookie<'static> {
 pub async fn current_user(
 	state: &AppState,
 	headers: &vorma::HttpHeaderMap,
-	exec_ctx: &vorma::ExecCtx<vorma::Error>,
+	exec_ctx: &vorma::tasks::ExecCtx<vorma::Error>,
 ) -> vorma::Result<Option<User>> {
 	let Some(token) = token_of(headers) else {
 		return Ok(None);
@@ -86,10 +87,28 @@ pub fn current_user_preload() -> app::Middleware {
 	})
 }
 
+/// Method-scoped middleware for app-owned mutation headers.
+///
+/// Vorma does not prescribe CSRF; applications can use middleware filters to add their
+/// own request policy. Board keeps this as an echo instead of real enforcement so the
+/// example stays runnable without a production auth setup.
+pub fn csrf_header_echo() -> app::Middleware {
+	app::Middleware::new(|ctx| async move {
+		if let Some(value) = ctx.request().headers().get(CSRF_HEADER) {
+			ctx.response().set_header(
+				vorma::HttpHeaderName::from_static(CSRF_ECHO_HEADER),
+				value.clone(),
+			);
+		}
+		Ok(())
+	})
+	.with_methods([vorma::HttpMethod::POST, vorma::HttpMethod::DELETE])
+}
+
 /// Gate everything under /mod: anonymous users are redirected home;
 /// banned sessions get a real 401 (the JSON envelope on resources).
-/// Scope patterns are URL patterns: the mod RESOURCES live under the
-/// api mount, so that prefix is written where the URL carries it.
+/// Scope patterns are URL patterns: the mod resources use concrete
+/// `/api/mod/...` URLs, so the middleware declares that prefix too.
 pub fn mod_gate() -> crate::app::Middleware {
 	crate::app::Middleware::new(|ctx| async move {
 		match current_user(ctx.state(), ctx.request().headers(), ctx.exec_ctx()).await {

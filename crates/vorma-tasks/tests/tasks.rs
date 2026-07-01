@@ -1,17 +1,174 @@
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::sync::{Notify, watch};
+use tokio::time;
 use vorma_tasks::{
-	CancelToken, Clock, ClockInstant, Error, Task, TaskEvent, TaskEventKind, TaskEventOutcome,
-	TaskOverrideMode, TaskOverrides, TaskRunSource, Tasks, TasksOptions,
+	CancelToken, Clock, ClockInstant, Error, ParallelBatch, TaskEvent, TaskEventKind,
+	TaskEventOutcome, TaskOverrideMode, TaskOverrides, TaskRunSource, Tasks, TasksOptions,
 };
+
+struct CaseInput<V, S> {
+	value: V,
+	state: Arc<S>,
+}
+
+impl<V, S> Clone for CaseInput<V, S>
+where
+	V: Clone,
+{
+	fn clone(&self) -> Self {
+		Self {
+			value: self.value.clone(),
+			state: self.state.clone(),
+		}
+	}
+}
+
+impl<V, S> CaseInput<V, S> {
+	fn new(value: V, state: Arc<S>) -> Self {
+		Self { value, state }
+	}
+}
+
+impl<V, S> PartialEq for CaseInput<V, S>
+where
+	V: PartialEq,
+{
+	fn eq(&self, other: &Self) -> bool {
+		self.value == other.value && Arc::ptr_eq(&self.state, &other.state)
+	}
+}
+
+impl<V, S> Eq for CaseInput<V, S> where V: Eq {}
+
+impl<V, S> Hash for CaseInput<V, S>
+where
+	V: Hash,
+{
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.value.hash(state);
+		(Arc::as_ptr(&self.state) as usize).hash(state);
+	}
+}
+
+#[derive(Default)]
+struct CountState {
+	runs: AtomicUsize,
+}
+
+struct ClockState {
+	runs: AtomicUsize,
+	clock: ManualClock,
+}
+
+struct GatedState {
+	runs: AtomicUsize,
+	started: watch::Sender<usize>,
+	release: Notify,
+}
+
+struct ParallelState {
+	started: watch::Sender<usize>,
+	started_count: AtomicUsize,
+	release: Notify,
+	first_runs: AtomicUsize,
+	second_runs: AtomicUsize,
+}
+
+struct ParallelErrorState {
+	started: watch::Sender<usize>,
+	wait_runs: AtomicUsize,
+}
+
+struct CancelOnSuccessState {
+	runs: AtomicUsize,
+	cancel: CancelToken,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Collision(u8);
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct PatternInput {
+	left: u32,
+	right: u32,
+}
+
+type AliasTask<I, O, E> = vorma_tasks::Task<I, O, E>;
+
+mod task_aliases {
+	pub type ModuleAliasTask<I, O, E> = vorma_tasks::Task<I, O, E>;
+}
+
+struct PanicEqInput {
+	value: u8,
+	panic_on_eq: Arc<AtomicBool>,
+	state: Arc<CountState>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
+struct PanicHashInput;
+
+impl PanicEqInput {
+	fn new(value: u8, panic_on_eq: Arc<AtomicBool>, state: Arc<CountState>) -> Self {
+		Self {
+			value,
+			panic_on_eq,
+			state,
+		}
+	}
+}
+
+impl Clone for PanicEqInput {
+	fn clone(&self) -> Self {
+		Self {
+			value: self.value,
+			panic_on_eq: self.panic_on_eq.clone(),
+			state: self.state.clone(),
+		}
+	}
+}
+
+impl PartialEq for PanicEqInput {
+	fn eq(&self, other: &Self) -> bool {
+		if self.panic_on_eq.swap(false, Ordering::SeqCst) {
+			panic!("intentional equality panic");
+		}
+		self.value == other.value && Arc::ptr_eq(&self.state, &other.state)
+	}
+}
+
+impl Eq for PanicEqInput {}
+
+impl Hash for Collision {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		1u8.hash(state);
+	}
+}
+
+impl Hash for PanicEqInput {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		1u8.hash(state);
+	}
+}
+
+impl Hash for PanicHashInput {
+	fn hash<H: Hasher>(&self, _state: &mut H) {
+		panic!("intentional hash panic");
+	}
+}
 
 #[derive(Clone, Default)]
 struct ManualClock {
 	nanos: Arc<AtomicU64>,
+}
+
+#[derive(Default)]
+struct PanicOnceClock {
+	panicked: AtomicBool,
 }
 
 impl ManualClock {
@@ -29,17 +186,325 @@ impl Clock for ManualClock {
 	}
 }
 
-fn counted_task(
-	runs: Arc<AtomicUsize>,
-	cross_exec_ctx_cache_ttl: Duration,
-) -> Task<u32, u32, &'static str> {
-	Task::new(cross_exec_ctx_cache_ttl, move |_ctx, input| {
-		let runs = runs.clone();
-		async move {
-			runs.fetch_add(1, Ordering::SeqCst);
-			Ok(input * 2)
+impl Clock for PanicOnceClock {
+	fn now(&self) -> ClockInstant {
+		if !self.panicked.swap(true, Ordering::SeqCst) {
+			panic!("intentional clock panic");
 		}
-	})
+		ClockInstant::from_duration_since_origin(Duration::ZERO)
+	}
+}
+
+vorma_tasks::task! {
+	static COUNTED_MEMOIZED: Task<CaseInput<u32, CountState>, u32, &'static str> =
+		memoized(|_ctx, input: CaseInput<u32, CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Ok(input.value * 2)
+		});
+}
+
+vorma_tasks::task! {
+	static COUNTED_EXTENDED_10MS: Task<CaseInput<u32, CountState>, u32, &'static str> =
+		extended_cache(Duration::from_millis(10), |_ctx, input: CaseInput<u32, CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Ok(input.value * 2)
+		});
+}
+
+vorma_tasks::task! {
+	static COUNTED_EXTENDED_60S: Task<CaseInput<u32, CountState>, u32, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<u32, CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Ok(input.value * 2)
+		});
+}
+
+vorma_tasks::task! {
+	static SECOND_COUNTED_EXTENDED_60S: Task<CaseInput<u32, CountState>, u32, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<u32, CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Ok(input.value * 2)
+		});
+}
+
+vorma_tasks::task! {
+	static CLOCK_EXTENDED_60S: Task<CaseInput<(), ClockState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), ClockState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			input.state.clock.advance(Duration::from_millis(7));
+			Ok(1)
+		});
+}
+
+vorma_tasks::task! {
+	static GATED_MEMOIZED: Task<CaseInput<(), GatedState>, usize, &'static str> =
+		memoized(|_ctx, input: CaseInput<(), GatedState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(run);
+			input.state.release.notified().await;
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static GATED_EXTENDED_50MS: Task<CaseInput<(), GatedState>, usize, &'static str> =
+		extended_cache(Duration::from_millis(50), |_ctx, input: CaseInput<(), GatedState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(run);
+			input.state.release.notified().await;
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static GATED_EXTENDED_60S: Task<CaseInput<(), GatedState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), GatedState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(run);
+			input.state.release.notified().await;
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static GATED_EXTENDED_ERROR_THEN_SUCCESS: Task<CaseInput<(), GatedState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), GatedState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(run);
+			if run == 1 {
+				input.state.release.notified().await;
+				return Err("boom".into());
+			}
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static EXTENDED_THROUGH_GATED_MEMOIZED: Task<CaseInput<(), GatedState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |ctx, input: CaseInput<(), GatedState>| async move {
+			let value = GATED_MEMOIZED.run(&ctx, input).await?;
+			Ok(*value)
+		});
+}
+
+vorma_tasks::task! {
+	static EXTENDED_CANCEL_CALLER_THEN_SUCCESS: Task<CaseInput<(), CancelOnSuccessState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), CancelOnSuccessState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			input.state.cancel.cancel();
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static PARENT_COUNTED: Task<CaseInput<u32, CountState>, u32, &'static str> =
+		memoized(|ctx, input: CaseInput<u32, CountState>| async move {
+			let left_input = input.clone();
+			let right_input = input;
+			let (left, right) = tokio::try_join!(
+				COUNTED_MEMOIZED.run(&ctx, left_input),
+				COUNTED_MEMOIZED.run(&ctx, right_input),
+			)?;
+			Ok(*left + *right)
+		});
+}
+
+vorma_tasks::task! {
+	static PARALLEL_FIRST: Task<CaseInput<u32, ParallelState>, u32, &'static str> =
+		memoized(|_ctx, input: CaseInput<u32, ParallelState>| async move {
+			input.state.first_runs.fetch_add(1, Ordering::SeqCst);
+			let count = input.state.started_count.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(count);
+			input.state.release.notified().await;
+			Ok(input.value * 2)
+		});
+}
+
+vorma_tasks::task! {
+	static PARALLEL_SECOND: Task<CaseInput<&'static str, ParallelState>, String, &'static str> =
+		memoized(|_ctx, input: CaseInput<&'static str, ParallelState>| async move {
+			input.state.second_runs.fetch_add(1, Ordering::SeqCst);
+			let count = input.state.started_count.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(count);
+			input.state.release.notified().await;
+			Ok(format!("{}-done", input.value))
+		});
+}
+
+vorma_tasks::task! {
+	static PARALLEL_WAIT: Task<CaseInput<(), ParallelErrorState>, usize, &'static str> =
+		memoized(|ctx, input: CaseInput<(), ParallelErrorState>| async move {
+			let run = input.state.wait_runs.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(run);
+			if run == 1 {
+				ctx.cancel_token().cancelled().await;
+			}
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static PARALLEL_FAIL: Task<CaseInput<(), ParallelErrorState>, (), &'static str> =
+		memoized(|_ctx, input: CaseInput<(), ParallelErrorState>| async move {
+			let mut started = input.state.started.subscribe();
+			wait_for_started(&mut started, 1).await;
+			Err("boom".into())
+		});
+}
+
+vorma_tasks::task! {
+	static COLLISION_TASK: Task<CaseInput<Collision, CountState>, u8, &'static str> =
+		memoized(|_ctx, input: CaseInput<Collision, CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Ok(input.value.0)
+		});
+}
+
+vorma_tasks::task! {
+	static PANIC_EQ_TASK: Task<PanicEqInput, u8, &'static str> =
+		memoized(|_ctx, input: PanicEqInput| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Ok(input.value)
+		});
+}
+
+vorma_tasks::task! {
+	static PANIC_HASH_TASK: Task<PanicHashInput, (), &'static str> =
+		memoized(|_ctx, _input: PanicHashInput| async move { Ok(()) });
+}
+
+vorma_tasks::task! {
+	static DESTRUCTURED_INPUT: Task<(u32, u32), u32, &'static str> =
+		memoized(|_ctx, (left, right)| async move { Ok(left + right) });
+}
+
+vorma_tasks::task! {
+	static TYPED_PATTERN_INPUT: Task<(u32, u32), u32, &'static str> =
+		memoized(|_ctx, (left, right): (u32, u32)| async move { Ok(left * right) });
+}
+
+vorma_tasks::task! {
+	static MUT_TYPED_INPUT: Task<u32, u32, &'static str> =
+		memoized(|_ctx, mut input: u32| async move {
+			input += 1;
+			Ok(input)
+		});
+}
+
+vorma_tasks::task! {
+	static STRUCT_TYPED_PATTERN_INPUT: Task<PatternInput, u32, &'static str> =
+		memoized(|_ctx, PatternInput { left, right }: PatternInput| async move {
+			Ok(left + right)
+		});
+}
+
+vorma_tasks::task! {
+	static ABSOLUTE_PATH_TASK: ::vorma_tasks::Task<(), (), &'static str> =
+		memoized(|_ctx, _input| async move { Ok(()) });
+}
+
+vorma_tasks::task! {
+	static ALIAS_PATH_TASK: AliasTask<(), (), &'static str> =
+		memoized(|_ctx, _input| async move { Ok(()) });
+}
+
+vorma_tasks::task! {
+	static MODULE_ALIAS_PATH_TASK: task_aliases::ModuleAliasTask<(), (), &'static str> =
+		memoized(|_ctx, _input| async move { Ok(()) });
+}
+
+vorma_tasks::task! {
+	static SELF_CYCLE: Task<(), (), &'static str> =
+		memoized(|ctx, _input: ()| async move {
+			SELF_CYCLE.run(&ctx, ()).await?;
+			Ok(())
+		});
+}
+
+vorma_tasks::task! {
+	static MEMOIZED_ERROR: Task<CaseInput<(), CountState>, (), &'static str> =
+		memoized(|_ctx, input: CaseInput<(), CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Err("boom".into())
+		});
+}
+
+vorma_tasks::task! {
+	static EXTENDED_ERROR_THEN_SUCCESS: Task<CaseInput<(), CountState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), CountState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			if run == 1 {
+				return Err("boom".into());
+			}
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static MEMOIZED_CANCEL: Task<CaseInput<(), CountState>, (), &'static str> =
+		memoized(|_ctx, input: CaseInput<(), CountState>| async move {
+			input.state.runs.fetch_add(1, Ordering::SeqCst);
+			Err(Error::Cancelled)
+		});
+}
+
+vorma_tasks::task! {
+	static EXTENDED_CANCEL_THEN_SUCCESS: Task<CaseInput<(), CountState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), CountState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			if run == 1 {
+				return Err(Error::Cancelled);
+			}
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static PANIC_THEN_SUCCESS: Task<CaseInput<(), CountState>, usize, &'static str> =
+		memoized(|_ctx, input: CaseInput<(), CountState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			if run == 1 {
+				panic!("intentional test panic");
+			}
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static EXTENDED_PANIC_THEN_SUCCESS: Task<CaseInput<(), CountState>, usize, &'static str> =
+		extended_cache(Duration::from_secs(60), |_ctx, input: CaseInput<(), CountState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			if run == 1 {
+				panic!("intentional test panic");
+			}
+			Ok(run)
+		});
+}
+
+vorma_tasks::task! {
+	static SINGLE_FLIGHT_GATED: Task<CaseInput<(), GatedState>, usize, &'static str> =
+		single_flight(|_ctx, input: CaseInput<(), GatedState>| async move {
+			let run = input.state.runs.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(run);
+			input.state.release.notified().await;
+			Ok(run)
+		});
+}
+
+fn count_state() -> Arc<CountState> {
+	Arc::new(CountState::default())
+}
+
+fn gated_state() -> (Arc<GatedState>, watch::Receiver<usize>) {
+	let (started, started_rx) = watch::channel(0usize);
+	(
+		Arc::new(GatedState {
+			runs: AtomicUsize::new(0),
+			started,
+			release: Notify::new(),
+		}),
+		started_rx,
+	)
 }
 
 fn exec_ctx<E>(tasks: &Tasks<E>) -> vorma_tasks::ExecCtx<E>
@@ -54,6 +519,16 @@ where
 	E: Send + Sync + 'static,
 {
 	Tasks::new(TasksOptions::default())
+}
+
+fn tasks_with_cache_capacity<E>(max_entries: usize) -> Tasks<E>
+where
+	E: Send + Sync + 'static,
+{
+	Tasks::new(TasksOptions {
+		max_cross_exec_ctx_cache_entries: max_entries,
+		..TasksOptions::default()
+	})
 }
 
 fn tasks_with_clock<E>(clock: ManualClock) -> Tasks<E>
@@ -141,120 +616,135 @@ async fn child_cancel_token_follows_parent_without_cancelling_parent() {
 
 #[tokio::test]
 async fn required_overrides_do_not_run_unmatched_task_bodies() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), usize, &'static str> = Task::new(Duration::ZERO, move |_ctx, ()| {
-		let runs = task_runs.clone();
-		async move {
-			runs.fetch_add(1, Ordering::SeqCst);
-			Ok(1)
-		}
-	});
+	let state = count_state();
+	let task_input = CaseInput::new(1, state.clone());
 	let overrides = TaskOverrides::new(TaskOverrideMode::RequireOverride);
 	let tasks = tasks_with_overrides(overrides);
-	let err = task.run(&exec_ctx(&tasks), ()).await.unwrap_err();
+	let err = COUNTED_MEMOIZED
+		.run(&exec_ctx(&tasks), task_input)
+		.await
+		.unwrap_err();
 
 	assert!(matches!(err, Error::MissingOverride { .. }));
-	assert_eq!(runs.load(Ordering::SeqCst), 0);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
 async fn run_unmatched_overrides_allow_original_task_bodies() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task = counted_task(runs.clone(), Duration::ZERO);
+	let state = count_state();
 	let overrides = TaskOverrides::new(TaskOverrideMode::RunUnmatched);
 	let tasks = tasks_with_overrides(overrides);
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), 4).await.unwrap(), 8);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*COUNTED_MEMOIZED
+			.run(&exec_ctx(&tasks), CaseInput::new(4, state.clone()))
+			.await
+			.unwrap(),
+		8
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn task_overrides_replace_task_bodies_and_memoize_inside_exec_ctx() {
-	let body_runs = Arc::new(AtomicUsize::new(0));
+	let body_state = count_state();
 	let override_runs = Arc::new(AtomicUsize::new(0));
-	let task_body_runs = body_runs.clone();
-	let task: Task<u32, u32, &'static str> = Task::new(Duration::ZERO, move |_ctx, input| {
-		let body_runs = task_body_runs.clone();
-		async move {
-			body_runs.fetch_add(1, Ordering::SeqCst);
-			Ok(input)
-		}
-	});
 	let task_override_runs = override_runs.clone();
-	let overrides =
-		TaskOverrides::new(TaskOverrideMode::RequireOverride).replace(&task, move |_ctx, input| {
+	let overrides = TaskOverrides::new(TaskOverrideMode::RequireOverride).replace(
+		&COUNTED_MEMOIZED,
+		move |_ctx, input| {
 			let override_runs = task_override_runs.clone();
 			async move {
 				override_runs.fetch_add(1, Ordering::SeqCst);
-				Ok(input * 10)
+				Ok(input.value * 10)
 			}
-		});
+		},
+	);
 	let tasks = tasks_with_overrides(overrides);
 	let ctx = exec_ctx(&tasks);
+	let input = CaseInput::new(3, body_state.clone());
 
-	let (a, b) = tokio::join!(task.run(&ctx, 3), task.run(&ctx, 3));
+	let (a, b) = tokio::join!(
+		COUNTED_MEMOIZED.run(&ctx, input.clone()),
+		COUNTED_MEMOIZED.run(&ctx, input),
+	);
 
 	assert_eq!(*a.unwrap(), 30);
 	assert_eq!(*b.unwrap(), 30);
-	assert_eq!(body_runs.load(Ordering::SeqCst), 0);
+	assert_eq!(body_state.runs.load(Ordering::SeqCst), 0);
 	assert_eq!(override_runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn task_overrides_participate_in_cross_exec_ctx_cache() {
-	let body_runs = Arc::new(AtomicUsize::new(0));
+	let body_state = count_state();
 	let override_runs = Arc::new(AtomicUsize::new(0));
-	let task_body_runs = body_runs.clone();
-	let task: Task<u32, u32, &'static str> =
-		Task::new(Duration::from_secs(60), move |_ctx, input| {
-			let body_runs = task_body_runs.clone();
-			async move {
-				body_runs.fetch_add(1, Ordering::SeqCst);
-				Ok(input)
-			}
-		});
 	let task_override_runs = override_runs.clone();
-	let overrides =
-		TaskOverrides::new(TaskOverrideMode::RequireOverride).replace(&task, move |_ctx, input| {
+	let overrides = TaskOverrides::new(TaskOverrideMode::RequireOverride).replace(
+		&COUNTED_EXTENDED_60S,
+		move |_ctx, input| {
 			let override_runs = task_override_runs.clone();
 			async move {
 				override_runs.fetch_add(1, Ordering::SeqCst);
-				Ok(input * 10)
+				Ok(input.value * 10)
 			}
-		});
+		},
+	);
 	let tasks = tasks_with_overrides(overrides);
+	let input = CaseInput::new(3, body_state.clone());
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), 3).await.unwrap(), 30);
-	assert_eq!(*task.run(&exec_ctx(&tasks), 3).await.unwrap(), 30);
-	assert_eq!(body_runs.load(Ordering::SeqCst), 0);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		30
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		30
+	);
+	assert_eq!(body_state.runs.load(Ordering::SeqCst), 0);
 	assert_eq!(override_runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn observer_reports_exec_ctx_memo_and_run_events() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task = counted_task(runs.clone(), Duration::ZERO);
+	let state = count_state();
+	let input = CaseInput::new(5, state.clone());
 	let (events, observer) = event_log();
 	let tasks = tasks_with_clock_observer(ManualClock::default(), observer);
 	let ctx = exec_ctx(&tasks);
 
-	assert_eq!(*task.run(&ctx, 5).await.unwrap(), 10);
-	assert_eq!(*task.run(&ctx, 5).await.unwrap(), 10);
+	assert_eq!(
+		*COUNTED_MEMOIZED.run(&ctx, input.clone()).await.unwrap(),
+		10
+	);
+	assert_eq!(*COUNTED_MEMOIZED.run(&ctx, input).await.unwrap(), 10);
 
 	{
 		let events = events.lock().expect("task event log lock poisoned");
-		assert!(events.iter().all(|event| event.task_id == task.id()));
 		assert!(
 			events
 				.iter()
-				.all(|event| event.task_input_type == std::any::type_name::<u32>())
+				.all(|event| event.task_id == COUNTED_MEMOIZED.id())
+		);
+		assert!(
+			events
+				.iter()
+				.all(|event| event.task_name == concat!(module_path!(), "::COUNTED_MEMOIZED"))
+		);
+		assert!(
+			events.iter().all(|event| event.task_input_type
+				== std::any::type_name::<CaseInput<u32, CountState>>())
 		);
 	}
 
-	let kinds = event_kinds(&events);
 	assert_eq!(
-		kinds,
+		event_kinds(&events),
 		vec![
 			TaskEventKind::ExecCtxMemoMiss,
 			TaskEventKind::RunStarted {
@@ -268,34 +758,37 @@ async fn observer_reports_exec_ctx_memo_and_run_events() {
 			TaskEventKind::ExecCtxMemoHit,
 		],
 	);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn observer_reports_cross_exec_ctx_cache_and_duration_events() {
-	let runs = Arc::new(AtomicUsize::new(0));
 	let clock = ManualClock::default();
-	let task_clock = clock.clone();
-	let task_runs = runs.clone();
-	let task: Task<(), usize, &'static str> =
-		Task::new(Duration::from_secs(60), move |_ctx, ()| {
-			let runs = task_runs.clone();
-			let clock = task_clock.clone();
-			async move {
-				runs.fetch_add(1, Ordering::SeqCst);
-				clock.advance(Duration::from_millis(7));
-				Ok(1)
-			}
-		});
+	let state = Arc::new(ClockState {
+		runs: AtomicUsize::new(0),
+		clock: clock.clone(),
+	});
+	let input = CaseInput::new((), state.clone());
 	let (events, observer) = event_log();
-	let tasks = tasks_with_clock_observer(clock.clone(), observer);
+	let tasks = tasks_with_clock_observer(clock, observer);
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 1);
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 1);
-
-	let kinds = event_kinds(&events);
 	assert_eq!(
-		kinds,
+		*CLOCK_EXTENDED_60S
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		1
+	);
+	assert_eq!(
+		*CLOCK_EXTENDED_60S
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		1
+	);
+
+	assert_eq!(
+		event_kinds(&events),
 		vec![
 			TaskEventKind::ExecCtxMemoMiss,
 			TaskEventKind::CrossExecCtxCacheMiss,
@@ -312,26 +805,19 @@ async fn observer_reports_cross_exec_ctx_cache_and_duration_events() {
 			TaskEventKind::CrossExecCtxCacheHit,
 		],
 	);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn observer_reports_cross_exec_ctx_in_flight_waits() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let (started, mut started_rx) = watch::channel(0usize);
-	let release = Arc::new(Notify::new());
-	let task = gated_task(
-		runs.clone(),
-		started,
-		release.clone(),
-		Duration::from_secs(60),
-	);
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let (events, observer) = event_log();
 	let tasks = tasks_with_clock_observer(ManualClock::default(), observer);
 	let first_ctx = exec_ctx(&tasks);
 	let second_ctx = exec_ctx(&tasks);
-	let mut first = Box::pin(task.run(&first_ctx, ()));
-	let mut second = Box::pin(task.run(&second_ctx, ()));
+	let mut first = Box::pin(GATED_EXTENDED_60S.run(&first_ctx, input.clone()));
+	let mut second = Box::pin(GATED_EXTENDED_60S.run(&second_ctx, input));
 
 	tokio::select! {
 		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
@@ -342,48 +828,53 @@ async fn observer_reports_cross_exec_ctx_in_flight_waits() {
 		result = &mut second => panic!("second run finished unexpectedly: {result:?}"),
 		_ = tokio::task::yield_now() => {}
 	}
-	release.notify_one();
+	state.release.notify_one();
 
 	assert_eq!(*first.await.unwrap(), 1);
 	assert_eq!(*second.await.unwrap(), 1);
-
-	let kinds = event_kinds(&events);
-	assert!(kinds.contains(&TaskEventKind::CrossExecCtxInFlightWait));
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert!(event_kinds(&events).contains(&TaskEventKind::CrossExecCtxInFlightWait));
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn observer_reports_stale_cross_exec_ctx_slot_cleanup() {
-	let runs = Arc::new(AtomicUsize::new(0));
+	let state = count_state();
+	let input = CaseInput::new(2, state.clone());
 	let clock = ManualClock::default();
-	let task = counted_task(runs.clone(), Duration::from_millis(10));
 	let (events, observer) = event_log();
 	let tasks = tasks_with_clock_observer(clock.clone(), observer);
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
+	assert_eq!(
+		*COUNTED_EXTENDED_10MS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		4
+	);
 	clock.advance(Duration::from_millis(10));
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
+	assert_eq!(
+		*COUNTED_EXTENDED_10MS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		4
+	);
 
-	let kinds = event_kinds(&events);
-	assert!(kinds.contains(&TaskEventKind::CrossExecCtxStaleSlotRemoved { count: 1 }));
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert!(
+		event_kinds(&events).contains(&TaskEventKind::CrossExecCtxStaleSlotRemoved { count: 1 })
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn observer_reports_cancellation_events() {
-	let (started, mut started_rx) = watch::channel(0usize);
-	let release = Arc::new(Notify::new());
-	let task = gated_task(
-		Arc::new(AtomicUsize::new(0)),
-		started,
-		release,
-		Duration::ZERO,
-	);
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let (events, observer) = event_log();
 	let tasks = tasks_with_clock_observer(ManualClock::default(), observer);
 	let cancel = CancelToken::new();
 	let ctx = tasks.exec_ctx(cancel.clone());
-	let mut pending = Box::pin(task.run(&ctx, ()));
+	let mut pending = Box::pin(GATED_MEMOIZED.run(&ctx, input));
 
 	tokio::select! {
 		result = &mut pending => panic!("task finished unexpectedly: {result:?}"),
@@ -392,69 +883,202 @@ async fn observer_reports_cancellation_events() {
 
 	cancel.cancel();
 	assert!(pending.await.unwrap_err().is_cancelled());
+	assert!(event_kinds(&events).contains(&TaskEventKind::Cancelled));
+}
 
-	let kinds = event_kinds(&events);
-	assert!(kinds.contains(&TaskEventKind::Cancelled));
+#[tokio::test]
+async fn cancelled_context_does_not_hash_input() {
+	let tasks = tasks();
+	let cancel = CancelToken::new();
+	cancel.cancel();
+	let ctx = tasks.exec_ctx(cancel);
+
+	assert!(
+		PANIC_HASH_TASK
+			.run(&ctx, PanicHashInput)
+			.await
+			.unwrap_err()
+			.is_cancelled()
+	);
+}
+
+#[tokio::test]
+async fn panicking_clock_does_not_poison_cross_exec_ctx_store() {
+	let state = count_state();
+	let tasks = Tasks::new(TasksOptions {
+		clock: Arc::new(PanicOnceClock::default()),
+		..TasksOptions::default()
+	});
+	let first_tasks = tasks.clone();
+	let first_state = state.clone();
+	let first = tokio::spawn(async move {
+		COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&first_tasks), CaseInput::new(1, first_state))
+			.await
+	});
+
+	assert!(first.await.expect_err("clock should panic").is_panic());
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(1, state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn observer_panic_after_exec_ctx_slot_claim_does_not_strand_local_slot() {
+	let state = count_state();
+	let input = CaseInput::new(5, state.clone());
+	let panicked = Arc::new(AtomicBool::new(false));
+	let observer_panicked = panicked.clone();
+	let tasks = Tasks::new(TasksOptions {
+		observer: Some(Arc::new(move |event: TaskEvent| {
+			if matches!(event.kind, TaskEventKind::ExecCtxMemoMiss)
+				&& !observer_panicked.swap(true, Ordering::SeqCst)
+			{
+				panic!("intentional observer panic");
+			}
+		})),
+		..TasksOptions::default()
+	});
+	let ctx = exec_ctx(&tasks);
+	let first_ctx = ctx.clone();
+	let first = tokio::spawn(async move { COUNTED_MEMOIZED.run(&first_ctx, input.clone()).await });
+
+	assert!(first.await.expect_err("observer should panic").is_panic());
+	assert_eq!(
+		*time::timeout(
+			Duration::from_secs(1),
+			COUNTED_MEMOIZED.run(&ctx, CaseInput::new(5, state.clone()))
+		)
+		.await
+		.expect("local slot should reopen after observer panic")
+		.unwrap(),
+		10
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn observer_panic_after_cross_exec_ctx_slot_claim_does_not_strand_shared_slot() {
+	let state = count_state();
+	let input = CaseInput::new(5, state.clone());
+	let panicked = Arc::new(AtomicBool::new(false));
+	let observer_panicked = panicked.clone();
+	let tasks = Tasks::new(TasksOptions {
+		observer: Some(Arc::new(move |event: TaskEvent| {
+			if matches!(event.kind, TaskEventKind::CrossExecCtxCacheMiss)
+				&& !observer_panicked.swap(true, Ordering::SeqCst)
+			{
+				panic!("intentional observer panic");
+			}
+		})),
+		..TasksOptions::default()
+	});
+	let first_ctx = exec_ctx(&tasks);
+	let first =
+		tokio::spawn(async move { COUNTED_EXTENDED_60S.run(&first_ctx, input.clone()).await });
+
+	assert!(first.await.expect_err("observer should panic").is_panic());
+	assert_eq!(
+		*time::timeout(
+			Duration::from_secs(1),
+			COUNTED_EXTENDED_60S.run(&exec_ctx(&tasks), CaseInput::new(5, state.clone()))
+		)
+		.await
+		.expect("shared slot should reopen after observer panic")
+		.unwrap(),
+		10
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn task_runs_once_per_exec_ctx() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task = counted_task(runs.clone(), Duration::ZERO);
+	let state = count_state();
+	let input = CaseInput::new(7, state.clone());
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	let (a, b) = tokio::join!(task.run(&ctx, 7), task.run(&ctx, 7));
+	let (a, b) = tokio::join!(
+		COUNTED_MEMOIZED.run(&ctx, input.clone()),
+		COUNTED_MEMOIZED.run(&ctx, input),
+	);
 
 	assert_eq!(*a.unwrap(), 14);
 	assert_eq!(*b.unwrap(), 14);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn separate_exec_ctx_values_do_not_share_without_cross_exec_ctx_cache() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task = counted_task(runs.clone(), Duration::ZERO);
+	let state = count_state();
+	let input = CaseInput::new(1, state.clone());
 	let tasks = tasks();
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), 1).await.unwrap(), 2);
-	assert_eq!(*task.run(&exec_ctx(&tasks), 1).await.unwrap(), 2);
-
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*COUNTED_MEMOIZED
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(
+		*COUNTED_MEMOIZED
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_reuses_completed_values_until_expiration() {
-	let runs = Arc::new(AtomicUsize::new(0));
+	let state = count_state();
+	let input = CaseInput::new(2, state.clone());
 	let clock = ManualClock::default();
-	let task = counted_task(runs.clone(), Duration::from_millis(10));
 	let tasks = tasks_with_clock(clock.clone());
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
+	assert_eq!(
+		*COUNTED_EXTENDED_10MS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		4
+	);
 	clock.advance(Duration::from_millis(9));
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*COUNTED_EXTENDED_10MS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		4
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 
 	clock.advance(Duration::from_millis(1));
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*COUNTED_EXTENDED_10MS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		4
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_ttl_starts_after_task_completion() {
-	let runs = Arc::new(AtomicUsize::new(0));
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let clock = ManualClock::default();
-	let (started, mut started_rx) = watch::channel(0usize);
-	let release = Arc::new(Notify::new());
-	let task = gated_task(
-		runs.clone(),
-		started,
-		release.clone(),
-		Duration::from_millis(50),
-	);
 	let tasks = tasks_with_clock(clock.clone());
 	let ctx = exec_ctx(&tasks);
-	let mut first = Box::pin(task.run(&ctx, ()));
+	let mut first = Box::pin(GATED_EXTENDED_50MS.run(&ctx, input.clone()));
 
 	tokio::select! {
 		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
@@ -462,203 +1086,179 @@ async fn cross_exec_ctx_cache_ttl_starts_after_task_completion() {
 	}
 
 	clock.advance(Duration::from_millis(60));
-	release.notify_one();
+	state.release.notify_one();
 	assert_eq!(*first.await.unwrap(), 1);
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 1);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*GATED_EXTENDED_50MS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		1
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 
 	clock.advance(Duration::from_millis(50));
 	let third_ctx = exec_ctx(&tasks);
-	let mut third = Box::pin(task.run(&third_ctx, ()));
+	let mut third = Box::pin(GATED_EXTENDED_50MS.run(&third_ctx, input));
 
 	tokio::select! {
 		result = &mut third => panic!("third run finished unexpectedly: {result:?}"),
 		_ = wait_for_started(&mut started_rx, 2) => {}
 	}
 
-	release.notify_one();
+	state.release.notify_one();
 	assert_eq!(*third.await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn task_composition_shares_one_exec_ctx() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let child = counted_task(runs.clone(), Duration::ZERO);
-	let parent: Task<u32, u32, &'static str> = Task::new(Duration::ZERO, move |ctx, input| {
-		let child = child.clone();
-		async move {
-			let (left, right) = tokio::try_join!(child.run(&ctx, input), child.run(&ctx, input))?;
-			Ok(*left + *right)
-		}
-	});
+	let state = count_state();
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	assert_eq!(*parent.run(&ctx, 3).await.unwrap(), 12);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*PARENT_COUNTED
+			.run(&ctx, CaseInput::new(3, state.clone()))
+			.await
+			.unwrap(),
+		12
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
-async fn run_parallel_runs_bound_tasks_concurrently_and_stores_results() {
-	let (started, mut started_rx) = watch::channel(0usize);
-	let started_count = Arc::new(AtomicUsize::new(0));
-	let release = Arc::new(Notify::new());
-	let first_runs = Arc::new(AtomicUsize::new(0));
-	let second_runs = Arc::new(AtomicUsize::new(0));
-
-	let first: Task<u32, u32, &'static str> = {
-		let started = started.clone();
-		let started_count = started_count.clone();
-		let release = release.clone();
-		let first_runs = first_runs.clone();
-		Task::new(Duration::ZERO, move |_ctx, input| {
-			let started = started.clone();
-			let started_count = started_count.clone();
-			let release = release.clone();
-			let first_runs = first_runs.clone();
-			async move {
-				first_runs.fetch_add(1, Ordering::SeqCst);
-				let count = started_count.fetch_add(1, Ordering::SeqCst) + 1;
-				let _ = started.send(count);
-				release.notified().await;
-				Ok(input * 2)
-			}
-		})
-	};
-	let second: Task<&'static str, String, &'static str> = {
-		let started = started.clone();
-		let started_count = started_count.clone();
-		let release = release.clone();
-		let second_runs = second_runs.clone();
-		Task::new(Duration::ZERO, move |_ctx, input| {
-			let started = started.clone();
-			let started_count = started_count.clone();
-			let release = release.clone();
-			let second_runs = second_runs.clone();
-			async move {
-				second_runs.fetch_add(1, Ordering::SeqCst);
-				let count = started_count.fetch_add(1, Ordering::SeqCst) + 1;
-				let _ = started.send(count);
-				release.notified().await;
-				Ok(format!("{input}-done"))
-			}
-		})
-	};
-
-	let first_output = Arc::new(Mutex::new(None));
-	let second_output = Arc::new(Mutex::new(None));
-	let first_output_sink = first_output.clone();
-	let second_output_sink = second_output.clone();
+async fn task_macro_accepts_destructured_input_pattern() {
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
-	let mut pending = Box::pin(ctx.run_parallel(vec![
-		first.bind_input_with_result(5, move |output| {
-			*first_output_sink
-				.lock()
-				.expect("first output lock poisoned") = Some(output);
-		}),
-		second.bind_input_with_result("ok", move |output| {
-			*second_output_sink
-				.lock()
-				.expect("second output lock poisoned") = Some(output);
-		}),
-	]));
+
+	assert_eq!(*DESTRUCTURED_INPUT.run(&ctx, (2, 5)).await.unwrap(), 7);
+	assert_eq!(*TYPED_PATTERN_INPUT.run(&ctx, (2, 5)).await.unwrap(), 10);
+	assert_eq!(*MUT_TYPED_INPUT.run(&ctx, 9).await.unwrap(), 10);
+	assert_eq!(
+		*STRUCT_TYPED_PATTERN_INPUT
+			.run(&ctx, PatternInput { left: 3, right: 4 })
+			.await
+			.unwrap(),
+		7
+	);
+}
+
+#[tokio::test]
+async fn task_macro_accepts_absolute_task_type_path() {
+	let tasks = tasks();
+
+	ABSOLUTE_PATH_TASK.run(&exec_ctx(&tasks), ()).await.unwrap();
+}
+
+#[tokio::test]
+async fn task_macro_accepts_task_type_alias() {
+	let tasks = tasks();
+
+	ALIAS_PATH_TASK.run(&exec_ctx(&tasks), ()).await.unwrap();
+	MODULE_ALIAS_PATH_TASK
+		.run(&exec_ctx(&tasks), ())
+		.await
+		.unwrap();
+}
+
+#[tokio::test]
+async fn parallel_runs_added_tasks_concurrently_and_stores_results() {
+	let (started, mut started_rx) = watch::channel(0usize);
+	let state = Arc::new(ParallelState {
+		started,
+		started_count: AtomicUsize::new(0),
+		release: Notify::new(),
+		first_runs: AtomicUsize::new(0),
+		second_runs: AtomicUsize::new(0),
+	});
+	let tasks = tasks();
+	let ctx = exec_ctx(&tasks);
+	let mut batch = ParallelBatch::new();
+	let first_output = batch.add(PARALLEL_FIRST, CaseInput::new(5, state.clone()));
+	let second_output = batch.add(PARALLEL_SECOND, CaseInput::new("ok", state.clone()));
+	let mut pending = Box::pin(batch.run(&ctx));
 
 	tokio::select! {
 		result = &mut pending => panic!("parallel run finished unexpectedly: {result:?}"),
 		_ = wait_for_started(&mut started_rx, 2) => {}
 	}
 
-	release.notify_waiters();
-	pending.await.unwrap();
+	state.release.notify_waiters();
+	let outputs = pending.await.unwrap();
 
+	assert_eq!(*outputs.take(first_output), 10);
+	assert_eq!(outputs.take(second_output).as_str(), "ok-done");
 	assert_eq!(
-		**first_output
-			.lock()
-			.expect("first output lock poisoned")
-			.as_ref()
-			.expect("first output set"),
+		*PARALLEL_FIRST
+			.run(&ctx, CaseInput::new(5, state.clone()))
+			.await
+			.unwrap(),
 		10
 	);
 	assert_eq!(
-		second_output
-			.lock()
-			.expect("second output lock poisoned")
-			.as_ref()
-			.expect("second output set")
+		PARALLEL_SECOND
+			.run(&ctx, CaseInput::new("ok", state.clone()))
+			.await
+			.unwrap()
 			.as_str(),
 		"ok-done"
 	);
-	assert_eq!(*first.run(&ctx, 5).await.unwrap(), 10);
-	assert_eq!(second.run(&ctx, "ok").await.unwrap().as_str(), "ok-done");
-	assert_eq!(first_runs.load(Ordering::SeqCst), 1);
-	assert_eq!(second_runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.first_runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.second_runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
-async fn run_parallel_returns_original_error_and_cancels_siblings() {
-	let (started, started_rx) = watch::channel(0usize);
-	let wait_runs = Arc::new(AtomicUsize::new(0));
-	let wait_task: Task<(), usize, &'static str> = {
-		let started = started.clone();
-		let wait_runs = wait_runs.clone();
-		Task::new(Duration::ZERO, move |ctx, ()| {
-			let started = started.clone();
-			let wait_runs = wait_runs.clone();
-			async move {
-				let run = wait_runs.fetch_add(1, Ordering::SeqCst) + 1;
-				let _ = started.send(run);
-				if run == 1 {
-					ctx.cancel_token().cancelled().await;
-				}
-				Ok(run)
-			}
-		})
-	};
-	let fail_task: Task<(), (), &'static str> = {
-		let started_rx = started_rx.clone();
-		Task::new(Duration::ZERO, move |_ctx, ()| {
-			let mut started_rx = started_rx.clone();
-			async move {
-				wait_for_started(&mut started_rx, 1).await;
-				Err("boom".into())
-			}
-		})
-	};
+async fn parallel_empty_batch_respects_parent_cancellation() {
+	let tasks = tasks();
+	let cancel = CancelToken::new();
+	cancel.cancel();
+	let ctx = tasks.exec_ctx(cancel);
+	let batch: ParallelBatch<&'static str> = ParallelBatch::new();
+
+	assert!(batch.run(&ctx).await.unwrap_err().is_cancelled());
+}
+
+#[tokio::test]
+async fn parallel_returns_original_error_and_cancels_siblings() {
+	let (started, _started_rx) = watch::channel(0usize);
+	let state = Arc::new(ParallelErrorState {
+		started,
+		wait_runs: AtomicUsize::new(0),
+	});
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
+	let mut batch = ParallelBatch::new();
+	batch.add(PARALLEL_WAIT, CaseInput::new((), state.clone()));
+	batch.add(PARALLEL_FAIL, CaseInput::new((), state.clone()));
 
-	let err = ctx
-		.run_parallel(vec![wait_task.bind_input(()), fail_task.bind_input(())])
-		.await
-		.unwrap_err();
+	let err = batch.run(&ctx).await.unwrap_err();
 
 	assert!(matches!(err, Error::Failed(error) if *error == "boom"));
-	assert_eq!(*wait_task.run(&ctx, ()).await.unwrap(), 2);
-	assert_eq!(wait_runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*PARALLEL_WAIT
+			.run(&ctx, CaseInput::new((), state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.wait_runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
-async fn run_parallel_parent_cancellation_reaches_running_tasks() {
+async fn parallel_parent_cancellation_reaches_running_tasks() {
 	let (started, mut started_rx) = watch::channel(0usize);
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let wait_task: Task<(), (), &'static str> = Task::new(Duration::ZERO, move |ctx, ()| {
-		let started = started.clone();
-		let runs = task_runs.clone();
-		async move {
-			let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-			let _ = started.send(run);
-			ctx.cancel_token().cancelled().await;
-			Err(Error::Cancelled)
-		}
+	let state = Arc::new(ParallelErrorState {
+		started,
+		wait_runs: AtomicUsize::new(0),
 	});
 	let tasks = tasks();
 	let cancel = CancelToken::new();
 	let ctx = tasks.exec_ctx(cancel.clone());
-	let mut pending = Box::pin(ctx.run_parallel(vec![wait_task.bind_input(())]));
+	let mut batch = ParallelBatch::new();
+	batch.add(PARALLEL_WAIT, CaseInput::new((), state.clone()));
+	let mut pending = Box::pin(batch.run(&ctx));
 
 	tokio::select! {
 		result = &mut pending => panic!("parallel run finished unexpectedly: {result:?}"),
@@ -667,148 +1267,153 @@ async fn run_parallel_parent_cancellation_reaches_running_tasks() {
 
 	cancel.cancel();
 	assert!(pending.await.unwrap_err().is_cancelled());
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Collision(u8);
-
-impl Hash for Collision {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		1u8.hash(state);
-	}
+	assert_eq!(state.wait_runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn equal_hashes_still_use_input_equality() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<Collision, u8, &'static str> =
-		Task::new(Duration::ZERO, move |_ctx, input: Collision| {
-			let runs = task_runs.clone();
-			async move {
-				runs.fetch_add(1, Ordering::SeqCst);
-				Ok(input.0)
-			}
-		});
+	let state = count_state();
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	assert_eq!(*task.run(&ctx, Collision(1)).await.unwrap(), 1);
-	assert_eq!(*task.run(&ctx, Collision(2)).await.unwrap(), 2);
-	assert_eq!(*task.run(&ctx, Collision(1)).await.unwrap(), 1);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*COLLISION_TASK
+			.run(&ctx, CaseInput::new(Collision(1), state.clone()))
+			.await
+			.unwrap(),
+		1
+	);
+	assert_eq!(
+		*COLLISION_TASK
+			.run(&ctx, CaseInput::new(Collision(2), state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(
+		*COLLISION_TASK
+			.run(&ctx, CaseInput::new(Collision(1), state.clone()))
+			.await
+			.unwrap(),
+		1
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn panicking_input_equality_does_not_poison_task_store() {
+	let state = count_state();
+	let panic_on_eq = Arc::new(AtomicBool::new(false));
+	let tasks = tasks();
+	let ctx = exec_ctx(&tasks);
+
+	assert_eq!(
+		*PANIC_EQ_TASK
+			.run(
+				&ctx,
+				PanicEqInput::new(1, panic_on_eq.clone(), state.clone())
+			)
+			.await
+			.unwrap(),
+		1
+	);
+	panic_on_eq.store(true, Ordering::SeqCst);
+	let second_ctx = ctx.clone();
+	let second_panic_on_eq = panic_on_eq.clone();
+	let second_state = state.clone();
+	let second = tokio::spawn(async move {
+		PANIC_EQ_TASK
+			.run(
+				&second_ctx,
+				PanicEqInput::new(2, second_panic_on_eq, second_state),
+			)
+			.await
+	});
+
+	assert!(second.await.expect_err("equality should panic").is_panic());
+	assert_eq!(
+		*PANIC_EQ_TASK
+			.run(&ctx, PanicEqInput::new(1, panic_on_eq, state.clone()))
+			.await
+			.unwrap(),
+		1
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn different_tasks_with_same_input_do_not_share() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let first = counted_task(runs.clone(), Duration::from_secs(60));
-	let second = counted_task(runs.clone(), Duration::from_secs(60));
+	let state = count_state();
+	let input = CaseInput::new(1, state.clone());
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	assert_eq!(*first.run(&ctx, 1).await.unwrap(), 2);
-	assert_eq!(*second.run(&ctx, 1).await.unwrap(), 2);
-	assert_eq!(*first.run(&ctx, 1).await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S.run(&ctx, input.clone()).await.unwrap(),
+		2
+	);
+	assert_eq!(
+		*SECOND_COUNTED_EXTENDED_60S
+			.run(&ctx, input.clone())
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(*COUNTED_EXTENDED_60S.run(&ctx, input).await.unwrap(), 2);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn cycles_are_reported_instead_of_deadlocking() {
-	type RecursiveTask = Task<(), (), &'static str>;
-
-	let task: Arc<std::sync::Mutex<Option<RecursiveTask>>> = Arc::new(std::sync::Mutex::new(None));
-	let task_ref = task.clone();
-	let self_cycle: RecursiveTask = Task::new(Duration::ZERO, move |ctx, ()| {
-		let task_ref = task_ref.clone();
-		async move {
-			let task = task_ref
-				.lock()
-				.expect("task lock poisoned")
-				.as_ref()
-				.expect("task initialized")
-				.clone();
-			task.run(&ctx, ()).await?;
-			Ok(())
-		}
-	});
-	*task.lock().expect("task lock poisoned") = Some(self_cycle.clone());
-
 	let tasks = tasks();
-	let err = self_cycle.run(&exec_ctx(&tasks), ()).await.unwrap_err();
+	let err = SELF_CYCLE.run(&exec_ctx(&tasks), ()).await.unwrap_err();
 
 	assert!(err.to_string().contains("task cycle detected"));
 }
 
 #[tokio::test]
 async fn non_cancellation_errors_are_memoized_inside_one_exec_ctx() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), (), &'static str> = Task::new(Duration::ZERO, move |_ctx, ()| {
-		let runs = task_runs.clone();
-		async move {
-			runs.fetch_add(1, Ordering::SeqCst);
-			Err("boom".into())
-		}
-	});
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	assert!(task.run(&ctx, ()).await.is_err());
-	assert!(task.run(&ctx, ()).await.is_err());
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert!(MEMOIZED_ERROR.run(&ctx, input.clone()).await.is_err());
+	assert!(MEMOIZED_ERROR.run(&ctx, input).await.is_err());
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_does_not_retain_non_cancellation_errors() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), usize, &'static str> =
-		Task::new(Duration::from_secs(60), move |_ctx, ()| {
-			let runs = task_runs.clone();
-			async move {
-				let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-				if run == 1 {
-					return Err("boom".into());
-				}
-				Ok(run)
-			}
-		});
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 
-	assert!(task.run(&exec_ctx(&tasks), ()).await.is_err());
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert!(
+		EXTENDED_ERROR_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.is_err()
+	);
+	assert_eq!(
+		*EXTENDED_ERROR_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_shares_in_flight_non_cancellation_errors() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let (started, mut started_rx) = watch::channel(0usize);
-	let release = Arc::new(Notify::new());
-	let task_runs = runs.clone();
-	let task_release = release.clone();
-	let task: Task<(), usize, &'static str> =
-		Task::new(Duration::from_secs(60), move |_ctx, ()| {
-			let runs = task_runs.clone();
-			let started = started.clone();
-			let release = task_release.clone();
-			async move {
-				let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-				let _ = started.send(run);
-				if run == 1 {
-					release.notified().await;
-					return Err("boom".into());
-				}
-				Ok(run)
-			}
-		});
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let first_ctx = exec_ctx(&tasks);
 	let second_ctx = exec_ctx(&tasks);
-	let mut first = Box::pin(task.run(&first_ctx, ()));
-	let mut second = Box::pin(task.run(&second_ctx, ()));
+	let mut first = Box::pin(GATED_EXTENDED_ERROR_THEN_SUCCESS.run(&first_ctx, input.clone()));
+	let mut second = Box::pin(GATED_EXTENDED_ERROR_THEN_SUCCESS.run(&second_ctx, input.clone()));
 
 	tokio::select! {
 		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
@@ -819,54 +1424,89 @@ async fn cross_exec_ctx_cache_shares_in_flight_non_cancellation_errors() {
 		_ = tokio::task::yield_now() => {}
 	}
 
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
-	release.notify_one();
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+	state.release.notify_one();
 
 	let (first_result, second_result) = tokio::join!(first, second);
 
 	assert!(first_result.is_err());
 	assert!(second_result.is_err());
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*GATED_EXTENDED_ERROR_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_retains_success_after_non_cancellation_error_retry() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), usize, &'static str> =
-		Task::new(Duration::from_secs(60), move |_ctx, ()| {
-			let runs = task_runs.clone();
-			async move {
-				let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-				if run == 1 {
-					return Err("boom".into());
-				}
-				Ok(run)
-			}
-		});
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 
-	assert!(task.run(&exec_ctx(&tasks), ()).await.is_err());
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert!(
+		EXTENDED_ERROR_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.is_err()
+	);
+	assert_eq!(
+		*EXTENDED_ERROR_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(
+		*EXTENDED_ERROR_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_capacity_bypasses_new_entries_without_eviction() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task = counted_task(runs.clone(), Duration::from_secs(60));
+	let state = count_state();
 	let (events, observer) = event_log();
 	let tasks = tasks_with_cache_capacity_observer(1, observer);
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), 1).await.unwrap(), 2);
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
-	assert_eq!(*task.run(&exec_ctx(&tasks), 2).await.unwrap(), 4);
-	assert_eq!(*task.run(&exec_ctx(&tasks), 1).await.unwrap(), 2);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(1, state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(2, state.clone()))
+			.await
+			.unwrap(),
+		4
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(2, state.clone()))
+			.await
+			.unwrap(),
+		4
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(1, state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
 
-	assert_eq!(runs.load(Ordering::SeqCst), 3);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 3);
 	assert!(
 		event_kinds(&events)
 			.contains(&TaskEventKind::CrossExecCtxCacheCapacityBypass { max_entries: 1 })
@@ -874,66 +1514,72 @@ async fn cross_exec_ctx_cache_capacity_bypasses_new_entries_without_eviction() {
 }
 
 #[tokio::test]
+async fn cross_exec_ctx_cancelled_runner_does_not_consume_cache_capacity() {
+	let state = count_state();
+	let tasks = tasks_with_cache_capacity(1);
+
+	assert!(
+		EXTENDED_CANCEL_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), CaseInput::new((), state.clone()))
+			.await
+			.unwrap_err()
+			.is_cancelled()
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(10, state.clone()))
+			.await
+			.unwrap(),
+		20
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(10, state.clone()))
+			.await
+			.unwrap(),
+		20
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
 async fn same_exec_ctx_still_memoizes_non_cancellation_errors_with_cross_exec_ctx_cache() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), (), &'static str> = Task::new(Duration::from_secs(60), move |_ctx, ()| {
-		let runs = task_runs.clone();
-		async move {
-			runs.fetch_add(1, Ordering::SeqCst);
-			Err("boom".into())
-		}
-	});
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	assert!(task.run(&ctx, ()).await.is_err());
-	assert!(task.run(&ctx, ()).await.is_err());
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert!(
+		EXTENDED_ERROR_THEN_SUCCESS
+			.run(&ctx, input.clone())
+			.await
+			.is_err()
+	);
+	assert!(EXTENDED_ERROR_THEN_SUCCESS.run(&ctx, input).await.is_err());
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn cancellation_results_are_not_memoized_inside_one_exec_ctx() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), (), &'static str> = Task::new(Duration::ZERO, move |_ctx, ()| {
-		let runs = task_runs.clone();
-		async move {
-			runs.fetch_add(1, Ordering::SeqCst);
-			Err(Error::Cancelled)
-		}
-	});
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let ctx = exec_ctx(&tasks);
 
-	assert!(task.run(&ctx, ()).await.is_err());
-	assert!(task.run(&ctx, ()).await.is_err());
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert!(MEMOIZED_CANCEL.run(&ctx, input.clone()).await.is_err());
+	assert!(MEMOIZED_CANCEL.run(&ctx, input).await.is_err());
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn waiting_on_local_work_respects_cancellation() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let release = Arc::new(Notify::new());
-	let (started, mut started_rx) = watch::channel(0usize);
-	let task_runs = runs.clone();
-	let task_release = release.clone();
-	let task: Task<(), usize, &'static str> = Task::new(Duration::ZERO, move |_ctx, ()| {
-		let runs = task_runs.clone();
-		let started = started.clone();
-		let release = task_release.clone();
-		async move {
-			let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-			let _ = started.send(run);
-			release.notified().await;
-			Ok(run)
-		}
-	});
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let cancel = CancelToken::new();
 	let ctx = tasks.exec_ctx(cancel.clone());
-	let mut first = Box::pin(task.run(&ctx, ()));
-	let second = Box::pin(task.run(&ctx, ()));
+	let mut first = Box::pin(GATED_MEMOIZED.run(&ctx, input.clone()));
+	let second = Box::pin(GATED_MEMOIZED.run(&ctx, input));
 
 	tokio::select! {
 		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
@@ -944,27 +1590,20 @@ async fn waiting_on_local_work_respects_cancellation() {
 	let err = second.await.unwrap_err();
 
 	assert!(err.to_string().contains("cancelled"));
-	release.notify_one();
+	state.release.notify_one();
 	assert!(first.await.unwrap_err().is_cancelled());
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn cross_exec_ctx_cache_coalesces_concurrent_work_across_contexts() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let (started, mut started_rx) = watch::channel(0usize);
-	let release = Arc::new(Notify::new());
-	let task = gated_task(
-		runs.clone(),
-		started,
-		release.clone(),
-		Duration::from_secs(60),
-	);
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let first_ctx = exec_ctx(&tasks);
 	let second_ctx = exec_ctx(&tasks);
-	let mut first = Box::pin(task.run(&first_ctx, ()));
-	let mut second = Box::pin(task.run(&second_ctx, ()));
+	let mut first = Box::pin(GATED_EXTENDED_60S.run(&first_ctx, input.clone()));
+	let mut second = Box::pin(GATED_EXTENDED_60S.run(&second_ctx, input));
 
 	tokio::select! {
 		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
@@ -975,31 +1614,24 @@ async fn cross_exec_ctx_cache_coalesces_concurrent_work_across_contexts() {
 		_ = tokio::task::yield_now() => {}
 	}
 
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
-	release.notify_one();
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+	state.release.notify_one();
 
 	assert_eq!(*first.await.unwrap(), 1);
 	assert_eq!(*second.await.unwrap(), 1);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
 async fn cancelled_waiter_does_not_cancel_cross_exec_ctx_cache_work_for_other_waiters() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let (started, mut started_rx) = watch::channel(0usize);
-	let release = Arc::new(Notify::new());
-	let task = gated_task(
-		runs.clone(),
-		started,
-		release.clone(),
-		Duration::from_secs(60),
-	);
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let first_cancel = CancelToken::new();
 	let first_ctx = tasks.exec_ctx(first_cancel.clone());
 	let second_ctx = exec_ctx(&tasks);
-	let mut first = Box::pin(task.run(&first_ctx, ()));
-	let second = Box::pin(task.run(&second_ctx, ()));
+	let mut first = Box::pin(GATED_EXTENDED_60S.run(&first_ctx, input.clone()));
+	let second = Box::pin(GATED_EXTENDED_60S.run(&second_ctx, input.clone()));
 
 	tokio::select! {
 		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
@@ -1009,83 +1641,211 @@ async fn cancelled_waiter_does_not_cancel_cross_exec_ctx_cache_work_for_other_wa
 	first_cancel.cancel();
 	assert!(first.await.unwrap_err().is_cancelled());
 
-	release.notify_one();
+	state.release.notify_one();
 	assert_eq!(*second.await.unwrap(), 1);
-	assert_eq!(runs.load(Ordering::SeqCst), 1);
-
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+	assert_eq!(
+		*GATED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		1
+	);
 }
 
 #[tokio::test]
-async fn cross_exec_ctx_cache_does_not_retain_cancellation_results() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), usize, &'static str> =
-		Task::new(Duration::from_secs(60), move |_ctx, ()| {
-			let runs = task_runs.clone();
-			async move {
-				let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-				if run == 1 {
-					return Err(Error::Cancelled);
-				}
-				Ok(run)
-			}
-		});
+async fn cross_exec_ctx_runner_uses_independent_local_memoization_for_dependencies() {
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
+	let tasks = tasks();
+	let caller_cancel = CancelToken::new();
+	let caller_ctx = tasks.exec_ctx(caller_cancel.clone());
+	let mut caller_dependency = Box::pin(GATED_MEMOIZED.run(&caller_ctx, input.clone()));
+
+	tokio::select! {
+		result = &mut caller_dependency => panic!("caller dependency finished unexpectedly: {result:?}"),
+		_ = wait_for_started(&mut started_rx, 1) => {}
+	}
+
+	let mut caller_extended =
+		Box::pin(EXTENDED_THROUGH_GATED_MEMOIZED.run(&caller_ctx, input.clone()));
+	tokio::select! {
+		result = &mut caller_extended => panic!("extended task finished unexpectedly: {result:?}"),
+		result = time::timeout(Duration::from_secs(1), wait_for_started(&mut started_rx, 2)) => {
+			result.expect("shared runner should start its own dependency");
+		}
+	}
+
+	caller_cancel.cancel();
+	assert!(caller_dependency.await.unwrap_err().is_cancelled());
+	assert!(caller_extended.await.unwrap_err().is_cancelled());
+
+	state.release.notify_waiters();
+	assert_eq!(
+		*EXTENDED_THROUGH_GATED_MEMOIZED
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn cross_exec_ctx_runner_respects_cancellation_set_before_success_return() {
+	let cancel = CancelToken::new();
+	let state = Arc::new(CancelOnSuccessState {
+		runs: AtomicUsize::new(0),
+		cancel: cancel.clone(),
+	});
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 
 	assert!(
-		task.run(&exec_ctx(&tasks), ())
+		EXTENDED_CANCEL_CALLER_THEN_SUCCESS
+			.run(&tasks.exec_ctx(cancel), input.clone())
 			.await
 			.unwrap_err()
 			.is_cancelled()
 	);
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*EXTENDED_CANCEL_CALLER_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		1
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn cross_exec_ctx_cache_does_not_retain_cancellation_results() {
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
+	let tasks = tasks();
+
+	assert!(
+		EXTENDED_CANCEL_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input.clone())
+			.await
+			.unwrap_err()
+			.is_cancelled()
+	);
+	assert_eq!(
+		*EXTENDED_CANCEL_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), input)
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 #[tokio::test]
 async fn panicking_runner_reopens_slot_for_retry() {
-	let runs = Arc::new(AtomicUsize::new(0));
-	let task_runs = runs.clone();
-	let task: Task<(), usize, &'static str> = Task::new(Duration::ZERO, move |_ctx, ()| {
-		let runs = task_runs.clone();
-		async move {
-			let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-			if run == 1 {
-				panic!("intentional test panic");
-			}
-			Ok(run)
-		}
-	});
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
 	let tasks = tasks();
 	let first_ctx = exec_ctx(&tasks);
-	let task_for_spawn = task.clone();
-	let first = tokio::spawn(async move { task_for_spawn.run(&first_ctx, ()).await });
+	let first = tokio::spawn(async move { PANIC_THEN_SUCCESS.run(&first_ctx, input).await });
 
 	let panic = first.await.expect_err("first run should panic");
 	assert!(panic.is_panic());
 
-	assert_eq!(*task.run(&exec_ctx(&tasks), ()).await.unwrap(), 2);
-	assert_eq!(runs.load(Ordering::SeqCst), 2);
+	assert_eq!(
+		*PANIC_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), CaseInput::new((), state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
-fn gated_task(
-	runs: Arc<AtomicUsize>,
-	started: watch::Sender<usize>,
-	release: Arc<Notify>,
-	cross_exec_ctx_cache_ttl: Duration,
-) -> Task<(), usize, &'static str> {
-	Task::new(cross_exec_ctx_cache_ttl, move |_ctx, ()| {
-		let runs = runs.clone();
-		let started = started.clone();
-		let release = release.clone();
-		async move {
-			let run = runs.fetch_add(1, Ordering::SeqCst) + 1;
-			let _ = started.send(run);
-			release.notified().await;
-			Ok(run)
-		}
-	})
+#[tokio::test]
+async fn cross_exec_ctx_panicking_runner_reopens_slot_for_retry_and_propagates_to_runner() {
+	let state = count_state();
+	let input = CaseInput::new((), state.clone());
+	let tasks = tasks();
+	let first_ctx = exec_ctx(&tasks);
+	let first =
+		tokio::spawn(async move { EXTENDED_PANIC_THEN_SUCCESS.run(&first_ctx, input).await });
+
+	let panic = first.await.expect_err("first run should panic");
+	assert!(panic.is_panic());
+
+	assert_eq!(
+		*EXTENDED_PANIC_THEN_SUCCESS
+			.run(&exec_ctx(&tasks), CaseInput::new((), state.clone()))
+			.await
+			.unwrap(),
+		2
+	);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn cross_exec_ctx_panicking_runner_does_not_consume_cache_capacity() {
+	let panic_state = count_state();
+	let tasks = tasks_with_cache_capacity(1);
+	let first_ctx = exec_ctx(&tasks);
+	let first = tokio::spawn(async move {
+		EXTENDED_PANIC_THEN_SUCCESS
+			.run(&first_ctx, CaseInput::new((), panic_state.clone()))
+			.await
+	});
+
+	let panic = first.await.expect_err("first run should panic");
+	assert!(panic.is_panic());
+	let cache_state = count_state();
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(10, cache_state.clone()))
+			.await
+			.unwrap(),
+		20
+	);
+	assert_eq!(
+		*COUNTED_EXTENDED_60S
+			.run(&exec_ctx(&tasks), CaseInput::new(10, cache_state.clone()))
+			.await
+			.unwrap(),
+		20
+	);
+	assert_eq!(cache_state.runs.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn single_flight_coalesces_concurrent_calls_without_memoizing_completed_results() {
+	let (state, mut started_rx) = gated_state();
+	let input = CaseInput::new((), state.clone());
+	let tasks = tasks();
+	let ctx = exec_ctx(&tasks);
+	let mut first = Box::pin(SINGLE_FLIGHT_GATED.run(&ctx, input.clone()));
+	let mut second = Box::pin(SINGLE_FLIGHT_GATED.run(&ctx, input.clone()));
+
+	tokio::select! {
+		result = &mut first => panic!("first run finished unexpectedly: {result:?}"),
+		_ = wait_for_started(&mut started_rx, 1) => {}
+	}
+	tokio::select! {
+		result = &mut second => panic!("second run finished unexpectedly: {result:?}"),
+		_ = tokio::task::yield_now() => {}
+	}
+
+	state.release.notify_one();
+	assert_eq!(*first.await.unwrap(), 1);
+	assert_eq!(*second.await.unwrap(), 1);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 1);
+
+	let mut third = Box::pin(SINGLE_FLIGHT_GATED.run(&ctx, input));
+	tokio::select! {
+		result = &mut third => panic!("third run finished unexpectedly: {result:?}"),
+		_ = wait_for_started(&mut started_rx, 2) => {}
+	}
+	state.release.notify_one();
+	assert_eq!(*third.await.unwrap(), 2);
+	assert_eq!(state.runs.load(Ordering::SeqCst), 2);
 }
 
 async fn wait_for_started(rx: &mut watch::Receiver<usize>, expected: usize) {

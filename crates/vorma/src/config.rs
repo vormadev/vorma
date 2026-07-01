@@ -205,7 +205,7 @@ mod tests {
 	const TEST_ROOT_DIR: &str = "app";
 
 	#[test]
-	fn public_config_normalizes_mounts_before_graph_lowering() {
+	fn public_config_normalizes_public_static_base_before_graph_lowering() {
 		let config = Config {
 			root_dir: PathBuf::from(TEST_ROOT_DIR),
 			server_target: ServerTarget {

@@ -7,6 +7,11 @@ use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
+const HEALTHZ_PATH: &str = "/healthz";
+const ROBOTS_TXT_PATH: &str = "/robots.txt";
+const ETAG_MAX_BODY_SIZE: usize = 512 * 1024;
+const SKIP_ETAG_HEADER: &str = "x-board-skip-etag";
+
 #[tokio::main]
 async fn main() {
 	init_tracing();
@@ -23,13 +28,15 @@ async fn main() {
 
 async fn serve() -> vorma::Result<()> {
 	let addr = vorma::bind_addr()?;
+	let running_in_dev = vorma::is_dev();
+	let running_in_build = vorma::is_build();
 	let app = vorma::App::from_config(vorma_board_example::app_config()?)?;
 	let listener = tokio::net::TcpListener::bind(addr)
 		.await
 		.map_err(|error| vorma::Error::new(format!("bind board example server: {error}")))?;
 	let router = Router::new()
-		.route("/healthz", get(healthz))
-		.route("/robots.txt", get(robots_txt))
+		.route(HEALTHZ_PATH, get(healthz))
+		.route(ROBOTS_TXT_PATH, get(robots_txt))
 		.fallback_service(app)
 		.layer(
 			ServiceBuilder::new()
@@ -41,14 +48,33 @@ async fn serve() -> vorma::Result<()> {
 				.layer(vorma::middleware::request_body_limit(
 					vorma_board_example::REQUEST_BODY_LIMIT,
 				))
-				.layer(vorma::middleware::etag())
+				/*
+				ETags are useful for ordinary successful GET/HEAD responses. Board
+				emits strong tags, caps buffering, and skips operational probes or
+				caller-marked requests through the request metadata passed to `skip`.
+				*/
+				.layer(
+					vorma::middleware::etag()
+						.strong()
+						.max_body_size(ETAG_MAX_BODY_SIZE)
+						.skip(|request| {
+							let health_check = request.method() == vorma::HttpMethod::GET
+								&& request.uri().path() == HEALTHZ_PATH;
+							let explicit_skip = request.headers().contains_key(SKIP_ETAG_HEADER);
+							health_check || explicit_skip
+						}),
+				)
 				.layer(vorma::middleware::response_body_timeout(60))
 				.layer(vorma::middleware::compression())
 				.layer(vorma::middleware::request_body_timeout(60))
 				.layer(vorma::middleware::handler_timeout(60)),
 		);
 
-	tracing::info!("Vorma board example listening on http://{addr}");
+	tracing::info!(
+		is_dev = running_in_dev,
+		is_build = running_in_build,
+		"Vorma board example listening on http://{addr}"
+	);
 	axum::serve(listener, router)
 		.with_graceful_shutdown(shutdown_signal())
 		.await

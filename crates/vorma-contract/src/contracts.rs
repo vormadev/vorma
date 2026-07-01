@@ -74,6 +74,8 @@ pub enum TypeRefContract {
 	Map(Box<TypeRefContract>, Box<TypeRefContract>),
 	/// Platform `FormData`.
 	FormData,
+	/// Platform `Blob`.
+	Blob,
 	/// `T | null`.
 	Nullable(Box<TypeRefContract>),
 	/// `A | B | ...`.

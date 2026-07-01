@@ -51,6 +51,7 @@ fn type_ref_to_schema(
 		TypeRef::Null
 		| TypeRef::Unknown
 		| TypeRef::FormData
+		| TypeRef::Blob
 		| TypeRef::Union(_)
 		| TypeRef::Raw(_) => None,
 	}
@@ -144,6 +145,7 @@ fn type_ref_is_string_key(
 		| TypeRef::Array(_)
 		| TypeRef::Map(_, _)
 		| TypeRef::FormData
+		| TypeRef::Blob
 		| TypeRef::Nullable(_)
 		| TypeRef::Union(_)
 		| TypeRef::Raw(_) => {

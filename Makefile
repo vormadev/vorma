@@ -9,7 +9,13 @@
 FUZZ_RUNS ?= 4096
 E2E_CMD_BASE = cd tests/framework && cargo run -p vorma-framework-tests --bin framework-bombadil --
 RUST_PACKAGE_TARGET_DIR = target/package-gate
-XTASK_CMD_BASE = cargo run -p xtask --quiet --
+RUST_PACKAGE_LOCAL_CRATE_PATCHES = \
+	--config 'patch.crates-io.vorma.path="crates/vorma"' \
+	--config 'patch.crates-io.vorma-contract.path="crates/vorma-contract"' \
+	--config 'patch.crates-io.vorma-macros.path="crates/vorma-macros"' \
+	--config 'patch.crates-io.vorma-matcher.path="crates/vorma-matcher"' \
+	--config 'patch.crates-io.vorma-tasks.path="crates/vorma-tasks"'
+XTASK_CMD_BASE = cargo run -p vorma-xtask --quiet --
 
 #####################################################################
 ####### GLOBAL
@@ -18,12 +24,8 @@ XTASK_CMD_BASE = cargo run -p xtask --quiet --
 # Runs the generic framework browser/runtime coverage across supported adapters.
 e2e: ts-build
 	$(E2E_CMD_BASE) test-prod
-	$(E2E_CMD_BASE) test-dev -variant react
-	$(E2E_CMD_BASE) test-dev -variant preact
-	$(E2E_CMD_BASE) test-dev -variant solid
-	$(E2E_CMD_BASE) test-dev-changes -variant react
-	$(E2E_CMD_BASE) test-dev-changes -variant preact
-	$(E2E_CMD_BASE) test-dev-changes -variant solid
+	$(E2E_CMD_BASE) test-dev
+	$(E2E_CMD_BASE) test-dev-changes
 
 # Runs the shortest end-to-end pass that still proves the whole pipeline
 # (production build plus the react dev + dev-changes scenarios).
@@ -113,8 +115,8 @@ rust-package:
 	cargo package -p vorma-tasks --allow-dirty --target-dir $(RUST_PACKAGE_TARGET_DIR)
 	cargo package -p vorma-macros --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
 	cargo package -p vorma-contract --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
-	cargo package -p vorma --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
-	cargo package -p vorma-build --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR)
+	cargo package -p vorma --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR) $(RUST_PACKAGE_LOCAL_CRATE_PATCHES)
+	cargo package -p vorma-build --allow-dirty --no-verify --target-dir $(RUST_PACKAGE_TARGET_DIR) $(RUST_PACKAGE_LOCAL_CRATE_PATCHES)
 
 # Runs Rust tests and doctests.
 rust-test:

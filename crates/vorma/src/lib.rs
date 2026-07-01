@@ -27,7 +27,6 @@ mod execution_engine;
 mod exit;
 mod facade;
 mod form_data;
-mod handler_context;
 mod head;
 mod input_decoder;
 pub mod kit;
@@ -38,6 +37,7 @@ mod network;
 mod payload_projection;
 mod public_app;
 mod request;
+mod resource_body;
 mod resource_response;
 mod response_finalizer;
 mod route_input;
@@ -88,6 +88,8 @@ pub use head::{
 pub use public_app::{App, AppConfig, Middleware, Middlewares, Resource, Resources, View, Views};
 /// Public read-only HTTP request wrappers.
 pub use request::{HttpRequest, HttpSearchParams};
+/// Public raw resource response output.
+pub use resource_body::{ResourceBody, ResourceOutput};
 /// Public runtime host service.
 pub use runtime_host::RuntimeHost;
 /// Response header carrying the expected Vorma client build ID.
@@ -132,13 +134,16 @@ pub fn bind_addr() -> Result<std::net::SocketAddr> {
 pub use vorma_macros::TsGen;
 #[doc(hidden)]
 pub use vorma_macros::{__vorma_resource, __vorma_view};
-/// Public task runtime API reexports.
-pub use vorma_tasks::{
-	CancelToken, Clock as TaskClock, ClockInstant as TaskClockInstant, Error as TaskError, ExecCtx,
-	PreparedTask, Result as TaskResult, SystemClock as SystemTaskClock, Task, TaskEvent,
-	TaskEventKind, TaskEventOutcome, TaskId, TaskObserver, TaskOverrideMode, TaskOverrides,
-	TaskRunSource, Tasks, TasksOptions,
-};
+
+/// Standalone task runtime API.
+pub mod tasks {
+	pub use vorma_tasks::{
+		CancelToken, Clock, ClockInstant, Error, ExecCtx, ParallelBatch, ParallelBatchOutputHandle,
+		ParallelBatchOutputs, Result, SystemClock, Task, TaskEvent, TaskEventKind,
+		TaskEventOutcome, TaskId, TaskObserver, TaskOverrideMode, TaskOverrides, TaskRunSource,
+		Tasks, TasksOptions, task,
+	};
+}
 
 /// Helpers for constructing low-level HTML attributes in head/document builders.
 pub struct HtmlAttribute;
@@ -340,6 +345,22 @@ mod public_macro_tests {
 		};
 	};
 
+	const MACRO_RAW_RESOURCE: macro_app::Resource = macro_app::resource! {
+		kind: crate::ResourceKind::Query;
+		method: crate::HttpMethod::GET;
+		pattern: "/macro-file/:id";
+		input: ();
+		output: crate::ResourceBody;
+
+		handler: |ctx| {
+			let _ = ctx.params().id;
+			Ok(crate::ResourceBody::new(
+				crate::HttpHeaderValue::from_static("text/plain"),
+				b"raw-body".to_vec(),
+			))
+		};
+	};
+
 	#[test]
 	fn public_declaration_macros_lower_into_fresh_app_assembly() {
 		let app = crate::App::from_app_config(crate::AppConfig {
@@ -347,7 +368,11 @@ mod public_macro_tests {
 				prefix: "macro-".to_owned(),
 			},
 			views: macro_app::views![MACRO_VIEW],
-			resources: macro_app::resources![MACRO_RESOURCE, MACRO_FORM_DATA_RESOURCE],
+			resources: macro_app::resources![
+				MACRO_RESOURCE,
+				MACRO_FORM_DATA_RESOURCE,
+				MACRO_RAW_RESOURCE,
+			],
 			middlewares: macro_app::middlewares![macro_app::Middleware::new(|ctx| async move {
 				let _ = ctx.request().path();
 				let _ = ctx.exec_ctx().is_cancelled();
@@ -360,7 +385,7 @@ mod public_macro_tests {
 		let declarations = assembly.facade().declarations();
 
 		assert_eq!(declarations.views().len(), 1);
-		assert_eq!(declarations.resources().len(), 2);
+		assert_eq!(declarations.resources().len(), 3);
 		assert_eq!(declarations.middlewares().len(), 1);
 	}
 
@@ -371,14 +396,27 @@ mod public_macro_tests {
 				prefix: "build-".to_owned(),
 			},
 			views: macro_app::views![MACRO_VIEW],
-			resources: macro_app::resources![MACRO_RESOURCE, MACRO_FORM_DATA_RESOURCE],
+			resources: macro_app::resources![
+				MACRO_RESOURCE,
+				MACRO_FORM_DATA_RESOURCE,
+				MACRO_RAW_RESOURCE,
+			],
 			middlewares: macro_app::middlewares![],
 			..crate::AppConfig::default()
 		})
 		.unwrap();
 
 		assert_eq!(graph.views().len(), 1);
-		assert_eq!(graph.resources().len(), 2);
+		assert_eq!(graph.resources().len(), 3);
+		let raw = graph
+			.resources()
+			.iter()
+			.find(|resource| resource.pattern() == "/macro-file/:id")
+			.expect("raw resource declaration");
+		assert_eq!(
+			raw.type_contract().output(),
+			&crate::contracts::TypeRefContract::Blob
+		);
 	}
 }
 
@@ -474,7 +512,6 @@ pub mod build_interface {
 	/// Immutable runtime snapshot contracts.
 	pub mod runtime {
 		pub use crate::execution_engine::*;
-		pub use crate::handler_context::*;
 		pub use crate::input_decoder::*;
 		pub use crate::payload_projection::*;
 		pub use crate::resource_response::*;

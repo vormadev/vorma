@@ -7,6 +7,7 @@ export {
 	X_ACCEPTS_CLIENT_REDIRECT,
 	X_CLIENT_REDIRECT,
 	X_VORMA_BUILD_SKEW,
+	X_VORMA_RESOURCE_BODY,
 } from "./wire_contracts.gen.ts";
 
 export const VERCEL_X_DEPLOYMENT_ID = "x-deployment-id";

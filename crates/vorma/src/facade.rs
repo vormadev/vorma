@@ -12,6 +12,7 @@ use crate::framework_graph::{
 	MiddlewareDeclaration, ResourceDeclaration, ResourceKind, StaticAssetDeclaration,
 	ViewDeclaration,
 };
+use crate::resource_body::ResourceOutput;
 use crate::route_input::{
 	ResourceInput, RouteContractFacts, ViewInput, route_contract_from_resolvers,
 	search_schema_resolver, type_resolver,
@@ -21,7 +22,10 @@ use crate::runtime_host::{CommittedRuntimeHost, RuntimeHostError};
 use crate::runtime_manifest::RuntimeManifest;
 use crate::runtime_snapshot::{RuntimeSnapshot, RuntimeSnapshotError, RuntimeSnapshotInput};
 use crate::tsgen::Type;
-use crate::typed_handler::{TypedHandlerContext, form_data_runtime_handler, typed_runtime_handler};
+use crate::typed_handler::{
+	TypedHandlerContext, form_data_runtime_handler, typed_resource_runtime_handler,
+	typed_runtime_handler,
+};
 use vorma_tasks::{Tasks, TasksOptions};
 
 /// Facade-owned application declarations and runtime handler bindings.
@@ -439,7 +443,7 @@ where
 	) -> Result<&mut Self, FacadeError>
 	where
 		I: ResourceInput + serde::de::DeserializeOwned + Type,
-		O: serde::Serialize + Type + Send + Sync + 'static,
+		O: ResourceOutput + Type,
 		F: Fn(TypedHandlerContext<S, I>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
 	{
@@ -470,7 +474,7 @@ where
 		handler: F,
 	) -> Result<&mut Self, FacadeError>
 	where
-		O: serde::Serialize + Type + Send + Sync + 'static,
+		O: ResourceOutput + Type,
 		F: Fn(TypedHandlerContext<S, FormData>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
 	{
@@ -525,13 +529,13 @@ where
 	) -> Result<&mut Self, FacadeError>
 	where
 		I: serde::de::DeserializeOwned + Send + Sync + 'static,
-		O: serde::Serialize + Send + Sync + 'static,
+		O: ResourceOutput,
 		F: Fn(TypedHandlerContext<S, I>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
 	{
 		self.facade.add_resource_route(
 			spec,
-			typed_runtime_handler(Arc::clone(&self.state), handler),
+			typed_resource_runtime_handler(Arc::clone(&self.state), handler),
 		)?;
 		Ok(self)
 	}
@@ -543,7 +547,7 @@ where
 		handler: F,
 	) -> Result<&mut Self, FacadeError>
 	where
-		O: serde::Serialize + Send + Sync + 'static,
+		O: ResourceOutput,
 		F: Fn(TypedHandlerContext<S, FormData>) -> Fut + Send + Sync + 'static,
 		Fut: Future<Output = Result<O, crate::Error>> + Send + 'static,
 	{

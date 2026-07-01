@@ -435,6 +435,11 @@ fn decode_query_scalar(
 			value: value.to_owned(),
 			expected: "FormData resource input",
 		}),
+		TypeRefContract::Blob => Err(InputDecodeError::InvalidQueryValue {
+			key: key.to_owned(),
+			value: value.to_owned(),
+			expected: "Blob resource output",
+		}),
 		TypeRefContract::Unit | TypeRefContract::Array(_) | TypeRefContract::Map(_, _) => {
 			Err(InputDecodeError::InvalidQueryValue {
 				key: key.to_owned(),
@@ -511,6 +516,10 @@ fn validate_json_value_at(
 		TypeRefContract::FormData => Err(InputDecodeError::TypeMismatch {
 			path: path.to_owned(),
 			expected: "FormData resource input",
+		}),
+		TypeRefContract::Blob => Err(InputDecodeError::TypeMismatch {
+			path: path.to_owned(),
+			expected: "Blob resource output",
 		}),
 		TypeRefContract::Nullable(inner) => {
 			if value.is_null() {
