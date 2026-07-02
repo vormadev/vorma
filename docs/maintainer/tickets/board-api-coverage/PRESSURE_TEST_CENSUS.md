@@ -25,8 +25,11 @@ example wholesale.
 
 ### Features
 
-- F1 Front page `/_index`: score-ranked story list, cursor/page pagination via typed
-  search params, story rows with vote buttons, relative timestamps, domain extraction.
+- F1 Front page `/_index`: score-ranked story list, page pagination via typed search
+  params (corrected 2026-07-01, P005 audit: current code is page-only —
+  `FrontInput { page: Option<i64> }` — no cursor pagination exists anywhere in board; the
+  prior "cursor/page" line described a feature that was never built), story rows with vote
+  buttons, relative timestamps, domain extraction.
 - F2 Story page `/s/:story_id`: story + threaded comments, comment composer (auth-gated
   UI), per-comment collapse state, og/meta head per story.
 - F3 Submit `/submit`: auth-gated route (middleware), URL-or-text story form, optional
@@ -67,11 +70,13 @@ example wholesale.
 - F16 Tests: full `vorma::testing::TestApp` suite against a tmp SQLite file per test —
   auth cookies, multipart submit, vote uniqueness envelope, redirects, splat docs, mod
   gating, payload nesting.
-- F17 Ecosystem integration (maintainer-ratified expansion; LANDED except the parts whose
-  homes arrive with later features — `useApiQuery`/`apiQueryOptions` ship with F9 search
-  and `workIndicator.track` ships with the F3 import parse, so no dead surface ever
-  exists): the app runs popular libraries against Vorma's lifecycles, as applications will
-  — _ nprogress driven by the `workIndicator` client option
+- F17 Ecosystem integration (maintainer-ratified expansion; FULLY LANDED as of P005,
+  2026-07-01 — the two previously-pending homes are closed: `useApiQuery`/
+  `apiQueryOptions` ship with F9 search, `apiQueryOptions` is exported from `api.ts` and
+  composed with `query_client.prefetchQuery`/`ensureQueryData` on the search view's
+  intent/submit actions, and `workIndicator.track` ships with the F3 import parse — no
+  dead surface exists): the app runs popular libraries against Vorma's lifecycles, as
+  applications will — _ nprogress driven by the `workIndicator` client option
   (`{start, stop, startDelayMs, stopDelayMs}` IS the nprogress contract). Vorma API calls
   are ALREADY included in the bar (WorkState.apiRequests) no matter who orchestrates them
   — react-query included. `workIndicator.track(promise)` is for NON-vorma async the app
@@ -90,17 +95,20 @@ example wholesale.
   already KIND-split (the old `Extract<..., {method?: "GET"}>` hack is obsolete — and was
   subtly wrong: a POST query exists); `queryOrThrow` throws QueryError carrying the typed
   result (richer than the old `new Error(result.error)`); the options-builder layer
-  (`apiQueryOptions(args)`) stays exported separately for prefetchQuery/ensureQueryData
-  composition; _ jotai + `kit/theme`: the TS kit stays generic and owns the theme
-  state/storage API. For flash-free first paint, the TS kit docs show the exact HTML to
-  inline, and Vorma provides `vorma::kit::theme::script(None)` as the native Rust document
-  injection convenience for that same snippet. The important boundary is that the TS kit
-  does not depend on Vorma; the Rust helper is a Vorma-app convenience, not a separate
-  theme system. Board's jotai atom wraps `initTheme()` + `addThemeChangeListener`
-  (cross-tab for free); _ `useViewTransitions: true` on the client (View Transitions on
-  navigations). Division-of-responsibility is the deliverable: route/view data is Vorma's;
-  ad-hoc API data is react-query's; React state is jotai's; persistence/broadcast is
-  kit's; the bar is nprogress's.
+  (`apiQueryOptions(args)`, `examples/board/src/client/api.ts`) is exported separately
+  from `useApiQuery` and composed with `prefetchQuery`/`ensureQueryData` on the search
+  view's hover/focus and submit-click intent signals
+  (`examples/board/src/client/views/search.view.tsx`), landed P005; _ jotai + `kit/theme`:
+  the TS kit stays generic and owns the theme state/storage API. For flash-free first
+  paint, the TS kit docs show the exact HTML to inline, and Vorma provides
+  `vorma::kit::theme::script(None)` as the native Rust document injection convenience for
+  that same snippet. The important boundary is that the TS kit does not depend on Vorma;
+  the Rust helper is a Vorma-app convenience, not a separate theme system. Board's jotai
+  atom wraps `initTheme()` + `addThemeChangeListener` (cross-tab for free); _
+  `useViewTransitions: true` on the client (View Transitions on navigations).
+  Division-of-responsibility is the deliverable: route/view data is Vorma's; ad-hoc API
+  data is react-query's; React state is jotai's; persistence/broadcast is kit's; the bar
+  is nprogress's.
 
 ## Rust surface -> features
 
@@ -163,7 +171,13 @@ Tasks:
 - `TaskObserver`/`TaskEvent`/`TaskEventKind`/`TaskEventOutcome`/ `TaskRunSource` ->
   slow-query logging observer wired in the server main (F11).
 - `Clock`/`ClockInstant`/`SystemClock`, `TaskOverrides`/ `TaskOverrideMode` -> the
-  `TasksOptions` field surface; F16 failure-injection test via `TaskOverrides::replace`.
+  `TasksOptions` field surface (corrected 2026-07-01, P005 audit: this line previously
+  claimed an F16 failure-injection test via `TaskOverrides::replace` inside board; that
+  test does not exist in `examples/board/tests/app.rs` and never did in current code —
+  `TaskOverrides` usage lives exclusively in
+  `crates/vorma/tests/in_memory_test_app.rs:185`, consistent with F17's own later ruling
+  that `TaskOverrides` was deliberately moved out of Board. The F16 bullet below was
+  simply never updated after that move; see the F16 row correction).
 
 Server/runtime:
 
@@ -232,8 +246,13 @@ was resolved once the facts were on the table; none remains open:
    request id from `vorma::middleware::request_id()` for log lines).
 2. `Clock`/`ClockInstant`/`SystemClock`/`TaskOverrides`/ `TaskOverrideMode` — the named
    types of public `TasksOptions` fields; cutting them would cut legitimate capabilities
-   (deterministic test time, task-body substitution). Keep; mapped —
-   `TaskOverrides::replace` gets a failure-injection test in F16.
+   (deterministic test time, task-body substitution). Keep; mapped — corrected 2026-07-01
+   (P005 audit): the failure-injection test via `TaskOverrides::replace` lives in
+   `crates/vorma/tests/in_memory_test_app.rs`, not in board's F16 test suite
+   (`TaskOverrides` has zero call sites anywhere under `examples/board/`); this is
+   consistent with, not contradicting, F17's later ruling that the standalone tasks
+   runtime-lifecycle surface (which includes `TaskOverrides`) is sovereign-crate +
+   `public_api.rs` coverage, not Board coverage.
 3. The ten `vorma::middleware` tower layers (request_id, sensitive_headers,
    secure_headers, panic_recovery, request_body_limit, handler_timeout,
    request_body_timeout, response_body_timeout, compression, etag) — standard production
@@ -276,7 +295,12 @@ TS — `apiClient` members: `query`, `queryOrThrow`, `mutate`, `mutateOrThrow`,
 
 TS — `Link` props (`LinkPropsBase`): `prefetch`, `prefetchDelayMs`, `attributeMatchRules`
 (-> F15 active-nav styling in the layout), `visitOnPointerDown` (-> F15 on story-list
-links), `replace` (-> F15 post-login), `scrollToTop` (-> F15 pagination),
+links), `replace` (-> F15 profile tabs and search box sync/imperative navigate; corrected
+2026-07-01, P005 audit: the prior "post-login" attribution does not match current code —
+sign-in's `onSuccess` only clears the username input, there is no post-login
+`navigate`/`Link` call anywhere in board; `replace` is genuinely demonstrated on
+`user.view.tsx`'s profile tabs and `search.view.tsx`'s `useRouteSync`/`navigate`, which is
+where this line should have pointed), `scrollToTop` (-> F15 pagination),
 `skipWorkIndicator` (-> F17: background-ish links that must not flash the bar), `state`.
 
 TS — read models: `RouteState` {href, historyState, clientBuildId, params, splatValues,
@@ -322,6 +346,23 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   string, losing the source chain the exit types were designed to carry. Want:
   `From<vorma::tasks::Error<vorma::Error>>` for `ViewExit`/`HttpExit` (preserving source),
   so `?` just works on task runs the way it already does on plain `vorma::Error`.
+- F-2 RESOLVED (P008, 2026-07-01): landed exactly as wanted — concrete (not
+  blanket-generic) `From<vorma_tasks::Error<crate::Error>>` impls on both exit types, in
+  `crates/vorma/src/exit.rs`. `Failed` boxes the `Arc<crate::Error>` itself rather than a
+  re-stringified copy, so a source attached to the application error stays reachable one
+  more `source()` hop away — nothing flattened. The four payload-free runtime variants
+  (`Cancelled`, `Cycle`, `MissingOverride`, `TypeMismatch`) get the exit's plain default
+  form (their `Display` text as the server record, no source to attach). `Cancelled`
+  specifically was verified against the engine rather than left an accident: it is only
+  ever produced when a resolving `ExecCtx`'s cancellation token is already set, and this
+  engine only ever cancels an invocation's context after its own output is already decided
+  — either a losing same-phase sibling whose result the engine already discards
+  positionally, or a next-phase invocation that never starts at all — so a still-mattering
+  handler can never observe its own context cancelled; pinned by both a unit test
+  (`exit.rs`) and an engine-level position-race test pair (`execution_engine.rs`). Twelve
+  Board `Task::run`/`ParallelBatch::run` call sites converted from manual string mapping
+  to bare `?`; one (`LAYOUT`'s site stats read in `examples/board/src/views.rs`) kept its
+  explicit `.with_source(...)` form as the taught custom-message contrast.
 - F-2b POSITIVE (recorded for contrast): `?` on plain `vorma::Error` returns inside
   exit-returning handlers is exactly right — repo write calls (`repo::login(...).await?`)
   needed zero ceremony.
@@ -329,6 +370,30 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   a Set-Cookie back means parsing the raw header string by hand (tests grew a
   `cookie_pair` helper). A small jar/continuation story on TestApp ("carry cookies from
   this response") would close the auth-flow loop tests obviously want.
+- F-3 RESOLVED (P008, 2026-07-01): explicit-continuation shape, as ruled. Response side:
+  `vorma::testing::TestResponseCookies::set_cookie_headers()`, an extension trait on
+  `http::Response<Bytes>` returning parsed `vorma::HttpCookie` values (attributes
+  included, not just a name/value pair). Continuation side: `TestApp::session()` returns a
+  `TestSession`, stateless `TestApp` untouched (no hidden jar, no cross-session sharing),
+  exposing the same request-building verbs (`get`/`get_view_payload`/`request_json`/
+  `request`) the app does — `TestSessionRequest` delegates to the same underlying
+  `TestRequest` a bare app call would build. The jar honors standard overwrite-by-name and
+  real cookie clearing (`Max-Age <= 0` or an `Expires` in the past, exactly what
+  `HttpCookie::make_removal` produces), verified with dedicated jar-accumulation,
+  overwrite, clearing, and multi-cookie tests in
+  `crates/vorma/tests/in_memory_test_app.rs` — including two tests pinning a merge bug
+  caught during implementation review (a session request combining the jar with an
+  explicit `.cookie(...)` addition must land as ONE `Cookie:` header, not two: `HeaderMap`
+  only ever exposes the first of a repeated header name to real app code, so a second line
+  would have silently hidden either the jar or the explicit addition). Board's hand-rolled
+  `cookie_pair` helper is gone; all 20 `examples/board/tests/app.rs` tests read through
+  `TestSession` where that teaches better. One test
+  (`logout_clears_the_session_cookie_and_the_session_row`) deliberately stayed on the
+  explicit, stateless `TestApp` `.cookie(name, value)` form instead of a session, because
+  it exists specifically to replay a stale, already-cleared token — a session's own jar
+  would have honestly forgotten that cookie the moment it saw the logout response, which
+  would have silently weakened the test to something
+  `anonymous_layout_has_no_session_user` already covers.
 
 - F-4 POSITIVE: `Link`'s navigation-target union makes `href` + typed `search`
   UNREPRESENTABLE (href strings cannot typecheck search params) — the compiler pushed the
@@ -535,6 +600,38 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   member of this set is a slow-task-logging `TaskObserver` wired into the server main's
   `TasksOptions.observer` — a real telemetry feature worth a follow-up packet if the
   literal rule stands.
+- F-17 RESOLVED (P006, 2026-07-02, per the maintainer's framework-author-vs-app-useful
+  ruling and its 2026-07-02 "contrived is never grounds for exemption" restatement): the
+  runtime-lifecycle surface this line flagged as having "no honest Board app-flow home" is
+  app-useful, not framework-author-only, and now has one. Three landed teaching rows:
+    - `Tasks::{new,exec_ctx}`, `CancelToken` (`new`/`cancel`/`is_cancelled`/`cancelled`/
+      `child`): `examples/board/src/maintenance.rs` (`run_session_pruner`) — a background
+      worker the server main (`examples/board/src/bin/server.rs`) spawns alongside axum,
+      constructing its OWN `Tasks<vorma::Error>` runtime (independent of the framework's
+      request-serving one) and opening a fresh `ExecCtx` per sweep via `Tasks::exec_ctx`,
+      doing real maintenance (pruning `sessions` rows past a retention window via a
+      `task!`), wired to graceful shutdown through a `CancelToken` cancelled at the same
+      `select!` point axum stops accepting connections.
+    - `ExecCtx::{is_cancelled,child}` (+ `cancel_token` as it appears on the parent):
+      `examples/board/src/repo.rs` (`MOD_EXPORT_SCAN`), exposed via a new mod-only
+      resource `examples/board/src/resources.rs` (`MOD_EXPORT`, `POST /api/mod/export`)
+      and a client trigger in `examples/board/src/client/views/mod.view.tsx`. A
+      moderator-triggered bulk audit scan over every story checks `ctx.is_cancelled()`
+      once per chunk and returns whatever it already gathered (`complete: false`) instead
+      of running to completion unconditionally; each chunk resolves its stories' comment
+      counts through `ctx.child()`, a fresh child execution context per chunk.
+    - `TaskObserver` family + `Task::id`: `examples/board/src/maintenance.rs`
+      (`SlowTaskObserver`, `slow_task_observer`) — a slow-task-logging observer matching
+      `TaskEventKind::RunCompleted` past a threshold and logging task name +
+      `Task::id()` + duration, wired into `TasksOptions.observer` in
+      `examples/board/src/bin/server.rs` for BOTH the framework's request-serving `Tasks`
+      runtime and the standalone worker's runtime from one shared instance. Exempt surface
+      (per the ruling, unchanged by this packet): `TaskOverrides`/ `TaskOverrideMode`
+      (prior maintainer ruling: framework test suite home, deliberately moved out of Board
+      — F-20) and `Clock`/`SystemClock`/`ClockInstant` (determinism-injection tooling; a
+      real app never overrides it) stay sovereign-crate + `public_api.rs` coverage; not
+      contrived into Board. `docs/maintainer/board-example/ README.md`'s durable coverage
+      rule already states this split; no further README change needed by this packet.
 
 - F-18 PAPERCUT (P003, gate friction, recorded): `make ts-fmt` runs `oxfmt --write .`, and
   oxfmt's `proseWrap: "always"` / `printWidth: 90` reflows ALL markdown — including the
@@ -547,3 +644,176 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   docs once through the oxfmt config (a Fable-owned housekeeping pass, out of scope for a
   Board packet), or exclude `docs/maintainer/**` from oxfmt if the intent is that
   hand-maintained process docs are not machine-prose-wrapped.
+
+- F-19 (P005, census-accuracy correction, recorded so the pattern is visible): two
+  descriptive lines in this census claimed features that never existed in current code. F1
+  said "cursor/page pagination"; board's pagination is page-only
+  (`FrontInput { page: Option<i64> }`, `examples/board/src/views.rs`) and no cursor
+  concept exists anywhere in the app. The `Link` member sweep attributed `replace` to
+  "post-login"; sign-in's `onSuccess` handler only clears the username input and never
+  navigates — `replace` is genuinely demonstrated on the profile tabs
+  (`examples/board/src/client/views/user.view.tsx`) and the search box's
+  `useRouteSync`/`navigate` calls (`examples/board/src/client/views/search.view.tsx`).
+  Both corrected in place at F1 and the `Link` props line above. Neither was a code gap;
+  both were the census's own prose drifting from the app it describes. Full detail:
+  `CENSUS_COMPLETION_P005.md`.
+- F-20 (P005, census-accuracy correction): the tasks-member-sweep line and "Prior
+  Adjudication List" item 2 both claimed board's F16 suite carries a
+  `TaskOverrides::replace` failure-injection test. It does not and never did — that test
+  lives in `crates/vorma/tests/in_memory_test_app.rs`, consistent with F17's own later
+  ruling that `TaskOverrides` was deliberately moved out of Board. The claim was simply
+  never updated after that move; corrected in place at both locations.
+- F-21 PAPERCUT (P005, found, not fixed — escalated):
+  `DocumentAttributes::known_safe_attribute`/`boolean_attribute`
+  (`crates/vorma/src/document_builder.rs:158, 168`) have no call site in board and no call
+  site in `crates/vorma/tests/public_api.rs` (which exercises only `lang`/`data`/`class`,
+  the plain-`attribute()` wrappers). These are distinct from `HeadBuilder`'s own
+  `known_safe`/`bool_attr`, which board does exercise transitively through `.script()`/
+  `.link()`. No non-contrived real-app use for a boolean or trusted-unescaped attribute on
+  the root `<html>`/`<body>` element presented itself during the P005 audit — inventing
+  one (e.g. a functionless boolean flag) would violate the board contract's own rule that
+  a feature added purely to touch an API must still honestly explain when a real app would
+  use it. Recommendation: fold into `public_api.rs`'s existing
+  `root_document_helpers_are_usable_externally` test as a type-usability check (matching
+  how `HeadBuilder`'s equally low-level defs are already handled one test above it), since
+  this pair is genuinely plumbing-shaped rather than app-flow-shaped. Not actioned in
+  P005: deciding the coverage home is a judgment call beyond "small mechanical gap, same
+  pattern as existing code," and `public_api.rs` sits outside `examples/board`.
+- F-22 PAPERCUT (P005, found, not fixed — escalated): `FormData`'s multi-value/grouped
+  accessors (`fields`, `fields_named`, `texts`, `files`, `files_named`) and
+  `FormFile::into_body` (owned-body extraction, vs. the borrowed `body()` board already
+  uses) have no call site in board. The current submit form only ever needs one text field
+  read at a time (`text(name)`) and one optional attachment (`file(name)`), so there is no
+  honest single-attachment-shaped way to reach the grouped accessors. Recommendation:
+  revisit if/when a future packet adds multi-attachment support to submit — a real product
+  feature, not a same-pattern mechanical addition to current code, so it was not forced
+  into this packet.
+
+- F-21/F-22 RULINGS (Fable, P005 review, 2026-07-01): F-21 — `known_safe_attribute`/
+  `boolean_attribute` are discharged by `crates/vorma/tests/public_api.rs`; coverage added
+  as a P008 rider. F-22 — accepted as recorded: the multi-value `FormData` accessors get a
+  board home only if/when multi-attachment submit becomes a real feature; no contrived
+  call site.
+- F-21 RIDER LANDED (P008, 2026-07-01): `root_document_helpers_are_usable_externally`'s
+  test suite gained a companion test exercising both helpers through the real public call
+  site (`vorma::DocumentAttributes::known_safe_attribute`/`::boolean_attribute`) and
+  asserting the documented rendered HTML forms — a known-safe value renders unescaped, a
+  boolean attribute renders bare with no `="..."` at all — via
+  `vorma_contract::document_renderer::render_document` on a contract built from the
+  identity the real call produced, so the check proves the actual wiring rather than
+  restating the flags. No new `vorma` public surface was needed: `vorma_contract`'s
+  renderer and contract types were already a direct dependency.
+
+- F-22 RULING CORRECTED (Fable, 2026-07-02, superseding the prior line): the earlier
+  "revisit only when a real feature exists" ruling misapplied the standing policy — the
+  census itself sanctions ADDING OR INVENTING a realistic board feature to cover an API,
+  and the multi-value `FormData` accessors are app-useful primitives under the F-17 test.
+  Board owes them a home: multi-attachment submit (repeated file field + a
+  repeated-checkbox tag group for `texts`), authored as packet P009.
+
+- F-21 RULING CORRECTED (Fable, 2026-07-02, superseding the P005-review line): same
+  category error as F-22 — `DocumentAttributes::boolean_attribute` and
+  `known_safe_attribute` are app-facing document APIs, so board owes them call sites
+  (landing in P009, document shell, with trust-boundary teaching); the `public_api.rs`
+  usability coverage (P008 rider) stays as additional coverage, not a substitute. The
+  governing principle is now stated with force in the board README (2026-07-02): contrived
+  is never grounds for exemption; board is a teaching tool.
+
+- F-21 LANDED (P009, 2026-07-02): `examples/board/src/document.rs:15-43` (the shared
+  document shell, every HTML/JSON response) calls both.
+  `.boolean_attribute("data-server-rendered")` renders name-only on `<body>`, teaching the
+  HTML sense of "boolean attribute" against the value-carrying `.data(...)` call right
+  above it; a real client CSS/JS hook can target `[data-server-rendered]` to tell a hard
+  load from a client-committed route, since the document builder only ever runs for a
+  genuine server response.
+  `.known_safe_attribute("data-built-with", format!("{APP_NAME} & Rust"))` teaches the
+  escaping trust boundary directly at the call site — comments explain when bypassing
+  escaping is legitimate (a compile-time-owned literal, never user input) and why it is
+  dangerous otherwise (an unescaped `"` breaks out of the attribute). Proven end-to-end,
+  not just unit-level: `examples/board/tests/app.rs`'s
+  `document_shell_renders_the_boolean_and_known_safe_body_attributes` fetches the real
+  page (`app.get("/")`, full HTML, not the JSON view-payload path every other board test
+  uses) and asserts the exact rendered `<body>` byte-for-byte — the bare
+  `data-server-rendered` with no `="..."`, and the literal unescaped `&` in
+  `data-built-with="Vorma Board & Rust"` — through the app's actual document builder, its
+  actual runtime pipeline, and the actual renderer, matching the trust-boundary claim
+  live-verified in a real browser session during this packet's own manual check (the
+  parsed DOM decodes `&amp;` back to `&` either way, which is why the test asserts on raw
+  response bytes rather than `Element.getAttribute`). The `public_api.rs` usability
+  coverage from the P008 rider is untouched and stays as additional, builder-level
+  coverage per the corrected ruling above.
+
+- F-22 LANDED (P009, 2026-07-02): every member of the multi-value family gets its own
+  direct, individually-commented call site in `examples/board/src/resources.rs`'s
+  `SUBMIT_STORY` handler — "no honest home" was never invoked; the feature (multiple
+  attachments per story plus a repeated tag checkbox group) was designed so each accessor
+  is the natural way to write the code that needed writing, per the packet's own design
+  mandate.
+    - `fields()` (`resources.rs:151-163`): a blanket sweep rejecting any submitted text
+      field over a byte cap, regardless of name — closes a real pre-existing gap (the
+      story `body` field had no length cap at all) while demonstrating the
+      field-name-agnostic accessor's natural use: never assume a client sends only the
+      fields the handler expects.
+    - `fields_named(name)` (`resources.rs:194-198`): a shape check on the `tag` group
+      (rejects more `tag` fields than checkboxes exist) — distinct from `texts` below by
+      reading the `FormField`s themselves for a property of the group, not their values.
+    - `texts(name)` (`resources.rs:207-212`): extracts the checked tag values from the
+      same `tag` group, filtered against the fixed vocabulary (`resources.rs:15`,
+      `STORY_TAGS`, also exported to TypeScript so the checkbox UI and server validation
+      share one source).
+    - `files()` (`resources.rs:221-238`): the aggregate view enforcing a submission-wide
+      attachment count cap and combined byte cap — a property of the whole submission, not
+      any one field name.
+    - `files_named(name)` (`resources.rs:258-279`): the multipart repeated-file loop
+      itself — one `attachment` field per selected file under
+      `<input type="file" multiple name="attachment">`, the shape a repeated file field is
+      actually built on.
+    - `FormFile::into_body` (`resources.rs:271`): consumes an owned clone of each matched
+      file to hand its body to the storage write by value, with a comment explaining the
+      honest reason to reach for it (`ctx.input()` only ever lends a borrow, so owning a
+      file at all means cloning first; `into_body` then avoids a second borrow-and-copy
+      through `.body()` on top of that). Every validation rejection path (oversized field,
+      too many tags, unknown tag value, too many attachments, attachments too large
+      together) and the multi-file/multi-tag success path are covered by dedicated tests
+      in `examples/board/tests/app.rs` (`submit_rejects_a_field_value_that_is_too_long`,
+      `submit_rejects_more_tag_fields_than_the_vocabulary_has`,
+      `submit_rejects_a_tag_outside_the_known_vocabulary`,
+      `submit_rejects_too_many_attachments`,
+      `submit_rejects_attachments_that_together_exceed_the_byte_cap`,
+      `submit_tags_round_trip_through_the_checkbox_group`, and the rewritten
+      `attachments_upload_with_the_story_and_download_back`, which now submits two files
+      under one field name, downloads each independently by its own attachment id via the
+      new nested route `/api/stories/:story_id/attachments/:attachment_id`, and confirms a
+      valid attachment id 404s under the wrong story id). Manually verified live in a real
+      browser session during this packet (sign in, check two tag boxes, attach two files,
+      submit, confirm both attachments list with independent per-item load/download state
+      and the tags render on the story page) in addition to the automated suite. Storage:
+      board's own SQLite schema gained its own `id` column on `attachments` (was one row
+      per story, now one row per file, `examples/board/src/schema.sql`) and a new
+      `story_tags` join table — board owns its schema, no framework change. The
+      pre-existing single-value accessors (`FormData::field`/`FormData::file`) remain
+      exercised as before via `text("title")`, `text("url")`, and `text("body")`
+      (`resources.rs:165-167`).
+
+- F-23 DESIGN (vorma middleware, found running board's real production server, P007
+  2026-07-02): `vorma::middleware::etag()` composed after (inner to)
+  `vorma::middleware::response_body_timeout()` in a `tower::ServiceBuilder` chain silently
+  produces no ETag on any response, ever, regardless of body size or content. Root cause:
+  `response_body_timeout`'s underlying `tower_http` body wrapper never forwards the
+  original body's exact `size_hint`, and `etag` only tags a response when it can see an
+  exact size. Confirmed on board's actual running prod server before the fix (every 200
+  response had a correct `Content-Length` but no `ETag`) and via a minimal isolated
+  reproduction pinpointing `response_body_timeout` as the sole cause among every other
+  layer in the stack. Board's own fix (declare `response_body_timeout` before, not after,
+  `etag`, with a teaching comment) is landed and verified end to end: a strong ETag is now
+  generated for both a 223-byte and a 277KB static asset, and a follow-up `If-None-Match`
+  request correctly returns `304 Not Modified`. The application-level fix is sufficient
+  for board's own stack but does not close the underlying footgun — another app (or a
+  future board edit) can silently reintroduce it by reordering two `.layer(...)` calls,
+  with no warning, no lint, and no test failure. Full root-cause trace, reproduction
+  transcript, and four ranked remediation options (documentation only / make `EtagLayer`
+  resilient to an unknown size hint within its existing body cap / fix `tower-http`'s
+  `TimeoutBody` upstream / offer a pre-ordered composed helper) are in ticket
+  `etag-response-body-timeout-ordering-footgun`. No option is recommended over the others
+  beyond ruling out documentation alone, which conflicts with this project's own
+  no-footgun-smoothed-by-docs rule; the maintainer's call.

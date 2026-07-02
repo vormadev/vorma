@@ -5,6 +5,7 @@
 //! and a document shell shared by HTML and JSON responses.
 
 mod document;
+pub mod maintenance;
 pub mod repo;
 mod resources;
 pub mod session;
@@ -12,6 +13,7 @@ pub mod store;
 mod views;
 
 pub use repo::{Comment, Story, User};
+pub use resources::{MAX_STORY_ATTACHMENT_BYTES, MAX_STORY_ATTACHMENTS, STORY_TAGS};
 pub use store::{AppState, Db};
 
 pub(crate) const APP_NAME: &str = "Vorma Board";
@@ -31,10 +33,17 @@ pub struct KeyboardShortcut {
 /// Build the normal app config used by the dev server and production server.
 ///
 /// Real apps usually keep all Vorma wiring behind one function like this so the build
-/// command, server binary, tests, and local tools all assemble the exact same graph.
+/// command, server binary, tests, and local tools all assemble the exact same graph. The
+/// server binary calls [`db_path`] and [`app_config_with`] directly instead of this
+/// function only because it also needs the opened [`Db`] handle itself, to hand the exact
+/// same connection pool to its background maintenance worker.
 pub fn app_config() -> vorma::Result<vorma::AppConfig<AppState>> {
-	let db_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("board.db");
-	app_config_with_db(store::Db::open(&db_path)?)
+	app_config_with_db(store::Db::open(&db_path())?)
+}
+
+/// Path to the production SQLite database file.
+pub fn db_path() -> std::path::PathBuf {
+	std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("board.db")
 }
 
 /// Build the same app against a caller-owned database.
@@ -78,6 +87,15 @@ pub fn app_config_with(
 		.export_const("front_page_size", repo::FRONT_PAGE_SIZE)
 		.map_err(|source| vorma::Error::new(source.to_string()))?
 		.export_const("csrf_header", CSRF_HEADER)
+		.map_err(|source| vorma::Error::new(source.to_string()))?
+		.export_const("story_tags", resources::STORY_TAGS)
+		.map_err(|source| vorma::Error::new(source.to_string()))?
+		.export_const("max_story_attachments", resources::MAX_STORY_ATTACHMENTS)
+		.map_err(|source| vorma::Error::new(source.to_string()))?
+		.export_const(
+			"max_story_attachment_bytes",
+			resources::MAX_STORY_ATTACHMENT_BYTES,
+		)
 		.map_err(|source| vorma::Error::new(source.to_string()))?
 		.export_type("ModAction", r#""kill" | "restore""#)
 		.map_err(|source| vorma::Error::new(source.to_string()))?;
@@ -145,6 +163,7 @@ pub fn app_config_with(
 			resources::SEARCH,
 			resources::KILL_STORY,
 			resources::RESTORE_STORY,
+			resources::MOD_EXPORT,
 			resources::STORY_ATTACHMENT,
 		],
 		middlewares: app::middlewares![

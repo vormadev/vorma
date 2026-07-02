@@ -5,8 +5,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use std::sync::Arc;
 
-use vorma::testing::{TEST_CLIENT_BUILD_ID, TestApp};
-use vorma_board_example::{CSRF_ECHO_HEADER, CSRF_HEADER, Db, MARK_ASSET, app_config_with_db};
+use vorma::testing::{TEST_CLIENT_BUILD_ID, TestApp, TestResponseCookies, TestSession};
+use vorma_board_example::{
+	CSRF_ECHO_HEADER, CSRF_HEADER, Db, MARK_ASSET, MAX_STORY_ATTACHMENT_BYTES,
+	MAX_STORY_ATTACHMENTS, STORY_TAGS, app_config_with_db,
+};
 
 static NEXT_DB: AtomicU64 = AtomicU64::new(0);
 
@@ -48,14 +51,11 @@ fn view_payload_path(path_and_query: &str) -> String {
 	)
 }
 
-fn cookie_pair(set_cookie_header: &str) -> (String, String) {
-	let pair = set_cookie_header.split(';').next().expect("cookie pair");
-	let (name, value) = pair.split_once('=').expect("name=value");
-	(name.to_owned(), value.to_owned())
-}
-
-async fn login(app: &TestApp, username: &str) -> (String, String) {
-	let response = app
+/// Logs in and returns a session that carries the resulting cookie forward
+/// on every later request it makes.
+async fn login<'a>(app: &'a TestApp, username: &str) -> TestSession<'a> {
+	let mut session = app.session();
+	let response = session
 		.request_json(
 			vorma::HttpMethod::POST,
 			"/api/session",
@@ -63,31 +63,58 @@ async fn login(app: &TestApp, username: &str) -> (String, String) {
 		)
 		.await;
 	assert_eq!(response.status(), vorma::HttpStatusCode::CREATED);
-	cookie_pair(
-		response.headers()["set-cookie"]
-			.to_str()
-			.expect("cookie header is ascii"),
-	)
+	session
 }
 
 const MULTIPART_BOUNDARY: &str = "board-test-boundary";
 
-fn multipart_fields(fields: &[(&str, &str)]) -> Vec<u8> {
-	let mut body = String::new();
-	for (name, value) in fields {
-		body.push_str(&format!(
+/// Builds a `multipart/form-data` body, one call per field.
+///
+/// Repeated calls with the same `name` are how a client-native repeated form field (a
+/// `<input type="file" multiple>` under one name, or several checked boxes sharing a
+/// `name`) actually looks on the wire — several parts, same `name`, in request order.
+/// Building that shape here is what lets tests exercise `FormData`'s repeated-field
+/// accessors (`texts`, `files_named`) the same way a real browser submission would.
+#[derive(Default)]
+struct MultipartBody {
+	body: String,
+}
+
+impl MultipartBody {
+	fn field(mut self, name: &str, value: &str) -> Self {
+		self.body.push_str(&format!(
 			"--{MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; \
 			name=\"{name}\"\r\n\r\n{value}\r\n"
 		));
+		self
 	}
-	body.push_str(&format!("--{MULTIPART_BOUNDARY}--\r\n"));
-	body.into_bytes()
+
+	fn file(mut self, name: &str, file_name: &str, content_type: &str, content: &str) -> Self {
+		self.body.push_str(&format!(
+			"--{MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"; \
+			filename=\"{file_name}\"\r\nContent-Type: {content_type}\r\n\r\n{content}\r\n"
+		));
+		self
+	}
+
+	fn build(mut self) -> Vec<u8> {
+		self.body.push_str(&format!("--{MULTIPART_BOUNDARY}--\r\n"));
+		self.body.into_bytes()
+	}
 }
 
-async fn submit_story(app: &TestApp, cookie: &(String, String), title: &str, url: &str) -> String {
-	let response = app
+fn multipart_fields(fields: &[(&str, &str)]) -> Vec<u8> {
+	fields
+		.iter()
+		.fold(MultipartBody::default(), |body, (name, value)| {
+			body.field(name, value)
+		})
+		.build()
+}
+
+async fn submit_story(session: &mut TestSession<'_>, title: &str, url: &str) -> String {
+	let response = session
 		.request(vorma::HttpMethod::POST, "/api/stories")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
 			multipart_fields(&[("title", title), ("url", url)]),
@@ -104,13 +131,9 @@ async fn submit_story(app: &TestApp, cookie: &(String, String), title: &str, url
 #[tokio::test]
 async fn login_then_layout_carries_the_session_user() {
 	let app = app();
-	let cookie = login(&app, "Ada").await;
+	let mut session = login(&app, "Ada").await;
 
-	let payload = app
-		.request(vorma::HttpMethod::GET, &view_payload_path("/"))
-		.cookie(&cookie.0, &cookie.1)
-		.send()
-		.await;
+	let payload = session.get_view_payload("/").await;
 	assert_eq!(payload.status(), vorma::HttpStatusCode::OK);
 	let body = json(payload.body());
 	assert_eq!(body["views_data"][0]["app_name"], "Vorma Board");
@@ -163,9 +186,9 @@ async fn submit_requires_a_session() {
 #[tokio::test]
 async fn submit_redirects_at_the_new_story_and_the_story_page_renders_it() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
+	let mut session = login(&app, "ada").await;
 
-	let location = submit_story(&app, &cookie, "Vorma ships", "https://vorma.dev").await;
+	let location = submit_story(&mut session, "Vorma ships", "https://vorma.dev").await;
 	assert_eq!(location, "/s/1");
 
 	let payload = app.get_view_payload(&location).await;
@@ -256,20 +279,18 @@ async fn catch_all_view_is_a_normal_app_level_fallback() {
 #[tokio::test]
 async fn votes_count_once_and_duplicates_get_the_envelope() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
-	submit_story(&app, &cookie, "Voting works", "https://example.com").await;
+	let mut session = login(&app, "ada").await;
+	submit_story(&mut session, "Voting works", "https://example.com").await;
 
-	let first = app
+	let first = session
 		.request(vorma::HttpMethod::POST, "/api/stories/1/vote")
-		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
 	assert_eq!(first.status(), vorma::HttpStatusCode::OK);
 	assert_eq!(json(first.body()), serde_json::json!({ "points": 1 }));
 
-	let duplicate = app
+	let duplicate = session
 		.request(vorma::HttpMethod::POST, "/api/stories/1/vote")
-		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
 	assert_eq!(duplicate.status(), vorma::HttpStatusCode::CONFLICT);
@@ -282,16 +303,15 @@ async fn votes_count_once_and_duplicates_get_the_envelope() {
 #[tokio::test]
 async fn front_page_ranks_by_points_then_recency() {
 	let app = app();
-	let ada = login(&app, "ada").await;
-	let lin = login(&app, "lin").await;
-	submit_story(&app, &ada, "Older unloved", "https://example.com/a").await;
-	submit_story(&app, &ada, "Newer unloved", "https://example.com/b").await;
-	let third = submit_story(&app, &ada, "Loved", "https://example.com/c").await;
+	let mut ada = login(&app, "ada").await;
+	let mut lin = login(&app, "lin").await;
+	submit_story(&mut ada, "Older unloved", "https://example.com/a").await;
+	submit_story(&mut ada, "Newer unloved", "https://example.com/b").await;
+	let third = submit_story(&mut ada, "Loved", "https://example.com/c").await;
 	assert_eq!(third, "/s/3");
-	for cookie in [&ada, &lin] {
-		let vote = app
+	for session in [&mut ada, &mut lin] {
+		let vote = session
 			.request(vorma::HttpMethod::POST, "/api/stories/3/vote")
-			.cookie(&cookie.0, &cookie.1)
 			.send()
 			.await;
 		assert_eq!(vote.status(), vorma::HttpStatusCode::OK);
@@ -311,22 +331,47 @@ async fn front_page_ranks_by_points_then_recency() {
 
 #[tokio::test]
 async fn logout_clears_the_session_cookie_and_the_session_row() {
+	/*
+	This test deliberately replays a token AFTER the server has invalidated
+	it, so it stays on `TestApp`'s stateless, explicit `.cookie(name, value)`
+	form rather than `TestSession`: a session's jar would honestly forget the
+	cookie the moment it saw the logout response's clearing `Set-Cookie` (the
+	same continuation contract exercised elsewhere), which would send no
+	cookie at all on the last request below and only prove anonymous access
+	is anonymous — already covered by `anonymous_layout_has_no_session_user`.
+	The point here is the stronger claim: even a client that still has the
+	stale cookie and presents it on purpose gets rejected, because the
+	server's own session row is gone.
+	*/
 	let app = app();
-	let cookie = login(&app, "ada").await;
+	let login_response = app
+		.request_json(
+			vorma::HttpMethod::POST,
+			"/api/session",
+			&serde_json::json!({ "username": "ada" }),
+		)
+		.await;
+	assert_eq!(login_response.status(), vorma::HttpStatusCode::CREATED);
+	let session_cookie = &login_response.set_cookie_headers()[0];
+	let (cookie_name, cookie_value) = (session_cookie.name(), session_cookie.value());
 
 	let logout = app
 		.request(vorma::HttpMethod::DELETE, "/api/session")
-		.cookie(&cookie.0, &cookie.1)
+		.cookie(cookie_name, cookie_value)
 		.send()
 		.await;
 	assert_eq!(logout.status(), vorma::HttpStatusCode::OK);
-	let cleared = logout.headers()["set-cookie"].to_str().expect("ascii");
-	assert!(cleared.contains("Max-Age=0"));
+	let cleared = &logout.set_cookie_headers()[0];
+	assert_eq!(cleared.name(), cookie_name);
+	assert!(
+		!cleared.max_age().unwrap().is_positive(),
+		"Max-Age must be <= 0"
+	);
 
 	// The old token no longer resolves a user even if replayed.
 	let payload = app
 		.request(vorma::HttpMethod::GET, &view_payload_path("/"))
-		.cookie(&cookie.0, &cookie.1)
+		.cookie(cookie_name, cookie_value)
 		.send()
 		.await;
 	assert_eq!(
@@ -338,11 +383,10 @@ async fn logout_clears_the_session_cookie_and_the_session_row() {
 #[tokio::test]
 async fn submit_validation_speaks_the_envelope() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
+	let mut session = login(&app, "ada").await;
 
-	let both = app
+	let both = session
 		.request(vorma::HttpMethod::POST, "/api/stories")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
 			multipart_fields(&[
@@ -359,9 +403,8 @@ async fn submit_validation_speaks_the_envelope() {
 		serde_json::json!({ "error": "provide a link or text, not both" })
 	);
 
-	let bad_url = app
+	let bad_url = session
 		.request(vorma::HttpMethod::POST, "/api/stories")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
 			multipart_fields(&[("title", "Bad link"), ("url", "ftp://example.com")]),
@@ -378,8 +421,8 @@ async fn submit_validation_speaks_the_envelope() {
 #[tokio::test]
 async fn comments_post_and_render_on_the_story_page() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
-	submit_story(&app, &cookie, "Discuss", "https://example.com").await;
+	let mut session = login(&app, "ada").await;
+	submit_story(&mut session, "Discuss", "https://example.com").await;
 
 	let anonymous = app
 		.request_json(
@@ -390,9 +433,8 @@ async fn comments_post_and_render_on_the_story_page() {
 		.await;
 	assert_eq!(anonymous.status(), vorma::HttpStatusCode::UNAUTHORIZED);
 
-	let created = app
+	let created = session
 		.request(vorma::HttpMethod::POST, "/api/stories/1/comments")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			"application/json",
 			serde_json::json!({ "body": "First!" })
@@ -404,9 +446,8 @@ async fn comments_post_and_render_on_the_story_page() {
 	assert_eq!(created.status(), vorma::HttpStatusCode::CREATED);
 	assert_eq!(json(created.body()), serde_json::json!({ "comment_id": 1 }));
 
-	let reply = app
+	let reply = session
 		.request(vorma::HttpMethod::POST, "/api/stories/1/comments")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			"application/json",
 			serde_json::json!({ "body": "Replying", "parent_id": 1 })
@@ -422,9 +463,8 @@ async fn comments_post_and_render_on_the_story_page() {
 	assert_eq!(comments.as_array().expect("comments").len(), 2);
 	assert_eq!(comments[1]["parent_id"], 1);
 
-	let missing = app
+	let missing = session
 		.request(vorma::HttpMethod::POST, "/api/stories/99/comments")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			"application/json",
 			serde_json::json!({ "body": "ghost" })
@@ -443,15 +483,9 @@ async fn comments_post_and_render_on_the_story_page() {
 #[tokio::test]
 async fn search_resource_finds_titles_and_pages() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
-	submit_story(
-		&app,
-		&cookie,
-		"Rust ships generics",
-		"https://example.com/a",
-	)
-	.await;
-	submit_story(&app, &cookie, "Cooking tips", "https://example.com/b").await;
+	let mut session = login(&app, "ada").await;
+	submit_story(&mut session, "Rust ships generics", "https://example.com/a").await;
+	submit_story(&mut session, "Cooking tips", "https://example.com/b").await;
 
 	let hits = app.get("/api/search?q=rust").await;
 	assert_eq!(hits.status(), vorma::HttpStatusCode::OK);
@@ -470,8 +504,8 @@ async fn search_resource_finds_titles_and_pages() {
 #[tokio::test]
 async fn mod_area_is_gated_and_kill_restore_round_trips() {
 	let (app, db) = app_with_db();
-	let cookie = login(&app, "ada").await;
-	submit_story(&app, &cookie, "Spam", "https://example.com").await;
+	let mut session = login(&app, "ada").await;
+	submit_story(&mut session, "Spam", "https://example.com").await;
 
 	// Anonymous documents are redirected away from the mod area.
 	let anonymous = app.get("/mod").await;
@@ -485,9 +519,8 @@ async fn mod_area_is_gated_and_kill_restore_round_trips() {
 		.await;
 	assert!(anonymous_kill.status().is_redirection());
 
-	let kill = app
+	let kill = session
 		.request(vorma::HttpMethod::POST, "/api/mod/stories/1/kill")
-		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
 	assert_eq!(kill.status(), vorma::HttpStatusCode::OK);
@@ -506,18 +539,13 @@ async fn mod_area_is_gated_and_kill_restore_round_trips() {
 	);
 
 	// The mod queue lists it, with the action logged.
-	let queue = app
-		.request(vorma::HttpMethod::GET, &view_payload_path("/mod"))
-		.cookie(&cookie.0, &cookie.1)
-		.send()
-		.await;
+	let queue = session.get_view_payload("/mod").await;
 	let queue_body = json(queue.body());
 	assert_eq!(queue_body["views_data"][1]["killed"][0]["title"], "Spam");
 	assert_eq!(queue_body["views_data"][1]["log"][0]["action"], "kill");
 
-	let restore = app
+	let restore = session
 		.request(vorma::HttpMethod::POST, "/api/mod/stories/1/restore")
-		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
 	assert_eq!(restore.status(), vorma::HttpStatusCode::OK);
@@ -530,9 +558,8 @@ async fn mod_area_is_gated_and_kill_restore_round_trips() {
 	// Banned sessions get the real 401 envelope.
 	db.with(|conn| conn.execute("UPDATE users SET banned = 1 WHERE username = 'ada'", []))
 		.expect("ban write");
-	let banned = app
+	let banned = session
 		.request(vorma::HttpMethod::POST, "/api/mod/stories/1/kill")
-		.cookie(&cookie.0, &cookie.1)
 		.send()
 		.await;
 	assert_eq!(banned.status(), vorma::HttpStatusCode::UNAUTHORIZED);
@@ -540,6 +567,47 @@ async fn mod_area_is_gated_and_kill_restore_round_trips() {
 		json(banned.body()),
 		serde_json::json!({ "error": "This account cannot access moderation." })
 	);
+}
+
+#[tokio::test]
+async fn mod_export_is_gated_and_digests_every_story() {
+	let app = app();
+
+	// Same scoped middleware as the kill/restore endpoints protects export.
+	let anonymous = app
+		.request(vorma::HttpMethod::POST, "/api/mod/export")
+		.send()
+		.await;
+	assert!(anonymous.status().is_redirection());
+
+	let mut session = login(&app, "ada").await;
+	submit_story(&mut session, "First", "https://example.com/1").await;
+	submit_story(&mut session, "Second", "https://example.com/2").await;
+	let comment = session
+		.request(vorma::HttpMethod::POST, "/api/stories/1/comments")
+		.body(
+			"application/json",
+			serde_json::json!({ "body": "nice find" })
+				.to_string()
+				.into_bytes(),
+		)
+		.send()
+		.await;
+	assert_eq!(comment.status(), vorma::HttpStatusCode::CREATED);
+
+	let export = session
+		.request(vorma::HttpMethod::POST, "/api/mod/export")
+		.send()
+		.await;
+	assert_eq!(export.status(), vorma::HttpStatusCode::OK);
+	let digest = json(export.body());
+	assert_eq!(digest["complete"], true);
+	let rows = digest["rows"].as_array().expect("export rows");
+	assert_eq!(rows.len(), 2);
+	assert_eq!(rows[0]["title"], "First");
+	assert_eq!(rows[0]["comment_count"], 1);
+	assert_eq!(rows[1]["title"], "Second");
+	assert_eq!(rows[1]["comment_count"], 0);
 }
 
 #[tokio::test]
@@ -577,16 +645,9 @@ async fn docs_splat_serves_seeded_pages_at_any_depth() {
 #[tokio::test]
 async fn diagnostics_segment_fails_alone_while_parents_render() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
+	let mut session = login(&app, "ada").await;
 
-	let payload = app
-		.request(
-			vorma::HttpMethod::GET,
-			&view_payload_path("/mod/diagnostics"),
-		)
-		.cookie(&cookie.0, &cookie.1)
-		.send()
-		.await;
+	let payload = session.get_view_payload("/mod/diagnostics").await;
 	assert_eq!(payload.status(), vorma::HttpStatusCode::OK);
 	let body = json(payload.body());
 	assert_eq!(
@@ -605,32 +666,42 @@ async fn diagnostics_segment_fails_alone_while_parents_render() {
 #[tokio::test]
 async fn attachments_upload_with_the_story_and_download_back() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
+	let mut session = login(&app, "ada").await;
 
-	let mut body = String::new();
-	for (name, value) in [("title", "With file"), ("body", "see attachment")] {
-		body.push_str(&format!(
-			"--{MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; \
-			name=\"{name}\"\r\n\r\n{value}\r\n"
-		));
-	}
-	body.push_str(&format!(
-		"--{MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; \
-		name=\"attachment\"; filename=\"notes.txt\"\r\nContent-Type: \
-		text/plain\r\n\r\nhello attachment\r\n--{MULTIPART_BOUNDARY}--\r\n"
-	));
-	let submitted = app
+	/*
+	Two files under the same `attachment` name is exactly what
+	`<input type="file" multiple>` posts on the wire: one part per selected file,
+	all sharing one field name. The server reads this back with `files_named`, the
+	repeated-value counterpart to the single-file `file()` the pre-multi-attachment
+	form used.
+	*/
+	let submitted = session
 		.request(vorma::HttpMethod::POST, "/api/stories")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
-			body.into_bytes(),
+			MultipartBody::default()
+				.field("title", "With files")
+				.field("body", "see attachments")
+				.file("attachment", "notes.txt", "text/plain", "hello attachment")
+				.file("attachment", "second.txt", "text/plain", "a second file")
+				.build(),
 		)
 		.send()
 		.await;
 	assert!(submitted.status().is_redirection());
 
-	let download = app.get("/api/stories/1/attachment").await;
+	let payload = app.get_view_payload("/s/1").await;
+	let attachments = &json(payload.body())["views_data"][1]["attachments"];
+	let attachments = attachments.as_array().expect("attachments array");
+	assert_eq!(attachments.len(), 2);
+	assert_eq!(attachments[0]["file_name"], "notes.txt");
+	assert_eq!(attachments[1]["file_name"], "second.txt");
+	let first_id = attachments[0]["id"].as_i64().expect("first attachment id");
+	let second_id = attachments[1]["id"].as_i64().expect("second attachment id");
+
+	let download = app
+		.get(&format!("/api/stories/1/attachments/{first_id}"))
+		.await;
 	assert_eq!(download.status(), vorma::HttpStatusCode::OK);
 	assert_eq!(download.headers()["content-type"], "text/plain");
 	assert!(
@@ -641,8 +712,17 @@ async fn attachments_upload_with_the_story_and_download_back() {
 	);
 	assert_eq!(download.body().as_ref(), b"hello attachment");
 
+	let second_download = app
+		.get(&format!("/api/stories/1/attachments/{second_id}"))
+		.await;
+	assert_eq!(second_download.status(), vorma::HttpStatusCode::OK);
+	assert_eq!(second_download.body().as_ref(), b"a second file");
+
 	let head = app
-		.request(vorma::HttpMethod::HEAD, "/api/stories/1/attachment")
+		.request(
+			vorma::HttpMethod::HEAD,
+			&format!("/api/stories/1/attachments/{first_id}"),
+		)
 		.send()
 		.await;
 	assert_eq!(head.status(), vorma::HttpStatusCode::OK);
@@ -650,18 +730,215 @@ async fn attachments_upload_with_the_story_and_download_back() {
 	assert_eq!(head.headers()["content-length"], "16");
 	assert!(head.body().is_empty());
 
-	let none = app.get("/api/stories/2/attachment").await;
+	// A story with no attachments serves a 404 for any attachment id.
+	submit_story(&mut session, "No attachments", "https://example.com").await;
+	let none = app
+		.get(&format!("/api/stories/2/attachments/{first_id}"))
+		.await;
 	assert_eq!(none.status(), vorma::HttpStatusCode::NOT_FOUND);
+
+	/*
+	`first_id` is a real attachment id, just not one that belongs to story 2: the
+	route must still 404 rather than serve story 1's file under story 2's URL.
+	*/
+	let cross_story = app
+		.get(&format!("/api/stories/2/attachments/{first_id}"))
+		.await;
+	assert_eq!(cross_story.status(), vorma::HttpStatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn submit_tags_round_trip_through_the_checkbox_group() {
+	let app = app();
+	let mut session = login(&app, "ada").await;
+
+	/*
+	A checkbox group posts one `tag` field per checked box, all sharing the
+	`tag` name — the same repeated-field shape as the multi-file case above, just
+	with plain text values instead of files. The server reads every value back
+	with `texts("tag")`.
+	*/
+	let submitted = session
+		.request(vorma::HttpMethod::POST, "/api/stories")
+		.body(
+			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+			MultipartBody::default()
+				.field("title", "Tagged story")
+				.field("url", "https://example.com")
+				.field("tag", "tech")
+				.field("tag", "show")
+				.build(),
+		)
+		.send()
+		.await;
+	assert!(submitted.status().is_redirection());
+
+	let payload = app.get_view_payload("/s/1").await;
+	assert_eq!(
+		json(payload.body())["views_data"][1]["tags"],
+		serde_json::json!(["show", "tech"])
+	);
+}
+
+#[tokio::test]
+async fn submit_rejects_a_tag_outside_the_known_vocabulary() {
+	let app = app();
+	let mut session = login(&app, "ada").await;
+
+	/*
+	`texts("tag")` yields every submitted value regardless of whether the
+	server recognizes it; the vocabulary filter in the handler is what keeps a
+	tampered request from persisting an arbitrary tag string.
+	*/
+	let submitted = session
+		.request(vorma::HttpMethod::POST, "/api/stories")
+		.body(
+			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+			MultipartBody::default()
+				.field("title", "Sneaky tag")
+				.field("url", "https://example.com")
+				.field("tag", "tech")
+				.field("tag", "not-a-real-tag")
+				.build(),
+		)
+		.send()
+		.await;
+	assert!(submitted.status().is_redirection());
+
+	let payload = app.get_view_payload("/s/1").await;
+	assert_eq!(
+		json(payload.body())["views_data"][1]["tags"],
+		serde_json::json!(["tech"])
+	);
+}
+
+#[tokio::test]
+async fn submit_rejects_more_tag_fields_than_the_vocabulary_has() {
+	let app = app();
+	let mut session = login(&app, "ada").await;
+
+	// One more `tag` field than checkboxes actually exist: `fields_named("tag")`
+	// counts the group's shape independently of what values it carries.
+	let mut form = MultipartBody::default()
+		.field("title", "Too many tags")
+		.field("url", "https://example.com");
+	for _ in 0..=STORY_TAGS.len() {
+		form = form.field("tag", "tech");
+	}
+	let response = session
+		.request(vorma::HttpMethod::POST, "/api/stories")
+		.body(
+			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+			form.build(),
+		)
+		.send()
+		.await;
+	assert_eq!(response.status(), vorma::HttpStatusCode::BAD_REQUEST);
+	assert_eq!(
+		json(response.body()),
+		serde_json::json!({ "error": "that tag selection is not valid" })
+	);
+}
+
+#[tokio::test]
+async fn submit_rejects_too_many_attachments() {
+	let app = app();
+	let mut session = login(&app, "ada").await;
+
+	let mut form = MultipartBody::default()
+		.field("title", "Too many files")
+		.field("url", "https://example.com");
+	// One more than the server's own attachment-count limit.
+	for index in 0..=MAX_STORY_ATTACHMENTS {
+		form = form.file(
+			"attachment",
+			&format!("file-{index}.txt"),
+			"text/plain",
+			"x",
+		);
+	}
+	let response = session
+		.request(vorma::HttpMethod::POST, "/api/stories")
+		.body(
+			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+			form.build(),
+		)
+		.send()
+		.await;
+	assert_eq!(response.status(), vorma::HttpStatusCode::BAD_REQUEST);
+	assert_eq!(
+		json(response.body()),
+		serde_json::json!({
+			"error": format!("attach at most {MAX_STORY_ATTACHMENTS} files")
+		})
+	);
+}
+
+#[tokio::test]
+async fn submit_rejects_a_field_value_that_is_too_long() {
+	let app = app();
+	let mut session = login(&app, "ada").await;
+
+	// Longer than the server's blanket per-field byte cap, enforced over every
+	// submitted field via `fields()` regardless of which field name it is.
+	let oversized_body = "x".repeat(5_000);
+	let response = session
+		.request(vorma::HttpMethod::POST, "/api/stories")
+		.body(
+			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+			MultipartBody::default()
+				.field("title", "Oversized field")
+				.field("body", &oversized_body)
+				.build(),
+		)
+		.send()
+		.await;
+	assert_eq!(response.status(), vorma::HttpStatusCode::BAD_REQUEST);
+	assert_eq!(
+		json(response.body()),
+		serde_json::json!({ "error": "one of the submitted fields is too long" })
+	);
+}
+
+#[tokio::test]
+async fn submit_rejects_attachments_that_together_exceed_the_byte_cap() {
+	let app = app();
+	let mut session = login(&app, "ada").await;
+
+	// One file already over the combined cap: `files()` sums every attachment's
+	// body regardless of name, so a single oversized file is enough to trip it.
+	let oversized_file = "x".repeat(MAX_STORY_ATTACHMENT_BYTES + 1);
+	let response = session
+		.request(vorma::HttpMethod::POST, "/api/stories")
+		.body(
+			format!("multipart/form-data; boundary={MULTIPART_BOUNDARY}"),
+			MultipartBody::default()
+				.field("title", "Oversized attachment")
+				.field("url", "https://example.com")
+				.file(
+					"attachment",
+					"big.bin",
+					"application/octet-stream",
+					&oversized_file,
+				)
+				.build(),
+		)
+		.send()
+		.await;
+	assert_eq!(response.status(), vorma::HttpStatusCode::BAD_REQUEST);
+	assert_eq!(
+		json(response.body()),
+		serde_json::json!({ "error": "attachments are too large altogether" })
+	);
 }
 
 #[tokio::test]
 async fn user_pages_nest_profile_and_comment_tabs() {
 	let app = app();
-	let cookie = login(&app, "ada").await;
-	submit_story(&app, &cookie, "Mine", "https://example.com").await;
-	let comment = app
+	let mut session = login(&app, "ada").await;
+	submit_story(&mut session, "Mine", "https://example.com").await;
+	let comment = session
 		.request(vorma::HttpMethod::POST, "/api/stories/1/comments")
-		.cookie(&cookie.0, &cookie.1)
 		.body(
 			"application/json",
 			serde_json::json!({ "body": "self reply" })
@@ -718,4 +995,28 @@ async fn app_booted_from_config_serves_the_build_id_header() {
 		response.headers()[vorma::CLIENT_BUILD_ID_HEADER_KEY],
 		TEST_CLIENT_BUILD_ID
 	);
+}
+
+#[tokio::test]
+async fn document_shell_renders_the_boolean_and_known_safe_body_attributes() {
+	/*
+	Every other test in this file reads typed view/resource data, never raw HTML —
+	the honest way to prove a document-builder attribute actually reaches the wire
+	is to fetch the real page and check the rendered `<body>` tag byte-for-byte,
+	the same proof `crates/vorma/tests/public_api.rs`'s usability test uses at the
+	builder level. `app.get("/")` (a plain page fetch, not `get_view_payload`) is
+	what returns the full HTML document instead of the JSON view-data envelope.
+	*/
+	let app = app();
+	let response = app.get("/").await;
+	assert_eq!(response.status(), vorma::HttpStatusCode::OK);
+	let html = String::from_utf8(response.body().to_vec()).expect("document is utf-8");
+
+	// `boolean_attribute` renders bare: present, with no `="..."` at all.
+	assert!(html.contains(" data-server-rendered "));
+	assert!(!html.contains("data-server-rendered=\""));
+
+	// `known_safe_attribute` skips escaping: the ampersand survives raw, not as `&amp;`.
+	assert!(html.contains("data-built-with=\"Vorma Board & Rust\""));
+	assert!(!html.contains("Vorma Board &amp; Rust"));
 }

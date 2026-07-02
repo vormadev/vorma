@@ -37,7 +37,21 @@ site only for deliberate diagnostics or fire-and-forget actions.
 
 type BoardClientSeed = typeof vormaClientSeed;
 
-function api_query_options<const Args extends ToQueryArgs<BoardClientSeed>>(args: Args) {
+/*
+Exported separately from `useApiQuery` so call sites that are not React
+components can still build the exact same react-query options object.
+`query_client.prefetchQuery(apiQueryOptions(args))` or
+`query_client.ensureQueryData(apiQueryOptions(args))` warms react-query's
+cache for a specific typed call ahead of the component that will read it
+with `useApiQuery` — the react-query-owned counterpart to Vorma's own
+`prefetch()`, which warms route/view data instead. Both forms of prefetch
+are legitimate and answer different questions: `prefetch()` asks "does the
+next route already have its server-rendered data," `apiQueryOptions` asks
+"does this specific ad-hoc API call already have a cached result."
+*/
+export function apiQueryOptions<const Args extends ToQueryArgs<BoardClientSeed>>(
+	args: Args,
+) {
 	return queryOptions<
 		ApiClientOutput<BoardClientSeed, Args>,
 		ToQueryError<BoardClientSeed, Args>,
@@ -52,7 +66,7 @@ function api_query_options<const Args extends ToQueryArgs<BoardClientSeed>>(args
 }
 
 export function useApiQuery<const Args extends ToQueryArgs<BoardClientSeed>>(args: Args) {
-	return useQuery(api_query_options(args));
+	return useQuery(apiQueryOptions(args));
 }
 
 export function useApiMutation<

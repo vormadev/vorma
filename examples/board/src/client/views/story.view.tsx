@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { QueryError } from "vorma/react";
 import { useApiMutation } from "../api.ts";
 import {
@@ -16,6 +16,11 @@ const last_story_commit_key = "board:last-story-route-commit";
 export type StoryReadState = {
 	first_seen_at: number | null;
 	seen_before: boolean;
+};
+
+type LoadedAttachment = {
+	url: string;
+	error: string | null;
 };
 
 export default defineView({
@@ -69,20 +74,29 @@ export default defineView({
 		const data = useViewData(props);
 		const loader_data = useClientLoaderData(props);
 		const [comment_body, set_comment_body] = useState("");
-		const [attachment_url, set_attachment_url] = useState<string | null>(null);
-		const [attachment_error, set_attachment_error] = useState<string | null>(null);
+		const [loaded_attachments, set_loaded_attachments] = useState<
+			Record<number, LoadedAttachment>
+		>({});
 		const comment = useApiMutation({
 			method: "POST",
 			pattern: "/api/stories/:story_id/comments",
 		});
+		/*
+		A ref mirrors `loaded_attachments` so the unmount cleanup below always
+		revokes whatever was loaded most recently without needing the state
+		value itself in its dependency array, which would otherwise tear the
+		effect down and rebuild it on every attachment load.
+		*/
+		const loaded_attachments_ref = useRef(loaded_attachments);
+		loaded_attachments_ref.current = loaded_attachments;
 
 		useEffect(() => {
 			return () => {
-				if (attachment_url) {
-					URL.revokeObjectURL(attachment_url);
+				for (const attachment of Object.values(loaded_attachments_ref.current)) {
+					URL.revokeObjectURL(attachment.url);
 				}
 			};
-		}, [attachment_url]);
+		}, []);
 
 		if (!data.story) {
 			return (
@@ -119,35 +133,48 @@ export default defineView({
 			);
 		};
 
-		const prepare_attachment = async () => {
-			set_attachment_error(null);
+		const load_attachment = async (attachment_id: number) => {
 			try {
 				/*
 				`queryOrThrow` is the ergonomic path when the UI wants normal
 				try/catch flow. This endpoint returns a `Blob`, showing that
-				the generated client is typed, not JSON-only.
+				the generated client is typed, not JSON-only. Each attachment
+				downloads independently by its own id, since a story can now
+				carry several.
 				*/
 				const blob = await apiClient.queryOrThrow({
-					pattern: "/api/stories/:story_id/attachment",
-					params: { story_id },
+					pattern: "/api/stories/:story_id/attachments/:attachment_id",
+					params: { story_id, attachment_id: String(attachment_id) },
 				});
-				if (attachment_url) {
-					URL.revokeObjectURL(attachment_url);
-				}
-				set_attachment_url(URL.createObjectURL(blob));
+				set_loaded_attachments((current) => {
+					const previous = current[attachment_id];
+					if (previous) {
+						URL.revokeObjectURL(previous.url);
+					}
+					return {
+						...current,
+						[attachment_id]: { url: URL.createObjectURL(blob), error: null },
+					};
+				});
 			} catch (error) {
-				set_attachment_url(null);
-				set_attachment_error(
-					/*
-					Typed Vorma errors preserve the original envelope so the UI
-					can render the client-visible message without parsing strings.
-					*/
-					error instanceof QueryError
-						? error.result.error
-						: error instanceof Error
-							? error.message
-							: "Attachment unavailable.",
-				);
+				set_loaded_attachments((current) => {
+					return {
+						...current,
+						[attachment_id]: {
+							url: "",
+							error:
+								/*
+								Typed Vorma errors preserve the original envelope so the UI
+								can render the client-visible message without parsing strings.
+								*/
+								error instanceof QueryError
+									? error.result.error
+									: error instanceof Error
+										? error.message
+										: "Attachment unavailable.",
+						},
+					};
+				});
 			}
 		};
 
@@ -174,20 +201,41 @@ export default defineView({
 					</p>
 				) : null}
 				{data.story.body ? <p>{data.story.body}</p> : null}
-				<div className="actions">
-					<button onClick={prepare_attachment} type="button">
-						Load attachment
-					</button>
-					{attachment_url ? (
-						<a
-							download={`story-${story_id}-attachment`}
-							href={attachment_url}
-						>
-							Download attachment
-						</a>
-					) : null}
-				</div>
-				{attachment_error ? <p className="error">{attachment_error}</p> : null}
+				{data.tags.length > 0 ? (
+					<p className="meta">Tags: {data.tags.join(", ")}</p>
+				) : null}
+				{data.attachments.length > 0 ? (
+					<ul className="attachments">
+						{data.attachments.map((attachment) => {
+							const loaded = loaded_attachments[attachment.id];
+							return (
+								<li key={attachment.id}>
+									{attachment.file_name}{" "}
+									{loaded?.url ? (
+										<a
+											download={attachment.file_name}
+											href={loaded.url}
+										>
+											Download
+										</a>
+									) : (
+										<button
+											onClick={() => {
+												void load_attachment(attachment.id);
+											}}
+											type="button"
+										>
+											Load
+										</button>
+									)}
+									{loaded?.error ? (
+										<span className="error"> {loaded.error}</span>
+									) : null}
+								</li>
+							);
+						})}
+					</ul>
+				) : null}
 				<section aria-label="Comments">
 					{data.comments.map((comment) => {
 						return (

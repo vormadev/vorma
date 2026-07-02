@@ -13,7 +13,13 @@ axum.workspace = true
 getrandom.workspace = true
 rusqlite.workspace = true
 serde = { workspace = true, features = ["derive"] }
-tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { workspace = true, features = [
+	"macros",
+	"net",
+	"rt-multi-thread",
+	"signal",
+	"time",
+] }
 tower.workspace = true
 tower-http = { workspace = true, features = ["trace"] }
 tracing.workspace = true

@@ -14,10 +14,10 @@ green. Part 2 remains blocked on Fable's ANALYSIS.md, next.
 
 - **Real-path claim verified in source:** `TestApp::handle_request`
   (`crates/vorma/src/testing.rs:100`) forwards to
-  `self.host.service().handle_request(request)` — the `CommittedRuntimeService` entry
-  real adapters call. The fixture (`crates/vorma/benches/engine.rs`, 497 lines) registers
-  apps through the real `app!`/`view!`/`resource!` macros with realistic handler bodies;
-  no stub shortcuts. The allocator rule is handled correctly (vorma's default mimalloc
+  `self.host.service().handle_request(request)` — the `CommittedRuntimeService` entry real
+  adapters call. The fixture (`crates/vorma/benches/engine.rs`, 497 lines) registers apps
+  through the real `app!`/`view!`/`resource!` macros with realistic handler bodies; no
+  stub shortcuts. The allocator rule is handled correctly (vorma's default mimalloc
   feature declares the global allocator; the bench declares no second one, with the
   constraint documented in-source).
 - **Dependency discipline:** `crates/vorma/Cargo.toml` gained only the repo's own
@@ -37,8 +37,8 @@ Exhaustive plain list, per AGENTS.md review rules:
 
 1. The executor could not write REPORT.md (harness guardrail specific to its session:
    "Subagents should return findings as text, not write report files" — a behavior not
-   seen in the three prior executor sessions). Content was returned in-message and
-   placed by Fable with a provenance note. Process friction only; no content loss.
+   seen in the three prior executor sessions). Content was returned in-message and placed
+   by Fable with a provenance note. Process friction only; no content loss.
 
 No other issues found.
 
@@ -47,8 +47,8 @@ No other issues found.
 The striking structure: non-handler rows cost 2.2–4.0µs while every handler-reaching row
 costs 24–71µs — the pipeline weight is decode/execute/finalize, not matching (the
 matcher's whole contribution is ~0.1–0.4µs per the matcher tables). View/HTML rows run
-~40–49µs vs ~24–25µs for resource rows, implicating document/HTML finalization; the
-4-deep nested chain (70.3µs) scales worse than 4× a single view; the two-middleware tax
-is ~5.4µs over its control. Fable writes ANALYSIS.md decomposing these against the
-engine internals (execution engine, payload projection, response finalizer, head/document
-pipeline) before any Part 2 dispatch.
+~40–49µs vs ~24–25µs for resource rows, implicating document/HTML finalization; the 4-deep
+nested chain (70.3µs) scales worse than 4× a single view; the two-middleware tax is ~5.4µs
+over its control. Fable writes ANALYSIS.md decomposing these against the engine internals
+(execution engine, payload projection, response finalizer, head/document pipeline) before
+any Part 2 dispatch.

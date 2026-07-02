@@ -2363,6 +2363,109 @@ mod tests {
 		);
 	}
 
+	/*
+	`vorma_tasks::Error::Cancelled` is only ever produced when a resolving
+	`ExecCtx`'s own cancellation token is already set. This engine cancels an
+	invocation's context strictly AFTER its whole phase has already been
+	fully awaited (`cancel_execution_contexts` runs after
+	`execute_invocation_phase` returns, never during it) — so a same-phase
+	sibling can only be cancelled once its own output has already been
+	produced and, if it lost the position race, already discarded. There is
+	therefore no reachable path today by which a converted `Cancelled` exit
+	could still be the one that matters. This test proves the second,
+	independent half of why that pin is safe rather than accidental: even
+	granting a `Cancelled`-derived exit from a same-phase sibling
+	(constructed directly here, standing in for whatever might one day
+	produce one), which sibling's error becomes the response is decided
+	purely by POSITION, the same rule that governs any other pair of failing
+	siblings — proven by running both orderings and watching the winner
+	track position rather than identity.
+	*/
+	async fn run_failing_vs_cancelled_middlewares(
+		earlier: &'static str,
+		later: &'static str,
+	) -> RouteExecutionReport {
+		let mut declarations = FrameworkDeclarations::default();
+		declarations.add_middleware(MiddlewareDeclaration::new(handler_id(earlier)));
+		declarations.add_middleware(MiddlewareDeclaration::new(handler_id(later)));
+		declarations.add_resource(ResourceDeclaration::new(
+			Method::GET,
+			"/api/ping",
+			None,
+			Some(serde_json::json!({})),
+			route_type_contract(),
+			handler_id("resource"),
+		));
+		let engine = test_engine(declarations);
+		let mut handlers = HandlerRegistry::default();
+		handlers.insert(handler_id("failing"), move |_| async move {
+			Err(HandlerExecutionError::new("boom: a real application error"))
+		});
+		handlers.insert(handler_id("cancelled"), CancelledConversionHandler);
+		handlers.insert(handler_id("resource"), move |_| async move {
+			Ok(HandlerOutput::data(serde_json::json!("resource")))
+		});
+
+		let report = tokio::time::timeout(
+			Duration::from_millis(500),
+			engine.execute(RequestInput::new(Method::GET, "/api/ping"), &handlers),
+		)
+		.await
+		.expect("the earlier-position error must complete the request without waiting")
+		.unwrap();
+
+		let RequestExecutionReport::Resource(report) = report else {
+			panic!("expected resource report");
+		};
+		assert!(report.committed().is_empty());
+		assert!(
+			report
+				.suppressed()
+				.iter()
+				.any(|suppressed| suppressed.handler_id().as_str() == "resource"),
+			"the next phase must never start"
+		);
+		report
+	}
+
+	#[tokio::test]
+	async fn cancelled_conversion_loses_the_position_race_to_an_earlier_real_error() {
+		let report = run_failing_vs_cancelled_middlewares("failing", "cancelled").await;
+		assert_eq!(report.terminal_handler_id().unwrap().as_str(), "failing");
+	}
+
+	#[tokio::test]
+	async fn cancelled_conversion_wins_the_position_race_when_it_runs_first() {
+		let report = run_failing_vs_cancelled_middlewares("cancelled", "failing").await;
+		assert_eq!(report.terminal_handler_id().unwrap().as_str(), "cancelled");
+	}
+
+	// A directly-constructed `vorma_tasks::Error::Cancelled`, standing in for
+	// whatever might one day produce one on a same-phase sibling,
+	// `?`-converted through the actual public
+	// `From<vorma_tasks::Error<crate::Error>> for HttpExit` impl under test,
+	// exactly as a real handler would.
+	struct CancelledConversionHandler;
+
+	impl CancelledConversionHandler {
+		async fn handler_body() -> Result<(), crate::HttpExit> {
+			let task_error: vorma_tasks::Error<crate::Error> = vorma_tasks::Error::Cancelled;
+			Err(task_error)?;
+			Ok(())
+		}
+	}
+
+	impl RuntimeHandler for CancelledConversionHandler {
+		fn call(&self, _input: HandlerInput, _exec_ctx: ExecCtx<crate::Error>) -> HandlerFuture {
+			Box::pin(async move {
+				match Self::handler_body().await {
+					Ok(()) => Ok(HandlerOutput::empty()),
+					Err(exit) => Err(HandlerExecutionError::new(exit.to_string())),
+				}
+			})
+		}
+	}
+
 	#[tokio::test]
 	async fn prior_middleware_redirect_completes_without_waiting_for_pending_sibling() {
 		let mut declarations = FrameworkDeclarations::default();

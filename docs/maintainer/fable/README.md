@@ -26,6 +26,15 @@ future work. The roadmap consumes tickets into sequenced packets when their turn
 Discovering new work while executing a packet means filing a ticket, not expanding the
 packet.
 
+Working with the maintainer (maintainer-directed, 2026-07-01): Fable decides and proceeds
+on everything within its remit — packet scoping and sequencing, executor choice, review
+verdicts, mechanical/doctrinal calls — and reports what was decided. Only questions that
+are genuinely the maintainer's (public API shape, observable semantics, standing policy,
+machine/commit logistics) are brought to them, and each must be presented thoroughly
+enough to be decided on the spot: current state, evidence, options with trade-offs, one
+recommendation, and what happens on each answer. Never ask for blanket approval of a plan
+Fable is equipped to own.
+
 ## The Packet Protocol
 
 Every packet's `INSTRUCTIONS.md` contains: context (why this work exists and what

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useApiQuery } from "../api.ts";
+import { apiQueryOptions, useApiQuery } from "../api.ts";
 import {
 	Link,
 	apiClient,
@@ -12,6 +12,7 @@ import {
 	useViewData,
 } from "../app.tsx";
 import { domain_of, time_ago } from "../format.ts";
+import { query_client } from "../query_client.ts";
 
 function search_target(query: string) {
 	return {
@@ -70,6 +71,20 @@ export default defineView({
 			);
 		};
 
+		/*
+		`prefetch` warms Vorma's own route/view data for the search PAGE.
+		`query_client.prefetchQuery` (fired on the same intent signal) warms
+		react-query's cache for the search RESOURCE this view calls
+		client-side. Neither call knows about the other; both are safe to
+		fire together because react-query and Vorma own separate caches.
+		*/
+		const prefetch_search_intent = () => {
+			prefetch(search_target(query));
+			void query_client.prefetchQuery(
+				apiQueryOptions({ pattern: "/api/search", input: { q: query } }),
+			);
+		};
+
 		return (
 			<main>
 				<h2>Search</h2>
@@ -87,6 +102,21 @@ export default defineView({
 					<button
 						onClick={() => {
 							/*
+							`ensureQueryData` returns a promise of the cached or
+							freshly-fetched result, so a flow that genuinely needs
+							the data can await it. Here it guarantees react-query's
+							cache is warm for the destination search view's first
+							render, ahead of the Vorma navigation this button also
+							triggers — two independent caches, warmed together on
+							the same user action.
+							*/
+							void query_client.ensureQueryData(
+								apiQueryOptions({
+									pattern: "/api/search",
+									input: { q: query },
+								}),
+							);
+							/*
 							Imperative `navigate` is for command-style controls.
 							Links should still use `<Link>` so the browser gets a
 							real anchor whenever possible.
@@ -97,16 +127,15 @@ export default defineView({
 								state: { source: "search-button" },
 							});
 						}}
-						onFocus={() => {
-							prefetch(search_target(query));
-						}}
-						onMouseEnter={() => {
-							prefetch(search_target(query));
-						}}
+						onFocus={prefetch_search_intent}
+						onMouseEnter={prefetch_search_intent}
 						onMouseLeave={() => {
 							/*
 							Cancel explicit prefetches when intent ends. Link
 							intent prefetch handles this automatically for anchors.
+							react-query has no prefetch-cancellation API to mirror
+							this with — its prefetches are cheap, deduped queries
+							rather than a distinct in-flight resource to cancel.
 							*/
 							cancelPrefetch(search_target(query));
 						}}

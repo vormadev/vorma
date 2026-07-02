@@ -243,6 +243,50 @@ impl From<BoxError> for HttpExit {
 	}
 }
 
+/*
+Concrete, not blanket-generic-over-E: a conservative start that widens only
+by a new ruling. `Failed` is the one variant with a real payload, so it is
+the one case with a source to preserve; boxing the `Arc<crate::Error>`
+itself (rather than cloning out a fresh `crate::Error`) keeps the ENTIRE
+original chain walkable — `Arc<T>`'s std `Error` impl forwards `source()`
+to `T`, so a caller that did `.with_source(...)` on the application error
+is still one more `source()` hop away, exactly as if no task had been
+involved. The four runtime variants (`Cancelled`, `Cycle`,
+`MissingOverride`, `TypeMismatch`) carry no payload, so their `Display`
+text alone is the server record and no source is attached.
+
+`Cancelled` specifically: it is produced only when the resolving
+`ExecCtx`'s own cancellation token was already set (see `vorma-tasks`
+resolve/parallel-batch entry checks). Inside this engine that token is
+cancelled either at whole-request teardown (after every handler has
+already returned) or, mid-request, only on invocations already excluded
+from the response (a losing same-phase sibling whose output the engine
+discards positionally, or a not-yet-started next-phase invocation that
+never runs at all) — see `cancel_execution_contexts` in
+`execution_engine.rs`. A handler that still gets to return a value the
+engine will use can therefore never observe its own context cancelled.
+Given that, `Cancelled` gets the plain default-exit treatment rather than
+a special case: pinned in `exit.rs`'s test suite so the choice reads as
+deliberate, not accidental.
+*/
+impl From<vorma_tasks::Error<crate::Error>> for ViewExit {
+	fn from(error: vorma_tasks::Error<crate::Error>) -> Self {
+		match error {
+			vorma_tasks::Error::Failed(source) => Self::err(source.to_string()).with_source(source),
+			other => Self::err(other.to_string()),
+		}
+	}
+}
+
+impl From<vorma_tasks::Error<crate::Error>> for HttpExit {
+	fn from(error: vorma_tasks::Error<crate::Error>) -> Self {
+		match error {
+			vorma_tasks::Error::Failed(source) => Self::err(source.to_string()).with_source(source),
+			other => Self::err(other.to_string()),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -290,5 +334,114 @@ mod tests {
 		assert!(exit.is_redirect());
 		assert_eq!(exit.client_msg(), None);
 		assert_eq!(exit.to_string(), "redirect to /login");
+	}
+
+	// A source two hops deep (task -> application error -> io error) proves
+	// nothing gets flattened: `Failed` boxes the `Arc<crate::Error>` itself,
+	// not a re-stringified copy, so a source attached to the application
+	// error is still reachable by walking one hop further.
+	fn failed_task_error_with_chained_source() -> vorma_tasks::Error<crate::Error> {
+		let application_error =
+			crate::Error::new("stats read failed").with_source(std::io::Error::other("disk full"));
+		vorma_tasks::Error::from(application_error)
+	}
+
+	#[test]
+	fn failed_task_errors_convert_into_view_exit_preserving_the_whole_chain() {
+		let exit: ViewExit = failed_task_error_with_chained_source().into();
+
+		assert_eq!(exit.to_string(), "stats read failed");
+		assert_eq!(exit.client_msg(), None, "safe default, no client text set");
+
+		let hop_one = StdError::source(&exit).expect("application error is the first source hop");
+		assert_eq!(hop_one.to_string(), "stats read failed");
+		let hop_two = hop_one
+			.source()
+			.expect("the application error's own source must still be reachable");
+		assert_eq!(hop_two.to_string(), "disk full");
+		assert!(
+			hop_two.source().is_none(),
+			"chain ends exactly where the original error's chain ended"
+		);
+	}
+
+	#[test]
+	fn failed_task_errors_convert_into_http_exit_preserving_the_whole_chain() {
+		let exit: HttpExit = failed_task_error_with_chained_source().into();
+
+		assert_eq!(exit.to_string(), "stats read failed");
+		assert_eq!(exit.status(), None, "framework default status applies");
+		assert_eq!(exit.client_msg(), None, "safe default, no client text set");
+
+		let hop_one = StdError::source(&exit).expect("application error is the first source hop");
+		assert_eq!(hop_one.to_string(), "stats read failed");
+		let hop_two = hop_one
+			.source()
+			.expect("the application error's own source must still be reachable");
+		assert_eq!(hop_two.to_string(), "disk full");
+	}
+
+	#[test]
+	fn task_runtime_errors_convert_with_display_text_and_no_source() {
+		let cycle: vorma_tasks::Error<crate::Error> = vorma_tasks::Error::Cycle {
+			task_name: "stats_task",
+		};
+		let exit: ViewExit = cycle.into();
+		assert_eq!(
+			exit.to_string(),
+			"task cycle detected while resolving stats_task"
+		);
+		assert!(StdError::source(&exit).is_none());
+		assert_eq!(exit.client_msg(), None);
+
+		let missing_override: vorma_tasks::Error<crate::Error> =
+			vorma_tasks::Error::MissingOverride {
+				task_name: "stats_task",
+			};
+		let exit: HttpExit = missing_override.into();
+		assert_eq!(
+			exit.to_string(),
+			"task override required before resolving stats_task"
+		);
+		assert!(StdError::source(&exit).is_none());
+
+		let type_mismatch: vorma_tasks::Error<crate::Error> = vorma_tasks::Error::TypeMismatch {
+			task_name: "stats_task",
+		};
+		let exit: HttpExit = type_mismatch.into();
+		assert_eq!(
+			exit.to_string(),
+			"cached task output had the wrong type for stats_task"
+		);
+		assert!(StdError::source(&exit).is_none());
+	}
+
+	// Pinned, deliberate answer for the one variant a `From` cannot refuse to
+	// handle: `Cancelled` gets the plain default-exit treatment, the same as
+	// the other payload-free runtime variants, rather than a special case.
+	// This is safe because the engine never lets a still-mattering handler
+	// observe its own execution context cancelled (see the doc comment on
+	// the impls above) — proven independently, on the engine side, by
+	// `execution_engine::tests::cancelled_conversion_loses_the_position_race_to_an_earlier_real_error`
+	// and its companion `..._wins_the_position_race_when_it_runs_first`
+	// (position, not identity, decides which sibling's error is used). This
+	// test pins the conversion's own half of that contract: what a
+	// `Cancelled` task error becomes if it is ever converted, so the choice
+	// is a recorded decision, not an accident.
+	#[test]
+	fn cancelled_task_errors_convert_to_the_plain_default_exit_form() {
+		let cancelled: vorma_tasks::Error<crate::Error> = vorma_tasks::Error::Cancelled;
+		let exit: ViewExit = cancelled.into();
+		assert_eq!(exit.to_string(), "task cancelled");
+		assert!(StdError::source(&exit).is_none());
+		assert_eq!(exit.client_msg(), None);
+		assert!(!exit.is_redirect());
+
+		let cancelled: vorma_tasks::Error<crate::Error> = vorma_tasks::Error::Cancelled;
+		let exit: HttpExit = cancelled.into();
+		assert_eq!(exit.to_string(), "task cancelled");
+		assert!(StdError::source(&exit).is_none());
+		assert_eq!(exit.status(), None);
+		assert_eq!(exit.client_msg(), None);
 	}
 }

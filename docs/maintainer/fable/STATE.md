@@ -8,12 +8,12 @@ executor pass (tasks perf restoration, Linux) — Linux (Ubuntu 26.04, rustc 1.9
 ## Gates
 
 Recorded 2026-07-01, P001 closeout; re-verified in full at the P003 review (same day:
-fmt/clippy clean, workspace tests green twice at **551** — the +2 are P003's board tests
-— loom 7/7, full `make ts-gate` green with the maintainer docs now oxfmt-normalized,
-full `make e2e-smoke` aggregate exit 0). One-time observation: a single `vorma-build`
-lib test failure under full parallel load in one executor run, never reproduced across
-six subsequent full/isolated runs — ticket `vorma-build-lib-test-flake-under-load`.
-Original P001-closeout detail follows.
+fmt/clippy clean, workspace tests green twice at **551** — the +2 are P003's board tests —
+loom 7/7, full `make ts-gate` green with the maintainer docs now oxfmt-normalized, full
+`make e2e-smoke` aggregate exit 0). One-time observation: a single `vorma-build` lib test
+failure under full parallel load in one executor run, never reproduced across six
+subsequent full/isolated runs — ticket `vorma-build-lib-test-flake-under-load`. Original
+P001-closeout detail follows.
 
 - `make rust-gate`: **GREEN — all steps.**
     - fmt: clean (workspace + fuzz manifests).
@@ -180,28 +180,28 @@ by design (preemptive cancellation vs Go running the body to completion).
 
 Owned-request-to-response benchmarks for the `crates/vorma` runtime engine: an
 already-collected `http::Request<Bytes>` in, its finished `http::Response<Bytes>` out,
-through the same committed-runtime-pipeline call (`CommittedRuntimeService::handle_request`)
-`vorma::testing::TestApp` exposes — no socket, no adapter, no body-collection/limit
-machinery (that lives one layer up, in the tower `Service::call` wrapper, which is
-adapter-facing and out of scope). There are no Go-era baselines for this surface (the
-engine postdates the Go implementation entirely); Part 1's recording was the initial
-baseline, Part 2 optimized against it on the same machine.
+through the same committed-runtime-pipeline call
+(`CommittedRuntimeService::handle_request`) `vorma::testing::TestApp` exposes — no socket,
+no adapter, no body-collection/limit machinery (that lives one layer up, in the tower
+`Service::call` wrapper, which is adapter-facing and out of scope). There are no Go-era
+baselines for this surface (the engine postdates the Go implementation entirely); Part 1's
+recording was the initial baseline, Part 2 optimized against it on the same machine.
 
 Linux recording (`bench-results/vorma/sjc-z390-aorus-pro-wifi.bench.results.txt`,
 2026-07-01, i9-9900K, idle machine, post-P004-Part-2):
 
-| Row                                         | Part 1 baseline | Part 2 (now) | Delta  |
-| -------------------------------------------- | ---------------- | ------------- | ------ |
-| static_view_render                           | 48,798           | 43,891        | −10.1% |
-| nested_dynamic_view_chain_4_deep             | 70,348           | 55,750        | −20.8% |
-| json_resource_small_input_output             | 25,051           | 20,388        | −18.6% |
-| resource_body_binary_resource                | 24,100           | 18,104        | −24.9% |
-| request_through_middleware_chain_2           | 44,903           | 39,961        | −11.0% |
-| request_through_middleware_chain_0_control   | 39,500           | 31,798        | −19.5% |
-| not_found_catch_all_view                     | 45,061           | 42,161        | −6.4%  |
-| not_found_bare_no_catch_all                  | 2,163            | 2,197         | +1.6%  |
-| head_request_to_resource                     | 24,518           | 17,917        | −26.9% |
-| method_not_allowed                           | 4,048            | 3,866         | −4.5%  |
+| Row                                        | Part 1 baseline | Part 2 (now) | Delta  |
+| ------------------------------------------ | --------------- | ------------ | ------ |
+| static_view_render                         | 48,798          | 43,891       | −10.1% |
+| nested_dynamic_view_chain_4_deep           | 70,348          | 55,750       | −20.8% |
+| json_resource_small_input_output           | 25,051          | 20,388       | −18.6% |
+| resource_body_binary_resource              | 24,100          | 18,104       | −24.9% |
+| request_through_middleware_chain_2         | 44,903          | 39,961       | −11.0% |
+| request_through_middleware_chain_0_control | 39,500          | 31,798       | −19.5% |
+| not_found_catch_all_view                   | 45,061          | 42,161       | −6.4%  |
+| not_found_bare_no_catch_all                | 2,163           | 2,197        | +1.6%  |
+| head_request_to_resource                   | 24,518          | 17,917       | −26.9% |
+| method_not_allowed                         | 4,048           | 3,866        | −4.5%  |
 
 Every handler-reaching row improved; the two rows that never execute a handler
 (`not_found_bare_no_catch_all`, `method_not_allowed`) sit within run-to-run noise (±1-5%,
@@ -211,14 +211,14 @@ attributable to the specific mechanical changes rather than systemic drift.
 Fixture (`crates/vorma/benches/engine.rs`): one in-memory `TestApp` (no build artifacts on
 disk, the same harness `vorma::testing` exposes to app tests) registering a static view, a
 4-level nested dynamic view chain (`/`, `/shelves/:shelf_id`,
-`/shelves/:shelf_id/boards/:board_id`, `/shelves/:shelf_id/boards/:board_id/cards/:card_id`),
-a JSON mutation resource, a `ResourceBody` binary resource (4KiB payload), and a root
-catch-all view (`/*`). Every route-reaching row runs an identical two-unscoped-middleware
-chain except the dedicated control row, which reuses the exact same route and paths with
-zero middlewares registered, isolating the middleware-chain cost as a true diff rather than
-an inference. A second app variant omits the catch-all to isolate the bare-404
-classifier-miss cost. Every row rotates two realistic paths, mirroring the matcher
-benchmark suite's shape.
+`/shelves/:shelf_id/boards/:board_id`,
+`/shelves/:shelf_id/boards/:board_id/cards/:card_id`), a JSON mutation resource, a
+`ResourceBody` binary resource (4KiB payload), and a root catch-all view (`/*`). Every
+route-reaching row runs an identical two-unscoped-middleware chain except the dedicated
+control row, which reuses the exact same route and paths with zero middlewares registered,
+isolating the middleware-chain cost as a true diff rather than an inference. A second app
+variant omits the catch-all to isolate the bare-404 classifier-miss cost. Every row
+rotates two realistic paths, mirroring the matcher benchmark suite's shape.
 
 **P004 Part 2 changes (all response-byte-identical, verified by direct capture-and-diff
 against every row's pre-change response; see REPORT-part2.md):**
@@ -232,9 +232,9 @@ against every row's pre-change response; see REPORT-part2.md):**
   attribute) — so they render once at `RuntimeSnapshot::compile()` instead of once per
   request. Biggest single win: `nested_dynamic_view_chain_4_deep` (4 CSS-bundle links per
   request) and the other view/HTML rows.
-- **Per-invocation clone-tree collapse (kept, modest).** `HandlerInvocation`'s fields moved
-  directly into `HandlerInput` inside the spawned closure instead of being cloned a second
-  time on top of the clone already made to enter the closure. Real but small and
+- **Per-invocation clone-tree collapse (kept, modest).** `HandlerInvocation`'s fields
+  moved directly into `HandlerInput` inside the spawned closure instead of being cloned a
+  second time on top of the clone already made to enter the closure. Real but small and
   row-dependent (routes with dynamic params show it; static-only routes, with nothing to
   save, do not) — `Params`/`SplatValues` were already cheap for these payload sizes, as
   flagged going in.
@@ -244,23 +244,26 @@ against every row's pre-change response; see REPORT-part2.md):**
   coordination — built for arbitrating N≥2 completion order — is skipped in favor of
   polling the handler's future inline; commit logic is shared with the N≥2 path via an
   extracted helper so both apply identical rules. The N≥2 parallel contract is untouched
-  (never reachable through this branch). Drove the −19% to −27% wins on every resource row.
-- **SSR payload escape fused into serialization (kept).** `ssr_payload_json` now serializes
-  through a `serde_json` formatter that escapes `&`/`<`/`>`/U+2028/U+2029 inline as each
-  string fragment is written, instead of serializing to a plain string and then copying the
-  whole thing again through a second escaping pass. Verified against the reference
-  char-by-char algorithm on adversarial UTF-8 inputs (multi-byte scripts, emoji, consecutive
-  escape targets) before landing. Drove most of the remaining win on view/HTML rows.
-- **Taking the projection's `Value`s instead of cloning them (considered, not implemented).**
-  `project_view_payload` takes `report: &RouteExecutionReport` by shared reference and both
-  callers read `report` again after the call, so moving `HandlerCommit`s out is not
-  available without changing frozen public signatures; storing `Arc<Value>` internally in
-  `HandlerOutput` cannot avoid the clone either; when accessed only through `&Report`, an
-  `Arc` can never be uniquely owned at the point it would need to be unwrapped, so it always
-  falls back to a deep clone — the only way to realize the win is to change the public wire
-  type `ViewPayload::views_data`'s field type, out of scope here. The bench's payloads (17-50
-  bytes of JSON) are provably too small for the clone to register above measurement noise
-  either way. Ticket-worthy if a real app profile ever shows this mattering.
+  (never reachable through this branch). Drove the −19% to −27% wins on every resource
+  row.
+- **SSR payload escape fused into serialization (kept).** `ssr_payload_json` now
+  serializes through a `serde_json` formatter that escapes `&`/`<`/`>`/U+2028/U+2029
+  inline as each string fragment is written, instead of serializing to a plain string and
+  then copying the whole thing again through a second escaping pass. Verified against the
+  reference char-by-char algorithm on adversarial UTF-8 inputs (multi-byte scripts, emoji,
+  consecutive escape targets) before landing. Drove most of the remaining win on view/HTML
+  rows.
+- **Taking the projection's `Value`s instead of cloning them (considered, not
+  implemented).** `project_view_payload` takes `report: &RouteExecutionReport` by shared
+  reference and both callers read `report` again after the call, so moving
+  `HandlerCommit`s out is not available without changing frozen public signatures; storing
+  `Arc<Value>` internally in `HandlerOutput` cannot avoid the clone either; when accessed
+  only through `&Report`, an `Arc` can never be uniquely owned at the point it would need
+  to be unwrapped, so it always falls back to a deep clone — the only way to realize the
+  win is to change the public wire type `ViewPayload::views_data`'s field type, out of
+  scope here. The bench's payloads (17-50 bytes of JSON) are provably too small for the
+  clone to register above measurement noise either way. Ticket-worthy if a real app
+  profile ever shows this mattering.
 - **Rendering head elements without per-call attribute clones (considered, not
   implemented).** `DocumentElementContract`'s builder API is owned-by-design and used
   pervasively across `vorma-contract`; the only lower-level rendering entry point
@@ -317,13 +320,13 @@ there, the latter unrealized per the note above.
 - Router/request-path review: **Part 1 (baseline) and Part 2 (optimization) executor work
   complete, pending Fable review** (P004; ticket exists at
   `docs/maintainer/tickets/router-request-path-review/`). Part 2 kept 4 of ANALYSIS.md's 6
-  ranked steps (the fragment precomputation, the clone-tree collapse, the single-invocation
-  fast path, the fused SSR escape); 2 were considered and not implemented with reasoning
-  recorded (the projection `Value` clone and per-element attribute clones — both provably
-  unmeasurable at this bench's payload sizes without touching a frozen public signature).
-  Every handler-reaching row improved −6% to −27%; response bytes verified byte-identical
-  before/after by direct capture-and-diff.
+  ranked steps (the fragment precomputation, the clone-tree collapse, the
+  single-invocation fast path, the fused SSR escape); 2 were considered and not
+  implemented with reasoning recorded (the projection `Value` clone and per-element
+  attribute clones — both provably unmeasurable at this bench's payload sizes without
+  touching a frozen public signature). Every handler-reaching row improved −6% to −27%;
+  response bytes verified byte-identical before/after by direct capture-and-diff.
 - Board: **P003 coverage audit complete** (12 items newly covered; inventory artifact in
-  the `board-api-coverage` ticket dir). Pending: the F-17 policy ruling (does the "100%
-  in board" rule get the ratified "realistic app flow" reading? — options and
-  recommendation in P003's REVIEW.md); census features remain Phase C work.
+  the `board-api-coverage` ticket dir). Pending: the F-17 policy ruling (does the "100% in
+  board" rule get the ratified "realistic app flow" reading? — options and recommendation
+  in P003's REVIEW.md); census features remain Phase C work.

@@ -6,11 +6,11 @@ answer.
 
 ## Facts
 
-Every committed view's output crosses the handler boundary as an owned
-`serde_json::Value` (`typed_handler.rs:591`), and `project_view_payload`
-(`payload_projection.rs:61`) deep-clones each view's `Value` tree into the SSR payload
-because the `RouteExecutionReport` is only available by shared reference (both finalizer
-callers read `report.effects()` and the suppression flag after projection).
+Every committed view's output crosses the handler boundary as an owned `serde_json::Value`
+(`typed_handler.rs:591`), and `project_view_payload` (`payload_projection.rs:61`)
+deep-clones each view's `Value` tree into the SSR payload because the
+`RouteExecutionReport` is only available by shared reference (both finalizer callers read
+`report.effects()` and the suppression flag after projection).
 
 P004 Part 2 proved this cannot be fixed mechanically within frozen surfaces: passing
 commits by value requires restructuring the frozen `pub fn` finalizers, and an
@@ -19,18 +19,18 @@ commits by value requires restructuring the frozen `pub fn` finalizers, and an
 always deep-clones anyway) unless `ViewPayload::views_data`'s public field type also
 changes (`Vec<Value>` → `Vec<Arc<Value>>`, wire-contract-adjacent).
 
-Also proven: at the bench fixture's payload sizes (17–50 bytes of JSON per view) the
-clone is below the machine's noise floor — the cost is real only for large view payloads,
-which the current fixture cannot measure.
+Also proven: at the bench fixture's payload sizes (17–50 bytes of JSON per view) the clone
+is below the machine's noise floor — the cost is real only for large view payloads, which
+the current fixture cannot measure.
 
 ## Design question for the maintainer
 
 Whether (and how) to make view-output ownership move-through rather than clone-through:
 options include `Arc<Value>` through `HandlerOutput` AND `ViewPayload` (public field-type
 change), restructuring the finalizer flow so projection consumes the commits by value, or
-ruling the clone acceptable at realistic payload sizes. Related, larger question the
-P004 analysis parked as escalation-class: the typed→`Value`→JSON double serialization at
-the handler boundary.
+ruling the clone acceptable at realistic payload sizes. Related, larger question the P004
+analysis parked as escalation-class: the typed→`Value`→JSON double serialization at the
+handler boundary.
 
 ## Prerequisite for any measured work
 

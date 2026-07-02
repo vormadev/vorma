@@ -34,6 +34,88 @@ fn root_document_helpers_are_usable_externally() {
 	assert_eq!(identity.html_attributes[0].value, "en");
 }
 
+// `known_safe_attribute`/`boolean_attribute` have no honest board call site
+// (census F-21: no non-contrived real-app use for a boolean or
+// trusted-unescaped attribute on the root `<html>`/`<body>` element
+// presented itself) and are ruled discharged here instead, matching how
+// `HeadBuilder`'s equally low-level `known_safe`/`bool_attr` defs are
+// handled in the test above. This exercises both the real public call site
+// (proving the identity it produces carries the right flags) and the
+// rendered HTML form those flags are documented to produce (proving what
+// "known safe" and "boolean" actually mean, not just that a flag got set).
+#[test]
+fn root_document_helpers_known_safe_and_boolean_attributes_render_as_documented() {
+	let mut document = vorma::Document::new();
+	document
+		.html()
+		.known_safe_attribute("data-brand", "<b>Vorma</b>")
+		.boolean_attribute("data-preview");
+
+	let identity: vorma::build_interface::contracts::DocumentBuildIdentity<'_> =
+		document.__build_identity().unwrap();
+	let known_safe = identity
+		.html_attributes
+		.iter()
+		.find(|attribute| attribute.name == "data-brand")
+		.expect("known_safe_attribute must appear on the built identity");
+	assert_eq!(known_safe.value, "<b>Vorma</b>");
+	assert!(known_safe.known_safe);
+	assert!(!known_safe.boolean);
+	let boolean = identity
+		.html_attributes
+		.iter()
+		.find(|attribute| attribute.name == "data-preview")
+		.expect("boolean_attribute must appear on the built identity");
+	assert!(boolean.boolean);
+	assert!(!boolean.known_safe);
+
+	// The identity's flags are exactly what the renderer contract
+	// documents: a known-safe value is emitted unescaped (raw `<b>...</b>`,
+	// not `&lt;b&gt;`), and a boolean attribute is emitted bare, with no
+	// `="..."` at all, never its value.
+	let contract = vorma_contract::contracts::DocumentContract::new(
+		vec![
+			vorma_contract::contracts::DocumentAttributeContract::new(
+				known_safe.name,
+				known_safe.value,
+				known_safe.known_safe,
+				known_safe.boolean,
+			),
+			vorma_contract::contracts::DocumentAttributeContract::new(
+				boolean.name,
+				boolean.value,
+				boolean.known_safe,
+				boolean.boolean,
+			),
+		],
+		Vec::new(),
+		Vec::new(),
+		Vec::new(),
+		Vec::new(),
+	);
+	let html = vorma_contract::document_renderer::render_document(
+		&contract,
+		vorma_contract::document_renderer::DocumentRenderInput::new("", ""),
+	)
+	.unwrap();
+	assert!(
+		html.contains("data-brand=\"<b>Vorma</b>\""),
+		"known-safe value must render unescaped: {html}"
+	);
+	assert!(
+		!html.contains("&lt;b&gt;"),
+		"known-safe value must not also be escaped: {html}"
+	);
+	assert!(
+		html.contains(" data-preview>") || html.contains(" data-preview "),
+		"boolean attribute must render bare, with no value: {html}"
+	);
+	assert!(
+		!html.contains("data-preview="),
+		"boolean attribute must never render its (empty) value: {html}"
+	);
+}
+
 #[tokio::test]
 async fn document_builder_doc_hidden_build_helper_is_usable_externally() {
 	let builder = vorma::DocumentBuilder::new(|ctx| async move {

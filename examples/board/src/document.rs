@@ -16,7 +16,31 @@ pub(crate) fn document() -> app::DocumentBuilder {
 			.body()
 			.class("board-shell")
 			.data("app", "board")
-			.data("request-path", request_path);
+			.data("request-path", request_path)
+			/*
+			`boolean_attribute` renders bare, name-only, with no `="..."` at
+			all: the HTML sense of "boolean" is that presence alone is the
+			signal, unlike `.data(...)` right above, which always carries a
+			value. This document builder only ever runs while assembling a
+			real server response, so this flag is genuinely true exactly
+			when it appears: client CSS or JS can target
+			`[data-server-rendered]` to tell a hard load apart from a route
+			committed by client-side navigation, which never rebuilds the
+			document shell.
+			*/
+			.boolean_attribute("data-server-rendered")
+			/*
+			`known_safe_attribute` skips the escaping `.attribute()` applies
+			(quotes, `&`, angle brackets), so the value lands on the wire
+			byte-for-byte. That is only safe for a value the app fully owns
+			at compile time; reach for `.attribute()` by default, and never
+			pass anything derived from user input here, since an unescaped
+			`"` would let the value break out of the attribute and inject
+			markup. This credit line is a hardcoded literal, chosen because
+			it contains an ampersand: escaped, it would render as `&amp;`
+			instead of the raw `&` below.
+			*/
+			.known_safe_attribute("data-built-with", format!("{APP_NAME} & Rust"));
 		let head = document.head();
 		head.meta([
 			head.name("viewport"),

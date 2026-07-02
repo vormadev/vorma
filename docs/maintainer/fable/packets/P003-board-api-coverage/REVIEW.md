@@ -28,11 +28,11 @@ terminal state per the packet's DoD. One policy ruling is surfaced to the mainta
   views; the packet premise was genuinely stale. Inventory citations spot-checked
   (`session.rs:81/95/112` are precisely the three middleware constructor teachings).
 - **Gates re-run by Fable on the final tree:** fmt clean; clippy `-D warnings` clean;
-  `cargo test --workspace --all-targets` green TWICE (551 tests each — the +2 are the
-  new board tests; the executor's one-time flake did not recur under either run); loom
-  7/7; full `make ts-gate` green (851/851 vitest, all projects) after Fable's
-  normalization pass resolved the docs prose-wrap drift; `tsgo -p examples/board` clean;
-  full `make e2e-smoke` aggregate exit 0.
+  `cargo test --workspace --all-targets` green TWICE (551 tests each — the +2 are the new
+  board tests; the executor's one-time flake did not recur under either run); loom 7/7;
+  full `make ts-gate` green (851/851 vitest, all projects) after Fable's normalization
+  pass resolved the docs prose-wrap drift; `tsgo -p examples/board` clean; full
+  `make e2e-smoke` aggregate exit 0.
 - **Census:** F-16 (single_flight closed), F-17 (tasks-surface escalation), F-18 (oxfmt
   gate friction) present and consistent with the report.
 
@@ -47,8 +47,8 @@ Exhaustive plain list, per AGENTS.md review rules:
    re-applied the records the same day and corrected an initially wrong harness-revert
    theory of the loss. The correct move was to escalate the anomaly, not restore files it
    did not author. Fable's dispatch template now states: an unexpectedly dirty file you
-   did not author is an escalation, never cleanup. (Candidate one-line rule for
-   AGENTS.md; maintainer's call.)
+   did not author is an escalation, never cleanup. (Candidate one-line rule for AGENTS.md;
+   maintainer's call.)
 2. The executor's one-time `vorma-build` lib test failure was observed through a
    summary-only grep that filtered out the failing test's name, so the flake ticket
    (`vorma-build-lib-test-flake-under-load`) lacks the exact test. The capture-discipline
@@ -63,11 +63,11 @@ The standing policy says "Board must cover 100% of public Vorma APIs. Period." T
 found ~30 items that cannot fit a real board app flow: the standalone `vorma::tasks`
 runtime-lifecycle surface (`Tasks::{new,exec_ctx}`, `CancelToken`,
 `ExecCtx::{child,cancel_token,is_cancelled}`, `Clock`/`SystemClock`/`ClockInstant`,
-`TaskOverrides`, the `TaskObserver` family) plus low-level head/document type carriers
-and informational consts. An HTTP app never constructs its own `Tasks`/`ExecCtx` — the
-framework owns the runtime — and the maintainer previously moved `TaskOverrides`
-coverage OUT of board deliberately. These items are covered today by the sovereign-crate
-suites and `crates/vorma/tests/public_api.rs`.
+`TaskOverrides`, the `TaskObserver` family) plus low-level head/document type carriers and
+informational consts. An HTTP app never constructs its own `Tasks`/`ExecCtx` — the
+framework owns the runtime — and the maintainer previously moved `TaskOverrides` coverage
+OUT of board deliberately. These items are covered today by the sovereign-crate suites and
+`crates/vorma/tests/public_api.rs`.
 
 Options: (a) ratify the "realistic app flow" reading — board covers what an application
 author uses in a real app; the runtime-lifecycle surface and type carriers are
@@ -84,17 +84,18 @@ story, independent of the rule's wording.
 ### Maintainer ruling (final, 2026-07-01)
 
 The maintainer ruled a sharper test than either recommendation: **framework-author
-primitive vs app-useful primitive** — "advanced" is never grounds for exemption, and
-tasks are a sovereign crate Vorma builds on, so the runtime-lifecycle surface is
-app-useful (applications obviously run background work). Consequences: the exempt set
-narrows to `TaskOverrides` (prior ruling: framework-suite home), the `Clock` family
-(revisitable), type carriers, and informational consts — discharged by sovereign suites
-+ `public_api.rs`. Board OWES three new teaching rows, queued as Phase C work: (1) a
-background worker constructing its own `Tasks`/`ExecCtx`/`CancelToken` wired to
-shutdown; (2) cooperative cancellation inside a task body (`ExecCtx::is_cancelled`,
-possibly `child`); (3) the `TaskObserver` slow-task telemetry row (+ `Task::id`). The
-ruling is recorded durably in `docs/maintainer/board-example/README.md`; the inventory
-artifact carries the re-triage.
+primitive vs app-useful primitive** — "advanced" is never grounds for exemption, and tasks
+are a sovereign crate Vorma builds on, so the runtime-lifecycle surface is app-useful
+(applications obviously run background work). Consequences: the exempt set narrows to
+`TaskOverrides` (prior ruling: framework-suite home), the `Clock` family (revisitable),
+type carriers, and informational consts — discharged by sovereign suites
+
+- `public_api.rs`. Board OWES three new teaching rows, queued as Phase C work: (1) a
+  background worker constructing its own `Tasks`/`ExecCtx`/`CancelToken` wired to
+  shutdown; (2) cooperative cancellation inside a task body (`ExecCtx::is_cancelled`,
+  possibly `child`); (3) the `TaskObserver` slow-task telemetry row (+ `Task::id`). The
+  ruling is recorded durably in `docs/maintainer/board-example/README.md`; the inventory
+  artifact carries the re-triage.
 
 ## Bookkeeping
 

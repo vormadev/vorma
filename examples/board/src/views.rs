@@ -7,7 +7,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::repo::{
-	self, Comment, DbInput, DocsPage, ModLogEntry, SiteStats, Story, User, UserProfile,
+	self, AttachmentSummary, Comment, DbInput, DocsPage, ModLogEntry, SiteStats, Story, User,
+	UserProfile,
 };
 use crate::store::AppState;
 use crate::{APP_NAME, MARK_ASSET, app};
@@ -37,6 +38,8 @@ pub struct FrontPage {
 pub struct StoryPage {
 	story: Option<Story>,
 	comments: Vec<Comment>,
+	attachments: Vec<AttachmentSummary>,
+	tags: Vec<String>,
 }
 
 /*
@@ -62,10 +65,16 @@ pub const LAYOUT: app::View = app::view! {
 				.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
 		/*
 		The shell footer shows live site totals through the `single_flight`
-		task. When a data read fails, `with_source` keeps the original error
-		as the exit's source chain instead of flattening it to a string, so
-		server logs still show what actually went wrong under the client-safe
-		message.
+		task. Most task runs below just use `?`: `From<vorma::tasks::Error<
+		vorma::Error>>` gives the exit its standard server-error form with
+		the framework's safe default client message, and the whole task
+		error becomes the exit's source chain automatically — nothing
+		flattened. Reach for the explicit form shown here only when the
+		default server-side record is not the teaching you want: this site
+		keeps a bespoke message ("failed to load site stats" instead of the
+		task error's own generic text) while still attaching `error` as the
+		source, so server logs stay just as informative under a message a
+		human reading the logs will find clearer at a glance.
 		*/
 		let stats = repo::LIVE_SITE_STATS
 			.run(ctx.exec_ctx(), db_input(ctx.state(), ()))
@@ -95,8 +104,7 @@ pub const FRONT: app::View = app::view! {
 		let page = ctx.input().page.unwrap_or(1).max(1);
 		let stories = repo::STORIES_PAGE
 			.run(ctx.exec_ctx(), db_input(ctx.state(), page))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
+			.await?;
 		let stories = (*stories).clone();
 		let has_more = stories.len() as i64 == repo::FRONT_PAGE_SIZE;
 		Ok(FrontPage {
@@ -123,18 +131,27 @@ pub const STORY: app::View = app::view! {
 			return Ok(StoryPage {
 				story: None,
 				comments: Vec::new(),
+				attachments: Vec::new(),
+				tags: Vec::new(),
 			});
 		};
 
+		/*
+		Four independent reads, one batch: `ParallelBatch` is not limited to the
+		two-task shape used elsewhere in Board. Attachment listing and tags are as
+		unrelated to each other and to story/comments as story is to comments, so
+		they fan out the same way instead of adding sequential `.await`s.
+		*/
 		let mut batch = vorma::tasks::ParallelBatch::new();
 		let story = batch.add(repo::STORY_BY_ID, db_input(ctx.state(), story_id));
 		let comments = batch.add(repo::COMMENTS_FOR_STORY, db_input(ctx.state(), story_id));
-		let outputs = batch
-			.run(ctx.exec_ctx())
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
+		let attachments = batch.add(repo::ATTACHMENTS_FOR_STORY, db_input(ctx.state(), story_id));
+		let tags = batch.add(repo::TAGS_FOR_STORY, db_input(ctx.state(), story_id));
+		let outputs = batch.run(ctx.exec_ctx()).await?;
 		let story = (*outputs.take(story)).clone();
 		let comments = (*outputs.take(comments)).clone();
+		let attachments = (*outputs.take(attachments)).clone();
+		let tags = (*outputs.take(tags)).clone();
 
 		match &story {
 			Some(story) if !story.killed => {
@@ -154,10 +171,17 @@ pub const STORY: app::View = app::view! {
 			return Ok(StoryPage {
 				story: None,
 				comments: Vec::new(),
+				attachments: Vec::new(),
+				tags: Vec::new(),
 			});
 		}
 
-		Ok(StoryPage { story, comments })
+		Ok(StoryPage {
+			story,
+			comments,
+			attachments,
+			tags,
+		})
 	};
 };
 
@@ -229,10 +253,7 @@ pub const USER: app::View = app::view! {
 		let profile = batch.add(repo::USER_PROFILE, db_input(ctx.state(), username.clone()));
 		let stories =
 			batch.add(repo::STORIES_BY_AUTHOR, db_input(ctx.state(), username.clone()));
-		let outputs = batch
-			.run(ctx.exec_ctx())
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
+		let outputs = batch.run(ctx.exec_ctx()).await?;
 		let profile = (*outputs.take(profile)).clone();
 		let stories = (*outputs.take(stories)).clone();
 
@@ -263,8 +284,7 @@ pub const USER_COMMENTS: app::View = app::view! {
 		let username = ctx.param("username").to_ascii_lowercase();
 		let comments = (*repo::COMMENTS_BY_AUTHOR
 			.run(ctx.exec_ctx(), db_input(ctx.state(), username))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
+			.await?)
 		.clone();
 		Ok(UserCommentsPage { comments })
 	};
@@ -288,8 +308,7 @@ pub const DOCS_INDEX_VIEW: app::View = app::view! {
 		ctx.head().title(format!("Docs | {APP_NAME}"));
 		let index = (*repo::DOCS_INDEX
 			.run(ctx.exec_ctx(), db_input(ctx.state(), ()))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
+			.await?)
 		.clone();
 		Ok(DocsIndexPage { index })
 	};
@@ -309,8 +328,7 @@ pub const DOCS_PAGE_VIEW: app::View = app::view! {
 		let slug = ctx.splat_values().join("/");
 		let page = (*repo::DOCS_PAGE
 			.run(ctx.exec_ctx(), db_input(ctx.state(), slug))
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?)
+			.await?)
 		.clone();
 		if let Some(page) = &page {
 			ctx.head().title(format!("{} | {APP_NAME}", page.title));
@@ -423,10 +441,7 @@ pub const MOD: app::View = app::view! {
 		let mut batch = vorma::tasks::ParallelBatch::new();
 		let killed = batch.add(repo::KILLED_STORIES, db_input(ctx.state(), ()));
 		let log = batch.add(repo::MOD_LOG, db_input(ctx.state(), ()));
-		let outputs = batch
-			.run(ctx.exec_ctx())
-			.await
-			.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
+		let outputs = batch.run(ctx.exec_ctx()).await?;
 		let killed = (*outputs.take(killed)).clone();
 		let log = (*outputs.take(log)).clone();
 		Ok(ModPage { killed, log })

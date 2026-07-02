@@ -17,14 +17,23 @@ What owes Board coverage is measured by one test (maintainer ruling, 2026-07-01)
 this a framework-author primitive or an app-useful primitive** — never whether it is
 "advanced". `vorma-tasks` is a sovereign crate that Vorma builds on (not the other way
 around), so its runtime-lifecycle surface — constructing `Tasks`, opening execution
-contexts, cancel tokens, cooperative cancellation, observers — is app-useful:
-applications obviously run their own background work, and Board must teach that through
-real app features. The only exemptions are genuinely framework-author surfaces,
-currently: `TaskOverrides` (its coverage home is the framework test suite, prior
-maintainer ruling), the `Clock` family (determinism-injection tooling; revisit if an
-app-shaped need appears), low-level head/document type carriers, and informational
-consts. Exempt items are discharged by the sovereign-crate suites and
-`crates/vorma/tests/public_api.rs`.
+contexts, cancel tokens, cooperative cancellation, observers — is app-useful: applications
+obviously run their own background work, and Board must teach that through real app
+features. The only exemptions are genuinely framework-author surfaces, currently:
+`TaskOverrides` (its coverage home is the framework test suite, prior maintainer ruling)
+and the `Clock` family (determinism-injection tooling). Exempt items are discharged by the
+sovereign-crate suites and `crates/vorma/tests/public_api.rs`.
+
+**"Contrived" is never grounds for exemption** (maintainer ruling, restated with force
+2026-07-02 after repeated misapplication): Board is a teaching tool and the ENTIRE app is
+contrived by design — an invented community site whose reason to exist is exercising
+Vorma. A feature invented purely to demonstrate an API is the sanctioned mechanism, not a
+defect; the quality bar is only that the resulting code teaches honestly (says plainly
+what it demonstrates and when an application reaches for it). If an app-facing API seems
+to have no sensible use even in an invented feature, that is evidence of an API-design
+problem — escalate it (fix the framework, per the rule above), never record a coverage
+waiver. Agents triaging coverage must not use "no honest home," "no real product need," or
+any equivalent as a reason to leave app-facing surface uncovered.
 
 When a public Vorma API is added, removed, renamed, or semantically changed, update Board
 in the same work. Active API-specific gaps and work-in-progress coverage lists belong in

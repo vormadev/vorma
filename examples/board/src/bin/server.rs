@@ -6,6 +6,8 @@ use axum::routing::get;
 use tower::ServiceBuilder;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
+use vorma::tasks::CancelToken;
+use vorma_board_example::maintenance;
 
 const HEALTHZ_PATH: &str = "/healthz";
 const ROBOTS_TXT_PATH: &str = "/robots.txt";
@@ -30,10 +32,42 @@ async fn serve() -> vorma::Result<()> {
 	let addr = vorma::bind_addr()?;
 	let running_in_dev = vorma::is_dev();
 	let running_in_build = vorma::is_build();
-	let app = vorma::App::from_config(vorma_board_example::app_config()?)?;
+	let db = vorma_board_example::Db::open(&vorma_board_example::db_path())?;
+	/*
+	The slow-task observer instance is shared between the framework's own
+	task runtime (wired below through `tasks_options`) and the background
+	worker's independent runtime (spawned further down): one `TaskObserver`
+	sees every task run in the process, whether it was asked for by a
+	request handler or by a job that runs whether or not anyone is
+	browsing the site.
+	*/
+	let observer = maintenance::slow_task_observer();
+	let app_config = vorma_board_example::app_config_with(
+		std::sync::Arc::clone(&db),
+		vorma::tasks::TasksOptions {
+			observer: Some(std::sync::Arc::clone(&observer)),
+			..vorma::tasks::TasksOptions::default()
+		},
+	)?;
+	let app = vorma::App::from_config(app_config)?;
 	let listener = tokio::net::TcpListener::bind(addr)
 		.await
 		.map_err(|error| vorma::Error::new(format!("bind board example server: {error}")))?;
+
+	/*
+	The worker's shutdown token is this app's own cancellation wiring, built
+	on the same `vorma_tasks::CancelToken` a request handler would see
+	through its `ExecCtx` — but constructed and owned entirely by server
+	code, because nothing here is a request. Cancelling it races the
+	worker's current iteration to a stop at the same moment axum stops
+	accepting connections.
+	*/
+	let worker_shutdown = CancelToken::new();
+	let worker = tokio::spawn(maintenance::run_session_pruner(
+		std::sync::Arc::clone(&db),
+		worker_shutdown.clone(),
+		observer,
+	));
 	let router = Router::new()
 		.route(HEALTHZ_PATH, get(healthz))
 		.route(ROBOTS_TXT_PATH, get(robots_txt))
@@ -48,6 +82,20 @@ async fn serve() -> vorma::Result<()> {
 				.layer(vorma::middleware::request_body_limit(
 					vorma_board_example::REQUEST_BODY_LIMIT,
 				))
+				/*
+				A `ServiceBuilder` layer declared earlier is OUTER: it sees each
+				request first and each response last. `response_body_timeout` is
+				declared here, before (outer to) `etag`, on purpose. `etag`
+				fully buffers the response body into one in-memory chunk before
+				re-emitting it, which loses the original body's exact-length
+				`size_hint` — and `etag` only tags a response when it can read an
+				exact size up front. Declaring the timeout layer AFTER etag
+				(inner to it) would make etag observe that lossy re-buffered
+				body instead of the handler's real one, and every response
+				would silently lose its ETag. This ordering keeps `etag` sat on
+				top of a body whose exact size is still visible.
+				*/
+				.layer(vorma::middleware::response_body_timeout(60))
 				/*
 				ETags are useful for ordinary successful GET/HEAD responses. Board
 				emits strong tags, caps buffering, and skips operational probes or
@@ -64,7 +112,6 @@ async fn serve() -> vorma::Result<()> {
 							health_check || explicit_skip
 						}),
 				)
-				.layer(vorma::middleware::response_body_timeout(60))
 				.layer(vorma::middleware::compression())
 				.layer(vorma::middleware::request_body_timeout(60))
 				.layer(vorma::middleware::handler_timeout(60)),
@@ -75,10 +122,25 @@ async fn serve() -> vorma::Result<()> {
 		is_build = running_in_build,
 		"Vorma board example listening on http://{addr}"
 	);
-	axum::serve(listener, router)
-		.with_graceful_shutdown(shutdown_signal())
+	let serve_result = axum::serve(listener, router)
+		.with_graceful_shutdown(async move {
+			shutdown_signal().await;
+			// Cancel the worker at the same moment axum stops accepting new
+			// connections and starts draining in-flight ones, rather than
+			// waiting for the drain to finish first.
+			worker_shutdown.cancel();
+		})
 		.await
-		.map_err(|error| vorma::Error::new(format!("serve board example server: {error}")))
+		.map_err(|error| vorma::Error::new(format!("serve board example server: {error}")));
+
+	// The signal above already cancelled the worker; joining here confirms
+	// its loop actually exited instead of leaving it detached at process
+	// exit.
+	if let Err(error) = worker.await {
+		tracing::error!("session pruner task join failed: {error}");
+	}
+
+	serve_result
 }
 
 /////////////////////////////////////////////////////////////////////

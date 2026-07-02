@@ -10,6 +10,23 @@ use crate::repo::{self, SearchKey, Story, User};
 use crate::views::db_input;
 use crate::{app, session};
 
+/// Fixed tag vocabulary offered on submit, exported to TypeScript so the checkbox group
+/// and the server validation read from one source instead of two hand-kept lists.
+pub const STORY_TAGS: &[&str] = &["tech", "ask", "show", "meta"];
+/// Highest number of files one submission may attach under the repeated `attachment`
+/// field. `<input type="file" multiple>` places no browser-side cap on its own, so the
+/// server enforces one and the client reads the same constant to fail fast before upload.
+pub const MAX_STORY_ATTACHMENTS: usize = 4;
+/// Combined byte ceiling across every attached file in one submission, well under
+/// [`crate::REQUEST_BODY_LIMIT`] to leave room for the text fields and multipart framing
+/// around them.
+pub const MAX_STORY_ATTACHMENT_BYTES: usize = 128 * 1024;
+/// Per-field byte ceiling used by the blanket sweep over every submitted text field,
+/// named or not (see the `fields()` validation in `SUBMIT_STORY`). Generous enough for a
+/// full story body, tight enough to catch a field stuffed far past anything a real form
+/// control on this page could produce.
+const MAX_FORM_FIELD_VALUE_BYTES: usize = 4_000;
+
 #[derive(Clone, Debug, Deserialize, vorma::TsGen)]
 pub struct LoginInput {
 	username: String,
@@ -123,6 +140,28 @@ pub const SUBMIT_STORY: app::Resource = app::resource! {
 		)
 		.await?;
 
+		/*
+		`fields()` is the aggregate view over every text field the client sent, named or
+		not — the natural shape for a sweep that does not care which field it is looking
+		at. Board's own fields are all covered by their own targeted checks below, but a
+		form handler should never assume a client sends exactly the fields it expects;
+		this closes that gap for any field name at all, not just the ones this handler
+		happens to read by name.
+		*/
+		if let Some(oversized) = ctx
+			.input()
+			.fields()
+			.iter()
+			.find(|field| field.value().len() > MAX_FORM_FIELD_VALUE_BYTES)
+		{
+			return Err(HttpExit::err(format!(
+				"submit rejected: field {:?} exceeds {MAX_FORM_FIELD_VALUE_BYTES} bytes",
+				oversized.name()
+			))
+			.with_status(vorma::HttpStatusCode::BAD_REQUEST)
+			.with_client_msg("one of the submitted fields is too long"));
+		}
+
 		let title = ctx.input().text("title").unwrap_or_default().trim().to_owned();
 		let url = normalized_optional(ctx.input().text("url"));
 		let body = normalized_optional(ctx.input().text("body"));
@@ -145,6 +184,59 @@ pub const SUBMIT_STORY: app::Resource = app::resource! {
 			}
 		}
 
+		/*
+		`fields_named(name)` yields the matching `FormField`s themselves rather than
+		just their values, which is the right accessor for a check about the group's
+		shape rather than its content: a real client can check at most one box per
+		tag Board renders, so more entries than the whole vocabulary is a sure sign
+		of a tampered request, independent of which values they carry.
+		*/
+		if ctx.input().fields_named("tag").count() > STORY_TAGS.len() {
+			return Err(HttpExit::err("submit rejected: too many tag fields submitted")
+				.with_status(vorma::HttpStatusCode::BAD_REQUEST)
+				.with_client_msg("that tag selection is not valid"));
+		}
+		/*
+		`texts(name)` is the repeated-value counterpart to `text(name)`: a checkbox
+		group posts one `tag` field per checked box under the same name, and `texts`
+		yields every value in request order instead of only the first — the same
+		`tag` group the shape check above just validated, now read for its content.
+		The vocabulary filter guards against a tampered request naming a tag outside
+		the checkboxes Board actually renders.
+		*/
+		let tags: Vec<String> = ctx
+			.input()
+			.texts("tag")
+			.filter(|tag| STORY_TAGS.contains(tag))
+			.map(str::to_owned)
+			.collect();
+
+		/*
+		`files()` is the aggregate view over every uploaded file, mirroring `fields()`
+		above. The count/size caps below are a property of the whole submission, not of
+		any one field name, so this is the accessor that reads naturally here: it would
+		still catch an oversized batch even if a future field added a second upload
+		control under a different name.
+		*/
+		let files = ctx.input().files();
+		if files.len() > MAX_STORY_ATTACHMENTS {
+			return Err(HttpExit::err(format!(
+				"submit rejected: {} attachments exceeds the {MAX_STORY_ATTACHMENTS} limit",
+				files.len()
+			))
+			.with_status(vorma::HttpStatusCode::BAD_REQUEST)
+			.with_client_msg(format!("attach at most {MAX_STORY_ATTACHMENTS} files")));
+		}
+		let total_attachment_bytes: usize = files.iter().map(|file| file.body().len()).sum();
+		if total_attachment_bytes > MAX_STORY_ATTACHMENT_BYTES {
+			return Err(HttpExit::err(format!(
+				"submit rejected: {total_attachment_bytes} attachment bytes exceeds \
+				{MAX_STORY_ATTACHMENT_BYTES}"
+			))
+			.with_status(vorma::HttpStatusCode::BAD_REQUEST)
+			.with_client_msg("attachments are too large altogether"));
+		}
+
 		let story_id = repo::create_story(
 			std::sync::Arc::clone(&ctx.state().db),
 			user.id,
@@ -153,9 +245,30 @@ pub const SUBMIT_STORY: app::Resource = app::resource! {
 			body,
 		)
 		.await?;
-		if let Some(file) = ctx.input().file("attachment")
-			&& !file.body().is_empty()
-		{
+		if !tags.is_empty() {
+			repo::save_story_tags(std::sync::Arc::clone(&ctx.state().db), story_id, tags).await?;
+		}
+		/*
+		`files_named(name)` is the repeated-value counterpart to `file(name)`: a
+		`<input type="file" multiple name="attachment">` posts one `attachment` field per
+		selected file under that one name, and `files_named` yields every match in
+		request order instead of only the first — the multipart model this whole
+		accessor family is built on.
+		*/
+		for file in ctx.input().files_named("attachment") {
+			if file.body().is_empty() {
+				continue;
+			}
+			/*
+			`into_body()` consumes a `FormFile` and hands back its bytes by value
+			instead of borrowing them through `.body()`. `ctx.input()` only ever
+			lends a `&FormData`, so reaching `into_body()` means cloning first — worth
+			it here because the clone is cheap (the file body is reference-counted
+			`Bytes`; only the small name/content-type strings are actually
+			duplicated) and it means the storage write below takes ownership
+			directly instead of borrowing across the `.await`.
+			*/
+			let owned_file = file.clone().into_body();
 			repo::save_attachment(
 				std::sync::Arc::clone(&ctx.state().db),
 				story_id,
@@ -163,7 +276,7 @@ pub const SUBMIT_STORY: app::Resource = app::resource! {
 				file.content_type()
 					.unwrap_or("application/octet-stream")
 					.to_owned(),
-				file.body().to_vec(),
+				owned_file.to_vec(),
 			)
 			.await?;
 		}
@@ -210,8 +323,7 @@ pub const VOTE_STORY: app::Resource = app::resource! {
 
 		let story = repo::STORY_BY_ID
 			.run(ctx.exec_ctx(), db_input(ctx.state(), story_id))
-			.await
-			.map_err(|error| HttpExit::err(error.to_string()))?;
+			.await?;
 		let points = (*story).as_ref().map_or(1, |story| story.points);
 		Ok(VoteOutput { points })
 	};
@@ -266,8 +378,7 @@ pub const CREATE_COMMENT: app::Resource = app::resource! {
 		}
 		let story = repo::STORY_BY_ID
 			.run(ctx.exec_ctx(), db_input(ctx.state(), story_id))
-			.await
-			.map_err(|error| HttpExit::err(error.to_string()))?;
+			.await?;
 		if (*story).as_ref().is_none_or(|story| story.killed) {
 			return Err(HttpExit::err(format!(
 				"comment rejected: story {story_id} missing or killed"
@@ -310,8 +421,7 @@ pub const SEARCH: app::Resource = app::resource! {
 				ctx.exec_ctx(),
 				db_input(ctx.state(), SearchKey { q, page }),
 			)
-			.await
-			.map_err(|error| HttpExit::err(error.to_string()))?)
+			.await?)
 		.clone();
 		let has_more = stories.len() as i64 == repo::FRONT_PAGE_SIZE;
 		Ok(SearchOutput { stories, has_more })
@@ -387,6 +497,36 @@ pub const RESTORE_STORY: app::Resource = app::resource! {
 	};
 };
 
+/*
+A bulk audit export over every story and its comments: the realistic case where a task
+body is worth writing to cooperate with cancellation instead of running to completion no
+matter what. The client's `handler_timeout` (server main) or a mod simply navigating away
+mid-export are both ordinary ways for this request's execution context to end before
+`MOD_EXPORT_SCAN` finishes; `repo::MOD_EXPORT_SCAN` checks `ctx.is_cancelled()` between
+chunks and returns whatever it already gathered instead of continuing to scan a table
+nobody is waiting on anymore. `digest.complete` tells the caller which case happened.
+*/
+pub const MOD_EXPORT: app::Resource = app::resource! {
+	kind: vorma::ResourceKind::Mutation;
+	method: vorma::HttpMethod::POST;
+	pattern: "/api/mod/export";
+	input: ();
+	output: repo::ModExportDigest;
+
+	handler: |ctx| {
+		require_user(
+			ctx.state(),
+			ctx.request().headers(),
+			ctx.exec_ctx(),
+		)
+		.await?;
+		let digest = repo::MOD_EXPORT_SCAN
+			.run(ctx.exec_ctx(), db_input(ctx.state(), ()))
+			.await?;
+		Ok((*digest).clone())
+	};
+};
+
 /// Attachment download.
 ///
 /// `ResourceBody` is the raw-response output type. Use it when the endpoint should return
@@ -395,23 +535,37 @@ pub const RESTORE_STORY: app::Resource = app::resource! {
 pub const STORY_ATTACHMENT: app::Resource = app::resource! {
 	kind: vorma::ResourceKind::Query;
 	method: vorma::HttpMethod::GET;
-	pattern: "/api/stories/:story_id/attachment";
+	pattern: "/api/stories/:story_id/attachments/:attachment_id";
 	input: ();
 	output: vorma::ResourceBody;
 
 	handler: |ctx| {
 		let story_id = parse_story_id(ctx.param("story_id"))?;
-		let attachment = (*repo::ATTACHMENT_FOR_STORY
-			.run(ctx.exec_ctx(), db_input(ctx.state(), story_id))
-			.await
-			.map_err(|error| HttpExit::err(error.to_string()))?)
+		let attachment_id = ctx.param("attachment_id").parse::<i64>().map_err(|_| {
+			HttpExit::err(format!(
+				"attachment rejected: bad attachment id {:?}",
+				ctx.param("attachment_id")
+			))
+			.with_status(vorma::HttpStatusCode::BAD_REQUEST)
+			.with_client_msg("attachment ids are numeric")
+		})?;
+		let attachment = (*repo::ATTACHMENT_BY_ID
+			.run(ctx.exec_ctx(), db_input(ctx.state(), attachment_id))
+			.await?)
 		.clone();
-		let Some(attachment) = attachment else {
+		/*
+		Attachment ids are one global sequence, not scoped per story, so a valid id for
+		a different story must still 404 here rather than serve cross-story content —
+		the route's `:story_id` segment is part of the resource's identity, not just a
+		display label.
+		*/
+		let Some(attachment) = attachment.filter(|attachment| attachment.story_id == story_id)
+		else {
 			return Err(HttpExit::err(format!(
-				"attachment missing for story {story_id}"
+				"attachment {attachment_id} missing for story {story_id}"
 			))
 			.with_status(vorma::HttpStatusCode::NOT_FOUND)
-			.with_client_msg("no attachment for that story"));
+			.with_client_msg("no such attachment for that story"));
 		};
 		ctx.response().set_header(
 			vorma::HttpHeaderName::from_static("content-disposition"),

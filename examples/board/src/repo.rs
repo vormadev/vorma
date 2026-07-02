@@ -18,7 +18,14 @@ use serde::Serialize;
 
 use crate::store::{Db, db_err};
 
-async fn blocking_task<T, F>(db: Arc<Db>, f: F) -> Result<T, vorma::tasks::Error<vorma::Error>>
+// `pub(crate)` for the same reason as `blocking` below: `maintenance`'s
+// background worker declares its own task and needs the identical
+// `vorma::Error` -> `vorma::tasks::Error<vorma::Error>` lift every task
+// body in this module already gets from returning through this helper.
+pub(crate) async fn blocking_task<T, F>(
+	db: Arc<Db>,
+	f: F,
+) -> Result<T, vorma::tasks::Error<vorma::Error>>
 where
 	T: Send + 'static,
 	F: FnOnce(&Connection) -> rusqlite::Result<T> + Send + 'static,
@@ -440,30 +447,170 @@ vorma::tasks::task! {
 }
 
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
+pub struct ModExportRow {
+	pub story_id: i64,
+	pub title: String,
+	pub comment_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize, vorma::TsGen)]
+pub struct ModExportDigest {
+	pub rows: Vec<ModExportRow>,
+	/// False when the scan stopped early because its execution context was
+	/// cancelled — a client that disconnects mid-export, or a server
+	/// shutdown, are the realistic causes. Callers should treat `rows` as a
+	/// valid but partial export in that case, not an error: every row it
+	/// does contain finished normally.
+	pub complete: bool,
+}
+
+/// Stories audited per chunk. Real exports over large tables chunk their
+/// scan so a single cancellation check answers for a bounded slice of
+/// work instead of the whole table, keeping the cancellation-to-stop
+/// latency small regardless of how many stories exist.
+const MOD_EXPORT_CHUNK_SIZE: usize = 4;
+
+/*
+A moderator-triggered export over every story and its comments: exactly
+the shape of work — unbounded table size, no natural per-row caller —
+where a task body needs to cooperate with cancellation instead of running
+to completion unconditionally. `ctx.is_cancelled()` is checked once per
+chunk rather than once per story: checking cooperatively does not mean
+checking as often as possible, only often enough that giving up takes
+bounded time. Each chunk resolves its stories' comment counts through a
+child execution context (`ctx.child()`): a fresh child per chunk keeps
+one chunk's task memoization and cancellation state scoped to that chunk
+alone, rather than every chunk sharing the parent's single slot table for
+`COMMENTS_FOR_STORY` (which would matter if the same story could appear
+twice in a scan; here it is mostly a matter of correct scoping discipline
+for a loop shape that could, so a real app copying this pattern gets it
+right whether or not this table happens to make it observable).
+*/
+vorma::tasks::task! {
+	pub static MOD_EXPORT_SCAN: vorma::tasks::Task<DbInput<()>, ModExportDigest, vorma::Error> =
+		memoized(|ctx, arg: DbInput<()>| async move {
+			let story_ids = blocking_task(Arc::clone(&arg.db), move |conn| {
+				let mut statement = conn.prepare("SELECT id, title FROM stories ORDER BY id")?;
+				let rows = statement.query_map([], |row| {
+					Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+				})?;
+				rows.collect::<rusqlite::Result<Vec<(i64, String)>>>()
+			})
+			.await?;
+
+			let mut rows = Vec::with_capacity(story_ids.len());
+			for chunk in story_ids.chunks(MOD_EXPORT_CHUNK_SIZE) {
+				if ctx.is_cancelled() {
+					return Ok(ModExportDigest {
+						rows,
+						complete: false,
+					});
+				}
+				let chunk_ctx = ctx.child();
+				for (story_id, title) in chunk {
+					let comments = COMMENTS_FOR_STORY
+						.run(
+							&chunk_ctx,
+							DbInput {
+								db: Arc::clone(&arg.db),
+								input: *story_id,
+							},
+						)
+						.await?;
+					rows.push(ModExportRow {
+						story_id: *story_id,
+						title: title.clone(),
+						comment_count: comments.len(),
+					});
+				}
+			}
+			Ok(ModExportDigest {
+				rows,
+				complete: true,
+			})
+		});
+}
+
+#[derive(Clone, Debug, Serialize, vorma::TsGen)]
 pub struct Attachment {
+	pub id: i64,
+	pub story_id: i64,
 	pub file_name: String,
 	pub content_type: String,
 	#[serde(skip)]
 	pub body: Vec<u8>,
 }
 
+/// Attachment listing metadata, without the file body.
+///
+/// A story page renders a list of its attachments before the reader picks one to
+/// download, so it only needs enough to build that list and a link per file — never the
+/// bytes. Keeping this a separate, lighter task than [`ATTACHMENT_BY_ID`] means listing N
+/// attachments on a story page costs O(N) small rows, not O(N) full file bodies the
+/// browser never asked to load yet.
+#[derive(Clone, Debug, Serialize, vorma::TsGen)]
+pub struct AttachmentSummary {
+	pub id: i64,
+	pub file_name: String,
+	pub content_type: String,
+}
+
 vorma::tasks::task! {
-	pub static ATTACHMENT_FOR_STORY: vorma::tasks::Task<DbInput<i64>, Option<Attachment>, vorma::Error> =
+	pub static ATTACHMENTS_FOR_STORY: vorma::tasks::Task<DbInput<i64>, Vec<AttachmentSummary>, vorma::Error> =
 		memoized(|_ctx, arg: DbInput<i64>| async move {
 			let story_id = arg.input;
 			blocking_task(arg.db, move |conn| {
+				let mut statement = conn.prepare(
+					"SELECT id, file_name, content_type FROM attachments \
+					WHERE story_id = ?1 ORDER BY id",
+				)?;
+				let rows = statement.query_map(params![story_id], |row| {
+					Ok(AttachmentSummary {
+						id: row.get(0)?,
+						file_name: row.get(1)?,
+						content_type: row.get(2)?,
+					})
+				})?;
+				rows.collect()
+			})
+			.await
+		});
+}
+
+vorma::tasks::task! {
+	pub static ATTACHMENT_BY_ID: vorma::tasks::Task<DbInput<i64>, Option<Attachment>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<i64>| async move {
+			let attachment_id = arg.input;
+			blocking_task(arg.db, move |conn| {
 				conn.query_row(
-					"SELECT file_name, content_type, body FROM attachments WHERE story_id = ?1",
-					params![story_id],
+					"SELECT id, story_id, file_name, content_type, body \
+					FROM attachments WHERE id = ?1",
+					params![attachment_id],
 					|row| {
 						Ok(Attachment {
-							file_name: row.get(0)?,
-							content_type: row.get(1)?,
-							body: row.get(2)?,
+							id: row.get(0)?,
+							story_id: row.get(1)?,
+							file_name: row.get(2)?,
+							content_type: row.get(3)?,
+							body: row.get(4)?,
 						})
 					},
 				)
 				.optional()
+			})
+			.await
+		});
+}
+
+vorma::tasks::task! {
+	pub static TAGS_FOR_STORY: vorma::tasks::Task<DbInput<i64>, Vec<String>, vorma::Error> =
+		memoized(|_ctx, arg: DbInput<i64>| async move {
+			let story_id = arg.input;
+			blocking_task(arg.db, move |conn| {
+				let mut statement =
+					conn.prepare("SELECT tag FROM story_tags WHERE story_id = ?1 ORDER BY tag")?;
+				let rows = statement.query_map(params![story_id], |row| row.get(0))?;
+				rows.collect()
 			})
 			.await
 		});
@@ -552,6 +699,19 @@ pub async fn create_comment(
 			params![story_id, parent_id, author_id, body],
 		)?;
 		Ok(conn.last_insert_rowid())
+	})
+	.await
+}
+
+pub async fn save_story_tags(db: Arc<Db>, story_id: i64, tags: Vec<String>) -> vorma::Result<()> {
+	blocking(db, move |conn| {
+		for tag in &tags {
+			conn.execute(
+				"INSERT OR IGNORE INTO story_tags (story_id, tag) VALUES (?1, ?2)",
+				params![story_id, tag],
+			)?;
+		}
+		Ok(())
 	})
 	.await
 }

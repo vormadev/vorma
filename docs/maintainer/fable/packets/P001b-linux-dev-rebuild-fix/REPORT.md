@@ -11,8 +11,9 @@ Mechanism, proven empirically (evidence below):
 1. Editing `src/dev_marker.rs` produces an inotify `Modify(Data)` event that classifies as
    `ServerRecompile`; `recv_settled` returns it and the dev loop spawns a rebuild
    (`spawn_dev_rebuild` -> `cargo build ... framework-serve`).
-2. That `cargo`/`rustc`, running from CWD `tests/framework`, **opens the
-   `src/**/\*.rs`sources it is compiling for reading**. inotify emits`IN*OPEN`/`IN_CLOSE_NOWRITE`for each, which`notify`surfaces as`Access(Open(*))`/`Access(Close(Read))`.
+2. That `cargo`/`rustc`, running from CWD `tests/framework`, opens the source files it is
+   compiling for reading. inotify emits `IN_OPEN` / `IN_CLOSE_NOWRITE` for each, which
+   `notify` surfaces as `Access(Open(_))` / `Access(Close(Read))`.
 3. `DevFileWatchPlan::classify_event` did not look at the event _kind_ -- it classified
    purely by path. `src/lib.rs` (and siblings) match `src/**/*.rs`, so each read event
    classified as `{GeneralWatch, ServerRecompile}` -- i.e. a change requiring an
@@ -147,10 +148,12 @@ already-built `packages/vorma/.dist` and `node_modules`:
 - `framework-bombadil -- test-dev-changes -variant react` -- **GREEN** (exit 0). The exact
   ticket failure. Harness log:
 
-          [react] initial server marker observed
-          [react] server Rust rebuild observed
-          [react] browser critical CSS and HMR checks observed
-          [react] client view module refresh observed
+    ```
+    [react] initial server marker observed
+    [react] server Rust rebuild observed
+    [react] browser critical CSS and HMR checks observed
+    [react] client view module refresh observed
+    ```
 
     The marker rebuild (marker-a -> marker-b) now settles and completes; no cargo restart
     churn.

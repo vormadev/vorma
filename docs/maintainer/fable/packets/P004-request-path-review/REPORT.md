@@ -24,22 +24,22 @@ adapter) driven through `TestApp::handle_request`, which calls exactly the same 
 `CommittedRuntimeService::handle_request` does in production
 (`CommittedRuntimeApp::handle_http_request_with_document_provider` — classify, execute,
 finalize), returning `http::Response<Bytes>`. The only exclusions are body
-collection/limits and HEAD suppression, which live in the transport-facing
-`Service::call` wrapper one layer up and are adapter concerns by the packet's own
-framing. One `TestApp` registers: a static view; a 4-level nested dynamic view chain
-(`/`, `/shelves/:shelf_id`, `.../boards/:board_id`, `.../cards/:card_id`, each carrying
-its own param); a JSON mutation resource; a `ResourceBody` binary resource (4KiB fixed
-payload, no task/DB dependency); a root catch-all view (`/*`); and two unscoped
-middlewares that run on every request except in the dedicated no-middleware control app.
-A second app variant omits the catch-all to isolate a genuine classifier-miss 404. All 9
-packet-specified rows are present (the depth-4 chain gives "3+ deep" margin); every row
-rotates two realistic paths per the matcher-bench convention.
+collection/limits and HEAD suppression, which live in the transport-facing `Service::call`
+wrapper one layer up and are adapter concerns by the packet's own framing. One `TestApp`
+registers: a static view; a 4-level nested dynamic view chain (`/`, `/shelves/:shelf_id`,
+`.../boards/:board_id`, `.../cards/:card_id`, each carrying its own param); a JSON
+mutation resource; a `ResourceBody` binary resource (4KiB fixed payload, no task/DB
+dependency); a root catch-all view (`/*`); and two unscoped middlewares that run on every
+request except in the dedicated no-middleware control app. A second app variant omits the
+catch-all to isolate a genuine classifier-miss 404. All 9 packet-specified rows are
+present (the depth-4 chain gives "3+ deep" margin); every row rotates two realistic paths
+per the matcher-bench convention.
 
 ## Decisions made
 
-1. Added a 10th row beyond the packet's 9 — `request_through_middleware_chain_0_control`
-   — a same-route zero-middleware control app, so the middleware row measures the
-   middleware tax rather than route cost.
+1. Added a 10th row beyond the packet's 9 — `request_through_middleware_chain_0_control` —
+   a same-route zero-middleware control app, so the middleware row measures the middleware
+   tax rather than route cost.
 2. Two fixture-design issues found and fixed within Part 1's own scope (not deferred):
    `method_not_allowed` needed PUT rather than GET to be a genuine mismatch, and the
    middleware row needed a true control.
@@ -47,10 +47,11 @@ rotates two realistic paths per the matcher-bench convention.
 
 ## Gate results
 
-All green: `make rust-bench` (includes `benches/engine.rs`); `cargo clippy --workspace
---all-targets -- -D warnings` (0 warnings); `cargo fmt --all --check` + fuzz manifest
-(clean); `cargo test --workspace --all-targets` + `--doc` — 551 tests + 1 doctest = 552
-passed, 0 failed, matching the STATE.md baseline, no regressions.
+All green: `make rust-bench` (includes `benches/engine.rs`);
+`cargo clippy --workspace --all-targets -- -D warnings` (0 warnings);
+`cargo fmt --all --check` + fuzz manifest (clean);
+`cargo test --workspace --all-targets` + `--doc` — 551 tests + 1 doctest = 552 passed, 0
+failed, matching the STATE.md baseline, no regressions.
 
 ## Benchmarks
 
@@ -80,38 +81,38 @@ No Go-era baseline exists for this surface; this recording IS the baseline.
 ### First-read of where time goes (executor)
 
 The two rows that skip handler/view execution entirely — `not_found_bare_no_catch_all`
-(2.2µs) and `method_not_allowed` (4.0µs) — are nearly two orders of magnitude cheaper
-than every row that reaches a handler (24–71µs band), which is the clearest signal that
+(2.2µs) and `method_not_allowed` (4.0µs) — are nearly two orders of magnitude cheaper than
+every row that reaches a handler (24–71µs band), which is the clearest signal that
 classification/matching is not where the cost lives; the weight sits in
-decode/execute/finalize. Within handler-reaching rows, the two resource rows are
-cheapest (~24–25µs) despite one carrying a 4KiB payload, while the view/HTML-rendering
-rows cost noticeably more (~40–49µs) for comparably small handler bodies, pointing at
-document/HTML finalization as a real, separate contributor. The isolated middleware pair
-costs ~5.4µs (~14%) over its same-route zero-middleware control — a plausible tax for
-two contract-required parallel spawns plus effects-merging, not obviously alarming
-standalone. The 4-deep nested chain is the single most expensive row (70.3µs) and scales
-worse than 4x a single view, consistent with per-node decode/execute/effects-merge cost
-stacking across depth rather than one fixed cost.
+decode/execute/finalize. Within handler-reaching rows, the two resource rows are cheapest
+(~24–25µs) despite one carrying a 4KiB payload, while the view/HTML-rendering rows cost
+noticeably more (~40–49µs) for comparably small handler bodies, pointing at document/HTML
+finalization as a real, separate contributor. The isolated middleware pair costs ~5.4µs
+(~14%) over its same-route zero-middleware control — a plausible tax for two
+contract-required parallel spawns plus effects-merging, not obviously alarming standalone.
+The 4-deep nested chain is the single most expensive row (70.3µs) and scales worse than 4x
+a single view, consistent with per-node decode/execute/effects-merge cost stacking across
+depth rather than one fixed cost.
 
 ## Escalations / open questions
 
-1. **REPORT.md could not be written by the executor** (harness guardrail); placed by
-   Fable from the executor's final message.
-2. **Machine was not idle at task start** — an unrelated 100%-CPU TVM/ROCm build plus
-   two concurrent sibling agent sessions were active. The executor did not interfere
-   (outside packet authority); it waited (~8 min bounded poll) for the unrelated process
-   to exit and load to drop to idle-desktop baseline (97%+ idle), confirmed via
-   top/uptime/ps, then recorded. Three same-conditions runs showed normal run-to-run
-   variance only. Flagged because this is a shared desktop, not a dedicated bench box.
-3. **The gitStatus snapshot handed to the executor said "(clean)" while the tree
-   carried the session's uncommitted accepted work** — a harness snapshot-staleness
-   discrepancy, not a repo problem. The executor touched none of the pre-existing dirty
-   files; its STATE.md edit is a pure insertion.
+1. **REPORT.md could not be written by the executor** (harness guardrail); placed by Fable
+   from the executor's final message.
+2. **Machine was not idle at task start** — an unrelated 100%-CPU TVM/ROCm build plus two
+   concurrent sibling agent sessions were active. The executor did not interfere (outside
+   packet authority); it waited (~8 min bounded poll) for the unrelated process to exit
+   and load to drop to idle-desktop baseline (97%+ idle), confirmed via top/uptime/ps,
+   then recorded. Three same-conditions runs showed normal run-to-run variance only.
+   Flagged because this is a shared desktop, not a dedicated bench box.
+3. **The gitStatus snapshot handed to the executor said "(clean)" while the tree carried
+   the session's uncommitted accepted work** — a harness snapshot-staleness discrepancy,
+   not a repo problem. The executor touched none of the pre-existing dirty files; its
+   STATE.md edit is a pure insertion.
 
 No blocking finding on the owned-request entry point (it exists cleanly:
 `TestApp::handle_request` / `CommittedRuntimeService::handle_request`).
 
 ## Discovered out-of-scope work
 
-None; no tickets filed. The two fixture-design issues found were fixed within Part 1's
-own scope.
+None; no tickets filed. The two fixture-design issues found were fixed within Part 1's own
+scope.

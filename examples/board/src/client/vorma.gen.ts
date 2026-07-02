@@ -70,9 +70,15 @@ const __vorma_resources = [
 		__o: null as unknown as undefined,
 	},
 	{
+		method: "POST",
+		pattern: "/api/mod/export",
+		__i: null as unknown as undefined,
+		__o: null as unknown as ModExportDigest,
+	},
+	{
 		method: "GET",
-		params: ["story_id"],
-		pattern: "/api/stories/:story_id/attachment",
+		params: ["story_id", "attachment_id"],
+		pattern: "/api/stories/:story_id/attachments/:attachment_id",
 		__i: null as unknown as undefined,
 		__o: null as unknown as Blob,
 	},
@@ -155,6 +161,12 @@ const __vorma_views = [
 	},
 ] as const;
 
+export type AttachmentSummary = {
+	id: number;
+	file_name: string;
+	content_type: string;
+};
+
 export type Comment = {
 	id: number;
 	parent_id: number | null;
@@ -219,6 +231,17 @@ export type LoginOutput = {
 
 export type ModDiagnosticsPage = Record<never, never>;
 
+export type ModExportDigest = {
+	rows: Array<ModExportRow>;
+	complete: boolean;
+};
+
+export type ModExportRow = {
+	story_id: number;
+	title: string;
+	comment_count: number;
+};
+
 export type ModLogEntry = {
 	id: number;
 	moderator: string;
@@ -281,6 +304,8 @@ export type Story = {
 export type StoryPage = {
 	story: Story | null;
 	comments: Array<Comment>;
+	attachments: Array<AttachmentSummary>;
+	tags: Array<string>;
 };
 
 export type SubmitPage = {
@@ -323,5 +348,11 @@ export const keyboard_shortcuts = [
 export const front_page_size = 30;
 
 export const csrf_header = "x-board-csrf-token";
+
+export const story_tags = ["tech", "ask", "show", "meta"] as const;
+
+export const max_story_attachments = 4;
+
+export const max_story_attachment_bytes = 131072;
 
 export type ModAction = "kill" | "restore";
