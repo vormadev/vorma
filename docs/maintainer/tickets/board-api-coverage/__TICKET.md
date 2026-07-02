@@ -48,8 +48,8 @@ Important current facts to preserve:
   generated client contract should put the catch-all under `/`, not put `/*` in every
   other view's parent list.
 - `vorma/kit/*` must remain generic utility surface. Do not add Board/Vorma-backend
-  helpers to kit packages. Board uses the public kit entry points as normal app
-  utilities, not as framework internals.
+  helpers to kit packages. Board uses the public kit entry points as normal app utilities,
+  not as framework internals.
 - Non-JSON resource outputs are part of the current API story. Current code has
   `ResourceBody` / `ResourceOutput`, generated `Blob` output typing, and Board attachment
   request tests that assert stored bytes, stored content type, content disposition, and

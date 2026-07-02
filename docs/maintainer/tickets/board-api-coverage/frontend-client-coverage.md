@@ -34,20 +34,19 @@ Current Board client coverage snapshot from 2026-06-23:
   parsing before upload.
 - Mod diagnostics uses non-throwing `apiClient.mutate`, typed `MutationError` display,
   route-specific `errorBoundary`, and a parent default-boundary trigger.
-- Mod diagnostics also demonstrates the public `vorma/kit/*` browser utilities:
-  converters for encoding round trips, cookies/csrf for readable client cookie tokens,
-  debounce for local diagnostics work, fmt/json/result for stable diagnostic payloads, and
-  listeners for focus-aware app-owned browser behavior.
+- Mod diagnostics also demonstrates the public `vorma/kit/*` browser utilities: converters
+  for encoding round trips, cookies/csrf for readable client cookie tokens, debounce for
+  local diagnostics work, fmt/json/result for stable diagnostic payloads, and listeners
+  for focus-aware app-owned browser behavior.
 - Not-found uses the root catch-all view as a normal app-level fallback: the route is
-  found and renders HTTP 200 while the UI explains that Board has no page for the URL.
-  Its handler reads first-value and repeated-value query metadata, then uses
+  found and renders HTTP 200 while the UI explains that Board has no page for the URL. Its
+  handler reads first-value and repeated-value query metadata, then uses
   `HttpSearchParams::iter` to count the app-owned `from` pairs while leaving the raw HTTP
   request semantics intact.
 - Board consumes generated app extras and public-asset helpers: `front_page_size`,
-  `keyboard_shortcuts`, `csrf_header`, and `vormaPublicUrl("mark.svg")`. It also
-  exercises broader `Link` props: `prefetchDelayMs`, `attributeMatchRules`,
-  `visitOnPointerDown`, `replace`, `scrollToTop`, `skipWorkIndicator`, and history
-  `state`.
+  `keyboard_shortcuts`, `csrf_header`, and `vormaPublicUrl("mark.svg")`. It also exercises
+  broader `Link` props: `prefetchDelayMs`, `attributeMatchRules`, `visitOnPointerDown`,
+  `replace`, `scrollToTop`, `skipWorkIndicator`, and history `state`.
 - `cargo run -p vorma-board-example` builds the Board browser bundle and emits chunks for
   every declared client view module.
 
@@ -77,8 +76,8 @@ Historical cleanup already performed:
   example. Keep new browser/client API coverage in Board rather than adding another
   example surface.
 - `examples/board/tests/app.rs` previously contained
-  `task_override_injects_a_story_load_failure`. That was framework-semantic coverage:
-  task override injection plus generic server-error wire behavior. It was removed from
-  Board and equivalent coverage was added to `crates/vorma/tests/in_memory_test_app.rs`.
+  `task_override_injects_a_story_load_failure`. That was framework-semantic coverage: task
+  override injection plus generic server-error wire behavior. It was removed from Board
+  and equivalent coverage was added to `crates/vorma/tests/in_memory_test_app.rs`.
 - Board comments were rewritten away from maintainer/process language and toward teaching
   comments for application authors.

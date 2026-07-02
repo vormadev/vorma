@@ -121,10 +121,10 @@ Handler contexts (`ViewCtx`/`ResourceCtx`/`MiddlewareCtx`):
 
 - `state` -> everywhere; `input` -> F1/F3/F9; `param` -> F2/F6; `params` (struct +
   `get`/`iter`/`len`/`is_empty`) -> F6 tabs; `splat_values` -> F8; `request` -> F5 (cookie
-  read) and F6 (canonical path redirect); `head` -> F2/F13; `response`
-  (headers/cookies) -> F5; `resource_response().set_status` -> F3/F4 (201s); `exec_ctx`
-  -> F10; `public_url` -> F13; `redirect`/`redirect_with_status` -> F3 explicit
-  post-submit redirect, F6 view canonicalization redirect, and F7 middleware redirect.
+  read) and F6 (canonical path redirect); `head` -> F2/F13; `response` (headers/cookies)
+  -> F5; `resource_response().set_status` -> F3/F4 (201s); `exec_ctx` -> F10; `public_url`
+  -> F13; `redirect`/`redirect_with_status` -> F3 explicit post-submit redirect, F6 view
+  canonicalization redirect, and F7 middleware redirect.
 - `ViewInput`/`ResourceInput` traits: macro bounds, exercised by every typed route
   (E-PLUMBING for direct use).
 
@@ -214,13 +214,13 @@ there, that is a promotion request (move it out under a real name), never an imp
 
 `vorma/vite` plugin -> F11 (vite.config.ts).
 
-Kit (`vorma/kit/*`): historical note — this was once treated as out of scope for the
-Board coverage pass. That is no longer current under the 100% public API coverage rule.
-Board now consumes the public kit entry points as normal app utilities:
-`vorma/kit/theme` in the theme atom/document pre-paint path, and converters, cookies,
-csrf, debounce, fmt, json, listeners, and result in the mod diagnostics browser utility
-path. The boundary still matters: kit must stay generic and must not grow Board-specific
-or Vorma-backend-specific helpers.
+Kit (`vorma/kit/*`): historical note — this was once treated as out of scope for the Board
+coverage pass. That is no longer current under the 100% public API coverage rule. Board
+now consumes the public kit entry points as normal app utilities: `vorma/kit/theme` in the
+theme atom/document pre-paint path, and converters, cookies, csrf, debounce, fmt, json,
+listeners, and result in the mod diagnostics browser utility path. The boundary still
+matters: kit must stay generic and must not grow Board-specific or Vorma-backend-specific
+helpers.
 
 ## Prior Adjudication List — Resolved
 
@@ -246,8 +246,8 @@ points as app utilities.
 ## Sequencing
 
 1. App skeleton: schema + repo-as-Tasks + auth + F1/F2 vertical slice.
-2. Remaining features; the legacy example is removed in the same change that the new
-   app's tests go green.
+2. Remaining features; the legacy example is removed in the same change that the new app's
+   tests go green.
 3. Docs initiative begins, with this app as the running example.
 
 ## Member-level surface (second sweep — the nested API census)
@@ -460,19 +460,19 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   response-protocol ruling): the branded "not found" story is a root catch-all view, but
   it is an app-level fallback, not an HTTP 404. On a dead URL with no app fallback the
   framework sends a finalized empty 404 (status + client build id header, no body). An app
-  wanting branded content declares a "/\*" view; once that view claims the path, the
-  route is found and the view renders normally with HTTP 200. This is spiritually similar
-  to an SPA router fallback page whose UI says "404" while the document request itself
-  succeeds. The catch-all coexists with GET/HEAD resources by construction (the floor of
-  the order loses every shared path to every other route — pinned at graph compile and in
-  dispatch). Two docs-era facts to state next to the idiom: (1) the catch-all yields only
-  to a covering match — a chain that actually completes through the path. A dead URL under
-  a matched-but-uncovered view prefix (e.g. /foo/bar with a /foo view and no covering
-  child) gets the branded fallback: the dead prefix drops out and the catch-all claims the
-  path (pinned in `catch_all_takes_paths_where_no_chain_completes` and
-  `nested_catch_all_yields_only_to_covering_matches`; the pre-correction behavior —
-  prefix hits suppressing the fallback — was one of the Go-inherited bugs F-15 records).
-  (2) splat fallback views must not become inferred layout parents for every other view;
+  wanting branded content declares a "/\*" view; once that view claims the path, the route
+  is found and the view renders normally with HTTP 200. This is spiritually similar to an
+  SPA router fallback page whose UI says "404" while the document request itself succeeds.
+  The catch-all coexists with GET/HEAD resources by construction (the floor of the order
+  loses every shared path to every other route — pinned at graph compile and in dispatch).
+  Two docs-era facts to state next to the idiom: (1) the catch-all yields only to a
+  covering match — a chain that actually completes through the path. A dead URL under a
+  matched-but-uncovered view prefix (e.g. /foo/bar with a /foo view and no covering child)
+  gets the branded fallback: the dead prefix drops out and the catch-all claims the path
+  (pinned in `catch_all_takes_paths_where_no_chain_completes` and
+  `nested_catch_all_yields_only_to_covering_matches`; the pre-correction behavior — prefix
+  hits suppressing the fallback — was one of the Go-inherited bugs F-15 records). (2)
+  splat fallback views must not become inferred layout parents for every other view;
   generated client metadata should list the catch-all under `/`, not list `/*` as a parent
   of ordinary routes. (3) views have no HTTP status surface. Do not tell future agents to
   set a 404 status from a view; resources, middleware, and framework faults own HTTP

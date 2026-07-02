@@ -5,6 +5,7 @@ use std::panic;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::task::{Context, Poll, Waker};
 use std::time::Duration;
 
 use crate::cancel::CancelToken;
@@ -493,11 +494,33 @@ where
 			);
 		}
 
-		let outcome = tokio::select! {
-			result = task.call(child_ctx, input) => result,
-			_ = self.cancel.cancelled() => {
-				self.tasks.observe(task_id, task_name, task_input_type, TaskEventKind::Cancelled);
-				return Err(Error::Cancelled);
+		/*
+		Poll-once fast path: memo-dependency and pure-compute bodies are
+		ready on their first poll, so wiring the cancellation subscription
+		(the select machinery plus, for child tokens, a boxed parent wait
+		inside CancelToken::cancelled) is pure overhead for them. Poll the
+		call future once with a noop waker; a body that finishes here never
+		suspended, so it had no window to observe a cancellation the
+		before-run and after-outcome checks do not already cover. Only a
+		body that returns Pending — one that actually suspends — falls into
+		the select and gains preemptive cancellation, and it does so on the
+		same future, so no work is repeated and no poll is lost (the select
+		re-registers the real waker, superseding the noop registration).
+		*/
+		let call = task.call(child_ctx, input);
+		tokio::pin!(call);
+		// Bind the first poll to its own statement so the noop Context —
+		// which is !Send — is dropped before the select's await point and
+		// does not taint the surrounding future's Send bound.
+		let first_poll = call.as_mut().poll(&mut Context::from_waker(Waker::noop()));
+		let outcome = match first_poll {
+			Poll::Ready(result) => result,
+			Poll::Pending => tokio::select! {
+				result = &mut call => result,
+				_ = self.cancel.cancelled() => {
+					self.tasks.observe(task_id, task_name, task_input_type, TaskEventKind::Cancelled);
+					return Err(Error::Cancelled);
+				},
 			},
 		};
 

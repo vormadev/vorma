@@ -89,11 +89,44 @@ impl DevFileWatchPlan {
 	}
 
 	fn classify_event(&self, event: &notify::Event) -> DevFileChange {
+		if !event_kind_mutates_source(&event.kind) {
+			return DevFileChange::default();
+		}
 		let mut change = DevFileChange::default();
 		for path in &event.paths {
 			change.extend(self.classify_path(path));
 		}
 		change
+	}
+}
+
+/*
+A build watcher reacts to source *mutations*, never to bare reads. inotify (Linux)
+emits IN_OPEN and IN_CLOSE_NOWRITE — surfaced as `Access(Open(_))` and
+`Access(Close(Read/Any/Execute))` — every time any process merely opens a watched
+file for reading. During a rebuild the spawned cargo/rustc reads the very
+`src/**/*.rs` sources it is compiling, so those read events would classify as
+`ServerRecompile` and cancel-and-restart the in-flight rebuild forever (the
+compiler never finishes because its own file reads keep retiring it). Dropping
+non-mutating access events breaks that feedback loop at the source. FSEvents
+(macOS) never emits open/read events at all, so this gate is a no-op there and
+cannot change the currently-working macOS behavior. Every genuine write is still
+seen: `IN_MODIFY` -> `Modify(Data(_))`, `IN_ATTRIB` -> `Modify(Metadata(_))`,
+plus `Create`/`Remove`/rename and the `IN_CLOSE_WRITE` -> `Access(Close(Write))`
+write-completion signal, all of which are retained below.
+*/
+fn event_kind_mutates_source(kind: &notify::EventKind) -> bool {
+	use notify::EventKind;
+	use notify::event::{AccessKind, AccessMode};
+	match kind {
+		EventKind::Access(access) => matches!(access, AccessKind::Close(AccessMode::Write)),
+		EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_) => true,
+		/*
+		`Any`/`Other` are the imprecise catch-alls a backend emits when it cannot
+		classify a native event; treat them as potential mutations rather than
+		risk dropping a real change.
+		*/
+		EventKind::Any | EventKind::Other => true,
 	}
 }
 
@@ -304,6 +337,32 @@ impl StartedDevFileWatcher {
 	pub(crate) fn classify_with_current_plan(&self, path: impl AsRef<Path>) -> DevFileChange {
 		let plan = Arc::clone(&self.plan.read().expect("dev watch plan lock poisoned"));
 		plan.classify_path(path)
+	}
+
+	/// Bounded receive of the framework-relevant change within `budget` (test only).
+	///
+	/// Drains raw events until the whole budget elapses, merging every non-empty
+	/// change seen into one. Returns `None` if no relevant change arrives in time.
+	/// Unlike `recv_settled`, this never blocks past the deadline, so a "no
+	/// change" outcome is directly assertable without a helper thread.
+	#[cfg(test)]
+	pub(crate) fn recv_relevant_within(&self, budget: Duration) -> Option<DevFileChange> {
+		use std::time::Instant;
+		let deadline = Instant::now() + budget;
+		let mut collected: Option<DevFileChange> = None;
+		while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+			match self.rx.recv_timeout(remaining) {
+				Ok(Ok(change)) if !change.is_empty() => match &mut collected {
+					Some(existing) => existing.extend(change),
+					None => collected = Some(change),
+				},
+				Ok(_) => {}
+				Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {
+					break;
+				}
+			}
+		}
+		collected
 	}
 
 	/// Wait for the next framework-relevant filesystem change.
@@ -897,6 +956,127 @@ mod tests {
 				.intents()
 				.contains(&BuildDevWatchIntent::CriticalCssInput)
 		);
+		drop(watcher);
+		std::fs::remove_dir_all(&root).unwrap();
+	}
+
+	fn server_recompile_plan(root: &Path) -> DevFileWatchPlan {
+		DevFileWatchPlan::compile(
+			root,
+			&BuildDevWatchPlan::from_entries_for_test(vec![(
+				"src/**/*.rs".to_owned(),
+				BuildDevWatchIntent::ServerRecompile,
+			)]),
+		)
+		.unwrap()
+	}
+
+	fn event_for(kind: notify::EventKind, path: &Path) -> notify::Event {
+		notify::Event::new(kind).add_path(path.to_path_buf())
+	}
+
+	/*
+	Pins the Linux dev-rebuild bug: a watched source file merely being *opened
+	for reading* (inotify IN_OPEN / IN_CLOSE_NOWRITE) must never classify as a
+	change. The rebuild's own cargo/rustc reads the sources it compiles; without
+	this gate those reads classify as ServerRecompile and cancel-restart the
+	in-flight rebuild forever. Real writes must still classify.
+	*/
+	#[test]
+	fn read_only_access_events_never_classify_as_source_change() {
+		use notify::EventKind;
+		use notify::event::{AccessKind, AccessMode, DataChange, ModifyKind, RemoveKind};
+
+		let root = PathBuf::from("/workspace/app");
+		let plan = server_recompile_plan(&root);
+		let source = root.join("src/main.rs");
+
+		// Pure non-mutating access events — every one is compiler read noise.
+		for kind in [
+			EventKind::Access(AccessKind::Open(AccessMode::Any)),
+			EventKind::Access(AccessKind::Open(AccessMode::Read)),
+			EventKind::Access(AccessKind::Open(AccessMode::Execute)),
+			EventKind::Access(AccessKind::Read),
+			EventKind::Access(AccessKind::Close(AccessMode::Read)),
+			EventKind::Access(AccessKind::Close(AccessMode::Any)),
+			EventKind::Access(AccessKind::Any),
+		] {
+			let change = plan.classify_event(&event_for(kind, &source));
+			assert!(
+				change.is_empty(),
+				"read/open access event {kind:?} must not classify as a source change",
+			);
+		}
+
+		// Genuine mutations must still classify as ServerRecompile.
+		for kind in [
+			EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+			EventKind::Create(notify::event::CreateKind::File),
+			EventKind::Remove(RemoveKind::File),
+			// IN_CLOSE_WRITE: a write handle closing is a completed write.
+			EventKind::Access(AccessKind::Close(AccessMode::Write)),
+		] {
+			let change = plan.classify_event(&event_for(kind, &source));
+			assert!(
+				change
+					.intents()
+					.contains(&BuildDevWatchIntent::ServerRecompile),
+				"mutation event {kind:?} must classify as ServerRecompile",
+			);
+		}
+	}
+
+	/*
+	End-to-end pin over a real notify watcher on a temp tree: reproduces the
+	inotify open-vs-write divergence. Opening the watched `.rs` file for reading
+	(no write) must surface no framework-relevant change; a subsequent write
+	must. Fails on the pre-fix code, where the compiler's own reads were
+	classified as rebuild-triggering ServerRecompile changes.
+	*/
+	#[test]
+	fn real_watcher_ignores_reads_but_sees_writes() {
+		use std::io::Read as _;
+
+		let root = std::env::temp_dir().join(format!(
+			"vorma-watch-reads-{}-{}",
+			std::process::id(),
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap()
+				.as_nanos()
+		));
+		std::fs::create_dir_all(root.join("src")).unwrap();
+		let source = root.join("src/main.rs");
+		std::fs::write(&source, "fn main() {}\n").unwrap();
+
+		let watcher = start_dev_file_watcher(server_recompile_plan(&root)).unwrap();
+		// Let the OS watch registration settle so the reads below are observed.
+		std::thread::sleep(Duration::from_millis(200));
+
+		// Open the source for reading many times, exactly like a compiler pass.
+		for _ in 0..25 {
+			let mut file = std::fs::File::open(&source).unwrap();
+			let mut buf = String::new();
+			file.read_to_string(&mut buf).unwrap();
+		}
+		// A read-only burst must surface nothing framework-relevant. If reads
+		// leaked through as ServerRecompile, this would return a change.
+		let after_reads = watcher.recv_relevant_within(Duration::from_millis(400));
+		assert!(
+			after_reads.is_none(),
+			"reads produced a framework-relevant change: {after_reads:?}",
+		);
+
+		// A real write must be seen.
+		std::fs::write(&source, "fn main() { let _ = 1; }\n").unwrap();
+		let after_write = watcher.recv_relevant_within(Duration::from_secs(5));
+		assert!(
+			after_write.as_ref().is_some_and(|change| change
+				.intents()
+				.contains(&BuildDevWatchIntent::ServerRecompile)),
+			"write was not observed as a ServerRecompile change: {after_write:?}",
+		);
+
 		drop(watcher);
 		std::fs::remove_dir_all(&root).unwrap();
 	}

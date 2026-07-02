@@ -7,6 +7,11 @@
 #   `make e2e` can never run against a stale package build.
 
 FUZZ_RUNS ?= 4096
+# Bench recordings are per-machine and additive: one file per machine under
+# docs/maintainer/bench-results/<crate>/. Override on machines whose hostname
+# is not the id you want (e.g. BENCH_MACHINE_ID=m3-max make bench-tasks).
+BENCH_MACHINE_ID ?= $(shell hostname -s | tr '[:upper:]' '[:lower:]')
+BENCH_RESULTS_DIR = docs/maintainer/bench-results
 E2E_CMD_BASE = cd tests/framework && cargo run -p vorma-framework-tests --bin framework-bombadil --
 RUST_PACKAGE_TARGET_DIR = target/package-gate
 RUST_PACKAGE_LOCAL_CRATE_PATCHES = \
@@ -89,20 +94,22 @@ rust-doc:
 rust-bench:
 	cargo bench --workspace --no-run
 
-# Runs matcher benchmarks and records them in the crate's bench.results.txt.
+# Runs matcher benchmarks and records them for this machine.
 bench-matcher:
+	@mkdir -p $(BENCH_RESULTS_DIR)/vorma-matcher
 	cargo bench -p vorma-matcher --bench matching --no-run
-	cargo bench -p vorma-matcher --bench matching 2>/dev/null | tee crates/vorma-matcher/bench.results.txt
+	cargo bench -p vorma-matcher --bench matching 2>/dev/null | tee $(BENCH_RESULTS_DIR)/vorma-matcher/$(BENCH_MACHINE_ID).bench.results.txt
 
 # Model-checks the task store's wait/notify protocol under loom,
 # exploring all thread interleavings the memory model allows.
 loom-tasks:
 	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 cargo test -p vorma-tasks --lib --release
 
-# Runs task-runtime benchmarks and records them in the crate's bench.results.txt.
+# Runs task-runtime benchmarks and records them for this machine.
 bench-tasks:
+	@mkdir -p $(BENCH_RESULTS_DIR)/vorma-tasks
 	cargo bench -p vorma-tasks --bench tasks --no-run
-	cargo bench -p vorma-tasks --bench tasks 2>/dev/null | tee crates/vorma-tasks/bench.results.txt
+	cargo bench -p vorma-tasks --bench tasks 2>/dev/null | tee $(BENCH_RESULTS_DIR)/vorma-tasks/$(BENCH_MACHINE_ID).bench.results.txt
 
 # Runs Rust fuzz targets against copied corpora.
 rust-fuzz:

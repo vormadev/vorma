@@ -16,8 +16,8 @@ here; its locked rulings live in
 This file is historical design context, not the live plan. The current forward plan lives
 in `__TICKET.md` and sibling tickets.
 
-- The old "example expansion" section started from the earlier pre-Board example
-  workout. Current truth is that `examples/board` is the canonical pressure-test app.
+- The old "example expansion" section started from the earlier pre-Board example workout.
+  Current truth is that `examples/board` is the canonical pressure-test app.
 - The old kit carve-out from the coverage pass is stale under the current 100% public API
   coverage rule. Current Board covers public kit entry points as app utilities; kit still
   must remain generic and not know about Board or Vorma backend internals.

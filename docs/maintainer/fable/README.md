@@ -5,21 +5,21 @@ owned by the orchestrating agent ("Fable"): Fable writes the roadmap, defines wo
 packets, and reviews completed work. Executor agents run individual packets.
 
 If you are an agent landing here cold: read this file, then `LEARNINGS.md`, then
-`STATE.md`, then the packet you were assigned. Do not start work without reading all
-four. `AGENTS.md` at the repo root binds you as well.
+`STATE.md`, then the packet you were assigned. Do not start work without reading all four.
+`AGENTS.md` at the repo root binds you as well.
 
 ## Layout
 
 - `ROADMAP.md` — the sequenced plan to release: phases, packets, and status.
-- `STATE.md` — what is true right now: gate status, recorded benchmark tables, open
-  flags. Perishable by design; updated whenever a packet lands.
+- `STATE.md` — what is true right now: gate status, recorded benchmark tables, open flags.
+  Perishable by design; updated whenever a packet lands.
 - `LEARNINGS.md` — durable technical doctrine and hard-won facts. Not history. If a fact
   no longer matters going forward, it does not belong here.
 - `packets/Pnnn-slug/` — one directory per work packet:
-  - `INSTRUCTIONS.md` — written by Fable. Self-contained: an executor needs no chat
-    history and no other conversation context.
-  - `REPORT.md` — written by the executor when done (template below).
-  - `REVIEW.md` — written by Fable after reviewing: accepted, or rework items.
+    - `INSTRUCTIONS.md` — written by Fable. Self-contained: an executor needs no chat
+      history and no other conversation context.
+    - `REPORT.md` — written by the executor when done (template below).
+    - `REVIEW.md` — written by Fable after reviewing: accepted, or rework items.
 
 Relationship to `docs/maintainer/tickets/`: tickets are the inbox for discovered and
 future work. The roadmap consumes tickets into sequenced packets when their turn comes.
@@ -44,11 +44,11 @@ The rules that make this work — these bind every executor:
    `INSTRUCTIONS.md` says otherwise. If you believe a semantic change is needed or you
    found what looks like a bug: red failing test first if cheaply possible, then escalate
    in `REPORT.md`. The maintainer decides.
-3. **The gate is the bar.** A packet is not done with a red gate. Never weaken a test,
-   a lint, a loom model, or a bench recording to get green.
-4. **Benchmarks are recorded only through their `make bench-*` targets** (pure redirect
-   of the harness output). Never hand-edit a `bench.results.txt`. Always paste
-   before/after numbers in the report, compared against the baselines in `STATE.md`.
+3. **The gate is the bar.** A packet is not done with a red gate. Never weaken a test, a
+   lint, a loom model, or a bench recording to get green.
+4. **Benchmarks are recorded only through their `make bench-*` targets** (pure redirect of
+   the harness output). Never hand-edit a `bench.results.txt`. Always paste before/after
+   numbers in the report, compared against the baselines in `STATE.md`.
 5. **Verified code is shipped code.** Changes to concurrency protocol code in
    `vorma-tasks` require the loom models to still pass (`make loom-tasks`), and new
    protocol transitions require new models. Do not add fast paths the loom build cannot

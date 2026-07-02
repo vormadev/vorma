@@ -1,12 +1,14 @@
 use std::any::{Any, TypeId};
+use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 /// Opaque identity for one task definition inside the current process.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct TaskId(pub(crate) u64);
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct KeyFingerprint {
 	task_id: TaskId,
 	input_type: TypeId,
@@ -14,12 +16,18 @@ pub(crate) struct KeyFingerprint {
 }
 
 /*
-HashMap bucket placement for KeyFingerprint uses the fingerprint's own
-blake3-derived hash field directly instead of re-hashing the struct.
-The fingerprint is already collision-resistant, and slot equality is
-always verified through the full typed DynKey comparison — the outer
-hash only routes lookups to buckets.
+KeyFingerprint hashes as its precomputed `hash` field alone: that field
+is a keyed SipHash already mixing the task id and the input, and slot
+equality is always verified through the full typed DynKey comparison, so
+the map's outer hash only routes lookups to buckets. Writing just the
+one u64 is what lets FingerprintHasher be a bare passthrough.
 */
+impl Hash for KeyFingerprint {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		state.write_u64(self.hash);
+	}
+}
+
 pub(crate) type FingerprintHashMap<V> =
 	std::collections::HashMap<KeyFingerprint, V, FingerprintHasherBuilder>;
 
@@ -48,14 +56,19 @@ impl Hasher for FingerprintHasher {
 	}
 
 	fn write(&mut self, _bytes: &[u8]) {
-		/*
-		KeyFingerprint derives Hash, which writes each field in order:
-		TaskId.0 (u64), TypeId (u64), hash (u64). The last write_u64
-		call is the blake3-derived hash field, which is the value we
-		want. Any preceding writes are overwritten.
-		*/
+		// KeyFingerprint only ever routes its precomputed hash through
+		// write_u64; no byte writes reach this passthrough.
 	}
 }
+
+/*
+Process-global keyed hasher builder for fingerprints. std's RandomState
+is keyed SipHash-1-3 seeded once per process, so task inputs — which can
+be attacker-influenced in server contexts — cannot be pushed into
+predictable bucket collisions from outside the process, and the per-
+resolve cost stays in the ~10-15ns range on small inputs.
+*/
+static FINGERPRINT_HASH_STATE: LazyLock<RandomState> = LazyLock::new(RandomState::new);
 
 // Compute a key fingerprint from a borrowed input — no clone. Equality
 // of stored keys is always verified on the actual input value, so the
@@ -64,7 +77,8 @@ pub(crate) fn fingerprint_for<I>(task_id: TaskId, value: &I) -> KeyFingerprint
 where
 	I: Eq + Hash + 'static,
 {
-	let mut hasher = Blake3Hasher::new();
+	let mut hasher = FINGERPRINT_HASH_STATE.build_hasher();
+	hasher.write_u64(task_id.0);
 	value.hash(&mut hasher);
 	let hash = hasher.finish();
 
@@ -72,31 +86,6 @@ where
 		task_id,
 		input_type: TypeId::of::<I>(),
 		hash,
-	}
-}
-
-struct Blake3Hasher {
-	inner: blake3::Hasher,
-}
-
-impl Blake3Hasher {
-	fn new() -> Self {
-		Self {
-			inner: blake3::Hasher::new(),
-		}
-	}
-}
-
-impl Hasher for Blake3Hasher {
-	fn finish(&self) -> u64 {
-		let hash = self.inner.finalize();
-		let mut bytes = [0u8; 8];
-		bytes.copy_from_slice(&hash.as_bytes()[..8]);
-		u64::from_le_bytes(bytes)
-	}
-
-	fn write(&mut self, bytes: &[u8]) {
-		self.inner.update(bytes);
 	}
 }
 

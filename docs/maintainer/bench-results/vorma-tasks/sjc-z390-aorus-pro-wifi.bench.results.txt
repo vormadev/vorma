@@ -1,0 +1,17 @@
+os: linux
+arch: x86_64
+crate: vorma-tasks
+cpu: Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz
+single_task                                           4774655      313.5 ns/op
+parallel_independent_tasks                             190195       7942 ns/op
+high_contention                                        133850      11520 ns/op
+task_with_dependencies                                2524750      596.4 ns/op
+allocations                                           4257255      348.7 ns/op
+parallel_scaling/tasks-1                              2858840      525.3 ns/op
+parallel_scaling/tasks-2                               221395       6821 ns/op
+parallel_scaling/tasks-5                               142630      10647 ns/op
+parallel_scaling/tasks-10                               97200      15332 ns/op
+parallel_scaling/tasks-20                               64160      23453 ns/op
+parallel_scaling/tasks-50                               30555      48884 ns/op
+context_cancellation                                   253235       5031 ns/op
+repeated_task_calls                                  19901590      75.87 ns/op

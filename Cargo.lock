@@ -2613,7 +2613,6 @@ dependencies = [
 name = "vorma-tasks"
 version = "0.86.0-pre.3"
 dependencies = [
- "blake3",
  "loom",
  "mimalloc",
  "smallvec",

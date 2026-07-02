@@ -110,7 +110,6 @@ pub fn app_config_with(
 					.map_err(|source| vorma::Error::new(source.to_string()))?,
 			],
 			extra_ts,
-			..vorma::TsGenConfig::default()
 		},
 		dev_watch_config: vorma::DevWatchConfig {
 			/*

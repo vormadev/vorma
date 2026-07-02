@@ -453,8 +453,8 @@ reaping responsibility and the pid stays valid for their kill path.
 fn wait_for_unix_process_exit(pid: u32) {
 	use nix::sys::wait::{Id, WaitPidFlag, waitid};
 
-	let id = Id::Pid(nix::unistd::Pid::from_raw(pid as i32));
 	loop {
+		let id = Id::Pid(nix::unistd::Pid::from_raw(pid as i32));
 		match waitid(id, WaitPidFlag::WEXITED | WaitPidFlag::WNOWAIT) {
 			Ok(_) => return,
 			Err(nix::errno::Errno::EINTR) => continue,

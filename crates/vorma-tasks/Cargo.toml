@@ -9,7 +9,6 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-blake3 = { workspace = true }
 smallvec = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "sync"] }
 

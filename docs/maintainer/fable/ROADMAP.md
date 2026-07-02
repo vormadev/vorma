@@ -1,8 +1,8 @@
 # Roadmap to Release
 
-Sequenced plan, owned by Fable. Executors take packets from `packets/` in order unless
-the maintainer redirects. A packet is done when its `REPORT.md` exists, its definition
-of done is met, and Fable's `REVIEW.md` says accepted.
+Sequenced plan, owned by Fable. Executors take packets from `packets/` in order unless the
+maintainer redirects. A packet is done when its `REPORT.md` exists, its definition of done
+is met, and Fable's `REVIEW.md` says accepted.
 
 Status legend: `[ ]` not started · `[>]` in progress · `[R]` awaiting review · `[x]`
 accepted.
@@ -12,42 +12,54 @@ accepted.
 Goal: every gate green, the tasks-crate performance bar restored, the recorded state
 honest. Nothing else proceeds on a red or dishonest baseline.
 
-- `[ ]` **P001 — Green all gates and record the baseline.** Fix the one clippy error,
-  run every gate (rust, loom, TS, e2e smoke), record results in STATE.md.
-- `[ ]` **P002 — Tasks perf restoration.** Replace blake3 hot-path fingerprinting with
-  keyed SipHash, restore the poll-once fast path, attribute and reduce ParallelBatch
-  per-sibling overhead, harden the fingerprint hasher, re-measure honestly against the
-  STATE.md tables. Bar: beat Go on every row except the two with accepted structural
-  explanations.
+- `[x]` **P001 — Green all gates and record the baseline.** Closed 2026-07-01: all gates
+  green on Linux and recorded in STATE.md (rust-gate all steps, ts-gate, e2e-smoke
+  aggregate exit 0; 549 workspace tests matching the macOS-era count). See
+  `packets/P001-green-all-gates/REVIEW.md` for the full run and rulings record.
+- `[x]` **P001b — Fix: Linux dev loop never rebuilds on source change.** Closed
+  2026-07-01: root cause was inotify access-event feedback (compiler reads classified as
+  source changes, cancel-restarting rebuilds forever); fixed with the event-kind gate in
+  `dev_watcher.rs`, pinned red-before/green-after. See
+  `packets/P001b-linux-dev-rebuild-fix/REVIEW.md`. Discovered follow-up ticketed:
+  `dev-watch-excludes-not-pruned-from-os-watch`.
+- `[x]` **P002 — Tasks perf restoration.** Closed 2026-07-01: blake3 replaced with keyed
+  SipHash on the resolve hot path, poll-once fast path restored, ParallelBatch overhead
+  attributed by measurement (residual = accepted spawn floor; the one plausible reduction
+  A/B-measured slower and reverted), fingerprint hasher hardened. Every Linux row
+  improved except the spawn-bound `high_contention` (−10% to −40%; `repeated_task_calls`
+  126.0 → 75.87 ns). See `packets/P002-tasks-perf-restoration/REVIEW.md`. Standing
+  maintainer follow-up: mac-side "beat Go" re-recording
+  (`BENCH_MACHINE_ID=m3-max make bench-tasks`).
+
+Phase A is **complete** (P001, P001b, P002 accepted; gates green; baselines recorded and
+honest).
 
 ## Phase B — Finish the standing reviews
 
 - `[ ]` **P003 — Board 100% API coverage audit.** Execute the standing policy
   (`AGENTS.md`, `docs/maintainer/board-example/README.md`) against the full public API
   inventory; absorb the coverage orphaned by the notes-example deletion (extended-cache
-  task in app context, request-level suite patterns). Consumes ticket
-  `board-api-coverage` and its census.
-- `[ ]` **P004 — Request-path performance review.** The vorma engine review: measure
-  from the moment a request becomes owned by vorma to the moment vorma returns its
-  result (adapter excluded), find matcher-review-class costs, fix within frozen
-  semantics, add `bench-engine` recording. Consumes ticket
-  `router-request-path-review`. Fable writes the analysis addendum before execution
-  starts.
+  task in app context, request-level suite patterns). Consumes ticket `board-api-coverage`
+  and its census.
+- `[ ]` **P004 — Request-path performance review.** The vorma engine review: measure from
+  the moment a request becomes owned by vorma to the moment vorma returns its result
+  (adapter excluded), find matcher-review-class costs, fix within frozen semantics, add
+  `bench-engine` recording. Consumes ticket `router-request-path-review`. Fable writes the
+  analysis addendum before execution starts.
 
 ## Phase C — Board completion
 
-Remaining board census features and production build. Packets to be authored by Fable
-when Phase B closes (inputs: the census under `tickets/board-api-coverage/`, P003's
-report). Expected shape: one packet per census feature cluster, then a prod-build
-packet.
+Remaining board census features and production build. Packets to be authored by Fable when
+Phase B closes (inputs: the census under `tickets/board-api-coverage/`, P003's report).
+Expected shape: one packet per census feature cluster, then a prod-build packet.
 
 ## Phase D — Release-quality sweeps
 
 To be authored as Phase C closes:
 
 - Doc comments for every public API, per the documentation strategy in `AGENTS.md`
-  (rust-doc and jsdoc are the primary user documentation). One packet per crate, plus
-  one for the TS package.
+  (rust-doc and jsdoc are the primary user documentation). One packet per crate, plus one
+  for the TS package.
 - `ARCHITECTURE.md` accuracy pass against the shipped code.
 - Per-crate compliance pass against
   `docs/maintainer/skills/thermo-nuclear-system-review/SKILL.md`.
@@ -57,13 +69,13 @@ To be authored as Phase C closes:
 ## Phase E — Endgame
 
 - create-vorma rewrite (maintainer ruling: this comes last).
-- vorma.dev docs site per the strategy in `AGENTS.md` (a Vorma app embedding the
-  generated API reference and the Board example).
+- vorma.dev docs site per the strategy in `AGENTS.md` (a Vorma app embedding the generated
+  API reference and the Board example).
 - Release.
 
 ## Standing inputs
 
 - `STATE.md` — current gates, numbers, and flags. Packets cite it as the baseline.
 - `LEARNINGS.md` — doctrine executors must not violate.
-- `docs/maintainer/tickets/` — the inbox. New discoveries file tickets; the roadmap
-  pulls tickets into packets, never the reverse.
+- `docs/maintainer/tickets/` — the inbox. New discoveries file tickets; the roadmap pulls
+  tickets into packets, never the reverse.

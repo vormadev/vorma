@@ -29,8 +29,8 @@ Source context:
 
 Quality standard:
 
-- Public Rust APIs should have Rustdoc where users need contract, lifecycle, error,
-  panic, type, or usage guidance.
+- Public Rust APIs should have Rustdoc where users need contract, lifecycle, error, panic,
+  type, or usage guidance.
 - Public TypeScript APIs should have JSDoc where users need hover-time contract,
   lifecycle, error, type, or usage guidance.
 - Board should teach Vorma composition through real code and comments. The comments should

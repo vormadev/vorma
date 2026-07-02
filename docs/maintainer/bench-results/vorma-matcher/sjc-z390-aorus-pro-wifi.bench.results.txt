@@ -1,0 +1,17 @@
+os: linux
+arch: x86_64
+crate: vorma-matcher
+cpu: Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz
+parse_segments/rotating_paths                        73854580      20.37 ns/op
+find_best_match_simple/static_pattern                91048130      18.07 ns/op
+find_best_match_simple/dynamic_pattern                8208480      184.4 ns/op
+find_best_match_simple/splat_pattern                 14374355      106.5 ns/op
+find_best_match_at_scale/small                       19676070      75.80 ns/op
+find_best_match_at_scale/medium                      14265190      107.4 ns/op
+find_best_match_at_scale/large                       14432740      107.2 ns/op
+find_best_match_at_scale/worst_case_deep_nested       8580340      177.5 ns/op
+find_nested_matches/static_patterns                  12841155      117.0 ns/op
+find_nested_matches/dynamic_patterns                  4222830      355.5 ns/op
+find_nested_matches/deep_nested_patterns              3537805      420.5 ns/op
+find_nested_matches/splat_patterns                    4662940      319.9 ns/op
+find_nested_matches/mixed_patterns                    4997825      300.8 ns/op

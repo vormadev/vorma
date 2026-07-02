@@ -1,5 +1,5 @@
-error[E0599]: no function or associated item named `new` found for struct `Task<I, O, E>` in the current scope
+error[E0599]: no associated function or constant named `new` found for struct `Task<I, O, E>` in the current scope
  --> tests/ui/task_new_removed.rs:8:45
   |
 8 |     let _task: Task<(), (), TestError> = Task::new(Duration::ZERO, |_ctx, _input| async move {
-  |                                                ^^^ function or associated item not found in `Task<_, _, _>`
+  |                                                ^^^ associated function or constant not found in `Task<_, _, _>`
