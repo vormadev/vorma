@@ -2,16 +2,16 @@ os: macos
 arch: aarch64
 crate: vorma-tasks
 cpu: Apple M3 Max
-single_task                                           5559630      258.8 ns/op
-parallel_independent_tasks                             141685      10901 ns/op
-high_contention                                         90675      15298 ns/op
-task_with_dependencies                                2946185      502.5 ns/op
-allocations                                           5045645      293.3 ns/op
-parallel_scaling/tasks-1                              3703910      406.6 ns/op
-parallel_scaling/tasks-2                               143250      10117 ns/op
-parallel_scaling/tasks-5                                77515      16230 ns/op
-parallel_scaling/tasks-10                               73175      24172 ns/op
-parallel_scaling/tasks-20                               31900      50871 ns/op
-parallel_scaling/tasks-50                               12300     118455 ns/op
-context_cancellation                                   161620       9295 ns/op
-repeated_task_calls                                  16200700      95.35 ns/op
+single_task                                           9051835      167.9 ns/op
+parallel_independent_tasks                             120455      12677 ns/op
+high_contention                                         92270      16474 ns/op
+task_with_dependencies                                4711310      321.1 ns/op
+allocations                                           7487150      200.6 ns/op
+parallel_scaling/tasks-1                              5473560      275.8 ns/op
+parallel_scaling/tasks-2                               146705      10098 ns/op
+parallel_scaling/tasks-5                               111980      13448 ns/op
+parallel_scaling/tasks-10                               69550      21064 ns/op
+parallel_scaling/tasks-20                               38535      38303 ns/op
+parallel_scaling/tasks-50                               17260      65540 ns/op
+context_cancellation                                   181545       8351 ns/op
+repeated_task_calls                                  40352705      36.89 ns/op
