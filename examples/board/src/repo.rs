@@ -230,6 +230,13 @@ pub struct ModLogEntry {
 	pub created_at: i64,
 }
 
+#[derive(Clone, Debug, Serialize, vorma::TsGen)]
+pub struct SiteStats {
+	pub stories: i64,
+	pub comments: i64,
+	pub votes: i64,
+}
+
 vorma::tasks::task! {
 	pub static USER_PROFILE: vorma::tasks::Task<DbInput<String>, Option<UserProfile>, vorma::Error> =
 		memoized(|_ctx, arg: DbInput<String>| async move {
@@ -333,6 +340,38 @@ vorma::tasks::task! {
 					})
 				})?;
 				rows.collect()
+			})
+			.await
+		});
+}
+
+/*
+The site-activity totals shown in the shell are the third and last task cache
+policy: `single_flight`. Unlike `memoized` (retained for the whole request) and
+`extended_cache` (retained across requests for a TTL), `single_flight` retains
+nothing — it only coalesces callers that run concurrently with the exact same
+input, then forgets. That is the right shape for a live counter: a burst of
+concurrent handlers in one request shares a single aggregate scan, but the very
+next read still reflects the current database instead of a cached number.
+*/
+vorma::tasks::task! {
+	pub static LIVE_SITE_STATS: vorma::tasks::Task<DbInput<()>, SiteStats, vorma::Error> =
+		single_flight(|_ctx, arg: DbInput<()>| async move {
+			blocking_task(arg.db, move |conn| {
+				conn.query_row(
+					"SELECT \
+						(SELECT COUNT(*) FROM stories WHERE killed = 0), \
+						(SELECT COUNT(*) FROM comments WHERE killed = 0), \
+						(SELECT COUNT(*) FROM votes)",
+					[],
+					|row| {
+						Ok(SiteStats {
+							stories: row.get(0)?,
+							comments: row.get(1)?,
+							votes: row.get(2)?,
+						})
+					},
+				)
 			})
 			.await
 		});

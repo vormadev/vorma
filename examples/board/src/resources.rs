@@ -421,6 +421,16 @@ pub const STORY_ATTACHMENT: app::Resource = app::resource! {
 			))
 			.map_err(|error| HttpExit::err(error.to_string()))?,
 		);
+		/*
+		`append_header` adds a value without replacing existing ones, which is the
+		correct choice for headers that legitimately carry a list. `Vary` is the
+		classic case: append each header the response depends on instead of
+		overwriting a prior `Vary` value.
+		*/
+		ctx.response().append_header(
+			vorma::HttpHeaderName::from_static("vary"),
+			vorma::HttpHeaderValue::from_static("accept-encoding"),
+		);
 		let content_type = vorma::HttpHeaderValue::from_str(&attachment.content_type)
 			.map_err(|error| HttpExit::err(error.to_string()))?;
 		Ok(vorma::ResourceBody::new(content_type, attachment.body))

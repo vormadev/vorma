@@ -103,44 +103,44 @@ The maintainer authorized the recommendation above ("Please proceed"). Executed 
 verified:
 
 1. **Blocker 1 fixed.** Loop-local `Id` rebind in
-   `crates/vorma-build/src/process_runner.rs` (construction moved inside the retry
-   loop; observable behavior unchanged: observe-without-reaping via `WNOWAIT`, retry on
-   `EINTR`, return otherwise). The workspace compiles on Linux for the first time.
+   `crates/vorma-build/src/process_runner.rs` (construction moved inside the retry loop;
+   observable behavior unchanged: observe-without-reaping via `WNOWAIT`, retry on `EINTR`,
+   return otherwise). The workspace compiles on Linux for the first time.
 2. **Blocker 2 fixed.** `crates/vorma-tasks/tests/ui/task_new_removed.stderr` reblessed
-   via `TRYBUILD=overwrite`; diff verified to be exactly the two E0599 wording lines
-   (same error code, same span); `api_diagnostics` green.
+   via `TRYBUILD=overwrite`; diff verified to be exactly the two E0599 wording lines (same
+   error code, same span); `api_diagnostics` green.
 3. **`make rust-gate`: green, all steps** — fmt, policy (audit: one allowed unsound
    warning, ticketed; deny: all four checks ok), clippy `-D warnings`, tests (548 + 1
-   doctest = 549 passed — matches the macOS-era recording exactly), loom 7/7, build,
-   doc `-D warnings`, bench compile, client-wasm (regenerated the tracked artifact —
+   doctest = 549 passed — matches the macOS-era recording exactly), loom 7/7, build, doc
+   `-D warnings`, bench compile, client-wasm (regenerated the tracked artifact —
    reproducibility ticketed), package (six crates), fuzz (both targets, 4096 runs, no
    findings; machine caveat recorded in STATE.md and ticketed: miniconda `cc` shadowing
    requires a linker override for the fuzz step on this box).
 4. **`make ts-gate`: green** — install, fmt, lint (10 pre-existing warnings ticketed),
    tsgo 8/8 projects, vitest 851/851.
 5. **`make e2e-smoke`: red on exactly one scenario, and it is a real bug.** test-prod
-   green (react/preact/solid, full browser property suites, Chrome 148); test-dev
-   (react) green; test-dev-changes (react) deterministically red — a source change
-   never triggers a dev rebuild on Linux (the watcher surfaces no event). Full
-   diagnosis, suspects, and fix constraints in ticket
-   `linux-dev-changes-rebuild-not-triggered`. Fixing it is semantic dev-pipeline work
-   outside this closeout's authorization — escalated to the maintainer.
+   green (react/preact/solid, full browser property suites, Chrome 148); test-dev (react)
+   green; test-dev-changes (react) deterministically red — a source change never triggers
+   a dev rebuild on Linux (the watcher surfaces no event). Full diagnosis, suspects, and
+   fix constraints in ticket `linux-dev-changes-rebuild-not-triggered`. Fixing it is
+   semantic dev-pipeline work outside this closeout's authorization — escalated to the
+   maintainer.
 
 Bookkeeping: resolved tickets `linux-waitid-id-moved` and
-`vorma-tasks-trybuild-compiler-drift` deleted per `tickets/README.md`. New tickets
-filed: `anyhow-rustsec-2026-0190-upgrade`, `ts-lint-react-redundant-type-warnings`,
+`vorma-tasks-trybuild-compiler-drift` deleted per `tickets/README.md`. New tickets filed:
+`anyhow-rustsec-2026-0190-upgrade`, `ts-lint-react-redundant-type-warnings`,
 `linux-conda-cc-shadowing-fuzz-link`, `wasm-artifact-binaryen-version-pinning`,
-`linux-dev-changes-rebuild-not-triggered`. STATE.md carries the full gate record and
-the machine-provisioning notes. No commits made (git policy); the working tree holds
-the two fixes, the regenerated wasm artifact, formatter normalization from the gates'
-write-mode fmt steps, and all documentation updates.
+`linux-dev-changes-rebuild-not-triggered`. STATE.md carries the full gate record and the
+machine-provisioning notes. No commits made (git policy); the working tree holds the two
+fixes, the regenerated wasm artifact, formatter normalization from the gates' write-mode
+fmt steps, and all documentation updates.
 
 ## Final disposition
 
-**P001 is CLOSED, accepted (2026-07-01).** The one remaining item — the Linux
-dev-changes rebuild bug — was fixed by packet P001b (root cause: inotify access-event
-feedback; see `packets/P001b-linux-dev-rebuild-fix/REVIEW.md`), after which the full
-`make e2e-smoke` aggregate passed with exit 0. Every definition-of-done item is met:
-clippy clean, every gate run and green, STATE.md records the true baseline. The
-discovered bug was the packet working as intended — the first honest Linux gate run
-surfaced a real Linux-only defect that macOS development never could have caught.
+**P001 is CLOSED, accepted (2026-07-01).** The one remaining item — the Linux dev-changes
+rebuild bug — was fixed by packet P001b (root cause: inotify access-event feedback; see
+`packets/P001b-linux-dev-rebuild-fix/REVIEW.md`), after which the full `make e2e-smoke`
+aggregate passed with exit 0. Every definition-of-done item is met: clippy clean, every
+gate run and green, STATE.md records the true baseline. The discovered bug was the packet
+working as intended — the first honest Linux gate run surfaced a real Linux-only defect
+that macOS development never could have caught.

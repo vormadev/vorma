@@ -10,6 +10,7 @@ use http::header::{
 	TRANSFER_ENCODING,
 };
 use http::{HeaderMap, Response, StatusCode, Uri};
+use serde::Serialize;
 
 pub use vorma_contract::wire::{
 	BUILD_SKEW_HEADER, CLIENT_ACCEPTS_REDIRECT_HEADER, CLIENT_BUILD_ID_HEADER,
@@ -496,26 +497,63 @@ pub fn finalize_view_html_response(
 }
 
 /// Render the JSON body embedded in an SSR document.
+/*
+Serializes straight into the HTML-script-safe escaped form through a
+`serde_json` formatter that intercepts string fragments, instead of
+serializing to a plain JSON string and then copying the whole thing again
+through a second escaping pass. `&`/`<`/`>`/U+2028/U+2029 can only appear
+inside JSON string values (object keys and string values), never in
+structural characters, numbers, or literals, so hooking
+`Formatter::write_string_fragment` — which `serde_json` only ever calls
+with already-UTF-8-valid `&str` slices — is sufficient; no other
+`Formatter` method needs overriding. Output is byte-identical to the
+former to-string-then-escape pipeline by construction: standard JSON
+escaping is untouched (delegated to `CompactFormatter`), and the same five
+characters are substituted the same way, just inline as each fragment is
+written rather than in a second full copy.
+*/
 pub fn ssr_payload_json(payload: &SsrPayload) -> Result<String, FinalizerError> {
-	let json = serde_json::to_string(payload).map_err(|error| FinalizerError::Json {
-		message: error.to_string(),
-	})?;
-	Ok(escape_ssr_payload_json(&json))
+	let mut buffer = Vec::new();
+	let formatter = HtmlScriptSafeJsonFormatter::default();
+	let mut serializer = serde_json::Serializer::with_formatter(&mut buffer, formatter);
+	payload
+		.serialize(&mut serializer)
+		.map_err(|error| FinalizerError::Json {
+			message: error.to_string(),
+		})?;
+	// The formatter only ever writes valid UTF-8: `CompactFormatter`'s
+	// structural/escape bytes are all ASCII, and `write_string_fragment`
+	// only receives already-UTF-8-valid `&str` fragments.
+	Ok(String::from_utf8(buffer).expect("serialized SSR payload JSON is always valid UTF-8"))
 }
 
-fn escape_ssr_payload_json(json: &str) -> String {
-	let mut escaped = String::with_capacity(json.len());
-	for ch in json.chars() {
-		match ch {
-			'&' => escaped.push_str("\\u0026"),
-			'<' => escaped.push_str("\\u003c"),
-			'>' => escaped.push_str("\\u003e"),
-			'\u{2028}' => escaped.push_str("\\u2028"),
-			'\u{2029}' => escaped.push_str("\\u2029"),
-			_ => escaped.push(ch),
+#[derive(Default)]
+struct HtmlScriptSafeJsonFormatter {
+	inner: serde_json::ser::CompactFormatter,
+}
+
+impl serde_json::ser::Formatter for HtmlScriptSafeJsonFormatter {
+	fn write_string_fragment<W>(&mut self, writer: &mut W, fragment: &str) -> std::io::Result<()>
+	where
+		W: ?Sized + std::io::Write,
+	{
+		let mut last = 0;
+		for (index, ch) in fragment.char_indices() {
+			let escape = match ch {
+				'&' => "\\u0026",
+				'<' => "\\u003c",
+				'>' => "\\u003e",
+				'\u{2028}' => "\\u2028",
+				'\u{2029}' => "\\u2029",
+				_ => continue,
+			};
+			self.inner
+				.write_string_fragment(writer, &fragment[last..index])?;
+			writer.write_all(escape.as_bytes())?;
+			last = index + ch.len_utf8();
 		}
+		self.inner.write_string_fragment(writer, &fragment[last..])
 	}
-	escaped
 }
 
 /// Return a build-skew JSON response when a submitted route build id is stale.

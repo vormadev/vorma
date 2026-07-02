@@ -54,10 +54,10 @@ while Linux prunes at registration. Decide deliberately and document the reasoni
 ## Constraints
 
 - Dev events stay event-driven; no polling (REMINDERS.md).
-- Do not change which paths are considered framework-relevant (classification semantics are
-  frozen unless a packet grants otherwise) -- this is purely about which directories the OS
-  watch covers. A pruned OS watch must still deliver every event that classification would
-  have accepted.
+- Do not change which paths are considered framework-relevant (classification semantics
+  are frozen unless a packet grants otherwise) -- this is purely about which directories
+  the OS watch covers. A pruned OS watch must still deliver every event that
+  classification would have accepted.
 - Scope is `crates/vorma-build`.
 
 ## Verification expectations

@@ -25,17 +25,17 @@ untouched, and every gate is green — all re-verified independently by Fable.
   one noop-waker poll, `Ready` short-circuits the select, `Pending` falls into the same
   pinned future's select. The in-code semantics argument is correct: a body that finishes
   on its first poll never suspended, so the before-run cancellation check and the
-  post-outcome handling cover every observable case. The three named cancellation pins
-  and all loom models pass untouched.
+  post-outcome handling cover every observable case. The three named cancellation pins and
+  all loom models pass untouched.
 - **Gates re-run by Fable:** workspace tests all-targets + doc — zero non-ok summary
   lines; fmt clean; clippy `-D warnings` clean; loom 7/7.
 - **Recording:** the per-machine file matches the REPORT table row for row and is a pure
   `make bench-tasks` redirect (header + 13 rows).
 - **Reproducibility spot-check:** an independent bench run (direct, not touching the
-  recording) reproduced every row within a few percent — headline
-  `repeated_task_calls` 75.07 vs recorded 75.87. The two structurally noisy rows behave
-  exactly as documented (`high_contention` spawn-bound in the harness;
-  `context_cancellation` timer-race-shaped, still far below its baseline).
+  recording) reproduced every row within a few percent — headline `repeated_task_calls`
+  75.07 vs recorded 75.87. The two structurally noisy rows behave exactly as documented
+  (`high_contention` spawn-bound in the harness; `context_cancellation` timer-race-shaped,
+  still far below its baseline).
 - **STATE.md updates:** accurate — before/after table, cause-resolution note,
   fingerprint-hasher flag closed, mac verification flagged.
 

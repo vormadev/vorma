@@ -16,6 +16,7 @@ use crate::execution_engine::{
 use crate::execution_plan::{ExecutionPlan, PlanError};
 use crate::framework_graph::FrameworkGraph;
 use crate::runtime_manifest::RuntimeManifest;
+use crate::view_response::PrecomputedViewFragments;
 
 /// Inputs required to compile one runtime generation snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -48,6 +49,7 @@ pub struct RuntimeSnapshot {
 	manifest: RuntimeManifest,
 	client_build_id: String,
 	engine: ExecutionEngine,
+	precomputed_view_fragments: PrecomputedViewFragments,
 }
 
 impl RuntimeSnapshot {
@@ -66,11 +68,20 @@ impl RuntimeSnapshot {
 		)
 		.map_err(|source| RuntimeSnapshotError::Assets { source })?;
 		let client_build_id = input.manifest.client_build_id().to_owned();
+		/*
+		Infallible in practice: every element rendered here uses framework-
+		fixed tag/attribute names (style/id, script/type/src, link/rel/href),
+		and `render_document_element` only ever rejects invalid names, never
+		attribute/inner-HTML values — which is all the manifest contributes.
+		*/
+		let precomputed_view_fragments = PrecomputedViewFragments::compile(&input.manifest)
+			.expect("precomputed view fragments use only framework-fixed element names");
 		Ok(Self {
 			graph: input.graph,
 			manifest: input.manifest,
 			client_build_id,
 			engine: ExecutionEngine::new(plan, assets),
+			precomputed_view_fragments,
 		})
 	}
 
@@ -97,6 +108,11 @@ impl RuntimeSnapshot {
 	/// Committed public asset capabilities.
 	pub fn asset_capabilities(&self) -> &AssetCapabilities {
 		self.engine.asset_capabilities()
+	}
+
+	/// Snapshot-constant view-response fragments precomputed at commit time.
+	pub(crate) fn precomputed_view_fragments(&self) -> &PrecomputedViewFragments {
+		&self.precomputed_view_fragments
 	}
 
 	/// Execute one request against this snapshot.

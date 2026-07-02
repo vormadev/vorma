@@ -16,6 +16,10 @@ export default defineView({
 				<p>
 					Board does not have a page for <code>{data.requested_path}</code>.
 				</p>
+				<p className="meta">
+					{data.requested_method} {data.requested_uri}
+					{data.raw_query ? ` (raw query: ${data.raw_query})` : ""}
+				</p>
 				{data.primary_source ? (
 					<p className="meta">Primary source: {data.primary_source}.</p>
 				) : null}

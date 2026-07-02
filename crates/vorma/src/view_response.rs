@@ -1,7 +1,7 @@
 //! View execution report response projection.
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -133,6 +133,54 @@ pub fn finalize_view_report_html_response(
 	input: &ViewHtmlResponseInput<'_>,
 	client_build_id: &str,
 ) -> Result<Response<Bytes>, ViewResponseError> {
+	finalize_view_report_html_response_impl(
+		manifest,
+		document,
+		report,
+		input,
+		client_build_id,
+		None,
+	)
+}
+
+/*
+Snapshot-precomputed sibling of `finalize_view_report_html_response`, used
+only by the hot request path (`runtime_app.rs`). `precomputed` supplies
+markup for the parts of the response that are pure functions of the
+committed manifest alone (never of `document`, which a
+`RuntimeDocumentProvider` may vary per request, or of the matched route):
+the critical-CSS style element, the root div, the prod module script tag,
+and the per-URL CSS bundle `<link>` markup. Every fragment is rendered
+through the exact same `render_document_element` call the fresh path uses,
+so output is byte-identical by construction — this function only skips
+re-doing work whose result cannot differ.
+*/
+pub(crate) fn finalize_view_report_html_response_precomputed(
+	manifest: &RuntimeManifest,
+	document: &DocumentContract,
+	report: &RouteExecutionReport,
+	input: &ViewHtmlResponseInput<'_>,
+	client_build_id: &str,
+	precomputed: &PrecomputedViewFragments,
+) -> Result<Response<Bytes>, ViewResponseError> {
+	finalize_view_report_html_response_impl(
+		manifest,
+		document,
+		report,
+		input,
+		client_build_id,
+		Some(precomputed),
+	)
+}
+
+fn finalize_view_report_html_response_impl(
+	manifest: &RuntimeManifest,
+	document: &DocumentContract,
+	report: &RouteExecutionReport,
+	input: &ViewHtmlResponseInput<'_>,
+	client_build_id: &str,
+	precomputed: Option<&PrecomputedViewFragments>,
+) -> Result<Response<Bytes>, ViewResponseError> {
 	if report.effects().is_terminal() {
 		let response = finalize_terminal_response(report.effects(), client_build_id)
 			.map_err(|source| ViewResponseError::Finalizer { source })?;
@@ -155,9 +203,21 @@ pub fn finalize_view_report_html_response(
 	for element in &payload.rest_head_els {
 		append_payload_head_element(element, &mut head_markup)?;
 	}
-	append_critical_css_head_element(manifest, &mut head_markup)?;
+	match precomputed {
+		Some(precomputed) => head_markup.push_str(&precomputed.critical_css_markup),
+		None => append_critical_css_head_element(manifest, &mut head_markup)?,
+	}
 	if !input.is_dev() {
-		append_css_bundle_head_elements(&payload.css_bundles, &mut head_markup)?;
+		match precomputed {
+			Some(precomputed) => {
+				append_precomputed_css_bundle_head_elements(
+					precomputed,
+					&payload.css_bundles,
+					&mut head_markup,
+				)?;
+			}
+			None => append_css_bundle_head_elements(&payload.css_bundles, &mut head_markup)?,
+		}
 	}
 	let ssr_payload = SsrPayload {
 		client_build_id: client_build_id.to_owned(),
@@ -171,15 +231,18 @@ pub fn finalize_view_report_html_response(
 	body_markup.push_str(input.body_markup());
 	append_json_payload_script(&payload_json, &mut body_markup)?;
 	body_markup.push('\n');
-	body_markup.push_str(&format!(
-		r#"<div id="{}"></div>"#,
-		crate::constants::VORMA_ROOT_EL_ID
-	));
+	match precomputed {
+		Some(precomputed) => body_markup.push_str(&precomputed.root_div_markup),
+		None => body_markup.push_str(&root_div_markup()),
+	}
 	body_markup.push('\n');
 	if input.is_dev() {
 		append_dev_scripts(manifest, &mut body_markup)?;
 	} else if !manifest.client_entry().url().is_empty() {
-		append_module_script(manifest.client_entry().url(), &mut body_markup)?;
+		match precomputed.and_then(|precomputed| precomputed.module_script_markup.as_deref()) {
+			Some(module_script_markup) => body_markup.push_str(module_script_markup),
+			None => append_module_script(manifest.client_entry().url(), &mut body_markup)?,
+		}
 	}
 	let response = finalize_view_html_response(
 		document,
@@ -189,6 +252,86 @@ pub fn finalize_view_report_html_response(
 	)
 	.map_err(|source| ViewResponseError::Finalizer { source })?;
 	suppress_response_body_if_needed(response, report)
+}
+
+fn append_precomputed_css_bundle_head_elements(
+	precomputed: &PrecomputedViewFragments,
+	css_bundles: &[String],
+	head_markup: &mut String,
+) -> Result<(), ViewResponseError> {
+	for css_bundle in css_bundles {
+		let Some(markup) = precomputed.css_bundle_link_markup.get(css_bundle) else {
+			// A CSS bundle URL absent from the snapshot-wide precomputed set
+			// is a manifest/report mismatch the fresh path would also fail
+			// on eventually (an unregistered view module); fall back to the
+			// exact fresh render so behavior matches the non-precomputed
+			// path rather than silently dropping the link.
+			append_document_head_element(
+				DocumentElementContract::new(HEAD_TAG_LINK)
+					.with_attributes(BTreeMap::from([
+						(CSS_BUNDLE_ATTR.to_owned(), css_bundle.clone()),
+						(HEAD_ATTR_HREF.to_owned(), css_bundle.clone()),
+						(HEAD_ATTR_REL.to_owned(), HEAD_REL_STYLESHEET.to_owned()),
+					]))
+					.with_self_closing(true),
+				head_markup,
+			)?;
+			continue;
+		};
+		head_markup.push_str(markup);
+	}
+	Ok(())
+}
+
+fn root_div_markup() -> String {
+	format!(r#"<div id="{}"></div>"#, crate::constants::VORMA_ROOT_EL_ID)
+}
+
+/// Snapshot-constant HTML fragments precomputed once at snapshot commit.
+/*
+Every fragment here is a pure function of the committed `RuntimeManifest`
+(never of a request-varying `document` or matched route), so it is
+identical for the life of one committed snapshot. Rendered once through
+the same `render_document_element` path the fresh per-request code uses.
+*/
+#[derive(Clone, Debug)]
+pub(crate) struct PrecomputedViewFragments {
+	critical_css_markup: String,
+	root_div_markup: String,
+	module_script_markup: Option<String>,
+	css_bundle_link_markup: BTreeMap<String, String>,
+}
+
+impl PrecomputedViewFragments {
+	/// Precompute every snapshot-constant view-response fragment for one manifest.
+	pub(crate) fn compile(manifest: &RuntimeManifest) -> Result<Self, ViewResponseError> {
+		let mut critical_css_markup = String::new();
+		append_critical_css_head_element(manifest, &mut critical_css_markup)?;
+		let module_script_markup = if manifest.client_entry().url().is_empty() {
+			None
+		} else {
+			let mut markup = String::new();
+			append_module_script(manifest.client_entry().url(), &mut markup)?;
+			Some(markup)
+		};
+		let mut css_bundle_urls = BTreeSet::new();
+		css_bundle_urls.extend(manifest.client_entry().css_bundle_urls().iter().cloned());
+		for module in manifest.view_modules() {
+			css_bundle_urls.extend(module.css_bundle_urls().iter().cloned());
+		}
+		let mut css_bundle_link_markup = BTreeMap::new();
+		for css_bundle in css_bundle_urls {
+			let mut markup = String::new();
+			append_css_bundle_head_elements(std::slice::from_ref(&css_bundle), &mut markup)?;
+			css_bundle_link_markup.insert(css_bundle, markup);
+		}
+		Ok(Self {
+			critical_css_markup,
+			root_div_markup: root_div_markup(),
+			module_script_markup,
+			css_bundle_link_markup,
+		})
+	}
 }
 
 /// View response projection error.

@@ -1,0 +1,14 @@
+os: linux
+arch: x86_64
+crate: vorma
+cpu: Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz
+static_view_render                                      36030      43891 ns/op
+nested_dynamic_view_chain_4_deep                        28110      55750 ns/op
+json_resource_small_input_output                        78260      20388 ns/op
+resource_body_binary_resource                           80375      18104 ns/op
+request_through_middleware_chain_2                      36910      39961 ns/op
+request_through_middleware_chain_0_control              48085      31798 ns/op
+not_found_catch_all_view                                35645      42161 ns/op
+not_found_bare_no_catch_all                            683185       2197 ns/op
+head_request_to_resource                                81765      17917 ns/op
+method_not_allowed                                     388470       3866 ns/op

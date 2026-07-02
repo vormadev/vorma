@@ -2490,6 +2490,7 @@ dependencies = [
  "tower-service",
  "trybuild",
  "url",
+ "vorma-bench",
  "vorma-contract",
  "vorma-macros",
  "vorma-matcher",

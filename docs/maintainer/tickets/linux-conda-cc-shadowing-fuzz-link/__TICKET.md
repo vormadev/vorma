@@ -9,8 +9,8 @@ The machine's PATH resolves the C toolchain inconsistently:
 
 - `cc` and `gcc` → `/home/sjc/miniconda3/bin/` → conda-forge cross toolchain
   (`x86_64-conda-linux-gnu-gcc`), which links against conda's bundled OLD-glibc sysroot.
-- `c++` and `g++` → `/usr/bin/` → Ubuntu system g++ 15.2, whose headers target the
-  system glibc 2.43 and emit C23 symbol redirects (`strtoul` → `__isoc23_strtoul`).
+- `c++` and `g++` → `/usr/bin/` → Ubuntu system g++ 15.2, whose headers target the system
+  glibc 2.43 and emit C23 symbol redirects (`strtoul` → `__isoc23_strtoul`).
 
 Any build that compiles C++ with the system g++ but lets rustc drive the final link
 through `cc` (conda) fails with undefined `__isoc23_*` symbols: the objects reference
@@ -23,9 +23,8 @@ glibc-2.38+ symbols that conda's old sysroot glibc does not provide. Observed tw
    building binaryen from source with the system toolchain end to end; `wasm-opt` 130 now
    lives in `~/.local/bin`).
 
-The main workspace gate steps do NOT hit this: their C deps (blake3, mimalloc) are plain
-C compiled and linked consistently, and old-glibc-linked binaries run fine on a newer
-glibc.
+The main workspace gate steps do NOT hit this: their C deps (blake3, mimalloc) are plain C
+compiled and linked consistently, and old-glibc-linked binaries run fine on a newer glibc.
 
 ## Current workaround (in use for gate recording)
 

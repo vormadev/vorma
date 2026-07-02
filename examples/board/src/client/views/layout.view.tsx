@@ -277,6 +277,15 @@ export default defineView({
 					</div>
 				</section>
 				<props.Outlet />
+				<footer className="site-stats meta">
+					{/*
+					These totals come from the server's `single_flight` task, so a
+					burst of concurrent requests shares one aggregate scan while
+					each fresh page still reflects the current database.
+					*/}
+					{data.stats.stories} stories · {data.stats.comments} comments ·{" "}
+					{data.stats.votes} votes
+				</footer>
 			</div>
 		);
 	},

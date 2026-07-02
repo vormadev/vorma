@@ -6,9 +6,9 @@ Fable under maintainer authorization.
 ## Verdict
 
 **Accepted. Packet closed.** The root cause is proven with converging empirical evidence,
-the fix is minimal and lands exactly at the mechanism, the pins are real (demonstrated
-red on pre-fix behavior), and every definition-of-done item passes — re-verified
-independently by Fable, including the one item the executor's sandbox could not run.
+the fix is minimal and lands exactly at the mechanism, the pins are real (demonstrated red
+on pre-fix behavior), and every definition-of-done item passes — re-verified independently
+by Fable, including the one item the executor's sandbox could not run.
 
 ## Root cause (accepted)
 
@@ -20,8 +20,8 @@ access events, which is why macOS never saw it. The executor's evidence chain �
 instrumentation of the real session (marker once, then a ~130ms stream of `src/lib.rs`
 opens), per-second process sampling showing a fresh `cargo build` PID every sample, a gap
 analysis refuting the settle-starvation alternative, and a real-notify reproduction —
-establishes this beyond doubt. Notably, the ticket's prime suspect (path-shape
-divergence) was tested and ruled out with direct evidence rather than assumed away.
+establishes this beyond doubt. Notably, the ticket's prime suspect (path-shape divergence)
+was tested and ruled out with direct evidence rather than assumed away.
 
 ## Independent verification performed (Fable)
 
@@ -31,14 +31,14 @@ divergence) was tested and ruled out with direct evidence rather than assumed aw
   `Any`/`Other` conservatively retained), a doctrine comment explaining the feedback loop
   and the macOS no-op, two pin tests, and `#[cfg(test)]`-only helpers (no public API
   surface added). No leftover instrumentation (grep for probes/eprintln/dbg: clean).
-- `cargo test -p vorma-build --all-targets`: **134 + 1 passed, 0 failed**, both pins
-  green (`read_only_access_events_never_classify_as_source_change`,
+- `cargo test -p vorma-build --all-targets`: **134 + 1 passed, 0 failed**, both pins green
+  (`read_only_access_events_never_classify_as_source_change`,
   `real_watcher_ignores_reads_but_sees_writes`).
-- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets -- -D
-  warnings`: clean.
+- `cargo fmt --all --check`: clean.
+  `cargo clippy --workspace --all-targets -- -D warnings`: clean.
 - **`make e2e-smoke` (full aggregate, exit 0)** — run by Fable with pnpm escalation since
-  the executor's sandbox forbade `ts-install`: test-prod (react/preact/solid, full
-  browser suites), test-dev (react), and test-dev-changes (react) all green;
+  the executor's sandbox forbade `ts-install`: test-prod (react/preact/solid, full browser
+  suites), test-dev (react), and test-dev-changes (react) all green;
   `[react] server Rust rebuild observed` — the previously-failing step — passes.
 - Discovered-work ticket
   (`docs/maintainer/tickets/dev-watch-excludes-not-pruned-from-os-watch/`) reviewed:
@@ -61,5 +61,5 @@ the current index as-is.
 ## Consequence
 
 P001b was the sole remaining item of P001. With this acceptance, **P001's definition of
-done is fully met** — see P001's REVIEW.md final disposition and STATE.md for the
-recorded baseline.
+done is fully met** — see P001's REVIEW.md final disposition and STATE.md for the recorded
+baseline.

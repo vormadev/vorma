@@ -10,14 +10,14 @@ the Linux baseline recorded (2026-07-01).
 
 This packet executes on the Linux machine (`sjc-z390-aorus-pro-wifi`). Bench recordings
 are per-machine and additive under `docs/maintainer/bench-results/vorma-tasks/`; your
-working baseline is this machine's file and the matching Linux table in `STATE.md`. The
-Go / pre-gap / staged-now columns in `STATE.md` are Apple M3 Max recordings: use them to
+working baseline is this machine's file and the matching Linux table in `STATE.md`. The Go
+/ pre-gap / staged-now columns in `STATE.md` are Apple M3 Max recordings: use them to
 understand the regression's shape and magnitude, never as absolute targets for Linux
 numbers — cross-machine comparison is meaningless in both directions. All of your
-measurements are same-machine before/after on an otherwise idle box (no concurrent
-builds or tests while timing). The absolute maintainer bar — beat Go on every row except
-the two with accepted structural explanations — was defined on the mac and is verified
-on the mac: after this packet is accepted, the maintainer re-records there
+measurements are same-machine before/after on an otherwise idle box (no concurrent builds
+or tests while timing). The absolute maintainer bar — beat Go on every row except the two
+with accepted structural explanations — was defined on the mac and is verified on the mac:
+after this packet is accepted, the maintainer re-records there
 (`BENCH_MACHINE_ID=m3-max make bench-tasks`). Your job is to make that verification
 succeed by eliminating the diagnosed causes, with each win attributed on this machine.
 
@@ -28,8 +28,8 @@ three cache policies, `ParallelBatch` with true spawned parallelism, loom-verifi
 protocol). That work was good — but it also regressed every benchmark row and recorded the
 regressed numbers. The maintainer's bar is explicit: beat the Go baselines, not match
 them. The causes are already diagnosed; this packet is the mechanical restoration. The
-`STATE.md` mac table gives Go / pre-gap / staged-now for every row (regression shape);
-the `STATE.md` Linux table is your measurable baseline.
+`STATE.md` mac table gives Go / pre-gap / staged-now for every row (regression shape); the
+`STATE.md` Linux table is your measurable baseline.
 
 Diagnosed causes:
 
@@ -115,8 +115,8 @@ panic resume stays, cancel-on-drop stays.
 - Full gate green: workspace tests, clippy `-D warnings`, fmt check, `make loom-tasks`.
 - `make bench-tasks` re-recorded on this machine (per-machine file under
   `docs/maintainer/bench-results/vorma-tasks/`); `REPORT.md` contains a per-row
-  Linux-baseline vs Linux-after table with deltas for all 13 rows, with the mac
-  Go/pre-gap columns included for shape reference only (clearly marked cross-machine).
+  Linux-baseline vs Linux-after table with deltas for all 13 rows, with the mac Go/pre-gap
+  columns included for shape reference only (clearly marked cross-machine).
 - Targets, on this machine: every row improves or has an explicitly accepted structural
   explanation. Cause-level proof required — the blake3 resolve-path cost is gone (code +
   bench delta on memo-hit-dominated rows like `repeated_task_calls` and `single_task`),

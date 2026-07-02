@@ -6,7 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::repo::{self, Comment, DbInput, DocsPage, ModLogEntry, Story, User, UserProfile};
+use crate::repo::{
+	self, Comment, DbInput, DocsPage, ModLogEntry, SiteStats, Story, User, UserProfile,
+};
 use crate::store::AppState;
 use crate::{APP_NAME, MARK_ASSET, app};
 
@@ -15,6 +17,7 @@ pub struct LayoutData {
 	app_name: String,
 	mark_url: String,
 	current_user: Option<User>,
+	stats: SiteStats,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, vorma::TsGen)]
@@ -57,10 +60,24 @@ pub const LAYOUT: app::View = app::view! {
 			crate::session::current_user(ctx.state(), ctx.request().headers(), ctx.exec_ctx())
 				.await
 				.map_err(|error| vorma::ViewExit::err(error.to_string()))?;
+		/*
+		The shell footer shows live site totals through the `single_flight`
+		task. When a data read fails, `with_source` keeps the original error
+		as the exit's source chain instead of flattening it to a string, so
+		server logs still show what actually went wrong under the client-safe
+		message.
+		*/
+		let stats = repo::LIVE_SITE_STATS
+			.run(ctx.exec_ctx(), db_input(ctx.state(), ()))
+			.await
+			.map_err(|error| {
+				vorma::ViewExit::err("failed to load site stats").with_source(error)
+			})?;
 		Ok(LayoutData {
 			app_name: APP_NAME.to_owned(),
 			mark_url,
 			current_user,
+			stats: (*stats).clone(),
 		})
 	};
 };
@@ -305,6 +322,9 @@ pub const DOCS_PAGE_VIEW: app::View = app::view! {
 #[derive(Clone, Debug, Serialize, vorma::TsGen)]
 pub struct NotFoundPage {
 	requested_path: String,
+	requested_method: String,
+	requested_uri: String,
+	raw_query: Option<String>,
 	primary_source: Option<String>,
 	source_tags: Vec<String>,
 	source_pair_count: usize,
@@ -325,6 +345,16 @@ pub const NOT_FOUND: app::View = app::view! {
 	handler: |ctx| {
 		ctx.head().title(format!("Page not found | {APP_NAME}"));
 		let request = ctx.request();
+		/*
+		The raw request accessors expose the underlying HTTP request when a view
+		needs more than typed input: `method` and `uri` are the whole request
+		line, and `query` is the undecoded query string. Reach for these only for
+		diagnostics like this fallback; normal routes should still read typed view
+		input and the parsed `search_params`.
+		*/
+		let requested_method = request.method().to_string();
+		let requested_uri = request.uri().to_string();
+		let raw_query = request.query().map(str::to_owned);
 		let search_params = request.search_params();
 		let primary_source = search_params.get("from");
 		let source_tags = search_params.get_all("from").collect();
@@ -334,6 +364,9 @@ pub const NOT_FOUND: app::View = app::view! {
 			.count();
 		Ok(NotFoundPage {
 			requested_path: request.path().to_owned(),
+			requested_method,
+			requested_uri,
+			raw_query,
 			primary_source,
 			source_tags,
 			source_pair_count,

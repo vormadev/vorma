@@ -980,6 +980,34 @@ async fn execute_invocation_phase(
 ) -> Result<Option<PhaseBoundary>, ExecutionError>
 where
 {
+	/*
+	A phase of exactly one invocation has no fan-out to coordinate: the
+	`JoinSet` spawn + `join_next_with_id` bookkeeping exists to arbitrate
+	completion order and task identity across N>=2 siblings (the parallel
+	contract this function serves elsewhere), which a single invocation
+	never needs. Polling its future inline is behaviorally indistinguishable
+	from spawning it alone — same commit logic (`commit_invocation_output`),
+	same panic propagation (an inline `.await` unwinds through this
+	function exactly as `resume_unwind` on a joined panic does), one fewer
+	task-scheduling round trip.
+	*/
+	if let [idx] = *phase_indexes {
+		let (invocation, handler) = &prepared[idx];
+		let input = HandlerInput {
+			request: Arc::clone(&invocation.request),
+			asset_capabilities: asset_capabilities.clone(),
+			role: invocation.role,
+			pattern: invocation.pattern.clone(),
+			params: invocation.params.clone(),
+			splat_values: invocation.splat_values.clone(),
+			query_params: Arc::clone(route_query_params),
+			decoded_input: invocation.decoded_input.clone(),
+		};
+		let exec_ctx = execution_contexts[idx].clone();
+		let output = handler.call(input, exec_ctx).await;
+		return Ok(commit_invocation_output(report, prepared, idx, 0, output));
+	}
+
 	let mut pending = JoinSet::new();
 	let mut pending_positions = HashMap::with_capacity(phase_indexes.len());
 	for (phase_position, idx) in phase_indexes.iter().copied().enumerate() {
@@ -990,15 +1018,24 @@ where
 		let asset_capabilities = asset_capabilities.clone();
 		let exec_ctx = execution_contexts[idx].clone();
 		let abort_handle = pending.spawn(async move {
+			let HandlerInvocation {
+				role,
+				pattern,
+				params,
+				splat_values,
+				request,
+				decoded_input,
+				..
+			} = invocation;
 			let input = HandlerInput {
-				request: Arc::clone(&invocation.request),
+				request,
 				asset_capabilities,
-				role: invocation.role,
-				pattern: invocation.pattern.clone(),
-				params: invocation.params.clone(),
-				splat_values: invocation.splat_values.clone(),
+				role,
+				pattern,
+				params,
+				splat_values,
 				query_params,
-				decoded_input: invocation.decoded_input.clone(),
+				decoded_input,
 			};
 			let output = handler.call(input, exec_ctx).await;
 			(phase_position, idx, output)
@@ -1033,79 +1070,90 @@ where
 				break;
 			};
 			let global_idx = phase_indexes[next_to_commit];
-			let invocation = &prepared[global_idx].0;
-			let output = match output {
-				Ok(output) => output,
-				Err(error) if invocation.role == HandlerRole::View => {
-					if error.effects().is_terminal() {
-						finish_terminal_report(report, invocation, error.effects());
-						return Ok(Some(PhaseBoundary {
-							phase_position: next_to_commit,
-						}));
-					}
-					report.server_error = Some(RouteServerError {
-						handler_id: invocation.handler_id.clone(),
-						pattern: invocation.pattern.clone(),
-						view_index: view_index_for_prepared_invocation(prepared, global_idx),
-						status: error.status,
-						client_message: error
-							.client_message
-							.unwrap_or_else(|| DEFAULT_SERVER_ERROR_MESSAGE.to_owned()),
-					});
-					return Ok(Some(PhaseBoundary {
-						phase_position: next_to_commit,
-					}));
-				}
-				Err(error) => {
-					/*
-					Terminal precedence: handler-owned terminal effects (e.g.
-					a redirect) win; otherwise the response is built FROM the
-					returned error — its status and client text, with the
-					conventional fallbacks when the error carries neither.
-					*/
-					let mut internal_error_effects;
-					let effects = if error.effects().is_terminal() {
-						error.effects()
-					} else {
-						internal_error_effects = ResponseEffects::default();
-						internal_error_effects.set_status_with_text(
-							error
-								.status
-								.unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR),
-							error
-								.client_message
-								.as_deref()
-								.unwrap_or(INTERNAL_SERVER_ERROR_STATUS_TEXT),
-						);
-						&internal_error_effects
-					};
-					finish_terminal_report(report, invocation, effects);
-					return Ok(Some(PhaseBoundary {
-						phase_position: next_to_commit,
-					}));
-				}
-			};
-			let terminal = output.effects().is_terminal();
-			let commit = HandlerCommit {
-				handler_id: invocation.handler_id.clone(),
-				role: invocation.role,
-				pattern: invocation.pattern.clone(),
-				output,
-			};
-			report.effects.merge_from(commit.output.effects());
-			if terminal {
-				report.terminal_handler_id = Some(commit.handler_id.clone());
+			if let Some(boundary) =
+				commit_invocation_output(report, prepared, global_idx, next_to_commit, output)
+			{
+				return Ok(Some(boundary));
 			}
-			report.committed.push(commit);
 			next_to_commit += 1;
-			if terminal {
-				return Ok(Some(PhaseBoundary {
-					phase_position: next_to_commit - 1,
-				}));
-			}
 		}
 	}
 	Ok(None)
+}
+
+// Commits one invocation's output at `phase_position`, or establishes the
+// terminal boundary its failure requires. Shared by the single-invocation
+// inline fast path and the N>=2 JoinSet commit loop so both phase shapes
+// apply the exact same commit rules.
+fn commit_invocation_output(
+	report: &mut RouteExecutionReport,
+	prepared: &[(HandlerInvocation, Arc<dyn RuntimeHandler>)],
+	global_idx: usize,
+	phase_position: usize,
+	output: Result<HandlerOutput, HandlerExecutionError>,
+) -> Option<PhaseBoundary> {
+	let invocation = &prepared[global_idx].0;
+	let output = match output {
+		Ok(output) => output,
+		Err(error) if invocation.role == HandlerRole::View => {
+			if error.effects().is_terminal() {
+				finish_terminal_report(report, invocation, error.effects());
+				return Some(PhaseBoundary { phase_position });
+			}
+			report.server_error = Some(RouteServerError {
+				handler_id: invocation.handler_id.clone(),
+				pattern: invocation.pattern.clone(),
+				view_index: view_index_for_prepared_invocation(prepared, global_idx),
+				status: error.status,
+				client_message: error
+					.client_message
+					.unwrap_or_else(|| DEFAULT_SERVER_ERROR_MESSAGE.to_owned()),
+			});
+			return Some(PhaseBoundary { phase_position });
+		}
+		Err(error) => {
+			/*
+			Terminal precedence: handler-owned terminal effects (e.g. a
+			redirect) win; otherwise the response is built FROM the
+			returned error — its status and client text, with the
+			conventional fallbacks when the error carries neither.
+			*/
+			let mut internal_error_effects;
+			let effects = if error.effects().is_terminal() {
+				error.effects()
+			} else {
+				internal_error_effects = ResponseEffects::default();
+				internal_error_effects.set_status_with_text(
+					error
+						.status
+						.unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR),
+					error
+						.client_message
+						.as_deref()
+						.unwrap_or(INTERNAL_SERVER_ERROR_STATUS_TEXT),
+				);
+				&internal_error_effects
+			};
+			finish_terminal_report(report, invocation, effects);
+			return Some(PhaseBoundary { phase_position });
+		}
+	};
+	let terminal = output.effects().is_terminal();
+	let commit = HandlerCommit {
+		handler_id: invocation.handler_id.clone(),
+		role: invocation.role,
+		pattern: invocation.pattern.clone(),
+		output,
+	};
+	report.effects.merge_from(commit.output.effects());
+	if terminal {
+		report.terminal_handler_id = Some(commit.handler_id.clone());
+	}
+	report.committed.push(commit);
+	if terminal {
+		return Some(PhaseBoundary { phase_position });
+	}
+	None
 }
 
 fn ordered_execution_contexts(

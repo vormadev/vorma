@@ -111,6 +111,12 @@ bench-tasks:
 	cargo bench -p vorma-tasks --bench tasks --no-run
 	cargo bench -p vorma-tasks --bench tasks 2>/dev/null | tee $(BENCH_RESULTS_DIR)/vorma-tasks/$(BENCH_MACHINE_ID).bench.results.txt
 
+# Runs owned-request-to-response engine benchmarks and records them for this machine.
+bench-engine:
+	@mkdir -p $(BENCH_RESULTS_DIR)/vorma
+	cargo bench -p vorma --bench engine --no-run
+	cargo bench -p vorma --bench engine 2>/dev/null | tee $(BENCH_RESULTS_DIR)/vorma/$(BENCH_MACHINE_ID).bench.results.txt
+
 # Runs Rust fuzz targets against copied corpora.
 rust-fuzz:
 	@FUZZ_RUNS=$(FUZZ_RUNS) $(XTASK_CMD_BASE) rust-fuzz
@@ -194,7 +200,7 @@ ts-publish:
 
 .PHONY: e2e e2e-smoke clean clean-bombadil gate ts-publish \
 	rust-build rust-build-client-wasm rust-fmt rust-fmt-check rust-lint \
-	rust-lint-fix rust-policy rust-doc rust-bench bench-matcher bench-tasks loom-tasks rust-fuzz rust-package \
+	rust-lint-fix rust-policy rust-doc rust-bench bench-matcher bench-tasks bench-engine loom-tasks rust-fuzz rust-package \
 	rust-test rust-gate \
 	ts-install ts-fmt ts-fmt-check ts-lint ts-lint-fix ts-typecheck \
 	ts-test ts-build ts-gate

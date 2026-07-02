@@ -507,3 +507,43 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   shared param-name keys, single-buffer splat captures), every benchmark row beats the Go
   baselines by ~1.2–2.0×; the public matcher surface remains std/vorma-owned types only,
   with all storage choices internal.
+
+- F-16 COVERAGE (P003, resolved): the third task cache policy, `single_flight`, had NO
+  real-world consumer anywhere in the repo — only the `vorma-tasks` crate's own tests.
+  Board demonstrated `memoized` and `extended_cache` but not `single_flight`. Closed by
+  P003: `repo::LIVE_SITE_STATS` is a `single_flight` task backing a live site-activity
+  counter in the shell footer (coalesce concurrent duplicates, retain nothing — the honest
+  shape for a volatile counter). The full cache-policy trio now lives in `repo.rs`.
+
+- F-17 DESIGN (P003, escalated to the maintainer): the standalone `vorma::tasks`
+  runtime-lifecycle surface has no honest Board app-flow home. An HTTP app never
+  constructs its own `Tasks`/`ExecCtx`/`CancelToken` — the framework owns the runtime and
+  hands `ExecCtx` to handlers — so `Tasks::{new,exec_ctx}`, `CancelToken`,
+  `ExecCtx::{child, cancel_token,is_cancelled}`, `Task::id`,
+  `Clock`/`SystemClock`/`ClockInstant`, `TaskOverrides`/`TaskOverrideMode`, and the
+  `TaskObserver` family cannot be covered by Board without contrivance. These are
+  exercised by the sovereign-crate suites (`crates/vorma-tasks/tests/tasks.rs`) and the
+  framework-owned usability test (`crates/vorma/tests/public_api.rs`), and `TaskOverrides`
+  was already deliberately MOVED out of Board into
+  `crates/vorma/tests/in_memory_test_app.rs`. This exposes a tension in the literal "Board
+  must cover 100%, period" rule versus the maintainer's own placement decisions.
+  Position/recommendation: ratify in `docs/maintainer/board-example/README.md` that Board
+  covers the surface an application uses in a realistic app flow, while the standalone
+  tasks runtime-lifecycle surface and low-level head/document type carriers are
+  sovereign-crate + `public_api.rs` coverage, not Board coverage. Full detail and the
+  item-by-item table are in `INVENTORY_VS_BOARD_P003.md`. The one genuinely app-shaped
+  member of this set is a slow-task-logging `TaskObserver` wired into the server main's
+  `TasksOptions.observer` — a real telemetry feature worth a follow-up packet if the
+  literal rule stands.
+
+- F-18 PAPERCUT (P003, gate friction, recorded): `make ts-fmt` runs `oxfmt --write .`, and
+  oxfmt's `proseWrap: "always"` / `printWidth: 90` reflows ALL markdown — including the
+  maintainer docs under `docs/maintainer/` that had drifted from that config. Running the
+  full `ts-fmt` write mode therefore dirties 13 out-of-scope, Fable-owned files (STATE.md,
+  ROADMAP.md, LEARNINGS.md, packet REPORT/REVIEW/INSTRUCTIONS, three tickets), so
+  `make ts-fmt-check` (and thus the aggregate `ts-gate`) is red at HEAD independent of any
+  code change. An executor scoped to Board must NOT run `oxfmt --write .` globally and
+  must use `--check` or a scoped write. Recommendation: either normalize the maintainer
+  docs once through the oxfmt config (a Fable-owned housekeeping pass, out of scope for a
+  Board packet), or exclude `docs/maintainer/**` from oxfmt if the intent is that
+  hand-maintained process docs are not machine-prose-wrapped.

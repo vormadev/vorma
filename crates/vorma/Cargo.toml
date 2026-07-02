@@ -60,3 +60,8 @@ tokio = { workspace = true, features = [
 	"time",
 ] }
 trybuild.workspace = true
+vorma-bench = { path = "../vorma-bench" }
+
+[[bench]]
+name = "engine"
+harness = false

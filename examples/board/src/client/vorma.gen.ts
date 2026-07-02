@@ -206,6 +206,7 @@ export type LayoutData = {
 	app_name: string;
 	mark_url: string;
 	current_user: User | null;
+	stats: SiteStats;
 };
 
 export type LoginInput = {
@@ -233,6 +234,9 @@ export type ModPage = {
 
 export type NotFoundPage = {
 	requested_path: string;
+	requested_method: string;
+	requested_uri: string;
+	raw_query: string | null;
 	primary_source: string | null;
 	source_tags: Array<string>;
 	source_pair_count: number;
@@ -254,6 +258,12 @@ export type SearchPage = {
 
 export type SearchPageInput = {
 	q?: string | null;
+};
+
+export type SiteStats = {
+	stories: number;
+	comments: number;
+	votes: number;
 };
 
 export type Story = {

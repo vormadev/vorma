@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use std::sync::Arc;
 
-use vorma::testing::TestApp;
+use vorma::testing::{TEST_CLIENT_BUILD_ID, TestApp};
 use vorma_board_example::{CSRF_ECHO_HEADER, CSRF_HEADER, Db, MARK_ASSET, app_config_with_db};
 
 static NEXT_DB: AtomicU64 = AtomicU64::new(0);
@@ -129,6 +129,9 @@ async fn anonymous_layout_has_no_session_user() {
 		body["views_data"][0]["current_user"],
 		serde_json::Value::Null
 	);
+	// The shell footer's live totals come from the single_flight stats task.
+	assert_eq!(body["views_data"][0]["stats"]["stories"], 0);
+	assert_eq!(body["views_data"][0]["stats"]["votes"], 0);
 
 	let mark = app.get(&mark_url).await;
 	assert_eq!(mark.status(), vorma::HttpStatusCode::OK);
@@ -693,5 +696,26 @@ async fn user_pages_nest_profile_and_comment_tabs() {
 	assert_eq!(
 		json(unknown.body())["views_data"][1]["profile"],
 		serde_json::Value::Null
+	);
+}
+
+#[tokio::test]
+async fn app_booted_from_config_serves_the_build_id_header() {
+	/*
+	`TestApp::from_config` is the no-frills constructor for apps that do not
+	need synthesized public assets in the test. It boots the same graph the
+	server uses. Every Vorma response carries the client build id header so the
+	browser can detect a stale bundle; `client_build_id()` exposes the value the
+	harness committed, which for a test app is `TEST_CLIENT_BUILD_ID`.
+	*/
+	let app = TestApp::from_config(app_config_with_db(tmp_db()).expect("config builds"))
+		.expect("board app boots in memory");
+	assert_eq!(app.client_build_id(), TEST_CLIENT_BUILD_ID);
+
+	let response = app.get("/api/search?q=nothing").await;
+	assert_eq!(response.status(), vorma::HttpStatusCode::OK);
+	assert_eq!(
+		response.headers()[vorma::CLIENT_BUILD_ID_HEADER_KEY],
+		TEST_CLIENT_BUILD_ID
 	);
 }

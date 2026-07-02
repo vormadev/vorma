@@ -27,7 +27,7 @@ use crate::response_finalizer::{
 use crate::runtime_document::{RuntimeDocumentInput, RuntimeDocumentProvider};
 use crate::runtime_snapshot::RuntimeSnapshot;
 use crate::view_response::{
-	ViewHtmlResponseInput, ViewResponseError, finalize_view_report_html_response,
+	ViewHtmlResponseInput, ViewResponseError, finalize_view_report_html_response_precomputed,
 	finalize_view_report_json_response,
 };
 
@@ -357,12 +357,13 @@ impl CommittedRuntimeApp {
 					.map_err(|source| RuntimeAppError::View { source })
 				} else {
 					let view_html = request.view_html();
-					finalize_view_report_html_response(
+					finalize_view_report_html_response_precomputed(
 						self.snapshot.manifest(),
 						document,
 						&report,
 						&view_html,
 						self.snapshot.client_build_id(),
+						self.snapshot.precomputed_view_fragments(),
 					)
 					.map_err(|source| RuntimeAppError::View { source })
 				}

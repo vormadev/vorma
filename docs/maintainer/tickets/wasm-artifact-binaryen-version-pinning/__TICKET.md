@@ -15,8 +15,8 @@ package" a function of who last ran the gate.
 
 Decide and implement a single source of truth for the artifact bytes. Options include
 pinning a binaryen version that all gate machines must have (checked by the build step —
-fail loudly on mismatch, per the no-silent-skew doctrine), or making a specific machine
-or CI job the only artifact producer. Whatever the ruling, the wasm-opt invocation should
+fail loudly on mismatch, per the no-silent-skew doctrine), or making a specific machine or
+CI job the only artifact producer. Whatever the ruling, the wasm-opt invocation should
 verify its version matches the pin so drift cannot land silently.
 
 ## Verification

@@ -72,7 +72,16 @@ this file holds framework knowledge.
 
 - **The bar, maintainer-set: beat the Go implementation's numbers, not match them.**
   Go-era baselines live in the old Go repo (`kit/matcher/results.bench.txt`,
-  `kit/tasks/bench.txt`) and are mirrored in `STATE.md` tables.
+  `kit/tasks/bench.txt`) and are mirrored in `STATE.md` tables. Maintainer-ratified
+  exceptions (2026-07-01): the multi-sibling parallel rows (`parallel_independent_tasks`,
+  `parallel_scaling/tasks-2..50`, `high_contention`) are exempt from the Go column — the
+  delta is the tokio-spawn-vs-goroutine floor (~2-5µs vs ~300ns per sibling), the
+  priced-in cost of the ratified true-spawned-parallelism design; pre-gap numbers "beat
+  Go" there only because that code was not actually parallel. The rows stay benched and
+  recorded, and same-machine regressions against our own baselines still count. Revisit
+  only with real-app evidence that per-request fan-out of small tasks hurts (then a
+  non-spawning batch mode becomes a design question). `context_cancellation` wins by
+  design (preemptive cancellation vs Go running the body to completion).
 - Benchmarks use the internal `vorma-bench` harness (Go-style output: detected
   os/arch/crate/cpu header, one line per benchmark, median of timed batches). Recordings
   are pure redirects of `make bench-*` targets — the terminal output, the recorded file,
@@ -119,12 +128,12 @@ this file holds framework knowledge.
 
 - inotify (Linux) emits events for bare reads (`IN_OPEN`/`IN_CLOSE_NOWRITE`, surfaced by
   notify as `Access` events); FSEvents (macOS) emits no access events at all. Any watcher
-  consumer that reacts to events by spawning work that READS the watched tree (a
-  compiler, a bundler) must gate on event kind, or the spawned work's own reads
-  re-trigger it forever — the founding case was Linux dev rebuilds cancel-restarting
-  themselves (P001b). The gate lives in `event_kind_mutates_source` in vorma-build's dev
-  watcher; among `Access` events only `Close(Write)` counts as a mutation, and the
-  imprecise `Any`/`Other` kinds are retained as potential mutations.
+  consumer that reacts to events by spawning work that READS the watched tree (a compiler,
+  a bundler) must gate on event kind, or the spawned work's own reads re-trigger it
+  forever — the founding case was Linux dev rebuilds cancel-restarting themselves (P001b).
+  The gate lives in `event_kind_mutates_source` in vorma-build's dev watcher; among
+  `Access` events only `Close(Write)` counts as a mutation, and the imprecise
+  `Any`/`Other` kinds are retained as potential mutations.
 - tokio `Notify::notify_waiters` wakes only already-registered waiters and stores no
   permit. Any wait loop must register (`Notified::enable`) before re-checking the
   condition it waits on.
