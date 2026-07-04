@@ -1,4 +1,11 @@
 //! Production generation assembler.
+//!
+//! Where production builds diverge from dev: view/entry client modules
+//! resolve to the finished, hashed bundle URLs a completed Vite production
+//! build produced (projected from the Vite manifest via
+//! [`crate::vite_manifest::project_vite_manifest`]), instead of the
+//! dev-server-proxied URLs [`crate::dev_generation`] projects. See
+//! [`crate::dev_generation`] for the dev counterpart.
 
 use std::collections::BTreeMap;
 
@@ -41,7 +48,9 @@ impl PreparedProductionGeneration {
 	}
 }
 
-/// Report returned after publishing committed production generation outputs.
+/// Report returned after publishing a committed production generation's
+/// public static files and runtime manifest/generated-TypeScript outputs to
+/// disk.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductionOutputPublishReport {
 	public_static: PublicStaticPublishReport,
@@ -131,7 +140,8 @@ pub(crate) async fn publish_and_activate_prepared_production_generation<'a>(
 	Ok((committed, report))
 }
 
-/// Production generation assembly error.
+/// Error from this module's production generation preparation and
+/// publication functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProductionGenerationError {
 	/// Public static publication failed.

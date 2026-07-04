@@ -113,6 +113,8 @@
 		"!**/test-setup.ts",
 		"!.dist/kit/url/**",
 		"!tests/",
-		"!core/_test_helpers.ts"
+		"!core/_test_helpers.ts",
+		"!core/wire_contract_fixtures.json",
+		"!kit/json/search_param_contract_vectors.json"
 	]
 }

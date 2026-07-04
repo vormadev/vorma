@@ -1,4 +1,13 @@
 //! Vite plugin development control client.
+//!
+//! This is the outbound half of dev-time Vite communication (the build
+//! process telling the already-running Vite plugin what changed); the
+//! inbound half (the plugin asking the build process for config or an
+//! asset hash) is [`crate::vite_plugin_rpc`]. See
+//! [`crate::vite_plugin_contract::VITE_PLUGIN_CONFIG_CHANGED_PATH`] and
+//! [`crate::vite_plugin_contract::VITE_PLUGIN_ASSETS_CHANGED_PATH`] for
+//! which of [`VitePluginControlClient`]'s two notifications applies to
+//! which kind of change.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -8,16 +17,24 @@ use crate::vite_plugin_contract::{
 	VITE_PLUGIN_TOKEN_HEADER,
 };
 
-/// Client that notifies the Vite plugin control server after committed dev config changes.
+/// Client that notifies the Vite plugin control server after committed dev
+/// config changes. Trait so tests can substitute a fake that records
+/// notifications without a real loopback connection;
+/// [`LoopbackVitePluginControlClient`] is the production implementation.
 pub trait VitePluginControlClient {
-	/// Notify the plugin that its config should be reloaded.
+	/// Notify the plugin that its config should be reloaded (Vite restarts —
+	/// see [`crate::vite_plugin_contract::VITE_PLUGIN_CONFIG_CHANGED_PATH`]'s
+	/// docs for when this is and is not the right call).
 	fn notify_config_changed(
 		&mut self,
 		control_port: u16,
 		token: &str,
 	) -> Result<(), VitePluginControlError>;
 
-	/// Notify the plugin that these public-asset source paths changed.
+	/// Notify the plugin that these public-asset source paths changed
+	/// (targeted invalidation, no Vite restart — see
+	/// [`crate::vite_plugin_contract::VITE_PLUGIN_ASSETS_CHANGED_PATH`]'s
+	/// docs).
 	fn notify_assets_changed(
 		&mut self,
 		control_port: u16,
@@ -26,7 +43,10 @@ pub trait VitePluginControlClient {
 	) -> Result<(), VitePluginControlError>;
 }
 
-/// Loopback HTTP implementation of the Vite plugin control client.
+/// Loopback HTTP implementation of the Vite plugin control client: a raw
+/// HTTP/1.1 `POST` over a plain `TcpStream` (no HTTP client dependency
+/// needed for two fixed, tiny, same-machine requests), authenticated with
+/// the Vite plugin token header.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LoopbackVitePluginControlClient;
 
@@ -94,7 +114,7 @@ fn post_control_request(
 	validate_response_status(&response)
 }
 
-/// Vite plugin control notification error.
+/// Error from [`VitePluginControlClient`]'s methods.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VitePluginControlError {
 	/// Control port cannot be zero.

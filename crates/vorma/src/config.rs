@@ -1,4 +1,11 @@
 //! Public framework configuration and lowering into graph-owned build inputs.
+//!
+//! These types are the domain-grouped fields of [`AppConfig`](crate::AppConfig): cargo
+//! target identity ([`ServerTarget`]), frontend build/static-asset settings
+//! ([`FrontendConfig`], [`UiVariant`]), generated TypeScript output
+//! ([`TsGenConfig`]), and the dev watcher's include/classification patterns
+//! ([`DevWatchConfig`]). An app typically sets these once, in the same function that
+//! builds the rest of [`AppConfig`] (see the [crate-root example](crate#getting-started)).
 
 use std::path::{Path, PathBuf};
 

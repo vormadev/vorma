@@ -32,6 +32,7 @@ same script with `head.script([vorma::kit::theme::script(None)])` —
 `initTheme()` (the two must match).
 */
 
+/** The three selectable theme values — `System` defers to the OS/browser's `prefers-color-scheme`. */
 export const THEMES = {
 	Dark: "dark",
 	Light: "light",
@@ -43,11 +44,41 @@ const THEME_VALUES = Object.values(THEMES);
 const PREFERS_DARK_QUERY = window.matchMedia("(prefers-color-scheme: dark)");
 const CLASSLIST = window.document.documentElement.classList;
 
+/** One of {@link THEMES}'s values — the user's selected preference (`"system"` included). */
 export type Theme = (typeof THEME_VALUES)[number];
+
+/** A {@link Theme} with `"system"` resolved away — always `"dark"` or `"light"`, the value actually applied to the document. */
 export type ResolvedTheme = Exclude<Theme, typeof THEMES.System>;
 type ThemeChangeEventDetail = { theme: Theme; resolved_theme: ResolvedTheme };
 type CleanupFunction = () => void;
 
+/**
+ * Set up theme state/persistence/cross-tab sync for the current page.
+ * Requires the pre-paint inline script (see the module doc above) to have
+ * already run — this call wires up ongoing behavior (OS preference
+ * changes, cross-tab `BroadcastChannel` sync, bfcache handling) on top of
+ * the state that script already applied, rather than performing the
+ * initial paint itself (which would be too late to avoid a flash).
+ *
+ * `keyPrefix` must match the prefix used in the inline script (default
+ * `"__vorma_kit"`) — pass the same custom prefix to both if overriding it.
+ * Kit stays framework/backend-agnostic here: this module owns the generic
+ * theme API and storage format; a Vorma app on the Rust side may use
+ * `vorma::kit::theme::script(None)` purely as a convenience for injecting
+ * the matching inline script from a document builder, but this module has
+ * no dependency on Vorma itself.
+ *
+ * Returns:
+ * - `getTheme()`/`getResolvedTheme()`: read the current selection / its
+ *   resolved dark-or-light value.
+ * - `setTheme(theme)`: change the selection — updates storage, the
+ *   document's classList, broadcasts to other tabs, and dispatches a
+ *   change event.
+ * - `addThemeChangeListener(listener)`: subscribe to theme changes
+ *   (including ones from another tab); returns a cleanup function.
+ * - `getNextToggleValue(theme)`: the next value in the System → Light →
+ *   Dark → System cycle, for a simple three-state toggle control.
+ */
 export function initTheme(keyPrefix = DEFAULT_KEY_PREFIX) {
 	const key = `${keyPrefix}_theme`;
 	const resolved_key = `${keyPrefix}_resolved_theme`;

@@ -1,4 +1,62 @@
 //! Public TypeScript type collection surface.
+//!
+//! App-facing: this is the model behind `vorma`'s `#[derive(TsGen)]`
+//! (`vorma-macros`), which is how application code ordinarily reaches
+//! this module — a view or resource input/output type derives `TsGen`,
+//! and the derive generates a [`Type`](crate::tsgen::Type) implementation
+//! from the type's own `#[derive(Serialize)]`/`#[derive(Deserialize)]`
+//! shape and `serde` attributes (see `vorma-macros`' own docs for exactly
+//! which shapes and attributes are supported).
+//!
+//! # Getting started with a manual `Type` implementation
+//!
+//! `#[derive(TsGen)]` covers named-field structs and unit-only enums.
+//! Anything else — a data-carrying enum, a `serde(flatten)`ed field, a
+//! type with no Rust `Deserialize`/`Serialize` shape at all — needs a
+//! hand-written [`Type`](crate::tsgen::Type) implementation instead:
+//!
+//! ```
+//! use vorma_contract::tsgen::{Result, Type, TypeRef};
+//!
+//! struct Timestamp(i64);
+//!
+//! impl Type for Timestamp {
+//!     fn type_ref() -> TypeRef {
+//!         TypeRef::Integer
+//!     }
+//! }
+//!
+//! # fn main() -> Result<()> {
+//! assert_eq!(Timestamp::type_ref(), TypeRef::Integer);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! A type with its own named shape (rather than reusing a primitive like
+//! `TypeRef::Integer` above) additionally implements
+//! [`collect_type_defs`](crate::tsgen::Type::collect_type_defs) to
+//! register a [`TypeDef`](crate::tsgen::TypeDef) — see
+//! [`classify_shared_name_with`](crate::contracts::TypeDef::classify_shared_name_with)
+//! for what happens when two different `TypeDef`s would both try to
+//! register the same exported name (whether two genuinely distinct Rust
+//! types, or one `TsGen`-derived type's own Serialize/Deserialize
+//! phases).
+//!
+//! # Extra generated TypeScript beyond route contracts
+//!
+//! Not every type or value an app wants in its generated client is
+//! reachable from a route's input/output —
+//! [`TsExtraType`](crate::tsgen::TsExtraType) and
+//! [`TsDrafter`](crate::tsgen::TsDrafter) cover that
+//! (`AppConfig::ts_gen_config` in `vorma`).
+//! [`TsExtraType::of`](crate::tsgen::TsExtraType::of) includes a Rust
+//! type's generated shape even when no route references it;
+//! [`TsDrafter`](crate::tsgen::TsDrafter) appends hand-authored
+//! constants, type aliases, and string-literal unions built from Rust
+//! values — useful for shared constants (a page size, a header name) that
+//! should travel through the same generated module the route contracts
+//! do,
+//! rather than being duplicated by hand on the TypeScript side.
 
 use std::collections::{BTreeMap, HashMap};
 use std::error;
@@ -35,6 +93,24 @@ impl error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Whether a Rust type is being used for serialized output or deserialized input.
+///
+/// The same Rust type frequently needs two distinct TypeScript shapes:
+/// its `Serialize` shape is what the server actually sends (a
+/// `skip_serializing_if` field vanishes when the predicate holds), while
+/// its `Deserialize` shape is what the client must accept (`serde(default)`
+/// fields become optional on the TypeScript side, since the client is not
+/// required to supply them). [`Type::type_ref_for`]/[`Type::collect_type_defs_for`]
+/// take a phase explicitly rather than assuming one; the `TsGen` derive
+/// always registers a phase's [`TypeDef`] under its own distinct key
+/// (never sharing a key across phases, even when the two shapes end up
+/// identical), so [`TypeRegistry::try_define`]'s key-based dedup — which
+/// runs once per route contract, before any other route's `TypeDef`s are
+/// even in scope — never collapses them into one definition on its own.
+/// A later, cross-route stage does: see
+/// [`crate::contracts::TypeDef::classify_shared_name_with`] for where a
+/// type reached at both phases across an app's declared routes is
+/// resolved to one exported TypeScript type (when the phases agree
+/// structurally) or a teaching error (when they do not).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TypePhase {
 	/// Server-to-client output shape.
@@ -44,6 +120,13 @@ pub enum TypePhase {
 }
 
 /// Extra Rust type to include in generated TypeScript output.
+///
+/// Registered through `AppConfig::ts_gen_config.extra_types` in `vorma`
+/// for a type that has generated-TypeScript-worthy shape but is not
+/// reachable from any route's input/output — [`Self::of`] captures both
+/// the type's own [`TypeRef`] and every [`TypeDef`] it (transitively)
+/// requires in one call, ready to be emitted alongside route-derived
+/// contracts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TsExtraType {
 	type_ref: TypeRef,
@@ -84,6 +167,29 @@ impl TsExtraType {
 }
 
 /// Builder for supplemental TypeScript declarations.
+///
+/// Every method here validates `name` as a TypeScript identifier
+/// (non-empty, identifier characters only, not a reserved word) before
+/// appending anything, and every method returns `&mut Self` so calls
+/// chain. Renders (via its [`std::fmt::Display`] implementation) as one
+/// blank-line-separated block of statements, in the order they were
+/// added — `vorma`'s build crate appends that rendered text after the
+/// route-derived generated contracts.
+///
+/// ```
+/// use vorma_contract::tsgen::TsDrafter;
+///
+/// let mut drafter = TsDrafter::new();
+/// drafter
+///     .export_const("PAGE_SIZE", 20)
+///     .unwrap()
+///     .export_string_enum("Theme", ["light", "dark"])
+///     .unwrap();
+///
+/// let rendered = drafter.to_string();
+/// assert!(rendered.contains("export const PAGE_SIZE = 20;"));
+/// assert!(rendered.contains("export type Theme = \"light\" | \"dark\";"));
+/// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TsDrafter {
 	entries: Vec<String>,
@@ -96,6 +202,12 @@ impl TsDrafter {
 	}
 
 	/// Append an exported `const` initialized from a serializable Rust value.
+	///
+	/// Renders through the same [`crate::contracts::to_tab_indented_json_string`]
+	/// path any other JSON artifact in this crate does, with `as const`
+	/// appended for array/object values so TypeScript infers the
+	/// narrowest literal type rather than widening to `string[]` or a
+	/// loose object shape.
 	pub fn export_const(
 		&mut self,
 		name: impl Into<String>,
@@ -110,6 +222,10 @@ impl TsDrafter {
 	}
 
 	/// Append an exported TypeScript type alias.
+	///
+	/// `value` is trusted, unvalidated TypeScript text — the same trust
+	/// model [`crate::contracts::TypeRefContract::raw`] uses, appropriate
+	/// for hand-written type expressions the caller already controls.
 	pub fn export_type(
 		&mut self,
 		name: impl Into<String>,
@@ -128,6 +244,18 @@ impl TsDrafter {
 	}
 
 	/// Append an exported string-literal union type.
+	///
+	/// ```
+	/// use vorma_contract::tsgen::TsDrafter;
+	///
+	/// let mut drafter = TsDrafter::new();
+	/// drafter.export_string_enum("Mode", ["read", "write"]).unwrap();
+	///
+	/// assert_eq!(
+	///     drafter.to_string(),
+	///     "export type Mode = \"read\" | \"write\";"
+	/// );
+	/// ```
 	pub fn export_string_enum(
 		&mut self,
 		name: impl Into<String>,
@@ -147,6 +275,14 @@ impl TsDrafter {
 	}
 
 	/// Append an exported const object and exported union type over its values.
+	///
+	/// Emits two statements: `export const {const_name} = {"key": "value",
+	/// ...} as const;` followed by `export type {type_name} = (typeof
+	/// {const_name})[keyof typeof {const_name}];` — the common TypeScript
+	/// idiom for a runtime-inspectable enum-like object (iterable, usable
+	/// in a `for...of`) whose value type is still narrowed to the literal
+	/// union of its values, unlike [`Self::export_string_enum`], which
+	/// only produces the type with no matching runtime object.
 	pub fn export_string_enum_object(
 		&mut self,
 		const_name: impl Into<String>,
@@ -168,6 +304,13 @@ impl TsDrafter {
 	}
 
 	/// Append trusted raw TypeScript.
+	///
+	/// No validation at all — unlike every other method here, `content`
+	/// is written into generated output byte-for-byte, including its
+	/// name if it declares one. Reach for the named methods above
+	/// whenever they cover the shape needed; use this only for content
+	/// the caller already controls, never for end-user or
+	/// request-derived data.
 	pub fn raw(&mut self, content: impl Into<String>) -> &mut Self {
 		self.entries.push(content.into());
 		self
@@ -228,6 +371,18 @@ impl fmt::Display for TsDrafter {
 }
 
 /// Registry of TypeScript definitions collected while resolving app types.
+///
+/// Accumulates one flat list of [`TypeDef`]s while a [`Type::collect_type_defs`]/
+/// [`Type::collect_type_defs_for`] call walks a type's shape — a nested
+/// type's own `collect_type_defs*` call receives the same registry, so a
+/// deeply nested type contributes its definitions exactly once regardless
+/// of how many times it is reached, checked by [`Self::try_define`]'s
+/// key-based dedup. Note what this registry does *not* check: two
+/// definitions under different keys that happen to share the same
+/// [`TypeDef::name`] are not rejected here (identity is `key`-scoped,
+/// not `name`-scoped) — a broader uniqueness check over the exported
+/// TypeScript name happens later, at the point definitions are actually
+/// registered onto an app's declarations.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TypeRegistry {
 	defs: Vec<TypeDef>,
@@ -241,6 +396,12 @@ impl TypeRegistry {
 	}
 
 	/// Define a type and report whether it was newly inserted.
+	///
+	/// `true` when `def` was genuinely new; `false` when an
+	/// identical definition under the same key was already present
+	/// (harmless — the caller can stop recursing into that type's own
+	/// dependencies, since they were already collected the first time).
+	/// A *different* definition under the same key is [`Error`].
 	pub fn try_define(&mut self, def: TypeDef) -> Result<bool> {
 		if let Some(existing) = self
 			.defs
@@ -266,6 +427,39 @@ impl TypeRegistry {
 }
 
 /// Trait implemented by Rust types that can describe their generated TypeScript shape.
+///
+/// The four methods split into two pairs: [`Self::type_ref`]/[`Self::collect_type_defs`]
+/// are the phase-agnostic originals (kept for types with only one shape —
+/// every primitive impl in this module implements only these two, via the
+/// default [`Self::type_ref_for`]/[`Self::collect_type_defs_for`] that
+/// simply ignore the phase); [`Self::type_ref_for`]/[`Self::collect_type_defs_for`]
+/// are the phase-aware overrides the `TsGen` derive actually generates,
+/// since a struct's serialize and deserialize shapes commonly differ (see
+/// [`TypePhase`]). Implement the `_for` pair directly when a type
+/// genuinely has two shapes; implementing only the phase-agnostic pair is
+/// sufficient — and correct — for anything whose shape never varies by
+/// phase.
+///
+/// A named type sharing one exported TypeScript identifier across both
+/// phases (the common case for a hand-written or `TsGen`-derived struct)
+/// may be *reached* through either phase anywhere in an app's declared
+/// routes — used as a route input in one place and a route output in
+/// another, the ordinary shape of a type like a shared `User` accepted as
+/// a partial-update input and returned as a full-record output. The two
+/// phases register under different [`TypeDef`] keys but the same exported
+/// name; when the two phases' rendered shapes agree, the pair resolves to
+/// one emitted TypeScript type rather than a registration conflict. When
+/// they genuinely disagree (the natural case: a `#[serde(default)]` field
+/// is optional on Deserialize but required on Serialize), the app compile
+/// step still rejects it — with an error naming the fix (declare two
+/// distinct Rust types, one per phase) rather than a generic name
+/// collision. A type genuinely reached at only one phase is unaffected
+/// either way. See [`crate::contracts::TypeDef::classify_shared_name_with`]
+/// for exactly how "agree" is decided and where this resolution actually
+/// runs (an app-graph-compile concern, downstream of anything in this
+/// module) — a hand-written `Type` implementation opts in by keying its
+/// two phases with the same convention the `TsGen` derive uses (see that
+/// method's docs).
 pub trait Type: Send + Sync + 'static {
 	/// Return this type's default TypeScript reference.
 	fn type_ref() -> TypeRef;
@@ -612,6 +806,153 @@ mod tests {
 				.unwrap_err()
 				.to_string()
 				.contains("reserved word")
+		);
+	}
+
+	/*
+	Rider coverage for P013 finding 2 (`tsgen-shared-type-phase-name-collision`
+	ticket, consumed by packet P019): `#[serde(transparent)]` structs and
+	`#[serde(default = "path")]` had zero test coverage repo-wide before
+	these two tests — the derive parses and accepts both, but nothing
+	asserted the resulting `Type` implementation's shape was actually
+	correct.
+	*/
+
+	#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize, vorma_macros::TsGen)]
+	#[serde(transparent)]
+	struct TransparentScore {
+		value: i64,
+	}
+
+	#[test]
+	fn transparent_struct_derives_an_alias_to_its_one_field() {
+		let mut serialize_registry = TypeRegistry::default();
+		let serialize_ref = <TransparentScore as Type>::collect_type_defs_for(
+			TypePhase::Serialize,
+			&mut serialize_registry,
+		)
+		.map(|()| <TransparentScore as Type>::type_ref_for(TypePhase::Serialize))
+		.unwrap();
+
+		let mut deserialize_registry = TypeRegistry::default();
+		let deserialize_ref = <TransparentScore as Type>::collect_type_defs_for(
+			TypePhase::Deserialize,
+			&mut deserialize_registry,
+		)
+		.map(|()| <TransparentScore as Type>::type_ref_for(TypePhase::Deserialize))
+		.unwrap();
+
+		assert_eq!(
+			serialize_ref,
+			TypeRef::Named {
+				key: "vorma_contract::tsgen::tests::TransparentScore::serialize".to_owned(),
+				name: "TransparentScore".to_owned(),
+			}
+		);
+		let serialize_defs = serialize_registry.into_defs();
+		assert_eq!(serialize_defs.len(), 1);
+		assert_eq!(
+			serialize_defs[0],
+			TypeDef::Alias {
+				key: "vorma_contract::tsgen::tests::TransparentScore::serialize".to_owned(),
+				name: "TransparentScore".to_owned(),
+				target: TypeRef::Integer,
+			},
+			"a transparent struct's Serialize-phase definition must alias \
+			 its one field's own TypeScript type, matching how serde \
+			 serializes it as if the wrapper were not there"
+		);
+
+		assert_eq!(
+			deserialize_ref,
+			TypeRef::Named {
+				key: "vorma_contract::tsgen::tests::TransparentScore::deserialize".to_owned(),
+				name: "TransparentScore".to_owned(),
+			}
+		);
+		let deserialize_defs = deserialize_registry.into_defs();
+		assert_eq!(deserialize_defs.len(), 1);
+		assert_eq!(
+			deserialize_defs[0],
+			TypeDef::Alias {
+				key: "vorma_contract::tsgen::tests::TransparentScore::deserialize".to_owned(),
+				name: "TransparentScore".to_owned(),
+				target: TypeRef::Integer,
+			},
+			"a transparent struct's Deserialize-phase definition must also \
+			 alias its one field's own type, matching serde: a bare \
+			 transparent struct with no per-field defaults never diverges \
+			 by phase, unlike the #[serde(default = \"path\")] case below"
+		);
+	}
+
+	fn record_with_default_path_field_default_score() -> i64 {
+		42
+	}
+
+	#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize, vorma_macros::TsGen)]
+	struct RecordWithDefaultPathField {
+		#[serde(default = "record_with_default_path_field_default_score")]
+		score: i64,
+	}
+
+	#[test]
+	fn serde_default_with_explicit_path_makes_the_field_deserialize_optional_only() {
+		let mut serialize_registry = TypeRegistry::default();
+		<RecordWithDefaultPathField as Type>::collect_type_defs_for(
+			TypePhase::Serialize,
+			&mut serialize_registry,
+		)
+		.unwrap();
+		let serialize_defs = serialize_registry.into_defs();
+
+		let mut deserialize_registry = TypeRegistry::default();
+		<RecordWithDefaultPathField as Type>::collect_type_defs_for(
+			TypePhase::Deserialize,
+			&mut deserialize_registry,
+		)
+		.unwrap();
+		let deserialize_defs = deserialize_registry.into_defs();
+
+		let TypeDef::Record {
+			fields: serialize_fields,
+			..
+		} = &serialize_defs[0]
+		else {
+			panic!("expected a record definition");
+		};
+		assert_eq!(serialize_fields.len(), 1);
+		assert_eq!(serialize_fields[0].name(), "score");
+		assert!(
+			!serialize_fields[0].is_optional(),
+			"#[serde(default = \"path\")] must not affect Serialize-phase \
+			 optionality — the field is always actually sent"
+		);
+
+		let TypeDef::Record {
+			fields: deserialize_fields,
+			..
+		} = &deserialize_defs[0]
+		else {
+			panic!("expected a record definition");
+		};
+		assert_eq!(deserialize_fields.len(), 1);
+		assert_eq!(deserialize_fields[0].name(), "score");
+		assert!(
+			deserialize_fields[0].is_optional(),
+			"#[serde(default = \"path\")] (the explicit-function form, not \
+			 bare #[serde(default)]) must still make the field \
+			 Deserialize-phase optional, matching what the field actually \
+			 guarantees a caller: the client may omit it and \
+			 record_with_default_path_field_default_score() fills it in"
+		);
+
+		assert_eq!(
+			serialize_defs[0].classify_shared_name_with(&deserialize_defs[0]),
+			crate::contracts::SharedTypeNameRelation::DivergentPhaseShape,
+			"a #[serde(default = \"path\")] field is exactly the case P019's \
+			 ruling says must NOT collapse: the two phases genuinely differ \
+			 (required on output, optional on input)"
 		);
 	}
 }

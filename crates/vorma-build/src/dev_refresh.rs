@@ -1,4 +1,11 @@
 //! Development browser refresh messages and client subscriptions.
+//!
+//! [`ChangeType`]'s wire strings are a real cross-language contract: the
+//! injected dev refresh script (`crates/vorma/src/refresh_script.js`,
+//! hand-authored JS) switches on these exact strings, pinned by a test in
+//! this module's `#[cfg(test)]` block that reads the script's source and
+//! asserts it handles every variant. Renaming a variant's `#[serde(rename)]`
+//! without updating the script breaks that test.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -12,11 +19,17 @@ use url::Url;
 
 use crate::generation_epoch::BrowserRefreshEffects;
 
-/// Dev browser refresh WebSocket path prefix.
+/// Dev browser refresh WebSocket path prefix. The full endpoint path is
+/// this prefix immediately followed by the session's dev refresh token
+/// (see the private `dev_refresh_endpoint` in this module), so the path
+/// itself is unguessable without the token even before the WebSocket
+/// handshake's origin check runs.
 pub const DEV_REFRESH_EVENTS_PATH_PREFIX: &str = "/vorma-dev-refresh-";
 const DEV_REFRESH_CLIENT_QUEUE_SIZE: usize = 4;
 
 /// Browser refresh payload consumed by the injected dev refresh script.
+/// Serialized as JSON text over the dev-refresh WebSocket; see
+/// [`ChangeType`] for the wire contract each `change_type` value implies.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct RefreshPayload {
 	change_type: ChangeType,
@@ -80,6 +93,21 @@ pub enum ChangeType {
 }
 
 /// Derive browser refresh payloads from committed generation effects.
+///
+/// A [`crate::generation_epoch::BrowserRefreshEffects`] carries three
+/// independent booleans a generation's activation may set; this projects
+/// them into the ordered payload sequence connected browsers should
+/// receive. A public-assets change forces a full hard reload regardless of
+/// the other two effects (a changed static asset can invalidate anything
+/// the current page references); otherwise critical-CSS and client-
+/// revalidate payloads are emitted independently, and a trailing
+/// hide-rebuilding-overlay payload is appended whenever nothing else
+/// already implies the rebuild is visibly done (a critical-CSS update on
+/// its own does not dismiss the overlay — see this function's own tests
+/// for the exact rules table). Not reachable from outside the crate (see
+/// the crate-root docs); no doctest here since constructing a
+/// [`crate::generation_epoch::BrowserRefreshEffects`] requires going
+/// through crate-private construction paths.
 pub fn refresh_payloads_from_effects(
 	effects: &BrowserRefreshEffects,
 	critical_css: &str,
@@ -110,7 +138,11 @@ pub fn refresh_payloads_from_effects(
 	messages
 }
 
-/// Dev refresh client manager.
+/// Dev refresh client manager: tracks every currently connected dev-refresh
+/// WebSocket and fans a [`RefreshPayload`] broadcast out to all of them. A
+/// disconnected or unresponsive client (a full or closed channel) is pruned
+/// on the next broadcast rather than blocking it — see
+/// [`Self::broadcast`]'s bounded, best-effort delivery.
 #[derive(Clone, Debug)]
 pub struct DevRefreshClients {
 	next_client_id: Arc<AtomicUsize>,
@@ -126,7 +158,10 @@ impl DevRefreshClients {
 		}
 	}
 
-	/// Broadcast one payload to connected clients.
+	/// Broadcast one payload to every connected client. Delivery is
+	/// non-blocking (`try_send`): a client whose bounded queue is full or
+	/// whose receiver has dropped is removed from the manager instead of
+	/// stalling the broadcast for every other client.
 	pub fn broadcast(&self, payload: RefreshPayload) {
 		let mut clients = self
 			.clients
@@ -146,7 +181,8 @@ impl DevRefreshClients {
 		}
 	}
 
-	/// Add one refresh client subscription.
+	/// Add one refresh client subscription. Automatically removed from this
+	/// manager when the returned [`DevRefreshClientSubscription`] drops.
 	pub fn add_client(&self) -> DevRefreshClientSubscription {
 		let (tx, rx) = mpsc::channel(DEV_REFRESH_CLIENT_QUEUE_SIZE);
 		let client_id = self.next_client_id.fetch_add(1, Ordering::SeqCst);
@@ -175,7 +211,9 @@ impl Default for DevRefreshClients {
 	}
 }
 
-/// One dev refresh client subscription.
+/// One dev refresh client subscription, returned by
+/// [`DevRefreshClients::add_client`]. Dropping this unregisters the
+/// subscription from its [`DevRefreshClients`] manager.
 pub struct DevRefreshClientSubscription {
 	clients: DevRefreshClients,
 	client_id: usize,
@@ -201,7 +239,13 @@ impl Drop for DevRefreshClientSubscription {
 	}
 }
 
-/// Allowed browser origin policy for the dev refresh WebSocket.
+/// Allowed browser origin policy for the dev refresh WebSocket: accepts
+/// only `http`/`https` connections from `127.0.0.1` or `localhost` on the
+/// exact `browser_origin_port` (the dev mux's own port — see
+/// [`crate::dev_mux`]), rejecting everything else including a correct host
+/// on the wrong port. This is the WebSocket handshake's only
+/// authentication besides the unguessable token in the connection path
+/// (see [`DEV_REFRESH_EVENTS_PATH_PREFIX`]'s docs).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevRefreshOriginPolicy {
 	browser_origin_port: u16,
@@ -233,7 +277,7 @@ impl DevRefreshOriginPolicy {
 	}
 }
 
-/// Dev refresh server error.
+/// Error from [`DevRefreshOriginPolicy::new`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevRefreshError {
 	/// Browser origin port cannot be zero.
@@ -389,5 +433,12 @@ mod tests {
 		assert!(!policy.allows_origin("http://127.0.0.1:3001"));
 		assert!(!policy.allows_origin("https://example.com:3000"));
 		assert!(!policy.allows_origin("not a url"));
+	}
+
+	#[test]
+	fn refresh_origin_policy_rejects_zero_port() {
+		let error = DevRefreshOriginPolicy::new(0).unwrap_err();
+
+		assert_eq!(error, DevRefreshError::InvalidBrowserOriginPort);
 	}
 }

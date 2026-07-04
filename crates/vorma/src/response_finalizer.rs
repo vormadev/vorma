@@ -1,5 +1,7 @@
 //! Typed route response finalization.
 
+use std::sync::{Mutex, MutexGuard};
+
 use crate::contracts::DocumentContract;
 use crate::document_renderer::{DocumentRenderError, DocumentRenderInput, render_document};
 use crate::head::{HEAD_TAG_META, HEAD_TAG_TITLE};
@@ -66,6 +68,19 @@ struct HeaderOp {
 enum HeaderOpKind {
 	Set,
 	Add,
+}
+
+/// Lock a handler's shared response-effects mutex, panicking with a shared, precise
+/// message on poison rather than each call site re-deriving its own.
+///
+/// Every handler context (typed, static-route, resource-body sealed output) shares one
+/// `Arc<Mutex<ResponseEffects>>` per request; a poisoned lock here means an earlier
+/// handler task panicked mid-mutation, which is unrecoverable for this request and should
+/// propagate as a panic here too, not be silently swallowed.
+pub(crate) fn lock_effects(effects: &Mutex<ResponseEffects>) -> MutexGuard<'_, ResponseEffects> {
+	effects
+		.lock()
+		.expect("handler response effects lock poisoned")
 }
 
 impl ResponseEffects {

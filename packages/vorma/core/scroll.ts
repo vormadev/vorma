@@ -1,9 +1,12 @@
 import { SCROLL_STORAGE_KEY } from "./constants.ts";
 
+/** Cap on remembered scroll positions (oldest evicted first) — see {@link apply_scroll}'s history-restoration path. */
 export const MAX_SCROLL_ENTRIES = 50;
 
+/** A target scroll: either a coordinate pair or a `#hash` to scroll an element into view. */
 export type ScrollState = { x: number; y: number } | { hash: string };
 
+/** A scroll to apply once a specific matched route entry has committed — `target_entry_id` matches against `get_entry_key`-shaped identity. */
 export type ScrollIntent = {
 	scroll: ScrollState;
 	target_entry_id: string;
@@ -15,6 +18,12 @@ type ScrollTestOptions = {
 
 type StoredScrollEntry = [string, { x: number; y: number }];
 
+/**
+ * Apply a {@link ScrollState}: scroll a `#hash` target into view, or jump to
+ * a coordinate pair. Vorma calls this internally as part of its own
+ * navigation/history-restoration scroll behavior; exported for an app that
+ * wants to trigger the same scroll semantics from custom navigation code.
+ */
 export function apply_scroll(
 	scroll: ScrollState | undefined,
 	test_options?: ScrollTestOptions,

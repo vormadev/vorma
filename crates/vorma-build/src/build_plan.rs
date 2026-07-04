@@ -1,4 +1,13 @@
 //! Build/dev projection plan derived from the canonical graph bundle.
+//!
+//! [`BuildProjectionPlan`] is the typed view of an app's build-relevant
+//! configuration — cargo target, Vite inputs, static/critical-CSS sources,
+//! generated TypeScript destination, and the dev watch plan — projected
+//! once from a [`crate::projection_compiler::ProjectionBundle`] (which is
+//! itself compiled from the app's [`vorma_contract::framework_graph::FrameworkGraph`]).
+//! Everything downstream in this crate — production builds, the dev loop,
+//! Vite process management — reads its build-relevant configuration through
+//! this plan rather than walking the graph directly.
 
 use std::collections::BTreeSet;
 
@@ -7,6 +16,10 @@ use vorma_contract::framework_graph::BuildInputConfig;
 use crate::projection_compiler::{ProjectionBundle, StaticAssetContract};
 
 /// Complete build/dev plan derived from one projection bundle.
+///
+/// Compiled once per generation via [`BuildProjectionPlan::compile`], then
+/// read from throughout this crate's production build, dev loop, and Vite
+/// integration; see the module docs above for where it fits.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildProjectionPlan {
 	workspace: BuildWorkspacePlan,
@@ -18,7 +31,12 @@ pub struct BuildProjectionPlan {
 }
 
 impl BuildProjectionPlan {
-	/// Compile a complete build/dev plan from graph projections.
+	/// Compile a complete build/dev plan from graph projections. Fails if the
+	/// graph carries no build/dev inputs at all (an app compiled without
+	/// [`vorma_contract::framework_graph::BuildInputConfig`] — build/dev tooling
+	/// has nothing to project) or if the declared UI adapter variant is not
+	/// one this crate's Vite integration knows how to configure (see
+	/// [`ViteInputPlan::dedupe_list`]).
 	pub fn compile(bundle: &ProjectionBundle) -> Result<Self, BuildPlanError> {
 		let inputs = bundle
 			.build_inputs()
@@ -98,7 +116,8 @@ impl BuildProjectionPlan {
 	}
 }
 
-/// Build workspace projection.
+/// Build workspace path projection: where the app lives on disk and where
+/// its build outputs go.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildWorkspacePlan {
 	root_dir: String,
@@ -117,7 +136,11 @@ impl BuildWorkspacePlan {
 	}
 }
 
-/// Cargo server target projection.
+/// Cargo server target projection: the cargo package and binary name that
+/// build the app's server. Bound once at dev-session start from app config
+/// (see [`crate::app_server_build`] and [`crate::app_server_process`]); a
+/// value that changes mid-session is a restart condition, not a live
+/// re-target (see [`crate::entrypoint`]'s dev loop).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ServerTargetPlan {
 	cargo_package: String,
@@ -136,7 +159,11 @@ impl ServerTargetPlan {
 	}
 }
 
-/// Vite input projection.
+/// Vite input projection: everything the frontend build needs to know about
+/// the app's UI adapter, entry module, and per-route client files. Read by
+/// [`crate::dev_vite`] and [`crate::production_vite`] to build the Vite CLI
+/// commands, and by [`crate::vite_plugin_contract`] to render the
+/// generated Vite plugin config Vite itself loads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViteInputPlan {
 	ui_variant: String,
@@ -203,7 +230,9 @@ impl ViteInputPlan {
 	}
 }
 
-/// Static input projection.
+/// Static and critical-CSS input projection: the source locations
+/// [`crate::static_outputs`] reads from when publishing an app's public
+/// static files and bundling critical CSS.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticInputPlan {
 	public_static_source_dir: String,
@@ -229,7 +258,9 @@ impl StaticInputPlan {
 	}
 }
 
-/// Generated TypeScript output projection.
+/// Generated TypeScript output projection: where
+/// [`crate::build_output::write_typescript_contracts`] writes the app's
+/// generated TypeScript contracts.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeneratedTypeScriptPlan {
 	output_file: String,
@@ -242,7 +273,11 @@ impl GeneratedTypeScriptPlan {
 	}
 }
 
-/// Typed dev watch plan.
+/// Typed dev watch plan: every source path or glob the dev loop should
+/// watch, each tagged with the framework-level reason it matters (see
+/// [`BuildDevWatchIntent`]). [`crate::dev_watcher::DevFileWatchPlan::compile`]
+/// compiles this into the filesystem watcher's actual watch roots and
+/// per-path classification rules.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildDevWatchPlan {
 	entries: Vec<BuildDevWatchEntry>,
@@ -259,6 +294,11 @@ impl BuildDevWatchPlan {
 	is extended per generation rather than at derive time (Go parity:
 	css_files_to_watch was rebuilt every build).
 	*/
+	/// Return a copy of this plan with critical-CSS `@import` sources added
+	/// as [`BuildDevWatchIntent::CriticalCssInput`] entries. Called once per
+	/// dev generation (bundling is the only way to learn a generation's
+	/// actual import set), so the returned plan — not `self` — reflects the
+	/// current generation's full watch surface.
 	pub fn extended_with_critical_css_imports(&self, imports: &[String]) -> Self {
 		let mut entries = self.entries.iter().cloned().collect::<BTreeSet<_>>();
 		for import in imports {
@@ -342,7 +382,11 @@ impl BuildDevWatchPlan {
 	}
 }
 
-/// One dev watch path/glob plus its generation intent.
+/// One dev watch path/glob plus its generation intent. `Ord`-derived so a
+/// `BTreeSet<BuildDevWatchEntry>` can deduplicate entries the same source
+/// contributes for the same intent from more than one place (a view's
+/// client file is both a general watch input and a
+/// [`BuildDevWatchIntent::FrontendBuildInput`], for example).
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct BuildDevWatchEntry {
 	source_path: String,
@@ -361,7 +405,14 @@ impl BuildDevWatchEntry {
 	}
 }
 
-/// Framework-level reason a watched source can produce a new generation candidate.
+/// Framework-level reason a watched source can produce a new generation
+/// candidate. [`crate::dev_watcher::DevFileChange`] carries the set of
+/// intents a changed path actually matched, and
+/// [`crate::entrypoint`]'s dev loop dispatches its rebuild work from that
+/// set: only [`Self::ServerRecompile`] requires a full app-server rebuild,
+/// while [`Self::CriticalCssInput`] and [`Self::PublicStaticInput`] only
+/// need static regeneration, and [`Self::ClientRevalidate`] needs no
+/// rebuild at all — just a browser revalidation push.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum BuildDevWatchIntent {
 	/// User-configured general watch path/glob.
@@ -378,7 +429,7 @@ pub enum BuildDevWatchIntent {
 	CriticalCssInput,
 }
 
-/// Build plan projection error.
+/// Error from [`BuildProjectionPlan::compile`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildPlanError {
 	/// The graph did not contain build/dev inputs.

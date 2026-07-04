@@ -1,4 +1,28 @@
 //! Live build-state protocol: the app binary's graph emission consumed by dev epoch rebuilds.
+//!
+//! Framework-integration surface and **frozen** — the wire protocol
+//! between a running (or freshly rebuilt) app binary and the `vorma-build`
+//! process orchestrating a dev session. In dev mode, the app server binary
+//! is invoked with
+//! [`LIVE_BUILD_STATE_ENV_KEY`](crate::live_state::LIVE_BUILD_STATE_ENV_KEY)
+//! set and, instead of serving requests, emits its compiled
+//! [`crate::framework_graph::FrameworkGraph`] as JSON
+//! ([`LiveBuildState`](crate::live_state::LiveBuildState)) so the build
+//! side can regenerate manifests and TypeScript from the app's *actual
+//! current* declared graph — the same binary the dev session is about to
+//! serve — rather than re-deriving that shape by some other means. See
+//! the maintainer reminders: during dev builds the app-server binary is
+//! the only app-linked binary, compiled once per iteration, and this
+//! protocol is how its own graph gets back out of it.
+//!
+//! [`LIVE_BUILD_STATE_PROTOCOL`](crate::live_state::LIVE_BUILD_STATE_PROTOCOL)
+//! exists because the app binary and the build process can independently
+//! drift out of version lockstep (a stale build binary against a
+//! freshly-rebuilt app, or vice versa); an app binary that emitted this
+//! JSON before the version field existed deserializes as protocol `0`
+//! and is rejected by the same version check that catches any other
+//! mismatch — never a generic parse failure that would leave a developer
+//! guessing why their dev session broke.
 
 use crate::contracts::{DocumentContract, RouteTypeContract, TypeDef};
 use crate::framework_graph::{
@@ -25,6 +49,11 @@ pub const LIVE_BUILD_STATE_ENV_KEY: &str = "__VORMA_LIVE_BUILD_STATE";
 pub const LIVE_BUILD_STATE_ENV_VALUE: &str = "1";
 
 /// Live build-state facts emitted by a build-entry process in dev mode.
+///
+/// The wire shape of one live-state emission: a protocol version (see the
+/// module docs), a serialized [`crate::framework_graph::FrameworkGraph`],
+/// and a precomputed root-document hash source string used to detect
+/// whether the app's document shell itself changed between rebuilds.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct LiveBuildState {
 	#[serde(default)]
@@ -57,6 +86,13 @@ impl LiveBuildState {
 	}
 
 	/// Root document hash source for this live-state generation.
+	///
+	/// Not itself a hash — the build side blake3-hashes this string to
+	/// produce [`crate::runtime_manifest::RuntimeManifest::root_document_shell_hash`],
+	/// the value the committed manifest actually carries. Precomputing
+	/// the source string here (rather than re-deriving it from the app's
+	/// document builder later) keeps the app binary as the single source
+	/// of truth for what its own document shell renders as.
 	pub fn root_document_hash_source(&self) -> &str {
 		&self.root_document_hash_source
 	}
@@ -69,6 +105,17 @@ impl LiveBuildState {
 	}
 
 	/// Decode live-state facts from JSON bytes.
+	///
+	/// Checked, in order: whether `bytes` is instead an app error envelope
+	/// (an app whose graph compilation itself failed emits `{"error":
+	/// "..."}` rather than a `LiveBuildState`, surfaced here as
+	/// [`LiveBuildStateError::App`]); the protocol version; that the
+	/// embedded graph still recompiles cleanly (re-running
+	/// [`crate::framework_graph::FrameworkGraph::compile`]'s own
+	/// validation, not just a JSON shape check); and that the root
+	/// document hash source is non-empty. A `LiveBuildState` returned from
+	/// this function is one the caller can trust without further
+	/// validation.
 	pub fn from_json_bytes(bytes: &[u8]) -> Result<Self, LiveBuildStateError> {
 		#[derive(Deserialize)]
 		struct ErrorEnvelope {
@@ -110,6 +157,13 @@ impl LiveBuildState {
 	}
 
 	/// Encode an app error response as live-state JSON bytes.
+	///
+	/// The counterpart to [`Self::from_json_bytes`]'s error-envelope
+	/// handling: an app whose graph compilation itself fails (an app
+	/// author's route declaration mistake, not a live-state protocol
+	/// issue) emits this instead of a normal [`LiveBuildState`], so the
+	/// build side can surface the app's own compile error to the
+	/// developer rather than a confusing downstream JSON-shape failure.
 	pub fn error_json_bytes(message: impl Into<String>) -> Result<Vec<u8>, LiveBuildStateError> {
 		#[derive(Serialize)]
 		struct ErrorEnvelope {
@@ -279,6 +333,15 @@ struct LiveStaticAssetDeclaration {
 }
 
 /// Live build-state protocol error.
+///
+/// Returned by [`LiveBuildState::from_json_bytes`], distinguishing three
+/// different failure sources a build side needs to react to differently:
+/// an actual protocol-level problem
+/// ([`Self::ProtocolMismatch`]/[`Self::Parse`]/[`Self::Serialize`]/[`Self::InvalidHandlerId`]/[`Self::InvalidHttpMethod`]/[`Self::MissingRootDocumentHashSource`]),
+/// the emitting app's own graph failing to recompile
+/// ([`Self::Graph`]), or the emitting app reporting its own error
+/// directly ([`Self::App`], the counterpart to
+/// [`LiveBuildState::error_json_bytes`]).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LiveBuildStateError {
 	/// Emitter spoke a different live-state protocol version.

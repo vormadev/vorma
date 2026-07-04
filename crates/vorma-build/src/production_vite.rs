@@ -16,7 +16,11 @@ pub const VITE_PRODUCTION_MANIFEST_TEMP_DIR: &str = "tmp";
 /// Vite manifest filename below [`VITE_PRODUCTION_MANIFEST_TEMP_DIR`].
 pub const VITE_PRODUCTION_MANIFEST_FILENAME: &str = "vite_manifest.json";
 
-/// Runtime inputs needed by the TypeScript Vite plugin during one production build.
+/// Runtime inputs needed by the TypeScript Vite plugin during one
+/// production build: the port and auth token for the RPC server this
+/// crate's own process exposes back to the plugin (see
+/// [`crate::vite_plugin_rpc`]) — production has no dev-server port to
+/// project, unlike [`crate::dev_vite::ViteDevServerInput`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViteProductionBuildInput {
 	plugin_server_port: u16,
@@ -43,7 +47,10 @@ impl ViteProductionBuildInput {
 	}
 }
 
-/// Run Vite production build and read the produced manifest.
+/// Run Vite production build and read the produced manifest: runs
+/// [`vite_production_build_command`]'s command to completion (inheriting
+/// stdio, so build output streams live), then loads the Vite-produced
+/// manifest JSON from [`production_vite_manifest_temp_path`].
 pub fn run_vite_production_build(
 	plan: &BuildProjectionPlan,
 	input: &ViteProductionBuildInput,
@@ -57,7 +64,14 @@ pub fn run_vite_production_build(
 		.map_err(|source| ProductionViteError::Manifest { source })
 }
 
-/// Build the Vite production command without executing it.
+/// Build the Vite production command without executing it: `vite build
+/// --outDir <public output dir> --assetsDir . --manifest
+/// <VITE_PRODUCTION_MANIFEST_TEMP_DIR>/<VITE_PRODUCTION_MANIFEST_FILENAME>
+/// --emptyOutDir false --config <vite_config_file>`. `--emptyOutDir false`
+/// is load-bearing: Vite's output directory is the same directory this
+/// crate's own [`crate::static_outputs`] publishes public static files and
+/// writes the temp manifest into, so letting Vite clear it first would
+/// destroy those outputs.
 pub fn vite_production_build_command(
 	plan: &BuildProjectionPlan,
 	input: &ViteProductionBuildInput,
@@ -100,7 +114,8 @@ pub fn production_vite_manifest_temp_path(
 		.join(VITE_PRODUCTION_MANIFEST_FILENAME))
 }
 
-/// Vite production build error.
+/// Error from [`run_vite_production_build`], [`vite_production_build_command`],
+/// or [`production_vite_manifest_temp_path`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProductionViteError {
 	/// Vite command construction failed.

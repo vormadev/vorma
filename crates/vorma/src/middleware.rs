@@ -1,4 +1,30 @@
 //! Optional Tower middleware helpers for Vorma app servers.
+//!
+//! These are plain [`tower_layer::Layer`]s an app composes into its own
+//! `tower::ServiceBuilder` chain around [`RuntimeHost`](crate::RuntimeHost) — a
+//! different mechanism from [`Middleware`](crate::Middleware) (Vorma's own
+//! pattern/method-scoped, ctx-based middleware system, declared through
+//! [`app!`](crate::app!)'s `middlewares!`). Reach for a helper here for cross-cutting HTTP
+//! concerns that apply at the transport layer regardless of route (secure headers,
+//! request IDs, compression, body-size/timeout limits, ETags); reach for
+//! [`Middleware::new`](crate::Middleware::new) for anything that needs typed access to
+//! route params, application state, or a task [`ExecCtx`](vorma_tasks::ExecCtx).
+//!
+//! Grouped by concern: header hygiene ([`request_id`](middleware::request_id),
+//! [`sensitive_headers`](middleware::sensitive_headers)), resilience
+//! ([`panic_recovery`](middleware::panic_recovery)), request limits
+//! ([`request_body_limit`](middleware::request_body_limit),
+//! [`handler_timeout`](middleware::handler_timeout),
+//! [`request_body_timeout`](middleware::request_body_timeout),
+//! [`response_body_timeout`](middleware::response_body_timeout)), compression
+//! ([`compression`](middleware::compression)), ETags
+//! ([`etag`](middleware::etag) and its options — see
+//! [`EtagLayer`](middleware::EtagLayer) for the full contract, including
+//! [`EtagLayer::skip`](middleware::EtagLayer::skip)'s predicate shape), the composed
+//! [`response_body_timeout_with_etag`](middleware::response_body_timeout_with_etag)
+//! helper (see its own docs for why the raw `etag()` + `response_body_timeout()` pairing
+//! needs a fixed declaration order to avoid silently losing every `ETag` header), and
+//! secure headers ([`secure_headers`](middleware::secure_headers)).
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -17,7 +43,9 @@ use tower_http::catch_panic::{CatchPanicLayer, DefaultResponseForPanic};
 use tower_http::compression::CompressionLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestId, SetRequestId};
-use tower_http::timeout::{RequestBodyTimeoutLayer, ResponseBodyTimeoutLayer, TimeoutLayer};
+use tower_http::timeout::{
+	RequestBodyTimeoutLayer, ResponseBodyTimeout, ResponseBodyTimeoutLayer, TimeoutLayer,
+};
 use tower_layer::Layer;
 use tower_service::Service;
 
@@ -450,6 +478,138 @@ fn normalized_etag_token(value: &str) -> Option<&str> {
 fn remove_not_modified_payload_headers(headers: &mut HeaderMap) {
 	for &name in NOT_MODIFIED_PAYLOAD_HEADERS {
 		headers.remove(name);
+	}
+}
+
+/////////////////////////////////////////////////////////////////////
+/////// Composed: Response Body Timeout + ETag
+/////////////////////////////////////////////////////////////////////
+
+/*
+`etag()` only tags a response when it can read an exact `size_hint` up
+front (see `etag_response_is_eligible` above). `response_body_timeout()`
+is a thin re-export of `tower_http::timeout::ResponseBodyTimeoutLayer`,
+whose response body wrapper never forwards the wrapped body's
+`size_hint` — it inherits `http_body::Body`'s default of "unknown",
+regardless of how small or fully-buffered the underlying body actually
+is. `tower::ServiceBuilder` composes layers so that the one declared
+EARLIER is OUTER (sees the request first, the response last). So
+declaring `.layer(etag())` before `.layer(response_body_timeout(...))`
+— the order an app author would naturally reach for, reading top to
+bottom — makes `etag` OUTER and the timeout layer INNER: on the
+response path the timeout layer runs first, permanently erasing the
+size hint, and `etag` runs second, now blind to a body it could have
+tagged. The composition silently produces zero ETags, ever, with no
+warning: no lint fires and the response still looks correct (status,
+`Content-Length`, and body bytes all fine) — only the missing `ETag`
+header reveals it. Full root-cause trace:
+`docs/maintainer/tickets/etag-response-body-timeout-ordering-footgun/`
+(deleted once this landed; see git history if needed) and the
+composition-order re-verification recorded in ticket
+`tower-http-timeoutbody-size-hint-upstream`.
+
+`response_body_timeout_with_etag` below is the structural fix: it
+returns ONE pre-ordered layer with the timeout wrapper permanently
+outer and `etag` permanently inner, so an app that reaches for it
+cannot get the order wrong — the two layers are glued together with a
+single declaration site instead of two independent `.layer(...)`
+calls an app could accidentally reorder. Hand-composing the two raw
+layers (`etag()` and `response_body_timeout()`) as separate
+`ServiceBuilder` entries remains fully supported and correct as long
+as the declaration order is respected (timeout declared before etag);
+board's own hand-composed call site documents that ordering
+requirement inline for readers who want to see the raw layers
+explicitly, or who need to interleave other middlewares between the
+two (this composed helper treats the pair as one atomic unit and
+cannot be split apart once returned).
+*/
+
+/// Tower layer produced by [`response_body_timeout_with_etag`]: a single
+/// pre-composed unit pairing [`response_body_timeout`] (permanently outer)
+/// with [`etag`] (permanently inner), so the two cannot be declared in the
+/// silently-broken order. See the module comment above this type for the
+/// full failure mode this closes.
+#[derive(Clone)]
+pub struct ResponseBodyTimeoutWithEtagLayer {
+	timeout_seconds: u64,
+	etag: EtagLayer,
+}
+
+/// Returns a single pre-ordered layer combining [`response_body_timeout`]
+/// and [`etag`], with the internal composition order fixed so ETags are
+/// never silently defeated.
+///
+/// Composing these two raw layers by hand works too, but ONLY if
+/// `response_body_timeout` is declared before (outer to) `etag` in a
+/// `tower::ServiceBuilder` chain — get that backwards and every response
+/// silently loses its `ETag` header with no warning of any kind. This
+/// helper removes the choice: it always applies the timeout wrapper
+/// outside `etag`, so responses that flow through it keep their ETags
+/// regardless of where the returned layer sits among an app's other
+/// middlewares.
+///
+/// `seconds` sets the response-body-write timeout, identical to
+/// [`response_body_timeout`]'s own parameter. The returned layer exposes
+/// the same configuration methods as [`etag`] itself
+/// ([`strong`](ResponseBodyTimeoutWithEtagLayer::strong),
+/// [`max_body_size`](ResponseBodyTimeoutWithEtagLayer::max_body_size),
+/// [`skip`](ResponseBodyTimeoutWithEtagLayer::skip)) so an app that adopts
+/// this helper does not lose any etag configuration it would otherwise set
+/// by hand.
+///
+/// Reach for the individual [`response_body_timeout`] and [`etag`] layers
+/// directly instead of this helper only when something needs to sit
+/// between them in the middleware chain — this helper treats the pair as
+/// one atomic, inseparable unit.
+pub fn response_body_timeout_with_etag(seconds: u64) -> ResponseBodyTimeoutWithEtagLayer {
+	ResponseBodyTimeoutWithEtagLayer {
+		timeout_seconds: seconds,
+		etag: etag(),
+	}
+}
+
+impl ResponseBodyTimeoutWithEtagLayer {
+	/// Emit strong ETags instead of weak ETags. Same contract as
+	/// [`EtagLayer::strong`].
+	pub fn strong(mut self) -> Self {
+		self.etag = self.etag.strong();
+		self
+	}
+
+	/// Maximum response body size that will be buffered for ETag
+	/// generation. Same contract as [`EtagLayer::max_body_size`].
+	pub fn max_body_size(mut self, bytes: usize) -> Self {
+		self.etag = self.etag.max_body_size(bytes);
+		self
+	}
+
+	/// Skip ETag generation for requests matching `predicate`. Same
+	/// contract as [`EtagLayer::skip`]. Does not affect the response body
+	/// timeout, which still applies to skipped requests.
+	pub fn skip<F>(mut self, predicate: F) -> Self
+	where
+		F: for<'a> Fn(&EtagRequest<'a>) -> bool + Send + Sync + 'static,
+	{
+		self.etag = self.etag.skip(predicate);
+		self
+	}
+}
+
+impl fmt::Debug for ResponseBodyTimeoutWithEtagLayer {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("ResponseBodyTimeoutWithEtagLayer")
+			.field("timeout_seconds", &self.timeout_seconds)
+			.field("etag", &self.etag)
+			.finish()
+	}
+}
+
+impl<S> Layer<S> for ResponseBodyTimeoutWithEtagLayer {
+	type Service = ResponseBodyTimeout<EtagService<S>>;
+
+	fn layer(&self, inner: S) -> Self::Service {
+		let etagged = self.etag.layer(inner);
+		ResponseBodyTimeoutLayer::new(Duration::from_secs(self.timeout_seconds)).layer(etagged)
 	}
 }
 
@@ -1051,5 +1211,112 @@ mod tests {
 			collect_response_body(response).await,
 			Bytes::from_static(b"hello")
 		);
+	}
+
+	/*
+	`response_body_timeout_with_etag` exists because
+	`tower_http::timeout::ResponseBodyTimeoutLayer`'s body wrapper never
+	forwards the wrapped body's `size_hint`, so composing the raw `etag()`
+	and `response_body_timeout()` layers in the order an app would
+	naturally reach for (etag declared first, outer to the timeout layer)
+	silently produces zero ETags. These tests exercise the composed
+	helper end to end: a response flowing through it must still carry a
+	real ETag, and its builder methods must thread through to the same
+	etag behavior the raw `EtagLayer` methods provide. The broken
+	hand-composed order itself is not repinned here: its failure belongs
+	to tower-http's `TimeoutBody`, not to this suite (see
+	`docs/maintainer/tickets/tower-http-timeoutbody-size-hint-upstream/__TICKET.md`
+	for the verified root cause).
+	*/
+
+	#[tokio::test]
+	async fn response_body_timeout_with_etag_sets_etag_through_the_timeout_wrapper() {
+		let request = Request::builder().method(Method::GET).body(()).unwrap();
+		let mut service = response_body_timeout_with_etag(60).layer(EtagBodyService::ok(b"hello"));
+
+		let response = service.call(request).await.unwrap();
+
+		let tag = response.headers().get(ETAG).unwrap().to_str().unwrap();
+		assert!(tag.starts_with("W/\""));
+		assert_eq!(response.headers().get(CONTENT_LENGTH).unwrap(), "5");
+		assert_eq!(
+			collect_response_body(response).await,
+			Bytes::from_static(b"hello")
+		);
+	}
+
+	#[tokio::test]
+	async fn response_body_timeout_with_etag_can_generate_strong_etag() {
+		let request = Request::builder().method(Method::GET).body(()).unwrap();
+		let mut service = response_body_timeout_with_etag(60)
+			.strong()
+			.layer(EtagBodyService::ok(b"hello"));
+
+		let response = service.call(request).await.unwrap();
+
+		let tag = response.headers().get(ETAG).unwrap().to_str().unwrap();
+		assert!(tag.starts_with('"'));
+		assert!(tag.ends_with('"'));
+		assert!(!tag.starts_with("W/"));
+	}
+
+	#[tokio::test]
+	async fn response_body_timeout_with_etag_respects_max_body_size() {
+		let request = Request::builder().method(Method::GET).body(()).unwrap();
+		let mut service = response_body_timeout_with_etag(60)
+			.max_body_size(3)
+			.layer(EtagBodyService::ok(b"hello"));
+
+		let response = service.call(request).await.unwrap();
+
+		assert!(!response.headers().contains_key(ETAG));
+		assert_eq!(
+			collect_response_body(response).await,
+			Bytes::from_static(b"hello")
+		);
+	}
+
+	#[tokio::test]
+	async fn response_body_timeout_with_etag_respects_skip_predicate() {
+		let request = Request::builder()
+			.method(Method::GET)
+			.uri("/skip-me")
+			.header("x-skip-etag", "true")
+			.body(())
+			.unwrap();
+		let mut service = response_body_timeout_with_etag(60)
+			.skip(|request| {
+				request.uri().path() == "/skip-me" && request.headers().contains_key("x-skip-etag")
+			})
+			.layer(EtagBodyService::ok(b"hello"));
+
+		let response = service.call(request).await.unwrap();
+
+		assert!(!response.headers().contains_key(ETAG));
+		assert_eq!(
+			collect_response_body(response).await,
+			Bytes::from_static(b"hello")
+		);
+	}
+
+	#[tokio::test]
+	async fn response_body_timeout_with_etag_returns_not_modified_for_matching_if_none_match() {
+		let first_request = Request::builder().method(Method::GET).body(()).unwrap();
+		let mut service = response_body_timeout_with_etag(60).layer(EtagBodyService::ok(b"hello"));
+		let first_response = service.call(first_request).await.unwrap();
+		let tag = first_response.headers().get(ETAG).unwrap().clone();
+
+		let second_request = Request::builder()
+			.method(Method::GET)
+			.header(IF_NONE_MATCH, tag)
+			.body(())
+			.unwrap();
+		let mut service = response_body_timeout_with_etag(60).layer(EtagBodyService::ok(b"hello"));
+
+		let response = service.call(second_request).await.unwrap();
+
+		assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+		assert!(response.headers().contains_key(ETAG));
+		assert_eq!(collect_response_body(response).await, Bytes::new());
 	}
 }

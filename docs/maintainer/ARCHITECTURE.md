@@ -9,8 +9,15 @@ historical plans.
 - **`vorma`** — the runtime and the app declaration API. Apps declare
   views/resources/middleware/document through `AppConfig` and serve via `App::from_config`
   → `RuntimeHost` (a Tower service mounted in the user's own axum stack). Also exposes:
+    - `vorma::tasks` — re-exports `vorma-tasks`' public API (`Tasks`, `ExecCtx`, `task!`,
+      `ParallelBatch`, `CancelToken`, `TaskObserver`, and friends) under the app's own
+      crate namespace; the crate's own doctrine (retention semantics, single-flight,
+      spawned parallelism, cancellation, cycle detection) lives in `vorma-tasks`, not
+      duplicated here.
     - `vorma::middleware` — optional Tower layers (etag, secure headers, body limits,
-      timeouts, compression, request id, panic recovery).
+      timeouts, compression, request id, panic recovery, plus the composed
+      `response_body_timeout_with_etag` helper that fixes the two layers' silent
+      ETag-erasure footgun when hand-ordered).
     - `vorma::build_interface` — the named contract `vorma-build` consumes (asset
       capabilities, document contracts, config lowering, the facade that compiles
       declarations, route-input resolvers, runtime snapshot types, `AppBuildContract` and
@@ -21,10 +28,13 @@ historical plans.
 - **`vorma-contract`** — shared truth between runtime and build: the canonical
   `framework_graph`, compiled `execution_plan`, `runtime_manifest`, declaration
   `contracts`, `tsgen` type model, `document_renderer`, `wire` (browser protocol),
-  `live_state` (the app-binary → build protocol), and shared constants.
+  `live_state` (the app-binary → build protocol), and shared constants. A type name shared
+  by a route input and a route output collapses to one exported TS type when the two
+  phases agree structurally, and is a teaching error on genuine divergence.
   `extern crate self as vorma` satisfies the TsGen macro ABI locally.
 - **`vorma-build`** — the build/dev orchestrator library. No CLI, by ruling: the public
-  surface is `run(app_config)` (plus `build_production`/`start_dev_server` for harnesses).
+  surface is exactly `run(app_config)` — harnesses use it too (the framework tests pass a
+  config closure), not a wider internal surface.
 - **`vorma-macros`** — `TsGen` derive and the view/resource declaration macros.
   Diagnostics are compile-fail-pinned in `crates/vorma/tests/compile_fail/`.
 - **`vorma-matcher`, `vorma-tasks`, `vorma-client-wasm`** — standalone route matcher
@@ -105,6 +115,14 @@ restart-per-rebuild bluntness.
 (CSP-hashable critical CSS), and the execution engine driving middlewares → view/resource
 handlers with parallel client-loader semantics per the REMINDERS contracts.
 
+Two request-path shortcuts, both frozen-semantics-preserving and byte-identity-verified:
+document fragments that are pure functions of the committed `RuntimeSnapshot` (never of a
+per-request `RuntimeDocumentProvider`) are rendered once at snapshot-compile time instead
+of once per request; and an invocation phase of exactly one handler (the common shape for
+resource routes) polls that handler's future inline instead of paying `JoinSet`
+spawn/join-arbitration overhead built for the N≥2 parallel contract — the N≥2 path itself
+is untouched and unreachable from this fast path.
+
 Response protocol (post API-campaign): views are a framework-owned rendering protocol — a
 view segment rejects with `ViewExit` (explicit `client_msg` or a generic; page still
 commits, HTTP 200) and only framework faults 500 on the view path. Resources and
@@ -128,15 +146,20 @@ env-gated and compiled out of the prod path where possible.
 projection, redirects, wire payload, client loaders, route modules, submissions, history
 position, head, css). The old monolithic companion test suite has been decomposed into
 focused suites such as `core_boot.test.ts`, `core_client_loaders.test.ts`,
-`core_navigation.test.ts`, `core_revalidation_and_work.test.ts`,
-`core_scroll_and_history.test.ts`, and the lower-level module tests beside them.
+`core_hmr.test.ts`, `core_navigation.test.ts`, `core_prefetch_and_css.test.ts`,
+`core_revalidation_and_work.test.ts`, `core_scroll_and_history.test.ts`, and the
+lower-level module tests beside them.
 
 ## Known asymmetries (deliberate)
 
 - Windows: no child-exit watcher yet (needs a SYNCHRONIZE-handle wait); dev works, death
   detection degrades to next-request failure.
-- The OS watch-root set is session-static; a brand-new watch ROOT (e.g. a config change
-  pointing at a new directory) needs a dev restart — same reach as Go, guarded by the
-  explicit config-transition error.
+- The OS watch-root set is session-static: `notify` roots are registered once when the
+  watcher starts, and replacing the classification plan on every generation (view modules,
+  declared assets, critical-CSS imports) never re-registers or diffs the root set itself.
+  A config change that would move a watch ROOT to a new directory needs a manual dev
+  restart to take effect — same reach as Go — but nothing currently detects or errors on
+  this case; unlike the server-cargo-target mid-session change (which does fail loudly
+  with a restart instruction), a watch-root change is silently ineffective, not guarded.
 - The `runtime_*` module prefix in `vorma` is deliberate: it keeps crate-private runtime
   layers visually grouped and distinct from the public app-declaration surface.

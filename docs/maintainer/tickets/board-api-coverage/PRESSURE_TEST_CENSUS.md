@@ -817,3 +817,39 @@ DESIGN (needs a ruling) / PAPERCUT (mechanical).
   `etag-response-body-timeout-ordering-footgun`. No option is recommended over the others
   beyond ruling out documentation alone, which conflicts with this project's own
   no-footgun-smoothed-by-docs rule; the maintainer's call.
+- F-23 RESOLVED (P010, 2026-07-02, maintainer-approved option 4): root cause re-verified
+  directly against this workspace's pinned vendored source (`Cargo.lock`:
+  `tower-http 0.6.11`, `http-body 1.0.1`) before landing anything — `TimeoutBody<B>`'s
+  `Body` impl (`tower-http-0.6.11/src/timeout/body.rs:73-107`) has no `size_hint`
+  override, so it inherits the trait's default `SizeHint::default()`
+  (`http-body-1.0.1/src/lib.rs:66-68`), whose derived `lower: 0, upper: None`
+  (`http-body-1.0.1/src/size_hint.rs:7-11`) makes `.exact()` unconditionally `None`;
+  verification note also recorded in ticket `tower-http-timeoutbody-size-hint-upstream`.
+  Landed
+  `vorma::middleware::response_body_timeout_with_etag(seconds: u64) -> ResponseBodyTimeoutWithEtagLayer`
+  (`crates/vorma/src/middleware.rs`): one layer composing `response_body_timeout`
+  permanently outer and `etag` permanently inner, with
+  `.strong()`/`.max_body_size()`/`.skip()` builder methods mirroring `EtagLayer`'s own so
+  no etag configuration is lost by adopting it. The individual `etag()` and
+  `response_body_timeout()` layers are untouched and remain independently public for apps
+  that need something else interleaved between them. Five permanent unit pins in
+  `crates/vorma/src/middleware.rs`'s test module exercise the composed helper end to end
+  (ETag survives the timeout wrapper, strong-etag mode, `max_body_size`, `skip`, and the
+  `If-None-Match` → `304` conditional path); a throwaway (not committed) sanity check
+  confirmed the hand-composed broken order still fails on this exact harness before the
+  pins were trusted, then was discarded per the instruction not to permanently pin
+  third-party internals. Board (`examples/board/src/bin/server.rs`) adopted the helper for
+  its real call site, replacing the two hand-ordered `.layer(...)` calls with one, and its
+  teaching comment was rewritten — the prior comment attributed the size-hint loss to
+  `etag`'s own re-buffering, which was not the actual causal mechanism; the corrected
+  comment attributes it precisely to `TimeoutBody` per the re-verified trace. Re-verified
+  live against the real production server (`cargo run --release --bin board-build` then
+  `PORT=9090 target/release/board-server`): a strong ETag now generates for a genuine
+  static asset (`/assets/vorma_out_vite_front.view_*.js`, 1662 bytes) and the large JS
+  bundle (`/assets/vorma_out_vite_app_*.js`, 277410 bytes, matching the original 277KB
+  finding), a follow-up `If-None-Match` correctly returns `304 Not Modified`, and
+  `/healthz` (routed through the same `.skip(...)` predicate) correctly carries no ETag.
+  The `etag-response-body-timeout-ordering-footgun` ticket is deleted; the deferred
+  upstream ticket (`tower-http-timeoutbody-size-hint-upstream`) stays open, untouched
+  beyond the verification note, exactly as the maintainer ruled — no upstream-facing
+  action was taken.

@@ -22,6 +22,18 @@ const RESOURCE_HANDLER_ID_PREFIX: &str = "resource:";
 const MIDDLEWARE_HANDLER_ID_PREFIX: &str = "middleware:";
 
 /// Complete app declaration consumed by both build and runtime host assembly.
+///
+/// The one value a Vorma app builds and hands to both [`App::from_config`] (production
+/// server) and `vorma_build::run` (build command) — every consumer compiling the exact
+/// same route graph is what makes the generated TypeScript contract trustworthy. Real
+/// apps build one in one function shared by the server binary, the build command, and
+/// tests (see the [crate-root example](crate#getting-started)); tests typically vary
+/// only `state` between runs, never the views/resources/middleware, so tests exercise the
+/// same route graph production serves.
+///
+/// `S` is the application state type shared by every handler — build it from whatever a
+/// real app needs (a database pool, a config struct) and access it in a handler through
+/// `ctx.state()`.
 pub struct AppConfig<S> {
 	/*
 	Canonical field order (and the order the example teaches): filesystem
@@ -60,6 +72,10 @@ pub struct AppConfig<S> {
 }
 
 /// Normalized app ready to compile into runtime/build assembly.
+///
+/// Application code never constructs this directly — [`App::from_config`] is the one
+/// public entry point, taking an [`AppConfig`] and returning a mountable
+/// [`RuntimeHost`](crate::RuntimeHost).
 pub struct App<S> {
 	config: Config,
 	assembly: AppAssembly<S>,
@@ -185,7 +201,8 @@ where
 	}
 }
 
-/// Request-scoped middleware declaration shared by views and resources.
+/// Deferred registration closure a [`Middleware`] wraps: captures the typed handler at
+/// [`Middleware::new`] time and applies it to the facade once patterns/methods are known.
 type MiddlewareRegistrar<S> = Box<
 	dyn FnOnce(
 			usize,
@@ -197,13 +214,11 @@ type MiddlewareRegistrar<S> = Box<
 >;
 
 /// Request-scoped middleware declaration shared by views and resources.
-/*
-Filters AND together; an omitted filter means unrestricted. Scope
-patterns use the same grammar as routes (flat matching, no `_index`):
-subtree gating is written in the pattern language ("/admin" plus the
-"/admin" splat form), and the run decision is a plain path match — scope
-patterns never contribute params.
-*/
+///
+/// Built with [`Middleware::new`] and optionally narrowed with
+/// [`with_patterns`](Self::with_patterns)/[`with_methods`](Self::with_methods); collected
+/// into a [`Middlewares`] for [`AppConfig::middlewares`]. See [`MiddlewareCtx`] for what
+/// the handler receives.
 pub struct Middleware<S> {
 	register: MiddlewareRegistrar<S>,
 	patterns: Vec<String>,
@@ -214,7 +229,8 @@ impl<S> Middleware<S>
 where
 	S: Send + Sync + 'static,
 {
-	/// Create middleware from an async handler; runs for every request.
+	/// Create middleware from an async handler; runs for every request unless narrowed
+	/// with [`with_patterns`](Self::with_patterns)/[`with_methods`](Self::with_methods).
 	pub fn new<F, Fut, O>(handler: F) -> Self
 	where
 		F: Fn(MiddlewareCtx<S>) -> Fut + Send + Sync + 'static,
@@ -237,6 +253,17 @@ where
 	}
 
 	/// Run only for requests whose path matches one of these patterns.
+	///
+	/// Patterns use the same grammar as route patterns (`:name` dynamic segments, `*`
+	/// splats), matched flatly (no `_index` semantics) against the request path — this
+	/// selects a subtree of routes to run in front of, not one specific route's params;
+	/// a matched pattern never contributes captured values to
+	/// [`MiddlewareCtx::params`]/[`MiddlewareCtx::param`] (those come from whatever
+	/// view/resource the request actually matched, independent of which pattern
+	/// selected this middleware). Combined with
+	/// [`with_methods`](Self::with_methods), both filters must pass (AND, not OR); an
+	/// omitted filter (the default, no `with_patterns`/`with_methods` call) means
+	/// unrestricted on that axis.
 	pub fn with_patterns<I>(mut self, patterns: I) -> Self
 	where
 		I: IntoIterator,
@@ -247,6 +274,9 @@ where
 	}
 
 	/// Run only for requests using one of these methods.
+	///
+	/// See [`with_patterns`](Self::with_patterns) for how this combines with a pattern
+	/// filter when both are set.
 	pub fn with_methods<I>(mut self, methods: I) -> Self
 	where
 		I: IntoIterator<Item = http::Method>,
@@ -256,7 +286,11 @@ where
 	}
 }
 
-/// Nested view declaration.
+/// One nested-view route declaration.
+///
+/// Constructed exclusively through [`app!`](crate::app!)'s generated `view!` macro (see
+/// its docs for the full field grammar) — there is no other public constructor. Collected
+/// into a [`Views`] for [`AppConfig::views`].
 pub struct View<S> {
 	pattern: &'static str,
 	client_file: &'static str,
@@ -313,7 +347,11 @@ where
 	}
 }
 
-/// Resource declaration.
+/// One resource route declaration.
+///
+/// Constructed exclusively through [`app!`](crate::app!)'s generated `resource!` macro
+/// (see its docs for the full field grammar) — there is no other public constructor.
+/// Collected into a [`Resources`] for [`AppConfig::resources`].
 pub struct Resource<S> {
 	method: http::Method,
 	pattern: &'static str,
@@ -375,7 +413,10 @@ where
 	}
 }
 
-/// Collection of middleware declarations.
+/// Collection of middleware declarations, for [`AppConfig::middlewares`].
+///
+/// Usually built with [`app!`](crate::app!)'s generated `middlewares!` macro
+/// (`app::middlewares![MW_A, MW_B]`) rather than [`push`](Self::push) directly.
 #[derive(Default)]
 pub struct Middlewares<S> {
 	middlewares: Vec<Middleware<S>>,
@@ -411,7 +452,10 @@ where
 	}
 }
 
-/// Collection of nested view declarations.
+/// Collection of nested view declarations, for [`AppConfig::views`].
+///
+/// Usually built with [`app!`](crate::app!)'s generated `views!` macro
+/// (`app::views![VIEW_A, VIEW_B]`) rather than [`push`](Self::push) directly.
 #[derive(Default)]
 pub struct Views<S> {
 	views: Vec<View<S>>,
@@ -440,7 +484,10 @@ where
 	}
 }
 
-/// Collection of resource declarations.
+/// Collection of resource declarations, for [`AppConfig::resources`].
+///
+/// Usually built with [`app!`](crate::app!)'s generated `resources!` macro
+/// (`app::resources![RES_A, RES_B]`) rather than [`push`](Self::push) directly.
 #[derive(Default)]
 pub struct Resources<S> {
 	resources: Vec<Resource<S>>,

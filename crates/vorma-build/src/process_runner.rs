@@ -1,4 +1,17 @@
 //! Process command boundary for build orchestration.
+//!
+//! [`BuildProcessRunner`] is the seam every child-process-spawning function
+//! in this crate goes through instead of calling `std::process` directly,
+//! so tests can substitute a fake runner that records the exact command it
+//! would have run without ever spawning a real process. [`StdBuildProcessRunner`]
+//! is the real implementation production code uses. [`StartedBuildProcess`]
+//! is the corresponding handle for long-lived children (Vite, the app
+//! server): its [`StartedBuildProcess::watch_unexpected_exit`] is Unix-only
+//! today (see the `windows-child-exit-watcher` maintainer ticket for the
+//! Windows gap) and its `terminate`/`Drop` protocol never leaves an
+//! orphaned process group behind (see the doctrine comments on
+//! `StdStartedBuildProcess` below for exactly how process-group
+//! termination and zombie reaping are kept correct).
 
 use std::collections::BTreeMap;
 use std::future;
@@ -21,7 +34,9 @@ use crate::vite_plugin_contract::{
 
 const PROCESS_TERMINATION_GRACE: Duration = Duration::from_secs(2);
 
-/// Cancellation signal for one in-flight build process operation.
+/// Cancellation signal for one in-flight build process operation, shared
+/// (`Clone`-cheap, `Arc`-backed) between whoever requests cancellation and
+/// the code running or waiting on the process it applies to.
 #[derive(Clone, Debug)]
 pub struct BuildProcessCancel {
 	inner: Arc<BuildProcessCancelInner>,
@@ -67,7 +82,11 @@ impl Default for BuildProcessCancel {
 	}
 }
 
-/// Child process command prepared by build orchestration.
+/// Child process command prepared by build orchestration: a plain data
+/// description of what to run (program, args, working directory,
+/// environment) with no process yet started, so it can be inspected,
+/// compared, and cloned freely — the value every
+/// [`BuildProcessRunner`] method takes by reference.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildProcessCommand {
 	program: String,
@@ -120,15 +139,28 @@ impl BuildProcessCommand {
 	}
 }
 
-/// Build process runner abstraction.
+/// Build process runner abstraction: every way this crate ever runs a child
+/// process, as trait methods a fake implementation can override selectively
+/// in tests (see the module docs above). Only [`Self::run_inheriting_stdio`]
+/// is required; every other method has a default that reports
+/// [`BuildProcessError::StartUnsupported`]/[`BuildProcessError::OutputUnsupported`],
+/// so a minimal fake runner used only for one command shape does not need
+/// to implement methods its test never exercises.
 pub trait BuildProcessRunner {
-	/// Run the command while inheriting stdin/stdout/stderr.
+	/// Run the command to completion while inheriting stdin/stdout/stderr
+	/// (the child's output goes straight to this process's own — used for
+	/// commands whose output a human should see live, like a production
+	/// Vite build).
 	fn run_inheriting_stdio(
 		&mut self,
 		command: &BuildProcessCommand,
 	) -> Result<(), BuildProcessError>;
 
-	/// Start the command while inheriting stdin/stdout/stderr.
+	/// Start the command while inheriting stdin/stdout/stderr, returning
+	/// immediately with a [`StartedBuildProcess`] handle instead of waiting
+	/// for it to exit — used for long-lived children (Vite's dev server,
+	/// the app server) this crate needs to keep running and later
+	/// terminate.
 	fn start_inheriting_stdio(
 		&mut self,
 		command: &BuildProcessCommand,
@@ -138,7 +170,10 @@ pub trait BuildProcessRunner {
 		})
 	}
 
-	/// Run the command to completion while collecting stdout and stderr.
+	/// Run the command to completion while collecting stdout and stderr
+	/// instead of inheriting them — used for short-lived commands whose
+	/// output this crate needs to parse or report (a cargo build's JSON
+	/// messages, a live-state read).
 	fn run_collecting_output(
 		&mut self,
 		command: &BuildProcessCommand,
@@ -180,7 +215,9 @@ pub trait BuildProcessRunner {
 	}
 }
 
-/// Completed child process output.
+/// Completed child process output: exit status plus captured stdout and
+/// stderr bytes, returned by [`BuildProcessRunner::run_collecting_output`]
+/// and its cancellable/streaming variants.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildProcessOutput {
 	status_success: bool,
@@ -226,7 +263,10 @@ impl BuildProcessOutput {
 	}
 }
 
-/// Started child process owned by dev orchestration.
+/// Started child process owned by dev orchestration, returned by
+/// [`BuildProcessRunner::start_inheriting_stdio`]. This is the handle a dev
+/// session holds for its long-lived Vite and app-server children for as
+/// long as they should keep running.
 pub trait StartedBuildProcess {
 	/// Operating-system process identifier when available.
 	#[cfg(test)]
@@ -250,7 +290,11 @@ pub trait StartedBuildProcess {
 	}
 }
 
-/// Standard process runner.
+/// Standard process runner: the real [`BuildProcessRunner`] implementation
+/// production code uses, backed by `std::process::Command`. Zero-sized and
+/// `Copy` — it holds no state of its own; every started process's state
+/// lives in the [`StartedBuildProcess`]/[`BuildProcessOutput`] values it
+/// returns.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StdBuildProcessRunner;
 
@@ -424,7 +468,8 @@ impl StdStartedBuildProcess {
 	NOT reaped here: `terminate`/Drop keep sole reaping responsibility, and
 	an unexpected exit leaves the zombie for process teardown to collect.
 	Windows has no watcher yet (needs a SYNCHRONIZE-handle wait; tracked in
-	GO_PARITY_AUDIT finding 6) — dev there behaves as before this monitor.
+	the `windows-child-exit-watcher` maintainer ticket) — dev there behaves
+	as before this monitor.
 	*/
 	#[cfg(unix)]
 	fn watch_unexpected_exit_impl(&mut self, on_exit: Box<dyn FnOnce() + Send>) {
@@ -515,7 +560,7 @@ impl Drop for StdStartedBuildProcess {
 	}
 }
 
-/// Build process execution error.
+/// Error from any [`BuildProcessRunner`] or [`StartedBuildProcess`] method.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildProcessError {
 	/// Child process could not be started.

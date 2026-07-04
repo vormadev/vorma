@@ -1,4 +1,17 @@
 //! Runtime manifest contract consumed by committed server snapshots.
+//!
+//! Framework-integration surface:
+//! [`RuntimeManifest`](crate::runtime_manifest::RuntimeManifest) is the
+//! committed, serialized artifact one build produces and one running
+//! server consumes — the browser module URLs, public asset map, critical
+//! CSS, and view search schemas a request-serving process needs, all
+//! fixed at build time so serving a request never re-derives them. An
+//! application author never constructs one directly; `vorma-build` builds
+//! it and `vorma`'s runtime snapshot loads it.
+//! [`client_build_id`](crate::runtime_manifest::RuntimeManifest::client_build_id)
+//! is the identity a running server and an already-downloaded browser
+//! runtime compare to detect a deploy underneath them — see
+//! [`crate::wire::CLIENT_BUILD_ID_HEADER`].
 
 use std::collections::BTreeMap;
 
@@ -18,6 +31,14 @@ const HEAD_TAG_STYLE: &str = "style";
 const HEAD_ATTR_ID: &str = "id";
 
 /// Runtime manifest consumed by the server and browser payload builder.
+///
+/// Built once per generation via the `with_*` builder methods below (each
+/// attaching one facet — client entry assets, core assets, dev metadata,
+/// UI variant, document shell hash, package version — and each
+/// recomputing [`Self::client_build_id`] as it goes, so the identifier is
+/// always a hash of the manifest's own final serialized bytes). A
+/// committed [`RuntimeManifest`] is immutable for the life of the server
+/// generation it belongs to.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RuntimeManifest {
 	#[serde(skip)]
@@ -178,6 +199,15 @@ impl RuntimeManifest {
 	}
 
 	/// Derive the fixed client build identifier from the serialized manifest contract.
+	///
+	/// A blake3 hash of this manifest's own JSON bytes (with
+	/// [`Self::client_build_id`] itself `#[serde(skip)]`'d out of that
+	/// serialization, so the identifier does not hash itself),
+	/// lowercase-base32-encoded and truncated to 24 characters — stable
+	/// for identical manifest content, and guaranteed to change whenever
+	/// any manifest-affecting build fact does, since every `with_*`
+	/// builder method recomputes it. This is the value [`crate::wire::CLIENT_BUILD_ID_HEADER`]
+	/// carries to the browser.
 	pub fn to_client_build_id(&self) -> Result<String, serde_json::Error> {
 		let data = serde_json::to_vec(self)?;
 		let hash = blake3::hash(&data);
@@ -243,6 +273,14 @@ impl RuntimeManifest {
 	}
 
 	/// SHA-256 hash of the rendered critical CSS style contents for CSP.
+	///
+	/// SHA-256, not blake3: a Content-Security-Policy `style-src` hash
+	/// source is an external, non-owned protocol that only recognizes
+	/// SHA-256/384/512 — the one deliberate exception to this framework's
+	/// blake3-everywhere default. Hashes the same trusted, already-escaped
+	/// content [`Self::critical_css_element`] would render, not the raw
+	/// [`Self::critical_css`] string, so it matches what the browser
+	/// actually receives byte-for-byte.
 	pub fn critical_css_content_sha256(&self) -> Result<String, DocumentRenderError> {
 		let parts = trusted_element_parts(&self.critical_css_element())?;
 		let hash = Sha256::digest(parts.dangerous_inner_html.as_bytes());
@@ -287,6 +325,12 @@ impl RuntimeManifest {
 	}
 
 	/// Resolve a public static source path through this manifest's public file map.
+	///
+	/// `src_path` is the project-relative source path an app author wrote
+	/// (`"app.css"`, `"/logo.svg"` — a leading slash is tolerated and
+	/// stripped); the returned URL is the actual, content-hashed public
+	/// path a browser should request. `None` for a path never declared as
+	/// a static asset.
 	pub fn public_url(&self, src_path: &str) -> Option<&str> {
 		self.public_filemap
 			.get(public_source_key(src_path)?)
@@ -295,6 +339,13 @@ impl RuntimeManifest {
 }
 
 /// Browser client module manifest entry.
+///
+/// One JavaScript module's manifest facts: its own import URL, the
+/// dependency URLs a browser should preload alongside it, and its CSS
+/// bundle URLs. [`Self`] backs both [`RuntimeManifest::client_entry`] (the
+/// one fixed entry module) and, keyed by pattern, every view's module —
+/// see [`RuntimeViewModule`] for the per-view wrapper that adds the route
+/// pattern.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ClientModule {
 	url: String,
@@ -333,6 +384,14 @@ impl ClientModule {
 }
 
 /// Client core assets emitted by the frontend build.
+///
+/// Locates the compiled `vorma-client-wasm` matcher core (its JavaScript
+/// glue module plus the `.wasm` binary itself) as public URLs the browser
+/// runtime fetches once per session — the same nested-matcher route
+/// resolution algorithm the server runs, run client-side for
+/// client-navigated route transitions. `None` on
+/// [`RuntimeManifest::client_core_assets`] for a generation that has not
+/// yet attached these assets.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ClientCoreAssets {
 	module_url: String,
@@ -360,6 +419,11 @@ impl ClientCoreAssets {
 }
 
 /// Runtime view module manifest entry.
+///
+/// [`ClientModule`]'s facts plus the route pattern they belong to.
+/// [`RuntimeManifest::new`] indexes these by pattern into the manifest's
+/// internal client-view map on construction, which is what
+/// [`RuntimeManifest::view_module`] looks up by pattern at request time.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RuntimeViewModule {
 	pattern: String,

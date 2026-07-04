@@ -1,6 +1,45 @@
 //! C-compatible browser WASM route matcher ABI for Vorma's TypeScript client.
+//!
+//! This crate compiles `vorma-matcher`'s nested route matcher to a `wasm32-unknown-unknown`
+//! artifact (`packages/vorma/core/client_wasm/vorma_client_wasm_bg.wasm`, built through
+//! `make rust-build-client-wasm`) so the generated TypeScript client can resolve the same
+//! nested-view route matches in the browser that the Rust server resolves on the backend —
+//! client-side navigation and prefetching need to know which view chain a path matches
+//! without a round trip. There is no Rust-side consumer of this crate; every function here
+//! is a `pub extern "C" fn` called only from `packages/vorma/core/client_wasm/*.ts`
+//! (`matcher.ts` wraps the raw calls below into the ergonomic `ClientMatcher` type
+//! TypeScript code actually uses — read it alongside this crate for the full round trip).
+//!
+//! # The ABI protocol
+//!
+//! Every string crosses the WASM boundary as raw UTF-8 bytes in WASM linear memory, owned
+//! by an allocation this crate tracks itself (WASM has no host-callable destructors, so
+//! the caller must explicitly free what it explicitly allocated): a caller
+//! [`vorma_client_matcher_alloc`]s a buffer, writes UTF-8 bytes into it directly through
+//! the WASM instance's exported memory, passes `(ptr, len)` to a function like
+//! [`vorma_client_matcher_register_pattern`] or
+//! [`vorma_client_matcher_find_nested_matches`], and then
+//! [`vorma_client_matcher_dealloc`]s that same `(ptr, len)` pair — a length mismatch is
+//! silently ignored (treated as "not the allocation I tracked") rather than corrupting
+//! memory. A registered matcher is addressed by an opaque `u32` id from
+//! [`vorma_client_matcher_new`], freed with [`vorma_client_matcher_free`]; id `0` is never
+//! valid and signals allocation/construction failure. Every matching call returns a status
+//! code (0 = no match, 1 = match, 2 = error — see the individual function docs); a match's
+//! encoded result (captured params, splat values, and the matched pattern chain) is
+//! published to a single shared output buffer, read back through
+//! [`vorma_client_matcher_output_ptr`]/[`vorma_client_matcher_output_len`] immediately
+//! after the call that produced it — the output buffer is overwritten by the next
+//! matching call, so a caller must decode it before calling again.
+//!
+//! # Limits
+//!
+//! Both the maximum size of one input buffer and the maximum number of simultaneously
+//! live allocations are bounded (see the allocator's internal constants); exceeding
+//! either fails the allocation (a null pointer) rather than growing unbounded, since this
+//! crate runs inside a browser tab sharing memory with the rest of the page.
 
 #![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 #![allow(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
@@ -16,32 +55,46 @@ use abi::{STATUS_ERROR, STATUS_MATCH, STATUS_NO_MATCH};
 use encoding::push_len;
 
 #[unsafe(no_mangle)]
-/// Allocate WASM memory for a caller-provided byte buffer.
+/// Allocate `len` bytes of WASM memory the caller writes UTF-8 input into before passing
+/// `(ptr, len)` to a matching function. Returns a null pointer when `len` exceeds the
+/// crate's per-allocation limit or the crate's live-allocation cap is already reached;
+/// every other allocation must be paired with a matching
+/// [`vorma_client_matcher_dealloc`] call.
 pub extern "C" fn vorma_client_matcher_alloc(len: usize) -> *mut u8 {
 	abi::alloc(len)
 }
 
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-/// Deallocate WASM memory previously returned by [`vorma_client_matcher_alloc`].
+/// Deallocate WASM memory previously returned by [`vorma_client_matcher_alloc`]. `ptr`
+/// and `len` must be the exact pair a prior `alloc` call returned/was called with; any
+/// other pair (already freed, or never allocated) is silently ignored rather than
+/// corrupting memory.
 pub extern "C" fn vorma_client_matcher_dealloc(ptr: *mut u8, len: usize) {
 	abi::dealloc(ptr, len);
 }
 
 #[unsafe(no_mangle)]
-/// Create a new client matcher and return its opaque id.
+/// Create a new, empty client matcher and return its opaque id. Returns `0` on
+/// construction failure — `0` is never a valid matcher id, so a caller should treat it as
+/// a hard error rather than passing it to any other function here.
 pub extern "C" fn vorma_client_matcher_new() -> u32 {
 	registry::new_matcher()
 }
 
 #[unsafe(no_mangle)]
-/// Free a matcher id returned by [`vorma_client_matcher_new`].
+/// Free a matcher id returned by [`vorma_client_matcher_new`]. A `matcher_id` of `0` or
+/// one already freed is silently ignored.
 pub extern "C" fn vorma_client_matcher_free(matcher_id: u32) {
 	registry::free_matcher(matcher_id);
 }
 
 #[unsafe(no_mangle)]
-/// Register one UTF-8 pattern buffer with a matcher.
+/// Register one UTF-8 pattern buffer (written via [`vorma_client_matcher_alloc`]) with a
+/// matcher, in the same pattern grammar the server-side matcher accepts (`:name` dynamic
+/// segments, `*` splats). Returns `1` (match/success) on success, `2` (error) if
+/// `matcher_id` is invalid, the buffer is not valid UTF-8, or the pattern itself is
+/// rejected (empty, not absolute, or an otherwise invalid pattern).
 pub extern "C" fn vorma_client_matcher_register_pattern(
 	matcher_id: u32,
 	ptr: *const u8,
@@ -54,7 +107,13 @@ pub extern "C" fn vorma_client_matcher_register_pattern(
 }
 
 #[unsafe(no_mangle)]
-/// Find nested matches for one UTF-8 path buffer and publish the encoded output.
+/// Find the nested nested-view match chain for one UTF-8 path buffer (written via
+/// [`vorma_client_matcher_alloc`]) and publish the encoded result to the shared output
+/// buffer (read back through [`vorma_client_matcher_output_ptr`]/
+/// [`vorma_client_matcher_output_len`] immediately after this call, before calling
+/// again). Returns `0` (no match — the output buffer is empty), `1` (match — the output
+/// buffer holds the encoded params/splat-values/pattern-chain), or `2` (error —
+/// `matcher_id` is invalid or the buffer is not valid UTF-8; the output buffer is empty).
 pub extern "C" fn vorma_client_matcher_find_nested_matches(
 	matcher_id: u32,
 	ptr: *const u8,
@@ -82,13 +141,16 @@ pub extern "C" fn vorma_client_matcher_find_nested_matches(
 }
 
 #[unsafe(no_mangle)]
-/// Pointer to the last encoded matcher output buffer.
+/// Pointer to the output buffer [`vorma_client_matcher_find_nested_matches`] most
+/// recently published (valid until the next call to that function).
 pub extern "C" fn vorma_client_matcher_output_ptr() -> *const u8 {
 	output::output_ptr()
 }
 
 #[unsafe(no_mangle)]
-/// Length of the last encoded matcher output buffer.
+/// Length of the output buffer [`vorma_client_matcher_find_nested_matches`] most
+/// recently published (valid until the next call to that function); `0` when the most
+/// recent call found no match or errored.
 pub extern "C" fn vorma_client_matcher_output_len() -> usize {
 	output::output_len()
 }

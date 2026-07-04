@@ -5,6 +5,13 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 
 /// Opaque identity for one task definition inside the current process.
+///
+/// Returned by [`Task::id`](crate::Task::id) and carried on every
+/// [`TaskEvent`](crate::TaskEvent). There is no public constructor —
+/// `TaskId` values only ever come from a real declared task, and comparing
+/// two `TaskId`s is the only operation application code performs on them
+/// directly (for example, filtering an observer's events down to one task
+/// of interest).
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct TaskId(pub(crate) u64);
 

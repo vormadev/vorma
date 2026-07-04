@@ -41,10 +41,30 @@ where
 	false
 }
 
-type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+pub(crate) type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 type TaskFn<I, O, E> = fn(ExecCtx<E>, I) -> BoxFuture<Result<O, E>>;
 
-/// Stable typed unit of async work.
+/// Stable typed unit of async work, declared with the [`task!`](crate::task!) macro.
+///
+/// A `Task<I, O, E>` is a `static`, not a value application code constructs
+/// at runtime: `I` is the input type, `O` the success output type, and `E`
+/// the application error type a task body returns in its `Err` case. Every
+/// task carries one of three cache policies, chosen when it is declared —
+/// `memoized`, `extended_cache(ttl)`, or `single_flight` — see the crate
+/// root docs for exactly what each retains and for how long.
+///
+/// `Task` is `Copy` (and therefore trivially `Clone`): the type itself is
+/// just a `static` handle (a name, a cache policy, and a function pointer)
+/// with a lazily assigned process-unique [`id`](Self::id) — passing a
+/// `Task` around, storing it, or capturing it in a closure never allocates
+/// or clones any state the task has accumulated, because a `Task` value
+/// carries none; all memoized/cached state lives in the
+/// [`Tasks`]/[`ExecCtx`] runtime types that resolve it.
+///
+/// Resolve one with [`run`](Self::run), passing the [`ExecCtx`] to run it
+/// in and the typed input. Do not call a task's declared body function
+/// directly — resolving through [`run`](Self::run) is what applies
+/// caching, cancellation, cycle detection, and observability.
 pub struct Task<I: 'static, O: 'static, E: 'static = Box<dyn std::error::Error + Send + Sync>> {
 	id: &'static AtomicU64,
 	name: &'static str,
@@ -59,6 +79,13 @@ where
 	E: Send + Sync + 'static,
 {
 	/// Opaque identity for this task definition inside the current process.
+	///
+	/// Assigned lazily and once, on first access, from a process-global
+	/// counter — not derived from the task's declared name or position, and
+	/// not stable across process restarts. Two distinct `static` task
+	/// declarations always receive distinct ids, even if their declared
+	/// names or input/output types happen to coincide; the same task's id
+	/// is stable for the life of the process once assigned.
 	pub fn id(&self) -> TaskId {
 		let id = self.id.load(Ordering::Acquire);
 		if id != 0 {
@@ -80,6 +107,33 @@ where
 	}
 
 	/// Run this task in an execution context.
+	///
+	/// Applies this task's declared cache policy, cancellation, cycle
+	/// detection, and observability before deciding whether to actually
+	/// invoke the declared body. Concurrent calls for the same task/input
+	/// pair inside one `ctx` are coalesced: only one call ever runs the
+	/// body, and every other caller receives a clone of the same [`Arc<O>`]
+	/// result once it completes. Calling with a different input, or the
+	/// same input through a different [`ExecCtx`] not sharing an
+	/// `extended_cache` [`Tasks`] runtime, runs independently.
+	///
+	/// ```
+	/// use vorma_tasks::{Tasks, TasksOptions};
+	///
+	/// vorma_tasks::task! {
+	///     static ADD_ONE: Task<u32, u32, &'static str> =
+	///         memoized(|_ctx, input: u32| async move { Ok(input + 1) });
+	/// }
+	///
+	/// # #[tokio::main(flavor = "current_thread")]
+	/// # async fn main() {
+	/// let tasks: Tasks<&'static str> = Tasks::new(TasksOptions::default());
+	/// let ctx = tasks.exec_ctx(vorma_tasks::CancelToken::new());
+	///
+	/// let result = ADD_ONE.run(&ctx, 41).await.unwrap();
+	/// assert_eq!(*result, 42);
+	/// # }
+	/// ```
 	pub async fn run(&self, ctx: &ExecCtx<E>, input: I) -> Result<Arc<O>, E> {
 		ctx.resolve(self, input).await
 	}
@@ -190,11 +244,31 @@ pub mod __macro_support {
 }
 
 /// Owns shared cross-execution-context task state.
+///
+/// Construct one `Tasks` per process (or per logical application instance)
+/// with [`new`](Self::new) and keep it alive for as long as its
+/// `extended_cache` entries should be able to survive — it is the thing
+/// [`extended_cache`](crate::task!) tasks are cached *in*, and its lifetime
+/// is what "cross-execution-context" means. `Tasks` is cheap to [`Clone`]
+/// (an `Arc` underneath) so it can be shared across every request, build,
+/// or unit of work an application processes.
+///
+/// `Tasks` itself does not resolve any task directly; call
+/// [`exec_ctx`](Self::exec_ctx) to create an [`ExecCtx`] for each
+/// independent unit of work (typically one per HTTP request, one per CLI
+/// invocation, one per build), and resolve tasks through that.
 pub struct Tasks<E = Box<dyn std::error::Error + Send + Sync>> {
 	inner: Arc<TasksInner<E>>,
 }
 
 /// Configuration for a [`Tasks`] runtime.
+///
+/// Construct with struct-update syntax against [`TasksOptions::default`
+/// ](Self::default) and override only the fields that matter for a given
+/// runtime — the defaults ([`SystemClock`], no observer, no overrides, a
+/// 4096-entry shared-cache capacity) are what production code wants; tests
+/// typically override `clock` for deterministic TTL control and
+/// `overrides` for stubbing.
 pub struct TasksOptions<E = Box<dyn std::error::Error + Send + Sync>> {
 	/// Monotonic clock used for cross-execution-context cache expiry and event timing.
 	pub clock: Arc<dyn Clock>,
@@ -214,6 +288,13 @@ where
 	E: Send + Sync + 'static,
 {
 	/// Create a long-lived task runtime with explicit options.
+	///
+	/// ```
+	/// use vorma_tasks::{Tasks, TasksOptions};
+	///
+	/// let tasks: Tasks<&'static str> = Tasks::new(TasksOptions::default());
+	/// let _ctx = tasks.exec_ctx(vorma_tasks::CancelToken::new());
+	/// ```
 	pub fn new(options: TasksOptions<E>) -> Self {
 		Self {
 			inner: Arc::new(TasksInner {
@@ -238,6 +319,16 @@ where
 	}
 
 	/// Create one execution context with its own memoization state.
+	///
+	/// Call this once per independent unit of work — one per HTTP request,
+	/// one per CLI invocation, one per build — passing in whatever
+	/// [`CancelToken`] represents that unit's own cancellation signal (a
+	/// fresh [`CancelToken::new`] if there is none yet, or a token derived
+	/// from an existing one). `memoized` and `single_flight` task results
+	/// live only inside the returned [`ExecCtx`] and are never visible to a
+	/// different context, even one created from the same `Tasks`;
+	/// `extended_cache` results are the one policy that reaches across
+	/// every `ExecCtx` this `Tasks` runtime ever creates.
 	pub fn exec_ctx(&self, cancel: CancelToken) -> ExecCtx<E> {
 		ExecCtx {
 			tasks: self.clone(),
@@ -312,6 +403,17 @@ where
 }
 
 /// One execution context with task memoization, cancellation, and dependency coalescing.
+///
+/// Created by [`Tasks::exec_ctx`], one per independent unit of work. This is
+/// the type every [`Task::run`] call takes: it carries the `memoized`/
+/// `single_flight` local memoization state for this unit of work, a
+/// [`CancelToken`], and a small internal record of the task-resolution
+/// chain currently in progress on this call path (what makes
+/// [`Error::Cycle`](crate::Error::Cycle) detection possible instead of
+/// deadlocking). `ExecCtx` is [`Clone`] — cloning shares the same
+/// memoization state and cancellation token, it does not fork them —
+/// application code that needs to pass an `ExecCtx` into a spawned task or
+/// a helper function clones it freely.
 pub struct ExecCtx<E = Box<dyn std::error::Error + Send + Sync>> {
 	tasks: Tasks<E>,
 	local: Arc<Store<E>>,
@@ -329,11 +431,23 @@ where
 	}
 
 	/// Whether this execution context has been cancelled.
+	///
+	/// Equivalent to `ctx.cancel_token().is_cancelled()`; a convenience for
+	/// the common case of checking without needing the token itself.
 	pub fn is_cancelled(&self) -> bool {
 		self.cancel.is_cancelled()
 	}
 
 	/// Create a child execution context with shared memoization and child cancellation.
+	///
+	/// The child shares this context's `memoized`/`single_flight` local
+	/// memoization store (so a task already resolved on the parent is
+	/// still a memo hit through the child) but gets its own
+	/// [`CancelToken::child`] — cancelling the child never cancels the
+	/// parent, but cancelling the parent always cancels the child. This is
+	/// the primitive [`ParallelBatch`](crate::ParallelBatch) builds on to
+	/// give each batch its own coalesced cancellation scope while still
+	/// sharing memoization with the caller.
 	pub fn child(&self) -> Self {
 		Self {
 			tasks: self.tasks.clone(),

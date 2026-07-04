@@ -24,7 +24,7 @@ use crate::head::{
 };
 use crate::input_decoder::DecodedRouteInput;
 use crate::resource_body::{ResourceOutput, resource_output_with_effects};
-use crate::response_finalizer::{ResponseEffects, accepts_client_redirect};
+use crate::response_finalizer::{ResponseEffects, accepts_client_redirect, lock_effects};
 
 /// Build a runtime handler from a typed public-style context handler.
 pub fn typed_runtime_handler<S, I, O, F, Fut>(
@@ -350,28 +350,19 @@ pub struct TypedResponseHandle<'a> {
 impl TypedResponseHandle<'_> {
 	/// Set a response header, replacing prior values with the same name.
 	pub fn set_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
-		self.effects
-			.lock()
-			.expect("typed handler response effects lock poisoned")
-			.set_header(key, value);
+		lock_effects(&self.effects).set_header(key, value);
 		self
 	}
 
 	/// Append a response header value.
 	pub fn append_header(&mut self, key: HeaderName, value: HeaderValue) -> &mut Self {
-		self.effects
-			.lock()
-			.expect("typed handler response effects lock poisoned")
-			.add_header(key, value);
+		lock_effects(&self.effects).add_header(key, value);
 		self
 	}
 
 	/// Set a response cookie.
 	pub fn set_cookie(&mut self, cookie: Cookie<'static>) -> &mut Self {
-		self.effects
-			.lock()
-			.expect("typed handler response effects lock poisoned")
-			.set_cookie(cookie);
+		lock_effects(&self.effects).set_cookie(cookie);
 		self
 	}
 }
@@ -399,11 +390,7 @@ impl<'a> TypedResourceResponseHandle<'a> {
 			"set_status takes success statuses only (redirects use ctx.redirect, \
 			errors ride HttpExit); got {status}"
 		);
-		self.inner
-			.effects
-			.lock()
-			.expect("typed handler response effects lock poisoned")
-			.set_status(status);
+		lock_effects(&self.inner.effects).set_status(status);
 		self
 	}
 
@@ -433,9 +420,7 @@ pub(crate) fn apply_handler_redirect(
 	location: &str,
 	status: Option<StatusCode>,
 ) -> Result<(), String> {
-	effects
-		.lock()
-		.expect("typed handler response effects lock poisoned")
+	lock_effects(effects)
 		.redirect_with_client_preference(accepts_client_redirect(request_headers), location, status)
 		.map(|_| ())
 		.map_err(|source| match source {
@@ -523,10 +508,7 @@ impl TypedHeadHandle {
 	) -> Result<&mut Self, TypedHandlerContextError> {
 		let prepared = prepare_head_element(element)
 			.map_err(|source| TypedHandlerContextError::HeadElement { source })?;
-		self.effects
-			.lock()
-			.expect("typed handler response effects lock poisoned")
-			.apply_head_element(prepared);
+		lock_effects(&self.effects).apply_head_element(prepared);
 		Ok(self)
 	}
 
@@ -590,10 +572,7 @@ where
 {
 	let data = serde_json::to_value(output)
 		.map_err(|error| HandlerExecutionError::new(format!("serialize route output: {error}")))?;
-	let effects = effects
-		.lock()
-		.expect("typed handler response effects lock poisoned")
-		.clone();
+	let effects = lock_effects(effects).clone();
 	Ok(HandlerOutput::data(data).with_effects(effects))
 }
 
@@ -601,10 +580,7 @@ fn handler_error_with_effects(
 	error: HandlerExecutionError,
 	effects: &Arc<Mutex<ResponseEffects>>,
 ) -> HandlerExecutionError {
-	let effects = effects
-		.lock()
-		.expect("typed handler response effects lock poisoned")
-		.clone();
+	let effects = lock_effects(effects).clone();
 	error.with_effects(effects)
 }
 

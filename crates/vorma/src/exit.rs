@@ -1,21 +1,38 @@
 //! Handler early-exit values: the only path to error and redirect outcomes.
-/*
-Views and resources have different exit semantics, so they get different
-types (user ruling): `ViewExit` has NO status concept — views are a
-framework-owned rendering protocol, not HTTP documents — while `HttpExit`
-(resources and middlewares: real HTTP boundaries) carries one. Both ride
-the `Err` channel because that is Rust's early-exit channel: rejection or
-redirect, there is no `O` to return, and nothing is ever fabricated or
-discarded.
-
-Client-visibility invariant: the server record (`err`) and `source` never
-leave the server. The ONLY client-visible text is `with_client_msg`;
-absent that, the client sees a framework generic.
-
-Redirect variants are framework-constructed (`ctx.redirect(...)`), never
-built by hand: the redirect must capture request facts (client-redirect
-preference) at the ctx, so a bare user-built variant would be a lie.
-*/
+//!
+//! A view/resource/middleware handler's return type is `Result<Output, Exit>`; the
+//! `Exit` type is [`ViewExit`] for view handlers, [`HttpExit`] for resource and
+//! middleware handlers. Rust's `?` operator is Vorma's error-handling idiom for
+//! handlers: both types implement [`std::error::Error`] and convert from
+//! [`crate::Error`], boxed errors, and [`vorma_tasks::Error`], so an ordinary fallible
+//! handler body just propagates with `?` instead of hand-building an exit value —
+//! reach for the builder methods below ([`err`](ViewExit::err),
+//! [`with_client_msg`](ViewExit::with_client_msg), [`with_source`](ViewExit::with_source))
+//! only when a handler needs to say more than a plain `?` conversion carries.
+//!
+//! Views and resources have different exit shapes on purpose: [`ViewExit`] has no HTTP
+//! status concept at all, because a view is one segment of a framework-owned rendering
+//! protocol, not a standalone HTTP response — only the outermost response ever has a
+//! status. [`HttpExit`] (resources and middleware: real HTTP request/response
+//! boundaries) carries one, defaulting to 500 when unset.
+//!
+//! **What the client sees.** Every exit distinguishes a server-side record from
+//! client-visible text, and never confuses the two: [`err`](ViewExit::err)'s message is
+//! the SERVER-side diagnostic (logs only, never sent to the client), and so is any
+//! attached [`with_source`](ViewExit::with_source) error. The *only* text a client ever
+//! sees is what [`with_client_msg`](ViewExit::with_client_msg) sets explicitly; without
+//! it, the client receives a generic framework message. This means it is always safe to
+//! put implementation detail (a SQL error, an internal id, a stack-adjacent detail) into
+//! `err`/`with_source` — a handler has to opt in, per exit, to exposing anything to the
+//! client.
+//!
+//! **Redirects are framework-constructed only.** There is no public constructor for a
+//! redirect exit; call `ctx.redirect(location)` (or
+//! [`redirect_with_status`](crate::ViewCtx::redirect_with_status) for a non-default 3xx
+//! status) on a [`ViewCtx`](crate::ViewCtx)/[`ResourceCtx`](crate::ResourceCtx)/
+//! [`MiddlewareCtx`](crate::MiddlewareCtx) instead. A redirect must capture request facts
+//! (whether the client prefers a client-side vs. browser-native redirect) at the point
+//! the ctx has them; a hand-built redirect variant could never make that call correctly.
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -25,12 +42,38 @@ use http::StatusCode;
 use crate::error::BoxError;
 
 /// Early exit from a view handler: a segment error or a redirect.
+///
+/// See the [crate-root docs](crate#errors-and-early-exits) for the full
+/// client-visibility contract this type enforces.
+///
+/// ```
+/// use vorma::ViewExit;
+///
+/// let exit = ViewExit::err("story 42 not found in the database")
+///     .with_client_msg("This story could not be found.");
+///
+/// // The server-side record is the Display text (goes to logs, never the client).
+/// assert_eq!(exit.to_string(), "story 42 not found in the database");
+/// ```
 #[derive(Debug)]
 pub struct ViewExit {
 	kind: ExitKind,
 }
 
 /// Early exit from a resource or middleware handler: an HTTP error or a redirect.
+///
+/// See the [crate-root docs](crate#errors-and-early-exits) for the full
+/// client-visibility contract this type enforces.
+///
+/// ```
+/// use vorma::{HttpExit, HttpStatusCode};
+///
+/// let exit = HttpExit::err("unique constraint violated on stories.slug")
+///     .with_status(HttpStatusCode::CONFLICT)
+///     .with_client_msg("A story with that title already exists.");
+///
+/// assert_eq!(exit.to_string(), "unique constraint violated on stories.slug");
+/// ```
 #[derive(Debug)]
 pub struct HttpExit {
 	kind: ExitKind,

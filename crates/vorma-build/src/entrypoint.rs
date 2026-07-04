@@ -1,4 +1,10 @@
 //! Public build entrypoint facade.
+//!
+//! [`run`] is the only item this module contributes to the crate's public
+//! API (via `pub use entrypoint::run` in the crate root); everything else
+//! here — [`build_production`], [`start_dev_server`], [`BuildEntrypointError`],
+//! and the whole dev-loop event/action machinery below them — is `pub(crate)`,
+//! visible to sibling modules in this crate and unreachable from outside it.
 
 use std::io::Write;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -66,6 +72,40 @@ enum FinishedDevRebuildAction {
 }
 
 /// Run the Vorma build entry in production-build or dev-server mode.
+///
+/// This is the crate's entire public surface — the one function an
+/// application ever calls, typically as the whole body of a small
+/// `build.rs`-style binary (see the crate-level docs for a complete
+/// example). `app_config` is the same app-configuration closure the app's
+/// server binary builds its runtime from; `run` calls it itself, inside the
+/// build process, to compile the framework graph the rest of the build
+/// pipeline works from.
+///
+/// `run` reads its own process's command-line arguments
+/// (`std::env::args()`, skipping the program name) to choose a mode:
+///
+/// - **No arguments** — build one production generation: compile the
+///   framework graph, run the production Vite build, generate and publish
+///   static outputs, and write the runtime manifest and generated
+///   TypeScript contracts the app's server binary loads at startup. Returns
+///   once the build is complete; does not start or watch anything.
+/// - **A single `dev` argument** — start a dev-server generation, print its
+///   `App server ready: http://localhost:<port>` line to stdout, then run
+///   the dev loop forever: watch the filesystem for changes relevant to the
+///   app (recompiling the app server, regenerating static outputs, or
+///   pushing a client revalidation, whichever the change actually
+///   requires), rebuild on each one, and keep serving through the stable
+///   dev-mux port across rebuilds. Returns only on a fatal condition — a
+///   watched child process (the app server or Vite) exiting unexpectedly, a
+///   filesystem watcher failure, or a shutdown signal — never on ordinary
+///   file changes.
+/// - **Anything else** — returns an error immediately; no other invocation
+///   shape is supported.
+///
+/// The `Result`'s `Err` is a display-formatted error message, not a
+/// structured type: this function is meant to be the last thing a small
+/// binary's `main` calls, printed and turned into a process exit code
+/// rather than matched on.
 pub fn run<S, F>(app_config: F) -> Result<(), String>
 where
 	F: FnOnce() -> vorma::Result<AppConfig<S>>,
@@ -74,8 +114,17 @@ where
 	run_with_args(app_config, std::env::args().skip(1)).map_err(|source| source.to_string())
 }
 
-/// Build one production generation.
-pub fn build_production<S, F>(app_config: F) -> Result<ProductionBuildReport, BuildEntrypointError>
+/// Build one production generation and return synchronously once it
+/// completes.
+///
+/// The no-arguments half of what [`run`] does, factored out with a
+/// structured [`BuildEntrypointError`] instead of [`run`]'s display-string
+/// error and a [`ProductionBuildReport`] instead of `run`'s unit `Ok`. Not
+/// part of this crate's public API (see the module docs above); [`run`]'s
+/// `run_with_args` is its only caller.
+pub(crate) fn build_production<S, F>(
+	app_config: F,
+) -> Result<ProductionBuildReport, BuildEntrypointError>
 where
 	F: FnOnce() -> vorma::Result<AppConfig<S>>,
 	S: Send + Sync + 'static,
@@ -95,7 +144,15 @@ where
 }
 
 /// Start one dev server generation and return the live process handle.
-pub fn start_dev_server<S, F>(app_config: F) -> Result<StartedDevGeneration, BuildEntrypointError>
+///
+/// The `dev`-argument half of what [`run`] does, factored out to return the
+/// live [`StartedDevGeneration`] handle instead of running the dev loop to
+/// completion the way [`run`] does. Not part of this crate's public API
+/// (see the module docs above); [`run`]'s `run_with_args` is its only
+/// caller.
+pub(crate) fn start_dev_server<S, F>(
+	app_config: F,
+) -> Result<StartedDevGeneration, BuildEntrypointError>
 where
 	F: FnOnce() -> vorma::Result<AppConfig<S>>,
 	S: Send + Sync + 'static,
@@ -588,9 +645,11 @@ fn parse_build_command(
 	}
 }
 
-/// Build entrypoint error.
+/// Structured error behind [`run`]'s display-string `Err`, and the direct
+/// error type of [`build_production`] and [`start_dev_server`]. Not part of
+/// this crate's public API (see the module docs above).
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BuildEntrypointError {
+pub(crate) enum BuildEntrypointError {
 	/// Command line arguments were invalid.
 	InvalidArgs,
 	/// A dev child process exited unexpectedly.

@@ -3,7 +3,22 @@ use std::sync::Arc;
 
 use crate::segment::{SCORE_DYNAMIC, SCORE_STATIC, Segment, SegmentKind};
 
-/// Registered route pattern.
+/// One validated, normalized route pattern.
+///
+/// Produced by [`MatcherBuilder::normalize_pattern`] or
+/// [`MatcherBuilder::register_pattern`], and returned inside every
+/// match result ([`Match::pattern`], [`NestedMatch::pattern`]). A
+/// `Pattern` is inert data — it does not itself match anything; the
+/// matcher types hold patterns internally and consult
+/// [`compare_specificity`] to arbitrate between them. Applications
+/// mostly read a matched `Pattern` back out of a match result to learn
+/// which route was selected (`normalized_pattern()`, for logging,
+/// metrics, or dispatch keyed on the route rather than the raw path).
+///
+/// [`MatcherBuilder::normalize_pattern`]: crate::MatcherBuilder::normalize_pattern
+/// [`MatcherBuilder::register_pattern`]: crate::MatcherBuilder::register_pattern
+/// [`Match::pattern`]: crate::Match::pattern
+/// [`NestedMatch::pattern`]: crate::NestedMatch::pattern
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Pattern {
 	pub(crate) original_pattern: String,
@@ -65,17 +80,41 @@ impl Pattern {
 		}
 	}
 
-	/// Pattern text as originally registered.
+	/// The pattern text exactly as the application passed it to
+	/// [`MatcherBuilder::register_pattern`] or
+	/// [`MatcherBuilder::normalize_pattern`] — before any
+	/// normalization. Useful for error messages and diagnostics that
+	/// should echo back what the application actually wrote.
+	///
+	/// [`MatcherBuilder::register_pattern`]: crate::MatcherBuilder::register_pattern
+	/// [`MatcherBuilder::normalize_pattern`]: crate::MatcherBuilder::normalize_pattern
 	pub fn original_pattern(&self) -> &str {
 		&self.original_pattern
 	}
 
-	/// Canonical pattern text after matcher normalization.
+	/// This pattern's canonical text after normalization: absolute,
+	/// dynamic segments spelled `:name` and splats spelled `*`
+	/// regardless of the [`Options`] the pattern was registered under,
+	/// and no redundant trailing slash unless the pattern is an index
+	/// pattern (whose trailing slash is load-bearing, not redundant).
+	/// Two patterns that normalize to the same text are the same
+	/// pattern as far as the matcher is concerned — this is the value
+	/// [`MatcherBuilder::register_pattern`] keys registration on, and
+	/// the value a matched result's route should be logged, compared,
+	/// or dispatched on rather than the raw request path.
+	///
+	/// [`Options`]: crate::Options
+	/// [`MatcherBuilder::register_pattern`]: crate::MatcherBuilder::register_pattern
 	pub fn normalized_pattern(&self) -> &str {
 		&self.normalized_pattern
 	}
 
-	/// Canonical segment metadata after matcher normalization.
+	/// This pattern's segments after normalization, one [`Segment`] per
+	/// slash-separated position. Reach for this when an application
+	/// needs to inspect a pattern's shape directly (for example
+	/// building a URL from named parameters using the same segment
+	/// order the matcher itself matched against) rather than just the
+	/// flat [`Pattern::normalized_pattern`] text.
 	pub fn normalized_segments(&self) -> Vec<Segment> {
 		self.normalized_segments
 			.iter()
@@ -144,6 +183,28 @@ pub(crate) fn is_static(segs: &[InternalSegment]) -> bool {
 /// shape" — the matcher has no principled winner, which is the same
 /// condition pattern registration rejects within one matcher as a route
 /// shape collision.
+///
+/// Matching consults this ordering internally; applications typically
+/// never need to call it directly. It is exposed for tooling built on
+/// top of the matcher — for example explaining *why* one route was
+/// chosen over another that also matched, or building a route-table
+/// linter — where the ordering itself, not just its outcome inside one
+/// match call, is the thing being inspected.
+///
+/// ```
+/// use std::cmp::Ordering;
+/// use vorma_matcher::{MatcherBuilder, Options, compare_specificity};
+///
+/// let builder = MatcherBuilder::new(Options::default())?;
+/// let export = builder.normalize_pattern("/users/export")?;
+/// let dynamic = builder.normalize_pattern("/users/:user_id")?;
+/// assert_eq!(
+///     compare_specificity(&export, &dynamic),
+///     Ordering::Greater,
+///     "a static segment outranks a dynamic one at the same position"
+/// );
+/// # Ok::<(), String>(())
+/// ```
 pub fn compare_specificity(a: &Pattern, b: &Pattern) -> Ordering {
 	let score = a.specificity_score().cmp(&b.specificity_score());
 	if score != Ordering::Equal {

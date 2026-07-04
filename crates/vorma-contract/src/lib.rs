@@ -5,8 +5,45 @@
 //! execution plan, the committed runtime manifest, document/type declaration
 //! contracts, shared constants, and the TypeScript type model that code
 //! generation renders from.
+//!
+//! # Two audiences, one crate
+//!
+//! Most of this crate is **framework-integration surface**: types an
+//! application author never names directly, but that `vorma` and
+//! `vorma-build` pass between themselves as the compiled shape of an app —
+//! [`framework_graph`], [`execution_plan`], [`runtime_manifest`],
+//! [`live_state`], and [`document_renderer`]. If you are writing a Vorma
+//! app rather than working on the framework itself, you will not construct
+//! these types by hand ([`constants`] is a partial exception: `vorma`
+//! re-exports the handful of its values, like
+//! [`constants::PUBLIC_STATIC_OUT_NAME_PREFIX`], that app code has any
+//! reason to read).
+//!
+//! Two parts are **app-facing**, reached indirectly through `vorma`'s own
+//! public API:
+//!
+//! - [`tsgen`] — the [`tsgen::Type`] trait every `#[derive(TsGen)]` type
+//!   implements, plus [`tsgen::TsExtraType`] and [`tsgen::TsDrafter`] for
+//!   registering extra generated TypeScript by hand
+//!   (`AppConfig::ts_gen_config` in `vorma`).
+//! - [`contracts::DocumentElementContract`] — the validated HTML element
+//!   shape underneath `vorma`'s `Document`/head-builder API. App code
+//!   builds head elements through that higher-level builder, not this
+//!   type directly, but the contract's own docs describe the escaping and
+//!   validation rules that builder relies on.
+//!
+//! # Wire contracts are frozen
+//!
+//! [`wire`] and [`live_state::LIVE_BUILD_STATE_PROTOCOL`] are versioned
+//! wire formats shared with the browser runtime and between build-entry
+//! processes respectively. Their shapes are load-bearing for already-built
+//! clients and already-running dev sessions; changing them is a framework
+//! release decision, not a local edit — see [`wire::ViewPayload`] and
+//! [`wire::SsrPayload`] for the browser-facing half of that contract and
+//! [`live_state::LiveBuildState`] for the build-side half.
 
 #![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 #![forbid(unsafe_code)]
 
 /*

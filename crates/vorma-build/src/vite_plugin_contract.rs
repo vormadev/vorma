@@ -1,4 +1,11 @@
 //! Vite plugin contract projected from the build plan.
+//!
+//! The framework's own Vite plugin (the TypeScript side, not this crate)
+//! talks to this crate's build process over a small loopback RPC (see
+//! [`crate::vite_plugin_rpc`]) using the request/response shapes defined
+//! here. [`VitePluginConfig`] itself is generated into TypeScript via
+//! `#[derive(vorma::TsGen)]` — the same derive app code uses for its own
+//! route contracts — so its Rust and TypeScript shapes can never drift.
 
 use std::path::{Path, PathBuf};
 
@@ -20,9 +27,17 @@ pub const VITE_PLUGIN_LOOPBACK_HOST: &str = "127.0.0.1";
 pub const VITE_PLUGIN_BASE_PATH: &str = "/vite-plugin";
 /// Vite plugin RPC path below [`VITE_PLUGIN_BASE_PATH`].
 pub const VITE_PLUGIN_RPC_PATH: &str = "/rpc";
-/// Vite plugin config-change control path.
+/// Vite plugin config-change control path: restarting Vite over this path
+/// is reserved for changes to the [`VitePluginConfig`] payload itself
+/// (entry module, view-module list, ignored patterns, dedupe list, public
+/// static base path) — never
+/// for filemap-only changes, and never unconditionally on app rebuilds (see
+/// [`VITE_PLUGIN_ASSETS_CHANGED_PATH`] for the targeted alternative).
 pub const VITE_PLUGIN_CONFIG_CHANGED_PATH: &str = "/cfg-changed";
-/// Vite plugin changed-assets control path.
+/// Vite plugin changed-assets control path: sends changed source keys so
+/// the plugin can invalidate exactly the Vite modules that reference them,
+/// without restarting Vite. Public-asset saves must always go through this
+/// path, never [`VITE_PLUGIN_CONFIG_CHANGED_PATH`].
 pub const VITE_PLUGIN_ASSETS_CHANGED_PATH: &str = "/assets-changed";
 /// Prefix used by JavaScript/CSS public URL references.
 pub const VITE_PLUGIN_PUBLIC_URL_PREFIX: &str = "@public/";
@@ -30,7 +45,9 @@ pub const VITE_PLUGIN_PUBLIC_URL_PREFIX: &str = "@public/";
 const RUST_SOURCE_IGNORE_PATTERN: &str = "**/*.rs";
 const GLOB_ALL_FILES_SUFFIX: &str = "**/*";
 
-/// JSON config response consumed by the TypeScript Vite plugin.
+/// JSON config response consumed by the TypeScript Vite plugin. Projected
+/// once per generation by [`Self::from_build_plan`]; a change to any field
+/// here is what [`VITE_PLUGIN_CONFIG_CHANGED_PATH`] signals.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, vorma::TsGen)]
 pub struct VitePluginConfig {
 	/// Public static base path for production asset URLs.
@@ -46,7 +63,13 @@ pub struct VitePluginConfig {
 }
 
 impl VitePluginConfig {
-	/// Project a Vite plugin config response from the build plan.
+	/// Project a Vite plugin config response from the build plan: resolves
+	/// the entry module and every view's client module to paths relative to
+	/// the JS package-manager directory (where Vite actually runs from —
+	/// see [`crate::vite_command`]), and derives the filesystem-watch ignore
+	/// patterns (the Rust source glob, the Vorma output directory, and the
+	/// generated TypeScript file — none of these should ever trigger a Vite
+	/// reaction).
 	pub fn from_build_plan(plan: &BuildProjectionPlan) -> Result<Self, VitePluginConfigError> {
 		let root_dir = PathBuf::from(plan.workspace().root_dir());
 		if root_dir.as_os_str().is_empty() {
@@ -81,7 +104,9 @@ impl VitePluginConfig {
 	}
 }
 
-/// Vite plugin RPC request shape.
+/// Vite plugin RPC request shape: every request the TypeScript Vite plugin
+/// can send this crate's RPC server (see [`crate::vite_plugin_rpc`]),
+/// tagged by `method` on the wire.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "method", rename_all = "snake_case")]
 pub enum VitePluginRpcRequest {
@@ -99,7 +124,7 @@ pub enum VitePluginRpcRequest {
 	},
 }
 
-/// Vite plugin contract projection error.
+/// Error from [`VitePluginConfig::from_build_plan`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VitePluginConfigError {
 	/// Build root directory was empty.

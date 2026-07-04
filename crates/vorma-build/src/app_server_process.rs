@@ -9,10 +9,19 @@ use crate::process_runner::{
 	BuildProcessCommand, BuildProcessError, BuildProcessRunner, StartedBuildProcess,
 };
 
-/// Environment key carrying the app server bind port.
+/// Environment key the app-server process reads its bind port from.
+///
+/// Set on every dev app-server command this module builds
+/// ([`app_server_dev_command`], [`app_server_dev_executable_command`]); the
+/// app-server binary (`vorma`'s runtime) reads this at startup to know which
+/// loopback port to bind, matching the port the dev mux was told to proxy
+/// to.
 pub const APP_SERVER_PORT_ENV_KEY: &str = "PORT";
 
-/// Runtime inputs needed by a dev app server process.
+/// Runtime inputs needed by a dev app server process: just the port it
+/// should bind. A distinct type from a bare `u16` so the command-building
+/// functions below have one obviously-named parameter instead of an
+/// ambiguous integer.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppServerDevInput {
 	port: u16,
@@ -30,7 +39,16 @@ impl AppServerDevInput {
 	}
 }
 
-/// Prebuilt app-server executable paired with the cargo target it was built from.
+/// Prebuilt app-server executable paired with the cargo target it was built
+/// from.
+///
+/// The dev loop builds the app-server binary once per rebuild (see
+/// [`crate::app_server_build`]) and reuses that same executable both to read
+/// live state and to serve — this type is how the reused executable's path
+/// travels alongside the cargo target it is only valid for, so
+/// [`start_app_server_dev_with_prebuilt`] can detect a mid-session target
+/// change and fall back to a fresh `cargo run` instead of running a stale
+/// binary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrebuiltAppServer {
 	cargo_package: String,
@@ -64,8 +82,12 @@ A live-state update can move the server target itself; the prebuilt executable
 is only valid for the target it was compiled from, so a moved target falls
 back to `cargo run` for that one activation.
 */
-/// Start the dev app server from a prebuilt executable, or via `cargo run` when
-/// the plan's server target no longer matches the executable's target.
+/// Start the dev app server from a prebuilt executable, or via `cargo run`
+/// when the plan's server target no longer matches the executable's target
+/// (see [`PrebuiltAppServer::matches_plan_server_target`]). The common-case
+/// path: this is how the dev loop avoids a second cargo invocation on every
+/// rebuild when the app-server binary it just built is still the one the
+/// current build plan wants.
 pub fn start_app_server_dev_with_prebuilt(
 	plan: &BuildProjectionPlan,
 	input: &AppServerDevInput,
@@ -81,7 +103,9 @@ pub fn start_app_server_dev_with_prebuilt(
 		.map_err(|source| AppServerProcessError::Process { source })
 }
 
-/// Build the dev app server command for a prebuilt executable without executing it.
+/// Build the dev app server command for a prebuilt executable without
+/// executing it: runs the executable directly (no `cargo run` wrapper),
+/// with [`APP_SERVER_PORT_ENV_KEY`] and the dev-mode env key set.
 pub fn app_server_dev_executable_command(
 	plan: &BuildProjectionPlan,
 	input: &AppServerDevInput,
@@ -105,7 +129,10 @@ pub fn app_server_dev_executable_command(
 		.with_env(ENV_KEY_IS_DEV, ENV_VALUE_ENABLED))
 }
 
-/// Start the dev app server without waiting for it to exit.
+/// Start the dev app server without waiting for it to exit, via `cargo run`.
+/// Used the first time a dev session starts a given cargo target (before
+/// any [`PrebuiltAppServer`] exists) and whenever
+/// [`start_app_server_dev_with_prebuilt`] detects a moved server target.
 pub fn start_app_server_dev(
 	plan: &BuildProjectionPlan,
 	input: &AppServerDevInput,
@@ -117,7 +144,9 @@ pub fn start_app_server_dev(
 		.map_err(|source| AppServerProcessError::Process { source })
 }
 
-/// Build the dev app server command without executing it.
+/// Build the dev app server command without executing it: `cargo run -p
+/// <cargo_package> --bin <cargo_bin>` in the plan's workspace root, with
+/// [`APP_SERVER_PORT_ENV_KEY`] and the dev-mode env key set.
 pub fn app_server_dev_command(
 	plan: &BuildProjectionPlan,
 	input: &AppServerDevInput,
@@ -150,7 +179,8 @@ pub fn app_server_dev_command(
 	.with_env(ENV_KEY_IS_DEV, ENV_VALUE_ENABLED))
 }
 
-/// App server process command error.
+/// Error from this module's app-server command-building and start
+/// functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AppServerProcessError {
 	/// App server port cannot be zero.

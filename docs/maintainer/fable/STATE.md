@@ -1,11 +1,34 @@
 # Current State
 
-Perishable snapshot. Update whenever a packet lands. Last updated: 2026-07-01 after P002
-executor pass (tasks perf restoration, Linux) — Linux (Ubuntu 26.04, rustc 1.96.0, glibc
-2.43). Prior update: P001 + P001b closed (Fable). All Rust gates green
-(tests/clippy/fmt/loom); vorma-tasks Linux benches re-recorded post-restoration.
+Perishable snapshot. Update whenever a packet lands. Last updated: 2026-07-02 at Phase D
+completion (P010–P021 all closed; triage pending maintainer rulings) — Linux (Ubuntu
+26.04, rustc 1.96.0, glibc 2.43). Staleness note, recorded honestly: this file sat
+un-refreshed from the P004-review era through Phase D (the per-packet REVIEWs and ROADMAP
+carried the record); the sections below are now current again.
 
 ## Gates
+
+**Current (2026-07-02, P021 closeout — the authoritative snapshot):**
+
+- Workspace tests: **593 passed, 0 failed** (`--all-targets`; vorma-build lib 136
+  including P021's two new rejection pins) + **52 doctests**. The one known flake
+  (port-allocation TOCTOU) is FIXED by construction (P021): 12 consecutive full-workspace
+  loops under added CPU load, raw logs verified, zero failures.
+- clippy `-D warnings` / fmt (workspace + fuzz): clean. loom: **7/7**.
+- rust-doc `-D warnings`: clean with `deny(missing_docs)` now enforced crate-wide (Phase D
+  doc sweeps). rust-package: green, re-proven by P018 with contents inspected.
+- TS: vitest **851/851**; ts-typecheck 9 projects; oxlint/oxfmt clean; NEW jsdoc gate
+  (`make ts-jsdoc-coverage`, in ts-gate) green at 176/176 public exports.
+- Policy: cargo audit — one allowed warning (RUSTSEC-2026-0190, anyhow, ticketed); cargo
+  deny all four categories ok (P018 note: the license gate evaluates the host-target graph
+  only — `r-efi` LGPL is UEFI-only and invisible to it).
+- e2e: full `make e2e` green as of the board production-proof era (P007/P009); e2e-smoke
+  used for spot checks since.
+- Publish dry-runs (P018): all six crates package clean; both npm tarballs inspected
+  file-by-file (wasm byte-verified; create-vorma bin fix + fixture exclusions landed);
+  versions in lockstep at 0.86.0-pre.3.
+
+**Historical baseline (2026-07-01, P001/P003 era — kept for provenance):**
 
 Recorded 2026-07-01, P001 closeout; re-verified in full at the P003 review (same day:
 fmt/clippy clean, workspace tests green twice at **551** — the +2 are P003's board tests —
@@ -309,24 +332,20 @@ there, the latter unrealized per the note above.
 
 ## Where work stands
 
-- Matcher first-principles review: **complete** (semantics corrected and pinned, benches
-  beat Go, recorded).
-- Tasks first-principles review: **complete** (P002 accepted; mac verification recorded
-  2026-07-01; parallel-family structural exemption maintainer-ratified 2026-07-01 —
-  doctrine in LEARNINGS). Every non-spawning row beats Go. One standing loose end: the
-  memo-hit hot path has a headroom ticket (`tasks-memo-hit-hot-path` — the one row that
-  has never beaten Go). Everything else — API shape, loom verification, test suite —
-  landed well.
-- Router/request-path review: **Part 1 (baseline) and Part 2 (optimization) executor work
-  complete, pending Fable review** (P004; ticket exists at
-  `docs/maintainer/tickets/router-request-path-review/`). Part 2 kept 4 of ANALYSIS.md's 6
-  ranked steps (the fragment precomputation, the clone-tree collapse, the
-  single-invocation fast path, the fused SSR escape); 2 were considered and not
-  implemented with reasoning recorded (the projection `Value` clone and per-element
-  attribute clones — both provably unmeasurable at this bench's payload sizes without
-  touching a frozen public signature). Every handler-reaching row improved −6% to −27%;
-  response bytes verified byte-identical before/after by direct capture-and-diff.
-- Board: **P003 coverage audit complete** (12 items newly covered; inventory artifact in
-  the `board-api-coverage` ticket dir). Pending: the F-17 policy ruling (does the "100% in
-  board" rule get the ratified "realistic app flow" reading? — options and recommendation
-  in P003's REVIEW.md); census features remain Phase C work.
+- **Phases A–D: complete.** A: gates from scratch on Linux (P001/P001b — the inotify
+  Access-event dev-rebuild bug found and fixed). B: perf (tasks restored, P002; engine
+  −6%..−27% byte-identical, P004; matcher already healthy). C: board census-complete and
+  production-proven (P003/P005–P009; the etag/timeout composition footgun found → P010
+  composed helper). D: release quality — docs to the teaching bar with durable enforcement
+  on BOTH sides (`deny(missing_docs)` / jsdoc gate), thermo-nuclear findings passes over
+  every crate and the TS package (P011–P016), ARCHITECTURE.md audited claim-by-claim
+  (P017), packaging + supply chain dry-run-proven (P018), TsGen shared-type dedup (P019),
+  `app!` state-path fix (P020), the flake fixed (P021).
+- **Pending the maintainer, in one sitting:** the Phase D batch triage
+  (`docs/maintainer/fable/phase-d-triage.md`) — 13 rows with recommendations; and the
+  standing COMMIT recommendation (uncommitted tree spans P010–P021 + all records; two
+  near-loss incidents on record).
+- **Phase E (per ROADMAP, after triage rulings):** accepted triage packets, then
+  user-facing docs site, create-vorma rewrite (ruled: last), release mechanics
+  (`simple-release-auto-bumper`; note P018's finding that `xtask ts-publish` has no
+  dry-run form and couples bump+commit+tag+publish unconditionally).

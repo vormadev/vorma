@@ -1,4 +1,13 @@
 //! Public read-only HTTP request wrappers.
+//!
+//! [`HttpRequest`] is the raw-request escape hatch every handler ctx exposes through
+//! `request()` ([`ViewCtx::request`](crate::ViewCtx::request),
+//! [`ResourceCtx::request`](crate::ResourceCtx::request),
+//! [`MiddlewareCtx::request`](crate::MiddlewareCtx::request)) — reach for it when a
+//! handler needs something the typed `input`/`params` decoding does not cover (the raw
+//! method for a diagnostics fallback, a header the framework does not parse into a typed
+//! field, and so on); ordinary route input still belongs on the route's declared `input`
+//! type, not hand-parsed from here.
 
 use url::form_urlencoded;
 
@@ -30,12 +39,13 @@ impl<'a> HttpRequest<'a> {
 		self.inner.path()
 	}
 
-	/// Raw query string without the leading `?`.
+	/// Raw, still-percent-encoded query string without the leading `?`. Prefer
+	/// [`search_params`](Self::search_params) for decoded name/value access.
 	pub fn query(&self) -> Option<&str> {
 		self.inner.query()
 	}
 
-	/// Parsed query/search params.
+	/// Parsed, percent-decoded query/search params. See [`HttpSearchParams`].
 	pub fn search_params(&self) -> HttpSearchParams<'_> {
 		HttpSearchParams {
 			query: self.inner.query().unwrap_or_default(),
@@ -52,12 +62,16 @@ impl<'a> HttpRequest<'a> {
 		self.inner.body()
 	}
 
-	/// Request extensions.
+	/// Request extensions, as inserted by an outer Tower layer (for example
+	/// `tower_http::request_id::RequestId`, if the app's middleware stack sets one).
+	/// There is no Vorma API to insert a request extension from inside a handler; this
+	/// is a read-only view onto whatever the surrounding HTTP stack already attached.
 	pub fn extensions(&self) -> &http::Extensions {
 		self.inner.extensions()
 	}
 
-	/// Typed request extension lookup.
+	/// Typed request extension lookup — equivalent to
+	/// `self.extensions().get::<T>()`, provided as a direct convenience.
 	pub fn extension<T>(&self) -> Option<&T>
 	where
 		T: Send + Sync + 'static,
@@ -66,7 +80,39 @@ impl<'a> HttpRequest<'a> {
 	}
 }
 
-/// Iterator-style view over URL query/search params.
+/// Iterator-style view over a request's decoded URL query/search params.
+///
+/// Reached through [`HttpRequest::search_params`]. Every accessor here percent-decodes
+/// values; use [`HttpRequest::query`] instead if the raw, still-encoded string is needed.
+///
+/// ```
+/// # vorma::app!(mod app for ());
+/// # const SEARCH_VIEW: app::View = app::view! {
+/// #     client_file: "src/client/views/search.view.tsx";
+/// #     pattern: "/search";
+/// #     input: ();
+/// #     output: ();
+/// #     handler: |ctx| {
+/// let request = ctx.request();
+/// let params = request.search_params();
+/// assert_eq!(params.get("q"), Some("hello world".to_owned()));
+/// assert_eq!(params.get_all("tag").collect::<Vec<_>>(), ["a", "b"]);
+/// #         Ok(())
+/// #     };
+/// # };
+/// # fn app_config() -> vorma::AppConfig<()> {
+/// #     vorma::AppConfig {
+/// #         views: app::views![SEARCH_VIEW],
+/// #         ..vorma::AppConfig::default()
+/// #     }
+/// # }
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> vorma::Result<()> {
+/// let app = vorma::testing::TestApp::from_config(app_config())?;
+/// app.get("/search?q=hello%20world&tag=a&tag=b").await;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct HttpSearchParams<'a> {
 	query: &'a str,
@@ -78,7 +124,8 @@ impl<'a> HttpSearchParams<'a> {
 		self.get_all(name).next()
 	}
 
-	/// All decoded values for `name`.
+	/// All decoded values for `name`, in source order (a repeated query key like
+	/// `tag=a&tag=b` yields every value, not just the first).
 	pub fn get_all<'b>(&'b self, name: &'b str) -> impl Iterator<Item = String> + 'b {
 		form_urlencoded::parse(self.query.as_bytes()).filter_map(move |(key, value)| {
 			if key == name {

@@ -1,4 +1,15 @@
 //! Shared generation input preparation.
+//!
+//! [`prepare_build_inputs`] is the one function both
+//! [`crate::dev_build`] and [`crate::production_build`] call to do the part
+//! of assembling a generation that is identical between dev and
+//! production: compile graph projections, derive the build plan, prepare
+//! public static outputs, render generated TypeScript, bundle critical CSS,
+//! and project the Vite plugin config. What differs between dev and
+//! production — resolving client module URLs against a running Vite dev
+//! server versus a finished production build — happens after this, in
+//! [`crate::dev_generation`] and [`crate::production_generation`]
+//! respectively.
 
 use vorma::build_interface::AppBuildContract;
 use vorma_contract::framework_graph::FrameworkGraph;
@@ -14,7 +25,10 @@ use crate::typescript_contracts::{
 };
 use crate::vite_plugin_contract::{VitePluginConfig, VitePluginConfigError};
 
-/// Prepared build inputs before Vite or dev runtime URLs are resolved.
+/// Prepared build inputs before Vite or dev runtime URLs are resolved: the
+/// shared assembly step's output, returned by [`prepare_build_inputs`] and
+/// [`prepare_build_inputs_from_graph`]. See the module docs above for where
+/// this fits between graph compilation and generation-specific finishing.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedBuildInputs {
 	pub(crate) bundle: ProjectionBundle,
@@ -57,14 +71,19 @@ impl PreparedBuildInputs {
 	}
 }
 
-/// Prepare build inputs that must exist before Vite or dev runtime URL projection runs.
+/// Prepare build inputs that must exist before Vite or dev runtime URL
+/// projection runs. See the module docs above for exactly what this
+/// assembles.
 pub fn prepare_build_inputs(
 	app: &AppBuildContract,
 ) -> Result<PreparedBuildInputs, BuildInputError> {
 	prepare_build_inputs_from_graph(app.graph())
 }
 
-/// Prepare build inputs from an already-normalized framework graph.
+/// Prepare build inputs from an already-normalized framework graph: the
+/// [`prepare_build_inputs`] logic for callers (the dev loop's live-state
+/// path) that already have a [`FrameworkGraph`] without an
+/// [`AppBuildContract`] wrapping it.
 pub fn prepare_build_inputs_from_graph(
 	graph: &FrameworkGraph,
 ) -> Result<PreparedBuildInputs, BuildInputError> {
@@ -90,7 +109,7 @@ pub fn prepare_build_inputs_from_graph(
 	})
 }
 
-/// Shared generation input preparation error.
+/// Error from [`prepare_build_inputs`] or [`prepare_build_inputs_from_graph`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildInputError {
 	/// Build/dev projection plan failed.

@@ -6,12 +6,27 @@ type PendingCall<T extends Fn> = {
 	resolve: (value: Awaited<ReturnType<T>>) => void;
 };
 
+/** A debounced wrapper around `T` — see {@link debounce}. Every call returns a promise resolving/rejecting with that debounced invocation's outcome; `cancel()` rejects every still-pending call. */
 export type Debounced<T extends Fn> = ((
 	...args: Parameters<T>
 ) => Promise<Awaited<ReturnType<T>>>) & {
 	cancel: () => void;
 };
 
+/**
+ * Debounce `fn`: repeated calls within `delayInMs` of each other collapse
+ * into one underlying call using the LATEST call's arguments, after the
+ * delay elapses with no further calls. Every call to the debounced wrapper
+ * returns its own promise; ALL pending callers for a given debounce window
+ * resolve/reject together with that one underlying call's outcome (this is
+ * a coalescing debounce, not a "only the last caller gets notified" one —
+ * nobody's promise is silently abandoned).
+ *
+ * `debounced.cancel()` clears the pending timer and rejects every
+ * currently-pending caller's promise (marked as already-handled, so an
+ * uncaught cancellation rejection never surfaces as an unhandled rejection
+ * warning if the caller does not itself await/catch it).
+ */
 export function debounce<T extends Fn>(fn: T, delayInMs: number): Debounced<T> {
 	let timeout_id: ReturnType<typeof globalThis.setTimeout> | undefined;
 	let latest_args: Parameters<T> | undefined;

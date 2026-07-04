@@ -1,4 +1,36 @@
 //! Document contract rendering for server HTML responses.
+//!
+//! Framework-integration surface: the only paths that turn a
+//! [`crate::contracts::DocumentElementContract`]/[`crate::contracts::DocumentContract`]
+//! into actual HTML bytes, and therefore the one place all of this
+//! crate's HTML escaping and validation rules live. `vorma`'s own
+//! document/head-builder API is layered on top of this module rather than
+//! duplicating its rules; an application author never calls these
+//! functions directly.
+//!
+//! # Trust rules this module enforces
+//!
+//! - Tag and attribute names are validated against a fixed
+//!   ASCII-alphanumeric-plus-`:-_.` character set — see
+//!   [`InvalidTagName`](crate::document_renderer::DocumentRenderError::InvalidTagName)/
+//!   [`InvalidAttributeName`](crate::document_renderer::DocumentRenderError::InvalidAttributeName).
+//! - Every element/document attribute set is checked for a name declared
+//!   twice — see
+//!   [`DuplicateAttribute`](crate::document_renderer::DocumentRenderError::DuplicateAttribute) —
+//!   across *all* of an element's attribute buckets (normal, known-safe,
+//!   and boolean together), not each bucket in isolation.
+//! - Attribute values and text content are HTML-escaped
+//!   (`&`/`"`/`<`/`>`) unless the caller opted into a "known safe" or
+//!   "dangerous" path (see [`crate::contracts::DocumentElementContract`]
+//!   for that trust split in full).
+//! - A `<style>` element's raw content gets one extra pass: any
+//!   `</style>` (case-insensitively) inside it is broken with a CSS
+//!   escape sequence, since a legitimate CSS string value can contain
+//!   that literal text and it must not be allowed to close the
+//!   surrounding element early.
+//! - An element renders self-closing (`<tag ... />`, no children, no
+//!   closing tag) when it is on HTML's own void-element list or was
+//!   explicitly marked self-closing.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -14,6 +46,15 @@ const VOID_TAGS: &[&str] = &[
 ];
 
 /// Trusted internal markup inserted into a rendered document shell.
+///
+/// The two remaining pieces of a page beyond what [`DocumentContract`]
+/// describes: per-request head markup (view-specific title/meta/link
+/// elements already rendered to a string by the caller) and the app's
+/// mounted body markup (SSR output, the root mount point). Neither string
+/// is escaped or validated by [`render_document`] — "trusted" here means
+/// the caller has already produced safe HTML (typically by rendering
+/// through this same module's other functions), not that arbitrary text
+/// is safe to pass in.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DocumentRenderInput<'a> {
 	head_markup: &'a str,
@@ -41,6 +82,14 @@ impl<'a> DocumentRenderInput<'a> {
 }
 
 /// Render a document contract into the fixed HTML shell.
+///
+/// Produces the complete `<!doctype html>` document: root `<html>` with
+/// its attributes, `<head>` with [`DocumentContract::head_defaults`]
+/// followed by `input`'s trusted head markup, `<body>` with its
+/// attributes and [`DocumentContract::body_prefix`] followed by `input`'s
+/// trusted body markup. The shell shape itself (doctype, element
+/// nesting, close order) is fixed and not part of what any contract
+/// configures.
 pub fn render_document(
 	document: &DocumentContract,
 	input: DocumentRenderInput<'_>,
@@ -67,6 +116,14 @@ pub fn render_document(
 }
 
 /// Render one document element through the same validated HTML path as a full document.
+///
+/// For rendering a single element outside a full [`render_document`] call
+/// (per-request dynamic head elements — a route's title, a piece of
+/// request-varying metadata). Already takes `element` by reference, so
+/// this call itself does not clone; the cost the standing ticket
+/// `contract-borrowed-element-construction` tracks is upstream of this
+/// function, in *building* the owned [`DocumentElementContract`] the
+/// caller passes in (its builder API is owned-by-design).
 pub fn render_document_element(
 	element: &DocumentElementContract,
 ) -> Result<String, DocumentRenderError> {
@@ -76,6 +133,13 @@ pub fn render_document_element(
 }
 
 /// Validate and escape one document element into trusted render parts.
+///
+/// The validation/escaping half of rendering, without the final
+/// string-assembly step — reach for this when the caller needs the
+/// escaped pieces individually (for example, to hash just the trusted
+/// inner HTML for a CSP directive, as
+/// [`crate::runtime_manifest::RuntimeManifest::critical_css_content_sha256`]
+/// does) rather than a single rendered HTML string.
 pub fn trusted_element_parts(
 	element: &DocumentElementContract,
 ) -> Result<TrustedElementParts, DocumentRenderError> {
@@ -134,6 +198,12 @@ pub fn trusted_element_parts(
 }
 
 /// Validated, escaped parts of one trusted document element.
+///
+/// Every field here is already safe to write directly into HTML output —
+/// `attributes_known_safe` merges both of [`DocumentElementContract`]'s
+/// attribute buckets into one already-escaped map, since after validation
+/// there is no remaining reason to keep the "was this escaped or already
+/// trusted" distinction the source contract carried.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrustedElementParts {
 	/// Validated tag name.
@@ -149,19 +219,38 @@ pub struct TrustedElementParts {
 }
 
 /// Document rendering error.
+///
+/// A well-formed application never hits any of these at request time —
+/// tag/attribute names come from framework-owned or app-declared
+/// constants, not end-user input. They exist to fail loudly on a
+/// programming mistake (an app author typos a tag name into something
+/// containing whitespace, or declares the same attribute through two
+/// different [`DocumentElementContract`] builder methods) rather than
+/// silently emitting malformed HTML.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DocumentRenderError {
 	/// Element tag name was invalid.
+	///
+	/// The tag failed the same character check as attribute names (see
+	/// [`Self::InvalidAttributeName`]) or was empty.
 	InvalidTagName {
 		/// Rejected tag name.
 		name: String,
 	},
 	/// Attribute name was invalid.
+	///
+	/// The name was empty, or contained a byte outside
+	/// ASCII-alphanumeric plus `:`, `-`, `_`, and `.`.
 	InvalidAttributeName {
 		/// Rejected attribute name.
 		name: String,
 	},
 	/// One element or document attribute set declared the same attribute twice.
+	///
+	/// Checked across all of an element's attribute buckets together
+	/// (normal, known-safe, and boolean) — declaring `data-x` as both a
+	/// normal and a known-safe attribute on the same element is just as
+	/// much a collision as declaring it twice in one bucket.
 	DuplicateAttribute {
 		/// Repeated attribute name.
 		name: String,

@@ -1,4 +1,18 @@
 //! Immutable request execution plan.
+//!
+//! Framework-integration surface:
+//! [`compile`](crate::execution_plan::ExecutionPlan::compile) takes a
+//! validated [`crate::framework_graph::FrameworkGraph`] and projects it
+//! into the immutable `vorma_matcher` matchers (one [`vorma_matcher::FlatMatcher`]
+//! per HTTP method for resources, one [`vorma_matcher::NestedMatcher`] for
+//! views) plus handler-lookup tables — the shape `vorma`'s request
+//! dispatch actually runs against at request time, compiled once when an
+//! app's committed runtime snapshot is built rather than re-derived per
+//! request. An application author never constructs an `ExecutionPlan`
+//! directly. Route-matching semantics themselves (specificity ordering,
+//! the dirty-path rule, index-pattern claiming) belong to `vorma_matcher`
+//! and are not repeated here; this module's job is wiring compiled
+//! matchers to the right handler and type-contract facts.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -7,18 +21,23 @@ use http::Method;
 use std::sync::Arc as StdArc;
 
 use vorma_matcher::{
-	FlatMatcher, MatcherBuilder, NestedMatcher, Options as MatcherOptions, Params, Pattern,
-	SplatValues, ensure_leading_slash,
+	FlatMatcher, MatcherBuilder, NestedMatcher, Params, Pattern, SplatValues, ensure_leading_slash,
 };
 
 use crate::contracts::{TypeDef, TypeRefContract};
 use crate::framework_graph::{FrameworkGraph, GraphError, HandlerId};
-
-const DYNAMIC_PARAM_PREFIX: char = ':';
-const SPLAT_SEGMENT_IDENTIFIER: char = '*';
-const EXPLICIT_INDEX_SEGMENT_IDENTIFIER: &str = "_index";
+use crate::graph_patterns::{EXPLICIT_INDEX_SEGMENT_IDENTIFIER, matcher_builder};
 
 /// Immutable precomputed execution plan.
+///
+/// Compiled once from a [`crate::framework_graph::FrameworkGraph`]
+/// (see [`Self::compile`]) and then reused for every request: resource
+/// routes are matched per-method through a flat matcher
+/// ([`Self::match_resource`]), view routes through a nested matcher that
+/// resolves the full outermost-to-innermost layout chain in one call
+/// ([`Self::match_views`]), and middleware applicability is a linear scan
+/// in declaration order ([`Self::matching_middleware_ids`]) since
+/// middleware ordering is itself observable behavior.
 #[derive(Clone, Debug)]
 pub struct ExecutionPlan {
 	type_defs: Vec<TypeDef>,
@@ -109,7 +128,11 @@ impl ExecutionPlan {
 		})
 	}
 
-	/// Middleware handlers that apply to this request, in declaration order.
+	/// Middleware handlers that apply to this request, in declaration
+	/// order. Both filters an app declared for a middleware — a method
+	/// list and a scope-pattern list — are optional and AND together: no
+	/// method filter means "any method", no pattern filter means "any
+	/// path".
 	/*
 	Scope patterns are URL patterns, matched against the request path
 	exactly as received — ONE observable space, no rewriting, the same
@@ -138,6 +161,12 @@ impl ExecutionPlan {
 	}
 
 	/// Match a resource request path and method.
+	///
+	/// A `HEAD` request first tries a route explicitly registered for
+	/// `HEAD`; if none matches, it falls back to the `GET` route for the
+	/// same path (standard HTTP practice — a `GET` handler answers `HEAD`
+	/// by running normally and discarding the body) and the returned
+	/// [`ResourceMatch::head_fallback_to_get`] reports which happened.
 	pub fn match_resource(&self, method: &Method, path: &str) -> Option<ResourceMatch> {
 		let path = ensure_leading_slash(path);
 		if *method == Method::HEAD {
@@ -184,6 +213,15 @@ impl ExecutionPlan {
 	}
 
 	/// Return methods with a resource route matching this path.
+	///
+	/// Powers a `405 Method Not Allowed` response's `Allow` header: a
+	/// path that resolves no route at all is `404`, but a path that
+	/// resolves a route for *some* method and not the one requested is
+	/// `405`, and the distinction depends on knowing every method that
+	/// would have matched. `HEAD` is added automatically whenever `GET`
+	/// is present and `HEAD` was not separately registered, mirroring
+	/// [`Self::match_resource`]'s fallback. Sorted for a stable, readable
+	/// `Allow` header rather than hash-map iteration order.
 	pub fn allowed_resource_methods(&self, path: &str) -> Vec<Method> {
 		let path = ensure_leading_slash(path);
 		let mut methods = Vec::new();
@@ -200,6 +238,12 @@ impl ExecutionPlan {
 	}
 
 	/// Match a view request path.
+	///
+	/// Resolves the full nested layout chain in one call — see
+	/// [`vorma_matcher::NestedMatcher::find_nested_matches`] for the
+	/// underlying algorithm (index-pattern claiming, ancestor-layout
+	/// ordering, the catch-all cover rule). `None` means no view,
+	/// including no catch-all, matched this path at all.
 	pub fn match_views(&self, path: &str) -> Option<ViewMatches> {
 		let found = self.view_matcher.find_nested_matches(path)?;
 		let leaf_pattern = StdArc::clone(
@@ -268,6 +312,13 @@ struct MiddlewarePlanNode {
 }
 
 /// Resource route match.
+///
+/// Everything `vorma`'s request dispatch needs once
+/// [`ExecutionPlan::match_resource`] finds a route: which handler to run,
+/// the captured params/splat values, and — when a matched path could also
+/// have resolved a view (both share the GET/HEAD URL space) — the
+/// normalized pattern needed to adjudicate which one actually wins by
+/// specificity.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResourceMatch {
 	method: Method,
@@ -285,6 +336,11 @@ impl ResourceMatch {
 	}
 
 	/// Matched normalized pattern, for specificity adjudication.
+	///
+	/// Compare against a candidate view's
+	/// [`ViewMatches::leaf_pattern`] with [`vorma_matcher::compare_specificity`]
+	/// when a path could resolve either — graph validation already
+	/// guarantees the comparison never comes back tied.
 	pub fn matched_pattern(&self) -> &Pattern {
 		self.matched_pattern.as_ref()
 	}
@@ -321,6 +377,12 @@ impl ResourceMatch {
 }
 
 /// Matched view execution node.
+///
+/// One entry in a [`ViewMatches`] chain — one layout level's handler
+/// facts. Every node in a chain shares the same captured
+/// [`ViewMatches::params`]/[`ViewMatches::splat_values`]; only the
+/// handler identity and input type contract vary per node, since those
+/// come from each level's own declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewExecutionNode {
 	route: Arc<ViewPlanNode>,
@@ -344,6 +406,14 @@ impl ViewExecutionNode {
 }
 
 /// Nested view match chain.
+///
+/// One request path resolves to a chain of nested layouts, outermost
+/// (root) to innermost (the deepest matched view) — this is that chain,
+/// plus the params/splat values captured across all of them (a request
+/// path is captured once against the full nested pattern chain, not once
+/// per level). [`ViewMatches`] is `vorma`'s per-request unit of view
+/// dispatch: every node runs, and every node's data feeds the browser's
+/// [`crate::wire::ViewPayload`] in the same outermost-to-innermost order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewMatches {
 	nodes: Vec<ViewExecutionNode>,
@@ -359,6 +429,9 @@ impl ViewMatches {
 	}
 
 	/// Innermost matched normalized pattern, for specificity adjudication.
+	///
+	/// See [`ResourceMatch::matched_pattern`] for the comparison this
+	/// feeds.
 	pub fn leaf_pattern(&self) -> &Pattern {
 		self.leaf_pattern.as_ref()
 	}
@@ -380,6 +453,14 @@ impl ViewMatches {
 }
 
 /// Execution plan compile error.
+///
+/// [`ExecutionPlan::compile`] re-registers every already-graph-validated
+/// pattern with `vorma_matcher` in order to build the actual matchers, so
+/// in practice these variants fire only if graph validation and matcher
+/// registration ever disagreed about a pattern's validity — a framework
+/// consistency bug, not a shape an application author's own mistake would
+/// normally reach (graph compilation already rejects invalid patterns
+/// earlier, with the same reason text).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PlanError {
 	/// Resource pattern is invalid.
@@ -430,21 +511,12 @@ impl std::fmt::Display for PlanError {
 impl std::error::Error for PlanError {}
 
 fn resource_matcher_builder() -> MatcherBuilder {
-	MatcherBuilder::new(MatcherOptions {
-		dynamic_param_prefix: DYNAMIC_PARAM_PREFIX,
-		splat_segment_identifier: SPLAT_SEGMENT_IDENTIFIER,
-		explicit_index_segment_identifier: String::new(),
-	})
-	.expect("static matcher options should be valid")
+	matcher_builder(String::new()).expect("static matcher options should be valid")
 }
 
 fn view_matcher_builder() -> MatcherBuilder {
-	MatcherBuilder::new(MatcherOptions {
-		dynamic_param_prefix: DYNAMIC_PARAM_PREFIX,
-		splat_segment_identifier: SPLAT_SEGMENT_IDENTIFIER,
-		explicit_index_segment_identifier: EXPLICIT_INDEX_SEGMENT_IDENTIFIER.to_owned(),
-	})
-	.expect("static matcher options should be valid")
+	matcher_builder(EXPLICIT_INDEX_SEGMENT_IDENTIFIER.to_owned())
+		.expect("static matcher options should be valid")
 }
 
 #[cfg(test)]

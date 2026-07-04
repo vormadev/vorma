@@ -1,4 +1,13 @@
 //! Build-entry live-state child process execution.
+//!
+//! The live-state protocol (see [`crate::live_state`], re-exported from
+//! `vorma-contract`) lets this crate read back an app's compiled framework
+//! graph and build-relevant facts from an already-built app-server
+//! executable, by running that same executable once with a build-mode
+//! environment key set instead of compiling a separate build-entry binary —
+//! see [`crate::app_server_build`]'s module doc for why the app-server
+//! binary is the only app-linked binary in a Vorma project. This module is
+//! the process-execution half; [`crate::live_state`] owns the wire format.
 
 use std::path::{Path, PathBuf};
 
@@ -12,7 +21,10 @@ use crate::process_runner::{
 	BuildProcessRunner,
 };
 
-/// Read live build state by running a prebuilt build-entry executable in live-state mode.
+/// Read live build state by running a prebuilt build-entry executable in
+/// live-state mode. The non-cancellable convenience wrapper around
+/// [`read_live_build_state_from_executable_until_cancelled`], for tests
+/// that have no cancellation token to thread through.
 #[cfg(test)]
 pub fn read_live_build_state_from_executable(
 	executable: &Path,
@@ -23,7 +35,11 @@ pub fn read_live_build_state_from_executable(
 	read_live_build_state_from_executable_until_cancelled(executable, root_dir, runner, &cancel)
 }
 
-/// Read live build state, terminating the child process group if cancellation fires.
+/// Read live build state, terminating the child process group if
+/// cancellation fires. Runs `executable` once with the build-mode and
+/// live-state env keys set (see [`live_state_executable_command`]),
+/// collects its output, and parses successful stdout as the live-state
+/// JSON protocol (see [`crate::live_state::LiveBuildState::from_json_bytes`]).
 pub fn read_live_build_state_from_executable_until_cancelled(
 	executable: &Path,
 	root_dir: impl Into<PathBuf>,
@@ -37,7 +53,11 @@ pub fn read_live_build_state_from_executable_until_cancelled(
 	live_state_from_output(output)
 }
 
-/// Build the live-state command for a prebuilt executable without executing it.
+/// Build the live-state command for a prebuilt executable without executing
+/// it: runs `executable` directly with no arguments, setting the build-mode
+/// env key (so the app-server binary knows this run is a build/tooling
+/// invocation, not a real serve) and the live-state env key (so it emits
+/// the live-state JSON protocol on stdout and exits, instead of serving).
 pub fn live_state_executable_command(
 	executable: &Path,
 	root_dir: impl Into<PathBuf>,
@@ -76,7 +96,8 @@ fn live_state_from_output(
 		.map_err(|source| LiveStateCommandError::LiveState { source })
 }
 
-/// Live-state child process error.
+/// Error from this module's live-state command-building and execution
+/// functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LiveStateCommandError {
 	/// Build root directory was empty.

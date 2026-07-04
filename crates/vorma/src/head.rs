@@ -1,4 +1,15 @@
 //! Public low-level head element builders.
+//!
+//! [`HeadBuilder`] is the type behind every document-head surface an app touches:
+//! [`Document::head`](crate::Document::head) (default head applied to every HTML
+//! response) and the per-request [`HeadHandle`](crate::HeadHandle) a view's `ctx.head()`
+//! returns both wrap one. Its named helpers (`title`, `description`, `meta`, `link`,
+//! `script`, `style`, `icon`, `preload`, and the `meta_*_content` family) cover ordinary
+//! head content; the marker types this module also exports
+//! ([`HeadAttr`]/[`HeadBooleanAttribute`]/[`HeadInnerHtml`]/[`HeadTextContent`]/
+//! [`HeadSelfClosing`]/[`HeadTag`], unified as [`HtmlElementDef`]) are the low-level
+//! plumbing those named helpers are built from — reach for [`HeadBuilder::add`] with raw
+//! marker types directly only for an element shape none of the named helpers cover.
 
 use std::collections::BTreeMap;
 
@@ -106,6 +117,43 @@ impl From<HeadSelfClosing> for HtmlElementDef {
 }
 
 /// Builder for default head, route head effects, and head dedupe rules.
+///
+/// Named helper methods queue one head element per call. A handful of common element
+/// shapes (title, description, viewport, robots, charset, icon, canonical, Open Graph
+/// tags) already dedupe automatically across a nested view chain — the innermost view's
+/// contribution wins over an outer default or an outer view's own contribution of the
+/// same shape. For any other element shape that should behave the same way, declare an
+/// additional rule with [`Document::head_dedupe_rules`](crate::Document::head_dedupe_rules).
+///
+/// ```
+/// # vorma::app!(mod app for ());
+/// # const PAGE_VIEW: app::View = app::view! {
+/// #     client_file: "src/client/views/page.view.tsx";
+/// #     pattern: "/";
+/// #     input: ();
+/// #     output: ();
+/// #     handler: |ctx| {
+/// ctx.head()
+///     .title("Board")
+///     .description("A collaborative sticky-note board.")
+///     .meta_property_content("og:type", "website");
+/// #         Ok(())
+/// #     };
+/// # };
+/// # fn app_config() -> vorma::AppConfig<()> {
+/// #     vorma::AppConfig {
+/// #         views: app::views![PAGE_VIEW],
+/// #         ..vorma::AppConfig::default()
+/// #     }
+/// # }
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> vorma::Result<()> {
+/// let app = vorma::testing::TestApp::from_config(app_config())?;
+/// let response = app.get("/").await;
+/// assert_eq!(response.status(), vorma::HttpStatusCode::OK);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct HeadBuilder {
 	elements: Vec<DocumentElementContract>,

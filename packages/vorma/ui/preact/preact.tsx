@@ -86,6 +86,7 @@ export type {
 	WorkState,
 } from "vorma/__internal";
 
+/** See `vorma/react`'s `CreateVormaClientOptions` — identical shape here, typed against Preact's `HTMLAttributes<HTMLAnchorElement>` instead of React's `ComponentProps<"a">`. */
 type CreateVormaClientOptions<A extends AppConfig> =
 	AdapterClientOptions<ComponentType> & {
 		linkDefaultProps?: Partial<
@@ -94,6 +95,19 @@ type CreateVormaClientOptions<A extends AppConfig> =
 		apiDecorator?: ToApiDecorator<A>;
 	};
 
+/**
+ * Build a Vorma client for Preact. See `vorma/react`'s `createVormaClient`
+ * for the full teaching documentation — every option, the returned
+ * {@link VormaClient} surface, and the idiomatic setup shape are identical.
+ *
+ * The one real divergence: `HookReturnMode` is `"signal"` here, not
+ * `"value"`. `useRouteState()`, `useWorkState()`, `useViewData(props)`, and
+ * every other stateful hook return a `ReadonlySignal<T>` (from
+ * `@preact/signals`) rather than a plain value — read the current value via
+ * `.value` (e.g. `useRouteState().value.href`), and pass the signal itself
+ * down when a descendant should subscribe independently rather than
+ * re-rendering the caller.
+ */
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,

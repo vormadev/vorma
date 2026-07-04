@@ -1,0 +1,7 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"types": ["node"]
+	},
+	"files": ["./check_jsdoc_coverage.ts"]
+}

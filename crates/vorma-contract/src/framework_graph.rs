@@ -1,4 +1,62 @@
 //! Canonical private framework graph.
+//!
+//! Framework-integration surface — the shared truth `vorma` and
+//! `vorma-build` compile an app's declarations into. Two shapes live
+//! here: the `*Declaration` types
+//! ([`MiddlewareDeclaration`](crate::framework_graph::MiddlewareDeclaration),
+//! [`ViewDeclaration`](crate::framework_graph::ViewDeclaration),
+//! [`ResourceDeclaration`](crate::framework_graph::ResourceDeclaration),
+//! [`StaticAssetDeclaration`](crate::framework_graph::StaticAssetDeclaration))
+//! collected into [`FrameworkDeclarations`](crate::framework_graph::FrameworkDeclarations)
+//! are what `vorma`'s app-declaration macros build as an application
+//! author writes routes;
+//! [`compile`](crate::framework_graph::FrameworkGraph::compile) normalizes and
+//! validates that raw input into the canonical `*Node` types
+//! ([`MiddlewareNode`](crate::framework_graph::MiddlewareNode),
+//! [`ViewNode`](crate::framework_graph::ViewNode),
+//! [`ResourceNode`](crate::framework_graph::ResourceNode),
+//! [`StaticAssetNode`](crate::framework_graph::StaticAssetNode)) every
+//! later build/runtime stage — [`crate::execution_plan`],
+//! [`crate::live_state`], generated TypeScript — actually reads. An
+//! application author never touches either shape directly; `vorma`'s own
+//! declaration API is what they write.
+//!
+//! # What graph compilation actually validates
+//!
+//! [`compile`](crate::framework_graph::FrameworkGraph::compile) is the
+//! one place all of an app's cross-route invariants get checked at once,
+//! each with its own [`GraphError`](crate::framework_graph::GraphError)
+//! variant naming exactly what went wrong:
+//!
+//! - Every middleware/view/resource pattern parses under `vorma_matcher`'s
+//!   grammar.
+//! - View patterns are shape-unique (registering two views whose
+//!   normalized shape collides is a compile error, not a silent shadow).
+//! - Resource patterns are shape-unique per HTTP method — the same path
+//!   shape may be a `GET` and a `POST` resource, never two `GET`s.
+//! - A `GET`/`HEAD` resource and a view are allowed to overlap in the
+//!   normal case (specificity adjudicates at request time — see
+//!   [`crate::execution_plan`]), but a specificity **tie** between them
+//!   is rejected up front, since neither could ever win at request time.
+//! - `GET`/`HEAD` resources may not live inside the reserved public
+//!   static asset space.
+//! - Every [`crate::contracts::TypeRefContract::Named`] reference —
+//!   whether inside a declared [`crate::contracts::TypeDef`] or a route's
+//!   [`crate::contracts::RouteTypeContract`] — resolves to an
+//!   actually-declared, uniquely-keyed type definition. Two definitions
+//!   under different keys may not export the same TypeScript name, with
+//!   one exception: one `TsGen`-derived Rust type's Serialize-phase and
+//!   Deserialize-phase definitions share a name by construction, and
+//!   collapse into one emitted definition when they are shape-equivalent
+//!   (see [`crate::contracts::TypeDef::classify_shared_name_with`]) —
+//!   a shape-divergent pair is still rejected, just with a different
+//!   [`GraphError`](crate::framework_graph::GraphError) variant that
+//!   teaches the two-distinct-Rust-types resolution.
+//! - Static asset declarations resolve to safe relative paths and public
+//!   paths inside the configured static base.
+//!
+//! A graph that compiles is guaranteed internally consistent; nothing
+//! downstream re-checks these invariants.
 
 use crate::contracts::{DocumentContract, RouteTypeContract, TypeDef};
 use crate::graph_validation::{
@@ -11,11 +69,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Stable identifier for a declared runtime handler.
+///
+/// The graph's declaration types ([`MiddlewareDeclaration`],
+/// [`ViewDeclaration`], [`ResourceDeclaration`]) carry one of these each,
+/// rather than the handler function itself — the graph is a plain
+/// serializable description of an app's shape (this is what the
+/// build/dev-time [`crate::live_state`] protocol ships as JSON), and a
+/// `HandlerId` is the stable string that lets the runtime crate look the
+/// actual async handler back up once a request needs to run it.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct HandlerId(String);
 
 impl HandlerId {
 	/// Create a validated handler identifier.
+	///
+	/// Trims surrounding whitespace and rejects a result that is then
+	/// empty — the identifier's only structural requirement, since its
+	/// value is otherwise app-declared free text.
 	pub fn new(value: impl Into<String>) -> Result<Self, HandlerIdError> {
 		let value = value.into();
 		let trimmed = value.trim();
@@ -39,6 +109,22 @@ pub enum HandlerIdError {
 }
 
 /// Generated-client classification for a resource.
+///
+/// Drives client-side cache/revalidation behavior in the generated
+/// TypeScript API — a `Query` is treated as safe to cache and read
+/// freely, a `Mutation` as something that should invalidate cached data
+/// after it runs. Every resource has one automatically: `GET`/`HEAD`
+/// default to `Query`, every other method defaults to `Mutation` (see
+/// [`ResourceDeclaration::kind`]/[`ResourceNode::default_kind`]). An
+/// explicit override is only worth declaring — and only emitted into
+/// generated output — when it disagrees with that default: a `GET`
+/// endpoint with side effects that should still invalidate cached data,
+/// or a `POST` endpoint that is actually read-only (a search endpoint,
+/// say) and safe to treat as a `Query`. This is a deliberate tradeoff to
+/// keep the generated view/resource arrays type-level-only and
+/// non-exported (not shipped to the client at runtime, to avoid inflating
+/// the bundle) — see the maintainer reminders on generated-client
+/// surface for the full rationale.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ResourceKind {
 	/// Read-shaped resource.
@@ -58,6 +144,13 @@ impl ResourceKind {
 }
 
 /// Top-level framework configuration that changes runtime or generated contracts.
+///
+/// [`Self::build_inputs`] is deliberately optional: a runtime-only graph
+/// (compiled inside an already-running app server, never asked to emit
+/// build artifacts) carries `None` here, while a build-time graph
+/// (compiled by `vorma-build` or requested via [`crate::live_state`])
+/// carries `Some`. The two are the same graph shape either way; only
+/// whether build/dev projection is possible differs.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FrameworkConfig {
 	public_static_base: String,
@@ -97,6 +190,12 @@ impl Default for FrameworkConfig {
 }
 
 /// Build/dev inputs that belong to the canonical framework graph.
+///
+/// Everything `vorma-build` needs to turn a compiled graph into a real
+/// build: where the app server binary lives ([`Self::server_target`]),
+/// project directories, frontend build inputs, and where generated
+/// TypeScript should be written. Present on a graph exactly when
+/// [`FrameworkConfig::build_inputs`] is `Some`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BuildInputConfig {
 	server_target: ServerBuildTarget,
@@ -130,6 +229,12 @@ impl BuildInputConfig {
 	}
 
 	/// Attach raw supplemental generated TypeScript source.
+	///
+	/// Carries the already-rendered output of an app's
+	/// [`crate::tsgen::TsDrafter`] (`AppConfig::ts_gen_config.extra_ts` in
+	/// `vorma`, rendered through its `Display` impl) through the graph so
+	/// `vorma-build` can append it to the generated `vorma.gen.ts` file
+	/// alongside the route/resource-derived contracts.
 	pub fn with_generated_typescript_extra_source(
 		mut self,
 		generated_typescript_extra_source: impl Into<String>,
@@ -175,6 +280,12 @@ impl BuildInputConfig {
 }
 
 /// Cargo application server target.
+///
+/// Identifies which cargo package/binary `vorma-build` compiles as the
+/// app server. See the maintainer reminders on the dev rebuild protocol:
+/// this target is read once at session start and bound for that session —
+/// a mid-session change fails the rebuild with a restart instruction
+/// rather than silently compiling a different target.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ServerBuildTarget {
 	cargo_package: String,
@@ -272,6 +383,16 @@ impl FrontendBuildInputs {
 }
 
 /// Dev watcher source classification declarations.
+///
+/// Classifies watched file changes into two effects, checked against
+/// [`Self::server_recompile_patterns`] and
+/// [`Self::client_revalidate_patterns`] independently — a change can
+/// require either, both, or (if it matches neither pattern list but is
+/// still inside [`Self::watch_patterns`]) just a generation-epoch bump
+/// with no further action. See the maintainer reminders on the dev
+/// server's event-driven, least-necessary-work lifecycle: which effect
+/// fires must never be inferred from anything beyond these declared
+/// patterns.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DevWatchConfig {
 	watch_patterns: Vec<String>,
@@ -310,6 +431,15 @@ impl DevWatchConfig {
 }
 
 /// Complete public-API declaration input before graph normalization.
+///
+/// The mutable collection an app's routes accumulate into before
+/// [`FrameworkGraph::compile`] validates and normalizes them once, all
+/// together, so cross-declaration invariants (pattern collisions, type
+/// reference resolution, resource/view specificity ties) can be checked
+/// with full knowledge of every other declaration rather than one at a
+/// time as they arrive. Nothing here is validated yet — a
+/// `FrameworkDeclarations` can hold contradictory or malformed input; only
+/// [`FrameworkGraph::compile`] enforces the graph's invariants.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FrameworkDeclarations {
 	config: FrameworkConfig,
@@ -460,6 +590,14 @@ impl MiddlewareDeclaration {
 }
 
 /// Declared view input before graph normalization.
+///
+/// One layout-nesting-capable route: a pattern, the client module that
+/// renders it, its query-string [`Self::search_schema`], and its
+/// input/output [`RouteTypeContract`]. Views share one URL space with
+/// GET/HEAD resources and are matched through `vorma_matcher`'s nested
+/// matcher, so several may cover the same request path at once, from
+/// outermost layout to innermost leaf — see [`crate::execution_plan`] for
+/// how a request resolves the full chain.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewDeclaration {
 	pub(crate) pattern: String,
@@ -498,6 +636,12 @@ impl ViewDeclaration {
 	}
 
 	/// Declared search schema.
+	///
+	/// The default shape of this view's query-string input, derived from
+	/// its input type's `Deserialize` implementation — what the browser
+	/// runtime uses to parse a URL's search params into the view's typed
+	/// input before a client-side navigation, and what ships to the
+	/// browser as [`crate::wire::ViewPayload::search_schemas`].
 	pub fn search_schema(&self) -> &Value {
 		&self.search_schema
 	}
@@ -514,6 +658,12 @@ impl ViewDeclaration {
 }
 
 /// Declared resource input before graph normalization.
+///
+/// One data endpoint: an HTTP method, a pattern, an optional
+/// [`ResourceKind`] override, an optional JSON input schema, and its
+/// input/output [`RouteTypeContract`]. A `GET`/`HEAD` resource shares its
+/// URL space with views (see [`ViewDeclaration`]); every other method's
+/// resource space is exclusively its own.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResourceDeclaration {
 	pub(crate) method: Method,
@@ -555,11 +705,22 @@ impl ResourceDeclaration {
 	}
 
 	/// Explicit resource kind override.
+	///
+	/// `None` means this resource uses [`ResourceNode::default_kind`]'s
+	/// method-derived classification with nothing further to declare —
+	/// see [`ResourceKind`] for when an override is worth reaching for.
 	pub fn kind(&self) -> Option<ResourceKind> {
 		self.kind
 	}
 
 	/// Declared input schema.
+	///
+	/// The default-shaped JSON derived from this resource's input type,
+	/// the same way [`ViewDeclaration::search_schema`] is derived for a
+	/// view — `None` when the input type has no such shape to offer (for
+	/// example `FormData`). Carried through the graph and
+	/// [`crate::live_state`] protocol; unlike a view's search schema, it
+	/// is not currently rendered into generated TypeScript output.
 	pub fn input_schema(&self) -> Option<&Value> {
 		self.input_schema.as_ref()
 	}
@@ -576,6 +737,11 @@ impl ResourceDeclaration {
 }
 
 /// Declared static asset before graph normalization.
+///
+/// One content-hashed public file: where it lives in the project
+/// ([`Self::source_path`]) and the public request path it is served at
+/// after hashing ([`Self::public_path`]), which must fall inside the
+/// configured public static base — see [`FrameworkConfig::public_static_base`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticAssetDeclaration {
 	pub(crate) source_path: String,
@@ -603,6 +769,11 @@ impl StaticAssetDeclaration {
 }
 
 /// Normalized framework configuration.
+///
+/// [`FrameworkConfig`]'s validated, canonical counterpart — for example
+/// [`Self::public_static_base`] is guaranteed to carry both a leading and
+/// trailing slash here, where the declaration-time value was raw
+/// app-authored text.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GraphConfig {
 	public_static_base: String,
@@ -622,6 +793,10 @@ impl GraphConfig {
 }
 
 /// Canonical middleware graph node.
+///
+/// [`MiddlewareDeclaration`]'s normalized counterpart — same fields,
+/// carried through graph compilation once every declared scope pattern
+/// has been confirmed to parse.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MiddlewareNode {
 	patterns: Vec<String>,
@@ -647,6 +822,13 @@ impl MiddlewareNode {
 }
 
 /// Canonical view graph node.
+///
+/// [`ViewDeclaration`]'s normalized counterpart, with
+/// [`Self::parent_patterns`]/[`Self::params`] derived once at compile
+/// time rather than re-derived on every request. Every view's chain of
+/// ancestors is fully determined by route shape alone — there is no
+/// separate "declare your parent" step; a shorter pattern that this
+/// view's path shape falls under is automatically its ancestor.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewNode {
 	pattern: String,
@@ -665,6 +847,13 @@ impl ViewNode {
 	}
 
 	/// Canonical parent route patterns from outermost to innermost.
+	///
+	/// Derived from route shape alone: every other declared view pattern
+	/// whose scope contains this one (a non-splat-terminated pattern that
+	/// this view's path shape falls under), sorted shallowest-first.
+	/// `vorma`'s runtime dispatch relies on this ordering directly for
+	/// [`crate::execution_plan::ExecutionPlan::match_views`], so it is
+	/// computed once here rather than re-derived per request.
 	pub fn parent_patterns(&self) -> &[String] {
 		&self.parent_patterns
 	}
@@ -725,11 +914,20 @@ impl ResourceNode {
 	}
 
 	/// Default generated-client resource kind.
+	///
+	/// `GET`/`HEAD` default to [`ResourceKind::Query`]; every other
+	/// method defaults to [`ResourceKind::Mutation`]. Generated
+	/// TypeScript only emits an explicit `kind` when
+	/// [`Self::kind`] disagrees with this default — see [`ResourceKind`].
 	pub fn default_kind(&self) -> ResourceKind {
 		self.default_kind
 	}
 
-	/// Resource input schema projected for generated API contracts.
+	/// Resource input schema, when its input type has one.
+	///
+	/// See [`crate::framework_graph::ResourceDeclaration::input_schema`]
+	/// for how this is derived and its current (not yet consumed by
+	/// generated TypeScript) status.
 	pub fn input_schema(&self) -> Option<&Value> {
 		self.input_schema.as_ref()
 	}
@@ -751,6 +949,9 @@ impl ResourceNode {
 }
 
 /// Canonical static asset graph node.
+///
+/// [`StaticAssetDeclaration`]'s normalized counterpart, guaranteed at this
+/// point to sit inside the graph's configured public static base.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticAssetNode {
 	pub(crate) source_path: String,
@@ -770,6 +971,15 @@ impl StaticAssetNode {
 }
 
 /// Canonical framework graph.
+///
+/// The validated, normalized shape of an entire app — every route,
+/// middleware, static asset, and document default, cross-checked for
+/// consistency as a whole (see the module docs for the exact invariant
+/// list). Every later stage — [`crate::execution_plan`], generated
+/// TypeScript, the committed [`crate::runtime_manifest`], the
+/// [`crate::live_state`] wire protocol — starts from one of these, never
+/// from raw declarations, so downstream code can assume a graph's
+/// invariants hold without re-checking them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FrameworkGraph {
 	config: GraphConfig,
@@ -783,6 +993,12 @@ pub struct FrameworkGraph {
 
 impl FrameworkGraph {
 	/// Normalize declarations into a canonical graph.
+	///
+	/// See the module docs for the full list of invariants this checks,
+	/// run in a fixed order and returning on the first violation found —
+	/// a declaration set with more than one problem reports only the
+	/// first, named precisely enough by its [`GraphError`] variant to fix
+	/// without further investigation.
 	pub fn compile(declarations: FrameworkDeclarations) -> Result<Self, GraphError> {
 		let public_static_base = normalize_base_path(
 			declarations.config.public_static_base,
@@ -807,7 +1023,7 @@ impl FrameworkGraph {
 			&resource_matchers,
 			&config.public_static_base,
 		)?;
-		validate_type_contracts(
+		let type_defs = validate_type_contracts(
 			&declarations.type_defs,
 			&declarations.views,
 			&declarations.resources,
@@ -825,7 +1041,7 @@ impl FrameworkGraph {
 		Ok(Self {
 			config,
 			document: declarations.document,
-			type_defs: declarations.type_defs,
+			type_defs,
 			views: declarations
 				.views
 				.into_iter()
@@ -897,6 +1113,11 @@ impl FrameworkGraph {
 }
 
 /// Framework graph normalization error.
+///
+/// Returned by [`FrameworkGraph::compile`] — one variant per invariant
+/// listed in the module docs, each naming the exact declaration and
+/// reason so the underlying app-authoring mistake is fixable from the
+/// error alone.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GraphError {
 	/// Framework configuration is invalid.
@@ -949,10 +1170,36 @@ pub enum GraphError {
 		/// Repeated type identity key.
 		key: String,
 	},
-	/// Type definition TypeScript name was declared more than once.
+	/// Type definition TypeScript name was declared more than once by
+	/// unrelated type definitions.
+	///
+	/// Not raised when the two colliding definitions are recognized as one
+	/// `TsGen`-derived Rust type's Serialize-phase and Deserialize-phase
+	/// shapes (see [`crate::contracts::TypeDef::classify_shared_name_with`]) —
+	/// a shape-equivalent pair collapses into one definition instead; a
+	/// shape-divergent pair is [`Self::DivergentTypePhaseShapes`], not this.
 	DuplicateTypeName {
 		/// Repeated exported TypeScript name.
 		name: String,
+	},
+	/// One Rust type's Serialize-phase and Deserialize-phase shapes
+	/// disagree.
+	///
+	/// Raised only for a type reached as both a route input and a route
+	/// output (or otherwise registered under both phases) whose two
+	/// generated shapes are not structurally equivalent — the natural
+	/// cause is a field that is optional under one phase and required
+	/// under the other (`#[serde(default)]` makes a field optional on
+	/// Deserialize only; `#[serde(skip_serializing_if = "...")]` makes a
+	/// field optional on Serialize only). Fix by giving each phase its own
+	/// Rust type instead of sharing one across both.
+	DivergentTypePhaseShapes {
+		/// Exported TypeScript name shared by both phases.
+		name: String,
+		/// Serialize-phase identity key.
+		serialize_key: String,
+		/// Deserialize-phase identity key.
+		deserialize_key: String,
 	},
 	/// Type definition facts were invalid.
 	InvalidTypeDef {
@@ -1029,6 +1276,16 @@ impl std::fmt::Display for GraphError {
 			Self::DuplicateTypeKey { key } => write!(f, "duplicate type key {key:?}"),
 			Self::DuplicateTypeName { name } => {
 				write!(f, "duplicate TypeScript type name {name:?}")
+			}
+			Self::DivergentTypePhaseShapes {
+				name,
+				serialize_key,
+				deserialize_key,
+			} => {
+				write!(
+					f,
+					"type {name:?} is used as both a route input and a route output, but its serialized (output) and deserialized (input) shapes differ (for example, a #[serde(default)] field is optional on input but required on output) — use two distinct Rust types, one for each shape, instead of sharing {name:?} across both (serialize key {serialize_key:?}, deserialize key {deserialize_key:?})"
+				)
 			}
 			Self::InvalidTypeDef { key, name, reason } => {
 				write!(f, "invalid type definition {key:?} / {name:?}: {reason}")
@@ -1646,6 +1903,230 @@ mod tests {
 		assert!(matches!(
 			duplicate_name_error,
 			GraphError::DuplicateTypeName { name } if name == "User"
+		));
+	}
+
+	/*
+	Mirrors the real `TsGen` derive's key convention
+	(`{module_path}::{TypeIdent}::serialize`/`::deserialize`) precisely,
+	since `TypeDef::classify_shared_name_with`'s pairing test depends on it
+	— these tests would not exercise the real boundary if they used
+	arbitrary key strings instead.
+	*/
+	fn shared_user_serialize_key() -> String {
+		"app::model::SharedUser::serialize".to_owned()
+	}
+
+	fn shared_user_deserialize_key() -> String {
+		"app::model::SharedUser::deserialize".to_owned()
+	}
+
+	// A named `address` field, present identically on both phases, proving
+	// the nested-`Named`-ref comparison ignores the nested field's own
+	// phase-suffixed key (which legitimately differs) and compares only
+	// its name.
+	fn shared_user_address_field(phase_key: &str) -> FieldDef {
+		FieldDef::new(
+			"address",
+			TypeRefContract::Named {
+				key: format!("app::model::Address::{phase_key}"),
+				name: "Address".to_owned(),
+			},
+			false,
+		)
+	}
+
+	#[test]
+	fn graph_collapses_shared_type_used_as_both_route_input_and_output() {
+		let mut declarations = FrameworkDeclarations::default();
+		declarations.add_type_def(TypeDef::Record {
+			key: shared_user_serialize_key(),
+			name: "SharedUser".to_owned(),
+			fields: vec![
+				FieldDef::new("name", TypeRefContract::String, false),
+				shared_user_address_field("serialize"),
+			],
+		});
+		declarations.add_type_def(TypeDef::Record {
+			key: shared_user_deserialize_key(),
+			name: "SharedUser".to_owned(),
+			fields: vec![
+				FieldDef::new("name", TypeRefContract::String, false),
+				shared_user_address_field("deserialize"),
+			],
+		});
+		// `Address` is itself `TsGen`-derived and nested inside
+		// `SharedUser`, so it is ALSO reached at both phases and must
+		// ALSO collapse — proving the fix handles a nested shared type,
+		// not only a top-level one.
+		declarations.add_type_def(TypeDef::Record {
+			key: "app::model::Address::serialize".to_owned(),
+			name: "Address".to_owned(),
+			fields: vec![FieldDef::new("city", TypeRefContract::String, false)],
+		});
+		declarations.add_type_def(TypeDef::Record {
+			key: "app::model::Address::deserialize".to_owned(),
+			name: "Address".to_owned(),
+			fields: vec![FieldDef::new("city", TypeRefContract::String, false)],
+		});
+		// Reached as a route OUTPUT (Serialize phase) here...
+		declarations.add_view(ViewDeclaration::new(
+			"/profile",
+			"profile.tsx",
+			serde_json::json!({}),
+			RouteTypeContract::new(
+				TypeRefContract::Unit,
+				TypeRefContract::Named {
+					key: shared_user_serialize_key(),
+					name: "SharedUser".to_owned(),
+				},
+			),
+			handler_id("profile.view"),
+		));
+		// ...and as a route INPUT (Deserialize phase) here — the exact
+		// shape P013 reproduced as `DuplicateTypeName`.
+		declarations.add_resource(ResourceDeclaration::new(
+			Method::POST,
+			"/profile",
+			None,
+			Some(serde_json::json!({})),
+			RouteTypeContract::new(
+				TypeRefContract::Named {
+					key: shared_user_deserialize_key(),
+					name: "SharedUser".to_owned(),
+				},
+				TypeRefContract::Unknown,
+			),
+			handler_id("profile.resource"),
+		));
+
+		let graph = FrameworkGraph::compile(declarations).unwrap();
+
+		let shared_user_defs = graph
+			.type_defs()
+			.iter()
+			.filter(|type_def| type_def.name() == "SharedUser")
+			.count();
+		assert_eq!(
+			shared_user_defs, 1,
+			"a structurally shared type used as both a route input and output \
+			 must export exactly one TypeScript type definition"
+		);
+		let address_defs = graph
+			.type_defs()
+			.iter()
+			.filter(|type_def| type_def.name() == "Address")
+			.count();
+		assert_eq!(
+			address_defs, 1,
+			"a nested shared type reached at both phases through the outer \
+			 shared type must also collapse to exactly one definition"
+		);
+	}
+
+	#[test]
+	fn graph_rejects_structurally_divergent_shared_type_phases_with_teaching_error() {
+		let mut declarations = FrameworkDeclarations::default();
+		// The natural divergence case: `#[serde(default)]` makes `nickname`
+		// optional on Deserialize but the field is required on Serialize —
+		// the two phases render genuinely different TypeScript shapes even
+		// though they share a name, by design.
+		declarations.add_type_def(TypeDef::Record {
+			key: shared_user_serialize_key(),
+			name: "SharedUser".to_owned(),
+			fields: vec![FieldDef::new("nickname", TypeRefContract::String, false)],
+		});
+		declarations.add_type_def(TypeDef::Record {
+			key: shared_user_deserialize_key(),
+			name: "SharedUser".to_owned(),
+			fields: vec![FieldDef::new("nickname", TypeRefContract::String, true)],
+		});
+		declarations.add_view(ViewDeclaration::new(
+			"/profile",
+			"profile.tsx",
+			serde_json::json!({}),
+			RouteTypeContract::new(
+				TypeRefContract::Unit,
+				TypeRefContract::Named {
+					key: shared_user_serialize_key(),
+					name: "SharedUser".to_owned(),
+				},
+			),
+			handler_id("profile.view"),
+		));
+		declarations.add_resource(ResourceDeclaration::new(
+			Method::POST,
+			"/profile",
+			None,
+			Some(serde_json::json!({})),
+			RouteTypeContract::new(
+				TypeRefContract::Named {
+					key: shared_user_deserialize_key(),
+					name: "SharedUser".to_owned(),
+				},
+				TypeRefContract::Unknown,
+			),
+			handler_id("profile.resource"),
+		));
+
+		let error = FrameworkGraph::compile(declarations).unwrap_err();
+
+		let GraphError::DivergentTypePhaseShapes {
+			name,
+			serialize_key,
+			deserialize_key,
+		} = error
+		else {
+			panic!("expected DivergentTypePhaseShapes, got {error:?}");
+		};
+		assert_eq!(name, "SharedUser");
+		assert_eq!(serialize_key, shared_user_serialize_key());
+		assert_eq!(deserialize_key, shared_user_deserialize_key());
+		let message = GraphError::DivergentTypePhaseShapes {
+			name,
+			serialize_key,
+			deserialize_key,
+		}
+		.to_string();
+		assert!(
+			message.contains("use two distinct Rust types"),
+			"error must teach the two-distinct-Rust-types resolution: {message}"
+		);
+		assert!(
+			message.contains("SharedUser"),
+			"error must name the colliding type: {message}"
+		);
+	}
+
+	// Defensive boundary test: even if two keys happen to look like a
+	// phase pair by string shape, a genuinely different declared shape
+	// under a THIRD, unrelated key claiming the same name is still a
+	// plain `DuplicateTypeName` — dedup never chains through more than one
+	// recognized pairing per name.
+	#[test]
+	fn graph_rejects_unrelated_type_claiming_a_name_already_used_by_a_phase_pair() {
+		let mut declarations = FrameworkDeclarations::default();
+		declarations.add_type_def(TypeDef::Record {
+			key: shared_user_serialize_key(),
+			name: "SharedUser".to_owned(),
+			fields: vec![FieldDef::new("name", TypeRefContract::String, false)],
+		});
+		declarations.add_type_def(TypeDef::Record {
+			key: shared_user_deserialize_key(),
+			name: "SharedUser".to_owned(),
+			fields: vec![FieldDef::new("name", TypeRefContract::String, false)],
+		});
+		declarations.add_type_def(TypeDef::Alias {
+			key: "app::other::UnrelatedSharedUser".to_owned(),
+			name: "SharedUser".to_owned(),
+			target: TypeRefContract::String,
+		});
+
+		let error = FrameworkGraph::compile(declarations).unwrap_err();
+
+		assert!(matches!(
+			error,
+			GraphError::DuplicateTypeName { name } if name == "SharedUser"
 		));
 	}
 

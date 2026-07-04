@@ -83,6 +83,13 @@ struct ParallelErrorState {
 	wait_runs: AtomicUsize,
 }
 
+struct ParallelCompetingErrorsState {
+	started: watch::Sender<usize>,
+	started_count: AtomicUsize,
+	release_added_first: Notify,
+	release_added_second: Notify,
+}
+
 struct CancelOnSuccessState {
 	runs: AtomicUsize,
 	cancel: CancelToken,
@@ -349,6 +356,26 @@ vorma_tasks::task! {
 			let mut started = input.state.started.subscribe();
 			wait_for_started(&mut started, 1).await;
 			Err("boom".into())
+		});
+}
+
+vorma_tasks::task! {
+	static PARALLEL_FAIL_ADDED_FIRST: Task<CaseInput<(), ParallelCompetingErrorsState>, (), &'static str> =
+		memoized(|_ctx, input: CaseInput<(), ParallelCompetingErrorsState>| async move {
+			let count = input.state.started_count.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(count);
+			input.state.release_added_first.notified().await;
+			Err("error-from-task-added-first".into())
+		});
+}
+
+vorma_tasks::task! {
+	static PARALLEL_FAIL_ADDED_SECOND: Task<CaseInput<(), ParallelCompetingErrorsState>, (), &'static str> =
+		memoized(|_ctx, input: CaseInput<(), ParallelCompetingErrorsState>| async move {
+			let count = input.state.started_count.fetch_add(1, Ordering::SeqCst) + 1;
+			let _ = input.state.started.send(count);
+			input.state.release_added_second.notified().await;
+			Err("error-from-task-added-second".into())
 		});
 }
 
@@ -1244,6 +1271,45 @@ async fn parallel_returns_original_error_and_cancels_siblings() {
 		2
 	);
 	assert_eq!(state.wait_runs.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn parallel_error_tie_break_is_completion_order_not_registration_order() {
+	let (started, mut started_rx) = watch::channel(0usize);
+	let state = Arc::new(ParallelCompetingErrorsState {
+		started,
+		started_count: AtomicUsize::new(0),
+		release_added_first: Notify::new(),
+		release_added_second: Notify::new(),
+	});
+	let tasks = tasks();
+	let ctx = exec_ctx(&tasks);
+	let mut batch = ParallelBatch::new();
+	batch.add(PARALLEL_FAIL_ADDED_FIRST, CaseInput::new((), state.clone()));
+	batch.add(
+		PARALLEL_FAIL_ADDED_SECOND,
+		CaseInput::new((), state.clone()),
+	);
+	let mut pending = Box::pin(batch.run(&ctx));
+
+	tokio::select! {
+		result = &mut pending => panic!("parallel run finished unexpectedly: {result:?}"),
+		_ = wait_for_started(&mut started_rx, 2) => {}
+	}
+
+	// Release the task added SECOND first, so its error completes before
+	// the task added FIRST's error, even though it was registered later.
+	state.release_added_second.notify_one();
+	tokio::task::yield_now().await;
+	tokio::task::yield_now().await;
+	state.release_added_first.notify_one();
+
+	let err = pending.await.unwrap_err();
+
+	assert!(
+		matches!(err, Error::Failed(error) if *error == "error-from-task-added-second"),
+		"the error that completed first should win regardless of registration order"
+	);
 }
 
 #[tokio::test]

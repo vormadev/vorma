@@ -148,3 +148,30 @@ this file holds framework knowledge.
   reintroduce it.
 - `cargo bench -p <crate> --bench <name>` avoids the lib target's empty "running 0 tests"
   noise in recorded files.
+
+## Port-allocation TOCTOU in tests (P014 diagnosis, P021 fix, 2026-07-02)
+
+Discover-then-drop-then-rebind port allocation (`bind :0` → read `local_addr` → drop →
+hand the bare number to an independent rebind) is a TOCTOU race — proven directly on this
+machine at a 0.03% collision rate (64 threads, 128k attempts), fully sufficient for rare
+`AddrInUse` failures under `--all-targets` parallel load. The pattern only exists where a
+production API legitimately refuses port 0 (the dev mux needs a stable session port; the
+rejection is a frozen, doubly-enforced invariant — never relax it for test convenience).
+Doctrine for the fix, when this shape appears again: test-scoped bounded
+retry-on-collision re-deriving a FRESH port each attempt (same-port retry
+deterministically loses to sibling tests holding ports for their whole lifetime),
+variant-matched error detection (never message strings — locale-dependent), reconstructing
+stateful fakes per attempt (side effects from a losing attempt must not leak into the
+next), and verification by looping the full workspace suite under real added load with raw
+logs read in full (summary-only greps are how this ticket lost the failing test's name for
+a whole day). Direct `:0`-bind-then-move is safe by construction and needs nothing.
+
+## The cargo-deny license gate is host-target-scoped (P018, 2026-07-02)
+
+`cargo deny check licenses` evaluates the host-target dependency graph only: an
+LGPL-2.1-or-later crate (`r-efi`, UEFI-only, behind `getrandom`) exists in the full
+multi-target graph — visible only via `cargo tree --target all` — and is never
+license-checked. Benign for every target this project ships
+(Linux/macOS/wasm32-unknown-unknown never compile it), but "licenses ok" is a narrower
+guarantee than it reads. Ruled record-only: revisit `[graph].targets` in deny.toml only if
+the supported target set ever grows.

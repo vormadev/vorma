@@ -1,3 +1,9 @@
+// Schema grammar constants — internal encoding details of `SearchParamSchema`,
+// not meant to be constructed by hand (an app never writes `SEARCH_PARAM_SCHEMA_*`
+// directly; a view's typed `input` schema is generated from its Rust input
+// struct's shape). Exported so `search_param_serializer.ts` and generated
+// code share one definition of the grammar rather than duplicating the
+// magic strings.
 export const SEARCH_PARAM_SCHEMA_ARRAY_LENGTH = 1;
 export const SEARCH_PARAM_SCHEMA_BOOL = "b";
 export const SEARCH_PARAM_SCHEMA_MAP = "*";
@@ -6,6 +12,19 @@ export const SEARCH_PARAM_SCHEMA_NUMBER = "n";
 export const SEARCH_PARAM_SCHEMA_OPTIONAL_PREFIX = "?";
 export const SEARCH_PARAM_SCHEMA_STRING = "s";
 
+/**
+ * A compact, generated schema describing how to parse a view/resource's
+ * search params into typed input. A leaf is one of `"s"`/`"n"`/`"b"`
+ * (string/number/bool), optionally prefixed `"?"` for an absent-when-empty
+ * optional field; `[schema]` (array length 1) parses a repeated param into
+ * an array; `["*", valueSchema]` parses every param under a dotted-key
+ * prefix into a map; a plain object schema nests fields with `.`-joined
+ * paths in the actual query string. This grammar is a build-time detail of
+ * how Vorma projects a Rust input type's shape (derived server-side from
+ * the same `Type`/`TsGen` machinery that generates its TypeScript type)
+ * onto URL search params — an app consumes it only indirectly, through a
+ * view's already-typed `input`, never by hand-authoring a schema value.
+ */
 export type SearchParamSchema =
 	| string
 	| SearchParamSchema[]
@@ -21,6 +40,13 @@ type ParsedSearchParam =
 	| Record<string, unknown>
 	| typeof ABSENT;
 
+/**
+ * Parse a `URLSearchParams` into typed data using a {@link SearchParamSchema}
+ * (or `schema` as `unknown` to match how it actually arrives off the wire).
+ * Vorma's router uses this internally to produce a view's typed `input`
+ * from the current URL — an app rarely calls this directly, since it
+ * already receives typed, parsed input.
+ */
 export function parseSearchParams(schema: unknown, params: URLSearchParams): unknown {
 	const parsed = parse_schema(schema ?? {}, params, "");
 	return parsed === ABSENT ? undefined : parsed;

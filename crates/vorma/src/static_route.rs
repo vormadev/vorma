@@ -1,4 +1,13 @@
 //! Static macro route adapters over the fresh execution engine.
+//!
+//! This module has two halves. [`ViewCtx`], [`ResourceCtx`], [`MiddlewareCtx`], and
+//! [`Params`] are the app-facing handler ctx types every [`app!`](crate::app)-declared
+//! `view!`/`resource!`/[`Middleware::new`](crate::Middleware::new) handler receives.
+//! Everything else here (`ErasedRequestCtx`, `RouteFuture`, `PathParams`,
+//! `run_static_view`, and friends) is macro-expansion plumbing: the code
+//! `#[doc(hidden)]` `__vorma_view`/`__vorma_resource` (in `vorma-macros`) generates into
+//! an application crate to bridge a fixed-shape route declaration onto these typed
+//! contexts. Application code never names those types directly.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -9,19 +18,60 @@ use serde::de::DeserializeOwned;
 
 use vorma_matcher::Params as MatcherParams;
 
-/// Captured path parameters exposed to middleware.
+/// Captured path parameters exposed to middleware, by string lookup.
+///
+/// A view/resource handler's own route params are strongly typed (a generated struct
+/// with one field per `:name` segment, reached through
+/// [`ViewCtx::params`]/[`ResourceCtx::params`]) because the pattern that produced them is
+/// known at the point the handler is declared. Middleware is different: one
+/// [`Middleware`](crate::Middleware) can run in front of many different route
+/// patterns, so its captured params have no single fixed shape — `Params` is the untyped,
+/// string-keyed view every [`MiddlewareCtx::params`] call exposes instead.
+///
+/// ```
+/// # vorma::app!(mod app for ());
+/// # const GATED_VIEW: app::View = app::view! {
+/// #     client_file: "src/client/views/gated.view.tsx";
+/// #     pattern: "/shelves/:shelf_id";
+/// #     input: ();
+/// #     output: ();
+/// #     handler: |_ctx| { Ok(()) };
+/// # };
+/// fn logging_middleware() -> app::Middleware {
+///     app::Middleware::new(|ctx: app::MiddlewareCtx| async move {
+///         let shelf_id = ctx.params().get("shelf_id");
+///         assert_eq!(shelf_id, Some("42"));
+///         Ok::<(), vorma::HttpExit>(())
+///     })
+///     .with_patterns(["/shelves/:shelf_id"])
+/// }
+///
+/// # fn app_config() -> vorma::AppConfig<()> {
+/// #     vorma::AppConfig {
+/// #         views: app::views![GATED_VIEW],
+/// #         middlewares: app::middlewares![logging_middleware()],
+/// #         ..vorma::AppConfig::default()
+/// #     }
+/// # }
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> vorma::Result<()> {
+/// let app = vorma::testing::TestApp::from_config(app_config())?;
+/// app.get("/shelves/42").await;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone, Copy, Debug)]
 pub struct Params<'a> {
 	inner: &'a MatcherParams,
 }
 
 impl<'a> Params<'a> {
-	/// Return the value for a named parameter.
+	/// Value for a named parameter, or `None` if no such parameter was captured.
 	pub fn get(&self, key: &str) -> Option<&'a str> {
 		self.inner.get(key)
 	}
 
-	/// Iterate over parameter name/value pairs.
+	/// Iterate over every captured parameter as name/value pairs.
 	pub fn iter(&self) -> impl Iterator<Item = (&'a str, &'a str)> {
 		self.inner.iter()
 	}
@@ -42,6 +92,7 @@ use crate::execution_engine::{
 };
 use crate::form_data::{DECODED_FORM_DATA_MISSING_MESSAGE, FormData};
 use crate::resource_body::{ResourceOutput, resource_output_with_effects};
+use crate::response_finalizer::lock_effects;
 use crate::route_input::{ResourceInput, ViewInput};
 use crate::typed_handler::{TypedHandlerContext, handler_output_with_effects};
 use vorma_tasks::ExecCtx;
@@ -121,7 +172,23 @@ impl std::fmt::Display for InputError {
 
 impl std::error::Error for InputError {}
 
-/// Context passed to middleware handlers.
+/// Context passed to a [`Middleware::new`](crate::Middleware::new) handler.
+///
+/// A middleware has no route input of its own — it runs in front of whatever
+/// view/resource its [`with_patterns`](crate::Middleware::with_patterns)/
+/// [`with_methods`](crate::Middleware::with_methods) filters select, so `MiddlewareCtx`
+/// exposes the matched route's params only through the untyped [`Params`] lookup (see
+/// [`params`](Self::params)/[`param`](Self::param)), the request, shared application
+/// state, a per-request [`ExecCtx`](vorma_tasks::ExecCtx), and the same
+/// [`ResponseHandle`](crate::ResponseHandle)/[`HeadHandle`](crate::HeadHandle) effect
+/// handles a resource/view handler gets, for setting response headers/cookies or document
+/// head elements before the view/resource handler runs. A middleware handler returns
+/// `Result<O, HttpExit>`
+/// for any `O` (idiomatically `()` — the success value itself is discarded); returning
+/// `Err` short-circuits the request before the view/resource handler ever runs, using the
+/// same [`HttpExit`](crate::HttpExit) contract resources use. Every
+/// registered middleware whose filters match a request runs in parallel — this is a
+/// framework contract, not an incidental optimization.
 pub struct MiddlewareCtx<S> {
 	inner: TypedHandlerContext<S, ()>,
 	exec_ctx: ExecCtx<crate::Error>,
@@ -231,7 +298,19 @@ impl StaticRouteError {
 	}
 }
 
-/// Context passed to resource handlers declared by the public macros.
+/// Context passed to a `resource!`(app!) handler — see [`app!`](crate::app!) for the
+/// full `resource!` field grammar.
+///
+/// `I` is the resource's `input` type (decoded and available through
+/// [`input`](Self::input)); `P` is the route's generated params struct (one field per
+/// `:name` segment in `pattern`, available through [`params`](Self::params) — `()` when
+/// the pattern has none). A resource handler returns `Result<O, HttpExit>`, where `O` is
+/// the declared `output` type (or [`ResourceBody`](crate::ResourceBody) for raw bytes);
+/// [`response`](Self::response) is how a handler sets a non-default success status
+/// (2xx/1xx — error statuses ride [`HttpExit::with_status`](crate::HttpExit::with_status)
+/// instead, and redirects ride [`redirect`](Self::redirect)/
+/// [`redirect_with_status`](Self::redirect_with_status) — each outcome has exactly one
+/// door).
 pub struct ResourceCtx<S, I, P = ()> {
 	inner: TypedHandlerContext<S, I>,
 	params: P,
@@ -313,7 +392,19 @@ impl<S, I, P> ResourceCtx<S, I, P> {
 	}
 }
 
-/// Context passed to view handlers declared by the public macros.
+/// Context passed to a `view!`(app!) handler — see [`app!`](crate::app!) for the full
+/// `view!` field grammar.
+///
+/// `I` is the view's `input` type, decoded from path params and the query string
+/// (available through [`input`](Self::input)); `P` is the route's generated params
+/// struct (one field per `:name` segment in `pattern`, available through
+/// [`params`](Self::params) — `()` when the pattern has none). A view handler returns
+/// `Result<O, ViewExit>`, where `O` is the declared `output` type — it becomes both the
+/// server-rendered fragment's data and the JSON payload the client-side router fetches on
+/// navigation. Unlike a resource, a view has no HTTP status to set directly: use
+/// [`head`](Self::head) to queue document head elements (title, meta tags) for this view's
+/// contribution to the page, and [`redirect`](Self::redirect)/
+/// [`redirect_with_status`](Self::redirect_with_status) for a redirect exit.
 pub struct ViewCtx<S, I, P = ()> {
 	inner: TypedHandlerContext<S, I>,
 	params: P,
@@ -591,10 +682,7 @@ where
 			if let Err(source) = future.await {
 				return Err(http_exit_with_effects(source, &effects));
 			}
-			let effects = effects
-				.lock()
-				.expect("middleware response effects lock poisoned")
-				.clone();
+			let effects = lock_effects(&effects).clone();
 			Ok(HandlerOutput::empty().with_effects(effects))
 		})
 	}
@@ -609,10 +697,7 @@ fn view_exit_with_effects(
 	exit: crate::ViewExit,
 	effects: &std::sync::Arc<std::sync::Mutex<crate::response_finalizer::ResponseEffects>>,
 ) -> HandlerExecutionError {
-	let effects = effects
-		.lock()
-		.expect("static route response effects lock poisoned")
-		.clone();
+	let effects = lock_effects(effects).clone();
 	if exit.is_redirect() {
 		return HandlerExecutionError::new(exit.to_string()).with_effects(effects);
 	}
@@ -629,10 +714,7 @@ fn http_exit_with_effects(
 	exit: crate::HttpExit,
 	effects: &std::sync::Arc<std::sync::Mutex<crate::response_finalizer::ResponseEffects>>,
 ) -> HandlerExecutionError {
-	let effects = effects
-		.lock()
-		.expect("static route response effects lock poisoned")
-		.clone();
+	let effects = lock_effects(effects).clone();
 	if exit.is_redirect() {
 		return HandlerExecutionError::new(exit.to_string()).with_effects(effects);
 	}

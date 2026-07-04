@@ -33,6 +33,15 @@ const BUILD_MODE_RUNTIME_HOST_UNAVAILABLE_BODY: &[u8] =
 const DEV_HEALTH_RESPONSE_BODY: &[u8] = b"ok";
 
 /// Public runtime service that serves committed Vorma assets, resources, and views.
+///
+/// Returned by [`App::from_config`](crate::App::from_config); implements
+/// [`tower_service::Service`], so it mounts anywhere a Tower stack accepts one — for
+/// example as an axum `Router`'s `fallback_service`, with other routes (a health check, a
+/// `robots.txt`) declared ahead of it and outer Tower layers (tracing, secure headers,
+/// compression) wrapped around the whole router. In build mode (see [`crate::is_build`])
+/// no runtime assets are loaded and every request is answered with a 500 placeholder — a
+/// real server process never runs in build mode, so this only matters for code that
+/// happens to construct a host during the build's own short-lived invocation.
 pub struct RuntimeHost<S> {
 	committed: Option<CommittedRuntimeHost<PublicAssetDirectory>>,
 	_marker: PhantomData<fn(S)>,

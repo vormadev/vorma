@@ -1,4 +1,15 @@
 //! Transactional generation epoch model.
+//!
+//! A generation moves through exactly two states: a
+//! [`GenerationCandidate`], fully assembled but not yet visible to anything
+//! outside the build process, and a [`CommittedGeneration`], the one and
+//! only generation an [`EpochSupervisor`] considers active. There is no
+//! partially-committed state — [`GenerationCandidate::commit`] (called
+//! through [`EpochSupervisor::activate`]) is the single atomic transition,
+//! and [`GenerationEffects::derive`] computes what changed relative to the
+//! previous commit (or treats everything as changed for the first commit)
+//! in that same step, so the effects a browser is told about can never
+//! drift from what was actually activated.
 
 use vorma::build_interface::AppBuildContract;
 use vorma::build_interface::runtime::{
@@ -18,7 +29,14 @@ use crate::typescript_contracts::GeneratedTypeScriptContracts;
 #[cfg(test)]
 use crate::typescript_contracts::{TypeScriptContractError, render_typescript_contracts};
 
-/// Complete generation candidate before activation.
+/// Complete generation candidate before activation: a fully assembled
+/// generation (graph, projections, build plan, generated TypeScript,
+/// artifacts, and the compiled runtime manifest) that has not yet been
+/// compared against the previous commit or made the active generation.
+/// Every constructor validates the assembled runtime manifest actually
+/// compiles into a [`RuntimeSnapshot`] before returning, so a candidate
+/// that exists is one the runtime could serve. See the module docs above
+/// for how a candidate becomes committed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GenerationCandidate {
 	id: u64,
@@ -60,7 +78,14 @@ impl GenerationCandidate {
 		})
 	}
 
-	/// Build a complete generation candidate from precomputed graph projections.
+	/// Build a complete generation candidate from precomputed graph
+	/// projections: the canonical constructor every other `from_*`
+	/// constructor on this type eventually calls, taking every already-
+	/// computed piece directly instead of deriving projections, the build
+	/// plan, or generated TypeScript from a graph itself (the other
+	/// constructors exist because production callers usually have those
+	/// pieces already, computed once and reused across a generation's
+	/// several build steps).
 	pub fn from_precomputed_projections(
 		id: u64,
 		graph: FrameworkGraph,
@@ -100,8 +125,17 @@ impl GenerationCandidate {
 		Self::new(id, graph, artifacts)
 	}
 
-	/// Build a complete generation candidate from the app build-facing contract and
-	/// precomputed graph projections.
+	/// Build a complete generation candidate from the app build-facing
+	/// contract and precomputed graph projections: like
+	/// [`Self::from_precomputed_projections`], but takes an
+	/// [`AppBuildContract`] (the graph plus the app's document builder) and
+	/// [`CompletedBuildArtifacts`] instead of an already-projected graph and
+	/// artifacts, deriving the final [`GenerationArtifacts`] by rendering
+	/// through the document builder first (this is where a generation's
+	/// root document hash gets computed from the actual document, not
+	/// supplied by the caller — see
+	/// [`Self::from_live_graph_with_precomputed_projections`] for the
+	/// variant used when a caller already has that hash).
 	pub async fn from_app_build_contract_with_precomputed_projections(
 		id: u64,
 		app: AppBuildContract,
@@ -125,8 +159,14 @@ impl GenerationCandidate {
 		)
 	}
 
-	/// Build a complete generation candidate from live graph facts, precomputed graph
-	/// projections, and a precomputed root document hash source.
+	/// Build a complete generation candidate from live graph facts,
+	/// precomputed graph projections, and a precomputed root document hash
+	/// source: the dev-loop variant of
+	/// [`Self::from_app_build_contract_with_precomputed_projections`], used
+	/// when the graph and root document hash both come from live build
+	/// state read back from an already-built app-server executable (see
+	/// [`crate::live_state`]) rather than from rendering the app's document
+	/// builder directly in this process.
 	pub fn from_live_graph_with_precomputed_projections(
 		id: u64,
 		graph: FrameworkGraph,
@@ -163,7 +203,12 @@ impl GenerationCandidate {
 		&self.manifest
 	}
 
-	/// Commit this candidate.
+	/// Commit this candidate: the atomic state transition from candidate to
+	/// [`CommittedGeneration`], pairing the candidate's data with the
+	/// `effects` [`GenerationEffects::derive`] computed against whatever was
+	/// previously committed. Called through [`EpochSupervisor::activate`],
+	/// which derives `effects` itself in the same step — this method is not
+	/// meant to be called with hand-computed effects outside that path.
 	pub fn commit(self, effects: GenerationEffects) -> CommittedGeneration {
 		CommittedGeneration {
 			id: self.id,
@@ -178,7 +223,12 @@ impl GenerationCandidate {
 	}
 }
 
-/// Effects derived from one generation.
+/// Effects derived from one generation: what actually changed relative to
+/// whatever was previously committed, computed by [`Self::derive`]. This is
+/// the input [`crate::dev_refresh::refresh_payloads_from_effects`] turns
+/// into the exact messages connected dev browsers receive (via
+/// [`Self::browser_refresh_effects`]) — production builds carry the same
+/// fields for symmetry, even though nothing reads them there.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct GenerationEffects {
 	/// Public asset table changed.
@@ -190,7 +240,16 @@ pub struct GenerationEffects {
 }
 
 impl GenerationEffects {
-	/// Derive committed generation effects from the previous committed generation.
+	/// Derive committed generation effects from the previous committed
+	/// generation. The first generation of a session (`previous` is `None`)
+	/// has no baseline to diff against, so every effect is reported as
+	/// changed. Otherwise each of the three fields is its own independent
+	/// structural comparison: public assets changed if the public filepath
+	/// table, public filemap, or any view module's output changed; critical
+	/// CSS changed if its rendered content differs; client revalidation is
+	/// required if either a view's payload contract or a resource's
+	/// contract differs (both can change route data shape without changing
+	/// any rendered HTML or CSS).
 	pub fn derive(previous: Option<&CommittedGeneration>, candidate: &GenerationCandidate) -> Self {
 		let Some(previous) = previous else {
 			return Self {
@@ -214,7 +273,8 @@ impl GenerationEffects {
 		}
 	}
 
-	/// Project committed generation effects into browser refresh facts.
+	/// Project committed generation effects into browser refresh facts,
+	/// tagged with the generation id they came from.
 	pub fn browser_refresh_effects(&self, generation_id: u64) -> BrowserRefreshEffects {
 		BrowserRefreshEffects {
 			generation_id,
@@ -225,7 +285,9 @@ impl GenerationEffects {
 	}
 }
 
-/// Browser refresh facts derived from a committed generation.
+/// Browser refresh facts derived from a committed generation: a
+/// [`GenerationEffects`] paired with the generation id it belongs to. The
+/// input to [`crate::dev_refresh::refresh_payloads_from_effects`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BrowserRefreshEffects {
 	generation_id: u64,
@@ -257,7 +319,11 @@ impl BrowserRefreshEffects {
 	}
 }
 
-/// Committed immutable generation.
+/// Committed immutable generation: the one generation an [`EpochSupervisor`]
+/// considers active. Everything downstream — the running app server, the
+/// dev mux's static outputs, the browser refresh story — reads from exactly
+/// one `CommittedGeneration` at a time; there is no way to observe a
+/// generation mid-commit.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommittedGeneration {
 	id: u64,
@@ -332,7 +398,7 @@ impl CommittedGeneration {
 	}
 }
 
-/// Generation candidate construction error.
+/// Error from any of [`GenerationCandidate`]'s constructors.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GenerationError {
 	/// Completed build artifact construction failed.
@@ -380,7 +446,11 @@ impl std::fmt::Display for GenerationError {
 
 impl std::error::Error for GenerationError {}
 
-/// In-memory epoch supervisor for tested transactional commits.
+/// In-memory epoch supervisor for tested transactional commits: owns the
+/// single currently-committed generation, if any, and every `build_next_*`
+/// method's monotonically increasing candidate id counter. One supervisor
+/// exists per dev session or production build invocation (see
+/// [`crate::entrypoint`] and [`crate::dev_build`]).
 #[derive(Clone, Debug)]
 pub struct EpochSupervisor {
 	committed: Option<CommittedGeneration>,
@@ -486,7 +556,12 @@ impl EpochSupervisor {
 		Ok(self.activate(candidate))
 	}
 
-	/// Atomically activate a complete candidate.
+	/// Atomically activate a complete candidate: derives this candidate's
+	/// [`GenerationEffects`] against whatever was previously committed (see
+	/// [`GenerationEffects::derive`]), commits the candidate, and replaces
+	/// this supervisor's committed generation with the result in one step —
+	/// there is no window where an observer of this supervisor could see a
+	/// candidate that has been partially committed.
 	pub fn activate(&mut self, candidate: GenerationCandidate) -> &CommittedGeneration {
 		self.next_candidate_id = self.next_candidate_id.max(candidate.id + 1);
 		let effects = GenerationEffects::derive(self.committed.as_ref(), &candidate);

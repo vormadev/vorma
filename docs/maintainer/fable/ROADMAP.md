@@ -112,7 +112,77 @@ census-complete and prod-proven; workspace at 575 tests.
 
 ## Phase D — Release-quality sweeps
 
-To be authored as Phase C closes:
+- `[x]` **P010 — Middleware composition helper (etag/timeout footgun).** Maintainer-ruled
+  2026-07-02 (census F-23): verify the root cause against vendored tower-http source, land
+  the composed pre-ordered public helper so the silent-zero-ETags ordering is
+  unrepresentable, pin it, board adopts it. Upstream contribution deliberately deferred
+  (ticket `tower-http-timeoutbody-size-hint-upstream`, low priority, nothing filed
+  externally). Closed 2026-07-02: root cause re-verified against vendored sources;
+  `response_body_timeout_with_etag` landed pair-scoped with five pins; board adopted with
+  a corrected teaching comment; live prod verification passed; +5 tests (580). See
+  `packets/P010-middleware-etag-composition-helper/REVIEW.md`.
+
+Remaining Phase D packets (plan recorded 2026-07-02; Fable authors each on dispatch).
+Shape: per-crate "release-quality pass" packets combining the public-API doc sweep
+(rust-doc at the teaching bar + `deny(missing_docs)` as the durable enforcement) with the
+thermo-nuclear review run in FINDINGS MODE — docs/tests/mechanical cleanups land directly;
+structural code-judo findings are reported with analysis for Fable triage (each accepted
+finding becomes its own granted packet), because the skill's ambition must not bypass the
+frozen-semantics protocol on loom-verified, perf-tuned crates.
+
+- `[x]` P011 vorma-matcher release-quality pass — closed 2026-07-02: 67 public items at
+  the teaching bar, 17 doctests, intra-doc-link deny added; five structural findings held
+  in ticket `matcher-release-quality-findings` for the batched Phase D-end surface-polish
+  ruling. See `packets/P011-matcher-release-quality/REVIEW.md`.
+- `[x]` P012 vorma-tasks release-quality pass — closed 2026-07-02: 60 public items to the
+  bar, 15 doctests, one real coverage gap closed (parallel error tie-break race); four
+  protocol-adjacent findings held in `tasks-release-quality-findings`; the vorma-build
+  flake's signature captured (`AddrInUse` port collision — ticket advanced). See
+  `packets/P012-tasks-release-quality/REVIEW.md`.
+- `[x]` P013 vorma-contract + vorma-macros release-quality pass — closed 2026-07-02: both
+  crates to the bar (+7 doctests, trybuild-verified derive contract); headline: a
+  confirmed reproduced framework bug found and ticketed
+  (`tsgen-shared-type-phase-name-collision` — shared input+output types fail app boot;
+  maintainer design decision pending); one DRY consolidation landed; findings held for
+  batch triage. See `packets/P013-contract-macros-release-quality/REVIEW.md`.
+- `[x]` P014 vorma-build release-quality pass — closed 2026-07-02: 433 items to the bar
+  (crate provably externally-unreachable except `run`, documented as such); the flake
+  ROOT-CAUSED (TOCTOU in the test-port allocator, 64-thread reproduction) with the
+  test-scoped retry fix ruled and granted on the ticket; findings held in
+  `build-release-quality-findings`. See `packets/P014-build-release-quality/REVIEW.md`.
+- `[x]` P015 vorma + vorma-client-wasm release-quality pass — closed 2026-07-02: full
+  app-facing surface to the bar (doctests 2→11), client-wasm ABI contract documented;
+  lock_effects consolidation landed under P004's byte-identity bar (7-response
+  capture/diff, zero delta); findings: the app! state-path footgun (fix authorized →
+  P020), dead DocumentBuildIdentity surface (held for batch triage), flake test-name
+  captured (ruling scope amended). See `packets/P015-vorma-release-quality/REVIEW.md`.
+- `[x]` P016 TS package release-quality pass — closed 2026-07-02: 176/176 public exports
+  documented (13 entry points; adapters divergence-only incl. the caught Preact
+  signal-return semantics); enforcement landed (zero-dep compiler-API checker in ts-gate,
+  break-proven); generated-types verdict negative → ticket
+  `tsgen-doc-comments-not-carried-to-generated-ts`; findings held in
+  `ts-package-release-quality-findings`. See
+  `packets/P016-ts-package-release-quality/REVIEW.md`.
+- `[x]` P017 ARCHITECTURE.md accuracy pass — closed 2026-07-02: claim-by-claim audit with
+  citations; two real drifts corrected (the watch-root "config-transition error" guard
+  claim described a nonexistent mechanism — honest behavior now documented and the gap
+  recorded on the dev-watch ticket; stale test-suite list), two facts added
+  (`vorma::tasks` re-export, P004 fast path) plus the Fable-ruled P019 dedup clause.
+  One-line `vite_plugin_contract.rs` rustdoc fix queued behind P018. See
+  `packets/P017-architecture-accuracy/REVIEW.md`.
+- `[>]` P018 packaging + supply-chain dry-runs — dispatched 2026-07-02 in parallel with
+  P017 (disjoint: docs-only vs build commands).
+- `[x]` P020 app! macro state-path fix — closed 2026-07-02: anchor-alias landed, all three
+  previously-failing forms pinned red-to-green (591 tests), existing callers proven
+  unchanged; one rustdoc-synthetic-main edge case root-caused with an isolated rustc repro
+  and fixed at the doctest. Finding 1 RESOLVED. See
+  `packets/P020-app-macro-state-path-fix/REVIEW.md`.
+- `[>]` P019 TsGen shared-type dedup — the ruled name-collision fix (maintainer-approved
+  2026-07-02: one exported TS type per name on structural phase agreement; teaching error
+  on genuine divergence). Dispatched 2026-07-02 in parallel with P014 (disjoint crates).
+  Includes the P013 coverage rider (serde(transparent), default-path).
+
+Original phase description:
 
 - Doc comments for every public API, per the documentation strategy in `AGENTS.md`
   (rust-doc and jsdoc are the primary user documentation). One packet per crate, plus one

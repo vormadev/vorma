@@ -170,6 +170,7 @@ ts-typecheck: ts-build
 	$(PNPM_EXEC) tsgo -p packages/vorma/vite --pretty false
 	$(PNPM_EXEC) tsgo -p packages/vorma/tests --pretty false
 	$(PNPM_EXEC) tsgo -p packages/create-vorma --pretty false
+	$(PNPM_EXEC) tsgo -p tsconfig.json --pretty false
 
 ts-test:
 	$(PNPM_EXEC) vitest run --reporter=dot
@@ -181,8 +182,15 @@ ts-build: ts-install rust-build-client-wasm
 	cp packages/vorma/core/client_wasm/vorma_client_wasm_bg.wasm \
 		packages/vorma/.dist/core/vorma_client_wasm_bg.wasm
 
+# Every exported symbol across packages/vorma's public entry points (and
+# create-vorma) must carry a jsdoc comment (jsdoc IS the user documentation
+# for the TS surface, same standing as rust-doc's deny(missing_docs)); see
+# check_jsdoc_coverage.ts for the exact rule and its two exemptions.
+ts-jsdoc-coverage:
+	node --experimental-strip-types check_jsdoc_coverage.ts
+
 # rust-build-client-wasm and ts-build are reached through ts-typecheck.
-ts-gate: ts-install ts-fmt ts-lint ts-typecheck ts-test
+ts-gate: ts-install ts-fmt ts-lint ts-typecheck ts-test ts-jsdoc-coverage
 
 #####################################################################
 ####### RELEASES
@@ -203,4 +211,4 @@ ts-publish:
 	rust-lint-fix rust-policy rust-doc rust-bench bench-matcher bench-tasks bench-engine loom-tasks rust-fuzz rust-package \
 	rust-test rust-gate \
 	ts-install ts-fmt ts-fmt-check ts-lint ts-lint-fix ts-typecheck \
-	ts-test ts-build ts-gate
+	ts-test ts-build ts-jsdoc-coverage ts-gate

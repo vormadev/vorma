@@ -1,4 +1,13 @@
 //! Stable loopback development mux for browser traffic and refresh events.
+//!
+//! The dev mux is the one port a browser talks to for an entire dev
+//! session: it proxies ordinary requests to whichever app-server port is
+//! currently active (see [`DevMuxServer::set_active_app_server_port`]) and
+//! serves the dev-refresh WebSocket endpoint directly. Its own port never
+//! changes even though the app server restarts on every server-affecting
+//! rebuild, so a developer's browser tab, its open WebSocket connection,
+//! and any bookmarked URL all stay valid across rebuilds — only the proxy
+//! target underneath moves.
 
 use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
@@ -37,7 +46,10 @@ const HEADER_TRAILER: &str = "trailer";
 const HEADER_TRANSFER_ENCODING: &str = "transfer-encoding";
 const HEADER_UPGRADE: &str = "upgrade";
 
-/// Started stable dev mux server.
+/// Started stable dev mux server, returned by
+/// [`start_loopback_dev_mux_server`]. Owns a background thread serving the
+/// proxy and refresh WebSocket; dropping it sends a graceful-shutdown
+/// signal and joins that thread (see the `Drop` impl below).
 #[derive(Debug)]
 pub struct DevMuxServer {
 	/*
@@ -81,12 +93,16 @@ impl DevMuxServer {
 		self.backend.active_app_server_port()
 	}
 
-	/// Switch browser traffic to a ready app-server backend.
+	/// Switch browser traffic to a ready app-server backend. Called once the
+	/// dev loop has a newly rebuilt app server that has passed its readiness
+	/// check — every subsequent proxied request goes to `port` instead of
+	/// whichever port was active before, with no interruption to the mux's
+	/// own browser-facing port or any open refresh WebSocket connection.
 	pub fn set_active_app_server_port(&self, port: u16) -> Result<(), DevMuxError> {
 		self.backend.set_active_app_server_port(port)
 	}
 
-	/// Broadcast one payload to connected clients.
+	/// Broadcast one payload to every connected dev-refresh WebSocket client.
 	pub fn broadcast(&self, payload: RefreshPayload) {
 		self.clients.broadcast(payload);
 	}
@@ -139,7 +155,17 @@ impl DevMuxBackend {
 	}
 }
 
-/// Start a loopback dev mux server.
+/// Start a loopback dev mux server bound to `port`, proxying to
+/// `active_app_server_port` until [`DevMuxServer::set_active_app_server_port`]
+/// changes it, and authenticating dev-refresh WebSocket connections against
+/// `refresh_token`.
+///
+/// `port` must be nonzero: it also becomes the allowed browser `Origin` for
+/// dev-refresh WebSocket connections (see
+/// [`crate::dev_refresh::DevRefreshOriginPolicy`]), and an OS-assigned
+/// ephemeral port would be meaningless there — this dev session's browser
+/// tab needs one stable, known port for its entire lifetime (see the module
+/// docs above), not one discovered after the fact.
 pub fn start_loopback_dev_mux_server(
 	port: u16,
 	active_app_server_port: u16,
@@ -191,7 +217,8 @@ pub fn start_loopback_dev_mux_server(
 	})
 }
 
-/// Dev mux server error.
+/// Error from [`start_loopback_dev_mux_server`] or
+/// [`DevMuxServer::set_active_app_server_port`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevMuxError {
 	/// Dev mux port cannot be zero.
@@ -444,10 +471,60 @@ mod tests {
 
 	const TEST_REFRESH_TOKEN: &str = "refresh-token";
 	const TEST_PROXY_PATH: &str = "/hello?name=vorma";
+	/*
+	Bounded retry count for `start_dev_mux_retrying_port_collisions` below.
+	Purpose-built 64-thread ephemeral-port contention measured a 0.03%
+	collision rate (38/128,000 attempts); ordinary `cargo test` parallel load
+	is far gentler than that, so this bound is generous headroom, not a tight
+	fit — a genuinely broken caller (empty token, zero backend port) fails on
+	its first attempt via a different `DevMuxError` variant and is never
+	retried at all (see the function below), so this bound only governs how
+	many times a real transient port collision gets a fresh port to try.
+	*/
+	const MAX_DEV_MUX_PORT_COLLISION_RETRIES: u32 = 8;
 
 	fn allocate_test_port() -> u16 {
 		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, 0)).unwrap();
 		listener.local_addr().unwrap().port()
+	}
+
+	/// Start a loopback dev mux server for a test, retrying on the
+	/// discover-then-drop-then-rebind TOCTOU race between
+	/// [`allocate_test_port`] and this function's own
+	/// [`start_loopback_dev_mux_server`] call: `allocate_test_port` binds
+	/// `:0`, reads back the OS-assigned port, and drops the listener so
+	/// `start_loopback_dev_mux_server` can bind that same port number for
+	/// real a moment later — any other process racing to claim the
+	/// newly-freed ephemeral port in that gap steals it out from under this
+	/// test. Retrying with a freshly allocated candidate port closes the
+	/// race by construction: a stale-port retry would not help (the most
+	/// likely contender under `cargo test` parallelism is another
+	/// concurrently-running dev-mux test holding its own allocated port for
+	/// its entire lifetime, so retrying the SAME port would just collide
+	/// again), but a fresh port sidesteps whichever port lost the race.
+	/// Only a bind collision (`DevMuxError::Bind`) is retried; any other
+	/// error — a real, deterministic bug — panics on its very first
+	/// occurrence, exactly as the un-retried call did before.
+	fn start_dev_mux_retrying_port_collisions(
+		active_app_server_port: u16,
+		refresh_token: &str,
+	) -> DevMuxServer {
+		for attempt in 0..=MAX_DEV_MUX_PORT_COLLISION_RETRIES {
+			match start_loopback_dev_mux_server(
+				allocate_test_port(),
+				active_app_server_port,
+				refresh_token,
+			) {
+				Ok(mux) => return mux,
+				Err(DevMuxError::Bind { .. }) if attempt < MAX_DEV_MUX_PORT_COLLISION_RETRIES => {}
+				Err(source) => panic!(
+					"start_loopback_dev_mux_server failed on attempt {} of {}: {source}",
+					attempt + 1,
+					MAX_DEV_MUX_PORT_COLLISION_RETRIES + 1
+				),
+			}
+		}
+		unreachable!("loop above always returns or panics")
 	}
 
 	fn spawn_backend_response(body: &'static str) -> (u16, thread::JoinHandle<()>) {
@@ -563,14 +640,16 @@ mod tests {
 	}
 
 	#[test]
+	fn start_loopback_dev_mux_server_rejects_zero_port() {
+		let error = start_loopback_dev_mux_server(0, 3000, TEST_REFRESH_TOKEN).unwrap_err();
+
+		assert_eq!(error, DevMuxError::InvalidPort);
+	}
+
+	#[test]
 	fn loopback_dev_mux_proxies_to_active_backend_and_switches() {
 		let (first_backend_port, first_backend_thread) = spawn_backend_response("first");
-		let mux = start_loopback_dev_mux_server(
-			allocate_test_port(),
-			first_backend_port,
-			TEST_REFRESH_TOKEN,
-		)
-		.unwrap();
+		let mux = start_dev_mux_retrying_port_collisions(first_backend_port, TEST_REFRESH_TOKEN);
 
 		let first_body = get_through_mux(mux.port(), TEST_PROXY_PATH);
 		first_backend_thread.join().unwrap();
@@ -587,9 +666,7 @@ mod tests {
 	#[test]
 	fn loopback_dev_mux_streams_chunked_backend_body_without_buffering_until_end() {
 		let (backend_port, first_chunk_rx, release_tx) = spawn_streaming_backend_response();
-		let mux =
-			start_loopback_dev_mux_server(allocate_test_port(), backend_port, TEST_REFRESH_TOKEN)
-				.unwrap();
+		let mux = start_dev_mux_retrying_port_collisions(backend_port, TEST_REFRESH_TOKEN);
 		let mut stream = StdTcpStream::connect((VITE_PLUGIN_LOOPBACK_HOST, mux.port())).unwrap();
 		stream
 			.set_read_timeout(Some(Duration::from_secs(1)))
@@ -612,9 +689,7 @@ mod tests {
 	#[test]
 	fn loopback_dev_mux_proxies_upgrade_connections_bidirectionally() {
 		let (backend_port, backend_thread) = spawn_upgrade_backend_response();
-		let mux =
-			start_loopback_dev_mux_server(allocate_test_port(), backend_port, TEST_REFRESH_TOKEN)
-				.unwrap();
+		let mux = start_dev_mux_retrying_port_collisions(backend_port, TEST_REFRESH_TOKEN);
 		let mut stream = StdTcpStream::connect((VITE_PLUGIN_LOOPBACK_HOST, mux.port())).unwrap();
 		stream
 			.set_read_timeout(Some(Duration::from_secs(1)))

@@ -51,8 +51,9 @@ use crate::matcher::{FlatMatcher, NestedMatcher};
 use crate::pattern::Pattern;
 use crate::segment::SegmentKind;
 
-/// One found overlap between two matchers: a concrete shared request
-/// path, plus the pattern each side matched it with.
+/// One found overlap between two matchers, returned by [`find_overlap`]:
+/// a concrete shared request path, plus the pattern each side matched
+/// it with.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Overlap {
 	example_path: String,
@@ -90,8 +91,11 @@ mod sealed {
 
 /// A matcher type [`find_overlap`] can take in either position.
 ///
-/// Implemented by [`FlatMatcher`] and [`NestedMatcher`]; sealed against
-/// outside implementations.
+/// Implemented by [`FlatMatcher`] and [`NestedMatcher`] — the two sides
+/// passed to one [`find_overlap`] call need not be the same matcher
+/// type. Sealed against outside implementations: an `OverlapSide` must
+/// answer overlap questions using its type's own real matching
+/// algorithm, which only this crate's two matcher types can provide.
 pub trait OverlapSide: sealed::Sealed {}
 
 impl OverlapSide for FlatMatcher {}
@@ -134,12 +138,40 @@ impl sealed::Sealed for NestedMatcher {
 	}
 }
 
-/// Find a concrete request path accepted by both matchers, or prove
-/// there is none.
+/// Find a concrete request path accepted by both `left` and `right`, or
+/// prove there is none.
 ///
 /// `None` means `left` and `right` are disjoint over every possible
-/// request path. The result is deterministic: the same two matchers
-/// always produce the same answer and the same example.
+/// request path — a caller can rely on that as a proof, not a
+/// heuristic best-effort answer (see the module-level docs for why).
+/// The result is deterministic: the same two matchers always produce
+/// the same answer and the same example path.
+///
+/// Reach for this when an application builds more than one matcher
+/// over the same request space and needs to know whether they could
+/// ever both claim one path — for example checking that a public API
+/// matcher and an internal admin matcher, registered independently,
+/// never silently compete for the same route.
+///
+/// ```
+/// use vorma_matcher::{MatcherBuilder, Options, find_overlap};
+///
+/// fn flat_matcher(pattern: &str) -> vorma_matcher::FlatMatcher {
+///     let mut builder = MatcherBuilder::new(Options::default()).unwrap();
+///     builder.register_pattern(pattern).unwrap();
+///     builder.finish_flat()
+/// }
+///
+/// let dynamic_side = flat_matcher("/users/:id");
+/// let static_side = flat_matcher("/users/export");
+/// let overlap = find_overlap(&dynamic_side, &static_side).unwrap();
+/// assert_eq!(overlap.example_path(), "/users/export");
+/// assert_eq!(overlap.left_pattern(), "/users/:id");
+/// assert_eq!(overlap.right_pattern(), "/users/export");
+///
+/// let disjoint_side = flat_matcher("/posts/:id");
+/// assert!(find_overlap(&dynamic_side, &disjoint_side).is_none());
+/// ```
 pub fn find_overlap(left: &impl OverlapSide, right: &impl OverlapSide) -> Option<Overlap> {
 	let fresh = fresh_symbol(left, right);
 	for a in left.registered_patterns() {

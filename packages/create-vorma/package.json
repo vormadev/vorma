@@ -15,7 +15,7 @@
 	"homepage": "https://vorma.dev",
 	"author": "Samuel J. Cook",
 	"bin": {
-		"create-vorma": "./.dist/main.js"
+		"create-vorma": "./.dist/main.mjs"
 	},
 	"files": [
 		".dist/"

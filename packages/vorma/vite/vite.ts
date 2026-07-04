@@ -28,6 +28,17 @@ import {
 } from "./public_url_resolution.ts";
 import { escape_regex_literal } from "./text.ts";
 
+/*
+The `vorma/vite` plugin. This module's only public export is `vorma()`
+itself (see its doc comment below) — everything else here is the plugin's
+own implementation: bridging Vite's dev/build lifecycle to the Vorma dev
+server's RPC control endpoint (config fetch, restart-on-config-change,
+targeted module invalidation on public-asset change), resolving
+`vormaPublicUrl(...)` calls to hashed asset URLs at both the JS/TS and CSS
+layers, and injecting the dev-only HMR self-accept preamble into view
+modules.
+*/
+
 function rpc_url(): string {
 	return server_url(rpc_path);
 }
@@ -43,9 +54,11 @@ async function fetch_public_url(src_path: string, source: string): Promise<strin
 	return res.text();
 }
 
-/// HMR preamble injected into view modules during dev.
-/// The self-accept callback forwards the new module to the client
-/// core, which handles the component/client-loader swap and re-commit.
+/*
+HMR preamble injected into view modules during dev. The self-accept
+callback forwards the new module to the client core, which handles the
+component/client-loader swap and re-commit.
+*/
 const hmr_preamble = [
 	"if (import.meta.hot) {",
 	"  import.meta.hot.accept((mod) => {",
@@ -56,6 +69,31 @@ const hmr_preamble = [
 	"}",
 ].join("\n");
 
+/**
+ * The Vorma Vite plugin. Add it to `vite.config.ts` alongside the
+ * framework plugin for the chosen UI adapter (`@vitejs/plugin-react`,
+ * `@preact/preset-vite`, or `vite-plugin-solid`) — `enforce: "pre"` means
+ * Vorma's view-module transform runs before those, and React Fast Refresh
+ * is disabled for view modules specifically (Vorma owns their HMR
+ * contract instead, via the self-accept preamble this plugin injects).
+ *
+ * ```
+ * // vite.config.ts
+ * import react from "@vitejs/plugin-react";
+ * import vorma from "vorma/vite";
+ *
+ * export default {
+ *   plugins: [vorma(), react()],
+ * };
+ * ```
+ *
+ * Takes no options — every configurable input (the entry module, the view
+ * module list, ignored watch patterns, the dedupe list) comes from the
+ * Rust app's own build configuration via the dev server's RPC endpoint,
+ * fetched once per Vite `config` hook invocation; there is no
+ * `vite.config.ts`-side knob to duplicate that configuration on the
+ * TypeScript side.
+ */
 export default function vorma(): Vite_Plugin {
 	let view_module_ids: Set<string> | null = null;
 	let view_modules: Array<string> = [];

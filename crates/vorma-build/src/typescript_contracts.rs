@@ -1,4 +1,15 @@
 //! Generated TypeScript contract rendering.
+//!
+//! [`render_typescript_contracts`] is where the framework's bundle-size
+//! contract is enforced in generated code: [`PRIVATE_VIEW_CONTRACTS_IDENTIFIER`]
+//! and [`PRIVATE_RESOURCE_CONTRACTS_IDENTIFIER`] are typed via `null as
+//! unknown as typeof <identifier>` rather than assigned the real
+//! view/resource declaration arrays, so the generated client seed carries
+//! their TYPE shape at compile time without ever importing the arrays'
+//! VALUES into a browser bundle. This is why a resource's explicit
+//! generated-client [`crate::projection_compiler::ResourceContract::kind_override`]
+//! has to be applied by hand per API call rather than looked up from the
+//! generated declaration at runtime — see that method's docs.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -8,11 +19,15 @@ use vorma_contract::contracts::{FieldDef, RawTsPart, TypeDef, TypeRefContract};
 
 use crate::projection_compiler::{ProjectionBundle, ResourceContract, ViewPayloadContract};
 
-/// Public generated client seed identifier.
+/// Public generated client seed identifier: the one exported `const` every
+/// generated contracts file emits, typed but not runtime-populated (see the
+/// module docs above).
 pub const CLIENT_SEED_IDENTIFIER: &str = "vormaClientSeed";
-/// Private generated resource contract table identifier.
+/// Private generated resource contract table identifier: type-only, never
+/// exported and never assigned a real value (see the module docs above).
 pub const PRIVATE_RESOURCE_CONTRACTS_IDENTIFIER: &str = "__vorma_resources";
-/// Private generated view contract table identifier.
+/// Private generated view contract table identifier: type-only, never
+/// exported and never assigned a real value (see the module docs above).
 pub const PRIVATE_VIEW_CONTRACTS_IDENTIFIER: &str = "__vorma_views";
 /// Public generated resource contract type name.
 #[cfg(test)]
@@ -26,7 +41,10 @@ const VORMA_CLIENT_SEED_TYPE_NAME: &str = "VormaClientSeed";
 const PUBLIC_URL_FUNCTION_IDENTIFIER: &str = "vormaPublicUrl";
 const PUBLIC_URL_KEY_TYPE_NAME: &str = "VormaPublicUrlKey";
 
-/// Rendered generated TypeScript contracts.
+/// Rendered generated TypeScript contracts: the complete file source text
+/// [`render_typescript_contracts`] produces, ready to write to the app's
+/// configured generated TypeScript output path (see
+/// [`crate::build_output::write_typescript_contracts`]).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GeneratedTypeScriptContracts {
 	source: String,
@@ -39,7 +57,11 @@ impl GeneratedTypeScriptContracts {
 	}
 }
 
-/// Render generated TypeScript contracts from compiled graph projections.
+/// Render generated TypeScript contracts from compiled graph projections:
+/// the type-only client seed, the public-URL literal-type setup, every
+/// resource and view contract, every declared type definition (sorted by
+/// export name so reordering declarations in app config does not churn the
+/// generated diff), and any raw supplemental TypeScript the app registered.
 pub fn render_typescript_contracts(
 	bundle: &ProjectionBundle,
 	public_filemap: &BTreeMap<String, String>,
@@ -84,7 +106,7 @@ pub(crate) fn normalize_trailing_newlines(source: &mut String) {
 	}
 }
 
-/// Generated TypeScript contract rendering error.
+/// Error from [`render_typescript_contracts`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeScriptContractError {
 	/// A type definition name was invalid.

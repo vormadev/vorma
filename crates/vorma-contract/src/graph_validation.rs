@@ -1,7 +1,7 @@
 //! Framework-graph shape, contract, and asset validation.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use http::Method;
 use vorma_matcher::{
@@ -14,7 +14,10 @@ use crate::graph_patterns::{
 	view_parents_for_patterns,
 };
 
-use crate::contracts::{RawTsPart, RouteTypeContract, TypeDef, TypeRefContract};
+use crate::contracts::{
+	RawTsPart, RouteTypeContract, SharedTypeNameRelation, TypeDef, TypeRefContract,
+	is_serialize_phase_key,
+};
 use crate::framework_graph::GraphConfig;
 use crate::framework_graph::{
 	ConfigField, GraphError, MiddlewareDeclaration, ResourceDeclaration, ResourceKind,
@@ -246,14 +249,28 @@ fn static_base_matcher(public_static_base: &str) -> Result<FlatMatcher, GraphErr
 	Ok(builder.finish_flat())
 }
 
+/*
+A name collision between two different keys is normally
+`GraphError::DuplicateTypeName` — except when `TypeDef::classify_shared_name_with`
+recognizes the pair as one `TsGen`-derived Rust type's Serialize/Deserialize
+phases (see that method's docs for the exact identity test). A
+shape-equivalent pair collapses into one surviving `TypeDef`, keeping the
+first-encountered definition and its position in `accepted`; a
+shape-divergent pair is `GraphError::DivergentTypePhaseShapes`, teaching
+the two-distinct-Rust-types resolution. Both of the pair's original keys
+must go on resolving `Named` references afterward (a route reached the
+type at whichever phase it actually uses), so `declared` gets both keys
+even though only one `TypeDef` survives into the returned list.
+*/
 pub(crate) fn validate_type_contracts(
 	type_defs: &[TypeDef],
 	views: &[ViewDeclaration],
 	resources: &[ResourceDeclaration],
-) -> Result<(), GraphError> {
+) -> Result<Vec<TypeDef>, GraphError> {
 	let mut keys = BTreeSet::new();
-	let mut names = BTreeSet::new();
 	let mut declared = BTreeSet::new();
+	let mut accepted = Vec::<TypeDef>::with_capacity(type_defs.len());
+	let mut accepted_index_by_name = BTreeMap::<&str, usize>::new();
 	for type_def in type_defs {
 		let (key, name) = type_def_key_and_name(type_def);
 		if key.trim().is_empty() || name.trim().is_empty() {
@@ -275,15 +292,42 @@ pub(crate) fn validate_type_contracts(
 				key: key.to_owned(),
 			});
 		}
-		if !names.insert(name.to_owned()) {
-			return Err(GraphError::DuplicateTypeName {
-				name: name.to_owned(),
-			});
-		}
-		declared.insert((key.to_owned(), name.to_owned()));
 		validate_type_def_shape(type_def)?;
+		declared.insert((key.to_owned(), name.to_owned()));
+		match accepted_index_by_name.get(name) {
+			None => {
+				accepted_index_by_name.insert(name, accepted.len());
+				accepted.push(type_def.clone());
+			}
+			Some(&existing_index) => {
+				match accepted[existing_index].classify_shared_name_with(type_def) {
+					SharedTypeNameRelation::SamePhaseShape => {
+						// The surviving definition (whichever phase was
+						// first) already renders the shared shape; the
+						// newly-seen phase's key was already added to
+						// `declared` above, so its `Named` references
+						// still resolve even though its own `TypeDef` is
+						// discarded here.
+					}
+					SharedTypeNameRelation::DivergentPhaseShape => {
+						let (serialize_key, deserialize_key) =
+							order_phase_keys(accepted[existing_index].key(), key);
+						return Err(GraphError::DivergentTypePhaseShapes {
+							name: name.to_owned(),
+							serialize_key,
+							deserialize_key,
+						});
+					}
+					SharedTypeNameRelation::UnrelatedTypes => {
+						return Err(GraphError::DuplicateTypeName {
+							name: name.to_owned(),
+						});
+					}
+				}
+			}
+		}
 	}
-	for type_def in type_defs {
+	for type_def in &accepted {
 		validate_type_def_refs(type_def, &declared)?;
 	}
 	for view in views {
@@ -292,7 +336,19 @@ pub(crate) fn validate_type_contracts(
 	for resource in resources {
 		validate_route_type_contract_refs(resource.type_contract(), &declared)?;
 	}
-	Ok(())
+	Ok(accepted)
+}
+
+/// Order two same-declared-type phase keys as `(serialize_key,
+/// deserialize_key)` for [`GraphError::DivergentTypePhaseShapes`],
+/// identifying each by its recognized phase suffix rather than by
+/// encounter order.
+fn order_phase_keys(a: &str, b: &str) -> (String, String) {
+	if is_serialize_phase_key(a) {
+		(a.to_owned(), b.to_owned())
+	} else {
+		(b.to_owned(), a.to_owned())
+	}
 }
 
 pub(crate) fn type_def_key_and_name(type_def: &TypeDef) -> (&str, &str) {

@@ -68,3 +68,21 @@ while Linux prunes at registration. Decide deliberately and document the reasoni
 - `make e2e` / `make e2e-smoke` remain green on Linux (the P001b fix already makes them
   green; this must not regress them).
 - Dev watcher unit suite green.
+
+## Addendum: watch-ROOT changes are silently ineffective mid-session (P017, 2026-07-02)
+
+The P017 ARCHITECTURE.md audit proved a sibling gap in the same subsystem: the OS
+watch-root set is bound once at `StartedDevFileWatcher` creation
+(`crates/vorma-build/src/dev_watcher.rs:352-362`), and `watch_plan_handle.replace(...)`
+(`entrypoint.rs:279`) swaps only event classification. A config change that moves/adds a
+watch ROOT mid-session is therefore SILENTLY ineffective — nothing detects it, nothing
+errors, the old roots keep being watched until a manual dev restart. ARCHITECTURE.md
+previously claimed this was "guarded by the explicit config-transition error"; no such
+error exists (the doc is now corrected to state the honest behavior). Contrast: a
+`ServerBuildTarget` change DOES fail loudly with a restart instruction
+(`entrypoint.rs:417-431`). When this ticket is picked up, the fix locus is the same
+reconciliation point for both concerns: on plan replace, diff the desired OS-level watch
+set (roots + prunable excludes) against the registered one and either re-register or fail
+loudly with the restart instruction — parity with the ServerBuildTarget precedent.
+Detection-and-loud-error is the minimum bar; live re-registration is the nicer shape if
+notify's watcher supports it cleanly.

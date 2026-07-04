@@ -1,4 +1,16 @@
 //! Loopback process readiness polling.
+//!
+//! This is a bounded, short-interval poll for one specific problem — "has
+//! this just-spawned child process (Vite, the app server) started
+//! accepting HTTP connections yet" — for which no portable, event-driven OS
+//! signal exists (there is no cross-platform "a process just began
+//! listening on this port" notification short of invasive process
+//! instrumentation). It is unrelated to the dev-loop's file-change and
+//! shutdown machinery, which is genuinely event-driven end to end (see
+//! [`crate::dev_watcher`] and [`crate::dev_signal`]) per the framework's
+//! no-polling invariant for dev events; this poll terminates the moment the
+//! target responds, its process exits, cancellation fires, or the deadline
+//! passes — never an indefinite periodic loop.
 
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
@@ -11,7 +23,9 @@ const READY_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const READY_CONNECT_TIMEOUT: Duration = Duration::from_millis(25);
 const READY_READ_TIMEOUT: Duration = Duration::from_millis(25);
 
-/// Wait for a started loopback HTTP process to return a successful readiness response.
+/// Wait for a started loopback HTTP process to return a successful
+/// readiness response. The non-cancellable convenience wrapper around
+/// [`wait_for_loopback_http_ready_until_cancelled`].
 pub fn wait_for_loopback_http_ready(
 	process: &mut dyn StartedBuildProcess,
 	port: u16,
@@ -22,7 +36,11 @@ pub fn wait_for_loopback_http_ready(
 	wait_for_loopback_http_ready_until_cancelled(process, port, path, timeout, &cancel)
 }
 
-/// Wait for a started loopback HTTP process to become ready unless cancellation fires.
+/// Wait for a started loopback HTTP process to become ready unless
+/// cancellation fires: polls `GET <path>` against `127.0.0.1:<port>` until a
+/// `2xx` status line is observed, `process` reports it already exited (a
+/// definite failure — no point waiting further), `cancel` fires, or
+/// `timeout` elapses, whichever happens first.
 pub fn wait_for_loopback_http_ready_until_cancelled(
 	process: &mut dyn StartedBuildProcess,
 	port: u16,
@@ -62,7 +80,8 @@ pub fn wait_for_loopback_http_ready_until_cancelled(
 	}
 }
 
-/// Process readiness error.
+/// Error from [`wait_for_loopback_http_ready`] or
+/// [`wait_for_loopback_http_ready_until_cancelled`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProcessReadyError {
 	/// Ready port cannot be zero.

@@ -23,14 +23,26 @@ use crate::build_output::{create_dir_all_no_symlinks, resolve_workspace_path};
 /// Lock file name below the Vorma-owned output directory.
 pub const OUTPUT_LAYOUT_LOCK_FILE_NAME: &str = "build.lock";
 
-/// Held exclusive lock over one workspace output layout.
+/// Held exclusive lock over one workspace output layout, acquired via
+/// [`Self::acquire_for_workspace_output_layout`]. See the module doctrine
+/// comment above for who must hold this and for how long, and the critical
+/// deadlock-avoidance property the live-state child process depends on.
 pub struct OutputLayoutLock {
 	lock: ProcessLock,
 	lock_path: PathBuf,
 }
 
 impl OutputLayoutLock {
-	/// Acquire the output-layout lock for the given workspace root and dist dir.
+	/// Acquire the output-layout lock for the given workspace root and dist
+	/// dir. Not a blocking mutex: this is a heartbeat-based lease lock
+	/// (`paranoid::local_lock::ProcessLock`) — a fresh lease held by another
+	/// live process fails acquisition immediately
+	/// ([`OutputLayoutLockError::Acquire`]) rather than waiting, while a
+	/// lease whose heartbeat has gone stale (the owning process died
+	/// without releasing) is reclaimed automatically. Two build-entry
+	/// processes racing for the same workspace output layout therefore see
+	/// the loser fail fast with a clear "another build is already running
+	/// here" error, not a silent wait.
 	pub fn acquire_for_workspace_output_layout(
 		root_dir: &str,
 		dist_dir: &str,
@@ -47,8 +59,10 @@ impl OutputLayoutLock {
 	}
 
 	/// Move the lock to a new output layout, acquiring the replacement before
-	/// releasing the previous lock so no unlocked window exists. Returns the
-	/// previous Vorma output directory when the layout moved.
+	/// releasing the previous lock so no unlocked window exists. Returns
+	/// `None` when the target `root_dir`/`dist_dir` resolve to the same lock
+	/// path already held (a no-op), or the previous Vorma output directory
+	/// when the layout genuinely moved.
 	/*
 	The previous layout must NOT be deleted here: the currently committed
 	generation keeps serving from it until the new generation activates, and
@@ -119,7 +133,7 @@ fn acquire_process_lock(lock_path: &Path) -> Result<ProcessLock, OutputLayoutLoc
 	Ok(lock)
 }
 
-/// Output-layout lock error.
+/// Error from this module's output-layout lock functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OutputLayoutLockError {
 	/// Workspace root dir was empty.
@@ -181,7 +195,7 @@ mod tests {
 	}
 
 	#[test]
-	fn acquire_blocks_second_acquirer_until_release() {
+	fn acquire_fails_fast_for_second_acquirer_until_release() {
 		let (root, root_string) = temp_workspace_root();
 
 		let held =

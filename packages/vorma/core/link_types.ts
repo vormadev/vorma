@@ -1,14 +1,17 @@
 import type { LinkPropsBase } from "./types.ts";
 
+/** The route-state slice {@link make_link_props} needs — derived via {@link select_link_route_state}. */
 export type LinkRouteState = {
 	href: string;
 	matched_patterns: string[];
 };
 
+/** The work-state slice {@link make_link_props} needs — derived via {@link select_link_work_state}. */
 export type LinkWorkState = {
 	navigation_href: string | null;
 };
 
+/** {@link make_link_props}'s return: derived anchor props and event handlers to spread onto a rendered `<a>` element. */
 export type LinkPropsResult = {
 	is_external: boolean;
 	anchor_props: Record<string, unknown>;
@@ -21,6 +24,7 @@ export type LinkPropsResult = {
 	onTouchCancel?: (e: unknown) => void;
 };
 
+/** The navigation/prefetch/link-state functions {@link make_link_props} needs from the client core — supplied by each adapter's `create_adapter_base` wiring. */
 export type LinkNavFns = {
 	navigate: (args: {
 		href: string;

@@ -1,4 +1,16 @@
 //! Pure Vite plugin RPC contract handling.
+//!
+//! This is the inbound half of dev-time Vite communication: the running
+//! Vite plugin asks this crate's build process for its config, the public
+//! URL for a source path, or reports its own control port back
+//! ([`VitePluginRpcState::handle_rpc`] dispatches
+//! [`crate::vite_plugin_contract::VitePluginRpcRequest`]'s three variants).
+//! [`crate::vite_plugin_control`] is the outbound half (the build process
+//! telling the plugin something changed). The request-handling logic
+//! ([`VitePluginRpcState::handle_rpc`] and its private helpers) is pure —
+//! no I/O, fully testable without a real server — while
+//! [`LoopbackVitePluginRpcServer`] is the one place that actually binds a
+//! socket and serves it via axum.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -23,12 +35,16 @@ use crate::vite_plugin_contract::{
 	VITE_PLUGIN_TOKEN_HEADER, VitePluginConfig, VitePluginRpcRequest,
 };
 
-/// Maximum accepted Vite plugin RPC body size.
+/// Maximum accepted Vite plugin RPC body size: requests larger than this
+/// are rejected with `413 Payload Too Large` before JSON parsing, in
+/// [`VitePluginRpcState::handle_rpc`].
 pub const VITE_PLUGIN_RPC_BODY_LIMIT: usize = 64 * 1024;
 const CONTENT_TYPE_HEADER_VALUE_JSON: &str = "application/json";
 const CONTENT_TYPE_HEADER_VALUE_TEXT: &str = "text/plain; charset=utf-8";
 
-/// Started Vite plugin RPC server handle.
+/// Started Vite plugin RPC server handle, returned by
+/// [`VitePluginRpcServer::start_vite_plugin_rpc_server`]. Dropping this
+/// value sends a graceful-shutdown signal and joins the serving thread.
 #[derive(Debug)]
 pub struct VitePluginRpcServerHandle {
 	port: u16,
@@ -74,15 +90,19 @@ impl Drop for VitePluginRpcServerHandle {
 }
 
 /// Runtime boundary that serves Vite plugin RPC requests while Vite runs.
+/// Trait so tests can substitute a fake that records the served state
+/// without binding a real socket; [`LoopbackVitePluginRpcServer`] is the
+/// production implementation.
 pub trait VitePluginRpcServer {
-	/// Start serving the provided Vite plugin RPC state.
+	/// Start serving the provided Vite plugin RPC state on an OS-assigned
+	/// loopback port.
 	fn start_vite_plugin_rpc_server(
 		&mut self,
 		state: VitePluginRpcState,
 	) -> Result<VitePluginRpcServerHandle, VitePluginServerError>;
 }
 
-/// Vite plugin RPC server start error.
+/// Error from [`VitePluginRpcServer::start_vite_plugin_rpc_server`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VitePluginServerError {
 	message: String,
@@ -105,7 +125,10 @@ impl std::fmt::Display for VitePluginServerError {
 
 impl std::error::Error for VitePluginServerError {}
 
-/// Loopback Axum implementation of the Vite plugin RPC server boundary.
+/// Loopback Axum implementation of the Vite plugin RPC server boundary:
+/// binds an OS-assigned ephemeral port and serves
+/// [`VitePluginRpcState::handle_rpc`]'s pure request handling through it on
+/// a dedicated thread with its own current-thread tokio runtime.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LoopbackVitePluginRpcServer;
 
@@ -138,7 +161,15 @@ impl VitePluginRpcServer for LoopbackVitePluginRpcServer {
 	}
 }
 
-/// Vite plugin RPC state for one generation candidate.
+/// Vite plugin RPC state for one generation candidate: the config and
+/// public filemap the plugin currently sees, plus the reported Vite
+/// control port, all behind a shared lock so
+/// [`Self::update_generation_contract`] can swap them for a fresh
+/// generation while requests keep being served. `Clone`-cheap (`Arc`-backed
+/// internally); this is the value handed to both
+/// [`VitePluginRpcServer::start_vite_plugin_rpc_server`] and
+/// [`crate::dev_build`]'s own generation-update code, so both sides see the
+/// same live state.
 #[derive(Clone, Debug)]
 pub struct VitePluginRpcState {
 	token: String,
@@ -185,7 +216,10 @@ impl VitePluginRpcState {
 		}
 	}
 
-	/// Create Vite plugin RPC state from prepared build inputs.
+	/// Create Vite plugin RPC state from prepared build inputs: the
+	/// convenience constructor most callers use, reading the initial config
+	/// and public filemap straight off an already-prepared
+	/// [`PreparedBuildInputs`] instead of supplying them separately.
 	pub fn from_prepared_build_inputs(
 		token: impl Into<String>,
 		inputs: &PreparedBuildInputs,
@@ -197,7 +231,13 @@ impl VitePluginRpcState {
 		)
 	}
 
-	/// Replace the generation contract served to the Vite plugin.
+	/// Replace the generation contract served to the Vite plugin: after this
+	/// call, [`Self::handle_rpc`]'s `Cfg`/`Hash` responses reflect the new
+	/// `config`/`public_filemap` for every subsequent request. Callers
+	/// typically follow this with a
+	/// [`crate::vite_plugin_control::VitePluginControlClient`] notification
+	/// so the plugin actually re-fetches rather than serving stale cached
+	/// values.
 	pub fn update_generation_contract(
 		&self,
 		config: VitePluginConfig,
@@ -220,7 +260,9 @@ impl VitePluginRpcState {
 		self.update_generation_contract(contract.config, contract.public_filemap);
 	}
 
-	/// Current Vite control port reported by the plugin.
+	/// Current Vite control port reported by the plugin, if
+	/// [`VitePluginRpcRequest::SetPort`] has been handled successfully at
+	/// least once for this state. `None` until then.
 	pub fn control_port(&self) -> Option<u16> {
 		self.inner
 			.lock()
@@ -228,7 +270,11 @@ impl VitePluginRpcState {
 			.control_port
 	}
 
-	/// Record the Vite control port reported by the plugin.
+	/// Record the Vite control port reported by the plugin. Called only
+	/// after [`Self::handle_rpc`] has confirmed the reported port is
+	/// actually reachable (see the doctrine comment on the private
+	/// `loopback_control_port_reachable` in this module for why that check
+	/// happens before recording rather than at every later use).
 	pub fn record_control_port(&self, port: u16) {
 		self.inner
 			.lock()
@@ -236,7 +282,11 @@ impl VitePluginRpcState {
 			.control_port = Some(port);
 	}
 
-	/// Handle one Vite plugin RPC request.
+	/// Handle one Vite plugin RPC request: validates the auth token header
+	/// (see [`crate::vite_plugin_contract::VITE_PLUGIN_TOKEN_HEADER`]),
+	/// enforces [`VITE_PLUGIN_RPC_BODY_LIMIT`], parses the JSON body as a
+	/// [`VitePluginRpcRequest`], and dispatches to the matching handler.
+	/// Pure: no I/O, so this is directly testable without a server.
 	pub fn handle_rpc(&self, headers: &HeaderMap, body: &[u8]) -> VitePluginRpcResponse {
 		if let Some(response) = self.token_error_response(headers) {
 			return response;
@@ -378,7 +428,11 @@ async fn axum_vite_plugin_rpc_handler(
 	axum_response
 }
 
-/// Pure Vite plugin RPC response.
+/// Pure Vite plugin RPC response: a status, content type, and body, decoupled
+/// from any actual HTTP framework type — [`VitePluginRpcState::handle_rpc`]'s
+/// return type, adapted into a real axum `Response` only at the one call
+/// site that actually serves HTTP (the private `axum_vite_plugin_rpc_handler`
+/// in this module).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VitePluginRpcResponse {
 	status: StatusCode,

@@ -1,4 +1,14 @@
 //! Resource form-data input decoding.
+//!
+//! Use [`FormData`] as a `resource!`(app!) declaration's `input` type in place of a
+//! typed struct when a resource needs to accept `application/x-www-form-urlencoded`,
+//! `multipart/form-data` (including file uploads), or GET/HEAD query-string form input —
+//! the framework parses the request into [`FormData`] before the handler runs, so a
+//! [`ResourceCtx::input`](crate::ResourceCtx::input) call returns an already-decoded
+//! [`FormData`] rather than the raw body. Reach for a typed `input` struct with
+//! `#[derive(TsGen)]` instead whenever the shape is known ahead of time — `FormData`
+//! exists for the specific cases a typed struct cannot express (mixed text/file
+//! multipart submissions, or a form shape genuinely decided at runtime).
 
 use bytes::Bytes;
 use futures_util::stream;

@@ -8,12 +8,28 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const malformed_output_message = "Malformed Vorma client matcher output";
 
+/** A path's match result against a {@link ClientMatcher}'s registered patterns — the full outermost-to-innermost matched chain (`patterns`), plus the union of params/splat values across it. */
 export type ClientMatcherNestedMatch = {
 	params: Record<string, string>;
 	splat_values: string[];
 	patterns: string[];
 };
 
+/**
+ * A WASM-backed route matcher running the same matching engine
+ * (`vorma-matcher`) the Rust server uses, exposed for client-side use where
+ * the router needs to know which patterns a path would match before a
+ * server round-trip — e.g. deciding which client loaders to prestart
+ * before the response arrives. Built via `create_client_matcher()`; the
+ * router core owns the one instance it needs internally, so an app rarely
+ * constructs one directly.
+ *
+ * `register_pattern` teaches the matcher one view pattern (patterns
+ * accumulate; there is no unregister); `find_nested_matches` matches a path
+ * against every registered pattern; `free` releases the underlying WASM
+ * matcher instance — call it once a matcher is no longer needed, since WASM
+ * memory is not garbage-collected by the JS runtime.
+ */
 export type ClientMatcher = {
 	register_pattern: (pattern: string) => void;
 	find_nested_matches: (path: string) => ClientMatcherNestedMatch | null;

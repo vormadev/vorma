@@ -18,7 +18,8 @@ pub(crate) const VORMA_OUTPUT_GITIGNORE_FILE_NAME: &str = ".gitignore";
 /// Self-ignore contents covering every generated file below the Vorma output directory.
 pub(crate) const VORMA_OUTPUT_GITIGNORE_CONTENT: &str = "*\n";
 
-/// Report returned after writing candidate generation outputs.
+/// Report returned after [`write_generation_candidate_outputs`] writes a
+/// generation's runtime manifest and generated TypeScript to disk.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BuildOutputWriteReport {
 	manifest_path: PathBuf,
@@ -53,7 +54,10 @@ impl BuildOutputWriteReport {
 	}
 }
 
-/// Report returned after writing generated TypeScript contracts.
+/// Report returned after [`write_typescript_contracts`] writes generated
+/// TypeScript on its own, ahead of the rest of a generation's outputs (the
+/// frontend build needs to import it before the rest of the generation is
+/// ready).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TypeScriptOutputWriteReport {
 	path: PathBuf,
@@ -74,7 +78,10 @@ impl TypeScriptOutputWriteReport {
 	}
 }
 
-/// Write generated TypeScript contracts before the frontend build imports them.
+/// Write generated TypeScript contracts before the frontend build imports
+/// them. Writes are atomic and skip touching an already-byte-identical file
+/// (see [`write_file_atomically`]'s doctrine comment), so this is safe to
+/// call on every rebuild even when the generated content did not change.
 pub fn write_typescript_contracts(
 	plan: &BuildProjectionPlan,
 	contracts: &GeneratedTypeScriptContracts,
@@ -84,7 +91,9 @@ pub fn write_typescript_contracts(
 	Ok(TypeScriptOutputWriteReport { path, bytes })
 }
 
-/// Write candidate manifest and generated TypeScript outputs.
+/// Write a generation candidate's runtime manifest, generated TypeScript,
+/// and the Vorma output directory's self-`.gitignore`, all atomically (see
+/// [`write_file_atomically`]).
 pub fn write_generation_candidate_outputs(
 	candidate: &GenerationCandidate,
 	mode: ManifestMode,
@@ -114,7 +123,10 @@ pub fn write_generation_candidate_outputs(
 	})
 }
 
-/// Generation output paths.
+/// Filesystem paths a generation candidate's outputs will be (or were)
+/// written to, computed without touching the filesystem. Split out from
+/// [`generation_candidate_output_paths`]'s writing counterpart so a caller
+/// can learn where outputs will land before committing to write them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GenerationOutputPaths {
 	manifest_path: PathBuf,
@@ -157,7 +169,7 @@ pub fn generation_candidate_output_paths(
 	})
 }
 
-/// Build output write error.
+/// Error from this module's output-writing and output-path functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuildOutputWriteError {
 	/// Build root directory was empty.
@@ -257,6 +269,14 @@ fn write_typescript_contracts_to_path(
 	Ok(bytes.len())
 }
 
+/*
+A no-op when the existing file already holds identical bytes: dev rebuilds
+call this on every generation even when a given output did not actually
+change, and touching the mtime unconditionally would trigger downstream
+watchers (Vite's own file watch, this crate's own dev watcher) with nothing
+new to react to. Otherwise write to a sibling temp file and rename into
+place, so a concurrent reader never observes a partially-written file.
+*/
 pub(crate) fn write_file_atomically(
 	path: &Path,
 	bytes: &[u8],

@@ -1,3 +1,16 @@
+/*
+The `vorma/__internal` entry point: the framework-agnostic core every
+official UI adapter (`vorma/react`, `vorma/preact`, `vorma/solid`) is built
+from, re-exported here as a single barrel. The `__` prefix is deliberate —
+this surface is internal, unstable, and undocumented by convention (see
+`docs/maintainer/tickets/board-api-coverage/PRESSURE_TEST_CENSUS.md`); it
+exists so the three adapters share one implementation, not as a
+general-purpose public API. Each re-exported item's real documentation
+lives at its own definition (imported below) rather than being duplicated
+here — this file has no logic and no docs of its own to add. A custom
+adapter for a UI framework Vorma does not ship officially is the intended,
+if unsupported, consumer of this module.
+*/
 export { MutationError, QueryError, create_typed_api_client } from "./api_client.ts";
 export type { ClientMatcher, ClientMatcherNestedMatch } from "./client_wasm/matcher.ts";
 export {

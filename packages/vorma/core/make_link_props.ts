@@ -71,6 +71,11 @@ function register_input_modality(): void {
 	window.addEventListener("pointermove", on_pointer);
 }
 
+// Public: adapter-facing selectors that narrow the full RouteState/WorkState
+// down to exactly the fields `Link`'s active/pending computation needs, so
+// each adapter's `Link` component can subscribe via its own state hook
+// with a selector (`useRouteState(select_link_route_state)`) instead of
+// re-rendering on every unrelated route/work change.
 export function select_link_route_state(route: RouteState): LinkRouteState {
 	return {
 		href: route.href,
@@ -99,6 +104,20 @@ function strip_keys(
 	return out;
 }
 
+/**
+ * Derive a `Link` component's render props from raw incoming props: strips
+ * Vorma-specific props from what should land on the actual `<a>` element,
+ * computes active/pending `data-*` attributes (see
+ * `LINK_ACTIVE_EXACT_ATTR`/etc. and {@link LinkAttributeMatchRules}), and
+ * returns typed click/pointer event handlers implementing prefetch-on-intent,
+ * pointerdown navigation, and the browser-default-respecting click
+ * interception (modified clicks, non-primary buttons, and non-self
+ * `target`s pass through untouched).
+ *
+ * Every official adapter's `Link` component is a thin wrapper over this —
+ * a custom adapter on `vorma/__internal` would use it the same way rather
+ * than re-implementing link semantics.
+ */
 export function make_link_props(
 	props: Record<string, unknown>,
 	nav: LinkNavFns,

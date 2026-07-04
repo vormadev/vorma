@@ -48,10 +48,35 @@ fn for_each_segment<'p>(path: &'p str, mut push: impl FnMut(&'p str)) {
 	}
 }
 
-/// Split a path or pattern into slash-separated segments.
+/// Split a path or pattern string into its slash-separated segments.
 ///
-/// Segments borrow from the input; matching pays no per-segment
-/// allocation.
+/// An empty string yields no segments; a bare `/` yields one empty
+/// segment (the root); at most one trailing empty segment is ever
+/// produced no matter how many trailing slashes the input has (`"/a/"`
+/// and `"/a///"` both yield `["a", ""]`); and an empty segment produced
+/// anywhere *other* than a lone trailing position is silently dropped
+/// rather than represented (`"/a//b"` yields `["a", "b"]`, not
+/// `["a", "", "b"]`). This function does not itself decide whether a
+/// path is well-formed — matching's own doubled-slash rejection runs
+/// as a separate check before splitting, which is why a caller working
+/// directly with `parse_segments` output cannot recover "was there a
+/// doubled slash here" from the segment list alone.
+///
+/// This is the same segment splitter matching and pattern registration
+/// use internally; it is exposed for applications and framework layers
+/// that need to reason about a path's segment shape directly — for
+/// example rendering breadcrumbs, or deriving a nested-layout hierarchy
+/// from a request path outside the matcher itself. Segments borrow
+/// from `path`, so splitting costs no per-segment allocation.
+///
+/// ```
+/// use vorma_matcher::parse_segments;
+///
+/// assert_eq!(parse_segments("/users/42"), vec!["users", "42"]);
+/// assert_eq!(parse_segments("/"), vec![""]);
+/// assert_eq!(parse_segments(""), Vec::<&str>::new());
+/// assert_eq!(parse_segments("/a///"), vec!["a", ""]);
+/// ```
 pub fn parse_segments(path: &str) -> Vec<&str> {
 	let mut segs = Vec::with_capacity(8);
 	for_each_segment(path, |seg| segs.push(seg));

@@ -1,4 +1,12 @@
 //! Public-style document builder lowered into document contracts.
+//!
+//! Every HTML response Vorma serves comes from one [`Document`]: root `<html>`/`<body>`
+//! attributes, default head elements applied to every page, and any body-prefix markup.
+//! [`AppConfig::document`](crate::AppConfig::document) is a [`DocumentBuilder`] — an
+//! async function from a per-request [`DocumentBuildContext`] to a [`Document`] — so the
+//! shell can vary per request (a `lang` attribute from an `Accept-Language` header, a
+//! `data-*` attribute carrying the request path) while still being declared once, in one
+//! place, the same way views/resources/middleware are.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -23,7 +31,15 @@ const DOCUMENT_ATTR_ID: &str = "id";
 const DOCUMENT_ATTR_LANG: &str = "lang";
 const DOCUMENT_DATA_ATTR_PREFIX: &str = "data-";
 
-/// Build-safe document shell and default head declaration.
+/// One rendered document shell: root element attributes and default head content.
+///
+/// Built inside a [`DocumentBuilder`]'s async function — construct one with
+/// [`Document::new`], mutate it through [`html`](Self::html)/[`body`](Self::body)
+/// (root-element attributes) and [`head`](Self::head)/
+/// [`head_dedupe_rules`](Self::head_dedupe_rules) (default head elements and merge
+/// rules), and return it. A matched request's view chain then layers its own per-view
+/// head contributions (`ctx.head()`, a [`HeadHandle`](crate::HeadHandle)) on top of
+/// this default.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Document {
 	html_attributes: Vec<DocumentAttributeContract>,
@@ -272,7 +288,13 @@ impl<'a> From<&'a DocumentElementContract> for DocumentBuildIdentityElement<'a> 
 	}
 }
 
-/// Context passed to runtime document builders.
+/// Context passed to a [`DocumentBuilder::new`] function.
+///
+/// Exposes the current request ([`request`](Self::request), the same
+/// [`HttpRequest`](crate::HttpRequest) handler contexts see) and
+/// [`public_url`](Self::public_url) for resolving a public static asset's committed URL —
+/// the same accessor shape a view/resource ctx exposes, so building the document shell
+/// looks and works like any other handler.
 #[derive(Clone, Debug)]
 pub struct DocumentBuildContext {
 	request: RequestInput,
@@ -317,6 +339,13 @@ type DocumentBuilderFuture =
 	Pin<Box<dyn Future<Output = Result<Document, String>> + Send + 'static>>;
 
 /// Async document builder used by runtime HTML rendering.
+///
+/// Assign one to [`AppConfig::document`](crate::AppConfig::document) to declare an app's
+/// document shell. The default ([`DocumentBuilder::default`]) is
+/// `Document::new()` with no per-request variation — most apps build one document once,
+/// but the async-function shape exists precisely so a document CAN read the request
+/// (through [`DocumentBuildContext::request`]) or resolve a public asset URL (through
+/// [`DocumentBuildContext::public_url`]) while building it.
 #[derive(Clone)]
 pub struct DocumentBuilder {
 	build: Arc<dyn Fn(DocumentBuildContext) -> DocumentBuilderFuture + Send + Sync>,
@@ -324,6 +353,17 @@ pub struct DocumentBuilder {
 
 impl DocumentBuilder {
 	/// Create a document builder from an async function.
+	///
+	/// ```
+	/// let builder = vorma::DocumentBuilder::new(|context| async move {
+	///     let mut document = vorma::Document::new();
+	///     document.html().lang("en").class("dark");
+	///     document.head().title("Board").meta_charset("utf-8");
+	///     document.body().data("path", context.request().path());
+	///     Ok(document)
+	/// });
+	/// # let _ = builder;
+	/// ```
 	pub fn new<F, Fut>(build: F) -> Self
 	where
 		F: Fn(DocumentBuildContext) -> Fut + Send + Sync + 'static,

@@ -10,12 +10,20 @@ use crate::pattern::{Pattern, compare_specificity};
 use crate::segment::SegmentKind;
 use crate::tree::{NodeType, SegmentNode};
 
-/// Route matcher for whole-path matching: one request path resolves to
-/// the single best registered pattern.
+/// Immutable route matcher for whole-path matching: one request path
+/// resolves to the single best registered pattern, via
+/// [`FlatMatcher::find_best_match`].
 ///
-/// Flat and nested matching are distinct semantics (they treat trailing
-/// slashes and pattern coverage differently), so each lives on its own
-/// matcher type; a builder finishes into exactly one of them.
+/// Built by [`MatcherBuilder::finish_flat`]. Flat and nested matching
+/// are distinct semantics (they treat trailing slashes and pattern
+/// coverage differently — see [`NestedMatcher`]), so each lives on its
+/// own matcher type; a builder finishes into exactly one of them, never
+/// both. Cloning a `FlatMatcher` is a real (if cheap, reference-counted)
+/// clone of the whole route table, not a handle to shared mutable
+/// state — there is no mutable state to share, since registration
+/// happens entirely before a matcher exists.
+///
+/// [`MatcherBuilder::finish_flat`]: crate::MatcherBuilder::finish_flat
 #[derive(Clone, Debug)]
 pub struct FlatMatcher {
 	engine: MatcherEngine,
@@ -30,18 +38,59 @@ impl FlatMatcher {
 		&self.engine
 	}
 
-	/// Find the best single pattern match for a concrete path.
+	/// Resolve `real_path` to the single best-matching registered
+	/// pattern, or `None` if no registered pattern accepts it.
+	///
+	/// `real_path` is a concrete request path, not pattern text — it is
+	/// never itself interpreted for `:name` or `*` syntax. Path hygiene
+	/// follows the crate's uniform dirty-path rule: at most one
+	/// trailing slash is tolerated as noise, and any doubled slash
+	/// (mid-path or trailing) means no match, since it spells an empty
+	/// segment and an empty segment never matches anything. When
+	/// several registered patterns are capable of matching the same
+	/// path, [`compare_specificity`] names the winner.
+	///
+	/// ```
+	/// use vorma_matcher::{MatcherBuilder, Options};
+	///
+	/// let mut builder = MatcherBuilder::new(Options::default())?;
+	/// builder.register_pattern("/users/export")?;
+	/// builder.register_pattern("/users/:user_id")?;
+	/// let matcher = builder.finish_flat();
+	///
+	/// // A literal segment outranks a dynamic one at the same position.
+	/// let found = matcher.find_best_match("/users/export").unwrap();
+	/// assert_eq!(found.pattern.normalized_pattern(), "/users/export");
+	///
+	/// let found = matcher.find_best_match("/users/42").unwrap();
+	/// assert_eq!(found.pattern.normalized_pattern(), "/users/:user_id");
+	/// assert_eq!(&found.params["user_id"], "42");
+	///
+	/// // A doubled slash matches nothing, for any pattern kind.
+	/// assert!(matcher.find_best_match("/users//export").is_none());
+	/// # Ok::<(), String>(())
+	/// ```
+	///
+	/// [`compare_specificity`]: crate::compare_specificity
 	pub fn find_best_match(&self, real_path: &str) -> Option<Match> {
 		self.engine.find_best_match(real_path)
 	}
 }
 
-/// Route matcher for nested chain matching: one request path resolves to
-/// an ordered chain of registered patterns from outermost to innermost.
+/// Immutable route matcher for nested chain matching: one request path
+/// resolves to an ordered chain of registered patterns from outermost
+/// to innermost, via [`NestedMatcher::find_nested_matches`].
 ///
-/// Flat and nested matching are distinct semantics (they treat trailing
-/// slashes and pattern coverage differently), so each lives on its own
-/// matcher type; a builder finishes into exactly one of them.
+/// Built by [`MatcherBuilder::finish_nested`]. This is the shape a
+/// file-system-routed, layout-nesting framework wants: a path like
+/// `/docs/guide` can resolve to the root layout, the `/docs` layout,
+/// and the `/docs/guide` page, in that outer-to-inner order, in one
+/// call. Flat and nested matching are distinct semantics (they treat
+/// trailing slashes and pattern coverage differently — see
+/// [`FlatMatcher`]), so each lives on its own matcher type; a builder
+/// finishes into exactly one of them, never both.
+///
+/// [`MatcherBuilder::finish_nested`]: crate::MatcherBuilder::finish_nested
 #[derive(Clone, Debug)]
 pub struct NestedMatcher {
 	engine: MatcherEngine,
@@ -56,7 +105,48 @@ impl NestedMatcher {
 		&self.engine
 	}
 
-	/// Find the ordered nested pattern chain for a concrete path.
+	/// Resolve `real_path` to its ordered nested match chain, from
+	/// outermost to innermost registered pattern, or `None` if no chain
+	/// covers the path.
+	///
+	/// `real_path` is a concrete request path, not pattern text. Path
+	/// hygiene follows the same dirty-path rule as
+	/// [`FlatMatcher::find_best_match`]: at most one trailing slash is
+	/// noise, and a doubled slash means no match. Two nested-specific
+	/// rules matter here:
+	///
+	/// - **Index patterns claim their parent path.** Registering only
+	///   `/docs/` (no `/docs` sibling required) is enough for
+	///   `find_nested_matches("/docs")` to succeed — the request need
+	///   not itself carry the trailing slash.
+	/// - **The catch-all cover rule.** A registered root catch-all
+	///   (`/*`) is the natural custom-404 answer, but a prefix hit is
+	///   never a match on its own: `/*` yields to another registered
+	///   pattern only when that pattern's own chain actually completes
+	///   through the requested path. When nothing else covers the path,
+	///   `/*` claims it — which is what makes it a complete answer for
+	///   "render a not-found page" rather than a pattern that
+	///   accidentally shadows deeper routes.
+	///
+	/// ```
+	/// use vorma_matcher::{MatcherBuilder, Options};
+	///
+	/// let mut builder = MatcherBuilder::new(Options::default())?;
+	/// builder.register_pattern("")?; // root layout
+	/// builder.register_pattern("/docs/")?; // index: claims "/docs"
+	/// builder.register_pattern("/docs/:page")?;
+	/// let matcher = builder.finish_nested();
+	///
+	/// let found = matcher.find_nested_matches("/docs/guide").unwrap();
+	/// let chain: Vec<&str> = found
+	///     .matches
+	///     .iter()
+	///     .map(|m| m.pattern.normalized_pattern())
+	///     .collect();
+	/// assert_eq!(chain, vec!["", "/docs/:page"]);
+	/// assert_eq!(&found.params["page"], "guide");
+	/// # Ok::<(), String>(())
+	/// ```
 	pub fn find_nested_matches(&self, real_path: &str) -> Option<NestedMatches> {
 		self.engine.find_nested_matches(real_path)
 	}
@@ -491,6 +581,11 @@ fn flatten_and_sort(
 
 	let last = results.last()?;
 
+	// The catch-all cover rule, restated: the sorted leaf is the deepest
+	// surviving candidate, but "deepest we found" is not the same as
+	// "actually covers the whole path." A non-splat, non-catch-all leaf
+	// shorter than the real path is a dead prefix with nothing beneath
+	// it to complete the chain — not a match.
 	if !last.last_seg_is_non_root_splat
 		&& !last.is_root_catch_all
 		&& last.normalized_segments.len() < real_segs.len()

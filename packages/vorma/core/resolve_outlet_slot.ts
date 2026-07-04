@@ -4,6 +4,20 @@ import type { RouteErrorState } from "./types.ts";
 type ComponentFn = (props: any) => any;
 type ErrorBoundaryFn = (props: { error: unknown }) => any;
 
+/**
+ * What `RootOutlet` renders at a given depth, as decided by
+ * `resolve_outlet_slot` — adapter-internal (each `RootOutlet`
+ * implementation reads this to pick its render branch); an app never
+ * constructs or reads one directly.
+ *
+ * - `"component"`: the matched view's own component.
+ * - `"error"`: an error boundary, for a depth at or past where the current
+ *   route's error originated.
+ * - `"pass_through"`: no component defined at this depth (a route-less
+ *   layout segment) — render the next-deeper outlet directly.
+ * - `"empty"`: nothing more to render (past the leaf of the matched
+ *   chain, or a plain layout with no children matched).
+ */
 export type OutletSlot =
 	| { kind: "component"; component: ComponentFn }
 	| {
@@ -82,6 +96,12 @@ export function create_outlet_slot_resolver(): OutletSlotResolver {
 	};
 }
 
+/**
+ * A stable React/Solid/Preact list key for one matched route entry —
+ * pattern plus module URL, so HMR module swaps and pattern changes both
+ * produce a genuinely new key (forcing a clean remount) while an unchanged
+ * entry keeps its identity across re-renders.
+ */
 export function get_entry_key(entry: RouteRenderEntry): string {
 	return `${entry.pattern}::${entry.module_url}`;
 }

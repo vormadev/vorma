@@ -1,4 +1,11 @@
 //! Development generation assembly and activation.
+//!
+//! Where dev builds diverge from production: view/entry client modules
+//! resolve to `http://127.0.0.1:<vite_server_port>/...` URLs served by the
+//! running Vite dev server instead of production's built/hashed bundle
+//! URLs, and the runtime manifest carries dev-only metadata (the Vite and
+//! dev-mux ports, the dev refresh token) production manifests never have.
+//! See [`crate::production_generation`] for the production counterpart.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -27,7 +34,12 @@ use crate::vite_plugin_contract::{VitePluginConfigError, package_manager_relativ
 
 const DEV_LOOPBACK_HOST: &str = "127.0.0.1";
 
-/// Dev runtime ports and refresh token.
+/// Dev runtime ports and refresh token: the live facts a generation needs
+/// to project dev-only client module URLs and manifest metadata (see the
+/// module docs above). Ports are `i32` rather than `u16` because they carry
+/// straight into [`vorma_contract::runtime_manifest::RuntimeManifest`]'s
+/// own `i32` port fields, which the browser-facing JSON manifest and
+/// generated TypeScript read as plain numbers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevRuntimeInputs {
 	vite_server_port: i32,
@@ -65,7 +77,12 @@ impl DevRuntimeInputs {
 	}
 }
 
-/// Prepared dev generation artifacts before activation.
+/// Prepared dev generation artifacts before activation: everything a
+/// generation candidate needs, assembled but not yet built into a candidate
+/// or published to disk. Kept as a distinct step from activation so a dev
+/// session can prepare once and activate multiple times against different
+/// live app-build contracts (used when the app server binary itself did
+/// not need to rebuild, only the graph reread).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedDevGeneration {
 	public_static_outputs: PreparedPublicStaticOutputs,
@@ -102,7 +119,8 @@ impl PreparedDevGeneration {
 	}
 }
 
-/// Report returned after publishing a committed dev generation.
+/// Report returned after publishing a committed dev generation's public
+/// static files and runtime manifest/generated-TypeScript outputs to disk.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevOutputPublishReport {
 	public_static: PublicStaticPublishReport,
@@ -284,7 +302,8 @@ pub(crate) fn publish_cached_static_candidate_outputs(
 	})
 }
 
-/// Dev generation assembly error.
+/// Error from this module's dev generation preparation and publication
+/// functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevGenerationError {
 	/// Dev runtime inputs were invalid.

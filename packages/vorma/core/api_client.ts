@@ -51,6 +51,13 @@ class ApiErrorBase<T = never> extends Error {
 	}
 }
 
+/**
+ * Thrown by {@link ToApiClient.queryOrThrow} when the query fails.
+ *
+ * Carries the full typed {@link QueryResult} failure variant on `result`
+ * (the response, if one was received, and the server's error string), so a
+ * `catch` block gets structured data instead of just `error.message`.
+ */
 export class QueryError<T = never> extends ApiErrorBase<T> {
 	constructor(result: Extract<QueryResult<T>, { success: false }>) {
 		super(result);
@@ -58,6 +65,12 @@ export class QueryError<T = never> extends ApiErrorBase<T> {
 	}
 }
 
+/**
+ * Thrown by {@link ToApiClient.mutateOrThrow} when the mutation fails.
+ *
+ * Carries the full typed {@link MutationResult} failure variant on `result`,
+ * the same shape {@link QueryError} carries for queries.
+ */
 export class MutationError<T = never> extends ApiErrorBase<T> {
 	constructor(result: Extract<MutationResult<T>, { success: false }>) {
 		super(result);
@@ -65,6 +78,15 @@ export class MutationError<T = never> extends ApiErrorBase<T> {
 	}
 }
 
+/**
+ * Build the typed {@link ToApiClient} object every adapter's
+ * `createVormaClient` exposes as `apiClient` — see {@link ToApiClient} for
+ * the full teaching documentation of what it does and its auto-revalidation
+ * default. `submit_fn` is the client core's own submit function, already
+ * wired to Vorma's redirect/build-skew/revalidation machinery; this layer
+ * only adds typed args, the identity-array key, and the throw-on-failure
+ * variants on top.
+ */
 export function create_typed_api_client<A extends AppConfig>(
 	submit_fn: SubmitFn,
 	decorator?: ToApiDecorator<A>,

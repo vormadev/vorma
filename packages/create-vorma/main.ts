@@ -19,7 +19,18 @@ import {
 	text,
 } from "@clack/prompts";
 
-// __TODO this pkg is completely out of date -- update it
+/*
+STALE — this entire CLI targets the retired Go-era Vorma framework (checks
+for a Go toolchain, creates/reuses a `go.mod`, runs a Go bootstrap program
+against `github.com/vormadev/vorma`). None of that applies to the current
+Rust/Vite Vorma this repo now is. Ticketed for a ground-up rewrite against
+the current framework: `docs/maintainer/tickets/create-vorma-rewrite/__TICKET.md`
+(sequenced after docs/API settle per the roadmap). This file has no
+exports — it is a bin script (`create-vorma`), not a library with a public
+API surface — so it is intentionally not documented as if its current
+Go-oriented logic were the intended, stable shape; treat every line below
+as scaffolding awaiting replacement, not a spec to extend.
+*/
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

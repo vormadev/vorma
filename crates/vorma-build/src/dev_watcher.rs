@@ -1,4 +1,28 @@
 //! Development filesystem watcher projected from the build watch plan.
+//!
+//! [`DevFileWatchPlan::compile`] turns a
+//! [`crate::build_plan::BuildDevWatchPlan`] into watch roots and
+//! path-classification rules; [`start_dev_file_watcher`] then registers a
+//! real OS-level `notify` watcher over those roots and classifies every
+//! delivered event through the plan, emitting [`DevFileChange`]s over an
+//! `mpsc` channel — this crate's own dev loop
+//! ([`crate::entrypoint`]) never touches `notify` directly. Registration
+//! currently watches whole root directories without pruning excluded
+//! subtrees at the OS level (only at classification time) — see the
+//! standing ticket `dev-watch-excludes-not-pruned-from-os-watch` for the
+//! wastefulness/robustness concern this leaves open; it does not affect
+//! correctness (every event classification-would-accept is still
+//! delivered).
+//!
+//! # Read-vs-write event gating is load-bearing
+//!
+//! The private `event_kind_mutates_source` function below has an extensive
+//! doctrine comment explaining why non-mutating filesystem events (bare
+//! reads) must never be classified: on Linux, a spawned compiler reading
+//! the very sources it is compiling would otherwise retrigger the watcher
+//! and cancel-restart the rebuild forever. This is frozen, hard-won
+//! behavior (the P001b fix) — do not weaken the gate without re-reading
+//! that comment in full.
 
 use std::collections::BTreeSet;
 use std::path::{Component, Path, PathBuf};
@@ -12,7 +36,14 @@ use path_slash::PathExt;
 
 use crate::build_plan::{BuildDevWatchIntent, BuildDevWatchPlan};
 
-/// Compiled dev filesystem watch plan.
+/// Compiled dev filesystem watch plan: the directories a `notify` watcher
+/// should register, plus the compiled entry/exclusion matchers
+/// [`Self::classify_path`] uses to turn a changed path into framework-level
+/// intents. Recompiled and swapped into a running watcher (via
+/// [`DevFileWatchPlanHandle::replace`]) on every generation, since
+/// per-generation facts like view modules and critical-CSS imports can
+/// change what a given path should mean without needing to restart the
+/// underlying OS watch.
 #[derive(Clone, Debug)]
 pub struct DevFileWatchPlan {
 	root_dir: PathBuf,
@@ -22,7 +53,12 @@ pub struct DevFileWatchPlan {
 }
 
 impl DevFileWatchPlan {
-	/// Compile a dev file watch plan from graph-derived watch entries.
+	/// Compile a dev file watch plan from graph-derived watch entries: parses
+	/// each entry's source path or glob (see the private `parse_watch_pattern`
+	/// and `normalize_watch_source` in this module), separating negated
+	/// `!...` patterns into exclusions from everything else, and derives the
+	/// set of directory roots a `notify` watcher should register from the
+	/// non-exclusion entries.
 	pub fn compile(
 		root_dir: impl Into<PathBuf>,
 		watch_plan: &BuildDevWatchPlan,
@@ -60,7 +96,12 @@ impl DevFileWatchPlan {
 		&self.watch_roots
 	}
 
-	/// Classify one changed path into framework-level watch intents.
+	/// Classify one changed path into framework-level watch intents: empty
+	/// (no watch entry matched, or an exclusion matched) or the set of
+	/// [`BuildDevWatchIntent`]s every matching non-exclusion entry
+	/// contributed. This is the pure classification logic
+	/// [`start_dev_file_watcher`]'s notify callback calls on every delivered
+	/// event's path.
 	pub fn classify_path(&self, path: impl AsRef<Path>) -> DevFileChange {
 		let Some(relative_path) = relative_event_path(&self.root_dir, path.as_ref()) else {
 			return DevFileChange::default();
@@ -226,7 +267,13 @@ impl CompiledDevWatchExclusion {
 	}
 }
 
-/// One framework-relevant filesystem change.
+/// One framework-relevant filesystem change: the accumulated set of
+/// [`BuildDevWatchIntent`]s from every changed path a batch of `notify`
+/// events classified. [`crate::entrypoint`]'s dev loop reads a change's
+/// `requires_*` predicates to decide what kind of rebuild it needs, if any
+/// — an empty change (see [`Self::is_empty`]) means every changed path was
+/// either unwatched or explicitly excluded, and is never dispatched as a
+/// rebuild.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DevFileChange {
 	paths: Vec<PathBuf>,
@@ -298,7 +345,10 @@ impl DevFileChange {
 	}
 }
 
-/// Started dev file watcher.
+/// Started dev file watcher, returned by [`start_dev_file_watcher`]. Owns
+/// the live `notify::RecommendedWatcher` (dropping this value stops
+/// watching) and the receiving end of the channel its callback publishes
+/// classified [`DevFileChange`]s to.
 pub struct StartedDevFileWatcher {
 	_watcher: notify::RecommendedWatcher,
 	rx: Receiver<Result<DevFileChange, DevWatcherError>>,
@@ -311,7 +361,11 @@ only event classification (entries/intents). Per-generation facts — view
 modules, declared assets, critical-CSS imports — stay current without
 restarting the OS watcher.
 */
-/// Handle for replacing the classification plan of a running watcher.
+/// Handle for replacing the classification plan of a running watcher, held
+/// by [`crate::entrypoint`]'s dev loop across the whole session and swapped
+/// after every generation via [`Self::replace`]. See the doctrine comment
+/// above this type for why replacing the plan never needs to touch the
+/// underlying OS watch roots.
 #[derive(Clone)]
 pub struct DevFileWatchPlanHandle {
 	plan: Arc<RwLock<Arc<DevFileWatchPlan>>>,
@@ -365,7 +419,10 @@ impl StartedDevFileWatcher {
 		collected
 	}
 
-	/// Wait for the next framework-relevant filesystem change.
+	/// Wait for the next framework-relevant filesystem change. Blocks on the
+	/// channel (never polls) and silently skips empty classifications
+	/// (unwatched or excluded paths) rather than returning them, so a caller
+	/// only ever observes changes the dev loop actually needs to act on.
 	pub fn recv(&self) -> Result<DevFileChange, DevWatcherError> {
 		loop {
 			let message = self.rx.recv().map_err(|_| DevWatcherError::Stopped)?;
@@ -376,9 +433,15 @@ impl StartedDevFileWatcher {
 		}
 	}
 
-	/// Wait for the next framework-relevant filesystem change, then keep collecting
-	/// additional relevant changes until the filesystem has been quiet for the settle
-	/// interval.
+	/// Wait for the next framework-relevant filesystem change, then keep
+	/// collecting additional relevant changes until the filesystem has been
+	/// quiet for the settle interval, merging everything seen into one
+	/// [`DevFileChange`]. This is the small post-event filesystem-settle
+	/// debounce the dev-loop invariants call for (event-driven, not a
+	/// periodic poll — the wait after the first event is itself a blocking
+	/// channel receive with a timeout, coalescing a burst of near-simultaneous
+	/// saves — e.g. an editor writing several files in one operation — into
+	/// one rebuild instead of one per file).
 	pub fn recv_settled(
 		&self,
 		settle_interval: Duration,
@@ -399,7 +462,14 @@ impl StartedDevFileWatcher {
 	}
 }
 
-/// Start the dev filesystem watcher.
+/// Start the dev filesystem watcher: registers a real `notify` watcher
+/// recursively over every root in `plan.watch_roots()`, and wires its
+/// callback to classify each delivered event through the plan's current
+/// state (see [`DevFileWatchPlan::classify_path`] and the
+/// `event_kind_mutates_source` gate documented at the top of this module)
+/// before publishing the result over the channel
+/// [`StartedDevFileWatcher::recv`]/[`StartedDevFileWatcher::recv_settled`]
+/// read from.
 pub fn start_dev_file_watcher(
 	plan: DevFileWatchPlan,
 ) -> Result<StartedDevFileWatcher, DevWatcherError> {
@@ -440,7 +510,8 @@ pub fn start_dev_file_watcher(
 	})
 }
 
-/// Dev filesystem watcher error.
+/// Error from [`DevFileWatchPlan::compile`], [`start_dev_file_watcher`], or
+/// a running watcher's receive methods.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevWatcherError {
 	/// Build root directory was empty.

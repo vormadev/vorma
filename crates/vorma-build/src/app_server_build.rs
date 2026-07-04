@@ -21,6 +21,19 @@ const CARGO_COMPILER_ARTIFACT_REASON: &str = "compiler-artifact";
 const CARGO_BIN_TARGET_KIND: &str = "bin";
 
 /// Build the app-server binary, then read live state from the built executable.
+///
+/// Runs `cargo build -p <cargo_package> --bin <cargo_bin>
+/// --message-format=json-render-diagnostics` through `runner`, parsing the
+/// streamed JSON build-message lines to find the resulting binary's path
+/// (falling back to package-id disambiguation when more than one bin target
+/// shares `cargo_bin`'s name — see [`AppServerBuildError::AmbiguousBinArtifact`]).
+/// Once the executable exists, `read_live_state` is invoked with its path:
+/// production callers run that executable once with the live-state build
+/// env key set (see [`crate::live_state_command`]) to read back the
+/// compiled framework graph without a second cargo invocation, since the
+/// app-server binary is the only app-linked binary in a Vorma project.
+/// `cancel` is threaded through to both the cargo run and the live-state
+/// read so a superseding file change can abort either half promptly.
 pub fn build_app_server_and_read_live_state_until_cancelled(
 	root_dir: impl Into<PathBuf>,
 	cargo_package: &str,
@@ -54,6 +67,11 @@ pub fn build_app_server_and_read_live_state_until_cancelled(
 }
 
 /// Build the app-server cargo build command without executing it.
+///
+/// The command construction half of
+/// [`build_app_server_and_read_live_state_until_cancelled`], split out so
+/// tests (and any future caller that needs the raw command) do not need a
+/// process runner to inspect exactly what gets invoked.
 pub fn app_server_build_command(
 	root_dir: impl Into<PathBuf>,
 	cargo_package: &str,
@@ -178,7 +196,8 @@ fn package_name_from_package_id(package_id: &str) -> Option<String> {
 		.map(str::to_owned)
 }
 
-/// App-server build error.
+/// Error from [`build_app_server_and_read_live_state_until_cancelled`] or
+/// [`app_server_build_command`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AppServerBuildError {
 	/// Build root directory was empty.

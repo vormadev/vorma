@@ -1,8 +1,49 @@
+/**
+ * Imperative handle for wiring non-Vorma async work into the global work
+ * indicator (see {@link WorkIndicatorOptions}).
+ *
+ * Vorma's own work — navigations, revalidations, and `apiClient` requests —
+ * is already reflected in the indicator automatically; nothing needs to call
+ * `track` for those. `track` exists for everything else the app wants the
+ * same progress bar to cover: a client-side file parse before upload, a
+ * one-off `fetch` that bypasses `apiClient`, a `@tanstack/react-query`
+ * mutation. Wrap the promise and the indicator counts it exactly like an
+ * in-flight Vorma navigation for as long as it is pending:
+ *
+ * ```
+ * await client.workIndicator.track(parseAttachmentBeforeUpload(file));
+ * ```
+ *
+ * `isActive` reports whether the indicator is currently showing (Vorma work
+ * or tracked work, after the configured start/stop delays), useful for a
+ * custom UI that reacts to indicator state directly instead of rendering an
+ * nprogress-style bar.
+ */
 export type WorkIndicator = {
 	track: <T>(promise: PromiseLike<T>) => Promise<T>;
 	isActive: () => boolean;
 };
 
+/**
+ * `ClientOptions.workIndicator` — an nprogress-shaped contract for driving a
+ * global loading bar from Vorma's navigation, revalidation, and API-request
+ * activity.
+ *
+ * `start`/`stop` are the only required fields — call whatever library or
+ * custom code shows/hides your bar (nprogress's own `start`/`done` slot in
+ * directly). Everything else tunes when start/stop actually fire:
+ *
+ * - `startDelayMs`/`stopDelayMs` (default 12ms each) debounce fast work so
+ *   the bar does not flash on-screen for near-instant requests.
+ * - `skipNavigations`/`skipApiRequests`/`skipRevalidations` exclude entire
+ *   categories of Vorma work from driving the indicator at all — useful when
+ *   only some kinds of activity should show a global bar. Per-call opt-outs
+ *   (`skipWorkIndicator` on `navigate`/`Link`/`apiClient` calls) layer on
+ *   top of these category-level switches.
+ *
+ * Work tracked through {@link WorkIndicator.track} always counts, regardless
+ * of these category switches — they only gate Vorma's own work.
+ */
 export type WorkIndicatorOptions = {
 	start: () => void;
 	stop: () => void;
@@ -13,12 +54,22 @@ export type WorkIndicatorOptions = {
 	skipRevalidations?: boolean;
 };
 
+// Internal: the client core's owned instance behind the public `WorkIndicator`
+// handle. `configure` applies user options at boot; `set_vorma_active` is the
+// one input the core drives from its own navigation/revalidation/apiRequest
+// state, kept separate from `indicator.track`'s app-driven tokens so both
+// sources can be active independently without stepping on each other.
 export type WorkIndicatorController = {
 	indicator: WorkIndicator;
 	configure: (options: WorkIndicatorOptions | undefined) => void;
 	set_vorma_active: (active: boolean) => void;
 };
 
+// Debounced show/hide state machine: `start`/`stop` fire only after
+// `startDelayMs`/`stopDelayMs` of continuous activity, so a burst of very
+// fast operations never flashes the bar. Vorma's own activity
+// (`set_vorma_active`) and app-tracked promises (`indicator.track`) share one
+// token set, so either source alone — or both together — keeps it visible.
 export function create_work_indicator(): WorkIndicatorController {
 	let options: WorkIndicatorOptions | undefined;
 	let visible = false;

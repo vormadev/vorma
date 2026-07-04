@@ -3,27 +3,71 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use crate::error::Result;
 use crate::key::TaskId;
 use crate::store::StoredOutcome;
-use crate::task::{ExecCtx, Task};
+use crate::task::{BoxFuture, ExecCtx, Task};
 
-type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 type OverrideFn<I, O, E> = dyn Fn(ExecCtx<E>, I) -> BoxFuture<Result<O, E>> + Send + Sync;
 
 /// Policy for tasks that do not have an explicit test override.
+///
+/// Set on [`TaskOverrides::new`]; applies to every task reachable through a
+/// [`Tasks`](crate::Tasks) runtime built with these overrides that has no
+/// matching [`TaskOverrides::replace`] entry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TaskOverrideMode {
 	/// Run the original task body when no override is registered.
+	///
+	/// The natural default: only the tasks you explicitly stub with
+	/// [`TaskOverrides::replace`] change behavior, everything else runs for
+	/// real.
 	RunUnmatched,
 	/// Return an error before running any unmatched task body.
+	///
+	/// A dry-run task graph's safety net: if a test intends to stub every
+	/// task an application flow reaches (so nothing accidentally hits a
+	/// real database or network call), `RequireOverride` turns "forgot to
+	/// stub one" into an immediate [`Error::MissingOverride`](crate::Error::MissingOverride)
+	/// instead of a silent real execution.
 	RequireOverride,
 }
 
 /// Typed task-body substitutions for tests and dry-run task graphs.
+///
+/// Built once with [`new`](Self::new) and a [`TaskOverrideMode`], then
+/// chained with [`replace`](Self::replace) calls (each one consumes and
+/// returns `Self`, so calls compose fluently), and finally supplied to
+/// [`TasksOptions::overrides`](crate::TasksOptions::overrides) when
+/// constructing a [`Tasks`](crate::Tasks) runtime. Every substitution is
+/// checked at replacement time to be that exact task's own input/output
+/// types — there is no way to register a substitute with the wrong shape
+/// for the task it replaces.
+///
+/// ```
+/// use vorma_tasks::{TaskOverrideMode, TaskOverrides, Tasks, TasksOptions};
+///
+/// vorma_tasks::task! {
+///     static GREETING: Task<String, String, &'static str> =
+///         memoized(|_ctx, name: String| async move { Ok(format!("Hello, {name}!")) });
+/// }
+///
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() {
+/// let overrides = TaskOverrides::new(TaskOverrideMode::RunUnmatched)
+///     .replace(&GREETING, |_ctx, name: String| async move { Ok(format!("Hi {name}")) });
+/// let tasks: Tasks<&'static str> = Tasks::new(TasksOptions {
+///     overrides: Some(overrides),
+///     ..TasksOptions::default()
+/// });
+/// let ctx = tasks.exec_ctx(vorma_tasks::CancelToken::new());
+///
+/// let greeting = GREETING.run(&ctx, "Ferris".to_owned()).await.unwrap();
+/// assert_eq!(*greeting, "Hi Ferris");
+/// # }
+/// ```
 pub struct TaskOverrides<E = Box<dyn std::error::Error + Send + Sync>> {
 	mode: TaskOverrideMode,
 	replacements: HashMap<TaskId, Arc<dyn Any + Send + Sync>>,
@@ -44,6 +88,13 @@ where
 	}
 
 	/// Replace one task body with a typed substitute.
+	///
+	/// The substitute participates in caching exactly like the original
+	/// body would: a `memoized` task's substitute result is still memoized
+	/// for the execution context, and an `extended_cache` task's
+	/// substitute result still populates the cross-execution-context
+	/// cache. Calling `replace` again for the same task overwrites the
+	/// earlier substitute rather than stacking both.
 	pub fn replace<I, O, F, Fut>(mut self, task: &Task<I, O, E>, f: F) -> Self
 	where
 		I: Clone + Eq + Hash + Send + Sync + 'static,

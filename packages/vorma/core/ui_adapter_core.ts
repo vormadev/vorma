@@ -35,6 +35,13 @@ export type {
 
 let client_matcher_factory_for_test: ClientMatcherFactory | null = null;
 
+/**
+ * Test-only injection point: replace the WASM client matcher `Link`'s
+ * active/pending logic loads lazily with a synchronous stand-in, so a test
+ * does not need to await real WASM instantiation to exercise link-state
+ * behavior. Returns a restore function; call it to put the previous
+ * factory (or the real WASM loader, if none was set) back.
+ */
 export function set_client_matcher_factory_for_test(
 	factory: ClientMatcherFactory | null,
 ): () => void {
@@ -45,6 +52,15 @@ export function set_client_matcher_factory_for_test(
 	};
 }
 
+/**
+ * Build the framework-agnostic core every official UI adapter's
+ * `createVormaClient` wraps: the client core itself, `Link`'s
+ * navigation/prefetch/active-state functions, the outlet-slot resolver, and
+ * the typed `passthrough` surface (`navigate`, `prefetch`, `apiClient`,
+ * etc.) — see {@link AdapterBase} for exactly what each field is. A custom
+ * adapter for a UI framework Vorma does not ship officially would start
+ * here rather than re-implementing this wiring.
+ */
 export function create_adapter_base<A extends AppConfig>(
 	app_config: A,
 	on_commit: DecomposedCommitFn,

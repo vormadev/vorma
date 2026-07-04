@@ -1,3 +1,15 @@
+/**
+ * Serialize a plain JSON-compatible value into `URLSearchParams`, the
+ * inverse direction of {@link parseSearchParams}: nested objects flatten to
+ * `.`-joined dotted keys, arrays repeat the same key once per element (an
+ * empty array/object serializes as one empty-string entry so its presence
+ * survives a round trip), `null`/`undefined` become an empty string, and
+ * every key at every nesting level sorts alphabetically for a
+ * deterministic, cache-friendly query string. Vorma's typed navigation and
+ * `apiClient` GET/HEAD calls use this internally to build query strings
+ * from typed `search`/`input`; reach for it directly only outside that
+ * typed surface.
+ */
 export function serializeToSearchParams(obj: unknown): URLSearchParams {
 	const params = new URLSearchParams();
 

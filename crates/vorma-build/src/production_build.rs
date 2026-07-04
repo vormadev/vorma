@@ -1,4 +1,12 @@
 //! Complete production build orchestration.
+//!
+//! [`build_and_activate_production_generation_on_loopback`] is production's
+//! counterpart to [`crate::dev_build::start_and_activate_dev_generation_on_loopback`]:
+//! prepare shared build inputs, write generated TypeScript, start a
+//! short-lived Vite plugin RPC server, run the production Vite build to
+//! completion, then assemble and commit the resulting generation — and
+//! return, unlike the dev build's long-lived server handle. See
+//! [`crate::dev_build`] for the dev-mode divergence.
 
 use vorma::build_interface::AppBuildContract;
 use vorma::build_interface::assets::ManifestMode;
@@ -23,7 +31,10 @@ use crate::vite_plugin_rpc::{
 	LoopbackVitePluginRpcServer, VitePluginRpcServer, VitePluginRpcState, VitePluginServerError,
 };
 
-/// Complete production build report.
+/// Complete production build report: the outputs one production build
+/// wrote. Returned by [`build_and_activate_production_generation_on_loopback`]
+/// and [`build_and_activate_production_generation`], and by
+/// [`crate::entrypoint::build_production`] to whatever called it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProductionBuildReport {
 	prebuild_typescript: TypeScriptOutputWriteReport,
@@ -44,7 +55,13 @@ impl ProductionBuildReport {
 	}
 }
 
-/// Run a complete production build using Vorma's standard loopback Vite plugin server.
+/// Run a complete production build using Vorma's standard loopback Vite
+/// plugin server: generates a secure Vite plugin token and delegates to
+/// [`build_and_activate_production_generation`] with production
+/// process/network implementations. This is what
+/// [`crate::entrypoint::build_production`] calls; tests use
+/// [`build_and_activate_production_generation`] directly with fakes
+/// instead.
 pub async fn build_and_activate_production_generation_on_loopback(
 	supervisor: &mut EpochSupervisor,
 	app: AppBuildContract,
@@ -58,7 +75,16 @@ pub async fn build_and_activate_production_generation_on_loopback(
 		.await
 }
 
-/// Run a complete production build and commit the resulting generation.
+/// Run a complete production build and commit the resulting generation:
+/// prepare shared build inputs, write generated TypeScript ahead of the
+/// frontend build, start the Vite plugin RPC server, run the Vite
+/// production build to completion, assemble the completed generation from
+/// the resulting Vite manifest, publish its outputs, and activate it on
+/// `supervisor` — returning the freshly committed generation alongside the
+/// report. `vite_plugin_server` and `process_runner` are injected so tests
+/// can substitute fakes for real network servers and child processes;
+/// production code reaches this only through
+/// [`build_and_activate_production_generation_on_loopback`].
 pub async fn build_and_activate_production_generation<'a>(
 	supervisor: &'a mut EpochSupervisor,
 	app: AppBuildContract,
@@ -110,7 +136,8 @@ pub async fn build_and_activate_production_generation<'a>(
 	))
 }
 
-/// Complete production build error.
+/// Error from [`build_and_activate_production_generation_on_loopback`] or
+/// [`build_and_activate_production_generation`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProductionBuildError {
 	/// Secure Vite plugin token generation failed.

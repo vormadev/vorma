@@ -8,11 +8,51 @@ use serde::Serialize;
 use vorma_contract::wire::RESOURCE_BODY_HEADER;
 
 use crate::execution_engine::{HandlerExecutionError, HandlerOutput};
-use crate::response_finalizer::ResponseEffects;
+use crate::response_finalizer::{ResponseEffects, lock_effects};
 
 const RESOURCE_BODY_HEADER_NAME: HeaderName = HeaderName::from_static(RESOURCE_BODY_HEADER);
 
-/// Raw bytes returned by a resource handler.
+/// Raw bytes returned by a resource handler in place of a serialized output type.
+///
+/// Use `ResourceBody` as a `resource!`(app!) declaration's `output` type when a resource
+/// serves a binary or non-JSON payload (a file download, a generated image) instead of a
+/// typed struct — the framework sets the response's `Content-Type` from
+/// [`content_type`](Self::content_type) and writes [`body`](Self::body) directly as the
+/// response bytes, with no JSON serialization step. The generated TypeScript client
+/// resource-fetching call for this kind of route returns the response's raw
+/// bytes/[`Blob`](crate::tsgen::TypeRef::Blob) rather than a parsed JSON value.
+///
+/// ```
+/// # vorma::app!(mod app for ());
+/// const DOWNLOAD: app::Resource = app::resource! {
+///     kind: vorma::ResourceKind::Query;
+///     method: vorma::HttpMethod::GET;
+///     pattern: "/api/export.csv";
+///     input: ();
+///     output: vorma::ResourceBody;
+///
+///     handler: |_ctx| {
+///         Ok(vorma::ResourceBody::new(
+///             vorma::HttpHeaderValue::from_static("text/csv"),
+///             b"id,name\n1,Ada\n".to_vec(),
+///         ))
+///     };
+/// };
+/// # fn app_config() -> vorma::AppConfig<()> {
+/// #     vorma::AppConfig {
+/// #         resources: app::resources![DOWNLOAD],
+/// #         ..vorma::AppConfig::default()
+/// #     }
+/// # }
+/// # #[tokio::main(flavor = "current_thread")]
+/// # async fn main() -> vorma::Result<()> {
+/// let app = vorma::testing::TestApp::from_config(app_config())?;
+/// let response = app.get("/api/export.csv").await;
+/// assert_eq!(response.headers()["content-type"], "text/csv");
+/// assert_eq!(response.body(), &bytes::Bytes::from_static(b"id,name\n1,Ada\n"));
+/// # Ok(())
+/// # }
+/// ```
 pub struct ResourceBody {
 	content_type: HeaderValue,
 	body: Bytes,
@@ -44,7 +84,14 @@ impl crate::tsgen::Type for ResourceBody {
 	}
 }
 
-/// Resource handler output type.
+/// Sealed marker for valid resource handler output types.
+///
+/// Every `resource!`(app!) declaration's `output` type must implement this trait. It has
+/// exactly two implementers, and cannot be implemented outside this crate: any type that
+/// implements `Serialize` (the ordinary case — the output is serialized to JSON), and
+/// [`ResourceBody`] (the raw-bytes case). This sealing means a resource's `output` type is
+/// always provably one of those two shapes; there is no third case a handler author could
+/// accidentally construct.
 pub trait ResourceOutput: sealed::ResourceOutputSealed + Send + Sync + 'static {}
 
 impl<O> ResourceOutput for O where O: Serialize + Send + Sync + 'static {}
@@ -82,10 +129,7 @@ mod sealed {
 			let data = serde_json::to_value(self).map_err(|error| {
 				HandlerExecutionError::new(format!("serialize route output: {error}"))
 			})?;
-			let effects = effects
-				.lock()
-				.expect("typed handler response effects lock poisoned")
-				.clone();
+			let effects = lock_effects(effects).clone();
 			Ok(HandlerOutput::data(data).with_effects(effects))
 		}
 	}
@@ -95,10 +139,7 @@ mod sealed {
 			self,
 			effects: &Arc<Mutex<ResponseEffects>>,
 		) -> Result<HandlerOutput, HandlerExecutionError> {
-			let mut effects = effects
-				.lock()
-				.expect("typed handler response effects lock poisoned")
-				.clone();
+			let mut effects = lock_effects(effects).clone();
 			effects.set_header(CONTENT_TYPE, self.content_type);
 			effects.set_header(RESOURCE_BODY_HEADER_NAME, HeaderValue::from_static("1"));
 			Ok(HandlerOutput::body(self.body).with_effects(effects))

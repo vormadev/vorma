@@ -4,12 +4,18 @@ use data_encoding::BASE32_NOPAD;
 
 const CONTROL_TOKEN_BYTES: usize = 32;
 
-/// Generate an unguessable Vite plugin RPC token.
+/// Generate an unguessable Vite plugin RPC token: 32 bytes of OS-provided
+/// randomness, lowercase base32-encoded. Authenticates requests to the RPC
+/// server this crate's own process exposes to the framework's Vite plugin
+/// (see [`crate::vite_plugin_rpc`]).
 pub fn generate_vite_plugin_token() -> Result<String, TokenGenerationError> {
 	generate_control_token()
 }
 
-/// Generate an unguessable dev browser refresh token.
+/// Generate an unguessable dev browser refresh token, generated the same
+/// way as [`generate_vite_plugin_token`] but for a distinct purpose:
+/// authenticating a connecting browser's dev-refresh WebSocket path (see
+/// [`crate::dev_refresh::DEV_REFRESH_EVENTS_PATH_PREFIX`]'s docs).
 pub fn generate_dev_refresh_token() -> Result<String, TokenGenerationError> {
 	generate_control_token()
 }
@@ -24,7 +30,8 @@ fn generate_control_token() -> Result<String, TokenGenerationError> {
 	Ok(token)
 }
 
-/// Token generation error.
+/// Error from [`generate_vite_plugin_token`] or [`generate_dev_refresh_token`]:
+/// the OS-level randomness source failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenGenerationError {
 	message: String,

@@ -7,7 +7,10 @@ use crate::process_runner::{
 use crate::vite_command::{ViteCommandError, ViteCommandParts};
 use crate::vite_plugin_contract::VITE_PLUGIN_LOOPBACK_HOST;
 
-/// Runtime inputs needed by the TypeScript Vite plugin during dev.
+/// Runtime inputs needed by the TypeScript Vite plugin during dev: the port
+/// Vite's own dev HTTP server should bind, plus the port and auth token for
+/// the RPC server this crate's own process exposes back to the plugin (see
+/// [`crate::vite_plugin_rpc`]).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViteDevServerInput {
 	vite_server_port: u16,
@@ -45,7 +48,8 @@ impl ViteDevServerInput {
 	}
 }
 
-/// Start the Vite development server without waiting for it to exit.
+/// Start the Vite development server without waiting for it to exit. Runs
+/// [`vite_dev_server_command`]'s command via `runner`.
 pub fn start_vite_dev_server(
 	plan: &BuildProjectionPlan,
 	input: &ViteDevServerInput,
@@ -57,7 +61,16 @@ pub fn start_vite_dev_server(
 		.map_err(|source| DevViteError::Process { source })
 }
 
-/// Build the Vite development server command without executing it.
+/// Build the Vite development server command without executing it: `vite
+/// --host 127.0.0.1 --port <vite_server_port> --strictPort --clearScreen
+/// false --config <vite_config_file>`, with the plugin RPC port/token set
+/// as env vars the framework's Vite plugin reads at Vite startup.
+/// `--strictPort` means Vite fails fast on a port collision instead of
+/// silently picking a different port — this crate already reserved
+/// `vite_server_port` as a free port before this command runs (see
+/// [`crate::dev_build`]'s loopback port allocation), so a collision here
+/// means something else raced onto that port between reservation and Vite's
+/// own bind.
 pub fn vite_dev_server_command(
 	plan: &BuildProjectionPlan,
 	input: &ViteDevServerInput,
@@ -81,7 +94,7 @@ pub fn vite_dev_server_command(
 	Ok(command.into_command(input.plugin_server_port(), input.plugin_server_token()))
 }
 
-/// Vite dev server start error.
+/// Error from [`start_vite_dev_server`] or [`vite_dev_server_command`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevViteError {
 	/// Vite command construction failed.

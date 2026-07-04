@@ -87,6 +87,7 @@ export type {
 	WorkState,
 } from "vorma/__internal";
 
+/** See `vorma/react`'s `CreateVormaClientOptions` — identical shape here, typed against Solid's `JSX.AnchorHTMLAttributes<HTMLAnchorElement>` instead of React's `ComponentProps<"a">`. */
 type CreateVormaClientOptions<A extends AppConfig> = AdapterClientOptions<Component> & {
 	linkDefaultProps?: Partial<
 		Omit<JSX.AnchorHTMLAttributes<HTMLAnchorElement> & LinkPropsBase, "href">
@@ -94,6 +95,22 @@ type CreateVormaClientOptions<A extends AppConfig> = AdapterClientOptions<Compon
 	apiDecorator?: ToApiDecorator<A>;
 };
 
+/**
+ * Build a Vorma client for Solid. See `vorma/react`'s `createVormaClient`
+ * for the full teaching documentation — every option, the returned
+ * {@link VormaClient} surface, and the idiomatic setup shape are identical
+ * apart from the two divergences below.
+ *
+ * - `HookReturnMode` is `"accessor"` here, not `"value"`: `useRouteState()`,
+ *   `useWorkState()`, `useViewData(props)`, and every other stateful hook
+ *   return a zero-arg accessor FUNCTION, matching Solid's own signal-read
+ *   convention — call it to read the current value (`useRouteState().href`
+ *   is wrong; `useRouteState()().href` is right), and pass the accessor
+ *   itself down when a descendant should subscribe independently.
+ * - `render` (via `AdapterClientOptions`) receives Solid's own `RootOutlet`
+ *   component type; mount it with `render(() => <RootOutlet />, rootEl)`
+ *   from `solid-js/web`, the idiomatic Solid mount call.
+ */
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,

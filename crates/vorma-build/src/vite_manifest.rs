@@ -1,4 +1,13 @@
 //! Vite production manifest projection.
+//!
+//! [`ViteManifest`] is the parsed shape of the `manifest.json` a production
+//! Vite build writes (see [`crate::production_vite`]); [`project_vite_manifest`]
+//! walks it to resolve every module this crate cares about (the browser
+//! entry, the framework's own client-core WASM wrapper, and every view's
+//! client module) to their final hashed output URLs and transitive
+//! CSS/module dependencies, producing [`ViteBuildArtifacts`] — production's
+//! counterpart to the dev-server-proxied URLs [`crate::dev_generation`]
+//! projects instead.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Deref;
@@ -12,9 +21,14 @@ use crate::build_plan::BuildProjectionPlan;
 use crate::projection_compiler::{ClientCoreArtifacts, ClientModuleArtifacts, ProjectionBundle};
 
 /// Source filename emitted by wasm-bindgen for Vorma client matcher WASM.
+/// [`project_vite_manifest`] looks for an asset by this exact filename to
+/// locate the framework's own compiled client-core WASM among a
+/// production build's outputs.
 pub const CLIENT_CORE_WASM_SOURCE_FILENAME: &str = "vorma_client_wasm_bg.wasm";
 
-/// One entry from a Vite manifest.
+/// One entry from a Vite manifest, matching Vite's own manifest chunk
+/// schema field-for-field (`camelCase` on the wire, `snake_case` fields
+/// here).
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViteManifestChunk {
@@ -47,7 +61,10 @@ pub struct ViteManifestChunk {
 	pub dynamic_imports: Vec<String>,
 }
 
-/// Parsed Vite manifest keyed by source import path.
+/// Parsed Vite manifest keyed by source import path: the deserialized shape
+/// of Vite's own `manifest.json` output. `Deref`s to the underlying
+/// `BTreeMap` for direct chunk lookups; [`Self::find_all_deps`] is the
+/// higher-level transitive-dependency walk most callers actually want.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct ViteManifest(BTreeMap<String, ViteManifestChunk>);
@@ -60,7 +77,8 @@ impl ViteManifest {
 		})
 	}
 
-	/// Read and parse a Vite manifest file.
+	/// Read and parse a Vite manifest file from
+	/// [`crate::production_vite::production_vite_manifest_temp_path`].
 	pub fn read(path: impl AsRef<Path>) -> Result<Self, ViteManifestError> {
 		let path = path.as_ref();
 		let bytes = std::fs::read(path).map_err(|source| ViteManifestError::Read {
@@ -70,7 +88,11 @@ impl ViteManifest {
 		Self::from_json_slice(&bytes)
 	}
 
-	/// Find transitive static module and CSS dependencies for one import path.
+	/// Find transitive static module and CSS dependencies for one import
+	/// path: follows [`ViteManifestChunk::imports`] recursively (not
+	/// [`ViteManifestChunk::dynamic_imports`], which are loaded on demand
+	/// rather than needed up front), deduplicating repeated modules and CSS
+	/// bundles while preserving first-seen order.
 	pub fn find_all_deps(&self, import_path: &str) -> Result<ViteDeps, ViteManifestError> {
 		let mut seen = BTreeSet::new();
 		let mut ordered = Vec::new();
@@ -137,7 +159,8 @@ impl Deref for ViteManifest {
 	}
 }
 
-/// Transitive Vite dependencies for one manifest import path.
+/// Transitive Vite dependencies for one manifest import path, returned by
+/// [`ViteManifest::find_all_deps`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ViteDeps {
 	/// Import path used as the dependency root.
@@ -148,7 +171,9 @@ pub struct ViteDeps {
 	pub css_bundles: Vec<String>,
 }
 
-/// Vite build artifacts projected into Vorma generation artifacts.
+/// Vite build artifacts projected into Vorma generation artifacts: the
+/// production counterpart to what [`crate::dev_generation`] assembles for
+/// dev, returned by [`project_vite_manifest`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViteBuildArtifacts {
 	public_filepaths: Vec<String>,
@@ -179,7 +204,11 @@ impl ViteBuildArtifacts {
 	}
 }
 
-/// Project Vite manifest outputs into build-generation artifacts.
+/// Project Vite manifest outputs into build-generation artifacts: resolves
+/// the browser entry module, the framework's own client-core WASM wrapper
+/// (located by [`CLIENT_CORE_WASM_SOURCE_FILENAME`]), and every view's
+/// client module to their final hashed URLs and transitive CSS/module
+/// dependency lists.
 pub fn project_vite_manifest(
 	bundle: &ProjectionBundle,
 	plan: &BuildProjectionPlan,
@@ -212,7 +241,7 @@ pub fn project_vite_manifest(
 	})
 }
 
-/// Vite manifest projection error.
+/// Error from this module's Vite manifest parsing and projection functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ViteManifestError {
 	/// Manifest file could not be read.

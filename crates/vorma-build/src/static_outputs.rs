@@ -1,4 +1,12 @@
 //! Public static output compiler and publisher.
+//!
+//! [`prepare_public_static_outputs`]/[`publish_public_static_outputs`] and
+//! [`bundle_critical_css`] are the two halves of turning an app's declared
+//! public static source directory and critical-CSS entry point into
+//! published, hashed outputs. Static outputs are content-addressed
+//! (`hashed_output_name`, private in this module) and published outputs are
+//! never deleted just because their source no longer produces them — see
+//! [`PublicStaticPublishReport::retained_stale_files`]'s doctrine for why.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io;
@@ -25,7 +33,10 @@ use crate::vite_plugin_contract::VITE_PLUGIN_PUBLIC_URL_PREFIX;
 
 static TEMP_OUTPUT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Prepared public static outputs before filesystem publication.
+/// Prepared public static outputs before filesystem publication: every
+/// file under the app's public static source directory, walked and hashed
+/// but not yet written anywhere. Returned by [`prepare_public_static_outputs`];
+/// [`publish_public_static_outputs`] is the write step that follows.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedPublicStaticOutputs {
 	files: Vec<PreparedPublicStaticFile>,
@@ -50,7 +61,9 @@ impl PreparedPublicStaticOutputs {
 	}
 }
 
-/// One prepared public static file.
+/// One prepared public static file: its logical source path, real
+/// filesystem path, content-hashed output filename, and public request
+/// path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreparedPublicStaticFile {
 	source_path: String,
@@ -88,10 +101,22 @@ impl PreparedPublicStaticFile {
 pub struct PublicStaticPublishReport {
 	public_output_dir: PathBuf,
 	written_files: Vec<PathBuf>,
+	/*
+	Content-addressed outputs accumulate rather than being deleted on the
+	spot: an old generation's hashed URL can still be referenced by an
+	in-flight browser request, a service worker cache, or a CDN edge that
+	has not yet revalidated, and content addressing means a stale file
+	never gets served under a URL a current generation actually points to.
+	Cleanup is a deliberately separate decision, not this publish step's
+	job.
+	*/
 	retained_stale_files: Vec<PathBuf>,
 }
 
-/// Bundled critical CSS output.
+/// Bundled critical CSS output: the app's critical CSS entry point, bundled
+/// (`@import`s inlined) and minified via `lightningcss`, with framework
+/// public URLs inside it rewritten through the prepared public filemap.
+/// Returned by [`bundle_critical_css`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CriticalCssBundle {
 	css: String,
@@ -138,14 +163,23 @@ impl PublicStaticPublishReport {
 		&self.written_files
 	}
 
-	/// Stale framework-owned public static outputs retained during publication.
+	/// Stale framework-owned public static outputs retained during
+	/// publication (never deleted here — see the field's doctrine comment
+	/// above).
 	#[cfg(test)]
 	pub fn retained_stale_files(&self) -> &[PathBuf] {
 		&self.retained_stale_files
 	}
 }
 
-/// Prepare public static outputs from the configured source directory.
+/// Prepare public static outputs from the configured source directory:
+/// walks it recursively, rejecting any symlinked or otherwise non-regular
+/// entry outright (only plain files are accepted as static source), hashes
+/// each file's content into an output filename, and projects each one's
+/// public request path. Also rejects a configuration where the output
+/// directory would sit inside the source directory (publishing would
+/// immediately start feeding its own output back in as new source on the
+/// next build).
 pub fn prepare_public_static_outputs(
 	plan: &BuildProjectionPlan,
 ) -> Result<PreparedPublicStaticOutputs, PublicStaticOutputError> {
@@ -223,7 +257,15 @@ pub fn prepare_public_static_outputs(
 	})
 }
 
-/// Publish prepared public static outputs into the committed runtime public directory.
+/// Publish prepared public static outputs into the committed runtime public
+/// directory: skips writing any output whose content-hashed filename
+/// already exists as a plain file (the hash guarantees identical
+/// content — a changed source hashes to a different name, so an existing
+/// file at that exact name is never stale), then reports any
+/// framework-owned output left over from a previous generation that this
+/// generation no longer produces (see
+/// [`PublicStaticPublishReport::retained_stale_files`]'s doctrine for why
+/// those are retained, not deleted).
 pub fn publish_public_static_outputs(
 	plan: &BuildProjectionPlan,
 	prepared: &PreparedPublicStaticOutputs,
@@ -261,7 +303,13 @@ pub fn publish_public_static_outputs(
 	})
 }
 
-/// Bundle critical CSS and rewrite framework public URLs through the prepared public filemap.
+/// Bundle critical CSS and rewrite framework public URLs through the
+/// prepared public filemap: bundles `@import`s starting from the app's
+/// configured critical CSS entry point, rewrites any `url(...)` reference
+/// that resolves to a path in `public_filemap` to that file's hashed public
+/// URL, and minifies the result. When the app declares no critical CSS
+/// file at all, returns an empty bundle rather than an error — critical CSS
+/// is optional.
 pub fn bundle_critical_css(
 	plan: &BuildProjectionPlan,
 	public_filemap: &BTreeMap<String, String>,
@@ -307,7 +355,10 @@ pub fn bundle_critical_css(
 	Ok(CriticalCssBundle { css, imports })
 }
 
-/// Runtime public output directory for this build plan.
+/// Runtime public output directory for this build plan: where
+/// [`publish_public_static_outputs`] writes and
+/// [`crate::build_output::generation_candidate_output_paths`] and the Vite
+/// production build (see [`crate::production_vite`]) both target.
 pub fn public_static_output_dir(
 	plan: &BuildProjectionPlan,
 ) -> Result<PathBuf, PublicStaticOutputError> {
@@ -318,7 +369,8 @@ pub fn public_static_output_dir(
 	))
 }
 
-/// Public static output preparation and publication error.
+/// Error from this module's public static output and critical-CSS
+/// functions.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PublicStaticOutputError {
 	/// Workspace root directory was empty.

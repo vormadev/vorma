@@ -1,4 +1,15 @@
 //! Complete development build orchestration.
+//!
+//! [`start_and_activate_dev_generation_on_loopback`] starts the first
+//! generation of a dev session — allocates loopback ports, starts the dev
+//! mux, Vite, and app-server child processes, waits for each to become
+//! ready, and returns a [`StartedDevGeneration`] handle that owns them for
+//! the rest of the session. [`crate::entrypoint`]'s dev loop then drives
+//! that handle's `activate_next_*` methods on every relevant file change,
+//! and its `Drop` impl terminates the owned child processes when the
+//! session ends. See [`crate::entrypoint`] for how this module fits into
+//! the complete dev loop (file watching, change classification, and the
+//! rebuild-cancel-requeue protocol all live there, not here).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::TcpListener;
@@ -67,7 +78,14 @@ const VITE_CONTROL_PORT_WAIT_INTERVAL: Duration = Duration::from_millis(10);
 const DEV_PROCESS_READY_TIMEOUT: Duration = Duration::from_secs(90);
 const VITE_READY_PATH: &str = "/@vite/client";
 
-/// Scalar inputs for starting one complete dev generation.
+/// Scalar inputs for starting one complete dev generation: the three
+/// loopback ports (dev mux, app server, Vite) and two secure tokens (Vite
+/// plugin RPC auth, dev refresh WebSocket auth) a dev session needs before
+/// any child process starts.
+/// [`start_and_activate_dev_generation_on_loopback`] derives all five
+/// itself; [`start_and_activate_dev_generation`] takes them as an explicit
+/// parameter so tests can supply deterministic values instead of real
+/// allocated ports and generated tokens.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevGenerationStartConfig {
 	dev_mux_port: u16,
@@ -96,7 +114,10 @@ impl DevGenerationStartConfig {
 	}
 }
 
-/// Complete dev generation start report.
+/// Complete dev generation start report: the ports a freshly started dev
+/// session bound and the outputs its first generation wrote.
+/// [`StartedDevGeneration::report`] returns this for the currently active
+/// generation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevBuildReport {
 	prebuild_typescript: TypeScriptOutputWriteReport,
@@ -176,7 +197,12 @@ impl DevStaticGenerationUpdate {
 	}
 }
 
-/// Dev generation update report.
+/// Dev generation update report: what a single rebuild produced. Returned
+/// by every `StartedDevGeneration::activate_next_*` method; the dev loop in
+/// [`crate::entrypoint`] uses [`Self::refresh_payloads`] to know what to
+/// tell connected browsers and [`Self::retired_app_server_termination_error`]
+/// to surface a non-fatal cleanup failure without treating the rebuild
+/// itself as failed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevGenerationUpdateReport {
 	output_publish: DevOutputPublishReport,
@@ -355,7 +381,12 @@ impl DevDiskRollback {
 	}
 }
 
-/// Dev disk rollback error.
+/// Dev disk rollback error: capturing or restoring the pre-update state of
+/// a generation's output files (runtime manifest, generated TypeScript,
+/// public static outputs) failed. A failed rebuild rolls disk state back to
+/// the last committed generation's outputs so a broken change never leaves
+/// stale-but-inconsistent files behind for the still-running app server or
+/// browser to read.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevDiskRollbackError {
 	/// Existing file state could not be captured.
@@ -389,7 +420,14 @@ impl std::fmt::Display for DevDiskRollbackError {
 
 impl std::error::Error for DevDiskRollbackError {}
 
-/// Started dev generation and owned long-lived process handles.
+/// Started dev generation and owned long-lived process handles: the app
+/// server, Vite, the dev mux, and the Vite plugin RPC server for the
+/// currently active generation. Dropping this value terminates the app
+/// server and Vite child processes and shuts down the RPC server and
+/// output-layout lock (see the field-ordering doctrine comment above the
+/// struct's field list). This is the handle [`crate::entrypoint`]'s dev
+/// loop holds and repeatedly re-commits through the `activate_next_*`
+/// methods below as rebuilds complete.
 pub struct StartedDevGeneration {
 	supervisor: EpochSupervisor,
 	committed_generation: CommittedGeneration,
@@ -509,7 +547,14 @@ impl StartedDevGeneration {
 		)
 	}
 
-	/// Commit the next live-state generation unless cancellation interrupts activation.
+	/// Commit the next live-state generation unless cancellation interrupts
+	/// activation. Recompiles the framework graph from freshly built live
+	/// state (a full app-server recompile changed it), regenerates every
+	/// output, starts a fresh app server from `prebuilt_app_server`, and only
+	/// swaps it in for the currently serving one once the new one is ready —
+	/// on any failure or on `cancel` firing mid-activation, the disk state
+	/// captured before this call is rolled back and the previous generation
+	/// keeps serving unaffected (see [`DevDiskRollbackError`]'s doctrine).
 	pub fn activate_next_live_state_generation_until_cancelled(
 		&mut self,
 		live_state: LiveBuildState,
@@ -821,7 +866,13 @@ impl Drop for StartedDevGeneration {
 	}
 }
 
-/// Start a complete dev generation using Vorma's standard loopback Vite plugin server.
+/// Start a complete dev generation using Vorma's standard loopback Vite
+/// plugin server: allocates the three loopback ports and two secure tokens
+/// a dev session needs (see [`DevGenerationStartConfig`]) and delegates to
+/// [`start_and_activate_dev_generation`] with production process/network
+/// implementations. This is what [`crate::entrypoint::start_dev_server`]
+/// calls; tests use [`start_and_activate_dev_generation`] directly with
+/// fakes instead.
 pub async fn start_and_activate_dev_generation_on_loopback(
 	app: AppBuildContract,
 ) -> Result<StartedDevGeneration, DevBuildError> {
@@ -852,7 +903,16 @@ pub async fn start_and_activate_dev_generation_on_loopback(
 	.await
 }
 
-/// Start a complete dev generation and keep long-lived dev processes owned by the result.
+/// Start a complete dev generation and keep long-lived dev processes owned
+/// by the result: compile the framework graph, write generated TypeScript,
+/// start the Vite plugin RPC server and the dev mux, start Vite and wait
+/// for it to become ready, start the app server and wait for it to become
+/// ready, and publish this generation's outputs — returning a
+/// [`StartedDevGeneration`] that owns every long-lived process this
+/// produced. `vite_plugin_server`, `process_runner`, and
+/// `vite_plugin_control_client` are injected so tests can substitute fakes
+/// for real child processes and network servers; production code reaches
+/// this only through [`start_and_activate_dev_generation_on_loopback`].
 pub async fn start_and_activate_dev_generation(
 	mut supervisor: EpochSupervisor,
 	app: AppBuildContract,
@@ -1332,7 +1392,9 @@ fn rollback_dev_activation_error(
 	}
 }
 
-/// Complete dev build start error.
+/// Error from starting or updating a dev generation: everything
+/// [`start_and_activate_dev_generation`] and every
+/// `StartedDevGeneration::activate_next_*` method can fail with.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DevBuildError {
 	/// Secure token generation failed.
@@ -1559,36 +1621,135 @@ mod tests {
 		)
 	}
 
+	/*
+	Bounded retry count for `start_dev_generation_retrying_port_collisions`
+	below. Same reasoning as `dev_mux`'s
+	`MAX_DEV_MUX_PORT_COLLISION_RETRIES`: purpose-built 64-thread ephemeral-
+	port contention measured a 0.03% collision rate (38/128,000 attempts),
+	so ordinary `cargo test` parallel load has far more headroom than this
+	bound needs. A genuinely broken caller fails on its first attempt via a
+	non-collision error variant and is never retried (see the function
+	below); this bound only governs how many times a real transient port
+	collision gets a fresh set of ports to try.
+	*/
+	const MAX_DEV_GENERATION_PORT_COLLISION_RETRIES: u32 = 8;
+
+	/// One dev generation's port-allocation-and-startup, freshly retried
+	/// from scratch (fresh ports, fresh fake process/server/control-client
+	/// state) whenever a discover-then-drop-then-rebind TOCTOU port
+	/// collision hits either loopback port this crate's dev generation
+	/// binds: `allocate_loopback_port()` binds `:0`, reads back the
+	/// OS-assigned port, and drops the listener so a later real bind on
+	/// that bare port number can claim it — any other process racing to
+	/// grab the newly-freed ephemeral port in that gap steals it. Two
+	/// independent real binds are downstream of the two
+	/// [`allocate_loopback_port`] calls below:
+	/// `start_and_activate_dev_generation` binds
+	/// `dev_mux_port` for real via `start_loopback_dev_mux_server`
+	/// (`DevBuildError::DevMux` on collision), and — once dev-mux and Vite
+	/// startup have both completed — [`FakeProcessRunner`] binds
+	/// `app_server_port` for real via [`spawn_ready_server_on_port`]
+	/// (`DevBuildError::AppServer` on collision, now that
+	/// `spawn_ready_server_on_port` reports its bind failure instead of
+	/// panicking). A retry must re-derive BOTH ports and reconstruct every
+	/// fake from scratch, not just re-attempt the losing bind: the fakes
+	/// accumulate real side effects (recorded commands, control-client
+	/// calls) as a losing attempt runs, so reusing them across attempts
+	/// would double-count that partial work in a later attempt's
+	/// assertions, and retrying the SAME port number would not help against
+	/// the most likely real contender under `cargo test` parallelism —
+	/// another concurrently-running dev-build test holding its own
+	/// allocated port for its entire lifetime. Only the two collision-shaped
+	/// error variants are retried; any other error is a real, deterministic
+	/// bug and panics on its very first occurrence, exactly as the
+	/// un-retried calls did before.
+	async fn start_dev_generation_retrying_port_collisions(
+		root_dir: &std::path::Path,
+	) -> StartedDevGenerationForTest {
+		for attempt in 0..=MAX_DEV_GENERATION_PORT_COLLISION_RETRIES {
+			let dev_mux_port = allocate_loopback_port().unwrap();
+			let (vite_server_port, vite_ready_thread) = spawn_ready_server();
+			let app_server_port = allocate_loopback_port().unwrap();
+			let mut server = FakeVitePluginServer::default();
+			let mut runner = FakeProcessRunner::default();
+			let control_client = FakeControlClient::default();
+			let result = start_and_activate_dev_generation(
+				EpochSupervisor::default(),
+				app_build_contract(root_dir.to_path_buf()),
+				DevGenerationStartConfig::new(
+					dev_mux_port,
+					app_server_port,
+					vite_server_port,
+					TEST_VITE_PLUGIN_TOKEN,
+					TEST_DEV_REFRESH_TOKEN,
+				),
+				&mut server,
+				&mut runner,
+				Box::new(control_client.clone()),
+			)
+			.await;
+			match result {
+				Ok(started) => {
+					vite_ready_thread.join().unwrap();
+					return StartedDevGenerationForTest {
+						started,
+						server,
+						runner,
+						control_client,
+						dev_mux_port,
+						vite_server_port,
+						app_server_port,
+					};
+				}
+				Err(
+					DevBuildError::DevMux {
+						source: DevMuxError::Bind { .. },
+					}
+					| DevBuildError::AppServer {
+						source:
+							AppServerProcessError::Process {
+								source: BuildProcessError::Start { .. },
+							},
+					},
+				) if attempt < MAX_DEV_GENERATION_PORT_COLLISION_RETRIES => {}
+				Err(source) => panic!(
+					"start_and_activate_dev_generation failed on attempt {} of {}: {source}",
+					attempt + 1,
+					MAX_DEV_GENERATION_PORT_COLLISION_RETRIES + 1
+				),
+			}
+		}
+		unreachable!("loop above always returns or panics")
+	}
+
+	/// Bundle returned by [`start_dev_generation_retrying_port_collisions`]:
+	/// the winning attempt's started generation, its fakes (still owned so
+	/// callers can keep driving `activate_next_*` calls and inspecting
+	/// recorded state exactly as they would have with the pre-retry inline
+	/// setup), and the specific ports that attempt actually bound.
+	struct StartedDevGenerationForTest {
+		started: StartedDevGeneration,
+		server: FakeVitePluginServer,
+		runner: FakeProcessRunner,
+		control_client: FakeControlClient,
+		dev_mux_port: u16,
+		vite_server_port: u16,
+		app_server_port: u16,
+	}
+
 	#[tokio::test]
 	async fn view_module_list_change_restarts_vite_instead_of_invalidating_assets() {
 		let root_dir = temp_root();
 		fs::write(root_dir.join(TEST_CRITICAL_CSS_FILE), "body{}").unwrap();
-		let app = app_build_contract(root_dir.clone());
-		let mut server = FakeVitePluginServer::default();
-		let mut runner = FakeProcessRunner::default();
-		let control_client = FakeControlClient::default();
+		let StartedDevGenerationForTest {
+			mut started,
+			server,
+			mut runner,
+			control_client,
+			..
+		} = start_dev_generation_retrying_port_collisions(&root_dir).await;
 		let control_calls = control_client.calls.clone();
 		let assets_calls = control_client.assets_calls.clone();
-		let dev_mux_port = allocate_loopback_port().unwrap();
-		let (vite_server_port, vite_ready_thread) = spawn_ready_server();
-		let app_server_port = allocate_loopback_port().unwrap();
-		let mut started = start_and_activate_dev_generation(
-			EpochSupervisor::default(),
-			app,
-			DevGenerationStartConfig::new(
-				dev_mux_port,
-				app_server_port,
-				vite_server_port,
-				TEST_VITE_PLUGIN_TOKEN,
-				TEST_DEV_REFRESH_TOKEN,
-			),
-			&mut server,
-			&mut runner,
-			Box::new(control_client),
-		)
-		.await
-		.unwrap();
-		vite_ready_thread.join().unwrap();
 		let state = server.state.clone().unwrap();
 		state.record_control_port(5174);
 
@@ -1694,9 +1855,16 @@ mod tests {
 		(port, spawn_ready_server_with_listener(listener))
 	}
 
-	fn spawn_ready_server_on_port(port: u16) -> JoinHandle<()> {
-		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, port)).unwrap();
-		spawn_ready_server_with_listener(listener)
+	/// Bind a fake ready-check server on an already-allocated port. Returns
+	/// the raw bind error instead of panicking so [`FakeProcessRunner`] can
+	/// surface it as an ordinary [`BuildProcessError`], which lets tests
+	/// retry on the same discover-then-drop-then-rebind TOCTOU race
+	/// [`start_dev_generation_retrying_port_collisions`] retries for the dev
+	/// mux port, rather than the test process aborting on an unrecoverable
+	/// panic partway through an attempt.
+	fn spawn_ready_server_on_port(port: u16) -> std::io::Result<JoinHandle<()>> {
+		let listener = TcpListener::bind((VITE_PLUGIN_LOOPBACK_HOST, port))?;
+		Ok(spawn_ready_server_with_listener(listener))
 	}
 
 	fn spawn_ready_server_with_listener(listener: TcpListener) -> JoinHandle<()> {
@@ -1751,7 +1919,10 @@ mod tests {
 				.get(APP_SERVER_PORT_ENV_KEY)
 				.and_then(|port| port.parse::<u16>().ok())
 			{
-				let _ = spawn_ready_server_on_port(port);
+				spawn_ready_server_on_port(port).map_err(|source| BuildProcessError::Start {
+					program: command.program().to_owned(),
+					message: source.to_string(),
+				})?;
 			}
 			Ok(Box::new(FakeStartedProcess {
 				terminations: self.terminations.clone(),
@@ -1846,33 +2017,15 @@ mod tests {
 			".partial{color:red}",
 		)
 		.unwrap();
-		let app = app_build_contract(root_dir.clone());
-		let mut server = FakeVitePluginServer::default();
-		let mut runner = FakeProcessRunner::default();
-		let control_client = FakeControlClient::default();
+		let StartedDevGenerationForTest {
+			mut started,
+			runner,
+			control_client,
+			app_server_port,
+			..
+		} = start_dev_generation_retrying_port_collisions(&root_dir).await;
 		let control_calls = control_client.calls.clone();
 		let assets_calls = control_client.assets_calls.clone();
-		let dev_mux_port = allocate_loopback_port().unwrap();
-		let (vite_server_port, vite_ready_thread) = spawn_ready_server();
-		let app_server_port = allocate_loopback_port().unwrap();
-
-		let mut started = start_and_activate_dev_generation(
-			EpochSupervisor::default(),
-			app,
-			DevGenerationStartConfig::new(
-				dev_mux_port,
-				app_server_port,
-				vite_server_port,
-				TEST_VITE_PLUGIN_TOKEN,
-				TEST_DEV_REFRESH_TOKEN,
-			),
-			&mut server,
-			&mut runner,
-			Box::new(control_client),
-		)
-		.await
-		.unwrap();
-		vite_ready_thread.join().unwrap();
 		let expected_partial_import = fs::canonicalize(
 			root_dir
 				.join(TEST_CRITICAL_CSS_FILE)
@@ -1977,33 +2130,16 @@ mod tests {
 		)
 		.unwrap();
 		fs::write(root_dir.join(TEST_CRITICAL_CSS_FILE), "body{}").unwrap();
-		let app = app_build_contract(root_dir.clone());
-		let mut server = FakeVitePluginServer::default();
-		let mut runner = FakeProcessRunner::default();
-		let control_client = FakeControlClient::default();
+		let StartedDevGenerationForTest {
+			mut started,
+			server,
+			runner,
+			control_client,
+			app_server_port,
+			..
+		} = start_dev_generation_retrying_port_collisions(&root_dir).await;
 		let control_calls = control_client.calls.clone();
 		let assets_calls = control_client.assets_calls.clone();
-		let dev_mux_port = allocate_loopback_port().unwrap();
-		let (vite_server_port, vite_ready_thread) = spawn_ready_server();
-		let app_server_port = allocate_loopback_port().unwrap();
-
-		let mut started = start_and_activate_dev_generation(
-			EpochSupervisor::default(),
-			app,
-			DevGenerationStartConfig::new(
-				dev_mux_port,
-				app_server_port,
-				vite_server_port,
-				TEST_VITE_PLUGIN_TOKEN,
-				TEST_DEV_REFRESH_TOKEN,
-			),
-			&mut server,
-			&mut runner,
-			Box::new(control_client),
-		)
-		.await
-		.unwrap();
-		vite_ready_thread.join().unwrap();
 		let state = server.state.as_ref().unwrap().clone();
 		let mut headers = http::HeaderMap::new();
 		headers.insert(
@@ -2088,33 +2224,14 @@ mod tests {
 		)
 		.unwrap();
 		fs::write(root_dir.join(TEST_CRITICAL_CSS_FILE), "body{}").unwrap();
-		let app = app_build_contract(root_dir.clone());
-		let mut server = FakeVitePluginServer::default();
-		let mut runner = FakeProcessRunner::default();
-		let control_client = FakeControlClient::default();
+		let StartedDevGenerationForTest {
+			mut started,
+			mut runner,
+			control_client,
+			..
+		} = start_dev_generation_retrying_port_collisions(&root_dir).await;
 		let control_calls = control_client.calls.clone();
 		let assets_calls = control_client.assets_calls.clone();
-		let dev_mux_port = allocate_loopback_port().unwrap();
-		let (vite_server_port, vite_ready_thread) = spawn_ready_server();
-		let app_server_port = allocate_loopback_port().unwrap();
-
-		let mut started = start_and_activate_dev_generation(
-			EpochSupervisor::default(),
-			app,
-			DevGenerationStartConfig::new(
-				dev_mux_port,
-				app_server_port,
-				vite_server_port,
-				TEST_VITE_PLUGIN_TOKEN,
-				TEST_DEV_REFRESH_TOKEN,
-			),
-			&mut server,
-			&mut runner,
-			Box::new(control_client),
-		)
-		.await
-		.unwrap();
-		vite_ready_thread.join().unwrap();
 		let public_filemap_before_update = started
 			.committed_generation()
 			.artifacts()
@@ -2197,34 +2314,18 @@ mod tests {
 		)
 		.unwrap();
 		fs::write(root_dir.join(TEST_CRITICAL_CSS_FILE), "body{}").unwrap();
-		let app = app_build_contract(root_dir.clone());
-		let mut server = FakeVitePluginServer::default();
-		let mut runner = FakeProcessRunner::default();
-		let control_client = FakeControlClient::default();
+		let StartedDevGenerationForTest {
+			mut started,
+			server,
+			mut runner,
+			control_client,
+			dev_mux_port,
+			vite_server_port,
+			app_server_port,
+		} = start_dev_generation_retrying_port_collisions(&root_dir).await;
 		let control_calls = control_client.calls.clone();
 		let assets_calls = control_client.assets_calls.clone();
 		let fail_notifications = control_client.fail_notifications.clone();
-		let dev_mux_port = allocate_loopback_port().unwrap();
-		let (vite_server_port, vite_ready_thread) = spawn_ready_server();
-		let app_server_port = allocate_loopback_port().unwrap();
-
-		let mut started = start_and_activate_dev_generation(
-			EpochSupervisor::default(),
-			app,
-			DevGenerationStartConfig::new(
-				dev_mux_port,
-				app_server_port,
-				vite_server_port,
-				TEST_VITE_PLUGIN_TOKEN,
-				TEST_DEV_REFRESH_TOKEN,
-			),
-			&mut server,
-			&mut runner,
-			Box::new(control_client),
-		)
-		.await
-		.unwrap();
-		vite_ready_thread.join().unwrap();
 
 		let state = server.state.as_ref().unwrap().clone();
 		let mut headers = http::HeaderMap::new();

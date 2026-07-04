@@ -13,8 +13,24 @@ import type {
 import type { WorkIndicator, WorkIndicatorOptions } from "./work_indicator.ts";
 import type { WorkState } from "./work_state.ts";
 
+// Everything below `ViewDefinition` in this file (`ClientLoaderTrigger` and
+// later) is the client core's own internal working-state shape — fetch
+// intents, deferred results, submission bookkeeping — never reachable
+// through a package entry point. Documented where genuinely non-obvious;
+// otherwise self-describing field names carry it.
+
+/** Why a revalidation ran — carried in {@link BuildSkewDetectedEvent.triggeringResponse} for the `"revalidation"` trigger case. */
 export type RevalidationReason = "manual" | "retry" | "apiRequest" | "windowFocus";
 
+/**
+ * Payload for `ClientOptions.onBuildSkewDetected` — fires when a response
+ * carries a build id different from the client's own, meaning the server
+ * has shipped a new build since this page loaded. `triggeringResponse`
+ * identifies exactly what request surfaced the skew (a route fetch, a
+ * resource call), and `currentRouteState`/`currentWorkState` are snapshots
+ * at detection time — useful for showing a "a new version is available,
+ * refresh" banner with context about what the user was doing.
+ */
 export type BuildSkewDetectedEvent = {
 	activeClientBuildId: string;
 	serverBuildId: string;
@@ -46,6 +62,35 @@ export type BuildSkewDetectedEvent = {
 	currentWorkState: WorkState;
 };
 
+/**
+ * Options passed to `client.boot(options)` (each adapter's
+ * `AdapterClientOptions` extends this with a framework-specific `render`
+ * signature — see the adapter's own docs for that divergence).
+ *
+ * - `render`: called once boot's initial route is ready, for mounting the
+ *   framework's root component. Adapters that manage mounting themselves
+ *   (all three official ones do) provide their own typed `render` in
+ *   `AdapterClientOptions`; a custom adapter built on `vorma/__internal`
+ *   would use this raw form directly.
+ * - `workIndicator`: see {@link WorkIndicatorOptions} — the nprogress-style
+ *   contract for a global loading bar.
+ * - `revalidateOnWindowFocus`: when the window regains focus after being
+ *   hidden, revalidate route data if it has gone stale. `true` uses the
+ *   5000ms default staleness window; an object customizes `staleTimeMs`
+ *   and/or excludes the refresh from `workIndicator` via
+ *   `skipWorkIndicator`. Default `false` (no focus-triggered revalidation).
+ * - `defaultErrorBoundary`: fallback error boundary for a matched view that
+ *   defines none of its own — see `defineView`'s `errorBoundary`.
+ * - `useViewTransitions`: wrap same-document navigations in the browser's
+ *   View Transitions API (`document.startViewTransition`) when available;
+ *   a no-op fallback elsewhere. Default `false`.
+ * - `onRouteUpdate`: fires on every committed route change (SPA-style
+ *   analytics/page-view hooks are the typical use).
+ * - `onWorkUpdate`: low-level twin of `workIndicator` — fires on every
+ *   {@link WorkState} change with the raw state, for apps that want to
+ *   drive their own UI directly instead of the indicator abstraction.
+ * - `onBuildSkewDetected`: see {@link BuildSkewDetectedEvent}.
+ */
 export type ClientOptions = {
 	render?: () => void | Promise<void>;
 	workIndicator?: WorkIndicatorOptions;
@@ -63,6 +108,15 @@ export type ClientOptions = {
 	onBuildSkewDetected?: (event: BuildSkewDetectedEvent) => void;
 };
 
+/**
+ * One commit the client core publishes to an adapter's `on_commit` callback
+ * — every field is independently optional because a given tick may update
+ * route render state, route/work read models, or any combination, and an
+ * adapter only re-renders what actually changed. Adapter-internal; an app
+ * never constructs or reads one directly (it consumes the higher-level
+ * `useRouteState`/`useWorkState`/`RootOutlet` surface an adapter derives
+ * from these).
+ */
 export type ClientCommit = {
 	route_render?: {
 		state: RouteRenderState;
@@ -76,14 +130,26 @@ export type ClientCommit = {
 	work?: WorkState;
 };
 
+/** The callback signature `create_client_core` drives with every {@link ClientCommit}. Adapter-internal wiring. */
 export type CommitFn = (commit: ClientCommit) => void;
 
+// Internal: injection points for test harnesses (vitest suites and
+// `_test_helpers.ts`) to replace real browser APIs (page reload, hard
+// navigation, scroll) with observable stand-ins. Never part of the public
+// client surface.
 export type TestOptions = {
 	reload?: () => void;
 	hard_redirect?: (url: string) => void;
 	scroll_to?: (x: number, y: number) => void;
 };
 
+/**
+ * A view module's default export, as produced by `defineView(...)`. Every
+ * adapter's `defineView` is a thin typed wrapper over this shape — see
+ * {@link ToDefineViewArgs} for the camelCase, per-app-typed args form an
+ * app actually writes; this snake_case shape is what the router core reads
+ * back off the imported module at runtime.
+ */
 export type ViewDefinition = {
 	pattern: string;
 	component: (props: any) => any;

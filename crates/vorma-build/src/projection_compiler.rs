@@ -1,4 +1,19 @@
 //! Projection compiler from framework graph to build artifacts.
+//!
+//! [`ProjectionBundle::compile`] is the framework-graph-to-build-crate
+//! boundary: it copies exactly the graph-owned data the build pipeline
+//! needs (route/resource contracts, view modules, static assets, type
+//! defs, the document contract) into this crate's own owned types once per
+//! generation, so the rest of this crate never has to hold a borrow into
+//! the graph. [`ProjectionBundle::runtime_manifest`] is the other
+//! direction: once a generation's build artifacts (public files, view
+//! module URLs, critical CSS, and so on) are complete, it validates and
+//! assembles them into the [`vorma_contract::runtime_manifest::RuntimeManifest`]
+//! the app server actually serves from — every cross-check in that method
+//! (every declared static asset produced a real output, every listed
+//! client-entry/view-module public path is actually in the manifest's own
+//! public file table, and so on) exists because a manifest that fails one
+//! of them would tell the browser to fetch a URL nothing published.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,7 +26,12 @@ use vorma_contract::runtime_manifest::{
 	ClientCoreAssets, ClientModule, RuntimeManifest, RuntimeViewModule,
 };
 
-/// Compiled projections derived from one framework graph.
+/// Compiled projections derived from one framework graph: the graph-owned
+/// facts this crate's build pipeline needs, copied into build-crate-owned
+/// types once per generation (see the module docs above for why). Every
+/// downstream build step ([`crate::build_plan`],
+/// [`crate::generation_inputs`], and further) reads from this bundle
+/// rather than the [`FrameworkGraph`] directly.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectionBundle {
 	public_static_base: String,
@@ -27,7 +47,10 @@ pub struct ProjectionBundle {
 }
 
 impl ProjectionBundle {
-	/// Compile graph projections.
+	/// Compile graph projections: a pure, infallible copy of graph-owned
+	/// data into this crate's own contract types (the graph has already
+	/// validated everything a build could reject by the time it exists —
+	/// this step cannot fail).
 	pub fn compile(graph: &FrameworkGraph) -> Self {
 		Self {
 			public_static_base: graph.config().public_static_base().to_owned(),
@@ -163,6 +186,11 @@ impl ProjectionBundle {
 	}
 
 	/// Build the runtime manifest projection from completed build artifacts.
+	/// Validates as it assembles (see [`ProjectionError`]'s variants for the
+	/// exact cross-checks) — every check exists to prevent shipping a
+	/// manifest that references a URL nothing actually published, so a
+	/// success from this method is a manifest the module docs above call
+	/// "the app server actually serves from" honestly.
 	pub fn runtime_manifest(
 		&self,
 		artifacts: &GenerationArtifacts,
@@ -299,7 +327,9 @@ impl DevWatchPlan {
 	}
 }
 
-/// View payload projection contract.
+/// View payload projection contract: the graph-owned facts about one view
+/// route that a build needs — its pattern, ancestry, params, search schema,
+/// and type contract — copied out of the graph by [`ProjectionBundle::compile`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewPayloadContract {
 	pattern: String,
@@ -336,7 +366,10 @@ impl ViewPayloadContract {
 	}
 }
 
-/// Resource projection contract.
+/// Resource projection contract: the graph-owned facts about one resource
+/// route that a build needs — its method, pattern, params, generated-client
+/// kind (see [`Self::kind_override`]), input schema, and type contract —
+/// copied out of the graph by [`ProjectionBundle::compile`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResourceContract {
 	method: String,
@@ -365,12 +398,20 @@ impl ResourceContract {
 		self.kind.unwrap_or(self.default_kind)
 	}
 
-	/// Explicit generated-client kind override.
+	/// Explicit generated-client kind override, when the app declared one.
+	/// Generated TypeScript never bakes the resolved kind into the emitted
+	/// call helper's default (that would require importing the actual
+	/// resource declaration array at runtime, inflating the client
+	/// bundle — see [`crate::typescript_contracts`]): app code applies
+	/// [`Self::kind_override`] manually per call only when it needs
+	/// non-default revalidation behavior, and otherwise the framework's
+	/// runtime default applies.
 	pub fn kind_override(&self) -> Option<ResourceKind> {
 		self.kind
 	}
 
-	/// Default generated-client kind.
+	/// Default generated-client kind: what applies when [`Self::kind_override`]
+	/// is `None`.
 	pub fn default_kind(&self) -> ResourceKind {
 		self.default_kind
 	}
@@ -392,7 +433,8 @@ impl ResourceContract {
 	}
 }
 
-/// View module projection contract.
+/// View module projection contract: a view's pattern paired with its
+/// client module source path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ViewModuleContract {
 	pattern: String,
@@ -411,7 +453,8 @@ impl ViewModuleContract {
 	}
 }
 
-/// Static asset projection contract.
+/// Static asset projection contract: a declared static asset's source path
+/// paired with its public request path.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StaticAssetContract {
 	source_path: String,
@@ -430,7 +473,14 @@ impl StaticAssetContract {
 	}
 }
 
-/// Completed build outputs before app document identity is derived.
+/// Completed build outputs before app document identity is derived: the
+/// builder-style precursor to [`GenerationArtifacts`]. The one field that
+/// differs between the two is `root_document_hash_source` — this type does
+/// not have it yet, because deriving it usually requires rendering through
+/// the app's actual [`DocumentBuilder`] (see
+/// [`Self::into_generation_artifacts`]) or, for the dev-loop's live-state
+/// path, comes precomputed from elsewhere (see
+/// [`Self::into_generation_artifacts_with_root_document_hash_source`]).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompletedBuildArtifacts {
 	critical_css: String,
@@ -443,7 +493,12 @@ pub struct CompletedBuildArtifacts {
 }
 
 impl CompletedBuildArtifacts {
-	/// Create completed build artifacts before app document identity is derived.
+	/// Create completed build artifacts before app document identity is
+	/// derived. Builder-style: chain [`Self::with_client_entry`],
+	/// [`Self::with_client_core_assets`], and [`Self::with_dev_metadata`] to
+	/// attach the optional pieces, then finish with
+	/// [`Self::into_generation_artifacts`] or
+	/// [`Self::into_generation_artifacts_with_root_document_hash_source`].
 	pub fn new(
 		critical_css: impl Into<String>,
 		public_filepaths: Vec<String>,
@@ -479,7 +534,13 @@ impl CompletedBuildArtifacts {
 		self
 	}
 
-	/// Derive generation artifacts from completed build outputs and the app document builder.
+	/// Derive generation artifacts from completed build outputs and the app
+	/// document builder: renders through `document_builder` to compute
+	/// [`GenerationArtifacts::root_document_hash_source`], then attaches
+	/// everything else this value already carries. The production and
+	/// non-live-state dev path; see
+	/// [`Self::into_generation_artifacts_with_root_document_hash_source`]
+	/// for the alternative when the hash source is already known.
 	pub async fn into_generation_artifacts(
 		self,
 		document_builder: &DocumentBuilder,
@@ -507,8 +568,11 @@ impl CompletedBuildArtifacts {
 		Ok(artifacts)
 	}
 
-	/// Derive generation artifacts from completed build outputs and a precomputed
-	/// document hash source.
+	/// Derive generation artifacts from completed build outputs and a
+	/// precomputed document hash source: the dev-loop live-state variant of
+	/// [`Self::into_generation_artifacts`], used when
+	/// `root_document_hash_source` was already read back from live build
+	/// state instead of needing to be rendered in this process.
 	pub fn into_generation_artifacts_with_root_document_hash_source(
 		self,
 		root_document_hash_source: impl Into<String>,
@@ -536,7 +600,11 @@ impl CompletedBuildArtifacts {
 	}
 }
 
-/// Completed artifacts from one build generation.
+/// Completed artifacts from one build generation: everything
+/// [`ProjectionBundle::runtime_manifest`] needs to assemble a runtime
+/// manifest, including the derived `root_document_hash_source` that
+/// [`CompletedBuildArtifacts`] does not yet have. See that type's docs for
+/// how the two relate.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GenerationArtifacts {
 	critical_css: String,
@@ -641,7 +709,10 @@ impl GenerationArtifacts {
 	}
 }
 
-/// Dev runtime manifest metadata.
+/// Dev runtime manifest metadata: the dev-only ports and refresh token a
+/// generation's runtime manifest carries when it is a dev generation (see
+/// [`GenerationArtifacts::dev_metadata`]) — production generations carry
+/// `None` here.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DevManifestMetadata {
 	vite_server_port: i32,
@@ -679,7 +750,8 @@ impl DevManifestMetadata {
 	}
 }
 
-/// Completed generation artifact construction error.
+/// Error from [`CompletedBuildArtifacts::into_generation_artifacts`] or
+/// [`GenerationArtifacts::from_document_builder`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GenerationArtifactError {
 	/// Root document hash source derivation failed.
@@ -701,7 +773,10 @@ impl std::fmt::Display for GenerationArtifactError {
 
 impl std::error::Error for GenerationArtifactError {}
 
-/// Completed browser module artifact.
+/// Completed browser module artifact: one client module's resolved import
+/// URL plus its dependency and CSS-bundle URLs, however this generation
+/// resolved them (dev-server-proxied or production-hashed — see
+/// [`crate::dev_generation`] and [`crate::production_generation`]).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ClientModuleArtifacts {
 	import_url: String,
@@ -739,7 +814,8 @@ impl ClientModuleArtifacts {
 	}
 }
 
-/// Completed client core assets.
+/// Completed client core assets: the framework's own client runtime module
+/// and its compiled WASM matcher, resolved URLs for this generation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ClientCoreArtifacts {
 	module_url: String,
@@ -766,7 +842,9 @@ impl ClientCoreArtifacts {
 	}
 }
 
-/// Projection compiler error.
+/// Error from [`ProjectionBundle::runtime_manifest`]: every way completed
+/// build artifacts can fail to add up to an internally consistent runtime
+/// manifest (see the module docs above for why these checks exist).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProjectionError {
 	/// Build artifacts listed the same public output more than once.

@@ -83,26 +83,41 @@ async fn serve() -> vorma::Result<()> {
 					vorma_board_example::REQUEST_BODY_LIMIT,
 				))
 				/*
-				A `ServiceBuilder` layer declared earlier is OUTER: it sees each
-				request first and each response last. `response_body_timeout` is
-				declared here, before (outer to) `etag`, on purpose. `etag`
-				fully buffers the response body into one in-memory chunk before
-				re-emitting it, which loses the original body's exact-length
-				`size_hint` — and `etag` only tags a response when it can read an
-				exact size up front. Declaring the timeout layer AFTER etag
-				(inner to it) would make etag observe that lossy re-buffered
-				body instead of the handler's real one, and every response
-				would silently lose its ETag. This ordering keeps `etag` sat on
-				top of a body whose exact size is still visible.
+				The response body timeout and etag are declared together
+				here through `response_body_timeout_with_etag`, not as two
+				separate `.layer(...)` calls, because their relative order
+				is load-bearing and easy to get backwards. `etag` only tags
+				a response when it can read an exact `size_hint` up front;
+				the timeout layer's body wrapper (`tower_http`'s
+				`TimeoutBody`) never forwards the wrapped body's
+				`size_hint` — it always reports "unknown", no matter how
+				small the real body is. A `ServiceBuilder` layer declared
+				earlier is OUTER (sees each request first, each response
+				last), so if `etag` were declared before (outer to) the
+				timeout layer — the order this reads most naturally, and
+				the order this file used before the footgun was found —
+				then on the response path the timeout layer would run
+				FIRST, permanently erasing the handler's real size hint,
+				and `etag` would run SECOND, now blind to a body it could
+				have tagged: every response would silently lose its ETag,
+				with no warning of any kind.
+				`response_body_timeout_with_etag` returns one pre-ordered
+				layer with the timeout wrapper permanently outer and etag
+				permanently inner, so that ordering mistake cannot happen
+				through it. Reach for the two raw layers separately instead
+				only when something else needs to sit between them in the
+				chain — and if you do, declare the timeout layer first
+				(outer) and `etag` second (inner), exactly as this helper
+				composes them internally.
 				*/
-				.layer(vorma::middleware::response_body_timeout(60))
 				/*
-				ETags are useful for ordinary successful GET/HEAD responses. Board
-				emits strong tags, caps buffering, and skips operational probes or
-				caller-marked requests through the request metadata passed to `skip`.
+				ETags are useful for ordinary successful GET/HEAD responses.
+				Board emits strong tags, caps buffering, and skips
+				operational probes or caller-marked requests through the
+				request metadata passed to `skip`.
 				*/
 				.layer(
-					vorma::middleware::etag()
+					vorma::middleware::response_body_timeout_with_etag(60)
 						.strong()
 						.max_body_size(ETAG_MAX_BODY_SIZE)
 						.skip(|request| {

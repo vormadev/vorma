@@ -1,4 +1,12 @@
 //! Shared Vite process command projection.
+//!
+//! `ViteCommandParts` (private to the crate) is the piece [`crate::dev_vite`]
+//! and [`crate::production_vite`] both build on to construct their
+//! respective `vite ...` commands: the package-manager base command, the
+//! resolved working directory, and the shared `--config` argument
+//! projection. What differs between them (dev's `--host`/`--port`/`--strictPort`
+//! vs. production's `--outDir`/`--manifest`/`--emptyOutDir`) is built on top
+//! in each caller's own module.
 
 use std::path::PathBuf;
 
@@ -82,7 +90,8 @@ impl ViteCommandParts {
 	}
 }
 
-/// Shared Vite command construction error.
+/// Error shared by [`crate::dev_vite`] and [`crate::production_vite`]'s Vite
+/// command construction.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ViteCommandError {
 	/// JavaScript package-manager command prefix was empty.

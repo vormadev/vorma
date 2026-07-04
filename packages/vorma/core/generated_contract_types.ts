@@ -21,6 +21,19 @@ export type ResourceBase = {
 
 /////// APP CONFIG
 
+/**
+ * The shape of `vormaClientSeed` from a generated `vorma.gen.ts` — the
+ * entire type-level contract `createVormaClient(config)` type-checks
+ * against. Every `To*`-family generic (`ToViewPattern<A>`,
+ * `ToQueryArgs<A>`, etc.) is parameterized by this type. `__vorma_views`/
+ * `__vorma_resources` are `readonly` array literals typed with `as const`
+ * so their element types stay literal (exact patterns, exact methods)
+ * rather than widening to `string[]` — an app never reads their runtime
+ * VALUES (Vorma keeps them type-level-only so they never inflate the
+ * client bundle; see `vorma.gen.ts`'s `null as unknown as typeof
+ * __vorma_views` pattern), only imports the generated `AppConfig` itself
+ * for its type.
+ */
 export type AppConfig = {
 	__vorma_views: readonly ViewBase[];
 	__vorma_resources: readonly ResourceBase[];

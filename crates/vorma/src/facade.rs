@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::sync::Arc;
 
-use crate::contracts::{DocumentContract, RouteTypeContract, TypeDef};
+use crate::contracts::{DocumentContract, RouteTypeContract, SharedTypeNameRelation, TypeDef};
 use crate::execution_engine::{HandlerRegistry, RuntimeHandler};
 use crate::form_data::FormData;
 use crate::framework_graph::{
@@ -259,10 +259,34 @@ impl AppFacade {
 		if let Some(existing_key) = self.type_names_by_key.get(&name)
 			&& existing_key != &key
 		{
-			return Err(FacadeError::DuplicateTypeName { name });
+			/*
+			A different key already claimed this name. Fail fast here only
+			for the case unrelated to this packet's ruling (two genuinely
+			unrelated `TypeDef`s contending for one name) — preserving the
+			pre-existing snappy `FacadeError::DuplicateTypeName` for that
+			mistake. A recognized same-Rust-type phase pair (see
+			`TypeDef::classify_shared_name_with`'s docs) is let through
+			either way: `FrameworkGraph::compile`'s `validate_type_contracts`
+			is the authoritative collapse boundary (it also covers
+			`FrameworkDeclarations` built without a facade at all), so a
+			shape-equivalent pair collapses there and a shape-divergent pair
+			surfaces there too, as `FacadeError::Graph` wrapping the
+			teaching `GraphError::DivergentTypePhaseShapes` — duplicating
+			that decision or its message here would just be two sources of
+			truth for one rule.
+			*/
+			let existing = self
+				.type_defs_by_key
+				.get(existing_key)
+				.expect("type_names_by_key only ever names a key present in type_defs_by_key");
+			if existing.classify_shared_name_with(&type_def)
+				== SharedTypeNameRelation::UnrelatedTypes
+			{
+				return Err(FacadeError::DuplicateTypeName { name });
+			}
 		}
 		self.type_defs_by_key.insert(key.clone(), type_def.clone());
-		self.type_names_by_key.insert(name, key);
+		self.type_names_by_key.entry(name).or_insert(key);
 		self.declarations.add_type_def(type_def);
 		Ok(())
 	}
@@ -1119,6 +1143,114 @@ mod tests {
 			duplicate_name,
 			FacadeError::DuplicateTypeName { .. }
 		));
+	}
+
+	// A genuinely `TsGen`-derived shared type, going through the real
+	// derive and the real public `add_view_route`/`add_resource_route`
+	// entry points — the exact end-to-end reproduction of the P013 bug
+	// this packet's ruling resolves (`tsgen-shared-type-phase-name-collision`),
+	// not just a facade-internal `add_type_def` shortcut.
+	#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, crate::TsGen)]
+	struct SharedProfile {
+		display_name: String,
+	}
+
+	#[test]
+	fn facade_collapses_shared_tsgen_type_used_as_both_route_input_and_output() {
+		let mut facade: StatefulAppFacade<()> =
+			StatefulAppFacade::new(FrameworkConfig::default(), ());
+		facade
+			.add_view_route::<(), SharedProfile, _, _>(
+				"/profile",
+				"profile.tsx",
+				handler_id("profile.view"),
+				|_ctx| async move {
+					Ok(SharedProfile {
+						display_name: "Ada".to_owned(),
+					})
+				},
+			)
+			.unwrap()
+			.add_resource_route::<SharedProfile, (), _, _>(
+				Method::POST,
+				"/profile",
+				None,
+				handler_id("profile.resource"),
+				|_ctx| async move { Ok(()) },
+			)
+			.unwrap();
+
+		let compiled = facade.compile().unwrap();
+
+		let shared_profile_defs = compiled
+			.graph()
+			.type_defs()
+			.iter()
+			.filter(|type_def| type_def.name() == "SharedProfile")
+			.count();
+		assert_eq!(
+			shared_profile_defs, 1,
+			"a TsGen-derived type used as both a route input and a route \
+			 output through the real facade entry points must export \
+			 exactly one TypeScript type definition, not fail with \
+			 DuplicateTypeName"
+		);
+	}
+
+	// The natural genuine-divergence case (packet P019): `#[serde(default)]`
+	// makes `nickname` optional on Deserialize but leaves it required on
+	// Serialize, so the two phases render different TypeScript shapes even
+	// though they share a name — collapse must NOT happen, and the facade
+	// must surface the teaching error, not a bare DuplicateTypeName.
+	#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, crate::TsGen)]
+	struct DivergentProfile {
+		#[serde(default)]
+		nickname: String,
+	}
+
+	#[test]
+	fn facade_rejects_structurally_divergent_shared_tsgen_type_phases_with_teaching_error() {
+		let mut facade: StatefulAppFacade<()> =
+			StatefulAppFacade::new(FrameworkConfig::default(), ());
+		facade
+			.add_view_route::<(), DivergentProfile, _, _>(
+				"/profile",
+				"profile.tsx",
+				handler_id("profile.view"),
+				|_ctx| async move {
+					Ok(DivergentProfile {
+						nickname: "Ada".to_owned(),
+					})
+				},
+			)
+			.unwrap()
+			.add_resource_route::<DivergentProfile, (), _, _>(
+				Method::POST,
+				"/profile",
+				None,
+				handler_id("profile.resource"),
+				|_ctx| async move { Ok(()) },
+			)
+			.unwrap();
+
+		let error = match facade.compile() {
+			Ok(_) => panic!("expected divergent shared type phases to reject compile"),
+			Err(error) => error,
+		};
+
+		let FacadeError::Graph { source } = &error else {
+			panic!("expected FacadeError::Graph, got {error:?}");
+		};
+		let GraphError::DivergentTypePhaseShapes { name, .. } = source else {
+			panic!("expected DivergentTypePhaseShapes, got {source:?}");
+		};
+		assert_eq!(name, "DivergentProfile");
+		let message = source.to_string();
+		assert!(
+			message.contains("use two distinct Rust types"),
+			"the facade's real compile path must surface the teaching \
+			 error text, not a bare DuplicateTypeName: {message}"
+		);
 	}
 
 	#[test]

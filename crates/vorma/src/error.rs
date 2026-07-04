@@ -13,7 +13,14 @@ use std::fmt;
 /// Boxed error type for chained error sources.
 pub type BoxError = Box<dyn StdError + Send + Sync + 'static>;
 
-/// Framework error carrying a display message and optional source.
+/// Plain framework/setup error carrying a display message and optional source.
+///
+/// For config validation and helper failures (like [`bind_addr`](crate::bind_addr))
+/// outside a request — distinct from [`ViewExit`](crate::ViewExit)/
+/// [`HttpExit`](crate::HttpExit), the handler early-exit types with their own
+/// client-visibility rules. `Error` converts into both via `?`, so it works as a plain
+/// return type for setup code that only ever runs outside a request (an app's `main`, a
+/// document builder) and still composes with `?` inside a handler when needed.
 #[derive(Debug)]
 pub struct Error {
 	message: String,

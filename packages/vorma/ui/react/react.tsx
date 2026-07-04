@@ -84,12 +84,59 @@ export type {
 	WorkState,
 } from "vorma/__internal";
 
+/**
+ * Options for {@link createVormaClient}: {@link AdapterClientOptions} plus
+ * two React-specific extras.
+ *
+ * - `linkDefaultProps`: default props merged onto every `Link` render
+ *   (raw call-site props win on conflict) — the place to set an
+ *   app-wide `prefetch="intent"` or `attributeMatchRules` default instead
+ *   of repeating it at every call site.
+ * - `apiDecorator`: see {@link ToApiDecorator}.
+ */
 type CreateVormaClientOptions<A extends AppConfig> =
 	AdapterClientOptions<ComponentType> & {
 		linkDefaultProps?: Partial<Omit<ComponentProps<"a"> & LinkPropsBase, "href">>;
 		apiDecorator?: ToApiDecorator<A>;
 	};
 
+/**
+ * Build a Vorma client for React. Returns a {@link VormaClient} typed for
+ * this app's `A` (the generated `AppConfig` from `vorma.gen.ts`) —
+ * `boot()`, `RootOutlet`, `Link`, `defineView`, every `use*` hook, and the
+ * `navigate`/`prefetch`/`apiClient`/`workIndicator` passthrough surface.
+ * See {@link VormaClient} for the full teaching documentation of that
+ * returned object; this function itself has nothing framework-specific
+ * beyond wiring React's own primitives (`useSyncExternalStore`, `memo`)
+ * underneath it.
+ *
+ * `HookReturnMode` is `"value"` here: `useRouteState()`, `useWorkState()`,
+ * `useViewData(props)`, etc. all return the current value directly and
+ * re-render the calling component on change — the ordinary React hook
+ * shape. (Preact's adapter returns `ReadonlySignal<T>` instead; Solid's
+ * returns a zero-arg accessor function — see each adapter's own module
+ * docs for that divergence if porting code between them.)
+ *
+ * The idiomatic shape: build the client once in a shared module, destructure
+ * the pieces views need out of it, and `boot()` from the app's entry point.
+ *
+ * ```
+ * // app.tsx
+ * import { createVormaClient } from "vorma/react";
+ * import { vormaClientSeed } from "./vorma.gen.ts";
+ *
+ * export const app = createVormaClient(vormaClientSeed, {
+ *   render: ({ RootOutlet, rootEl }) => {
+ *     createRoot(rootEl).render(createElement(RootOutlet));
+ *   },
+ * });
+ * export const { Link, navigate, useRouteState, useViewData } = app;
+ *
+ * // entry.tsx
+ * import { app } from "./app.tsx";
+ * await app.boot();
+ * ```
+ */
 export function createVormaClient<A extends AppConfig>(
 	app_config: A,
 	options?: CreateVormaClientOptions<A>,
